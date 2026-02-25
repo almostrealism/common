@@ -255,6 +255,38 @@ GC. Monitor for memory growth during long renders.
 | `frameRangeWithEffects` | Diagnostic | Cell pipeline setup |
 | `renderNoteAudioLengthAnalysis` | Diagnostic | Rendering waste quantification |
 
+### Test Coverage Gap: Effects Pipeline Disabled
+
+**All existing real-time tests disable the effects pipeline.** Every test
+class calls `RealTimeTestHelper.disableEffects()` which sets:
+- `MixdownManager.enableMainFilterUp = false`
+- `MixdownManager.enableEfxFilters = false`
+- `MixdownManager.enableEfx = false`
+
+The tester application runs with **all effects enabled** (the default). The
+effects pipeline (filters, delays, EfxManager) adds a significant number
+of cells to the computation graph, each with its own `PackedCollection`
+arguments. This is why the tester app sees **460 arguments** to the compiled
+Loop function, while the tests would see far fewer.
+
+**Additionally**, two of four test classes (`AudioSceneRealTimeTest` and
+`RealTimeRendererCorrectnessTest`) use only **2 source channels** instead
+of the production default of **6**. Only `AudioSceneRealTimeCorrectnessTest`
+consistently tests with 6 channels.
+
+| Parameter | Tester App (real case) | Most Tests |
+|---|---|---|
+| Source channels | 6 | 2 or 6 (varies) |
+| Effects pipeline | **Enabled** | **Disabled** |
+| Delay layers | 3 | 2 or 3 (varies) |
+| Buffer size | 16384 | 1024 or 4096 |
+| Loop arguments | **460** | Significantly fewer |
+
+**To improve performance testing fidelity**, tests that measure compilation
+time or argument counts should run with effects enabled and 6 source
+channels. The effects pipeline is a major contributor to the argument count
+problem documented below.
+
 ---
 
 ## Tester Application Experiment
@@ -270,60 +302,65 @@ See `ringsdesktop/REALTIME_SCENE_TESTER.md` for the full design.
 - Pressing Play builds a runner via `scene.runnerRealTime()`, wraps it in a
   `BufferedOutputScheduler`, and streams audio to the system speaker via
   Java Sound API (`SourceDataLine`)
-- Slider changes while playing trigger a debounced stop/recompile/restart
-  cycle
+- Slider changes while playing call `assignGenome()` directly — the
+  computation graph is genome-independent (gene values use `cp()` references),
+  so the compiled kernel picks up new values on the next tick without
+  recompilation
 - An `OperationProfileNode` is assigned to `Hardware` at startup and captures
   compilation timing, runtime timing, and scope timing for the entire session.
   The profile is saved to `results/realtime_scene_profile.xml` on demand or
   on window close.
+- Buffer size is 16384 frames (~372ms at 44.1kHz)
 
 ### Key Findings
 
 1. **Compilation dominates wall-clock time.** The first Play press triggers
    compilation of the `Loop` scope (the compiled per-frame kernel). This takes
    far longer than any runtime phase. Subsequent ticks reuse the compiled
-   kernel, but every slider change triggers recompilation because
-   `assignGenome()` produces a structurally different computation graph.
+   kernel. Genome changes no longer trigger recompilation (see Step 3 below).
 
-2. **The Loop scope has 500+ arguments.** When `Loop.getScope()` builds the
+2. **The Loop scope has 460 arguments.** When `Loop.getScope()` builds the
    `Repeated` scope, the atom's scope (the `loopBody` OperationList)
    aggregates every `PackedCollection` argument from the entire cell graph.
-   With 6 channels, each with effects pipelines, the argument count exceeds
-   500. This is the primary driver of slow compilation — scope generation,
-   argument resolution, and native code generation all scale with argument
-   count.
+   With 6 channels and the **full effects pipeline enabled** (filters, delays,
+   EfxManager), the generated function receives **460 arguments**. This is the
+   primary driver of slow compilation — scope generation, argument resolution,
+   and native code generation all scale with argument count. Note: this is
+   **after** gene value consolidation (Step 2 below), which already reduced
+   gene-derived arguments from O(genes) to O(chromosomes). **The existing
+   tests in the compose module all disable effects and therefore see
+   significantly fewer arguments** — they do not reflect the true production
+   complexity (see [Test Coverage Gap](#test-coverage-gap-effects-pipeline-disabled) above).
 
 3. **Runtime is not quite real-time.** Even after compilation, tick execution
-   with a 4096-frame buffer (~93ms at 44.1kHz) takes longer than the buffer
-   duration. The system achieves roughly 0.4x real-time. Increasing the buffer
-   size improves the ratio by amortizing per-tick overhead.
-
-4. **Every genome change requires full recompilation.** Because the
-   computation graph changes structurally with each genome (different pattern
-   elements → different cell configurations), the compiled kernel cannot be
-   reused. This makes interactive slider adjustment impractical without a
-   strategy to avoid recompilation.
+   is slower than real-time. Increasing the buffer size from 4096 to 16384
+   frames helps amortize per-tick overhead.
 
 ---
 
 ## Next Steps
 
-### 1. Increase Buffer Size to 16384 Frames
+### 1. Increase Buffer Size to 16384 Frames ✅ COMPLETE
 
-Increase `BUFFER_SIZE` from 4096 to 16384 (~372ms at 44.1kHz). This 4x
-increase accepts higher latency in exchange for better amortization of
-per-tick overhead. At the current ~0.42x real-time ratio with 4096 frames,
-a 4x buffer should bring runtime closer to real-time by reducing the
-relative weight of fixed per-tick costs.
+Buffer size increased from 4096 to 16384 (~372ms at 44.1kHz) in the tester
+app (`RealtimeSceneTesterController.BUFFER_SIZE`). This accepts higher
+latency in exchange for better amortization of per-tick overhead.
 
-This is a simple constant change in both the tester app
-(`RealtimeSceneTesterController.BUFFER_SIZE`) and in test configurations.
+### 2. Reduce Loop Scope Argument Count (PRIMARY GOAL)
 
-### 2. Reduce Loop Scope Argument Count
-
-The compiled `Loop` scope currently has 500+ arguments because every
+The compiled `Loop` scope currently has **460 arguments** (measured with 6
+channels and full effects pipeline in the tester app). Every
 `PackedCollection` referenced by the cell graph becomes a kernel argument.
-This is the primary compilation bottleneck. Approaches to reduce the count:
+This is the primary compilation and runtime bottleneck.
+
+**Important:** Existing tests disable effects and therefore see far fewer
+arguments. Any test that measures argument count reduction or compilation
+performance **must** run with effects enabled (`MixdownManager.enableMainFilterUp`,
+`enableEfxFilters`, `enableEfx` all true) and 6 source channels to match
+the real production case. The target is to reduce the 460-argument baseline
+significantly.
+
+Approaches to reduce the count:
 
 - **Heap consolidation**: Use `Heap.stage()` or similar to combine many
   small `PackedCollection` objects into a single contiguous allocation. The
@@ -359,34 +396,11 @@ through the views.
 - Profile the full argument list to identify other small collections
   that could be consolidated
 
-### 3. Parameterize Computation via `Evaluable` to Avoid Recompilation
-
-The fundamental problem is that each genome change produces a structurally
-different computation graph, forcing full recompilation. The solution is to
-make the genome parameters **runtime arguments** to a single compiled kernel
-rather than baked-in constants.
-
-`Evaluable` already supports runtime arguments — that is its primary purpose.
-The approach:
-
-- Identify which parts of the computation graph change with the genome
-  (pattern element positions, durations, amplitudes, channel assignments)
-  vs. which parts are structurally fixed (the DSP pipeline, effects chain,
-  output routing)
-- Factor the genome-dependent values into `PackedCollection` arguments that
-  are passed at evaluation time rather than embedded in the computation graph
-- Compile the kernel **once** with argument slots for the genome-dependent
-  values, then update those `PackedCollection` values on each genome change
-  without recompilation
-
-This is the most impactful change: it would make slider adjustments
-instantaneous (just update argument values) instead of requiring a full
-recompile cycle. It also enables the warmup strategy (pre-compile during
-scene initialization) because the compiled kernel would be genome-independent.
+### 3. Parameterize Computation via `Evaluable` to Avoid Recompilation ✅ COMPLETE
 
 #### Analysis: Graph Is Already Genome-Independent (Verified)
 
-Investigation of the computation graph construction reveals that the cell
+Investigation of the computation graph construction revealed that the cell
 graph built by `getCells()` is **already structurally independent** of the
 genome parameters:
 
@@ -409,14 +423,13 @@ genome parameters:
    that produce `cp()`-based `Producer`s.
 
 **Consequence:** The runner built by `runnerRealTime()` can be reused
-across genome changes. Callers should call `assignGenome()` to update
-the `PackedCollection` values, then continue ticking the existing runner.
-Rebuilding the runner (which triggers recompilation) is unnecessary.
+across genome changes. Callers call `assignGenome()` to update the
+`PackedCollection` values, and the compiled kernel picks up the new
+values on the next tick without recompilation.
 
-The `assignGenome()` javadoc now documents this capability. The tester
-application (`RealtimeSceneTesterJavaFX`) should be updated to reuse
-the runner on slider changes instead of doing a stop/recompile/restart
-cycle.
+The `assignGenome()` javadoc documents this capability. The tester
+application has been updated to call `assignGenome()` directly on slider
+changes while playback continues — no stop/recompile/restart cycle.
 
 ### Previously Identified (Still Relevant)
 
