@@ -206,7 +206,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			this.input = null;
 		}
 
-		this.fw = null;
 		buildEntryCell();
 	}
 
