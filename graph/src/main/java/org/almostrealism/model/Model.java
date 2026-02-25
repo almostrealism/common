@@ -259,11 +259,6 @@ public class Model implements Setup, Destroyable, CodeFeatures {
 		return setup;
 	}
 
-	public void disableTracking() {
-		blocks.disableTracking();
-		inputs.forEach(Block::disableTracking);
-	}
-
 	/**
 	 * Returns all forward cells for the main chain and auxiliary inputs.
 	 *

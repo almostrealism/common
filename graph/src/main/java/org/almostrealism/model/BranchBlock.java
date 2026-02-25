@@ -74,14 +74,6 @@ public class BranchBlock implements Block {
 	}
 
 	@Override
-	public void disableTracking() {
-		children.stream()
-				.filter(Block.class::isInstance)
-				.map(Block.class::cast)
-				.forEach(Block::disableTracking);
-	}
-
-	@Override
 	public Supplier<Runnable> setup() {
 		return new OperationList("BranchBlock Setup");
 	}

@@ -307,7 +307,7 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 					name, inputShape, outputShape,
 					weights.toArray(PackedCollection[]::new)));
 
-		backwardCell.setForwardInput(layer::getInput);
+		backwardCell.setForwardInput(layer.getInput());
 		return layer;
 	}
 
@@ -397,7 +397,7 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		String mainName = name + " main";
 		BackPropagationCell mainBackward = new BackPropagationCell(mainName,
 				DefaultGradientPropagation.create(mainName, in -> operator.compose(in, p(auxInput))));
-		mainBackward.setForwardInput(layer::getInput);
+		mainBackward.setForwardInput(layer.getInput());
 
 		// Create gradient propagation for the aux input
 		// and direct its output to the aux backward Cell

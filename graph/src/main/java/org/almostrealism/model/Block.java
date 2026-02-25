@@ -337,8 +337,6 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 		return r;
 	}
 
-	default void disableTracking() { }
-
 	@Override
 	default String describe() {
 		return getInputShape().toStringDetail() + " -> " + getOutputShape().toStringDetail();

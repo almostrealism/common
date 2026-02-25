@@ -75,11 +75,6 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	}
 
 	@Override
-	public void disableTracking() {
-		blocks.forEach(Block::disableTracking);
-	}
-
-	@Override
 	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
 		this.parameterUpdate = update;
 

@@ -32,6 +32,41 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
+/**
+ * The standard trainable layer implementation that wraps a forward computation cell
+ * with entry and exit cells for input/output tracking.
+ *
+ * <p>DefaultCellularLayer introduces an <strong>entry/exit cell architecture</strong> around
+ * the core forward cell. The entry cell optionally copies input data into a dedicated buffer
+ * (input tracking), and the exit cell copies the forward cell's output into an output buffer.
+ * These copies serve two purposes:</p>
+ * <ul>
+ *   <li><strong>Input tracking</strong>: Preserves the original input for backpropagation.
+ *       The {@link BackPropagationCell} needs access to the forward pass input to compute
+ *       gradients. Without tracking, the input may be overwritten by subsequent operations.</li>
+ *   <li><strong>Output tracking</strong>: Captures the layer's output in a stable buffer so
+ *       downstream consumers can read it after the forward pass completes.</li>
+ * </ul>
+ *
+ * <h2>Training vs Inference</h2>
+ * <p>Input tracking is only required during training. For inference-only execution,
+ * {@link #setInputTracking(boolean)} can disable it, structurally rebuilding the entry cell
+ * as a simple pass-through. This eliminates the input copy overhead (~18% of forward pass
+ * time in profiled models). The rebuild happens before graph optimization, so the optimizer
+ * sees a clean structure with no dead branches.</p>
+ *
+ * <h2>Comparison with DefaultBlock</h2>
+ * <p>{@link org.almostrealism.model.DefaultBlock} is a lightweight alternative with no
+ * input/output buffers and no tracking overhead. Use DefaultBlock for pure transformations
+ * that don't need weight updates or gradient computation. Use DefaultCellularLayer for
+ * trainable layers with weights.</p>
+ *
+ * @see org.almostrealism.model.DefaultBlock
+ * @see CellularLayer
+ * @see BackPropagationCell
+ * @see org.almostrealism.model.CompiledModel
+ * @author Michael Murray
+ */
 public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learning, Nameable {
 	public static boolean enableMemoryDataCopy = true;
 
@@ -51,7 +86,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	private List<ComputeRequirement> requirements;
 
 	private boolean inputTrackingEnabled;
-	private boolean optimizeOnForward;
 	private PackedCollection input;
 	private PackedCollection output;
 
@@ -107,8 +141,17 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
-	public void setOptimizeOnForward(boolean optimize) { this.optimizeOnForward = optimize; }
-
+	/**
+	 * Initializes this layer with the given input shape and tracking configuration.
+	 * This creates the entry cell, exit cell, input buffer (if tracking), and output buffer,
+	 * and wires them to the forward cell. Must be called before the layer can participate
+	 * in a computation graph.
+	 *
+	 * @param inputShape the shape of input data this layer will receive
+	 * @param inputTracking whether to copy input into a dedicated buffer for backpropagation
+	 * @param outputTracking whether to copy output into a dedicated buffer
+	 * @throws UnsupportedOperationException if inputTracking is true but outputTracking is false
+	 */
 	public void init(TraversalPolicy inputShape, boolean inputTracking, boolean outputTracking) {
 		this.inputShape = inputShape;
 
@@ -118,16 +161,58 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		}
 
 		this.inputTrackingEnabled = inputTracking;
-		this.output = outputTracking ? new PackedCollection(outputShape) : null;
+		this.output = new PackedCollection(outputShape);
 
-		this.entry = Cell.of((in, next) -> {
-			if (!inputTrackingEnabled) {
-				return next.push(in);
-			} else {
-				if (this.input == null) {
-					this.input = new PackedCollection(this.inputShape);
-				}
+		if (inputTracking) {
+			this.input = new PackedCollection(inputShape);
+		}
 
+		buildEntryCell();
+
+		this.exit = Cell.of((in, next) -> output(in, p(output)));
+		this.forward.setReceptor(exit);
+	}
+
+	/**
+	 * Reconfigures whether this layer tracks (copies) its input during the forward pass.
+	 * When {@code inputTracking} is {@code true}, the entry cell copies input data into
+	 * a dedicated buffer before forwarding, enabling backpropagation to access the original
+	 * input. When {@code false}, the entry cell passes input through without copying,
+	 * eliminating overhead for inference-only execution.
+	 *
+	 * <p>This method performs a <strong>structural rebuild</strong> of the entry cell.
+	 * It must be called before the computation graph is optimized (i.e., before
+	 * {@code Process.optimize()} or {@code OperationList.flatten().optimize()}).
+	 * Calling it after optimization has undefined behavior.</p>
+	 *
+	 * @param inputTracking whether to enable input tracking for this layer
+	 * @throws IllegalStateException if the layer has not been initialized via {@link #init}
+	 */
+	public void setInputTracking(boolean inputTracking) {
+		if (this.output == null) {
+			throw new IllegalStateException("Layer has not been initialized");
+		}
+
+		if (this.inputTrackingEnabled == inputTracking) {
+			return;
+		}
+
+		this.inputTrackingEnabled = inputTracking;
+
+		if (inputTracking && this.input == null) {
+			this.input = new PackedCollection(this.inputShape);
+		} else if (!inputTracking && this.input != null) {
+			this.input.destroy();
+			this.input = null;
+		}
+
+		this.fw = null;
+		buildEntryCell();
+	}
+
+	private void buildEntryCell() {
+		if (inputTrackingEnabled) {
+			this.entry = Cell.of((in, next) -> {
 				OperationList op = new OperationList(getName() + " layer (Entry)");
 				op.add(into(getName() + " layer (Input Record)", in, p(input),
 						enableMemoryDataCopy, getComputeRequirements()));
@@ -139,12 +224,12 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 				op.add(next.push(p(input)));
 				return op;
-			}
-		});
-		this.entry.setReceptor(forward);
+			});
+		} else {
+			this.entry = Cell.of((in, next) -> next.push(in));
+		}
 
-		this.exit = Cell.of((in, next) -> output(in, p(output)));
-		this.forward.setReceptor(exit);
+		this.entry.setReceptor(forward);
 	}
 
 	private Supplier<Runnable> output(Producer<PackedCollection> in, Producer<PackedCollection> out) {
@@ -161,12 +246,21 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		return op;
 	}
 
-	public PackedCollection getInput() {
-		if (input == null && inputTrackingEnabled) {
-			this.input = new PackedCollection(this.inputShape);
-		}
-		return input;
-	}
+	/**
+	 * Returns the input tracking buffer, or {@code null} if input tracking is disabled.
+	 * During the forward pass with tracking enabled, the entry cell copies input data
+	 * into this buffer. The {@link BackPropagationCell} reads from this buffer to
+	 * compute gradients.
+	 *
+	 * @return the input tracking buffer, or null if tracking is disabled
+	 */
+	public PackedCollection getInput() { return input; }
+
+	/**
+	 * Returns the output buffer where the exit cell stores the forward pass result.
+	 *
+	 * @return the output buffer, or null if the layer has not been initialized with output tracking
+	 */
 	public PackedCollection getOutput() { return output; }
 
 	@Override
@@ -181,26 +275,12 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	}
 
 	@Override
-	public void disableTracking() {
-		this.inputTrackingEnabled = false;
-		if (this.input != null) {
-			this.input.destroy();
-			this.input = null;
-		}
-	}
-
-	@Override
 	public Cell<PackedCollection> getForward() {
 		if (this.output == null) {
 			return this.forward;
 		} else if (fw == null) {
 			fw = Cell.of((in, next) -> {
-				OperationList op = optimizeOnForward
-						? new OperationList(getName() + " Layer (Forward)") {
-							@Override
-							public Runnable get() { return optimize().get(); }
-						}
-						: new OperationList(getName() + " Layer (Forward)");
+				OperationList op = new OperationList(getName() + " Layer (Forward)");
 				op.add(entry.push(in));
 				if (next != null) op.add(next.push(p(output)));
 				return op;
