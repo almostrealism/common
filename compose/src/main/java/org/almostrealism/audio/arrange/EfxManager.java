@@ -101,6 +101,38 @@ public class EfxManager implements CellFeatures {
 		}).collect(Collectors.toList()));
 	}
 
+	private PackedCollection consolidatedFilterBuffer;
+	private int filterBufferIndex;
+
+	/**
+	 * Pre-allocates a single contiguous buffer for all filter destination buffers.
+	 *
+	 * <p>When active, {@link #applyFilter} uses delegate ranges from this
+	 * consolidated buffer instead of allocating individual
+	 * {@link PackedCollection} instances. This reduces the number of kernel
+	 * arguments in the compiled {@code Loop} scope because the scope's
+	 * argument deduplication resolves each delegate to the shared root.</p>
+	 *
+	 * <p>The maximum number of filter destinations is {@code channelCount x 2}
+	 * (one per wet channel per stereo side). Unused slots do not become kernel
+	 * arguments since nothing references them.</p>
+	 *
+	 * @param channelCount number of audio channels
+	 * @param bufferSize   frames per render buffer
+	 */
+	public void consolidateFilterBuffers(int channelCount, int bufferSize) {
+		int maxFilters = channelCount * 2;
+		consolidatedFilterBuffer = new PackedCollection(bufferSize * maxFilters);
+		filterBufferIndex = 0;
+	}
+
+	/**
+	 * Returns the consolidated filter buffer, or {@code null} if not active.
+	 *
+	 * <p>Exposed for testing to verify that filter buffer consolidation is active.</p>
+	 */
+	public PackedCollection getConsolidatedFilterBuffer() { return consolidatedFilterBuffer; }
+
 	public List<Integer> getWetChannels() { return wetChannels; }
 	public void setWetChannels(List<Integer> wetChannels) { this.wetChannels = wetChannels; }
 
@@ -186,7 +218,15 @@ public class EfxManager implements CellFeatures {
 	}
 
 	protected Producer<PackedCollection> applyFilter(ChannelInfo channel, Producer<PackedCollection> audio, OperationList setup) {
-		PackedCollection destination = PackedCollection.factory().apply(shape(audio).getTotalSize());
+		int size = shape(audio).getTotalSize();
+		PackedCollection destination;
+
+		if (consolidatedFilterBuffer != null) {
+			destination = consolidatedFilterBuffer.range(shape(size), filterBufferIndex * size);
+			filterBufferIndex++;
+		} else {
+			destination = PackedCollection.factory().apply(size);
+		}
 
 		Producer<PackedCollection> decision =
 				delayLevels.valueAt(channel.getPatternChannel(), 2).getResultant(c(1.0));

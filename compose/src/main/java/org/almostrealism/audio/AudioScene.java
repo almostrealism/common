@@ -49,7 +49,10 @@ import org.almostrealism.audio.notes.NoteAudioChoice;
 import org.almostrealism.audio.pattern.ChordProgressionManager;
 import org.almostrealism.audio.pattern.PatternAudioBuffer;
 import org.almostrealism.audio.pattern.NoteAudioChoiceList;
+import org.almostrealism.audio.pattern.PatternElement;
+import org.almostrealism.audio.pattern.PatternLayerManager;
 import org.almostrealism.audio.pattern.PatternSystemManager;
+import org.almostrealism.audio.pattern.RenderedNoteAudio;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.KeyPosition;
@@ -271,6 +274,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	
 	private OperationList setup;
 	private List<PatternAudioBuffer> renderCells;
+	private PackedCollection consolidatedRenderBuffer;
+	private int renderBufferIndex;
 	private Function<PackedCollection, Factor<PackedCollection>> automationLevel;
 
 	private final List<Consumer<Frequency>> tempoListeners;
@@ -436,6 +441,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public PatternSystemManager getPatternManager() { return patterns; }
 	public AutomationManager getAutomationManager() { return automation; }
 	public EfxManager getEfxManager() { return efx; }
+
+	/**
+	 * Returns the consolidated render buffer that backs all {@link PatternAudioBuffer}
+	 * output buffers, or {@code null} if {@link #getCells} has not been called.
+	 *
+	 * <p>Exposed for testing to verify that output buffer consolidation is active.</p>
+	 */
+	public PackedCollection getConsolidatedRenderBuffer() { return consolidatedRenderBuffer; }
 	public MixdownManager getMixdownManager() { return mixdown; }
 	public GenerationManager getGenerationManager() { return generation; }
 
@@ -676,6 +689,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		setup.add(() -> () -> patterns.setTuning(tuning));
 		setup.add(sections.setup());
 
+		consolidateRenderBuffers(channels.size(), bufferSize);
+		efx.consolidateFilterBuffers(channels.size(), bufferSize);
+
 		CellList cells = cells(
 				getPatternCells(output, channels, ChannelInfo.StereoChannel.LEFT,
 						bufferSize, frameSupplier, setup, waveCellFrame),
@@ -684,6 +700,28 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 		cells.addSetup(() -> setup);
 		return cells.addRequirement(time::tick);
+	}
+
+	/**
+	 * Pre-allocates a single contiguous buffer for all {@link PatternAudioBuffer}
+	 * output buffers.
+	 *
+	 * <p>Each {@link PatternAudioBuffer} receives a delegate (range) into this
+	 * consolidated buffer instead of its own independent {@link PackedCollection}.
+	 * When the compiled {@code Loop} scope collects arguments, the scope's
+	 * deduplication resolves each delegate to the shared root, collapsing all
+	 * render buffer arguments into a single kernel argument.</p>
+	 *
+	 * <p>The total number of render cells is {@code channelCount x 4}
+	 * (MAIN + WET voicing x LEFT + RIGHT stereo).</p>
+	 *
+	 * @param channelCount number of audio channels
+	 * @param bufferSize   frames per render buffer
+	 */
+	private void consolidateRenderBuffers(int channelCount, int bufferSize) {
+		int totalRenderCells = channelCount * 4;
+		consolidatedRenderBuffer = new PackedCollection(bufferSize * totalRenderCells);
+		renderBufferIndex = 0;
 	}
 
 	/**
@@ -767,8 +805,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									  OperationList setup,
 									  Producer<PackedCollection> waveCellFrame) {
 		Supplier<AudioSceneContext> ctx = () -> getContext(List.of(channel));
+
+		PackedCollection outputBuffer = null;
+		if (consolidatedRenderBuffer != null) {
+			outputBuffer = consolidatedRenderBuffer.range(
+					shape(bufferSize), renderBufferIndex * bufferSize);
+			renderBufferIndex++;
+		}
+
 		PatternAudioBuffer renderCell = new PatternAudioBuffer(
-				patterns, ctx, channel, bufferSize, frameSupplier);
+				patterns, ctx, channel, bufferSize, frameSupplier, outputBuffer);
 
 		setup.add(renderCell.setup());
 		setup.add(renderCell.prepareBatch());
@@ -920,6 +966,89 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				cells.reset();
 			}
 		};
+	}
+
+	/**
+	 * Pre-evaluates all note audio to warm the kernel compilation cache.
+	 *
+	 * <p>This method iterates through all pattern elements in the scene,
+	 * evaluates each note's audio producer, and discards the result. The
+	 * purpose is to trigger kernel compilation for all unique instrument
+	 * chains <em>before</em> the real-time loop starts, so that the
+	 * {@code FrequencyCache} (instruction set cache) is populated.</p>
+	 *
+	 * <p>Without warmup, the first buffer that encounters each unique note
+	 * type pays the full compilation cost (~270ms). With warmup, all
+	 * compilations happen upfront during initialization, and the real-time
+	 * loop sees only cache hits.</p>
+	 *
+	 * <p>Call this method after construction and genome assignment, but
+	 * before starting the real-time loop:</p>
+	 * <pre>{@code
+	 * AudioScene scene = new AudioScene<>(...);
+	 * scene.assignGenome(genome);
+	 * int warmed = scene.warmNoteCache();
+	 * TemporalCellular runner = scene.runnerRealTime(output, bufferSize);
+	 * }</pre>
+	 *
+	 * @return the number of notes evaluated during warmup
+	 */
+	public int warmNoteCache() {
+		patterns.setTuning(tuning);
+		patterns.init();
+
+		int notesEvaluated = 0;
+
+		for (PatternLayerManager plm : patterns.getPatterns()) {
+			boolean melodic = plm.isMelodic();
+			ChannelInfo channel = new ChannelInfo(plm.getChannel(),
+					ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
+			AudioSceneContext ctx = getContext(List.of(channel));
+			PackedCollection warmDest = new PackedCollection(4096);
+			ctx.setDestination(warmDest);
+			plm.updateDestination(ctx);
+
+			java.util.Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
+					plm.getAllElementsByChoice(0.0, plm.getDuration());
+
+			for (java.util.Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
+					elementsByChoice.entrySet()) {
+				NoteAudioChoice choice = entry.getKey();
+				List<PatternElement> elements = entry.getValue();
+
+				org.almostrealism.audio.notes.NoteAudioContext audioContext =
+						new org.almostrealism.audio.notes.NoteAudioContext(
+								ChannelInfo.Voicing.MAIN,
+								ChannelInfo.StereoChannel.LEFT,
+								choice.getValidPatternNotes(),
+								pos -> pos + 1.0);
+
+				for (PatternElement element : elements) {
+					List<RenderedNoteAudio> notes =
+							element.getNoteDestinations(melodic, 0.0, ctx, audioContext);
+
+					for (RenderedNoteAudio note : notes) {
+						if (note.getExpectedFrameCount() <= 0) continue;
+
+						note.getOffsetArg().setMem(0, 0);
+						Producer<PackedCollection> producer =
+								note.getProducer(note.getExpectedFrameCount());
+						if (producer != null) {
+							try {
+								PackedCollection audio = traverse(1, producer).get().evaluate();
+								if (audio != null) {
+									notesEvaluated++;
+								}
+							} catch (Exception e) {
+								// Skip notes that fail evaluation during warmup
+							}
+						}
+					}
+				}
+			}
+		}
+
+		return notesEvaluated;
 	}
 
 	public void saveSettings(File file) throws IOException {

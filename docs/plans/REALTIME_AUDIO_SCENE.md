@@ -254,11 +254,18 @@ GC. Monitor for memory growth during long renders.
 | `frameRangeSumMultipleBuffers` | Diagnostic | Buffer stitching |
 | `frameRangeWithEffects` | Diagnostic | Cell pipeline setup |
 | `renderNoteAudioLengthAnalysis` | Diagnostic | Rendering waste quantification |
+| `renderBufferConsolidation` | Consolidation | Buffer delegate structure |
+| `consolidatedBuffersProduceValidAudio` | Correctness | Audio output after consolidation |
+| `genomeIndependence` | Correctness | Genome change without recompilation |
+| `effectsEnabledPerformance` | Performance | Timing with full effects pipeline |
+| `warmNoteCacheReducesCompilationCost` | Performance | Warmup pre-evaluates notes |
 
 ### Test Coverage Gap: Effects Pipeline Disabled
 
-**All existing real-time tests disable the effects pipeline.** Every test
-class calls `RealTimeTestHelper.disableEffects()` which sets:
+**Partially addressed.** The `effectsEnabledPerformance` test in
+`AudioSceneBufferConsolidationTest` runs with effects enabled and 6
+channels. However, most existing real-time tests still disable effects.
+Every test class calls `RealTimeTestHelper.disableEffects()` which sets:
 - `MixdownManager.enableMainFilterUp = false`
 - `MixdownManager.enableEfxFilters = false`
 - `MixdownManager.enableEfx = false`
@@ -389,10 +396,26 @@ gene-derived arguments from O(genes) to O(chromosomes). The consolidated
 buffers are automatically kept up to date by `refreshValues()`, which writes
 through the views.
 
-**Remaining opportunities** (not yet implemented):
-- Consolidate `PatternAudioBuffer.outputBuffer` collections (one per
-  channel) into a single buffer with offset-based access
-- Consolidate `EfxManager.applyFilter()` destination buffers similarly
+#### Render Buffer Consolidation (Implemented)
+
+`AudioScene.consolidateRenderBuffers()` pre-allocates a single contiguous
+`PackedCollection` for all `PatternAudioBuffer` output buffers. Each
+`PatternAudioBuffer` receives a delegate (range) into the consolidated
+buffer instead of its own independent allocation. The scope's argument
+deduplication resolves each delegate to the shared root, collapsing all
+render buffer arguments into a single kernel argument.
+
+Total render cells = `channelCount x 4` (MAIN + WET voicing x LEFT + RIGHT
+stereo). For 6 channels, this consolidates 24 individual buffers into one.
+
+#### EfxManager Filter Buffer Consolidation (Implemented)
+
+`EfxManager.consolidateFilterBuffers()` pre-allocates a single contiguous
+buffer for all filter destination buffers created by `applyFilter()`. Each
+wet channel's filter destination is a delegate range into this buffer.
+For 6 channels, this consolidates up to 12 filter destinations into one.
+
+**Remaining opportunities**:
 - Profile the full argument list to identify other small collections
   that could be consolidated
 
@@ -431,14 +454,25 @@ The `assignGenome()` javadoc documents this capability. The tester
 application has been updated to call `assignGenome()` directly on slider
 changes while playback continues — no stop/recompile/restart cycle.
 
-### Previously Identified (Still Relevant)
+### 4. Warmup Strategy: Pre-evaluate Notes Before Real-Time Loop ✅ COMPLETE
 
-4. **Warmup strategy**: Pre-evaluate all notes during scene initialization
-   (before the real-time loop starts) to populate both the `NoteAudioCache`
-   and the `FrequencyCache`. This would eliminate the ~270ms compilation spike
-   on first encounter of each instrument chain. The `cacheWarmingBenefit` test
-   exists to measure this. (Note: this becomes much more viable once step 3
-   is implemented, since the kernel would be genome-independent.)
+`AudioScene.warmNoteCache()` iterates all pattern elements in the scene,
+evaluates each note's audio producer, and discards the result. This triggers
+kernel compilation for all unique instrument chains, populating the
+`FrequencyCache` (instruction set cache) before the real-time loop starts.
+
+Without warmup, the first buffer that encounters each unique note type pays
+the full compilation cost (~270ms). With warmup, all compilations happen
+upfront during initialization, and the real-time loop sees only cache hits.
+
+Usage:
+```java
+scene.assignGenome(genome);
+int warmed = scene.warmNoteCache();
+TemporalCellular runner = scene.runnerRealTime(output, bufferSize);
+```
+
+### Previously Identified (Still Relevant)
 
 5. **Buffer size tuning**: Further experimentation with buffer sizes beyond
    16384 may be warranted depending on the results of steps 2 and 3.

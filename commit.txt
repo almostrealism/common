@@ -1,13 +1,24 @@
-Revert enableRedundantCompilation to hardcoded default to fix Qwen3 test failures
+Buffer consolidation, warmup strategy, and test coverage for real-time AudioScene
 
-The static initializer for enableRedundantCompilation was changed to read
-from the AR_REDUNDANT_COMPILATION environment variable via SystemUtils.isEnabled().
-On CI self-hosted runners where this env var may be set to "disabled" from
-real-time audio scene testing, the flag becomes false, causing model compilation
-to silently reuse incompatible instruction sets. This broke Qwen3SyntheticTest
-(testTinyModelConstruction and testModelCompilation) which depend on independent
-compilation of evaluables with matching signatures.
+Implements the remaining goals from the REALTIME_AUDIO_SCENE plan:
 
-Reverted to the hardcoded default (true) so the flag is not affected by stray
-environment variables. Callers who need to disable redundant compilation should
-set the field programmatically in their specific context.
+1. PatternAudioBuffer output buffer consolidation: Pre-allocates a single
+   contiguous PackedCollection for all render cell output buffers. Each
+   PatternAudioBuffer receives a delegate range into the consolidated
+   buffer. Scope argument deduplication collapses all render buffers
+   into a single kernel argument (24 buffers -> 1 for 6 channels).
+
+2. EfxManager filter buffer consolidation: Pre-allocates a single buffer
+   for all filter destination buffers in applyFilter(). Each wet channel's
+   filter destination is a delegate range (up to 12 buffers -> 1).
+
+3. Warmup strategy: AudioScene.warmNoteCache() pre-evaluates all note
+   audio producers to populate the FrequencyCache before the real-time
+   loop starts, eliminating first-encounter compilation spikes.
+
+4. New test class AudioSceneBufferConsolidationTest with 5 tests:
+   - renderBufferConsolidation: verifies consolidated buffer structure
+   - consolidatedBuffersProduceValidAudio: correctness after consolidation
+   - genomeIndependence: genome change reflected without recompilation
+   - effectsEnabledPerformance: timing with full effects pipeline (6ch)
+   - warmNoteCacheReducesCompilationCost: warmup pre-evaluates notes
