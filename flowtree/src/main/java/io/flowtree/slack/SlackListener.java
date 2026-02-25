@@ -420,6 +420,11 @@ public class SlackListener implements ConsoleFeatures {
             factory.setPlanningDocument(workstream.getPlanningDocument());
         }
 
+        // GitHub organization for token selection
+        if (workstream.getGithubOrg() != null) {
+            factory.setGithubOrg(workstream.getGithubOrg());
+        }
+
         // Build workstream URL for status reporting and Slack messaging
         if (apiPort > 0) {
             String baseUrl = "http://0.0.0.0:" + apiPort

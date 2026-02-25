@@ -65,6 +65,19 @@
 #     # env:                                    # Optional: only needed for
 #     #   GITHUB_TOKEN: ghp_your_token_here     # per-workstream token override
 
+# GitHub organization tokens (optional).
+# Maps organization names to GitHub personal access tokens. When a
+# workstream specifies a githubOrg, the controller proxy uses the
+# matching token for GitHub API calls. This allows different workstreams
+# to target different GitHub organizations without distributing tokens
+# to agent containers.
+#
+# githubOrgs:
+#   my-org:
+#     token: "ghp_org_token_here"
+#   other-org:
+#     token: "ghp_other_org_token"
+
 workstreams:
   # workstreamId is auto-generated on first run and written back to this file.
   # Do not remove it once generated — it is used for job tracking and threading.
@@ -81,6 +94,7 @@ workstreams:
     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
     maxTurns: 50
     maxBudgetUsd: 10.0
+    # githubOrg: "my-org"             # Routes GitHub API calls through the org's token
 
   # Project Beta — uses explicit workingDirectory (legacy approach).
   # Per-workstream env overrides the global pushed tool env.
