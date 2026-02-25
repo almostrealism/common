@@ -28,28 +28,27 @@ import java.util.function.IntFunction;
  * and serves as the bridge between pattern elements and actual audio rendering. Each instance
  * contains:</p>
  * <ul>
- *   <li><strong>producer</strong>: A {@link Producer} that generates the audio samples when evaluated</li>
- *   <li><strong>offset</strong>: The frame position where this note should be rendered in the destination buffer</li>
+ *   <li><strong>offsetArg</strong>: A caller-owned {@link PackedCollection} for passing the start
+ *       frame offset to the producer factory</li>
+ *   <li><strong>producerFactory</strong>: A function that creates a {@link Producer} for a given
+ *       frame count, using the offset stored in {@code offsetArg}</li>
+ *   <li><strong>offset</strong>: The absolute frame position where this note should be rendered
+ *       in the destination buffer</li>
  * </ul>
  *
  * <h2>Rendering Process</h2>
  *
- * <p>In {@link PatternFeatures#render}, each {@code RenderedNoteAudio} is processed as follows:</p>
- * <ol>
- *   <li>The producer is evaluated via {@code traverse(1, note.getProducer()).get().evaluate()}</li>
- *   <li>The resulting audio is cached by note offset for reuse across buffer ticks</li>
- *   <li>The overlap region is summed to the destination buffer at the correct offset</li>
- * </ol>
+ * <p>In {@link PatternFeatures#render}, each {@code RenderedNoteAudio} is processed by setting
+ * the start frame in {@link #getOffsetArg()}, then calling {@link #getProducer(int)} with the
+ * desired frame count. The resulting audio is cached by note offset for reuse across buffer
+ * ticks, and the overlap region is summed to the destination buffer.</p>
  *
- * <h2>Real-Time Considerations</h2>
+ * <h2>Signature Independence</h2>
  *
- * <p><strong>Critical:</strong> The {@code offset} field contains an absolute frame position
- * relative to the start of the arrangement. For real-time rendering:</p>
- * <ul>
- *   <li>Offsets must be converted to buffer-relative positions</li>
- *   <li>Notes may span multiple buffers, requiring partial rendering</li>
- *   <li>Notes that started in previous buffers need source offset calculation</li>
- * </ul>
+ * <p>The producer factory creates producers whose computation signature is independent of
+ * the start frame value (because the offset is a runtime {@link PackedCollection} argument,
+ * not a structural parameter). This enables compiled kernel reuse across different frame
+ * positions via the instruction set cache.</p>
  *
  * @see PatternElement#getNoteDestinations
  * @see ScaleTraversalStrategy#getNoteDestinations
@@ -58,18 +57,13 @@ import java.util.function.IntFunction;
  * @author Michael Murray
  */
 public class RenderedNoteAudio {
-	private Producer<PackedCollection> producer;
 	private int offset;
 	private int expectedFrameCount;
 	private PackedCollection offsetArg;
-	private IntFunction<Producer<PackedCollection>> partialProducerFactory;
+	private IntFunction<Producer<PackedCollection>> producerFactory;
 
 	public RenderedNoteAudio() {
-		this(null, 0, 0);
-	}
-
-	public RenderedNoteAudio(Producer<PackedCollection> producer, int offset) {
-		this(producer, offset, 0);
+		this(0, 0);
 	}
 
 	/**
@@ -80,22 +74,12 @@ public class RenderedNoteAudio {
 	 * {@code [offset, offset + expectedFrameCount)} range does not overlap the
 	 * target buffer.</p>
 	 *
-	 * @param producer the audio producer
 	 * @param offset absolute frame offset in the arrangement
 	 * @param expectedFrameCount estimated number of frames this note will produce
 	 */
-	public RenderedNoteAudio(Producer<PackedCollection> producer, int offset, int expectedFrameCount) {
-		this.producer = producer;
+	public RenderedNoteAudio(int offset, int expectedFrameCount) {
 		this.offset = offset;
 		this.expectedFrameCount = expectedFrameCount;
-	}
-
-	public Producer<PackedCollection> getProducer() {
-		return producer;
-	}
-
-	public void setProducer(Producer<PackedCollection> producer) {
-		this.producer = producer;
 	}
 
 	public int getOffset() {
@@ -123,9 +107,9 @@ public class RenderedNoteAudio {
 
 	/**
 	 * Returns the caller-owned {@link PackedCollection} used to pass the
-	 * start frame offset to partial producers. The caller sets the value
+	 * start frame offset to producers. The caller sets the value
 	 * via {@code getOffsetArg().setMem(0, startFrame)} before calling
-	 * {@link #getPartialProducer(int)}.
+	 * {@link #getProducer(int)}.
 	 *
 	 * <p>Because the same {@link PackedCollection} instance is reused across
 	 * calls, the {@link org.almostrealism.collect.computations.CollectionProviderProducer}
@@ -141,8 +125,7 @@ public class RenderedNoteAudio {
 	}
 
 	/**
-	 * Sets a factory for creating partial {@link Producer}s that evaluate only
-	 * a subset of this note's frames.
+	 * Sets the factory for creating {@link Producer}s that evaluate this note's audio.
 	 *
 	 * <p>The factory accepts a frame count and returns a Producer that generates
 	 * exactly that many output frames. The start frame offset is communicated
@@ -150,24 +133,28 @@ public class RenderedNoteAudio {
 	 * before invoking the factory. This design keeps the computation signature
 	 * independent of the actual start frame value.</p>
 	 *
-	 * @param factory function mapping frameCount to a partial Producer
+	 * @param factory function mapping frameCount to a Producer
 	 */
-	public void setPartialProducerFactory(
-			IntFunction<Producer<PackedCollection>> factory) {
-		this.partialProducerFactory = factory;
+	public void setProducerFactory(IntFunction<Producer<PackedCollection>> factory) {
+		this.producerFactory = factory;
 	}
 
 	/**
-	 * Creates a {@link Producer} that evaluates only the specified number of frames.
+	 * Creates a {@link Producer} that evaluates the specified number of frames.
 	 *
 	 * <p>The caller must set the start frame offset in {@link #getOffsetArg()}
 	 * before calling this method.</p>
 	 *
 	 * @param frameCount number of frames to produce
-	 * @return a partial Producer, or {@code null} if no factory is set
+	 * @return a Producer for the requested frame count
+	 * @throws IllegalStateException if no producer factory is set
 	 */
-	public Producer<PackedCollection> getPartialProducer(int frameCount) {
-		if (partialProducerFactory == null) return null;
-		return partialProducerFactory.apply(frameCount);
+	public Producer<PackedCollection> getProducer(int frameCount) {
+		if (producerFactory == null) {
+			throw new IllegalStateException(
+					"No producer factory set on RenderedNoteAudio; " +
+					"this indicates a missing setup in ScaleTraversalStrategy");
+		}
+		return producerFactory.apply(frameCount);
 	}
 }

@@ -56,14 +56,6 @@ public class PatternNoteAudioChoice implements PatternNoteAudio {
 	@Override
 	public Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel, double noteDuration,
 												  Factor<PackedCollection> automationLevel,
-												  DoubleFunction<PatternNoteAudio> audioSelection) {
-		return getDelegate(audioSelection).getAudio(target, channel,
-						noteDuration, automationLevel, audioSelection);
-	}
-
-	@Override
-	public Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel, double noteDuration,
-												  Factor<PackedCollection> automationLevel,
 												  DoubleFunction<PatternNoteAudio> audioSelection,
 												  PackedCollection offset, int frameCount) {
 		return getDelegate(audioSelection).getAudio(target, channel,

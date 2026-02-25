@@ -62,7 +62,8 @@ public class SimplePatternNote implements PatternNoteAudio, KeyboardTuned, Valid
 	public Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel,
 												  double noteDuration,
 												  Factor<PackedCollection> automationLevel,
-												  DoubleFunction<PatternNoteAudio> audioSelection) {
+												  DoubleFunction<PatternNoteAudio> audioSelection,
+												  PackedCollection offset, int frameCount) {
 		return audio.getAudio(target, channel);
 	}
 

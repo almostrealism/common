@@ -891,7 +891,9 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 						long evalStart = System.nanoTime();
 						PackedCollection audio;
 						try {
-							audio = traverse(1, note.getProducer()).get().evaluate();
+							note.getOffsetArg().setMem(0, 0);
+							audio = traverse(1, note.getProducer(
+									note.getExpectedFrameCount())).get().evaluate();
 						} catch (Exception e) {
 							continue;
 						}
@@ -1173,8 +1175,10 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 							melodic, 0.0, warmCtx, audioContext);
 
 					for (RenderedNoteAudio note : notes) {
+						note.getOffsetArg().setMem(0, 0);
 						PackedCollection noteAudio =
-								traverse(1, note.getProducer()).get().evaluate();
+								traverse(1, note.getProducer(
+										note.getExpectedFrameCount())).get().evaluate();
 						if (noteAudio != null) {
 							warmupNotesEvaluated++;
 						}
@@ -1330,8 +1334,10 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 						if (overlapLength <= 0) continue;
 
 						// --- Full evaluation ---
+						note.getOffsetArg().setMem(0, 0);
 						long fullStart = System.nanoTime();
-						PackedCollection fullAudio = traverse(1, note.getProducer()).get().evaluate();
+						PackedCollection fullAudio = traverse(1, note.getProducer(
+								note.getExpectedFrameCount())).get().evaluate();
 						long fullNs = System.nanoTime() - fullStart;
 
 						if (fullAudio == null) continue;
@@ -1346,12 +1352,9 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 						if (overlapLength <= 0) continue;
 
 						// --- Partial evaluation ---
-						if (note.getOffsetArg() != null) {
-							note.getOffsetArg().setMem(0, sourceOffset);
-						}
+						note.getOffsetArg().setMem(0, sourceOffset);
 						io.almostrealism.relation.Producer<PackedCollection> partialProducer =
-								note.getPartialProducer(overlapLength);
-						if (partialProducer == null) continue;
+								note.getProducer(overlapLength);
 
 						long partialStart = System.nanoTime();
 						PackedCollection partialAudio = traverse(1, partialProducer).get().evaluate();
