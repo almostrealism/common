@@ -620,11 +620,13 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
 	 * }</pre>
 	 *
-	 * @param details the WaveDetails to compute similarities for; must not be null
+	 * @param details the WaveDetails to compute similarities for, or null (returns null)
 	 * @return the same WaveDetails instance with its similarity map updated
 	 * @see #toSimilarityGraph()
 	 */
 	public WaveDetails computeSimilarities(WaveDetails details) {
+		if (details == null) return null;
+
 		try {
 			allDetails()
 					.filter(d -> !Objects.equals(d.getIdentifier(), details.getIdentifier()))
@@ -754,11 +756,9 @@ public class AudioLibrary implements ConsoleFeatures {
 
 		// Time-based: older than 24 hours with any difference
 		long age = System.currentTimeMillis() - prototypeIndex.computedAt();
-		if (age > Duration.ofHours(24).toMillis()) {
-			boolean anyDifference = currentSize != totalIndexed || missingMembers > 0;
-			if (anyDifference) {
-				return true;
-			}
+		boolean anyDifference = currentSize != totalIndexed || missingMembers > 0;
+		if (age > Duration.ofHours(24).toMillis() && anyDifference) {
+			return true;
 		}
 
 		return false;
