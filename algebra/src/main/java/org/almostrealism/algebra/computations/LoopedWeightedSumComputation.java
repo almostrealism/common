@@ -24,13 +24,11 @@ import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -171,11 +169,10 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	/**
 	 * Computes the value at a given index when embedded in another computation.
 	 *
-	 * <p>This override unrolls both loops and collects all product terms into a
-	 * single flat {@link Sum} expression. Building a flat Sum (instead of a
-	 * nested binary tree) ensures that {@code Scope.simplify()} processes the
-	 * expression in O(n) time instead of O(n*n) recursive descent through
-	 * nested Sum nodes.</p>
+	 * <p>This override unrolls both loops using the same incremental flattening
+	 * approach as the base class, delegating the inner sum to
+	 * {@link #computeInnerSum}. Each outer iteration's result is flattened
+	 * via {@code generate(flatten())} to keep the expression tree flat.</p>
 	 *
 	 * <p>For truly efficient computation with native loops, the computation must be
 	 * isolated so that getScope() is called instead.</p>
@@ -186,26 +183,15 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		TraversableExpression[] args = getTraversableArguments(index);
-		List<Expression<?>> terms = new ArrayList<>(count * innerCount);
+		Expression<?> result = new DoubleConstant(0.0);
 		for (int outer = 0; outer < count; outer++) {
 			Expression<Integer> outerIdx = new IntegerConstant(outer);
-			for (int i = 0; i < innerCount; i++) {
-				Expression<Integer> innerIdx = new IntegerConstant(i);
-				Expression<?> inputIdx = inputIndexer.index(index, outerIdx, innerIdx);
-				Expression<?> weightIdx = weightIndexer.index(index, outerIdx, innerIdx);
-				Expression<?> inputVal = args[1].getValueAt(inputIdx);
-				Expression<?> weightVal = args[2].getValueAt(weightIdx);
-				terms.add(inputVal.multiply(weightVal));
-			}
+			Expression<?> innerSum = computeInnerSum(args, index, outerIdx);
+			result = result.add(innerSum);
+			result = result.generate(result.flatten());
 		}
 
-		if (terms.isEmpty()) {
-			return (Expression<Double>) new DoubleConstant(0.0);
-		}
-
-		// Build a single flat Sum via generate() to avoid nested binary tree
-		Expression<?> seed = terms.get(0).add(terms.get(1));
-		return (Expression<Double>) seed.generate(terms);
+		return (Expression<Double>) result;
 	}
 
 	/**
