@@ -1030,7 +1030,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 					for (RenderedNoteAudio note : notes) {
 						if (note.getExpectedFrameCount() <= 0) continue;
 
-						note.getOffsetArg().setMem(0, 0);
+						note.getOffsetArg().setMem(0, 0); // nopolicy - scalar reset for warmup
 						Producer<PackedCollection> producer =
 								note.getProducer(note.getExpectedFrameCount());
 						if (producer != null) {
