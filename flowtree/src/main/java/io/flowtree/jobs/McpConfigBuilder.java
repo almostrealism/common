@@ -80,6 +80,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
     private String pushedToolsConfig;
     private Map<String, String> workstreamEnv;
     private String workstreamUrl;
+    private String githubOrg;
     private Path workingDirectory;
 
     /**
@@ -130,6 +131,20 @@ public class McpConfigBuilder implements ConsoleFeatures {
      */
     public void setWorkstreamUrl(String workstreamUrl) {
         this.workstreamUrl = workstreamUrl;
+    }
+
+    /**
+     * Sets the GitHub organization name for this workstream.
+     *
+     * <p>When set, the {@code AR_GITHUB_ORG} environment variable is
+     * injected into the ar-github MCP server entry so that the Python
+     * server can pass it to the controller proxy for org-based token
+     * selection.</p>
+     *
+     * @param githubOrg the GitHub organization name (e.g., "my-org")
+     */
+    public void setGithubOrg(String githubOrg) {
+        this.githubOrg = githubOrg;
     }
 
     /**
@@ -206,6 +221,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
             if (workstreamEnv != null) {
                 mergedEnv.putAll(workstreamEnv);
             }
+            if ("ar-github".equals(serverName) && githubOrg != null && !githubOrg.isEmpty()) {
+                mergedEnv.put("AR_GITHUB_ORG", githubOrg);
+            }
             if (!mergedEnv.isEmpty()) {
                 ObjectNode envNode = serverNode.putObject("env");
                 for (Map.Entry<String, String> entry : mergedEnv.entrySet()) {
@@ -232,6 +250,20 @@ public class McpConfigBuilder implements ConsoleFeatures {
             githubNode.put("command", "python3");
             ArrayNode argsArray = githubNode.putArray("args");
             argsArray.add("tools/mcp/github/server.py");
+
+            Map<String, String> githubEnv = new LinkedHashMap<>();
+            if (workstreamEnv != null) {
+                githubEnv.putAll(workstreamEnv);
+            }
+            if (githubOrg != null && !githubOrg.isEmpty()) {
+                githubEnv.put("AR_GITHUB_ORG", githubOrg);
+            }
+            if (!githubEnv.isEmpty()) {
+                ObjectNode envNode = githubNode.putObject("env");
+                for (Map.Entry<String, String> entry : githubEnv.entrySet()) {
+                    envNode.put(entry.getKey(), entry.getValue());
+                }
+            }
         }
 
         // ar-slack: stdio fallback only when not centralized, not pushed, and workstream URL is set
@@ -241,6 +273,13 @@ public class McpConfigBuilder implements ConsoleFeatures {
                 slackNode.put("command", "python3");
                 ArrayNode argsArray = slackNode.putArray("args");
                 argsArray.add("tools/mcp/slack/server.py");
+
+                if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
+                    ObjectNode envNode = slackNode.putObject("env");
+                    for (Map.Entry<String, String> entry : workstreamEnv.entrySet()) {
+                        envNode.put(entry.getKey(), entry.getValue());
+                    }
+                }
             }
         }
 

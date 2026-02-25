@@ -45,6 +45,7 @@ from urllib.request import Request, urlopen
 
 TOKEN_FILE = os.path.expanduser("~/.config/ar/github-token")
 GITHUB_REPO_OVERRIDE = os.environ.get("AR_GITHUB_REPO", "")
+GITHUB_ORG = os.environ.get("AR_GITHUB_ORG", "")
 GITHUB_API = "https://api.github.com"
 WORKSTREAM_URL = os.environ.get("AR_WORKSTREAM_URL", "")
 MAX_PAGES = 5
@@ -156,6 +157,8 @@ def _proxy_github_get(path_or_url: str, controller_base: str) -> list | dict:
     for _ in range(MAX_PAGES):
         encoded = quote(current, safe="")
         proxy_url = f"{controller_base}/api/github/proxy?url={encoded}"
+        if GITHUB_ORG:
+            proxy_url += f"&org={quote(GITHUB_ORG, safe='')}"
         req = Request(proxy_url)
 
         with urlopen(req, timeout=20) as resp:
@@ -202,6 +205,8 @@ def _proxy_github_post(path: str, payload: dict, controller_base: str) -> dict:
     """
     encoded = quote(path, safe="")
     proxy_url = f"{controller_base}/api/github/proxy?url={encoded}"
+    if GITHUB_ORG:
+        proxy_url += f"&org={quote(GITHUB_ORG, safe='')}"
     data = json.dumps(payload).encode("utf-8")
     req = Request(proxy_url, data=data, headers={
         "Content-Type": "application/json",

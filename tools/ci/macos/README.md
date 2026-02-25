@@ -155,6 +155,26 @@ All configuration is via the `.env` file (see `.env.example`).
 | `RUNNER_NAME` | `$(hostname)-macos` | Runner display name in GitHub |
 | `RUNNER_GROUP` | `Default` | Runner group |
 | `RUNNER_WORKDIR` | `~/actions-runner/_work` | Job working directory |
+| `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
+
+## CPU Limiting
+
+On shared machines you may want to prevent the runner from saturating all
+cores. Set `RUNNER_CPU_LIMIT` in `.env` to the maximum number of CPUs the
+job is allowed to use:
+
+```bash
+# Allow up to 4 CPUs on a shared Mac Mini
+RUNNER_CPU_LIMIT=4
+```
+
+This requires `cpulimit` (`brew install cpulimit`). If `cpulimit` is not
+installed the limit is silently ignored and a warning is printed at
+startup. The limit applies to the runner process and all its children
+(Maven, JVM forks, etc.).
+
+Choose a value appropriate for the machine — for example 4 on a Mac Mini
+that also runs other services, or 8 on a dedicated Mac Studio.
 
 ## Verify Runner Registration
 
@@ -198,18 +218,11 @@ gh api repos/almostrealism/common/actions/runners \
 - If using Homebrew: `brew info --cask temurin@17`
 - The `actions/setup-java` workflow step will also configure the path
 
-## Legacy Scripts
-
-`setup.sh` and `run.sh` are superseded by `runner.sh` which combines
-both into a single script with proper error recovery.
-
 ## Files
 
 ```
 tools/ci/macos/
 ├── .env.example    # Template for environment configuration
-├── runner.sh       # Combined setup + run with auto-recovery
-├── setup.sh        # (legacy) One-time setup
-├── run.sh          # (legacy) Runner loop without recovery
+├── runner.sh       # Setup + run with auto-recovery
 └── README.md       # This file
 ```

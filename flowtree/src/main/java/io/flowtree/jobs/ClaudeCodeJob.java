@@ -84,6 +84,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String pushedToolsConfig;
     private Map<String, String> workstreamEnv;
     private String planningDocument;
+    private String githubOrg;
     private boolean enforceChanges;
     private int enforcementAttempt;
 
@@ -253,6 +254,24 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
+     * Returns the GitHub organization name for this job.
+     * When set, the {@code AR_GITHUB_ORG} env var is injected into
+     * the ar-github MCP server entry.
+     */
+    public String getGithubOrg() {
+        return githubOrg;
+    }
+
+    /**
+     * Sets the GitHub organization name for org-based token selection.
+     *
+     * @param githubOrg the GitHub organization name
+     */
+    public void setGithubOrg(String githubOrg) {
+        this.githubOrg = githubOrg;
+    }
+
+    /**
      * Returns whether this job enforces that code changes must be produced.
      *
      * <p>When enabled, the instruction prompt replaces the permissive
@@ -351,6 +370,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
         mcpConfigBuilder.setWorkstreamEnv(workstreamEnv);
         mcpConfigBuilder.setWorkstreamUrl(getWorkstreamUrl());
+        mcpConfigBuilder.setGithubOrg(githubOrg);
         Path workDir = getWorkingDirectory() != null
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         mcpConfigBuilder.setWorkingDirectory(workDir);
@@ -868,6 +888,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         private String pushedToolsConfig;
         private Map<String, String> workstreamEnv;
         private String planningDocument;
+        private String githubOrg;
         private boolean enforceChanges;
 
         /**
@@ -1165,6 +1186,23 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
 
         /**
+         * Returns the GitHub organization name for jobs.
+         */
+        public String getGithubOrg() {
+            return githubOrg;
+        }
+
+        /**
+         * Sets the GitHub organization name for org-based token selection.
+         *
+         * @param githubOrg the GitHub organization name
+         */
+        public void setGithubOrg(String githubOrg) {
+            this.githubOrg = githubOrg;
+            set("githubOrg", base64Encode(githubOrg));
+        }
+
+        /**
          * Returns whether test file protection is enabled for jobs.
          */
         public boolean isProtectTestFiles() {
@@ -1268,6 +1306,11 @@ public class ClaudeCodeJob extends GitManagedJob {
                 job.setPlanningDocument(planningDocument);
             }
 
+            // GitHub organization for token selection
+            if (githubOrg != null) {
+                job.setGithubOrg(githubOrg);
+            }
+
             // Test file protection
             job.setProtectTestFiles(isProtectTestFiles());
 
@@ -1322,6 +1365,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "planDoc":
                     this.planningDocument = base64Decode(value);
+                    break;
+                case "githubOrg":
+                    this.githubOrg = base64Decode(value);
                     break;
                 case "enforceChanges":
                     this.enforceChanges = Boolean.parseBoolean(value);
