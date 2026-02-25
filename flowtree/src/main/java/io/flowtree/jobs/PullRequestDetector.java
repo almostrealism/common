@@ -189,7 +189,11 @@ public class PullRequestDetector implements ConsoleFeatures {
 
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
-                log("GitHub proxy returned " + responseCode + " for PR query");
+                String errorBody = "";
+                if (conn.getErrorStream() != null) {
+                    errorBody = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+                }
+                log("GitHub proxy returned " + responseCode + " for PR query: " + errorBody);
                 return null;
             }
 
