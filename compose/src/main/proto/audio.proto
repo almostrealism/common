@@ -10,6 +10,7 @@ message AudioLibraryData {
   map<string, WaveDetailData> info = 1;
   repeated WaveRecording recordings = 2;
   repeated SynthesizerModelData models = 3;
+  optional PrototypeIndex prototype_index = 4;
 }
 
 message WaveRecording {
@@ -48,6 +49,17 @@ message WaveDetailData {
   map<string, double> similarities = 11;
 
   reserved 1;
+}
+
+message PrototypeIndex {
+  int64 computed_at = 1;
+  repeated PrototypeCommunity communities = 2;
+}
+
+message PrototypeCommunity {
+  string prototype_identifier = 1;
+  double centrality = 2;
+  repeated string member_identifiers = 3;
 }
 
 message SynthesizerModelData {
