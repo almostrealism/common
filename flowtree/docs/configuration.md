@@ -337,6 +337,21 @@ WorkspaceResolver.resolveWorkstreamUrl("http://10.0.0.1:7780/api");
 
 ---
 
+## Workstream YAML Configuration
+
+The controller's YAML config file (`workstreams.yaml`) defines workstreams and global settings. In addition to per-workstream fields (documented in [Slack Integration](slack-integration.md#workstream-configuration-yaml)), the following top-level fields are available:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `defaultWorkspacePath` | `String` | Default directory for cloning repos when `workingDirectory` is not set on a workstream |
+| `channelOwnerUserId` | `String` | Slack user ID to auto-invite when creating private channels via `POST /api/workstreams`. Get this from your Slack profile > "..." menu > "Copy member ID" |
+
+The `channelOwnerUserId` is read by `FlowTreeController.loadConfig()` and passed to `SlackNotifier.setChannelOwnerUserId()`. When the registration API creates a new private channel, this user is automatically invited.
+
+Workstreams can be defined statically in the YAML file or created dynamically via the `POST /api/workstreams` registration endpoint. Dynamically created workstreams are persisted back to the YAML file.
+
+---
+
 ## MCP Server Configuration
 
 `ClaudeCodeJob` configures MCP (Model Context Protocol) servers for the Claude Code agent through the `McpConfigBuilder` class. There are three distinct configuration modes, plus two fallback servers that are always conditionally included.

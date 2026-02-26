@@ -1,17 +1,118 @@
 name: "Verify Completion"
 
+# Runs on feature branches to verify (or implement) plan goals.
+# Includes an optional registration step that creates a FlowTree
+# workstream when a new plan document is detected.
+
 on:
   workflow_dispatch:
     inputs:
       plan_file:
-        description: "Path to the plan file (relative to repo root)"
-        required: true
+        description: "Path to the plan file (auto-detected if omitted)"
+        required: false
         type: string
 
+# Only one verify-completion run at a time per branch.
+concurrency:
+  group: verify-completion-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  verify:
-    # Do nothing on master — this workflow is only meaningful on feature branches.
+  # ── Phase 1: Detect the plan file ─────────────────────────────────
+  detect-plan:
     if: github.ref != 'refs/heads/master'
+    runs-on: [self-hosted, macos, ar-ci]
+
+    outputs:
+      plan_file: ${{ steps.detect.outputs.plan_file }}
+      is_new_plan: ${{ steps.detect.outputs.is_new_plan }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Detect plan file
+        id: detect
+        run: |
+          # Use explicit input if provided
+          if [ -n "${{ github.event.inputs.plan_file }}" ]; then
+            PLAN="${{ github.event.inputs.plan_file }}"
+            if [ ! -f "$PLAN" ]; then
+              echo "::error::Plan file not found: $PLAN"
+              exit 1
+            fi
+            echo "plan_file=$PLAN" >> "$GITHUB_OUTPUT"
+
+            # Check if this file is new relative to master
+            if git diff --name-only --diff-filter=A origin/master...HEAD -- "$PLAN" | grep -q .; then
+              echo "is_new_plan=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_new_plan=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          # Auto-detect: find new .md files in docs/plans/ relative to master
+          NEW_PLANS=$(git diff --name-only --diff-filter=A origin/master...HEAD -- 'docs/plans/*.md' \
+            | grep -v 'MANAGER_LOG.md' || true)
+
+          COUNT=$(echo "$NEW_PLANS" | grep -c '.' || true)
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::No new plan document found in docs/plans/ and no plan_file input provided"
+            exit 1
+          elif [ "$COUNT" -gt 1 ]; then
+            echo "::warning::Multiple new plan documents found; using the first one"
+          fi
+
+          PLAN=$(echo "$NEW_PLANS" | head -1)
+          echo "plan_file=$PLAN" >> "$GITHUB_OUTPUT"
+          echo "is_new_plan=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Detected plan file: $PLAN"
+
+  # ── Phase 2: Register workstream (conditional) ────────────────────
+  register-workstream:
+    needs: detect-plan
+    if: needs.detect-plan.outputs.is_new_plan == 'true'
+    runs-on: [self-hosted, macos, ar-ci]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Register workstream
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: master
+          PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Register Workstream" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Registered a FlowTree workstream for branch \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "with planning document \`${{ needs.detect-plan.outputs.plan_file }}\`." >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Phase 3: Verify / implement ───────────────────────────────────
+  verify:
+    needs: [detect-plan, register-workstream]
+    # Run after detect-plan succeeds, even if register was skipped (but not if it failed)
+    if: |
+      always()
+      && needs.detect-plan.result == 'success'
+      && needs.register-workstream.result != 'failure'
     runs-on: [self-hosted, macos, ar-ci]
 
     steps:
@@ -21,36 +122,23 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Validate plan file exists
-        id: validate
-        run: |
-          if [ ! -f "${{ github.event.inputs.plan_file }}" ]; then
-            echo "::error::Plan file not found: ${{ github.event.inputs.plan_file }}"
-            exit 1
-          fi
-
-      - name: Determine branch context
-        id: ctx
-        run: |
-          echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          echo "base=develop" >> "$GITHUB_OUTPUT"
-
       - name: Build prompt
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: master
           COMMIT_SHA: ${{ github.sha }}
         run: |
           chmod +x ./tools/ci/build-verify-prompt.sh
-          ./tools/ci/build-verify-prompt.sh "${{ github.event.inputs.plan_file }}" /tmp/agent-prompt.txt
+          ./tools/ci/build-verify-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: master
         run: |
+          chmod +x ./tools/ci/submit-agent-job.sh
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
       - name: Summary
@@ -58,11 +146,12 @@ jobs:
         run: |
           echo "## Verify Completion" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "A FlowTree coding agent job was submitted to verify that the changes" >> "$GITHUB_STEP_SUMMARY"
-          echo "on branch \`${{ github.ref_name }}\` achieve the goals described in" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`${{ github.event.inputs.plan_file }}\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "A FlowTree coding agent job was submitted to verify and implement the goals" >> "$GITHUB_STEP_SUMMARY"
+          echo "on branch \`${{ github.ref_name }}\` as described in" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`${{ needs.detect-plan.outputs.plan_file }}\`." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "The agent will verify:" >> "$GITHUB_STEP_SUMMARY"
-          echo "1. Every goal in the plan is fully implemented" >> "$GITHUB_STEP_SUMMARY"
-          echo "2. Each completed goal is proven correct by meaningful tests" >> "$GITHUB_STEP_SUMMARY"
-          echo "3. No existing tests were weakened or disabled" >> "$GITHUB_STEP_SUMMARY"
+          echo "The agent will:" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. Implement any unfinished goals from the plan" >> "$GITHUB_STEP_SUMMARY"
+          echo "2. Verify every goal is fully implemented" >> "$GITHUB_STEP_SUMMARY"
+          echo "3. Ensure each goal is proven correct by meaningful tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "4. Check that no existing tests were weakened or disabled" >> "$GITHUB_STEP_SUMMARY"

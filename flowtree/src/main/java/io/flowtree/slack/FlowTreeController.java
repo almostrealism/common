@@ -208,6 +208,11 @@ public class FlowTreeController implements ConsoleFeatures {
             listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
         }
 
+        // Pass channel owner user ID to notifier for auto-inviting to new channels
+        if (config.getChannelOwnerUserId() != null) {
+            notifier.setChannelOwnerUserId(config.getChannelOwnerUserId());
+        }
+
         // Pass config and file reference to listener for /flowtree setup persistence
         listener.setWorkstreamConfig(config, configFile);
 
@@ -623,6 +628,23 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
+
+            // Populate per-org GitHub tokens from config
+            if (loadedConfig != null && loadedConfig.getGithubOrgs() != null) {
+                Map<String, String> orgTokens = new LinkedHashMap<>();
+                for (Map.Entry<String, WorkstreamConfig.GitHubOrgEntry> entry
+                        : loadedConfig.getGithubOrgs().entrySet()) {
+                    String orgToken = entry.getValue().getToken();
+                    if (orgToken != null && !orgToken.isEmpty()) {
+                        orgTokens.put(entry.getKey(), orgToken);
+                    }
+                }
+                if (!orgTokens.isEmpty()) {
+                    apiEndpoint.setGithubOrgTokens(orgTokens);
+                    log("Loaded GitHub tokens for " + orgTokens.size() + " org(s)");
+                }
+            }
+
             apiEndpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
             int listeningPort = apiEndpoint.getListeningPort();
             listener.setApiPort(listeningPort);

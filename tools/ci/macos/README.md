@@ -41,32 +41,38 @@ catches up.
 ```bash
 cd tools/ci/macos
 
-# 1. Run one-time setup (installs runner agent)
-chmod +x setup.sh run.sh
-./setup.sh
-
-# 2. Configure credentials
+# 1. Configure credentials
 cp .env.example .env
 # Edit .env — fill in GITHUB_PAT, GITHUB_OWNER, GITHUB_REPO
 
-# 3. Start the runner
-./run.sh
+# 2. Start the runner (installs runner agent automatically if needed)
+chmod +x runner.sh
+./runner.sh
 ```
 
 The runner registers with GitHub, picks up one job, completes it, then
-re-registers for the next job (ephemeral mode in a loop).
+re-registers for the next job (ephemeral mode in a loop). If the runner
+dies or its registration is deleted server-side, the script automatically
+removes the local configuration and re-registers.
 
 ## How It Works
 
 ### Runner Lifecycle
 
-1. `run.sh` loads `.env` configuration
-2. Requests a **registration token** from GitHub API
-3. Configures the runner in **ephemeral** mode
-4. Runner agent waits for a job matching `[self-hosted, macos, ar-ci]`
-5. Job executes natively on the Mac
-6. Runner exits after the job completes
-7. Script loops back to step 2
+1. `runner.sh` loads `.env` configuration
+2. Installs the runner agent if not already present
+3. **Removes** any existing runner configuration (avoids stale state)
+4. Requests a **registration token** from GitHub API
+5. Configures the runner in **ephemeral** mode
+6. Runner agent waits for a job matching `[self-hosted, macos, ar-ci]`
+7. Job executes natively on the Mac
+8. Runner exits after the job completes
+9. Script loops back to step 3
+
+The remove-before-configure cycle ensures the runner never gets stuck
+in a "Cannot configure because already configured" state, even if a
+previous run died unexpectedly or the server-side registration was
+deleted.
 
 This is equivalent to the Docker Compose `restart: unless-stopped`
 behavior used by the Linux fleet, but implemented as a shell loop
@@ -96,10 +102,10 @@ To keep the runner running after closing the terminal:
 
 ```bash
 # Using nohup
-nohup ./run.sh > runner.log 2>&1 &
+nohup ./runner.sh > runner.log 2>&1 &
 
 # Or using a tmux/screen session
-tmux new-session -d -s ar-runner './run.sh'
+tmux new-session -d -s ar-runner './runner.sh'
 ```
 
 ### launchd Service (Auto-Start on Boot)
@@ -119,7 +125,7 @@ cat > ~/Library/LaunchAgents/com.almostrealism.ci-runner.plist << 'PLIST'
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>REPLACE_WITH_FULL_PATH/tools/ci/macos/run.sh</string>
+        <string>REPLACE_WITH_FULL_PATH/tools/ci/macos/runner.sh</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -149,6 +155,26 @@ All configuration is via the `.env` file (see `.env.example`).
 | `RUNNER_NAME` | `$(hostname)-macos` | Runner display name in GitHub |
 | `RUNNER_GROUP` | `Default` | Runner group |
 | `RUNNER_WORKDIR` | `~/actions-runner/_work` | Job working directory |
+| `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
+
+## CPU Limiting
+
+On shared machines you may want to prevent the runner from saturating all
+cores. Set `RUNNER_CPU_LIMIT` in `.env` to the maximum number of CPUs the
+job is allowed to use:
+
+```bash
+# Allow up to 4 CPUs on a shared Mac Mini
+RUNNER_CPU_LIMIT=4
+```
+
+This requires `cpulimit` (`brew install cpulimit`). If `cpulimit` is not
+installed the limit is silently ignored and a warning is printed at
+startup. The limit applies to the runner process and all its children
+(Maven, JVM forks, etc.).
+
+Choose a value appropriate for the machine — for example 4 on a Mac Mini
+that also runs other services, or 8 on a dedicated Mac Studio.
 
 ## Verify Runner Registration
 
@@ -197,7 +223,6 @@ gh api repos/almostrealism/common/actions/runners \
 ```
 tools/ci/macos/
 ├── .env.example    # Template for environment configuration
-├── setup.sh        # One-time setup (downloads runner agent)
-├── run.sh          # Runner loop (register, run, re-register)
+├── runner.sh       # Setup + run with auto-recovery
 └── README.md       # This file
 ```

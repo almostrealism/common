@@ -16,6 +16,7 @@ target/**
 commands/**
 **.versionsBackup
 **/docs/apidocs
+**.class
 
 # Testing and Monitoring
 **/*.hwcache/**

@@ -13,10 +13,11 @@
 #   BASE_BRANCH      - base branch for comparison
 #
 # Optional environment variables:
-#   CONTROLLER_HOST  - FlowTree controller hostname (default: localhost)
-#   CONTROLLER_PORT  - FlowTree controller port     (default: 7780)
-#   MAX_TURNS        - agent turn budget             (omitted → workstream default)
-#   MAX_BUDGET_USD   - agent dollar budget           (omitted → workstream default)
+#   CONTROLLER_HOST   - FlowTree controller hostname (default: localhost)
+#   CONTROLLER_PORT   - FlowTree controller port     (default: 7780)
+#   MAX_TURNS         - agent turn budget             (omitted → workstream default)
+#   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
+#   ENFORCE_CHANGES   - require code changes or retry (default: false)
 #
 # Exit codes:
 #   0 - submission succeeded
@@ -56,11 +57,13 @@ PAYLOAD=$(jq -n \
     --arg branch "$BRANCH" \
     --arg base "$BASE_BRANCH" \
     --argjson protect "${PROTECT_TEST_FILES:-false}" \
+    --argjson enforce "${ENFORCE_CHANGES:-false}" \
     '{
         prompt: $prompt,
         targetBranch: $branch,
         baseBranch: $base,
-        protectTestFiles: $protect
+        protectTestFiles: $protect,
+        enforceChanges: $enforce
     }')
 
 if [ -n "${MAX_TURNS:-}" ]; then

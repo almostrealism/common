@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # ─── Build the verify-completion prompt for the FlowTree agent ────────
 #
-# Reads the plan file from the repository, injects its contents into
-# the verify-completion prompt template, and writes the final prompt.
+# Substitutes branch/commit metadata into the verify-completion prompt
+# template and writes the final prompt.
+#
+# NOTE: The planning document content is NOT embedded in this prompt.
+# The FlowTree controller's InstructionPromptBuilder automatically
+# injects the workstream's planningDocument path into the agent's
+# system instructions, so the agent already knows where to find it.
 #
 # Usage:
-#   build-verify-prompt.sh <plan-file-path> <output-file>
+#   build-verify-prompt.sh <output-file>
 #
 # Required environment variables:
 #   BRANCH          - branch name under verification
@@ -13,20 +18,18 @@
 #   COMMIT_SHA      - commit SHA under verification
 #
 # Arguments:
-#   plan-file-path  - path to the plan file (relative to repo root)
 #   output-file     - where to write the final prompt
 #
 # Exit codes:
 #   0 - prompt written successfully
-#   1 - invalid arguments, missing env vars, or plan file not found
+#   1 - invalid arguments or missing env vars
 
 set -euo pipefail
 
-PLAN_FILE="${1:-}"
-OUTPUT_FILE="${2:-}"
+OUTPUT_FILE="${1:-}"
 
-if [ -z "$PLAN_FILE" ] || [ -z "$OUTPUT_FILE" ]; then
-    echo "Usage: $0 <plan-file-path> <output-file>" >&2
+if [ -z "$OUTPUT_FILE" ]; then
+    echo "Usage: $0 <output-file>" >&2
     exit 1
 fi
 
@@ -37,14 +40,6 @@ for var in BRANCH BASE_BRANCH COMMIT_SHA; do
     fi
 done
 
-if [ ! -f "$PLAN_FILE" ]; then
-    echo "ERROR: Plan file not found at ${PLAN_FILE}" >&2
-    exit 1
-fi
-
-PLAN_CONTENT=$(cat "$PLAN_FILE")
-export PLAN_FILE PLAN_CONTENT
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEMPLATE="${SCRIPT_DIR}/prompts/verify-completion.txt"
 
@@ -53,18 +48,8 @@ if [ ! -f "$TEMPLATE" ]; then
     exit 1
 fi
 
-# Substitute environment variables in the template.
-# Use awk to handle multi-line PLAN_CONTENT safely.
-awk -v plan="$PLAN_CONTENT" \
-    -v branch="$BRANCH" \
-    -v base="$BASE_BRANCH" \
-    -v sha="$COMMIT_SHA" \
-    -v planfile="$PLAN_FILE" \
-    '{
-        gsub(/\$\{PLAN_CONTENT\}/, plan)
-        gsub(/\$\{BRANCH\}/, branch)
-        gsub(/\$\{BASE_BRANCH\}/, base)
-        gsub(/\$\{COMMIT_SHA\}/, sha)
-        gsub(/\$\{PLAN_FILE\}/, planfile)
-        print
-    }' "$TEMPLATE" > "$OUTPUT_FILE"
+# Substitute scalar environment variables in the template.
+sed -e "s|\${BRANCH}|${BRANCH}|g" \
+    -e "s|\${BASE_BRANCH}|${BASE_BRANCH}|g" \
+    -e "s|\${COMMIT_SHA}|${COMMIT_SHA}|g" \
+    "$TEMPLATE" > "$OUTPUT_FILE"

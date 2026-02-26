@@ -62,7 +62,15 @@ Processes incoming Slack messages. Extracts the prompt from `@bot` mentions, loo
 
 ### SlackNotifier
 
-Sends messages to Slack channels using the Bot User OAuth Token. Handles job-started and job-completed notifications with status indicators.
+Sends messages to Slack channels using the Bot User OAuth Token. Handles job-started and job-completed notifications with status indicators. Can create private Slack channels and invite a designated owner user.
+
+**Channel creation:**
+
+When a workstream is registered via the API without an existing channel, `createChannel(name)` creates a **private** Slack channel and optionally invites the configured `channelOwnerUserId`. Returns the new channel ID or `null` in simulation mode (no bot token).
+
+**Null-safe messaging:**
+
+`postMessage` and `postMessageInThread` gracefully handle `null` or empty channel IDs by returning `null` without throwing. This supports workstreams that are registered before their Slack channel exists.
 
 ### FlowTreeApiEndpoint
 
@@ -75,6 +83,8 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
 | POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |
 | POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [Pipeline Agents](../../PIPELINE_AGENTS.md)) |
+| POST | `/api/workstreams` | `{"defaultBranch":"...","channelName":"..."}` | Register a new workstream (auto-creates private Slack channel) |
+| POST | `/api/workstreams/{id}/update` | `{"channelId":"...","channelName":"..."}` | Update an existing workstream |
 | POST | `/api/workstreams/{id}` | `{"jobId":"...","status":"..."}` | Receive a status event |
 | POST | `/api/workstreams/{id}/jobs/{jobId}` | `{"jobId":"...","status":"..."}` | Receive a job status event |
 | GET | `/api/health` | -- | Health check |
@@ -82,6 +92,56 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
 
 When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-slack` MCP server reads this and POSTs messages to `{url}/messages`.
+
+#### Workstream Registration Endpoint
+
+```
+POST /api/workstreams
+Content-Type: application/json
+```
+
+Registers a new workstream dynamically. When a `channelName` is provided and a Slack bot token is available, a **private** Slack channel is automatically created and the configured `channelOwnerUserId` is invited. This is used by CI pipelines (via `register-workstream.sh`) to create workstreams on the fly when new plan documents are detected.
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `defaultBranch` | `string` | Yes | The git branch for this workstream |
+| `baseBranch` | `string` | No | Base branch for new branches (default: `"master"`) |
+| `repoUrl` | `string` | No | Repository clone URL |
+| `planningDocument` | `string` | No | Path to the plan document (relative to repo root) |
+| `channelName` | `string` | No | Desired Slack channel name (a private channel is created if provided) |
+
+**Response (200):**
+
+```json
+{
+  "ok": true,
+  "workstreamId": "ws-abc123",
+  "channelId": "C0123456789",
+  "channelName": "w-project-plan-foo"
+}
+```
+
+#### Workstream Update Endpoint
+
+```
+POST /api/workstreams/{id}/update
+Content-Type: application/json
+```
+
+Updates fields on an existing workstream. All fields are optional; only provided non-empty fields are applied.
+
+**Request body:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `channelId` | `string` | Override the Slack channel ID |
+| `channelName` | `string` | Override the channel display name |
+| `defaultBranch` | `string` | Change the target branch |
+| `baseBranch` | `string` | Change the base branch |
+| `repoUrl` | `string` | Change the repository URL |
+| `planningDocument` | `string` | Change the plan document path |
 
 ### JobStatsStore
 
@@ -91,14 +151,24 @@ HSQLDB-backed storage for job timing data and statistics. Records job start/comp
 - Automatically cleans orphaned STARTED rows older than 7 days on initialization
 - Initialized and wired by `FlowTreeController` at startup
 
+### SlackListener
+
+Manages the mapping between Slack channels and workstreams. Extracts prompts from `@bot` mentions, creates `ClaudeCodeJob.Factory` instances, and submits them to connected agents.
+
+**Dynamic registration:** `registerAndPersistWorkstream(workstream)` registers a workstream in memory and persists the updated config to the YAML file. This is used by the registration API endpoint to support runtime workstream creation from CI pipelines.
+
 ### SlackWorkstream
 
 Maps a Slack channel to a set of job defaults. Each workstream has:
 
-- **channelId / channelName** -- the Slack channel
+- **channelId / channelName** -- the Slack channel (nullable for workstreams created before their channel exists)
 - **defaultBranch** -- git branch for commits
 - **baseBranch** -- branch to create new target branches from (defaults to `"master"`)
+- **planningDocument** -- path to a plan document (relative to repo root) that agents read before starting work
+- **repoUrl** -- repository clone URL for automatic checkout
 - **allowedTools, maxTurns, maxBudgetUsd** -- job configuration defaults
+
+Workstreams can be defined statically in the YAML config or registered dynamically via `POST /api/workstreams`. A workstream without a `channelId` (registered before its Slack channel is created or in simulation mode) is still functional for job dispatch.
 
 Agents connect inbound to the controller's FlowTree server. The controller distributes jobs round-robin to whichever agents are currently connected.
 
@@ -124,6 +194,12 @@ Tokens are resolved in order (first match wins):
 ### Workstream Configuration (YAML)
 
 ```yaml
+# Channel owner (optional, global).
+# Slack user ID to auto-invite when creating new private workstream channels
+# via the POST /api/workstreams registration endpoint.
+# Get your user ID from Slack profile > "..." > "Copy member ID".
+# channelOwnerUserId: U0123456789
+
 # Optional: centralized MCP servers started by the controller as HTTP processes.
 # Agents connect over HTTP instead of stdio. Enables shared state and
 # cross-project portability. Omit this section for local stdio (the default).
@@ -161,11 +237,13 @@ workstreams:
   - channelId: "C9876543210"
     channelName: "#ops-agent"
     defaultBranch: "feature/ops"
-    baseBranch: "develop"            # Branch from develop instead of master
+    baseBranch: "master"
     maxBudgetUsd: 5.0
     env:
       GITHUB_TOKEN: ghp_ops_org_token
 ```
+
+**Dynamic workstream registration:** Workstreams can also be created at runtime via `POST /api/workstreams`. The registered workstream is added to the in-memory config and persisted back to the YAML file. This is used by the `verify-completion.yaml` CI workflow to create workstreams automatically when a new plan document is detected on a feature branch.
 
 See the [Centralized MCP Servers](coding-agent.md#centralized-mcp-servers) and [Pushed Tools](coding-agent.md#pushed-tools) sections in the coding agent docs for architecture details.
 
