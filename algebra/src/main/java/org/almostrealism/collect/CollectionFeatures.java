@@ -1585,7 +1585,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see TraversalPolicy
 	 */
 	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, int... position) {
-		return new CollectionSubsetComputation(shape, (Producer<PackedCollection>) collection, position);
+		return new PackedCollectionSubset(shape, collection, position);
 	}
 
 	/**
@@ -1623,7 +1623,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see Expression
 	 */
 	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, Expression... position) {
-		return new CollectionSubsetComputation(shape, (Producer<PackedCollection>) collection, position);
+		return new PackedCollectionSubset(shape, collection, position);
 	}
 
 	/**
