@@ -24,17 +24,9 @@ services:
       - GITHUB_REPO=${GITHUB_REPO:-common}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-ar-runner}
       - RUNNER_LABELS=ar-ci
-      - AR_HARDWARE_LIBS=/tmp/ar_libs/
-      - AR_HARDWARE_DRIVER=native
-    volumes:
-      - maven-repo:/home/runner/.m2/repository
     deploy:
       resources:
         limits:
           memory: ${RUNNER_MEMORY_LIMIT:-16g}
           cpus: "${RUNNER_CPU_LIMIT:-4}"
     restart: unless-stopped
-
-volumes:
-  maven-repo:
-    driver: local
