@@ -273,7 +273,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	private final ProjectedGenome genome;
 	
 	private OperationList setup;
-	private List<PatternAudioBuffer> renderCells;
+	private List<PatternAudioBuffer> renderCells = new ArrayList<>();
 	private PackedCollection consolidatedRenderBuffer;
 	private int renderBufferIndex;
 	private Function<PackedCollection, Factor<PackedCollection>> automationLevel;

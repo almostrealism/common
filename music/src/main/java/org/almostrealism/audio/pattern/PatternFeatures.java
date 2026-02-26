@@ -8,6 +8,7 @@ import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.audio.notes.NoteAudioContext;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.DistributionMetric;
 
 import java.util.List;
@@ -125,13 +126,16 @@ public interface PatternFeatures extends CodeFeatures {
 					if (cache != null) {
 						note.getOffsetArg().setMem(0, 0);
 						try {
-							Producer<PackedCollection> fullProducer =
-									note.getProducer(note.getExpectedFrameCount());
-							PackedCollection fullAudio =
-									traverse(1, fullProducer).get().evaluate();
-							if (fullAudio != null) {
-								cache.put(noteStart, fullAudio);
-								sumToDestination(destination, fullAudio, noteStart,
+							PackedCollection[] fullResult = {null};
+							Heap.stage(() -> {
+								Producer<PackedCollection> fullProducer =
+										note.getProducer(note.getExpectedFrameCount());
+								fullResult[0] =
+										traverse(1, fullProducer).get().evaluate();
+							});
+							if (fullResult[0] != null) {
+								cache.put(noteStart, fullResult[0]);
+								sumToDestination(destination, fullResult[0], noteStart,
 										startFrame, endFrame, frameCount);
 							}
 						} catch (Exception e) {
@@ -151,20 +155,23 @@ public interface PatternFeatures extends CodeFeatures {
 						note.getOffsetArg().setMem(0, sourceOffset);
 
 						try {
-							Producer<PackedCollection> producer = note.getProducer(overlapLength);
-							PackedCollection evaluated = traverse(1, producer).get().evaluate();
+							PackedCollection[] evalResult = {null};
+							Heap.stage(() -> {
+								Producer<PackedCollection> producer = note.getProducer(overlapLength);
+								evalResult[0] = traverse(1, producer).get().evaluate();
+							});
 
-							if (evaluated == null) return;
+							if (evalResult[0] == null) return;
 
 							int actualLen = Math.min(overlapLength,
-									evaluated.getShape().getCount());
+									evalResult[0].getShape().getCount());
 							if (actualLen > 0 && destOffset >= 0
 									&& destOffset + actualLen <= frameCount) {
 								TraversalPolicy shape = shape(actualLen);
 								sizes.addEntry(actualLen);
 								AudioProcessingUtils.getSum().sum(
 										destination.range(shape, destOffset),
-										evaluated.range(shape, 0));
+										evalResult[0].range(shape, 0));
 							}
 						} catch (Exception e) {
 							warn("Partial note evaluation failed at frame " + noteStart + ": " + e.getMessage());
