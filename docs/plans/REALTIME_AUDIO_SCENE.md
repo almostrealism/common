@@ -408,12 +408,49 @@ render buffer arguments into a single kernel argument.
 Total render cells = `channelCount x 4` (MAIN + WET voicing x LEFT + RIGHT
 stereo). For 6 channels, this consolidates 24 individual buffers into one.
 
-#### EfxManager Filter Buffer Consolidation (Implemented)
+#### EfxManager Filter Buffer Consolidation (Implemented — **HAS BUG**)
 
 `EfxManager.consolidateFilterBuffers()` pre-allocates a single contiguous
 buffer for all filter destination buffers created by `applyFilter()`. Each
 wet channel's filter destination is a delegate range into this buffer.
-For 6 channels, this consolidates up to 12 filter destinations into one.
+
+**Bug: Buffer size is too small.** The current allocation uses
+`channelCount * 2` slots, assuming one filter destination per channel per
+stereo side. However, `applyFilter()` is called for **every** channel/voicing/stereo
+combination where the channel is in `wetChannels`. With all channels wet (the
+default), the call count is:
+
+```
+getPatternCells(LEFT)  → MAIN: 6 channels → 6 applyFilter() calls
+                       → WET:  6 channels → 6 applyFilter() calls
+getPatternCells(RIGHT) → MAIN: 6 channels → 6 applyFilter() calls
+                       → WET:  6 channels → 6 applyFilter() calls
+                                            ─────────────────────
+                                Total:      24 applyFilter() calls
+```
+
+The consolidated buffer is allocated for `6 * 2 = 12` slots but
+`applyFilter()` is called **24 times** (channelCount × 2 voicings × 2 stereo).
+On the 13th call, `filterBufferIndex * size` exceeds the buffer, producing:
+
+```
+java.lang.IllegalArgumentException: Range exceeds collection size
+    at PackedCollection.range(PackedCollection.java:450)
+    at EfxManager.applyFilter(EfxManager.java:225)
+```
+
+**Fix:** Change `consolidateFilterBuffers()` to allocate `channelCount * 4`
+slots (matching the `channelCount * 4` render buffer formula already used by
+`consolidateRenderBuffers()`), or — more precisely — allocate based on the
+actual wet channel count times the voicing/stereo multiplier. The javadoc
+on the method should also be corrected.
+
+**Reproducing in tests:** The `effectsEnabledPerformance` test in
+`AudioSceneBufferConsolidationTest` runs with effects enabled and 6 channels,
+which is the exact configuration that triggers this bug. If this test is run
+with `enableEfx = true` (the default — do NOT call `disableEffects()`), it
+will fail with the same `Range exceeds collection size` error. This confirms
+that the existing tests were not catching this because they all disable effects.
 
 **Remaining opportunities**:
 - Profile the full argument list to identify other small collections
