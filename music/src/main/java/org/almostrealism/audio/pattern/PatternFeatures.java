@@ -94,7 +94,8 @@ public interface PatternFeatures extends CodeFeatures {
 
 		int endFrame = startFrame + frameCount;
 
-		elements.stream()
+		Heap.stage(() ->
+			elements.stream()
 				.map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
 				.flatMap(List::stream)
 				.forEach(note -> {
@@ -177,7 +178,8 @@ public interface PatternFeatures extends CodeFeatures {
 							warn("Partial note evaluation failed at frame " + noteStart + ": " + e.getMessage());
 						}
 					}
-				});
+				})
+		);
 	}
 
 	/**

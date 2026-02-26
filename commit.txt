@@ -1,13 +1,12 @@
-Fix renderCells NPE and restore Heap.stage() in pattern rendering
+Wrap PatternFeatures.render() stream in Heap.stage() to prevent memory exhaustion
 
-AudioScene: Initialize renderCells field to prevent NPE when
-getPatternChannel() is called directly (outside getCells()). The field
-was previously only initialized inside getCells(), causing a
-NullPointerException when tests like frameRangeWithEffects invoke
-getPatternChannel() independently.
+The getNoteDestinations() call inside render() triggers PackedCollection
+allocations (offsetArg in ScaleTraversalStrategy.createRenderedNote()) that
+were outside any Heap.stage() scope. This caused cascading "Already allocated
+NativeRef" warnings and eventually "Hardware Memory max reached" errors in
+tests with effects enabled (AudioSceneBufferConsolidationTest.effectsEnabledPerformance).
 
-PatternFeatures: Restore Heap.stage() scoping around note evaluation
-in both cached and uncached render paths. The branch refactor of
-render() into separate cached/uncached paths accidentally dropped the
-Heap.stage() wrapper that the master code had, leading to
-"Already allocated NativeRef" errors during native memory allocation.
+The fix wraps the entire stream pipeline in Heap.stage() so that all
+allocations from getNoteDestinations() are lifecycle-managed. The existing
+nested Heap.stage() calls around evaluate() continue to work correctly
+since Heap uses a stack-based stage model.
