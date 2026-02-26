@@ -672,7 +672,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         // Only one argument
         response.set(null);
         listener.handleSlashCommand("setup /workspace/only", "C123", "#test", response::set);
-        assertTrue(response.get().contains("Both working directory and branch are required"));
+        assertTrue(response.get().contains("Both working directory (or repo URL) and branch are required"));
     }
 
     @Test(timeout = 10000)
