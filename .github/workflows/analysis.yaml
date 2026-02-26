@@ -188,7 +188,7 @@ jobs:
     # Failures are reported but do not fail the overall workflow.
     continue-on-error: true
     outputs:
-      passed: ${{ steps.check.outcome == 'success' }}f
+      passed: ${{ steps.check.outcome == 'success' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
