@@ -135,7 +135,7 @@ public interface PatternFeatures extends CodeFeatures {
 										startFrame, endFrame, frameCount);
 							}
 						} catch (Exception e) {
-							// Skip notes that fail during evaluation
+							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
 						}
 					} else {
 						int overlapStart = Math.max(noteStart, startFrame);
@@ -167,7 +167,7 @@ public interface PatternFeatures extends CodeFeatures {
 										evaluated.range(shape, 0));
 							}
 						} catch (Exception e) {
-							// Skip notes that fail during evaluation
+							warn("Partial note evaluation failed at frame " + noteStart + ": " + e.getMessage());
 						}
 					}
 				});
@@ -210,7 +210,7 @@ public interface PatternFeatures extends CodeFeatures {
 					destination.range(shape, destOffset),
 					audio.range(shape, sourceOffset));
 		} catch (Exception e) {
-			// Skip notes that fail during summation
+			warn("Note summation failed at offset " + sourceOffset + ": " + e.getMessage());
 		}
 	}
 }

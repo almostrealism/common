@@ -96,7 +96,14 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		// Verify EfxManager filter buffer consolidation
 		PackedCollection filterBuffer = scene.getEfxManager().getConsolidatedFilterBuffer();
 		assertNotNull("Consolidated filter buffer should be allocated", filterBuffer);
-		log("Consolidated filter buffer: " + filterBuffer.getMemLength() + " total elements");
+
+		int expectedFilterCells = SOURCE_COUNT * 4;
+		int expectedFilterSize = BUFFER_SIZE * expectedFilterCells;
+		assertEquals("Filter buffer size should be bufferSize x channelCount x 4",
+				expectedFilterSize, filterBuffer.getMemLength());
+
+		log("Consolidated filter buffer: " + filterBuffer.getMemLength() +
+				" total elements (" + expectedFilterCells + " filter slots x " + BUFFER_SIZE + " frames)");
 	}
 
 	/**

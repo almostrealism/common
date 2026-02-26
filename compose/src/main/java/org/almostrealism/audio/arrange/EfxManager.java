@@ -113,15 +113,15 @@ public class EfxManager implements CellFeatures {
 	 * arguments in the compiled {@code Loop} scope because the scope's
 	 * argument deduplication resolves each delegate to the shared root.</p>
 	 *
-	 * <p>The maximum number of filter destinations is {@code channelCount x 2}
-	 * (one per wet channel per stereo side). Unused slots do not become kernel
-	 * arguments since nothing references them.</p>
+	 * <p>The maximum number of filter destinations is {@code channelCount x 4}
+	 * (one per channel per voicing (MAIN/WET) per stereo side (LEFT/RIGHT)).
+	 * Unused slots do not become kernel arguments since nothing references them.</p>
 	 *
 	 * @param channelCount number of audio channels
 	 * @param bufferSize   frames per render buffer
 	 */
 	public void consolidateFilterBuffers(int channelCount, int bufferSize) {
-		int maxFilters = channelCount * 2;
+		int maxFilters = channelCount * 4;
 		consolidatedFilterBuffer = new PackedCollection(bufferSize * maxFilters);
 		filterBufferIndex = 0;
 	}
