@@ -181,7 +181,12 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	 * eliminating overhead for inference-only execution.
 	 *
 	 * <p>This method performs a <strong>structural rebuild</strong> of the entry cell.
-	 * It must be called before the computation graph is optimized (i.e., before
+	 * The cached composite forward cell ({@code fw}) is intentionally preserved because
+	 * its lambda reads {@code this.entry} at runtime, so it automatically picks up the
+	 * rebuilt entry cell. Invalidating {@code fw} would destroy the inter-block receptor
+	 * chain wired during {@link org.almostrealism.model.SequentialBlock#add}.</p>
+	 *
+	 * <p>Must be called before the computation graph is optimized (i.e., before
 	 * {@code Process.optimize()} or {@code OperationList.flatten().optimize()}).
 	 * Calling it after optimization has undefined behavior.</p>
 	 *
@@ -206,7 +211,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			this.input = null;
 		}
 
-		this.fw = null;
 		buildEntryCell();
 	}
 
