@@ -103,6 +103,8 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 
 		log("Consolidated filter buffer: " + filterBuffer.getMemLength() +
 				" total elements (" + expectedFilterCells + " filter slots x " + BUFFER_SIZE + " frames)");
+
+		scene.destroy();
 	}
 
 	/**
@@ -140,6 +142,7 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 				", NonZero=" + String.format("%.1f%%", result.stats().nonZeroRatio() * 100));
 
 		helper.generateArtifacts(result, "consolidation-audio");
+		scene.destroy();
 	}
 
 	/**
@@ -244,6 +247,7 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		}
 
 		log("Genome independence verified: different genomes produce different audio");
+		scene.destroy();
 	}
 
 	/**
@@ -323,6 +327,7 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		assertNotNull("Filter buffer should be consolidated", filterBuf);
 
 		helper.generateArtifacts(result, "effects-enabled-performance");
+		scene.destroy();
 	}
 
 	/**
@@ -381,6 +386,7 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		}
 
 		helper.generateArtifacts(result, "warmed-cache-render");
+		scene.destroy();
 	}
 
 	/**

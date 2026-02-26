@@ -46,6 +46,7 @@ import org.almostrealism.audio.generative.NoOpGenerationProvider;
 import org.almostrealism.audio.health.HealthComputationAdapter;
 import org.almostrealism.audio.health.MultiChannelAudioOutput;
 import org.almostrealism.audio.notes.NoteAudioChoice;
+import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.pattern.ChordProgressionManager;
 import org.almostrealism.audio.pattern.PatternAudioBuffer;
 import org.almostrealism.audio.pattern.NoteAudioChoiceList;
@@ -182,6 +183,7 @@ import java.util.stream.IntStream;
 public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable, CellFeatures {
 	public static final Console console = CellFeatures.console.child();
 	private static final TimingMetric getCellsTime = console.timing("getCells");
+	private static final List<AudioScene<?>> activeInstances = new ArrayList<>();
 
 	public static final int DEFAULT_SOURCE_COUNT = 6;
 	public static final int DEFAULT_REALTIME_BUFFER_SIZE = 1024;
@@ -276,6 +278,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	private List<PatternAudioBuffer> renderCells = new ArrayList<>();
 	private PackedCollection consolidatedRenderBuffer;
 	private int renderBufferIndex;
+	private CellList activeCells;
 	private Function<PackedCollection, Factor<PackedCollection>> automationLevel;
 
 	private final List<Consumer<Frequency>> tempoListeners;
@@ -349,6 +352,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		genome.consolidateGeneValues();
 
 		this.generation = new GenerationManager(patterns, generation);
+		activeInstances.add(this);
 	}
 
 	@Deprecated
@@ -689,8 +693,23 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		setup.add(() -> () -> patterns.setTuning(tuning));
 		setup.add(sections.setup());
 
-		consolidateRenderBuffers(channels.size(), bufferSize);
-		efx.consolidateFilterBuffers(channels.size(), bufferSize);
+		// Only consolidate buffers for real-time mode (small buffer sizes).
+		// For offline mode (bufferSize == getAvailableSamples()), the consolidated
+		// allocation would be enormous (channelCount * 4 * bufferSize entries)
+		// and exhaust native memory before the effects pipeline can allocate
+		// delay line buffers. Consolidation is a kernel-argument optimization
+		// for the compiled Loop in runnerRealTime; offline mode does not compile
+		// a Loop, so consolidation provides no benefit.
+		if (bufferSize < getAvailableSamples()) {
+			consolidateRenderBuffers(channels.size(), bufferSize);
+			efx.consolidateFilterBuffers(channels.size(), bufferSize);
+		}
+
+		// Destroy previous cell graph if getCells() is called again
+		if (activeCells != null) {
+			activeCells.destroy();
+			activeCells = null;
+		}
 
 		CellList cells = cells(
 				getPatternCells(output, channels, ChannelInfo.StereoChannel.LEFT,
@@ -699,6 +718,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 						bufferSize, frameSupplier, setup, waveCellFrame));
 
 		cells.addSetup(() -> setup);
+		activeCells = cells;
 		return cells.addRequirement(time::tick);
 	}
 
@@ -747,9 +767,21 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		CellList main = all(idx.length, i ->
 				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.MAIN, audioChannel),
 						bufferSize, frameSupplier, setup, waveCellFrame));
-		CellList wet = all(idx.length, i ->
-				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.WET, audioChannel),
-						bufferSize, frameSupplier, setup, waveCellFrame));
+
+		// Skip WET voicing cells when effects are disabled at both the
+		// EfxManager and MixdownManager levels.  WET cells would tick
+		// every frame but their output is never used in the mixdown
+		// when enableEfx is false, so skipping them avoids useless work
+		// (halving the cell count for offline rendering).
+		CellList wet;
+		if (!EfxManager.enableEfx && !MixdownManager.enableEfx) {
+			wet = null;
+		} else {
+			wet = all(idx.length, i ->
+					getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.WET, audioChannel),
+							bufferSize, frameSupplier, setup, waveCellFrame));
+		}
+
 		return mixdown.cells(main, wet, riser.getRise(bufferSize),
 				output, audioChannel, i -> idx[i]);
 	}
@@ -1080,6 +1112,35 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public void destroy() {
 		Destroyable.super.destroy();
 		getSectionManager().destroy();
+
+		if (activeCells != null) {
+			activeCells.destroy();
+			activeCells = null;
+		}
+
+		if (consolidatedRenderBuffer != null) {
+			consolidatedRenderBuffer.destroy();
+			consolidatedRenderBuffer = null;
+		}
+
+		efx.destroyConsolidatedBuffers();
+		activeInstances.remove(this);
+	}
+
+	/**
+	 * Destroys all {@link AudioScene} instances that have not been explicitly
+	 * destroyed yet, freeing their native memory allocations.
+	 *
+	 * <p>This is primarily useful in test environments where multiple scenes
+	 * are created across test methods without explicit cleanup. Each scene's
+	 * {@link #destroy()} method is called to release its cell graph,
+	 * consolidated buffers, and delay line memory.</p>
+	 */
+	public static void destroyAll() {
+		List<AudioScene<?>> scenes = new ArrayList<>(activeInstances);
+		for (AudioScene<?> scene : scenes) {
+			scene.destroy();
+		}
 	}
 
 	public AudioScene<T> clone() {

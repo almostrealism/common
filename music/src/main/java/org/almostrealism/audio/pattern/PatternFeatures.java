@@ -143,39 +143,34 @@ public interface PatternFeatures extends CodeFeatures {
 							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
 						}
 					} else {
-						int overlapStart = Math.max(noteStart, startFrame);
-						int overlapEnd = (note.getExpectedFrameCount() > 0)
-								? Math.min(noteStart + note.getExpectedFrameCount(), endFrame)
-								: endFrame;
-						int overlapLength = overlapEnd - overlapStart;
-						int sourceOffset = overlapStart - noteStart;
-						int destOffset = overlapStart - startFrame;
+						// No cache: evaluate the full note and clip via sumToDestination.
+						// Using expectedFrameCount (when available) ensures that notes of
+						// the same type/duration share the same producer signature, enabling
+						// kernel compilation reuse. Using per-overlap-length producers would
+						// create a unique compilation for each note, which is prohibitively
+						// slow for offline rendering with hundreds of notes.
+						int evalFrameCount = note.getExpectedFrameCount();
+						if (evalFrameCount <= 0) {
+							evalFrameCount = endFrame - noteStart;
+						}
 
-						if (overlapLength <= 0) return;
+						if (evalFrameCount <= 0) return;
 
-						note.getOffsetArg().setMem(0, sourceOffset);
+						note.getOffsetArg().setMem(0, 0);
 
 						try {
+							int fc = evalFrameCount;
 							PackedCollection[] evalResult = {null};
 							Heap.stage(() -> {
-								Producer<PackedCollection> producer = note.getProducer(overlapLength);
+								Producer<PackedCollection> producer = note.getProducer(fc);
 								evalResult[0] = traverse(1, producer).get().evaluate();
 							});
-
-							if (evalResult[0] == null) return;
-
-							int actualLen = Math.min(overlapLength,
-									evalResult[0].getShape().getCount());
-							if (actualLen > 0 && destOffset >= 0
-									&& destOffset + actualLen <= frameCount) {
-								TraversalPolicy shape = shape(actualLen);
-								sizes.addEntry(actualLen);
-								AudioProcessingUtils.getSum().sum(
-										destination.range(shape, destOffset),
-										evalResult[0].range(shape, 0));
+							if (evalResult[0] != null) {
+								sumToDestination(destination, evalResult[0], noteStart,
+										startFrame, endFrame, frameCount);
 							}
 						} catch (Exception e) {
-							warn("Partial note evaluation failed at frame " + noteStart + ": " + e.getMessage());
+							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
 						}
 					}
 				})

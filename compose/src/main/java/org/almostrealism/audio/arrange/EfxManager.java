@@ -133,6 +133,16 @@ public class EfxManager implements CellFeatures {
 	 */
 	public PackedCollection getConsolidatedFilterBuffer() { return consolidatedFilterBuffer; }
 
+	/**
+	 * Destroys the consolidated filter buffer, freeing its native memory.
+	 */
+	public void destroyConsolidatedBuffers() {
+		if (consolidatedFilterBuffer != null) {
+			consolidatedFilterBuffer.destroy();
+			consolidatedFilterBuffer = null;
+		}
+	}
+
 	public List<Integer> getWetChannels() { return wetChannels; }
 	public void setWetChannels(List<Integer> wetChannels) { this.wetChannels = wetChannels; }
 
