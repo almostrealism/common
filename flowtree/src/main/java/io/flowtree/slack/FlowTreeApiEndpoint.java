@@ -106,6 +106,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private final Map<String, Path> toolFiles = new HashMap<>();
     private JobStatsStore statsStore;
     private String githubToken;
+    private Map<String, String> githubOrgTokens = new HashMap<>();
 
     private Server server;
     private SlackListener listener;
@@ -148,6 +149,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setGithubToken(String token) {
         this.githubToken = token;
+    }
+
+    /**
+     * Sets per-organization GitHub tokens for the proxy endpoint.
+     *
+     * <p>When a proxy request includes an {@code org} query parameter,
+     * the matching token from this map is used instead of the default
+     * instance-level token.</p>
+     *
+     * @param githubOrgTokens map of organization name to token
+     */
+    public void setGithubOrgTokens(Map<String, String> githubOrgTokens) {
+        this.githubOrgTokens = githubOrgTokens != null ? githubOrgTokens : new HashMap<>();
     }
 
     /**
@@ -325,6 +339,21 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String repoUrl = extractJsonField(body, "repoUrl");
         String planningDocument = extractJsonField(body, "planningDocument");
         String channelName = extractJsonField(body, "channelName");
+
+        // Check for an existing workstream with the same branch and repo
+        SlackWorkstream existing = notifier.findWorkstreamByBranchAndRepo(defaultBranch, repoUrl);
+        if (existing != null) {
+            log("Workstream already exists for branch " + defaultBranch
+                + ": " + existing.getWorkstreamId() + " — returning existing");
+
+            StringBuilder json = new StringBuilder();
+            json.append("{\"ok\":true,\"existing\":true");
+            json.append(",\"workstreamId\":\"").append(escapeJson(existing.getWorkstreamId())).append("\"");
+            json.append("}");
+
+            return newFixedLengthResponse(Response.Status.OK,
+                    "application/json", json.toString());
+        }
 
         // Auto-create Slack channel if a name is provided
         String channelId = null;
@@ -611,6 +640,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setPlanningDocument(workstream.getPlanningDocument());
         }
 
+        // GitHub organization for token selection
+        if (workstream.getGithubOrg() != null) {
+            factory.setGithubOrg(workstream.getGithubOrg());
+        }
+
         // Test file protection
         if (protectTestFiles) {
             factory.setProtectTestFiles(true);
@@ -892,7 +926,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return JSON response wrapping the GitHub API response
      */
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
-        String token = this.githubToken;
+        // Resolve token: org-specific > instance-level > env var
+        String org = session.getParms().get("org");
+        String token = null;
+        if (org != null && !org.isEmpty() && githubOrgTokens.containsKey(org)) {
+            token = githubOrgTokens.get(org);
+        }
+        if (token == null || token.trim().isEmpty()) {
+            token = this.githubToken;
+        }
         if (token == null || token.trim().isEmpty()) {
             token = System.getenv("GITHUB_TOKEN");
         }

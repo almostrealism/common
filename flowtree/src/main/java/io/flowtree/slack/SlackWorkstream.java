@@ -87,6 +87,9 @@ public class SlackWorkstream {
     // Optional planning document path for broader goal context
     private String planningDocument;
 
+    // GitHub organization for org-based token selection
+    private String githubOrg;
+
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
 
@@ -336,6 +339,24 @@ public class SlackWorkstream {
      */
     public void setPlanningDocument(String planningDocument) {
         this.planningDocument = planningDocument;
+    }
+
+    /**
+     * Returns the GitHub organization name for this workstream.
+     * When set, the controller proxy uses the org-specific token
+     * for GitHub API calls.
+     */
+    public String getGithubOrg() {
+        return githubOrg;
+    }
+
+    /**
+     * Sets the GitHub organization name for org-based token selection.
+     *
+     * @param githubOrg the GitHub organization name (e.g., "my-org")
+     */
+    public void setGithubOrg(String githubOrg) {
+        this.githubOrg = githubOrg;
     }
 
     /**

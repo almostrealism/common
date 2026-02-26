@@ -199,6 +199,13 @@ echo "  Runner name:  ${RUNNER_NAME}"
 echo "  Runner dir:   ${RUNNER_DIR}"
 echo "  Work dir:     ${RUNNER_WORKDIR}"
 echo "  Labels:       self-hosted, macos, ar-ci"
+if [ -n "${RUNNER_CPU_LIMIT:-}" ]; then
+    if command -v cpulimit >/dev/null 2>&1; then
+        echo "  CPU limit:    ${RUNNER_CPU_LIMIT} CPUs"
+    else
+        echo "  CPU limit:    ${RUNNER_CPU_LIMIT} CPUs (WARNING: cpulimit not installed, limit ignored)"
+    fi
+fi
 echo ""
 
 while ${RUNNING}; do
@@ -215,7 +222,13 @@ while ${RUNNING}; do
     # Run one job
     echo "Waiting for job..."
     cd "${RUNNER_DIR}"
-    ./run.sh || true
+    if [ -n "${RUNNER_CPU_LIMIT:-}" ] && command -v cpulimit >/dev/null 2>&1; then
+        LIMIT_PCT=$(( RUNNER_CPU_LIMIT * 100 ))
+        echo "Throttling job to ${RUNNER_CPU_LIMIT} CPUs (${LIMIT_PCT}%)"
+        cpulimit -l "${LIMIT_PCT}" --include-children -- ./run.sh || true
+    else
+        ./run.sh || true
+    fi
 
     echo ""
     echo "Job completed. Re-registering for next job..."

@@ -258,11 +258,6 @@ public class CodePolicyViolationDetector {
 				continue;
 			}
 
-			// Skip lines with @nopolicy annotation (legitimate exceptions)
-			if (trimmedLine.contains("@nopolicy") || trimmedLine.contains("// nopolicy")) {
-				continue;
-			}
-
 			// Check enclosing method - initialization methods are allowed to have CPU loops
 			String methodName = findEnclosingMethodName(lines, i);
 			boolean inInitMethod = isInitializationMethod(methodName);
