@@ -17,6 +17,7 @@
 package org.almostrealism.audio.pattern.test;
 
 import org.almostrealism.audio.AudioScene;
+import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
@@ -45,11 +46,23 @@ import java.util.List;
  * @see AudioSceneBaselineTest
  * @see AudioSceneRealTimeCorrectnessTest
  */
-public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFeatures, RGBFeatures {
+public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFeatures, RGBFeatures, AudioTestFeatures {
 
 	/** Path to the Samples directory relative to the compose module. */
 	protected static final String SAMPLES_PATH =
 			SystemUtils.getProperty("AR_RINGS_LIBRARY", "../../Samples");
+
+	/**
+	 * Returns the Samples directory if it exists, or {@code null} if it
+	 * does not. When the directory is absent, {@link #addChoices} will
+	 * generate synthetic fallback samples automatically.
+	 *
+	 * @return the Samples directory, or {@code null}
+	 */
+	protected File getSamplesDir() {
+		File dir = new File(SAMPLES_PATH);
+		return dir.exists() ? dir : null;
+	}
 
 	/** Sample rate used for all tests. */
 	protected static final int SAMPLE_RATE = OutputLine.sampleRate;
@@ -146,58 +159,90 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 *   <li>Channel 5: Non-melodic (atmosphere/effects)</li>
 	 * </ul>
 	 *
+	 * <p>When a sample file does not exist on disk, a synthetic fallback
+	 * is generated at runtime via {@link AudioTestFeatures#getNamedTestWavFile}.
+	 * Percussive channels receive noise-burst sounds with exponential decay,
+	 * while melodic channels receive sine waves at the frequency implied by
+	 * the root {@link WesternChromatic} key. This allows the full test
+	 * pipeline to run in CI without requiring real audio samples.</p>
+	 *
 	 * @param scene the AudioScene to add choices to
-	 * @param samplesDir directory containing sample WAV files
+	 * @param samplesDir directory containing sample WAV files (may be {@code null}
+	 *                   or non-existent, in which case all samples are synthesized)
 	 */
 	protected void addChoices(AudioScene<?> scene, File samplesDir) {
-		String dir = samplesDir.getAbsolutePath();
+		String dir = samplesDir == null ? null : samplesDir.getAbsolutePath();
 
 		NoteAudioChoice percs = NoteAudioChoice.fromSource(
 				"Percs",
-				new FileNoteSource(dir + "/Perc TAT 1.wav", WesternChromatic.C1),
+				new FileNoteSource(resolveSample(dir, "Perc TAT 1.wav", 200, true), WesternChromatic.C1),
 				0, 9, false);
-		percs.getSources().add(new FileNoteSource(dir + "/Perc TAT 2.wav", WesternChromatic.C1));
-		percs.getSources().add(new FileNoteSource(dir + "/Perc TAT 3.wav", WesternChromatic.C1));
+		percs.getSources().add(new FileNoteSource(resolveSample(dir, "Perc TAT 2.wav", 250, true), WesternChromatic.C1));
+		percs.getSources().add(new FileNoteSource(resolveSample(dir, "Perc TAT 3.wav", 300, true), WesternChromatic.C1));
 
 		NoteAudioChoice snares = NoteAudioChoice.fromSource(
 				"Snares",
-				new FileNoteSource(dir + "/PMMC_Snares_Lush.wav", WesternChromatic.C1),
+				new FileNoteSource(resolveSample(dir, "PMMC_Snares_Lush.wav", 180, true), WesternChromatic.C1),
 				1, 9, false);
-		snares.getSources().add(new FileNoteSource(dir + "/PMMC_Snares_Pop_Vibe.wav", WesternChromatic.C1));
-		snares.getSources().add(new FileNoteSource(dir + "/PMMC_Snares_Tiger.wav", WesternChromatic.C1));
-		snares.getSources().add(new FileNoteSource(dir + "/PMMC_Snares_Tight.wav", WesternChromatic.C1));
+		snares.getSources().add(new FileNoteSource(resolveSample(dir, "PMMC_Snares_Pop_Vibe.wav", 220, true), WesternChromatic.C1));
+		snares.getSources().add(new FileNoteSource(resolveSample(dir, "PMMC_Snares_Tiger.wav", 260, true), WesternChromatic.C1));
+		snares.getSources().add(new FileNoteSource(resolveSample(dir, "PMMC_Snares_Tight.wav", 320, true), WesternChromatic.C1));
 
 		NoteAudioChoice bass = NoteAudioChoice.fromSource(
 				"Bass",
-				new FileNoteSource(dir + "/DX Punch S612 C0.wav", WesternChromatic.A0),
+				new FileNoteSource(resolveSample(dir, "DX Punch S612 C0.wav", 27.5, false), WesternChromatic.A0),
 				2, 9, true);
-		bass.getSources().add(new FileNoteSource(dir + "/DX Punch S612 C1.wav", WesternChromatic.C1));
+		bass.getSources().add(new FileNoteSource(resolveSample(dir, "DX Punch S612 C1.wav", 32.7, false), WesternChromatic.C1));
 
 		NoteAudioChoice harmony = NoteAudioChoice.fromSource(
 				"Harmony",
-				new FileNoteSource(dir + "/Synth Guitar S612 C0.wav", WesternChromatic.A0),
+				new FileNoteSource(resolveSample(dir, "Synth Guitar S612 C0.wav", 27.5, false), WesternChromatic.A0),
 				3, 9, true);
-		harmony.getSources().add(new FileNoteSource(dir + "/Synth Guitar S612 C1.wav", WesternChromatic.C1));
-		harmony.getSources().add(new FileNoteSource(dir + "/Synth Guitar S612 C2.wav", WesternChromatic.C2));
-		harmony.getSources().add(new FileNoteSource(dir + "/Synth Guitar S612 C3.wav", WesternChromatic.C3));
+		harmony.getSources().add(new FileNoteSource(resolveSample(dir, "Synth Guitar S612 C1.wav", 32.7, false), WesternChromatic.C1));
+		harmony.getSources().add(new FileNoteSource(resolveSample(dir, "Synth Guitar S612 C2.wav", 65.4, false), WesternChromatic.C2));
+		harmony.getSources().add(new FileNoteSource(resolveSample(dir, "Synth Guitar S612 C3.wav", 130.8, false), WesternChromatic.C3));
 
 		NoteAudioChoice lead = NoteAudioChoice.fromSource(
 				"Lead",
-				new FileNoteSource(dir + "/DX Punch S612 C2.wav", WesternChromatic.C2),
+				new FileNoteSource(resolveSample(dir, "DX Punch S612 C2.wav", 65.4, false), WesternChromatic.C2),
 				4, 9, true);
-		lead.getSources().add(new FileNoteSource(dir + "/DX Punch S612 C3.wav", WesternChromatic.C3));
-		lead.getSources().add(new FileNoteSource(dir + "/DX Punch S612 C4.wav", WesternChromatic.C4));
-		lead.getSources().add(new FileNoteSource(dir + "/DX Punch S612 C5.wav", WesternChromatic.C5));
+		lead.getSources().add(new FileNoteSource(resolveSample(dir, "DX Punch S612 C3.wav", 130.8, false), WesternChromatic.C3));
+		lead.getSources().add(new FileNoteSource(resolveSample(dir, "DX Punch S612 C4.wav", 261.6, false), WesternChromatic.C4));
+		lead.getSources().add(new FileNoteSource(resolveSample(dir, "DX Punch S612 C5.wav", 523.3, false), WesternChromatic.C5));
 
 		NoteAudioChoice accents = NoteAudioChoice.fromSource(
 				"Accents",
-				new FileNoteSource(dir + "/Snare Eclipse 1.wav", WesternChromatic.C1),
+				new FileNoteSource(resolveSample(dir, "Snare Eclipse 1.wav", 350, true), WesternChromatic.C1),
 				5, 9, false);
-		accents.getSources().add(new FileNoteSource(dir + "/Snare Eclipse 2.wav", WesternChromatic.C1));
-		accents.getSources().add(new FileNoteSource(dir + "/Snare TripTrap 5.wav", WesternChromatic.C1));
+		accents.getSources().add(new FileNoteSource(resolveSample(dir, "Snare Eclipse 2.wav", 400, true), WesternChromatic.C1));
+		accents.getSources().add(new FileNoteSource(resolveSample(dir, "Snare TripTrap 5.wav", 280, true), WesternChromatic.C1));
 
 		scene.getPatternManager().getChoices().addAll(
 				List.of(percs, snares, bass, harmony, lead, accents));
+	}
+
+	/**
+	 * Resolves a sample file path, falling back to a synthetic WAV if the
+	 * file does not exist on disk. The fallback is generated via
+	 * {@link AudioTestFeatures#getNamedTestWavFile} and cached by name
+	 * for the lifetime of the JVM.
+	 *
+	 * @param dir        base directory for real samples (may be {@code null})
+	 * @param filename   sample file name (e.g. "Perc TAT 1.wav")
+	 * @param frequency  frequency hint for synthetic fallback generation
+	 * @param percussive whether the fallback should be percussive or melodic
+	 * @return absolute path to either the real or synthetic WAV file
+	 */
+	private String resolveSample(String dir, String filename,
+								 double frequency, boolean percussive) {
+		if (dir != null) {
+			File real = new File(dir, filename);
+			if (real.exists()) {
+				return real.getAbsolutePath();
+			}
+		}
+
+		return getNamedTestWavPath(filename, frequency, 2.0, percussive);
 	}
 
 	/**

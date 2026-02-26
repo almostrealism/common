@@ -33,7 +33,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.*;
-import static org.junit.Assume.assumeTrue;
 
 /**
  * Tests for buffer consolidation and argument count reduction in
@@ -398,8 +397,6 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 	}
 
 	private File requireSamplesDir() {
-		File dir = new File(SAMPLES_PATH);
-		assumeTrue("Samples directory not found: " + dir.getAbsolutePath(), dir.exists());
-		return dir;
+		return getSamplesDir();
 	}
 }
