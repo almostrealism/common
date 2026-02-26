@@ -32,6 +32,7 @@ import static org.junit.Assert.*;
  */
 public class OperationProvenanceTests extends TestSuiteBase {
 
+	/** Verifies that {@link OperationMetadata#withProvenance} produces the "parent ==> child" pattern. */
 	@Test(timeout = 30000)
 	public void testMetadataWithProvenance() {
 		OperationMetadata original = new OperationMetadata("add", "add values");
@@ -41,6 +42,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertEquals("add", withProv.getDisplayName());
 	}
 
+	/** Verifies that provenance falls back to displayName when shortDescription is null. */
 	@Test(timeout = 30000)
 	public void testMetadataWithProvenanceNoShortDescription() {
 		OperationMetadata original = new OperationMetadata("multiply", null);
@@ -50,6 +52,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertEquals("multiply", withProv.getDisplayName());
 	}
 
+	/** Verifies that chained provenance produces "outer ==> inner ==> leaf" chains. */
 	@Test(timeout = 30000)
 	public void testNestedProvenanceChain() {
 		OperationMetadata original = new OperationMetadata("add", null);
@@ -59,6 +62,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertEquals("outer ==> inner ==> add", level2.getShortDescription());
 	}
 
+	/** Verifies that {@link OperationList#flatten()} propagates provenance from parent descriptions. */
 	@Test(timeout = 30000)
 	public void testFlattenPreservesProvenance() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -89,6 +93,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertEquals("layer gradient ==> inner add", metadata.getShortDescription());
 	}
 
+	/** Verifies that sublists with ComputeRequirements are not unwrapped during flatten. */
 	@Test(timeout = 30000)
 	public void testFlattenWithComputeRequirementsPreservesStructure() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -113,6 +118,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertTrue("Should remain as OperationList", flat.get(0) instanceof OperationList);
 	}
 
+	/** Verifies that no provenance is added when the parent OperationList has no description. */
 	@Test(timeout = 30000)
 	public void testFlattenNoDescriptionNoProvenance() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -141,6 +147,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		assertEquals("original desc", metadata.getShortDescription());
 	}
 
+	/** Verifies that deeply nested OperationLists produce correct provenance chains after flatten. */
 	@Test(timeout = 30000)
 	public void testDeepNestedFlatten() {
 		PackedCollection a = new PackedCollection(shape(10));

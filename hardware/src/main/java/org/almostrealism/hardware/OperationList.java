@@ -853,10 +853,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		if (op instanceof OperationInfo) {
 			OperationMetadata metadata = ((OperationInfo) op).getMetadata();
 			if (metadata != null) {
-				String child = metadata.getShortDescription() != null
-						? metadata.getShortDescription()
-						: metadata.getDisplayName();
-				metadata.setShortDescription(provenance + " ==> " + child);
+				metadata.applyProvenance(provenance);
 			}
 		}
 	}

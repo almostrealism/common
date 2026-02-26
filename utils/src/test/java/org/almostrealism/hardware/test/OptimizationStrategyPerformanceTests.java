@@ -558,30 +558,4 @@ public class OptimizationStrategyPerformanceTests extends TestSuiteBase {
 		return names[minIndex] + " (" + String.format("%.2f", minCompile) + " ms)";
 	}
 
-	/**
-	 * Holds timing measurements for a single operation.
-	 */
-	private static class TimingResult {
-		final long buildTimeNs;
-		final long optimizeTimeNs;
-		final long compileTimeNs;
-		final long runTimeNs;
-		final OperationProfile profile;
-
-		TimingResult(long build, long optimize, long compile, long run, OperationProfile profile) {
-			this.buildTimeNs = build;
-			this.optimizeTimeNs = optimize;
-			this.compileTimeNs = compile;
-			this.runTimeNs = run;
-			this.profile = profile;
-		}
-
-		double buildTimeMs() { return buildTimeNs / 1_000_000.0; }
-		double optimizeTimeMs() { return optimizeTimeNs / 1_000_000.0; }
-		double compileTimeMs() { return compileTimeNs / 1_000_000.0; }
-		double runTimeMs() { return runTimeNs / 1_000_000.0; }
-		double totalTimeMs() {
-			return buildTimeMs() + optimizeTimeMs() + compileTimeMs() + runTimeMs();
-		}
-	}
 }

@@ -28,6 +28,7 @@ import org.almostrealism.ml.audio.LoRADiffusionTransformer;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -71,6 +72,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 	 * <p>This is the smallest attention configuration that exercises the full
 	 * attention computation: Q@K^T, softmax, Attn@V.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testMinimalAttention() throws IOException {
 		Files.createDirectories(RESULTS_DIR);
@@ -108,6 +110,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 	 *   <li>seqLen=8, heads=2, headSize=32 (dim=64)</li>
 	 * </ul></p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testAttentionGradientScaling() throws IOException {
 		Files.createDirectories(RESULTS_DIR);
@@ -164,6 +167,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 	 * <p>The full DiffusionTransformer combines self-attention + LoRA + FFN + residuals.
 	 * This test adds FFN to the attention block to see if that's the trigger.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testTransformerBlockGradient() throws IOException {
 		Files.createDirectories(RESULTS_DIR);
@@ -198,6 +202,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 	 * <p>LoRA wraps projections with low-rank adapter matrices A and B, which adds
 	 * more trainable parameters and potentially more complex gradient expressions.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testLoRATransformerBlockGradient() throws IOException {
 		Files.createDirectories(RESULTS_DIR);
@@ -487,6 +492,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 	 * <p>Architecture: RMSNorm - Attention - RMSNorm - FFN (following standard
 	 * pre-norm transformer architecture)</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testNormTransformerBlockGradient() throws IOException {
 		Files.createDirectories(RESULTS_DIR);
@@ -642,6 +648,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 	 * increases the depth of the computation graph and could compound gradient
 	 * expression complexity.</p>
 	 */
+	@TestDepth(2)
 	@Test(timeout = 600000)
 	public void testStackedTransformerLayersGradient() throws IOException {
 		Files.createDirectories(RESULTS_DIR);
@@ -742,6 +749,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 	 * gradient paths when combined via add/concat operations, potentially
 	 * triggering the expression tree explosion.</p>
 	 */
+	@TestDepth(2)
 	@Test(timeout = 600000)
 	public void testMultiInputBranchGradient() throws IOException {
 		Files.createDirectories(RESULTS_DIR);
@@ -892,6 +900,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 	 * <p>This directly uses the LoRADiffusionTransformer class to replicate
 	 * the exact setup from AggressiveFineTuningTest.testProfiledFineTuning().</p>
 	 */
+	@TestDepth(2)
 	@Test(timeout = 600000)
 	public void testLoRADiffusionTransformerGradient() throws IOException {
 		Files.createDirectories(RESULTS_DIR);
@@ -977,6 +986,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 	 * <p>This should reproduce the problematic expressionCacheMatch patterns
 	 * in an isolated context.</p>
 	 */
+	@TestDepth(2)
 	@Test(timeout = 600000)
 	public void testAttentionGradientEmbed64() throws IOException {
 		Files.createDirectories(RESULTS_DIR);

@@ -145,12 +145,7 @@ public class ConcatProjectionComputation extends TraversableExpressionComputatio
 
 				Expression<?> expectedTargetIdx = localTargetShape.index(expectedTargetPos);
 
-				Expression<?> scaleExpr;
-				if (localScales[seg] >= 0) {
-					scaleExpr = new IntegerConstant((int) localScales[seg]).toDouble();
-				} else {
-					scaleExpr = new IntegerConstant((int) localScales[seg]).toDouble();
-				}
+				Expression<?> scaleExpr = new IntegerConstant((int) localScales[seg]).toDouble();
 
 				Expression<?> value = Conditional.direct(
 						targetIdx.eq(expectedTargetIdx),

@@ -28,6 +28,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.optimize.MeanSquaredError;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -61,6 +62,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: 2x2 matrix multiply</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testProductDelta2x2() throws IOException {
 		runProductDeltaTest("product_delta_2x2", 2, 2, 2);
@@ -71,6 +73,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: 4x4 matrix multiply</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testProductDelta4x4() throws IOException {
 		runProductDeltaTest("product_delta_4x4", 4, 4, 4);
@@ -81,6 +84,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: 8x8 matrix multiply</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testProductDelta8x8() throws IOException {
 		runProductDeltaTest("product_delta_8x8", 8, 8, 8);
@@ -91,20 +95,22 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Configuration: 16x16 matrix multiply</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testProductDelta16x16() throws IOException {
 		runProductDeltaTest("product_delta_16x16", 16, 16, 16);
 	}
 
 	/**
-	 * Tests matrix multiply with embed=32.
+	 * Tests matrix multiply with embed=12.
 	 *
 	 * <p>Configuration: 12x12 matrix multiply (reduced from 32x32 to stay
 	 * within CI timeout constraints; 2D matrix backward scales as O(n^4)
 	 * in Jacobian size).</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
-	public void testProductDelta32x32() throws IOException {
+	public void testProductDelta12x12() throws IOException {
 		runProductDeltaTest("product_delta_12x12", 12, 12, 12);
 	}
 
@@ -114,8 +120,9 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * <p>Configuration: 14x14 matrix multiply (reduced from 64x64 to stay
 	 * within CI timeout constraints).</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
-	public void testProductDelta64x64() throws IOException {
+	public void testProductDelta14x14() throws IOException {
 		runProductDeltaTest("product_delta_14x14", 14, 14, 14);
 	}
 
@@ -126,6 +133,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * than a single multiply. Reduced from 16x16 to 10x10 because 2D matrix
 	 * chains are expensive during backward pass compilation.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testChainedProductDelta() throws IOException {
 		runChainedProductTest("chained_product_delta", 10, 10, 10);
@@ -137,6 +145,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * <p>Configuration: (batch=1, seq=2, dim=16) x (16, 16) - mimics Q projection.
 	 * Reduced from dim=64 for CI timeout.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testProductDeltaProjection() throws IOException {
 		runProjectionDeltaTest("product_delta_projection", 1, 2, 16, 16);
@@ -147,6 +156,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Reduced from dim=64 for CI timeout.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testDenseLayerDelta() throws IOException {
 		runDenseLayerTest("dense_layer_delta", 1, 2, 16, 16);
@@ -157,6 +167,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Reduced from dim=64 to dim=16 for CI timeout.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testStackedDenseLayersDelta() throws IOException {
 		runStackedDenseLayersTest("stacked_dense_delta", 1, 2, 16, 16);
@@ -169,6 +180,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Reduced from dim=64 to dim=16 and 5 to 3 iterations for CI timeout.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testRepeatedBackwardPasses() throws IOException {
 		runRepeatedBackwardTest("repeated_backward", 1, 2, 16, 16, 3);
@@ -181,6 +193,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Reduced from dim=64 to dim=16 for CI timeout.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testWithLossFunction() throws IOException {
 		runLossFunctionTest("with_loss_function", 1, 2, 16, 16, 3);
@@ -194,6 +207,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * <p>Reduced from (64,64,8) to (16,16,3) layers to stay within CI timeout
 	 * constraints; multi-layer backward pass is very slow.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testDeepModelBackward() throws IOException {
 		runDeepModelTest("deep_model_backward", 1, 2, 16, 16, 3);
@@ -205,6 +219,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * <p>Reduced from (64,64,16) to (16,16,4) layers to stay within CI timeout
 	 * constraints.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testVeryDeepModelBackward() throws IOException {
 		runDeepModelTest("very_deep_model_backward", 1, 2, 16, 16, 4);
@@ -218,6 +233,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * <p>Reduced from (1,4,64,8) to (1,2,16,2) to stay within CI timeout;
 	 * multi-layer backward pass with attention patterns is very slow.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testAttentionLikeBackward() throws IOException {
 		runAttentionLikeTest("attention_like_backward", 1, 2, 16, 2);
@@ -229,6 +245,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * <p>Reduced from 4 blocks with dim=64 to 2 blocks with dim=16
 	 * to stay within CI timeout.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testMultiAttentionBackward() throws IOException {
 		runMultiAttentionTest("multi_attention_backward", 1, 2, 16, 2, 2);
@@ -240,6 +257,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Reduced from dim=64 to dim=16 to stay within CI timeout.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testSingleAttentionBackward() throws IOException {
 		runMultiAttentionTest("single_attention_backward", 1, 2, 16, 2, 1);
@@ -251,6 +269,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 *
 	 * <p>Reduced from dim=64 to dim=16 to stay within CI timeout.</p>
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testTwoAttentionBackward() throws IOException {
 		runMultiAttentionTest("two_attention_backward", 1, 2, 16, 2, 2);
@@ -261,6 +280,7 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	 * Based on analysis, we need to create expressions with EXACTLY depth=7 and nodes=27.
 	 * The pattern appears in matmul backward with specific dimension combinations.
 	 */
+	@TestDepth(1)
 	@Test(timeout = 600000)
 	public void testExpressionPatternHunting() throws IOException {
 		Files.createDirectories(RESULTS_DIR);

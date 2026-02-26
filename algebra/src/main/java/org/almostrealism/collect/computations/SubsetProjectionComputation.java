@@ -124,7 +124,6 @@ public class SubsetProjectionComputation extends TraversableExpressionComputatio
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		TraversalPolicy jacobianShape = getShape();
-		long outputSize = outputShape.getTotalSizeLong();
 		long inputSizeTotal = inputShape.getTotalSizeLong();
 
 		// Capture fields in local finals for the lambda
