@@ -17,6 +17,15 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
+/**
+ * Profiling test for Qwen3 model inference performance. Builds a reduced-config
+ * Qwen3 model with synthetic weights, runs warm-up and profiled forward passes,
+ * and saves an {@link OperationProfileNode} XML artifact for analysis with the
+ * profile analyzer tools.
+ *
+ * @see Qwen3
+ * @see Qwen3Config
+ */
 public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleFeatures {
 
 	private static final String RESULTS_DIR = "ml/results";
