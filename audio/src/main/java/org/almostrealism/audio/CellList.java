@@ -33,6 +33,7 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.graph.temporal.DefaultWaveCellData;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.time.TemporalList;
@@ -267,6 +268,7 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 
 	private List<PackedCollection> data;
 	private int tickSegmentSize;
+	private int tickLoopCount;
 	private Runnable tickPreAction;
 
 	/**
@@ -730,6 +732,25 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 	 */
 	public void setTickPreAction(Runnable action) { this.tickPreAction = action; }
 
+	/**
+	 * Sets the number of iterations for a compiled tick loop.
+	 *
+	 * <p>When set to a positive value, {@link #tick()} wraps all tick
+	 * operations in a {@link Loop} that executes the specified number of
+	 * iterations in a single compiled native function call. The returned
+	 * {@link Runnable} executes all iterations on its first invocation
+	 * and is a no-op on subsequent calls.</p>
+	 *
+	 * <p>This eliminates per-tick overhead (argument marshalling, thread
+	 * creation) that dominates when the tick function is called hundreds
+	 * of thousands of times from Java. Instead, one native invocation
+	 * performs all iterations with only for-loop increment overhead
+	 * between iterations.</p>
+	 *
+	 * @param count number of iterations, or zero to disable
+	 */
+	public void setTickLoopCount(int count) { this.tickLoopCount = count; }
+
 	@Override
 	public Supplier<Runnable> tick() {
 		if (tickPreAction != null) {
@@ -759,6 +780,21 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 		OperationList tick = new OperationList("CellList Tick");
 		rootPushes.forEach(tick::add);
 		tick.add(getAllTemporals().tick());
+
+		if (tickLoopCount > 0) {
+			Loop loop = new Loop(tick, tickLoopCount);
+			return () -> {
+				Runnable compiled = ((Supplier<Runnable>) loop).get();
+				boolean[] executed = {false};
+				return () -> {
+					if (!executed[0]) {
+						executed[0] = true;
+						compiled.run();
+					}
+				};
+			};
+		}
+
 		return tick;
 	}
 

@@ -61,7 +61,6 @@ import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.ShadableSurface;
-import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.jni.LlvmCommandProvider;
 import org.almostrealism.heredity.ProjectedChromosome;
@@ -350,7 +349,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 		// Consolidate gene values so all genes within each chromosome share a
 		// single contiguous PackedCollection.  This reduces the number of kernel
-		// arguments when the Loop scope is compiled for real-time rendering.
+		// arguments when the Loop scope is compiled for both offline and real-time.
 		genome.consolidateGeneValues();
 
 		this.generation = new GenerationManager(patterns, generation);
@@ -705,30 +704,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 		}
 
-		// For the offline path (waveCellFrame == null), create a single
-		// shared TimeCell so all WaveCells use external frame control
-		// instead of individual internal clocks.  Each internal clock
-		// adds looping modulo arithmetic and conditional logic to the
-		// compiled tick function; replacing N clocks with one shared
-		// simple-increment clock dramatically reduces code complexity
-		// and C compilation time.
-		//
-		// We also split the C compiler optimization between setup and
-		// tick phases.  -O0 is set now so the many small producers
-		// evaluated during setup (pattern rendering) compile instantly.
-		// Tick segmentation splits root pushes into batches of 4 that
-		// compile independently, and a pre-tick action switches to -O1
-		// before any tick compilation begins.  -O1 provides register
-		// allocation for acceptable per-iteration speed while avoiding
-		// the super-linear -O3 compilation time that a monolithic 14+
-		// cell function would cause.
-		TimeCell sharedClock = null;
-		if (waveCellFrame == null) {
-			sharedClock = new TimeCell();
-			waveCellFrame = sharedClock.frame();
-			LlvmCommandProvider.setMathOptLevel(LlvmCommandProvider.MathOptLevel.NONE);
-		}
-
 		// Destroy previous cell graph if getCells() is called again
 		if (activeCells != null) {
 			activeCells.destroy();
@@ -742,11 +717,27 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 						bufferSize, frameSupplier, setup, waveCellFrame));
 
 		cells.addSetup(() -> setup);
-		if (sharedClock != null) {
-			cells.addRequirement(sharedClock);
-			cells.setTickSegmentSize(4);
+		if (waveCellFrame == null) {
+			// Offline rendering processes every sample through the cell
+			// graph.  Calling tick.run() from Java for each of the
+			// ~176,400 samples incurs ProcessDetailsFactory overhead per
+			// invocation (argument marshalling, async evaluable creation,
+			// thread creation) that dominates runtime.  Wrapping all tick
+			// operations in a compiled Loop executes every iteration in a
+			// single native function call -- one ProcessDetailsFactory
+			// construction for the entire render instead of one per sample.
+			// The returned Runnable executes all iterations on its first
+			// call and is a no-op on subsequent calls.
+			//
+			// The Loop body is compiled at -O0 (NONE) because LLVM -O3
+			// optimization time is super-linear in argument count and
+			// prohibitively slow on aarch64 for the ~140 arguments in the
+			// cell graph.  -O0 compiles instantly; the per-iteration cost
+			// is low since effects are typically disabled for offline mode.
 			cells.setTickPreAction(() ->
-					LlvmCommandProvider.setMathOptLevel(LlvmCommandProvider.MathOptLevel.MODERATE));
+					LlvmCommandProvider.setMathOptLevel(
+							LlvmCommandProvider.MathOptLevel.NONE));
+			cells.setTickLoopCount(bufferSize);
 		}
 		activeCells = cells;
 		return cells.addRequirement(time::tick);
@@ -798,12 +789,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.MAIN, audioChannel),
 						bufferSize, frameSupplier, setup, waveCellFrame));
 
-		// Skip WET voicing cells when the MixdownManager will not use them.
-		// MixdownManager is the consumer of WET cell output -- when its
-		// enableEfx flag is false it never calls createEfx(), so WET cells
-		// would tick every frame with their output discarded.  Skipping
-		// them halves the cell count and dramatically reduces the number
-		// of kernel arguments in the compiled tick operation.
+		// Skip WET voicing cells when MixdownManager will not use them.
+		// When enableEfx is false, createEfx() is never called, so WET
+		// cells would tick every frame with their output discarded.
+		// Worse, MixdownManager.createCells still enters the wet-source
+		// branch (line 439) and creates efx/reverb CellList branches
+		// that are never consumed, adding cells and arguments to the
+		// compiled tick function.  Passing wet = null for both modes
+		// routes MixdownManager into its fast path (line 452) which
+		// skips all branching, dramatically reducing cell count and
+		// kernel argument count.
 		CellList wet;
 		if (!MixdownManager.enableEfx) {
 			wet = null;

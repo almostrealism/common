@@ -121,15 +121,17 @@ public interface PatternFeatures extends CodeFeatures {
 					}
 
 					// When a cache is available, evaluate the full note so future
-					// buffer ticks get a cache hit. Without a cache, use unbounded
-					// producers for compilation signature reuse across all notes.
+					// buffer ticks get a cache hit.  Use getProducer(-1) so all
+					// notes share the same compilation signature regardless of
+					// duration (frameCount <= 0 signals null offset in the factory).
+					// This avoids per-note compilation that would occur if each
+					// note's expectedFrameCount were used as a structural parameter.
 					if (cache != null) {
-						note.getOffsetArg().setMem(0, 0);
 						try {
 							PackedCollection[] fullResult = {null};
 							Heap.stage(() -> {
 								Producer<PackedCollection> fullProducer =
-										note.getProducer(note.getExpectedFrameCount());
+										note.getProducer(-1);
 								fullResult[0] =
 										traverse(1, fullProducer).get().evaluate();
 							});
