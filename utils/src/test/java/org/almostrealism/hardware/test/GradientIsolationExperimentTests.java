@@ -28,6 +28,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Test;
 
 /**
@@ -67,6 +68,16 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	private static final int SEQ_LEN = 16;
 	private static final int DIM = 32;
 	private static final int HALF_DIM = DIM / 2;
+
+	/**
+	 * Restores the default optimization strategy after each test to prevent
+	 * global state pollution that would affect other test classes running
+	 * in the same JVM (e.g., NormTests in the same CI test group).
+	 */
+	@After
+	public void restoreDefaultStrategy() {
+		ProcessContextBase.setDefaultOptimizationStrategy(new ParallelismTargetOptimization());
+	}
 
 	// =========================================================================
 	// Experiment 1: Baseline - Default Strategy

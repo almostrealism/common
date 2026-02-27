@@ -32,6 +32,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Test;
 
 /**
@@ -73,6 +74,16 @@ import org.junit.Test;
 public class OptimizationStrategyPerformanceTests extends TestSuiteBase {
 
 	private static final boolean VERBOSE = true;
+
+	/**
+	 * Restores the default optimization strategy after each test to prevent
+	 * global state pollution that would affect other test classes running
+	 * in the same JVM (e.g., NormTests in the same CI test group).
+	 */
+	@After
+	public void restoreDefaultStrategy() {
+		ProcessContextBase.setDefaultOptimizationStrategy(new ParallelismTargetOptimization());
+	}
 
 	// =========================================================================
 	// Deep Chain Tests - Demonstrate TraversableDepthTargetOptimization
