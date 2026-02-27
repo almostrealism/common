@@ -61,7 +61,9 @@ import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.jni.LlvmCommandProvider;
 import org.almostrealism.heredity.ProjectedChromosome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
@@ -693,16 +695,38 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		setup.add(() -> () -> patterns.setTuning(tuning));
 		setup.add(sections.setup());
 
-		// Only consolidate buffers for real-time mode (small buffer sizes).
-		// For offline mode (bufferSize == getAvailableSamples()), the consolidated
-		// allocation would be enormous (channelCount * 4 * bufferSize entries)
-		// and exhaust native memory before the effects pipeline can allocate
-		// delay line buffers. Consolidation is a kernel-argument optimization
-		// for the compiled Loop in runnerRealTime; offline mode does not compile
-		// a Loop, so consolidation provides no benefit.
+		// Consolidate render buffers so all PatternAudioBuffer outputs are
+		// delegates of a single PackedCollection.  The Loop scope's argument
+		// deduplication resolves delegates to their root, collapsing all
+		// render buffer arguments into one kernel argument.  This applies
+		// to both offline and real-time modes since both compile a Loop.
+		consolidateRenderBuffers(channels.size(), bufferSize);
 		if (bufferSize < getAvailableSamples()) {
-			consolidateRenderBuffers(channels.size(), bufferSize);
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
+		}
+
+		// For the offline path (waveCellFrame == null), create a single
+		// shared TimeCell so all WaveCells use external frame control
+		// instead of individual internal clocks.  Each internal clock
+		// adds looping modulo arithmetic and conditional logic to the
+		// compiled tick function; replacing N clocks with one shared
+		// simple-increment clock dramatically reduces code complexity
+		// and C compilation time.
+		//
+		// We also split the C compiler optimization between setup and
+		// tick phases.  -O0 is set now so the many small producers
+		// evaluated during setup (pattern rendering) compile instantly.
+		// Tick segmentation splits root pushes into batches of 4 that
+		// compile independently, and a pre-tick action switches to -O1
+		// before any tick compilation begins.  -O1 provides register
+		// allocation for acceptable per-iteration speed while avoiding
+		// the super-linear -O3 compilation time that a monolithic 14+
+		// cell function would cause.
+		TimeCell sharedClock = null;
+		if (waveCellFrame == null) {
+			sharedClock = new TimeCell();
+			waveCellFrame = sharedClock.frame();
+			LlvmCommandProvider.setMathOptLevel(LlvmCommandProvider.MathOptLevel.NONE);
 		}
 
 		// Destroy previous cell graph if getCells() is called again
@@ -718,6 +742,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 						bufferSize, frameSupplier, setup, waveCellFrame));
 
 		cells.addSetup(() -> setup);
+		if (sharedClock != null) {
+			cells.addRequirement(sharedClock);
+			cells.setTickSegmentSize(4);
+			cells.setTickPreAction(() ->
+					LlvmCommandProvider.setMathOptLevel(LlvmCommandProvider.MathOptLevel.MODERATE));
+		}
 		activeCells = cells;
 		return cells.addRequirement(time::tick);
 	}
@@ -768,13 +798,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.MAIN, audioChannel),
 						bufferSize, frameSupplier, setup, waveCellFrame));
 
-		// Skip WET voicing cells when effects are disabled at both the
-		// EfxManager and MixdownManager levels.  WET cells would tick
-		// every frame but their output is never used in the mixdown
-		// when enableEfx is false, so skipping them avoids useless work
-		// (halving the cell count for offline rendering).
+		// Skip WET voicing cells when the MixdownManager will not use them.
+		// MixdownManager is the consumer of WET cell output -- when its
+		// enableEfx flag is false it never calls createEfx(), so WET cells
+		// would tick every frame with their output discarded.  Skipping
+		// them halves the cell count and dramatically reduces the number
+		// of kernel arguments in the compiled tick operation.
 		CellList wet;
-		if (!EfxManager.enableEfx && !MixdownManager.enableEfx) {
+		if (!MixdownManager.enableEfx) {
 			wet = null;
 		} else {
 			wet = all(idx.length, i ->

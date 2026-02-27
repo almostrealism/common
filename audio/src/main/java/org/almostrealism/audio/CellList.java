@@ -266,6 +266,8 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 	private final List<Runnable> finals;
 
 	private List<PackedCollection> data;
+	private int tickSegmentSize;
+	private Runnable tickPreAction;
 
 	/**
 	 * Creates a new CellList with the specified parent CellLists.
@@ -701,10 +703,61 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 	 *
 	 * @return supplier providing the tick runnable
 	 */
+	/**
+	 * Sets the tick segment size for batched compilation.
+	 *
+	 * <p>When positive, the tick operation groups root pushes into
+	 * sub-{@link OperationList}s of at most this many entries. Each
+	 * sub-list compiles independently as a small native function,
+	 * avoiding the super-linear compilation time that large monolithic
+	 * functions cause at high optimization levels (e.g., gcc -O3).</p>
+	 *
+	 * <p>A value of zero (default) compiles all root pushes and
+	 * temporal ticks into a single native function.</p>
+	 *
+	 * @param size maximum root pushes per compiled segment, or zero to disable
+	 */
+	public void setTickSegmentSize(int size) { this.tickSegmentSize = size; }
+
+	/**
+	 * Sets an action to run before building the tick operation list.
+	 *
+	 * <p>This action runs when {@link #tick()} is called, before any
+	 * compilation occurs. It can be used to adjust global compilation
+	 * settings (e.g., optimization level) between setup and tick phases.</p>
+	 *
+	 * @param action the action to run before tick construction
+	 */
+	public void setTickPreAction(Runnable action) { this.tickPreAction = action; }
+
 	@Override
 	public Supplier<Runnable> tick() {
+		if (tickPreAction != null) {
+			tickPreAction.run();
+		}
+
+		List<Supplier<Runnable>> rootPushes = getAllRoots().stream()
+				.map(r -> r.push(c(0.0)))
+				.collect(Collectors.toList());
+
+		if (tickSegmentSize > 0 && rootPushes.size() > tickSegmentSize) {
+			OperationList tick = new OperationList("CellList Tick", false);
+
+			for (int i = 0; i < rootPushes.size(); i += tickSegmentSize) {
+				OperationList batch = new OperationList("tick batch " + (i / tickSegmentSize));
+				int end = Math.min(i + tickSegmentSize, rootPushes.size());
+				for (int j = i; j < end; j++) {
+					batch.add(rootPushes.get(j));
+				}
+				tick.add(batch);
+			}
+
+			tick.add(getAllTemporals().tick());
+			return tick;
+		}
+
 		OperationList tick = new OperationList("CellList Tick");
-		getAllRoots().stream().map(r -> r.push(c(0.0))).forEach(tick::add);
+		rootPushes.forEach(tick::add);
 		tick.add(getAllTemporals().tick());
 		return tick;
 	}
