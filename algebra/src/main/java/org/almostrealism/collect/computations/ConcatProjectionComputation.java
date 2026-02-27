@@ -23,6 +23,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 
@@ -145,7 +146,7 @@ public class ConcatProjectionComputation extends TraversableExpressionComputatio
 
 				Expression<?> expectedTargetIdx = localTargetShape.index(expectedTargetPos);
 
-				Expression<?> scaleExpr = new IntegerConstant((int) localScales[seg]).toDouble();
+				Expression<?> scaleExpr = new DoubleConstant(localScales[seg]);
 
 				Expression<?> value = Conditional.direct(
 						targetIdx.eq(expectedTargetIdx),
