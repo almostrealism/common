@@ -449,11 +449,13 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 
 			efx = branch[0];
 			reverb = branch[1];
-		} else if (!enableEfx && !reverbActive) {
-			// Fast path: no effects and no reverb - apply volume without
-			// branching.  branch() sets source receptors that push to ALL
-			// branch destinations every tick, so avoiding unnecessary
-			// branches eliminates wasted per-tick push operations.
+		} else if (!enableEfx) {
+			// Fast path: effects disabled -- skip efx and reverb branching.
+			// Both efx and reverb are only consumed by createEfx(), which
+			// is guarded by enableEfx.  branch() sets source receptors that
+			// push to ALL branch destinations every tick, so avoiding
+			// unnecessary branches eliminates wasted per-tick operations
+			// and reduces the compiled kernel argument count.
 			main = cells.map(fc(v));
 			efx = null;
 			reverb = null;

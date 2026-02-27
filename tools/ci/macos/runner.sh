@@ -200,11 +200,7 @@ echo "  Runner dir:   ${RUNNER_DIR}"
 echo "  Work dir:     ${RUNNER_WORKDIR}"
 echo "  Labels:       self-hosted, macos, ar-ci"
 if [ -n "${RUNNER_CPU_LIMIT:-}" ]; then
-    if command -v cpulimit >/dev/null 2>&1; then
-        echo "  CPU limit:    ${RUNNER_CPU_LIMIT} CPUs"
-    else
-        echo "  CPU limit:    ${RUNNER_CPU_LIMIT} CPUs (WARNING: cpulimit not installed, limit ignored)"
-    fi
+    echo "  CPU limit:    ${RUNNER_CPU_LIMIT} CPUs"
 fi
 echo ""
 
@@ -222,10 +218,14 @@ while ${RUNNING}; do
     # Run one job
     echo "Waiting for job..."
     cd "${RUNNER_DIR}"
-    if [ -n "${RUNNER_CPU_LIMIT:-}" ] && command -v cpulimit >/dev/null 2>&1; then
+    if [ -n "${RUNNER_CPU_LIMIT:-}" ]; then
         LIMIT_PCT=$(( RUNNER_CPU_LIMIT * 100 ))
         echo "Throttling job to ${RUNNER_CPU_LIMIT} CPUs (${LIMIT_PCT}%)"
-        cpulimit -l "${LIMIT_PCT}" --include-children -- ./run.sh || true
+        "${SCRIPT_DIR}/cpu-watcher.sh" $$ "${LIMIT_PCT}" &
+        WATCHER_PID=$!
+        ./run.sh || true
+        kill "${WATCHER_PID}" 2>/dev/null || true
+        wait "${WATCHER_PID}" 2>/dev/null || true
     else
         ./run.sh || true
     fi

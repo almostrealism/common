@@ -160,7 +160,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				element.getNoteAudio(details, automationLevel,
 						audioContext.getAudioSelection(),
 						context.getTimeForDuration(),
-						offsetArg, frameCount));
+						frameCount > 0 ? offsetArg : null, frameCount));
 		return note;
 	}
 

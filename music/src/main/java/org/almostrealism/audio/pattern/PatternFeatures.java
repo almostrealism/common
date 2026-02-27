@@ -94,8 +94,7 @@ public interface PatternFeatures extends CodeFeatures {
 
 		int endFrame = startFrame + frameCount;
 
-		Heap.stage(() ->
-			elements.stream()
+		elements.stream()
 				.map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
 				.flatMap(List::stream)
 				.forEach(note -> {
@@ -122,15 +121,17 @@ public interface PatternFeatures extends CodeFeatures {
 					}
 
 					// When a cache is available, evaluate the full note so future
-					// buffer ticks get a cache hit. Without a cache, evaluate only
-					// the overlap region for minimal work.
+					// buffer ticks get a cache hit.  Use getProducer(-1) so all
+					// notes share the same compilation signature regardless of
+					// duration (frameCount <= 0 signals null offset in the factory).
+					// This avoids per-note compilation that would occur if each
+					// note's expectedFrameCount were used as a structural parameter.
 					if (cache != null) {
-						note.getOffsetArg().setMem(0, 0);
 						try {
 							PackedCollection[] fullResult = {null};
 							Heap.stage(() -> {
 								Producer<PackedCollection> fullProducer =
-										note.getProducer(note.getExpectedFrameCount());
+										note.getProducer(-1);
 								fullResult[0] =
 										traverse(1, fullProducer).get().evaluate();
 							});
@@ -143,26 +144,20 @@ public interface PatternFeatures extends CodeFeatures {
 							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
 						}
 					} else {
-						// No cache: evaluate the full note and clip via sumToDestination.
-						// Using expectedFrameCount (when available) ensures that notes of
-						// the same type/duration share the same producer signature, enabling
-						// kernel compilation reuse. Using per-overlap-length producers would
-						// create a unique compilation for each note, which is prohibitively
-						// slow for offline rendering with hundreds of notes.
-						int evalFrameCount = note.getExpectedFrameCount();
-						if (evalFrameCount <= 0) {
-							evalFrameCount = endFrame - noteStart;
+						// No cache (offline rendering): use an unbounded producer
+						// (frameCount <= 0 signals null offset in the factory) so
+						// all notes share the same computation signature regardless
+						// of duration, enabling kernel compilation reuse.  The
+						// output is clipped to the target range by sumToDestination.
+						if (note.getExpectedFrameCount() <= 0
+								&& endFrame - noteStart <= 0) {
+							return;
 						}
 
-						if (evalFrameCount <= 0) return;
-
-						note.getOffsetArg().setMem(0, 0);
-
 						try {
-							int fc = evalFrameCount;
 							PackedCollection[] evalResult = {null};
 							Heap.stage(() -> {
-								Producer<PackedCollection> producer = note.getProducer(fc);
+								Producer<PackedCollection> producer = note.getProducer(-1);
 								evalResult[0] = traverse(1, producer).get().evaluate();
 							});
 							if (evalResult[0] != null) {
@@ -173,8 +168,7 @@ public interface PatternFeatures extends CodeFeatures {
 							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
 						}
 					}
-				})
-		);
+				});
 	}
 
 	/**

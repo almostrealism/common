@@ -162,7 +162,8 @@ public class EfxManager implements CellFeatures {
 	 */
 	public CellList apply(ChannelInfo channel, Producer<PackedCollection> audio, double totalDuration,
 						  OperationList setup, Producer<PackedCollection> frame) {
-		if (!enableEfx || !wetChannels.contains(channel.getPatternChannel())) {
+		if (!enableEfx || !MixdownManager.enableEfx
+				|| !wetChannels.contains(channel.getPatternChannel())) {
 			return createCells(audio, totalDuration, frame);
 		}
 
