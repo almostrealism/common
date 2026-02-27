@@ -753,6 +753,13 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 
 	@Override
 	public Supplier<Runnable> tick() {
+		if (tickSegmentSize <= 0 && tickLoopCount <= 0 && tickPreAction == null) {
+			OperationList tick = new OperationList("CellList Tick");
+			getAllRoots().stream().map(r -> r.push(c(0.0))).forEach(tick::add);
+			tick.add(getAllTemporals().tick());
+			return tick;
+		}
+
 		if (tickPreAction != null) {
 			tickPreAction.run();
 		}
