@@ -243,7 +243,8 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 				new CascadingOptimizationStrategy(
 						new TraversableDepthTargetOptimization(4),
 						new ParallelismTargetOptimization()
-				)
+				),
+				this::logResult
 		);
 		ProcessContextBase.setDefaultOptimizationStrategy(loggingStrategy);
 
@@ -722,7 +723,7 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	}
 
 	private void logResult(String message) {
-		System.out.println(message);
+		log(message);
 	}
 
 	private void logTiming(TimingResult result) {
@@ -742,9 +743,11 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	 */
 	private static class LoggingStrategyWrapper implements ProcessOptimizationStrategy {
 		private final ProcessOptimizationStrategy delegate;
+		private final java.util.function.Consumer<String> logger;
 
-		LoggingStrategyWrapper(ProcessOptimizationStrategy delegate) {
+		LoggingStrategyWrapper(ProcessOptimizationStrategy delegate, java.util.function.Consumer<String> logger) {
 			this.delegate = delegate;
+			this.logger = logger;
 		}
 
 		@Override
@@ -754,7 +757,6 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 				java.util.Collection<P> children,
 				java.util.function.Function<java.util.Collection<P>, java.util.stream.Stream<P>> childProcessor) {
 
-			// Log what we're seeing
 			String parentName = parent.getClass().getSimpleName();
 			int childCount = children.size();
 
@@ -766,7 +768,7 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 				}
 			}
 
-			System.out.println("[STRATEGY] " + parentName +
+			logger.accept("[STRATEGY] " + parentName +
 					" children=" + childCount +
 					" maxParallelism=" + maxParallelism +
 					" depth=" + ctx.getDepth());

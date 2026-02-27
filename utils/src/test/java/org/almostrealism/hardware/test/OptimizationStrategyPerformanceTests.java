@@ -524,7 +524,7 @@ public class OptimizationStrategyPerformanceTests extends TestSuiteBase {
 
 	private void logResult(String message) {
 		if (VERBOSE) {
-			System.out.println(message);
+			log(message);
 		}
 	}
 

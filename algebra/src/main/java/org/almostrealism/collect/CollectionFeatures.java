@@ -49,7 +49,6 @@ import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionComparisonComputation;
-
 import org.almostrealism.collect.computations.CollectionConjunctionComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
 import org.almostrealism.collect.computations.CollectionExponentialComputation;
@@ -73,7 +72,6 @@ import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionPad;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
-
 import org.almostrealism.collect.computations.CollectionSubsetComputation;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;

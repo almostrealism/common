@@ -39,6 +39,12 @@ import java.util.List;
  */
 public class CollectionCosineComputation extends UnaryCollectionComputation {
 
+	/**
+	 * Creates a cosine computation for the given input with the specified output shape.
+	 *
+	 * @param shape the output shape
+	 * @param input the input producer to apply cosine to
+	 */
 	public CollectionCosineComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
 		super("cos", shape, Cosine::of, input);
 	}

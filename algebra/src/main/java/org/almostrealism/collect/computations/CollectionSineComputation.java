@@ -39,6 +39,12 @@ import java.util.List;
  */
 public class CollectionSineComputation extends UnaryCollectionComputation {
 
+	/**
+	 * Creates a sine computation for the given input with the specified output shape.
+	 *
+	 * @param shape the output shape
+	 * @param input the input producer to apply sine to
+	 */
 	public CollectionSineComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
 		super("sin", shape, Sine::of, input);
 	}

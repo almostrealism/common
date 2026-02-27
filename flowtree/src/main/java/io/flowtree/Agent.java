@@ -19,7 +19,19 @@ package io.flowtree;
 import java.io.IOException;
 import java.util.Properties;
 
+/**
+ * Entry point for a standalone FlowTree agent node.
+ *
+ * <p>Starts a {@link Server} with default configuration suitable
+ * for a single-job agent participating in a peer network.</p>
+ */
 public class Agent {
+    /**
+     * Launches the agent server with default properties.
+     *
+     * @param args command-line arguments (unused)
+     * @throws IOException if the server fails to start
+     */
     public static void main(String[] args) throws IOException {
         Properties p = new Properties();
         p.setProperty("server.port", "-1");
