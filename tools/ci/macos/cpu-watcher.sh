@@ -22,18 +22,20 @@ set -euo pipefail
 #   cpu-limit-percent  CPU percentage cap passed to cpulimit -l
 #
 # The watcher exits when the parent PID is no longer running.
+# Compatible with macOS bash 3.2 (no associative arrays).
 
 PARENT_PID="${1:?Usage: cpu-watcher.sh <parent-pid> <cpu-limit-percent>}"
 LIMIT_PCT="${2:?Usage: cpu-watcher.sh <parent-pid> <cpu-limit-percent>}"
 POLL_INTERVAL=2
 
-# Track java PIDs that already have a cpulimit attached
-declare -A TRACKED_PIDS
+# Track java PIDs and their cpulimit PIDs as parallel lists.
+# JAVA_PIDS[i] is throttled by LIMIT_PIDS[i].
+JAVA_PIDS=()
+LIMIT_PIDS=()
 
 # Clean up cpulimit children on exit
 cleanup() {
-    for pid in "${!TRACKED_PIDS[@]}"; do
-        cpulimit_pid="${TRACKED_PIDS[$pid]}"
+    for cpulimit_pid in "${LIMIT_PIDS[@]}"; do
         if kill -0 "$cpulimit_pid" 2>/dev/null; then
             kill "$cpulimit_pid" 2>/dev/null || true
         fi
@@ -42,27 +44,41 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT EXIT
 
+# Check if a java PID is already tracked with a live cpulimit.
+# Returns 0 (true) if tracked and cpulimit is alive, 1 otherwise.
+is_tracked() {
+    local target_pid="$1"
+    local i=0
+    while [ $i -lt ${#JAVA_PIDS[@]} ]; do
+        if [ "${JAVA_PIDS[$i]}" = "$target_pid" ]; then
+            if kill -0 "${LIMIT_PIDS[$i]}" 2>/dev/null; then
+                return 0
+            fi
+            # cpulimit died — remove stale entry
+            unset "JAVA_PIDS[$i]"
+            unset "LIMIT_PIDS[$i]"
+            JAVA_PIDS=("${JAVA_PIDS[@]}")
+            LIMIT_PIDS=("${LIMIT_PIDS[@]}")
+            return 1
+        fi
+        i=$((i + 1))
+    done
+    return 1
+}
+
 while true; do
     # Exit if the parent process is gone
     if ! kill -0 "${PARENT_PID}" 2>/dev/null; then
         break
     fi
 
-    # Find java processes descended from the parent PID.
-    # pgrep -P is not recursive, so use ps + awk to find all java
-    # commands whose PPID chain leads back to PARENT_PID.
-    # A simpler approach: find all java PIDs, then check if PARENT_PID
-    # is an ancestor via the process group or by walking the tree.
+    # Find java processes in the same process group as the parent
     while IFS= read -r java_pid; do
         [ -z "$java_pid" ] && continue
 
-        # Skip if already tracked and cpulimit is still running
-        if [[ -n "${TRACKED_PIDS[$java_pid]+x}" ]]; then
-            if kill -0 "${TRACKED_PIDS[$java_pid]}" 2>/dev/null; then
-                continue
-            fi
-            # cpulimit died, re-attach if java is still alive
-            unset "TRACKED_PIDS[$java_pid]"
+        # Skip if already tracked with a live cpulimit
+        if is_tracked "$java_pid"; then
+            continue
         fi
 
         # Verify the java process is still alive before attaching
@@ -71,7 +87,8 @@ while true; do
         fi
 
         cpulimit -p "$java_pid" -l "$LIMIT_PCT" -z &>/dev/null &
-        TRACKED_PIDS[$java_pid]=$!
+        JAVA_PIDS+=("$java_pid")
+        LIMIT_PIDS+=("$!")
         echo "cpu-watcher: attached cpulimit (${LIMIT_PCT}%) to java PID ${java_pid}"
     done < <(pgrep -g "$(ps -o pgid= -p "${PARENT_PID}" | tr -d ' ')" -x java 2>/dev/null || true)
 
