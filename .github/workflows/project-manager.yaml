@@ -88,6 +88,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.new_branch.outputs.branch }}
           BASE_BRANCH: master
+          DESCRIPTION: "Plan new work branch"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 

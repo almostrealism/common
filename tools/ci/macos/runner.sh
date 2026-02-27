@@ -225,7 +225,11 @@ while ${RUNNING}; do
     if [ -n "${RUNNER_CPU_LIMIT:-}" ] && command -v cpulimit >/dev/null 2>&1; then
         LIMIT_PCT=$(( RUNNER_CPU_LIMIT * 100 ))
         echo "Throttling job to ${RUNNER_CPU_LIMIT} CPUs (${LIMIT_PCT}%)"
-        cpulimit -l "${LIMIT_PCT}" --include-children -- ./run.sh || true
+        "${SCRIPT_DIR}/cpu-watcher.sh" $$ "${LIMIT_PCT}" &
+        WATCHER_PID=$!
+        ./run.sh || true
+        kill "${WATCHER_PID}" 2>/dev/null || true
+        wait "${WATCHER_PID}" 2>/dev/null || true
     else
         ./run.sh || true
     fi

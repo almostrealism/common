@@ -137,6 +137,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ github.ref_name }}
           BASE_BRANCH: master
+          DESCRIPTION: "Verify completion"
         run: |
           chmod +x ./tools/ci/submit-agent-job.sh
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt

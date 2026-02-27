@@ -80,15 +80,17 @@ def slack_send_message(text: str) -> dict:
 
 
 @mcp.tool()
-def slack_get_stats(period: str = "weekly") -> dict:
+def slack_get_stats(period: str = "weekly", scope: str = "workstream") -> dict:
     """
-    Get job timing statistics for the current workstream.
+    Get job timing statistics.
 
     Returns aggregated stats for this week and last week, including
     job counts, total time, cost, and turns.
 
     Args:
         period: The reporting period (default: "weekly").
+        scope: "workstream" for current workstream only (default),
+               "global" for all workstreams.
 
     Returns:
         Dictionary with thisWeek and lastWeek stats, or error details.
@@ -109,7 +111,11 @@ def slack_get_stats(period: str = "weekly") -> dict:
     except (IndexError, ValueError):
         return {"ok": False, "error": f"Cannot parse workstream URL: {WORKSTREAM_URL}"}
 
-    query = urlencode({"workstream": workstream_id, "period": period})
+    params = {"period": period}
+    if scope != "global":
+        params["workstream"] = workstream_id
+
+    query = urlencode(params)
     url = f"{base_url}/api/stats?{query}"
     req = Request(url, headers={"Accept": "application/json"})
 

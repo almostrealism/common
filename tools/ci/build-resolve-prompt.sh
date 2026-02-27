@@ -116,17 +116,22 @@ PROMPT_HEADER
 # The CI command section tells the agent exactly how to reproduce.
 FAILING_MODULES=""
 while IFS= read -r line; do
-    # Each line is "- ClassName#methodName"; extract the class name
-    class_name=$(echo "$line" | sed 's/^- //' | sed 's/#.*//')
-    # Resolve to a source file
-    src_file=$(find . -path "*/src/test/java*/${class_name##*.}.java" -print -quit 2>/dev/null)
-    if [ -n "$src_file" ]; then
-        # Extract the module from the path (first directory component under ./)
-        module=$(echo "$src_file" | sed 's|^\./||' | cut -d/ -f1)
-        if ! echo "$FAILING_MODULES" | grep -qw "$module"; then
-            FAILING_MODULES="${FAILING_MODULES:+$FAILING_MODULES }$module"
-        fi
-    fi
+    # Only process lines that start with "- " (test name lines).
+    # Skip exception details, stack traces, and blank lines.
+    case "$line" in
+        "- "*)
+            class_name=$(echo "$line" | sed 's/^- //' | sed 's/#.*//')
+            # Resolve to a source file
+            src_file=$(find . -path "*/src/test/java*/${class_name##*.}.java" -print -quit 2>/dev/null)
+            if [ -n "$src_file" ]; then
+                # Extract the module from the path (first directory component under ./)
+                module=$(echo "$src_file" | sed 's|^\./||' | cut -d/ -f1)
+                if ! echo "$FAILING_MODULES" | grep -qw "$module"; then
+                    FAILING_MODULES="${FAILING_MODULES:+$FAILING_MODULES }$module"
+                fi
+            fi
+            ;;
+    esac
 done < "$FAILURES_FILE"
 
 # Build CI reproduction commands for each failing module
@@ -156,7 +161,10 @@ fi
 cat >> "$OUTPUT_FILE" <<EOF
 ## Failing tests
 
-The following ${FAILURE_COUNT} test failure(s) were discovered on branch "${BRANCH}":
+The following ${FAILURE_COUNT} test failure(s) were discovered on branch "${BRANCH}".
+Each failure includes the exception type, message, and a truncated stack trace from the
+Surefire XML report. **Use these details to understand what went wrong** — the exception
+type and message tell you exactly what assertion or error occurred.
 
 ${FAILURE_LIST}
 
@@ -174,18 +182,24 @@ the entire suite runs (due to shared state, test ordering, etc.).
 
 ## Investigation steps
 
-1. **See what this branch changed:**
+1. **Read the exception details above.** The exception type and message tell you
+   exactly what failed. An \`AssertionError\` with \`expected 5 but was 3\` is a
+   completely different problem from a \`NullPointerException\` in production code.
+   Start your investigation from the specific error, not from guessing.
+
+2. **See what this branch changed:**
        git diff --stat origin/master...HEAD
    This is the complete set of changes that could have caused the failures.
 
-2. **Read the failing test(s).** Understand what they assert.
+3. **Read the failing test(s).** Understand what they assert.
 
-3. **Trace the failure to your branch's changes.** Find what production code the
-   test calls, then check whether any of the branch changes affected that code path.
+4. **Trace the failure to your branch's changes.** Use the stack trace to identify
+   which production code threw the exception, then check whether any of the branch
+   changes affected that code path.
 
-4. **Fix the production code.** Make the minimal change needed.
+5. **Fix the production code.** Make the minimal change needed.
 
-5. **Verify by running the full CI command above.** Not individual tests -- the full
+6. **Verify by running the full CI command above.** Not individual tests -- the full
    module suite. If it passes, your fix works.
 
 **Remember: the test is correct. Your branch broke it. Fix the production code.**
