@@ -224,6 +224,13 @@ public class McpConfigBuilder implements ConsoleFeatures {
             if ("ar-github".equals(serverName) && githubOrg != null && !githubOrg.isEmpty()) {
                 mergedEnv.put("AR_GITHUB_ORG", githubOrg);
             }
+            if ("ar-slack".equals(serverName) && workstreamUrl != null && !workstreamUrl.isEmpty()) {
+                String resolvedWsUrl = workstreamUrl;
+                if (rootHost != null && !rootHost.isEmpty()) {
+                    resolvedWsUrl = resolvedWsUrl.replace("0.0.0.0", rootHost);
+                }
+                mergedEnv.put("AR_WORKSTREAM_URL", resolvedWsUrl);
+            }
             if (!mergedEnv.isEmpty()) {
                 ObjectNode envNode = serverNode.putObject("env");
                 for (Map.Entry<String, String> entry : mergedEnv.entrySet()) {
@@ -274,11 +281,18 @@ public class McpConfigBuilder implements ConsoleFeatures {
                 ArrayNode argsArray = slackNode.putArray("args");
                 argsArray.add("tools/mcp/slack/server.py");
 
-                if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
-                    ObjectNode envNode = slackNode.putObject("env");
-                    for (Map.Entry<String, String> entry : workstreamEnv.entrySet()) {
-                        envNode.put(entry.getKey(), entry.getValue());
-                    }
+                Map<String, String> slackEnv = new LinkedHashMap<>();
+                if (workstreamEnv != null) {
+                    slackEnv.putAll(workstreamEnv);
+                }
+                String resolvedWsUrl = workstreamUrl;
+                if (rootHost != null && !rootHost.isEmpty()) {
+                    resolvedWsUrl = resolvedWsUrl.replace("0.0.0.0", rootHost);
+                }
+                slackEnv.put("AR_WORKSTREAM_URL", resolvedWsUrl);
+                ObjectNode envNode = slackNode.putObject("env");
+                for (Map.Entry<String, String> entry : slackEnv.entrySet()) {
+                    envNode.put(entry.getKey(), entry.getValue());
                 }
             }
         }
