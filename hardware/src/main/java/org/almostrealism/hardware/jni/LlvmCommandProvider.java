@@ -240,6 +240,18 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 	 */
 	public MathOptLevel getMathOptLevel() { return optLevel; }
 
+	/**
+	 * Sets the math optimization level for subsequent compilations.
+	 *
+	 * <p>This allows production code to choose a lower optimization level
+	 * (e.g., {@link MathOptLevel#NONE}) when compilation speed matters more
+	 * than generated code speed, such as in offline / one-shot rendering
+	 * where the compiled function runs once and the gcc -O3 cost dominates.</p>
+	 *
+	 * @param level the optimization level to use for future compilations
+	 */
+	public static void setMathOptLevel(MathOptLevel level) { optLevel = level; }
+
 	/** {@inheritDoc} */
 	@Override
 	public List<String> getCommand(String inputFile, String outputFile, boolean lib) {
@@ -284,6 +296,8 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 		AGGRESSIVE,
 		/** Standard optimization (-O3), IEEE 754 compliant. */
 		FAST,
+		/** Basic optimization (-O1), fast compilation with register allocation. */
+		MODERATE,
 		/** No optimization (-O0), for debugging. */
 		NONE;
 
@@ -296,6 +310,7 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 			switch (this) {
 				case AGGRESSIVE: return List.of("-O3", "-ffast-math");
 				case FAST: return List.of("-O3");
+				case MODERATE: return List.of("-O1");
 				default: return List.of("-O0");
 			}
 		}

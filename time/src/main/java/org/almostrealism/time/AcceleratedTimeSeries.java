@@ -469,26 +469,4 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 		setBeginCursorIndex(1);
 		setEndCursorIndex(1);
 	}
-
-	/**
-	 * Factory method to create an {@link AcceleratedTimeSeries} with the default capacity.
-	 *
-	 * <p>Creates a new series with {@link #defaultSize} maximum entries, currently 10,485,760.
-	 * This is suitable for most real-time and large-scale applications.</p>
-	 *
-	 * <h3>Example</h3>
-	 * <pre>{@code
-	 * // Create default-sized series (10M+ entries)
-	 * AcceleratedTimeSeries series = AcceleratedTimeSeries.defaultSeries();
-	 *
-	 * // Use in temporal operations
-	 * Temporal collector = () -> series.add(generateSample());
-	 * }</pre>
-	 *
-	 * @return A new accelerated time-series with default capacity
-	 * @see #defaultSize
-	 */
-	public static AcceleratedTimeSeries defaultSeries() {
-		return new AcceleratedTimeSeries(defaultSize);
-	}
 }

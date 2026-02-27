@@ -448,6 +448,21 @@ See [docs/internals/sampling-loop-examples.md](docs/internals/sampling-loop-exam
 
 See [docs/internals/packed-collection-examples.md](docs/internals/packed-collection-examples.md) for correct and wrong patterns.
 
+### Code Policy Enforcement is Automated — Do Not Circumvent It
+
+`CodePolicyViolationDetector` automatically enforces the PackedCollection GPU memory model and other policies. `CodePolicyEnforcementTest` runs in CI and blocks the build on violations. **You must fix violating code, not evade the detector.**
+
+The detector uses **lexical analysis** (scanning source lines, checking brace depth for loop detection). It is not a full interprocedural analysis. **You must not exploit its limitations.** Specifically:
+
+- **Do not extract code into a helper method** to move a `setMem()` call out of a for-loop's lexical scope. The runtime behavior is identical — it is still a CPU mutation inside a loop.
+- **Do not name methods** to match the detector's initialization whitelist (`init`, `setup`, `create`, `build`, `prepare`, etc.) as a way to suppress violations.
+- **Do not add `// nopolicy` or similar annotations.** The suppression mechanism has been removed.
+
+**If a `setMem()` call is flagged inside a loop, the correct fixes are:**
+1. **Remove it** if it is redundant (e.g., `PackedCollection` memory is already zero-initialized on creation).
+2. **Use the Producer pattern** (`a(1, p(target), c(value))`) for assignment operations.
+3. **Restructure the data flow** so CPU-side scalar mutation is not needed inside the loop.
+
 ### Process Isolation: Only `IsolatedProcess` Breaks Expression Embedding
 
 **Never** return null from `getValueAt()` to force isolation. Call `Process.optimize()` before `Process.get()` and let `IsolatedProcess` handle it through the proper `isIsolationTarget()` / `isolate()` chain.

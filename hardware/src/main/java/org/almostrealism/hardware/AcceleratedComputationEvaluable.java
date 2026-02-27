@@ -184,7 +184,20 @@ import java.util.function.IntFunction;
 public class AcceleratedComputationEvaluable<T extends MemoryData>
 		extends AcceleratedComputationOperation<T>
 		implements StreamingEvaluable<T>, Evaluable<T> {
-	/** Controls whether multiple evaluables with the same signature can compile independently. */
+	/**
+	 * Controls whether multiple evaluables with the same signature can compile independently.
+	 *
+	 * <p>When {@code true} (the default), each evaluable compiles even if another with
+	 * the same signature already exists in the instruction cache. When {@code false},
+	 * evaluables reuse existing instruction sets when a matching signature is found,
+	 * avoiding redundant native compilation.</p>
+	 *
+	 * <p>Callers that need to disable redundant compilation (e.g., the real-time audio
+	 * renderer) should set this field programmatically before building the computation
+	 * graph. Reading from environment variables at static initialization time is avoided
+	 * because stray {@code AR_REDUNDANT_COMPILATION} settings on CI runners can change
+	 * compilation behavior for unrelated tests.</p>
+	 */
 	public static boolean enableRedundantCompilation = true;
 
 	/** Custom factory for allocating output memory, or null for default allocation. */

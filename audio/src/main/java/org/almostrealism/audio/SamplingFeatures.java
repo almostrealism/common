@@ -110,6 +110,35 @@ public interface SamplingFeatures extends CodeFeatures {
 		return sampleRate(rate, () -> frames(integers(), r));
 	}
 
+	/**
+	 * Sets up sampling context for a specific frame range within a note.
+	 *
+	 * <p>Unlike {@link #sampling(int, double, Supplier)}, which uses dynamic-sized
+	 * frame indices starting at 0, this method uses fixed-size frame indices
+	 * that produce only {@code frameCount} output frames with frame indices
+	 * {@code [offset, offset + frameCount)}, correctly positioning
+	 * time-dependent effects within the note.</p>
+	 *
+	 * <h3>Signature Independence</h3>
+	 * <p>The frame indices are constructed as {@code integers(0, frameCount).add(p(offset))}
+	 * where the offset is a caller-owned {@link PackedCollection} containing the start frame.
+	 * Because the offset is a {@link org.almostrealism.collect.computations.CollectionProviderProducer}
+	 * backed by a stable {@link PackedCollection} (same memory address across calls), the
+	 * computation signature depends only on {@code frameCount} and the instrument chain
+	 * structure, not on the actual start frame value. This enables compiled kernel reuse
+	 * across different frame positions via the instruction set cache.</p>
+	 *
+	 * @param rate sample rate
+	 * @param offset caller-owned PackedCollection containing the start frame value
+	 * @param frameCount number of frames to produce
+	 * @param r supplier to evaluate within the sampling context
+	 * @return the result of the supplier
+	 */
+	default <T> T sampling(int rate, PackedCollection offset, int frameCount, Supplier<T> r) {
+		return sampleRate(rate, () -> frames(
+				integers(0, frameCount).add(p(offset)), r));
+	}
+
 	default int toFrames(double sec) { return (int) (sampleRate() * sec); }
 
 	default Producer<PackedCollection> toFrames(Producer<PackedCollection> sec) {

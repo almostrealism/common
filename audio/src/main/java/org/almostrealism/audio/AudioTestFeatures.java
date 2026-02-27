@@ -414,11 +414,48 @@ public interface AudioTestFeatures extends GeometryFeatures {
 	}
 
 	/**
-	 * Internal holder class for lazy initialization of the default test WAV file.
-	 * Uses a static holder to ensure the file is created only once across all tests.
+	 * Returns a temporary WAV file identified by a logical name. Files are
+	 * cached by name so that repeated calls with the same name return the
+	 * same file. This is useful when a test needs multiple distinct samples
+	 * (e.g., different drum hits or melodic instruments) and wants to refer
+	 * to them by name.
+	 *
+	 * @param name logical name used as a cache key and file-name prefix
+	 * @param frequency frequency in Hz for the primary tone
+	 * @param durationSeconds duration in seconds (max 5 seconds)
+	 * @param percussive if true, generates a noise burst with exponential
+	 *                   decay (suitable for drums/hits); if false, generates
+	 *                   a sustained sine wave (suitable for melodic sounds)
+	 * @return File pointing to the temporary WAV file
+	 */
+	default File getNamedTestWavFile(String name, double frequency,
+									 double durationSeconds, boolean percussive) {
+		return TestWavFileHolder.getOrCreate(name, frequency, durationSeconds, percussive);
+	}
+
+	/**
+	 * Convenience overload that returns the absolute path to a named test WAV.
+	 *
+	 * @param name logical name used as a cache key and file-name prefix
+	 * @param frequency frequency in Hz for the primary tone
+	 * @param durationSeconds duration in seconds (max 5 seconds)
+	 * @param percussive if true, generates a percussive sound; if false, melodic
+	 * @return absolute path to the temporary WAV file
+	 */
+	default String getNamedTestWavPath(String name, double frequency,
+									   double durationSeconds, boolean percussive) {
+		return getNamedTestWavFile(name, frequency, durationSeconds, percussive).getAbsolutePath();
+	}
+
+	/**
+	 * Internal holder class for lazy initialization of test WAV files.
+	 * Uses a static holder to ensure each named file is created only once
+	 * across all tests in the same JVM.
 	 */
 	final class TestWavFileHolder {
 		private static volatile File cachedFile;
+		private static final java.util.Map<String, File> namedFiles =
+				new java.util.concurrent.ConcurrentHashMap<>();
 
 		private TestWavFileHolder() {}
 
@@ -426,20 +463,39 @@ public interface AudioTestFeatures extends GeometryFeatures {
 			if (cachedFile == null) {
 				synchronized (TestWavFileHolder.class) {
 					if (cachedFile == null) {
-						cachedFile = createTestWavFile(440.0, 2.0);
+						cachedFile = createMelodicWavFile(440.0, 2.0);
 					}
 				}
 			}
 			return cachedFile;
 		}
 
+		/**
+		 * Returns a cached file for the given name, creating it on first access.
+		 */
+		static File getOrCreate(String name, double frequency,
+								double durationSeconds, boolean percussive) {
+			return namedFiles.computeIfAbsent(name, k ->
+					percussive
+							? createPercussiveWavFile(frequency, durationSeconds)
+							: createMelodicWavFile(frequency, durationSeconds));
+		}
+
 		static File createTestWavFile(double frequency, double durationSeconds) {
+			return createMelodicWavFile(frequency, durationSeconds);
+		}
+
+		/**
+		 * Creates a WAV file containing a sustained sine wave at the given
+		 * frequency. Suitable for melodic instruments (bass, lead, harmony).
+		 */
+		static File createMelodicWavFile(double frequency, double durationSeconds) {
 			if (durationSeconds > 5.0) {
 				throw new IllegalArgumentException("Test WAV duration must be <= 5 seconds");
 			}
 
 			try {
-				File tempFile = Files.createTempFile("test_audio_", ".wav").toFile();
+				File tempFile = Files.createTempFile("test_melodic_", ".wav").toFile();
 				tempFile.deleteOnExit();
 
 				int sampleRate = OutputLine.sampleRate;
@@ -462,7 +518,53 @@ public interface AudioTestFeatures extends GeometryFeatures {
 
 				return tempFile;
 			} catch (IOException e) {
-				throw new UncheckedIOException("Failed to create test WAV file", e);
+				throw new UncheckedIOException("Failed to create melodic test WAV file", e);
+			}
+		}
+
+		/**
+		 * Creates a WAV file containing a percussive sound: a burst of
+		 * filtered noise with exponential amplitude decay. The {@code frequency}
+		 * parameter controls a simple resonant emphasis that colours the noise,
+		 * giving each hit a slightly different character.
+		 */
+		static File createPercussiveWavFile(double frequency, double durationSeconds) {
+			if (durationSeconds > 5.0) {
+				throw new IllegalArgumentException("Test WAV duration must be <= 5 seconds");
+			}
+
+			try {
+				File tempFile = Files.createTempFile("test_percussive_", ".wav").toFile();
+				tempFile.deleteOnExit();
+
+				int sampleRate = OutputLine.sampleRate;
+				int numFrames = (int) (durationSeconds * sampleRate);
+				int numChannels = 1;
+				int validBits = 16;
+
+				double[][] buffer = new double[numChannels][numFrames];
+				java.util.Random rng = new java.util.Random(Double.doubleToLongBits(frequency));
+
+				double decayRate = 5.0 / durationSeconds;
+				double phaseIncrement = 2.0 * Math.PI * frequency / sampleRate;
+				double phase = 0.0;
+
+				for (int i = 0; i < numFrames; i++) {
+					double t = (double) i / sampleRate;
+					double envelope = Math.exp(-decayRate * t);
+					double noise = rng.nextDouble() * 2.0 - 1.0;
+					double tone = Math.sin(phase);
+					buffer[0][i] = 0.8 * envelope * (0.7 * noise + 0.3 * tone);
+					phase += phaseIncrement;
+				}
+
+				try (WavFile wav = WavFile.newWavFile(tempFile, numChannels, numFrames, validBits, sampleRate)) {
+					wav.writeFrames(buffer, numFrames);
+				}
+
+				return tempFile;
+			} catch (IOException e) {
+				throw new UncheckedIOException("Failed to create percussive test WAV file", e);
 			}
 		}
 	}
