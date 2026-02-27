@@ -20,6 +20,7 @@ import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.profile.OperationMetadata;
@@ -57,9 +58,15 @@ public class Repeated<T> extends Scope<T> {
 	 * Controls whether loop-invariant code motion is enabled.
 	 * When true, statements that do not depend on the loop index or any
 	 * variable assigned inside the loop will be hoisted outside the loop.
+	 *
+	 * <p><strong>Note:</strong> LICM is currently disabled by default because the
+	 * current implementation does not correctly handle all loop-variant dependencies,
+	 * particularly expressions containing Index references to nested loop variables.
+	 * The optimization can be enabled with AR_LOOP_INVARIANT_HOISTING=true for
+	 * testing, but this may cause native compiler failures with undefined variables.</p>
 	 */
 	public static boolean enableLoopInvariantHoisting =
-			SystemUtils.isEnabled("AR_LOOP_INVARIANT_HOISTING").orElse(true);
+			SystemUtils.isEnabled("AR_LOOP_INVARIANT_HOISTING").orElse(false);
 
 	private Variable<Integer, ?> index;
 	private Expression<Integer> interval;
@@ -142,8 +149,9 @@ public class Repeated<T> extends Scope<T> {
 	 * Identifies and hoists loop-invariant declaration statements from child scopes.
 	 *
 	 * <p>A declaration statement is loop-invariant if its expression does not contain
-	 * a reference to the loop index variable. Such statements can be safely moved
-	 * outside the loop since their value doesn't change across iterations.</p>
+	 * a reference to the loop index variable OR any variable that is assigned inside
+	 * the loop body. Such statements can be safely moved outside the loop since their
+	 * value doesn't change across iterations.</p>
 	 *
 	 * <p>Note: This is a conservative optimization that only hoists declarations.
 	 * Non-declaration assignments might have side effects or depend on values
@@ -152,6 +160,13 @@ public class Repeated<T> extends Scope<T> {
 	 * @param scope the simplified scope to optimize
 	 */
 	private void hoistLoopInvariantStatements(Repeated<T> scope) {
+		// First pass: collect all variables that are assigned inside the loop body.
+		// These are loop-variant because their values change during loop execution.
+		Set<String> loopAssignedVariables = collectLoopAssignedVariables(scope);
+
+		// Collect all loop indices (this scope's index plus nested loop indices)
+		List<Index> loopIndices = collectLoopIndices(scope);
+
 		List<Statement<?>> hoisted = new ArrayList<>();
 
 		for (Scope<T> child : scope.getChildren()) {
@@ -163,7 +178,7 @@ public class Repeated<T> extends Scope<T> {
 
 					// Only hoist declarations (new variable definitions)
 					// Non-declarations might assign to variables used elsewhere in the loop
-					if (assignment.isDeclaration() && isLoopInvariant(assignment.getExpression())) {
+					if (assignment.isDeclaration() && isLoopInvariant(assignment.getExpression(), loopAssignedVariables, loopIndices)) {
 						hoisted.add(stmt);
 						toRemove.add(stmt);
 					}
@@ -178,14 +193,158 @@ public class Repeated<T> extends Scope<T> {
 	}
 
 	/**
-	 * Checks if an expression is loop-invariant (does not reference the loop index).
+	 * Collects all Index objects from this scope and nested Repeated scopes.
+	 *
+	 * <p>This is necessary because expressions may reference loop indices via
+	 * the Index interface rather than through Variable dependencies.</p>
+	 *
+	 * @param scope the scope to analyze
+	 * @return a list of all Index objects from this and nested loops
+	 */
+	private List<Index> collectLoopIndices(Repeated<T> scope) {
+		List<Index> indices = new ArrayList<>();
+
+		// Add this scope's index if it implements Index
+		Variable<Integer, ?> scopeIndex = scope.getIndex();
+		if (scopeIndex instanceof Index) {
+			indices.add((Index) scopeIndex);
+		}
+
+		// Recursively collect from children
+		for (Scope<T> child : scope.getChildren()) {
+			collectLoopIndicesRecursive(child, indices);
+		}
+
+		return indices;
+	}
+
+	/**
+	 * Recursively collects Index objects from nested Repeated scopes.
+	 *
+	 * @param scope the scope to analyze
+	 * @param indices the list to add indices to
+	 */
+	private void collectLoopIndicesRecursive(Scope<?> scope, List<Index> indices) {
+		if (scope instanceof Repeated) {
+			Repeated<?> nested = (Repeated<?>) scope;
+			Variable<Integer, ?> nestedIndex = nested.getIndex();
+			if (nestedIndex instanceof Index) {
+				indices.add((Index) nestedIndex);
+			}
+		}
+
+		for (Scope<?> child : scope.getChildren()) {
+			collectLoopIndicesRecursive(child, indices);
+		}
+	}
+
+	/**
+	 * Collects the names of all variables that are assigned inside the loop body.
+	 *
+	 * <p>This includes the loop index variable, any variables declared within child
+	 * scopes, and any variables that are assigned (even if declared elsewhere).</p>
+	 *
+	 * @param scope the scope to analyze
+	 * @return a set of variable names that are assigned inside the loop
+	 */
+	private Set<String> collectLoopAssignedVariables(Repeated<T> scope) {
+		Set<String> assignedVars = new HashSet<>();
+
+		// The loop index itself is loop-variant
+		Variable<Integer, ?> scopeIndex = scope.getIndex();
+		if (scopeIndex != null && scopeIndex.getName() != null) {
+			assignedVars.add(scopeIndex.getName());
+		}
+
+		// Collect all variables assigned in child scopes
+		for (Scope<T> child : scope.getChildren()) {
+			collectAssignedVariablesRecursive(child, assignedVars);
+		}
+
+		return assignedVars;
+	}
+
+	/**
+	 * Recursively collects variable names from all assignments in a scope and its children.
+	 *
+	 * <p>This includes loop index variables from nested {@link Repeated} scopes, since
+	 * those are loop-variant and expressions depending on them cannot be hoisted.</p>
+	 *
+	 * @param scope the scope to analyze
+	 * @param assignedVars the set to add variable names to
+	 */
+	private void collectAssignedVariablesRecursive(Scope<?> scope, Set<String> assignedVars) {
+		// If this scope is a nested Repeated, its index variable is loop-variant
+		if (scope instanceof Repeated) {
+			Repeated<?> nested = (Repeated<?>) scope;
+			Variable<Integer, ?> nestedIndex = nested.getIndex();
+			if (nestedIndex != null && nestedIndex.getName() != null) {
+				assignedVars.add(nestedIndex.getName());
+			}
+		}
+
+		// Collect from statements
+		for (Statement<?> stmt : scope.getStatements()) {
+			if (stmt instanceof ExpressionAssignment) {
+				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
+				Expression<?> dest = assignment.getDestination();
+				if (dest != null) {
+					for (Variable<?, ?> var : dest.getDependencies()) {
+						if (var.getName() != null) {
+							assignedVars.add(var.getName());
+						}
+					}
+				}
+			}
+		}
+
+		// Collect from variables (local declarations)
+		for (ExpressionAssignment<?> var : scope.getVariables()) {
+			Expression<?> dest = var.getDestination();
+			if (dest != null) {
+				for (Variable<?, ?> v : dest.getDependencies()) {
+					if (v.getName() != null) {
+						assignedVars.add(v.getName());
+					}
+				}
+			}
+		}
+
+		// Recurse into child scopes
+		for (Scope<?> child : scope.getChildren()) {
+			collectAssignedVariablesRecursive(child, assignedVars);
+		}
+	}
+
+	/**
+	 * Checks if an expression is loop-invariant.
+	 *
+	 * <p>An expression is loop-invariant if it does not reference the loop index
+	 * variable or any variable that is assigned inside the loop body.</p>
 	 *
 	 * @param expr the expression to check
-	 * @return true if the expression does not contain a reference to the loop index
+	 * @param loopAssignedVariables names of variables assigned inside the loop
+	 * @param loopIndices indices from this and nested loops
+	 * @return true if the expression does not depend on any loop-variant variables
 	 */
-	private boolean isLoopInvariant(Expression<?> expr) {
+	private boolean isLoopInvariant(Expression<?> expr, Set<String> loopAssignedVariables, List<Index> loopIndices) {
 		if (index == null) return false;
-		return !expr.containsReference(index);
+
+		// Check if expression references any loop index (Index objects, not Variables)
+		for (Index idx : loopIndices) {
+			if (expr.containsIndex(idx)) {
+				return false;
+			}
+		}
+
+		// Check all variable dependencies of the expression
+		for (Variable<?, ?> var : expr.getDependencies()) {
+			if (var.getName() != null && loopAssignedVariables.contains(var.getName())) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	@Override
