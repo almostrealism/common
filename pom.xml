@@ -9,6 +9,9 @@
     <version>0.73</version>
 
 	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
 		<jacoco.version>0.8.11</jacoco.version>
 		<kotlin.version>1.8.20</kotlin.version>
 

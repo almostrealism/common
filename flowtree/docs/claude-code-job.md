@@ -305,7 +305,7 @@ The agent's instruction prompt tells it about the `commit.txt` mechanism (in the
 
 ### Validation: detect-test-hiding.sh
 
-When `protectTestFiles` is enabled, `validateChanges()` runs the `detect-test-hiding.sh` script (located at `tools/ci/detect-test-hiding.sh` relative to the working directory). This script audits the diff against `origin/<baseBranch>` for changes that might "hide" test failures, such as:
+When `protectTestFiles` is enabled, `validateChanges()` runs the `detect-test-hiding.sh` script (located at `tools/ci/agent-protection/detect-test-hiding.sh` relative to the working directory). This script audits the diff against `origin/<baseBranch>` for changes that might "hide" test failures, such as:
 
 - Removing or commenting out existing test methods
 - Changing assertions to make failing tests pass trivially
