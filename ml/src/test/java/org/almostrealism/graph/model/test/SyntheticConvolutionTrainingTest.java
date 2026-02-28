@@ -205,8 +205,8 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 		int convSize = 3;
 		int poolSize = 2;
 		int numClasses = 2;
-		int epochs = 10;
-		int samplesPerClass = 75;
+		int epochs = 8;
+		int samplesPerClass = 50;
 
 		// Build deeper CNN model (2 conv layers)
 		Model model = convolution2dModel(

@@ -121,7 +121,8 @@ public abstract class StatelessSourceNoteAudioAdapter implements PatternNoteAudi
 	@Override
 	public Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel, double noteDuration,
 												  Factor<PackedCollection> automationLevel,
-												  DoubleFunction<PatternNoteAudio> audioSelection) {
+												  DoubleFunction<PatternNoteAudio> audioSelection,
+												  PackedCollection offset, int frameCount) {
 		return source.generate(buffer,
 				params.getResultant(automationLevel.getResultant(c(0.0))),
 				getFrequency(target, automationLevel));

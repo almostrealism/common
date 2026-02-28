@@ -20,8 +20,12 @@ import com.slack.api.Slack;
 import com.slack.api.methods.MethodsClient;
 import com.slack.api.methods.SlackApiException;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
+import com.slack.api.methods.response.conversations.ConversationsCreateResponse;
+import com.slack.api.methods.response.conversations.ConversationsInviteResponse;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
+import org.almostrealism.io.Alert;
+import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
@@ -54,6 +58,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private final Map<String, Map<String, JobCompletionEvent>> jobHistory;
     private Consumer<String> messageCallback;
     private JobStatsStore statsStore;
+    private String channelOwnerUserId;
 
     /**
      * Creates a new notifier with the specified bot token.
@@ -94,6 +99,75 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Creates a new private Slack channel with the given name.
+     *
+     * <p>The channel is created as private. If a channel owner user ID has been
+     * configured via {@link #setChannelOwnerUserId(String)}, that user is
+     * automatically invited to the channel.</p>
+     *
+     * <p>If the Slack client is not available (simulation mode), this method
+     * logs the request and returns {@code null}.</p>
+     *
+     * @param name the channel name (lowercase, no spaces, max 80 chars)
+     * @return the channel ID of the created channel, or null if creation
+     *         failed or the client is unavailable
+     */
+    public String createChannel(String name) {
+        if (client == null) {
+            log("No bot token - channel '" + name + "' would be created");
+            return null;
+        }
+
+        try {
+            ConversationsCreateResponse response = client.conversationsCreate(req -> req
+                .name(name)
+                .isPrivate(true)
+            );
+
+            if (response.isOk()) {
+                String channelId = response.getChannel().getId();
+                log("Created private Slack channel " + name + " (" + channelId + ")");
+
+                if (channelOwnerUserId != null && !channelOwnerUserId.isEmpty()) {
+                    inviteUserToChannel(channelId, channelOwnerUserId);
+                }
+
+                return channelId;
+            } else {
+                warn("Failed to create channel '" + name + "': " + response.getError());
+            }
+        } catch (IOException | SlackApiException e) {
+            warn("Error creating channel '" + name + "': " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Invites a user to a Slack channel.
+     *
+     * @param channelId the channel to invite the user to
+     * @param userId    the Slack user ID to invite
+     */
+    private void inviteUserToChannel(String channelId, String userId) {
+        try {
+            ConversationsInviteResponse response = client.conversationsInvite(req -> req
+                .channel(channelId)
+                .users(Collections.singletonList(userId))
+            );
+
+            if (response.isOk()) {
+                log("Invited user " + userId + " to channel " + channelId);
+            } else {
+                warn("Failed to invite user " + userId + " to channel "
+                    + channelId + ": " + response.getError());
+            }
+        } catch (IOException | SlackApiException e) {
+            warn("Error inviting user to channel: " + e.getMessage());
+        }
+    }
+
+    /**
      * Sets the job stats store for recording timing data.
      *
      * @param store the stats store, or null to disable recording
@@ -107,6 +181,19 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     public JobStatsStore getStatsStore() {
         return statsStore;
+    }
+
+    /**
+     * Sets the Slack user ID to be automatically invited to newly created channels.
+     *
+     * <p>When set, {@link #createChannel(String)} will invite this user to every
+     * private channel it creates. Typically set from the {@code SLACK_CHANNEL_OWNER}
+     * environment variable during controller startup.</p>
+     *
+     * @param userId the Slack user ID (e.g., "U0123456789")
+     */
+    public void setChannelOwnerUserId(String userId) {
+        this.channelOwnerUserId = userId;
     }
 
     /**
@@ -125,6 +212,34 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         for (SlackWorkstream ws : workstreams.values()) {
             if (branch.equals(ws.getDefaultBranch())) {
+                return ws;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Finds a workstream whose {@code defaultBranch} and {@code repoUrl}
+     * both match the given values. If {@code repoUrl} is null, falls back
+     * to matching on branch alone.
+     *
+     * @param branch  the branch name to match
+     * @param repoUrl the repository URL to match (may be null)
+     * @return the matching workstream, or null if no match is found
+     */
+    public SlackWorkstream findWorkstreamByBranchAndRepo(String branch, String repoUrl) {
+        if (branch == null || branch.isEmpty()) {
+            return null;
+        }
+
+        if (repoUrl == null || repoUrl.isEmpty()) {
+            return findWorkstreamByBranch(branch);
+        }
+
+        for (SlackWorkstream ws : workstreams.values()) {
+            if (branch.equals(ws.getDefaultBranch())
+                    && repoUrl.equals(ws.getRepoUrl())) {
                 return ws;
             }
         }
@@ -216,6 +331,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         } else {
             postMessage(workstream.getChannelId(), message);
         }
+
+        // Fire SMS alert via SignalWire (no-op if no provider is attached)
+        fireCompletionAlert(event, workstream);
     }
 
     /**
@@ -226,6 +344,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @return the message timestamp (for threading), or null on failure
      */
     public String postMessage(String channelId, String text) {
+        if (channelId == null || channelId.isEmpty()) {
+            log("No channel ID - skipping message post");
+            return null;
+        }
+
         // Notify callback for testing
         if (messageCallback != null) {
             messageCallback.accept("{\"channel\":\"" + channelId + "\",\"text\":\"" +
@@ -267,6 +390,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @return the reply message timestamp, or null on failure
      */
     public String postMessageInThread(String channelId, String text, String threadTs) {
+        if (channelId == null || channelId.isEmpty()) {
+            log("No channel ID - skipping thread reply");
+            return null;
+        }
+
         if (messageCallback != null) {
             messageCallback.accept("{\"channel\":\"" + channelId +
                                    "\",\"thread_ts\":\"" + escapeJson(threadTs) +
@@ -342,6 +470,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         Map<String, JobCompletionEvent> jobs = jobHistory.get(workstreamId);
         if (jobs == null) return Collections.emptyMap();
         return Collections.unmodifiableMap(jobs);
+    }
+
+    /**
+     * Fires an SMS alert via {@link Console#alert(Alert)} summarizing
+     * the job completion. This is a no-op if no {@link org.almostrealism.io.AlertDeliveryProvider}
+     * is registered (e.g., no {@code signalwire.properties} file).
+     */
+    private void fireCompletionAlert(JobCompletionEvent event, SlackWorkstream workstream) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Job ").append(event.getStatus().name().toLowerCase());
+        if (workstream.getChannelName() != null) {
+            sb.append(" (").append(workstream.getChannelName()).append(")");
+        }
+        sb.append(": ").append(truncate(event.getDescription(), 80));
+        if (event.getPullRequestUrl() != null) {
+            sb.append(" | PR: ").append(event.getPullRequestUrl());
+        }
+        if (event.getCostUsd() > 0) {
+            sb.append(String.format(" | $%.2f", event.getCostUsd()));
+        }
+        Console.root().alert(new Alert(Alert.Severity.INFO, sb.toString()));
     }
 
     private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {

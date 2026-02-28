@@ -4,8 +4,11 @@
 # jobs labelled `ar-ci` from the Almost Realism pipeline.
 #
 # Quick start:
-#   cp .env.example .env   # fill in GITHUB_PAT, GITHUB_OWNER, GITHUB_REPO
-#   docker compose up -d --scale runner=10
+#   cp .env.example .env   # fill in GITHUB_PAT, RUNNER_PREFIX
+#   docker compose up -d --scale runner=5
+#
+# Each runner registers as <RUNNER_PREFIX>-1, <RUNNER_PREFIX>-2, etc.
+# Set RUNNER_PREFIX per machine (e.g., "mac-studio", "linux-build-1").
 #
 # See README.md for full documentation.
 # ─────────────────────────────────────────────────────────────────────
@@ -19,19 +22,11 @@ services:
       - GITHUB_PAT=${GITHUB_PAT}
       - GITHUB_OWNER=${GITHUB_OWNER:-almostrealism}
       - GITHUB_REPO=${GITHUB_REPO:-common}
+      - RUNNER_PREFIX=${RUNNER_PREFIX:-ar-runner}
       - RUNNER_LABELS=ar-ci
-      - AR_HARDWARE_LIBS=/tmp/ar_libs/
-      - AR_HARDWARE_DRIVER=native
-    volumes:
-      # Shared Maven repository avoids re-downloading artifacts
-      - maven-repo:/home/runner/.m2/repository
     deploy:
       resources:
         limits:
           memory: ${RUNNER_MEMORY_LIMIT:-16g}
           cpus: "${RUNNER_CPU_LIMIT:-4}"
     restart: unless-stopped
-
-volumes:
-  maven-repo:
-    driver: local

@@ -69,6 +69,11 @@ public interface TestSettings {
 	boolean skipLongTests = TestUtils.getSkipLongTests();
 
 	/**
+	 * Indicates whether high memory-consuming tests should be skipped.
+	 */
+	boolean skipHighMemTests = TestUtils.getSkipHighMemoryTests();
+
+	/**
 	 * If true, tests for known issues should be skipped.
 	 * Controlled by the {@code AR_KNOWN_ISSUES} environment variable.
 	 */

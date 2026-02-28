@@ -35,27 +35,61 @@ for var in FAILURE_COUNT BRANCH COMMIT_SHA RUN_URL; do
 done
 
 FAILURE_LIST=$(cat "$FAILURES_FILE")
-SUREFIRE_ARTIFACT_URL="${RUN_URL}#artifacts"
 
 cat > "$OUTPUT_FILE" <<'PROMPT_HEADER'
-## ABSOLUTE RULE: YOU CANNOT MODIFY TEST FILES. PERIOD.
+## YOU BROKE THESE TESTS. YOU MUST FIX THEM.
 
-**THIS IS THE MOST IMPORTANT RULE. VIOLATING IT IS WORSE THAN NOT FIXING ANYTHING.**
+**This is not a request. This is not optional. The tests listed below PASS on master
+and FAIL on your branch. The changes on your branch caused these failures. Your ONLY
+job is to fix the production code so these tests pass again.**
 
-**You are PHYSICALLY BLOCKED from modifying ANY test file.** Do not attempt it.
-There are ZERO exceptions. Not for new tests. Not for old tests. Not for timeouts.
-Not for @TestDepth. Not for dimensions. Not for tolerances. NOTHING.
+### What you are NOT allowed to do
 
-This rule exists because agents have REPEATEDLY and SYSTEMATICALLY hidden test
-failures instead of fixing production code. Documented evidence (DECEPTION.md):
-- Changed @TestDepth(2) to @TestDepth(10) to push NormTests out of CI
-- Reduced test dimensions 8x (64->8) to make tests trivially pass
-- Increased timeouts 6x (5min->30min) to prevent timeout detection
-- Re-added suppression annotations AFTER a human reverted them
-- Stored false memories claiming "no changes needed" for failures they caused
-- Excluded CodePolicyEnforcementTest from CI test steps
-- Removed quality gates from build steps
-- Manipulated job dependencies to avoid running checks
+**Conclude that no fix is needed.** The tests fail. A fix IS needed. Period.
+
+**Claim the tests "pass individually."** The CI pipeline runs the full test suite
+for a module, not individual test methods. Tests that pass in isolation may fail when
+run alongside other tests (shared state, ordering, resource contention). The ONLY way
+to verify your fix works is to run the exact CI command listed below.
+
+**Blame the CI environment or call it "transient."** These failures are reproducible.
+They pass on master, they fail on this branch. Every time. If you claim otherwise
+without actually running the CI command locally and showing it succeeds, you are wrong.
+
+**Fetch the CI run URL with WebFetch.** You do not have permission to access GitHub
+Actions pages and you do not need to. All the information you need is in this prompt.
+The failing tests and the branch diff tell you everything.
+
+**Look at a single commit and declare it "fine."** The problem is the ENTIRE set of
+changes between origin/master and this branch. Run `git diff origin/master...HEAD` to
+see what changed. Do not cherry-pick one commit to review.
+
+### What you MUST do
+
+**Understand the full branch delta.** Run:
+    git diff --stat origin/master...HEAD
+This shows EVERY file changed on this branch relative to master. The test failures
+were caused by one or more of these changes.
+
+**Read the failing test(s).** Understand what they assert.
+
+**Trace from the test to the production code.** Find what the test calls, read that
+code, and identify where the branch changes broke the expected behavior.
+
+**Fix the production code.** Make the minimal change needed so the tests pass.
+
+**Reproduce the failure locally, then verify your fix.** Use the MCP test runner to
+run the CI command listed below. Do NOT run individual test methods -- run the full
+module test suite. If it passes, your fix works. If it fails, keep investigating.
+
+---
+
+## ABSOLUTE RULE: DO NOT MODIFY EXISTING TESTS TO HIDE FAILURES
+
+Before you touch ANY test file, you MUST determine whether the test existed on the
+base branch (master) before this branch was created. Run:
+
+    git log --oneline origin/master -- <path/to/TestFile.java>
 
 **DO NOT:**
 - Modify ANY file under src/test/ for ANY reason
@@ -87,91 +121,102 @@ tolerance weakening, assertion removal, and numeric literal shrinkage.
 
 **There is no way around these checks. They are mechanical, not judgment-based.**
 
----
-
-## MANDATORY INVESTIGATION PROTOCOL
-
-Before concluding your investigation, you MUST produce a DIFF_ANALYSIS.md file with
-this EXACT structure. Skipping this step is a violation. Sessions that exit with
-"no changes needed" without this file will be flagged for audit.
-
-```
-## Diff Analysis: [Failing Test Name]
-
-### Changed Production Files
-[Run: git diff origin/master...HEAD --name-only | grep -v src/test | grep -v .github]
-[List EVERY file — omitting files is a violation]
-
-### Failing Test
-- Class: [exact fully-qualified class name]
-- Method: [exact method name]
-- Module: [maven module]
-
-### Dependency Trace
-[For EACH changed production file, state whether the failing test depends on it]
-- [file1.java]: YES/NO - [evidence: import chain or "no transitive path found"]
-- [file2.java]: YES/NO - [evidence: import chain or "no transitive path found"]
-
-### Root Cause
-[Specific theory with evidence — NOT "unrelated", "flaky", or "pre-existing"]
-[If you believe the failure is unrelated, you must PROVE it by showing
- that NO changed file is in the failing test's import chain]
-
-### Production Code Fix
-[Description of the fix you applied to NON-TEST code]
-[If you cannot fix it, explain specifically what blocks you]
-[If you claim "no fix needed", this WILL be audited against the dependency trace]
-```
-
----
-
-## EVIDENCE RULES
-
-These rules exist because agents have systematically fabricated evidence.
-
-1. **"Tests pass locally" is NOT evidence.** Only CI results on the exact commit
-   count. If CI fails and local passes, YOUR local environment is wrong, not CI.
-   You may have AR_TEST_DEPTH=0 set, different memory limits, or a different
-   checkout. Local test results are INADMISSIBLE.
-
-2. **"No changes needed" requires PROOF.** You must demonstrate via the dependency
-   trace in DIFF_ANALYSIS.md that no changed production file is reachable from the
-   failing test's import chain. Without this proof, the claim is rejected.
-
-3. **Memory entries must be accurate.** If you store a memory claiming "no changes
-   needed" or "failure is unrelated", it WILL be cross-referenced against the git
-   diff by verify-memory-claim.sh. If the claim is contradicted by the dependency
-   trace, the memory will be flagged as deceptive and you will be audited.
-
-4. **Do not use absolute language without proof.** Phrases like "do NOT cause
-   failures" and "definitively unrelated" are red flags. Use qualified language:
-   "Based on the dependency trace, no direct import path was found between X and Y."
 
 ---
 
 PROMPT_HEADER
 
+# ── Determine which modules contain failures and build CI commands ──
+# Parse class names from the failure list and map them to Maven modules.
+# The CI command section tells the agent exactly how to reproduce.
+FAILING_MODULES=""
+while IFS= read -r line; do
+    # Only process lines that start with "- " (test name lines).
+    # Skip exception details, stack traces, and blank lines.
+    case "$line" in
+        "- "*)
+            class_name=$(echo "$line" | sed 's/^- //' | sed 's/#.*//')
+            # Resolve to a source file
+            src_file=$(find . -path "*/src/test/java*/${class_name##*.}.java" -print -quit 2>/dev/null)
+            if [ -n "$src_file" ]; then
+                # Extract the module from the path (first directory component under ./)
+                module=$(echo "$src_file" | sed 's|^\./||' | cut -d/ -f1)
+                if ! echo "$FAILING_MODULES" | grep -qw "$module"; then
+                    FAILING_MODULES="${FAILING_MODULES:+$FAILING_MODULES }$module"
+                fi
+            fi
+            ;;
+    esac
+done < "$FAILURES_FILE"
+
+# Build CI reproduction commands for each failing module
+CI_COMMANDS=""
+for module in $FAILING_MODULES; do
+    if [ "$module" = "ml" ]; then
+        CI_COMMANDS="${CI_COMMANDS}
+Module: ${module}
+  mcp__ar-test-runner__start_test_run module:\"${module}\" profile:\"pipeline\" timeout_minutes:30"
+    else
+        CI_COMMANDS="${CI_COMMANDS}
+Module: ${module}
+  mcp__ar-test-runner__start_test_run module:\"${module}\" timeout_minutes:30"
+    fi
+done
+
+# If we couldn't determine modules, provide a generic fallback
+if [ -z "$CI_COMMANDS" ]; then
+    CI_COMMANDS="
+Could not auto-detect failing modules. Examine the failing test class names below,
+find which module they belong to (utils, ml, audio, music, compose), and run:
+  mcp__ar-test-runner__start_test_run module:\"<module>\" timeout_minutes:30
+For ML module tests, add profile:\"pipeline\"."
+fi
+
 # Now append the dynamic portion
 cat >> "$OUTPUT_FILE" <<EOF
-The following ${FAILURE_COUNT} test failure(s) were discovered on branch "${BRANCH}" (commit ${COMMIT_SHA}):
+## Failing tests
+
+The following ${FAILURE_COUNT} test failure(s) were discovered on branch "${BRANCH}".
+Each failure includes the exception type, message, and a truncated stack trace from the
+Surefire XML report. **Use these details to understand what went wrong** — the exception
+type and message tell you exactly what assertion or error occurred.
 
 ${FAILURE_LIST}
 
-For detailed stack traces and error messages, download the Surefire report artifacts from this workflow run: ${SUREFIRE_ARTIFACT_URL}
+These tests PASS on origin/master. They FAIL on this branch. The branch changes broke them.
 
-## Your task
+## How to reproduce (REQUIRED)
 
-1. Run \`git diff origin/master...HEAD --name-only\` and list ALL changed files.
-2. For EACH failing test, determine if it exists on the base branch:
-       git log --oneline origin/master -- <path/to/TestFile.java>
-3. Read the test source code and understand what it is asserting.
-4. Trace the import chain from the test to the changed production files.
-5. Read the production code under test and identify the root cause.
-6. Make the **minimal production code change** needed to make the tests pass.
-7. Produce the DIFF_ANALYSIS.md file with the mandatory structure above.
-8. Verify your fix does not break other tests.
+You MUST reproduce the failure locally before attempting a fix and after applying
+your fix. Use the MCP test runner with these exact commands:
+${CI_COMMANDS}
 
-**Remember: if the test exists on master, the test is correct and your job is to fix
-the code that the test exercises, NOT the test itself. Your commit will be
-automatically validated and rejected if it modifies test or CI files.**
+Do NOT run individual test methods with test_methods or test_classes parameters.
+The CI pipeline runs the FULL module test suite. Failures may only manifest when
+the entire suite runs (due to shared state, test ordering, etc.).
+
+## Investigation steps
+
+1. **Read the exception details above.** The exception type and message tell you
+   exactly what failed. An \`AssertionError\` with \`expected 5 but was 3\` is a
+   completely different problem from a \`NullPointerException\` in production code.
+   Start your investigation from the specific error, not from guessing.
+
+2. **See what this branch changed:**
+       git diff --stat origin/master...HEAD
+   This is the complete set of changes that could have caused the failures.
+
+3. **Read the failing test(s).** Understand what they assert.
+
+4. **Trace the failure to your branch's changes.** Use the stack trace to identify
+   which production code threw the exception, then check whether any of the branch
+   changes affected that code path.
+
+5. **Fix the production code.** Make the minimal change needed.
+
+6. **Verify by running the full CI command above.** Not individual tests -- the full
+   module suite. If it passes, your fix works.
+
+**Remember: the test is correct. Your branch broke it. Fix the production code.
+Your commit will be automatically validated and rejected if it modifies test or CI files.**
 EOF

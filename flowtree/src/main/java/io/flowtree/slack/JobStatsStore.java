@@ -67,11 +67,16 @@ public class JobStatsStore implements ConsoleFeatures {
     private static final String CREATE_INDEX =
         "CREATE INDEX IF NOT EXISTS idx_timing_ws_started ON job_timing (workstream_id, started_at)";
 
-    /** ALTER TABLE statements to add new columns to existing databases. */
+    /**
+     * ALTER TABLE statements to add new columns to existing databases.
+     * HSQLDB 2.x does not support {@code IF NOT EXISTS} on {@code ADD COLUMN},
+     * so these statements will throw if the column already exists. The
+     * initialization loop catches and ignores those errors.
+     */
     private static final String[] SCHEMA_MIGRATIONS = {
-        "ALTER TABLE job_timing ADD COLUMN IF NOT EXISTS subtype VARCHAR(64)",
-        "ALTER TABLE job_timing ADD COLUMN IF NOT EXISTS session_error BOOLEAN",
-        "ALTER TABLE job_timing ADD COLUMN IF NOT EXISTS permission_denials INTEGER"
+        "ALTER TABLE job_timing ADD COLUMN subtype VARCHAR(64)",
+        "ALTER TABLE job_timing ADD COLUMN session_error BOOLEAN",
+        "ALTER TABLE job_timing ADD COLUMN permission_denials INTEGER"
     };
 
     private static final String CLEAN_ORPHANS =
@@ -207,9 +212,26 @@ public class JobStatsStore implements ConsoleFeatures {
                                                  int permissionDenials) {
         if (connection == null) return;
 
+        // Compute wall_clock_ms in Java to avoid HSQLDB DATEDIFF compatibility issues
+        long wallClockMs = 0;
+        try (PreparedStatement psQuery = connection.prepareStatement(
+                "SELECT started_at FROM job_timing WHERE job_id = ?")) {
+            psQuery.setString(1, jobId);
+            try (ResultSet rs = psQuery.executeQuery()) {
+                if (rs.next()) {
+                    Timestamp startedTs = rs.getTimestamp("started_at");
+                    if (startedTs != null) {
+                        wallClockMs = completedAt.toEpochMilli() - startedTs.toInstant().toEpochMilli();
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query started_at for wall_clock_ms: " + e.getMessage());
+        }
+
         // Try UPDATE first (job was previously started)
         String updateSql = "UPDATE job_timing SET status = ?, completed_at = ?, "
-            + "wall_clock_ms = DATEDIFF('MILLISECOND', started_at, ?), "
+            + "wall_clock_ms = ?, "
             + "duration_ms = ?, duration_api_ms = ?, cost_usd = ?, "
             + "num_turns = ?, session_id = ?, exit_code = ?, "
             + "subtype = ?, session_error = ?, permission_denials = ? "
@@ -218,7 +240,7 @@ public class JobStatsStore implements ConsoleFeatures {
         try (PreparedStatement ps = connection.prepareStatement(updateSql)) {
             ps.setString(1, status);
             ps.setTimestamp(2, Timestamp.from(completedAt));
-            ps.setTimestamp(3, Timestamp.from(completedAt));
+            ps.setLong(3, wallClockMs);
             ps.setLong(4, durationMs);
             ps.setLong(5, durationApiMs);
             ps.setDouble(6, costUsd);

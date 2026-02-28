@@ -105,12 +105,40 @@ public class PatternAudioBuffer implements Setup, CollectionFeatures {
 							  ChannelInfo channel,
 							  int bufferSize,
 							  IntSupplier currentFrame) {
+		this(patterns, contextSupplier, channel, bufferSize, currentFrame, null);
+	}
+
+	/**
+	 * Creates a new pattern audio buffer with an optional pre-allocated output buffer.
+	 *
+	 * <p>When {@code outputBuffer} is provided (typically a delegate/range into a
+	 * consolidated buffer), it is used directly instead of allocating a new
+	 * {@link PackedCollection}. This reduces the number of kernel arguments
+	 * when the compiled {@code Loop} scope collects arguments, because the
+	 * scope's argument deduplication resolves delegates to their root
+	 * collection.</p>
+	 *
+	 * @param patterns        the pattern system manager containing patterns to render
+	 * @param contextSupplier supplier for the audio scene context
+	 * @param channel         the channel to render (index, voicing, stereo channel)
+	 * @param bufferSize      the size of each render buffer in frames
+	 * @param currentFrame    supplier providing the current absolute frame position
+	 * @param outputBuffer    pre-allocated output buffer, or {@code null} to allocate a new one
+	 *
+	 * @see org.almostrealism.audio.AudioScene#consolidateRenderBuffers
+	 */
+	public PatternAudioBuffer(PatternSystemManager patterns,
+							  Supplier<AudioSceneContext> contextSupplier,
+							  ChannelInfo channel,
+							  int bufferSize,
+							  IntSupplier currentFrame,
+							  PackedCollection outputBuffer) {
 		this.patterns = patterns;
 		this.contextSupplier = contextSupplier;
 		this.channel = channel;
 		this.bufferSize = bufferSize;
 		this.currentFrame = currentFrame;
-		this.outputBuffer = new PackedCollection(bufferSize);
+		this.outputBuffer = outputBuffer != null ? outputBuffer : new PackedCollection(bufferSize);
 	}
 
 	/**

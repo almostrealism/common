@@ -33,6 +33,7 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.graph.temporal.DefaultWaveCellData;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.time.TemporalList;
@@ -266,6 +267,9 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 	private final List<Runnable> finals;
 
 	private List<PackedCollection> data;
+	private int tickSegmentSize;
+	private int tickLoopCount;
+	private Runnable tickPreAction;
 
 	/**
 	 * Creates a new CellList with the specified parent CellLists.
@@ -701,11 +705,103 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 	 *
 	 * @return supplier providing the tick runnable
 	 */
+	/**
+	 * Sets the tick segment size for batched compilation.
+	 *
+	 * <p>When positive, the tick operation groups root pushes into
+	 * sub-{@link OperationList}s of at most this many entries. Each
+	 * sub-list compiles independently as a small native function,
+	 * avoiding the super-linear compilation time that large monolithic
+	 * functions cause at high optimization levels (e.g., gcc -O3).</p>
+	 *
+	 * <p>A value of zero (default) compiles all root pushes and
+	 * temporal ticks into a single native function.</p>
+	 *
+	 * @param size maximum root pushes per compiled segment, or zero to disable
+	 */
+	public void setTickSegmentSize(int size) { this.tickSegmentSize = size; }
+
+	/**
+	 * Sets an action to run before building the tick operation list.
+	 *
+	 * <p>This action runs when {@link #tick()} is called, before any
+	 * compilation occurs. It can be used to adjust global compilation
+	 * settings (e.g., optimization level) between setup and tick phases.</p>
+	 *
+	 * @param action the action to run before tick construction
+	 */
+	public void setTickPreAction(Runnable action) { this.tickPreAction = action; }
+
+	/**
+	 * Sets the number of iterations for a compiled tick loop.
+	 *
+	 * <p>When set to a positive value, {@link #tick()} wraps all tick
+	 * operations in a {@link Loop} that executes the specified number of
+	 * iterations in a single compiled native function call. The returned
+	 * {@link Runnable} executes all iterations on its first invocation
+	 * and is a no-op on subsequent calls.</p>
+	 *
+	 * <p>This eliminates per-tick overhead (argument marshalling, thread
+	 * creation) that dominates when the tick function is called hundreds
+	 * of thousands of times from Java. Instead, one native invocation
+	 * performs all iterations with only for-loop increment overhead
+	 * between iterations.</p>
+	 *
+	 * @param count number of iterations, or zero to disable
+	 */
+	public void setTickLoopCount(int count) { this.tickLoopCount = count; }
+
 	@Override
 	public Supplier<Runnable> tick() {
+		if (tickSegmentSize <= 0 && tickLoopCount <= 0 && tickPreAction == null) {
+			OperationList tick = new OperationList("CellList Tick");
+			getAllRoots().stream().map(r -> r.push(c(0.0))).forEach(tick::add);
+			tick.add(getAllTemporals().tick());
+			return tick;
+		}
+
+		if (tickPreAction != null) {
+			tickPreAction.run();
+		}
+
+		List<Supplier<Runnable>> rootPushes = getAllRoots().stream()
+				.map(r -> r.push(c(0.0)))
+				.collect(Collectors.toList());
+
+		if (tickSegmentSize > 0 && rootPushes.size() > tickSegmentSize) {
+			OperationList tick = new OperationList("CellList Tick", false);
+
+			for (int i = 0; i < rootPushes.size(); i += tickSegmentSize) {
+				OperationList batch = new OperationList("tick batch " + (i / tickSegmentSize));
+				int end = Math.min(i + tickSegmentSize, rootPushes.size());
+				for (int j = i; j < end; j++) {
+					batch.add(rootPushes.get(j));
+				}
+				tick.add(batch);
+			}
+
+			tick.add(getAllTemporals().tick());
+			return tick;
+		}
+
 		OperationList tick = new OperationList("CellList Tick");
-		getAllRoots().stream().map(r -> r.push(c(0.0))).forEach(tick::add);
+		rootPushes.forEach(tick::add);
 		tick.add(getAllTemporals().tick());
+
+		if (tickLoopCount > 0) {
+			Loop loop = new Loop(tick, tickLoopCount);
+			return () -> {
+				Runnable compiled = ((Supplier<Runnable>) loop).get();
+				boolean[] executed = {false};
+				return () -> {
+					if (!executed[0]) {
+						executed[0] = true;
+						compiled.run();
+					}
+				};
+			};
+		}
+
 		return tick;
 	}
 

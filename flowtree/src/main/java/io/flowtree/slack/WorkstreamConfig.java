@@ -56,8 +56,11 @@ import java.util.UUID;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WorkstreamConfig {
 
+    private String defaultWorkspacePath;
+    private String channelOwnerUserId;
     private Map<String, McpServerEntry> mcpServers = new LinkedHashMap<>();
     private Map<String, PushedToolEntry> pushedTools = new LinkedHashMap<>();
+    private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
     private List<WorkstreamEntry> workstreams = new ArrayList<>();
 
     /**
@@ -73,12 +76,15 @@ public class WorkstreamConfig {
         private String baseBranch;
         private boolean pushToOrigin = true;
         private String workingDirectory;
+        private String repoUrl;
         private String allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
         private int maxTurns = 800;
         private double maxBudgetUsd = 100.0;
         private String gitUserName;
         private String gitUserEmail;
         private Map<String, String> env;
+        private String planningDocument;
+        private String githubOrg;
 
         public String getWorkstreamId() { return workstreamId; }
         public void setWorkstreamId(String workstreamId) { this.workstreamId = workstreamId; }
@@ -104,6 +110,10 @@ public class WorkstreamConfig {
         public String getWorkingDirectory() { return workingDirectory; }
         public void setWorkingDirectory(String workingDirectory) { this.workingDirectory = workingDirectory; }
 
+        /** Returns the git repository URL for automatic checkout. */
+        public String getRepoUrl() { return repoUrl; }
+        public void setRepoUrl(String repoUrl) { this.repoUrl = repoUrl; }
+
         public String getAllowedTools() { return allowedTools; }
         public void setAllowedTools(String allowedTools) { this.allowedTools = allowedTools; }
 
@@ -122,6 +132,14 @@ public class WorkstreamConfig {
         /** Returns per-workstream environment variables injected into pushed tool MCP configs. */
         public Map<String, String> getEnv() { return env; }
         public void setEnv(Map<String, String> env) { this.env = env; }
+
+        /** Returns the optional planning document path for broader goal context. */
+        public String getPlanningDocument() { return planningDocument; }
+        public void setPlanningDocument(String planningDocument) { this.planningDocument = planningDocument; }
+
+        /** Returns the GitHub organization name for org-based token selection. */
+        public String getGithubOrg() { return githubOrg; }
+        public void setGithubOrg(String githubOrg) { this.githubOrg = githubOrg; }
 
         /**
          * Converts this entry to a {@link SlackWorkstream} instance.
@@ -143,12 +161,15 @@ public class WorkstreamConfig {
             ws.setBaseBranch(baseBranch);
             ws.setPushToOrigin(pushToOrigin);
             ws.setWorkingDirectory(workingDirectory);
+            ws.setRepoUrl(repoUrl);
             ws.setAllowedTools(allowedTools);
             ws.setMaxTurns(maxTurns);
             ws.setMaxBudgetUsd(maxBudgetUsd);
             ws.setGitUserName(gitUserName);
             ws.setGitUserEmail(gitUserEmail);
             ws.setEnv(env);
+            ws.setPlanningDocument(planningDocument);
+            ws.setGithubOrg(githubOrg);
             return ws;
         }
     }
@@ -218,6 +239,42 @@ public class WorkstreamConfig {
         public void setEnv(Map<String, String> env) { this.env = env; }
     }
 
+    /**
+     * Configuration entry for a GitHub organization token.
+     *
+     * <p>Maps an organization name to a GitHub personal access token.
+     * When a workstream specifies a {@code githubOrg}, the controller
+     * proxy selects the matching token for GitHub API calls.</p>
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class GitHubOrgEntry {
+        private String token;
+
+        /** Returns the GitHub personal access token for this organization. */
+        public String getToken() { return token; }
+        public void setToken(String token) { this.token = token; }
+    }
+
+    /**
+     * Returns the global default workspace path for repo checkouts.
+     *
+     * <p>When a workstream specifies {@code repoUrl} but no
+     * {@code workingDirectory}, the repo is cloned into this path.
+     * If not set, defaults to {@code /workspace/project} (if it exists)
+     * or a temporary directory under {@code /tmp}.</p>
+     */
+    public String getDefaultWorkspacePath() { return defaultWorkspacePath; }
+    public void setDefaultWorkspacePath(String defaultWorkspacePath) { this.defaultWorkspacePath = defaultWorkspacePath; }
+
+    /**
+     * Returns the Slack user ID to invite to auto-created channels.
+     *
+     * <p>When set, newly created workstream channels will automatically
+     * invite this user. This is typically the project owner's Slack user ID.</p>
+     */
+    public String getChannelOwnerUserId() { return channelOwnerUserId; }
+    public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
+
     /** Returns the centralized MCP server configurations. */
     public Map<String, McpServerEntry> getMcpServers() { return mcpServers; }
     public void setMcpServers(Map<String, McpServerEntry> mcpServers) { this.mcpServers = mcpServers; }
@@ -225,6 +282,10 @@ public class WorkstreamConfig {
     /** Returns the pushed MCP tool configurations. */
     public Map<String, PushedToolEntry> getPushedTools() { return pushedTools; }
     public void setPushedTools(Map<String, PushedToolEntry> pushedTools) { this.pushedTools = pushedTools; }
+
+    /** Returns the per-organization GitHub token configurations. */
+    public Map<String, GitHubOrgEntry> getGithubOrgs() { return githubOrgs; }
+    public void setGithubOrgs(Map<String, GitHubOrgEntry> githubOrgs) { this.githubOrgs = githubOrgs; }
 
     public List<WorkstreamEntry> getWorkstreams() { return workstreams; }
     public void setWorkstreams(List<WorkstreamEntry> workstreams) { this.workstreams = workstreams; }
@@ -336,12 +397,15 @@ public class WorkstreamConfig {
         entry.setBaseBranch(ws.getBaseBranch());
         entry.setPushToOrigin(ws.isPushToOrigin());
         entry.setWorkingDirectory(ws.getWorkingDirectory());
+        entry.setRepoUrl(ws.getRepoUrl());
         entry.setAllowedTools(ws.getAllowedTools());
         entry.setMaxTurns(ws.getMaxTurns());
         entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
         entry.setGitUserName(ws.getGitUserName());
         entry.setGitUserEmail(ws.getGitUserEmail());
         entry.setEnv(ws.getEnv());
+        entry.setPlanningDocument(ws.getPlanningDocument());
+        entry.setGithubOrg(ws.getGithubOrg());
         workstreams.add(entry);
     }
 
@@ -365,12 +429,15 @@ public class WorkstreamConfig {
                     entry.setBaseBranch(ws.getBaseBranch());
                     entry.setPushToOrigin(ws.isPushToOrigin());
                     entry.setWorkingDirectory(ws.getWorkingDirectory());
+                    entry.setRepoUrl(ws.getRepoUrl());
                     entry.setAllowedTools(ws.getAllowedTools());
                     entry.setMaxTurns(ws.getMaxTurns());
                     entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
                     entry.setGitUserName(ws.getGitUserName());
                     entry.setGitUserEmail(ws.getGitUserEmail());
                     entry.setEnv(ws.getEnv());
+                    entry.setPlanningDocument(ws.getPlanningDocument());
+                    entry.setGithubOrg(ws.getGithubOrg());
                     found = true;
                     break;
                 }

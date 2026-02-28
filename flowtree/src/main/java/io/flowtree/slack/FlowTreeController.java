@@ -29,6 +29,7 @@ import io.flowtree.jobs.McpToolDiscovery;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
+import org.almostrealism.util.SignalWireDeliveryProvider;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -202,6 +203,16 @@ public class FlowTreeController implements ConsoleFeatures {
         log("Loaded " + config.getWorkstreams().size() +
                           " workstream(s) from " + configFile.getName());
 
+        // Pass global default workspace path to listener
+        if (config.getDefaultWorkspacePath() != null) {
+            listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
+        }
+
+        // Pass channel owner user ID to notifier for auto-inviting to new channels
+        if (config.getChannelOwnerUserId() != null) {
+            notifier.setChannelOwnerUserId(config.getChannelOwnerUserId());
+        }
+
         // Pass config and file reference to listener for /flowtree setup persistence
         listener.setWorkstreamConfig(config, configFile);
 
@@ -240,6 +251,10 @@ public class FlowTreeController implements ConsoleFeatures {
             if (config.ensureWorkstreamIds()) {
                 config.saveToYaml(configFile);
                 log("Generated workstream IDs and saved to " + configFile.getName());
+            }
+
+            if (config.getDefaultWorkspacePath() != null) {
+                listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
             }
 
             for (SlackWorkstream workstream : config.toWorkstreams()) {
@@ -605,11 +620,31 @@ public class FlowTreeController implements ConsoleFeatures {
         statsStore.initialize();
         notifier.setStatsStore(statsStore);
 
+        // Initialize SignalWire SMS alerting (no-op if config file is absent)
+        SignalWireDeliveryProvider.attachDefault();
+
         try {
             apiEndpoint = new FlowTreeApiEndpoint(apiPort, notifier);
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
+
+            // Populate per-org GitHub tokens from config
+            if (loadedConfig != null && loadedConfig.getGithubOrgs() != null) {
+                Map<String, String> orgTokens = new LinkedHashMap<>();
+                for (Map.Entry<String, WorkstreamConfig.GitHubOrgEntry> entry
+                        : loadedConfig.getGithubOrgs().entrySet()) {
+                    String orgToken = entry.getValue().getToken();
+                    if (orgToken != null && !orgToken.isEmpty()) {
+                        orgTokens.put(entry.getKey(), orgToken);
+                    }
+                }
+                if (!orgTokens.isEmpty()) {
+                    apiEndpoint.setGithubOrgTokens(orgTokens);
+                    log("Loaded GitHub tokens for " + orgTokens.size() + " org(s)");
+                }
+            }
+
             apiEndpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
             int listeningPort = apiEndpoint.getListeningPort();
             listener.setApiPort(listeningPort);

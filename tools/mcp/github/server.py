@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 AR GitHub MCP Server
 
@@ -44,6 +45,7 @@ from urllib.request import Request, urlopen
 
 TOKEN_FILE = os.path.expanduser("~/.config/ar/github-token")
 GITHUB_REPO_OVERRIDE = os.environ.get("AR_GITHUB_REPO", "")
+GITHUB_ORG = os.environ.get("AR_GITHUB_ORG", "")
 GITHUB_API = "https://api.github.com"
 WORKSTREAM_URL = os.environ.get("AR_WORKSTREAM_URL", "")
 MAX_PAGES = 5
@@ -58,7 +60,20 @@ print(f"ar-github: AR_WORKSTREAM_URL={'<not set>' if not WORKSTREAM_URL else WOR
 if WORKSTREAM_URL and not os.environ.get("GITHUB_TOKEN", "").strip():
     print("ar-github: Will use controller proxy for GitHub API calls", file=sys.stderr)
 
-mcp = FastMCP("ar-github")
+_mcp_instance = None
+
+
+def _get_mcp():
+    """Lazily create the FastMCP server instance.
+
+    Defers the ``mcp`` import so that CLI mode (which only needs stdlib)
+    can run without the ``mcp`` package installed.
+    """
+    global _mcp_instance
+    if _mcp_instance is None:
+        from mcp.server.fastmcp import FastMCP
+        _mcp_instance = FastMCP("ar-github")
+    return _mcp_instance
 
 
 def _resolve_token() -> str:
@@ -142,6 +157,8 @@ def _proxy_github_get(path_or_url: str, controller_base: str) -> list | dict:
     for _ in range(MAX_PAGES):
         encoded = quote(current, safe="")
         proxy_url = f"{controller_base}/api/github/proxy?url={encoded}"
+        if GITHUB_ORG:
+            proxy_url += f"&org={quote(GITHUB_ORG, safe='')}"
         req = Request(proxy_url)
 
         with urlopen(req, timeout=20) as resp:
@@ -188,6 +205,8 @@ def _proxy_github_post(path: str, payload: dict, controller_base: str) -> dict:
     """
     encoded = quote(path, safe="")
     proxy_url = f"{controller_base}/api/github/proxy?url={encoded}"
+    if GITHUB_ORG:
+        proxy_url += f"&org={quote(GITHUB_ORG, safe='')}"
     data = json.dumps(payload).encode("utf-8")
     req = Request(proxy_url, data=data, headers={
         "Content-Type": "application/json",

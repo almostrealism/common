@@ -69,6 +69,16 @@ specification. Fix the production code to make the original test pass.
   weights, etc.)?
 - Is the level of abstraction appropriate?
 - Is there code duplication that should be extracted into a shared method?
+- **Backwards compatibility vs. clarity**: Ask yourself — are these changes
+  preserving a probably-useless kind of backwards compatibility at the expense
+  of creating a lot more effort to understand the intended behavior? Prefer a
+  "do things once" approach: one method signature, one code path, one way to
+  accomplish each task. Duplicate method overloads or parallel "fallback" paths
+  that silently degrade to the old behavior are a red flag. If the old behavior
+  is genuinely no longer the intended path, remove it or make it throw rather
+  than keeping it as a silent fallback. Maintaining two paths doubles the surface
+  area for bugs and makes it nearly impossible for the next reader to know which
+  path is actually expected to execute in production.
 
 ### 3. Test Quality
 

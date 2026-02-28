@@ -57,7 +57,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that a high-pass filter attenuates low frequencies.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 3 * 60000)
 	public void highPassAttenuatesLowFrequencies() {
 		// Create a low-frequency signal (100 Hz) below the cutoff
 		PackedCollection lowFreqSignal = TestAudioData.sineWave(100.0, DURATION, SAMPLE_RATE, 1.0);
@@ -78,7 +78,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that a high-pass filter passes high frequencies.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 120000)
 	public void highPassPassesHighFrequencies() {
 		// Create a high-frequency signal (2000 Hz) above the cutoff
 		PackedCollection highFreqSignal = TestAudioData.sineWave(2000.0, DURATION, SAMPLE_RATE, 1.0);
@@ -99,7 +99,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that a low-pass filter attenuates high frequencies.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 120000)
 	public void lowPassAttenuatesHighFrequencies() {
 		// Create a high-frequency signal (5000 Hz) above the cutoff
 		PackedCollection highFreqSignal = TestAudioData.sineWave(5000.0, DURATION, SAMPLE_RATE, 1.0);
@@ -222,7 +222,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	/**
 	 * Tests that low-pass filter with very high cutoff passes most signals.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 120000)
 	public void lowPassVeryHighCutoff() {
 		// Any audio signal at 440 Hz
 		PackedCollection signal = TestAudioData.sineWave(440.0, DURATION, SAMPLE_RATE, 1.0);

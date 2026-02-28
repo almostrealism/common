@@ -103,14 +103,16 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 	}
 
 	/**
-	 * Returns the Samples directory if it exists, or skips the test.
+	 * Returns the Samples directory if it exists, or {@code null} if it
+	 * does not. When the directory is absent,
+	 * {@link AudioSceneTestBase#addChoices} will generate synthetic
+	 * fallback samples automatically.
 	 *
-	 * @return the Samples directory
+	 * @return the Samples directory, or {@code null}
 	 */
 	public File requireSamplesDir() {
 		File dir = new File(SAMPLES_PATH);
-		assumeTrue("Samples directory not found: " + dir.getAbsolutePath(), dir.exists());
-		return dir;
+		return dir.exists() ? dir : null;
 	}
 
 	/**

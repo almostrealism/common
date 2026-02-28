@@ -26,15 +26,57 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
+      - name: Build
+        run: mvn install -DskipTests
+
+      - name: Flowtree Tests
+        run: |
+          mvn test -pl flowtree \
+           -DAR_TEST_PROFILE=pipeline
+
+  # ─── Code Policy Enforcement ───────────────────────────────────────
+  code-policy-check:
+    needs: build
+    runs-on: ubuntu-latest
+    # Critical path: failures block the test jobs and trigger auto-resolve.
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
       - name: Code Policy Enforcement
+        id: check
         run: |
           LD_LIBRARY_PATH=Extensions mvn test -pl tools \
            -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Code Policy Enforcement" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outcome }}" = "success" ]; then
+            echo "No code policy violations detected." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Code policy violations detected (PackedCollection GPU model, Features interfaces, etc.)." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceCodePolicies\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # ─── Test Integrity Check ────────────────────────────────────────────
   # Detects modifications to existing test files that hide failures
@@ -43,7 +85,6 @@ jobs:
   test-integrity-check:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/master'
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
       violation_count: ${{ steps.check.outputs.violation_count }}
@@ -57,8 +98,47 @@ jobs:
       - name: Fetch base branch
         run: git fetch origin master:refs/remotes/origin/master --no-tags
 
+      - name: Check for enforcement infrastructure tampering
+        id: enforcement
+        if: github.ref != 'refs/heads/master'
+        run: |
+          # These files are the enforcement infrastructure. Any modification
+          # on a PR branch is treated as tampering and fails the build.
+          PROTECTED_FILES=(
+            "utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
+            "utils/src/main/java/org/almostrealism/util/DuplicateCodeDetector.java"
+            "utils/src/main/java/org/almostrealism/util/TestTimeoutEnforcementScanner.java"
+            "tools/src/test/java/org/almostrealism/util/test/CodePolicyEnforcementTest.java"
+            "tools/ci/detect-test-hiding.sh"
+            "tools/ci/check-quality-gates.sh"
+          )
+
+          TAMPERED=""
+          for f in "${PROTECTED_FILES[@]}"; do
+            if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
+              TAMPERED="${TAMPERED}- ${f}\n"
+            fi
+          done
+
+          if [ -n "$TAMPERED" ]; then
+            echo "::error::Enforcement infrastructure was modified — this is not allowed on PR branches"
+            echo -e "## Enforcement Infrastructure Tampering Detected\n" > /tmp/enforcement-report.txt
+            echo -e "The following protected files were modified on this branch:\n" >> /tmp/enforcement-report.txt
+            echo -e "$TAMPERED" >> /tmp/enforcement-report.txt
+            echo -e "\nThese files enforce code policies and test integrity. They CANNOT be" >> /tmp/enforcement-report.txt
+            echo -e "modified on PR branches. The only way to pass the build is to fix the" >> /tmp/enforcement-report.txt
+            echo -e "production code that violates the policies — not to weaken the policies.\n" >> /tmp/enforcement-report.txt
+            echo -e "If you believe a policy needs to change, open a separate PR with a" >> /tmp/enforcement-report.txt
+            echo -e "justification for human review." >> /tmp/enforcement-report.txt
+            cat /tmp/enforcement-report.txt
+            exit 1
+          fi
+
+          echo "No enforcement infrastructure modifications detected."
+
       - name: Check for test-hiding modifications
         id: check
+        if: github.ref != 'refs/heads/master'
         run: |
           chmod +x ./tools/ci/detect-test-hiding.sh
           ./tools/ci/detect-test-hiding.sh origin/master /tmp/test-integrity-report.txt || {
@@ -75,9 +155,18 @@ jobs:
         run: |
           echo "## Test Integrity Check" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.check.outcome }}" = "success" ]; then
-            echo "No test-hiding modifications detected." >> "$GITHUB_STEP_SUMMARY"
-          else
+          if [ "${{ steps.enforcement.outcome }}" = "failure" ]; then
+            echo "**FAILED: Enforcement infrastructure was tampered with.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "The code policy enforcement files are protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
+            echo "Fix the policy violations in your production code instead." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            if [ -f /tmp/enforcement-report.txt ]; then
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              cat /tmp/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          elif [ "${{ steps.check.outcome }}" != "success" ]; then
             echo "**FAILED: Existing tests were modified in ways that hide failures.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "Tests that exist on the base branch are the specification. If the branch breaks" >> "$GITHUB_STEP_SUMMARY"
@@ -88,6 +177,8 @@ jobs:
               cat /tmp/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
               echo '```' >> "$GITHUB_STEP_SUMMARY"
             fi
+          else
+            echo "No test-hiding modifications or enforcement tampering detected." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ─── Deception Audit ─────────────────────────────────────────────
@@ -191,7 +282,7 @@ jobs:
           fi
 
   javadoc-check:
-    needs: test-media-mac
+    needs: test-media
     runs-on: ubuntu-latest
     # Out of the critical path: does not block tests or other jobs.
     # Failures are reported but do not fail the overall workflow.
@@ -318,7 +409,7 @@ jobs:
           fi
 
   test:
-    needs: [build, test-timeout-check, duplicate-code-check]
+    needs: [build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     runs-on: [self-hosted, linux, ar-ci]
     strategy:
       fail-fast: true
@@ -360,53 +451,21 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Collect Coverage Data
-        if: always()
-        run: |
-          mkdir -p coverage-data
-          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
-
-      - name: Upload Coverage Data
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-group-${{ matrix.group }}
-          path: coverage-data/
-          retention-days: 1
-
-  test-ml:
-    needs: test
-    runs-on: [self-hosted, linux, ar-ci]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests
-
-      - name: Run ML Tests
+      - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
           LD_LIBRARY_PATH=Extensions mvn test -pl ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=7
 
-      - name: Upload Surefire Reports
+      - name: Upload ML Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-ml
+          name: surefire-ml-group-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
@@ -422,12 +481,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-ml
+          name: coverage-group-${{ matrix.group }}
           path: coverage-data/
           retention-days: 1
 
   test-media:
-    needs: [test-ml]
+    needs: [test]
     runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
@@ -495,13 +554,17 @@ jobs:
           retention-days: 1
 
   # ─── macOS Test Jobs ────────────────────────────────────────────────
-  # Each macOS job depends on its Linux counterpart passing, but does
-  # NOT block subsequent Linux jobs. This creates a trailing verification
-  # pattern where macOS tests run in parallel with the next Linux stage.
 
   test-mac:
-    needs: [test-ml]
+    needs: [test-media]
     runs-on: [self-hosted, macos, ar-ci]
+    concurrency:
+      group: test-mac-${{ github.ref }}-${{ matrix.group }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: true
+      matrix:
+        group: [0, 1, 2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -519,42 +582,27 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
-      - name: Run Utils Tests
+      - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
           DYLD_LIBRARY_PATH=Extensions mvn test -pl utils \
-           -DAR_HARDWARE_DRIVER=mtl \
+           -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=3
 
-  test-ml-mac:
-    needs: [test-mac]
-    runs-on: [self-hosted, macos, ar-ci]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests
-
-      - name: Run ML Tests
+      - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
           DYLD_LIBRARY_PATH=Extensions mvn test -pl ml \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=3
 
   test-media-mac:
-    needs: [test-media, test-ml-mac]
+    needs: [test-mac]
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -596,7 +644,7 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
-    needs: [test-media, test-media-mac]
+    needs: [test-media]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -720,8 +768,8 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [build, javadoc-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, analysis]
-    if: ${{ !cancelled() && github.ref != 'refs/heads/master' && contains(needs.*.result, 'failure') }}
+    needs: [build, test, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, analysis]
+    if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
       group: auto-resolve-${{ github.ref }}
@@ -778,6 +826,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Resolve build failure"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
@@ -804,6 +853,21 @@ jobs:
           else
             echo "::notice::No test failures found"
           fi
+
+      - name: Check for incomplete test execution
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true'
+        id: test-completeness
+        run: |
+          INCOMPLETE="false"
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::warning::test job result: ${{ needs.test.result }}"
+            INCOMPLETE="true"
+          fi
+          if [ "${{ needs.test-media.result }}" != "success" ]; then
+            echo "::warning::test-media job result: ${{ needs.test-media.result }}"
+            INCOMPLETE="true"
+          fi
+          echo "incomplete=$INCOMPLETE" >> "$GITHUB_OUTPUT"
 
       - name: Upload failure summary
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
@@ -840,6 +904,33 @@ jobs:
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           PROTECT_TEST_FILES: "true"
           FAILING_TEST_CLASSES: ${{ steps.test-classes.outputs.failing_classes }}
+          ENFORCE_CHANGES: "true"
+          DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
+      # ── Incomplete test execution path ─────────────────────────────
+      # When test jobs failed or were cancelled but produced no
+      # surefire failures (e.g. build failure inside a test job,
+      # fail-fast cancellation), treat it like a build failure.
+
+      - name: Build prompt (incomplete tests)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        env:
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          ./tools/ci/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+
+      - name: Submit agent job (incomplete tests)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Investigate incomplete test execution"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
@@ -848,8 +939,37 @@ jobs:
       # those for auto-resolution instead. This ensures style and
       # reusability issues are addressed only after correctness.
 
+      # ── Code policy violation path ────────────────────────────────
+      # When code policy enforcement failed, use the dedicated prompt
+      # that explains the policies and forbids circumvention.
+
+      - name: Build prompt (code policy violations)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed != 'true'
+        env:
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          chmod +x ./tools/ci/build-policy-violation-prompt.sh
+          ./tools/ci/build-policy-violation-prompt.sh /tmp/agent-prompt.txt
+
+      - name: Submit agent job (code policy violations)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed != 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Resolve code policy violations"
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
+      # ── Other quality gate fallback ──────────────────────────────
+      # When no test failures or policy violations exist, check
+      # remaining quality gates.
+
       - name: Check quality gates
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed == 'true'
         id: quality
         env:
           JAVADOC_PASSED: ${{ needs.javadoc-check.outputs.passed }}
@@ -888,6 +1008,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Resolve quality gate failures"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
@@ -897,7 +1018,7 @@ jobs:
       # documentation, and consistency with existing patterns.
 
       - name: Build prompt (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
@@ -906,12 +1027,13 @@ jobs:
           ./tools/ci/build-review-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Review branch changes"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
@@ -931,6 +1053,12 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat /tmp/test-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.test-completeness.outputs.incomplete }}" = "true" ]; then
+            echo "**Test execution incomplete** — some test jobs failed or were cancelled without producing results." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to investigate." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ needs.code-policy-check.outputs.passed }}" != "true" ]; then
+            echo "**Code policy violations detected.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted with a dedicated policy violation prompt." >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.quality.outputs.has_failures }}" = "true" ]; then
             echo "No test failures. Found **${{ steps.quality.outputs.failure_count }}** quality gate failure(s)." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was submitted to resolve quality issues." >> "$GITHUB_STEP_SUMMARY"

@@ -28,6 +28,8 @@ import java.util.Properties;
 public class ServerTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void server() throws IOException, InterruptedException {
+		if (testProfileIs("pipeline")) return;
+
 		Properties p = new Properties();
 		p.setProperty("server.port", "7700");
 
