@@ -128,8 +128,8 @@ jobs:
           BASE_BRANCH: master
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          chmod +x ./tools/ci/build-verify-prompt.sh
-          ./tools/ci/build-verify-prompt.sh /tmp/agent-prompt.txt
+          chmod +x ./tools/ci/prompts/build-verify-prompt.sh
+          ./tools/ci/prompts/build-verify-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job
         env:
