@@ -20,6 +20,7 @@ import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.CodePrintWriter;
@@ -43,8 +44,8 @@ import java.util.Set;
  * not depend on the loop index variable or any variable assigned inside the loop.
  * This optimization reduces per-iteration computation cost.</p>
  *
- * <p>LICM is disabled by default and can be enabled via the
- * {@code AR_LOOP_INVARIANT_HOISTING=true} environment variable. When enabled,
+ * <p>LICM is enabled by default and can be disabled via the
+ * {@code AR_LOOP_INVARIANT_HOISTING=false} environment variable. When enabled,
  * invariant statements are moved from child scopes to this scope's statements
  * list, which is rendered before the loop body.</p>
  *
@@ -59,18 +60,20 @@ public class Repeated<T> extends Scope<T> {
 	 * When true, statements that do not depend on the loop index or any
 	 * variable assigned inside the loop will be hoisted outside the loop.
 	 *
-	 * <p>LICM is disabled by default due to edge cases in the invariance analysis
-	 * that can cause native compiler failures. Set {@code AR_LOOP_INVARIANT_HOISTING=true}
-	 * to enable this optimization. When enabled, the optimization handles:</p>
+	 * <p>LICM is enabled by default. Set {@code AR_LOOP_INVARIANT_HOISTING=false}
+	 * to disable this optimization. The invariance analysis uses a fixed-point
+	 * algorithm that correctly handles:</p>
 	 * <ul>
 	 *   <li>Loop indices via the {@link Index} interface (using {@code containsIndex})</li>
 	 *   <li>Variable dependencies via {@code getDependencies()}</li>
 	 *   <li>Named Index objects like {@link io.almostrealism.kernel.DefaultIndex}
 	 *       (using {@code getIndices()} to check names against assigned variables)</li>
+	 *   <li>Local declaration dependency chains via {@link StaticReference} name matching
+	 *       (ensures declarations referencing other loop-variant declarations are not hoisted)</li>
 	 * </ul>
 	 */
 	public static boolean enableLoopInvariantHoisting =
-			SystemUtils.isEnabled("AR_LOOP_INVARIANT_HOISTING").orElse(false);
+			SystemUtils.isEnabled("AR_LOOP_INVARIANT_HOISTING").orElse(true);
 
 	private Variable<Integer, ?> index;
 	private Expression<Integer> interval;
@@ -164,13 +167,22 @@ public class Repeated<T> extends Scope<T> {
 	 * @param scope the simplified scope to optimize
 	 */
 	private void hoistLoopInvariantStatements(Repeated<T> scope) {
-		// First pass: collect all variables that are assigned inside the loop body.
-		// These are loop-variant because their values change during loop execution.
-		Set<String> loopAssignedVariables = collectLoopAssignedVariables(scope);
+		// Phase 1: collect the base set of loop-variant variable names.
+		// This includes the loop index, nested loop indices, and destinations
+		// of non-declaration assignments (e.g., array element writes like source[offset] = 0.0).
+		Set<String> variantNames = collectBaseVariantNames(scope);
 
 		// Collect all loop indices (this scope's index plus nested loop indices)
 		List<Index> loopIndices = collectLoopIndices(scope);
 
+		// Phase 2: collect all declarations from child scopes and propagate variance.
+		// A declaration is variant if its expression references any variant name.
+		// Since declarations can form dependency chains (f_1 depends on f_0), we
+		// iterate until no new variant names are discovered (fixed-point).
+		List<DeclarationInfo> allDeclarations = collectDeclarations(scope);
+		propagateVariance(allDeclarations, variantNames, loopIndices);
+
+		// Phase 3: hoist declarations whose names are NOT in the variant set
 		List<Statement<?>> hoisted = new ArrayList<>();
 
 		for (Scope<T> child : scope.getChildren()) {
@@ -180,11 +192,12 @@ public class Repeated<T> extends Scope<T> {
 				if (stmt instanceof ExpressionAssignment) {
 					ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
 
-					// Only hoist declarations (new variable definitions)
-					// Non-declarations might assign to variables used elsewhere in the loop
-					if (assignment.isDeclaration() && isLoopInvariant(assignment.getExpression(), loopAssignedVariables, loopIndices)) {
-						hoisted.add(stmt);
-						toRemove.add(stmt);
+					if (assignment.isDeclaration()) {
+						String declName = getDeclarationName(assignment);
+						if (declName != null && !variantNames.contains(declName)) {
+							hoisted.add(stmt);
+							toRemove.add(stmt);
+						}
 					}
 				}
 			}
@@ -194,6 +207,173 @@ public class Repeated<T> extends Scope<T> {
 
 		// Add hoisted statements to this scope (before the loop)
 		scope.getStatements().addAll(0, hoisted);
+	}
+
+	/**
+	 * Collects the base set of loop-variant variable names, excluding declaration names.
+	 *
+	 * <p>This includes the loop index variable, nested loop indices, and the destinations
+	 * of non-declaration assignments (array element writes, etc.). Declaration names are
+	 * handled separately via variance propagation in {@link #propagateVariance}.</p>
+	 *
+	 * @param scope the repeated scope to analyze
+	 * @return a set of variable names that are inherently loop-variant
+	 */
+	private Set<String> collectBaseVariantNames(Repeated<T> scope) {
+		Set<String> variantNames = new HashSet<>();
+
+		// The loop index itself is loop-variant
+		Variable<Integer, ?> scopeIndex = scope.getIndex();
+		if (scopeIndex != null && scopeIndex.getName() != null) {
+			variantNames.add(scopeIndex.getName());
+		}
+
+		// Collect non-declaration assignment targets and nested loop indices
+		for (Scope<T> child : scope.getChildren()) {
+			collectBaseVariantNamesRecursive(child, variantNames);
+		}
+
+		return variantNames;
+	}
+
+	/**
+	 * Recursively collects non-declaration assignment targets and nested loop indices.
+	 *
+	 * @param scope the scope to analyze
+	 * @param variantNames the set to add variant names to
+	 */
+	private void collectBaseVariantNamesRecursive(Scope<?> scope, Set<String> variantNames) {
+		if (scope instanceof Repeated) {
+			Repeated<?> nested = (Repeated<?>) scope;
+			Variable<Integer, ?> nestedIndex = nested.getIndex();
+			if (nestedIndex != null && nestedIndex.getName() != null) {
+				variantNames.add(nestedIndex.getName());
+			}
+		}
+
+		for (Statement<?> stmt : scope.getStatements()) {
+			if (stmt instanceof ExpressionAssignment) {
+				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
+				if (!assignment.isDeclaration()) {
+					// Non-declaration assignments (e.g., source[offset] = 0.0) are
+					// inherently loop-variant because they mutate state each iteration
+					Expression<?> dest = assignment.getDestination();
+					if (dest != null) {
+						for (Variable<?, ?> var : dest.getDependencies()) {
+							if (var.getName() != null) {
+								variantNames.add(var.getName());
+							}
+						}
+					}
+				}
+			}
+		}
+
+		for (ExpressionAssignment<?> var : scope.getVariables()) {
+			Expression<?> dest = var.getDestination();
+			if (dest != null) {
+				for (Variable<?, ?> v : dest.getDependencies()) {
+					if (v.getName() != null) {
+						variantNames.add(v.getName());
+					}
+				}
+			}
+		}
+
+		for (Scope<?> child : scope.getChildren()) {
+			collectBaseVariantNamesRecursive(child, variantNames);
+		}
+	}
+
+	/**
+	 * Collects all declaration statements from child scopes of the given Repeated scope.
+	 *
+	 * @param scope the repeated scope whose children to scan
+	 * @return a list of declaration info records
+	 */
+	private List<DeclarationInfo> collectDeclarations(Repeated<T> scope) {
+		List<DeclarationInfo> declarations = new ArrayList<>();
+		for (Scope<T> child : scope.getChildren()) {
+			collectDeclarationsRecursive(child, declarations);
+		}
+		return declarations;
+	}
+
+	/**
+	 * Recursively collects declaration statements from a scope and its children.
+	 *
+	 * @param scope the scope to scan
+	 * @param declarations the list to add declarations to
+	 */
+	private void collectDeclarationsRecursive(Scope<?> scope, List<DeclarationInfo> declarations) {
+		for (Statement<?> stmt : scope.getStatements()) {
+			if (stmt instanceof ExpressionAssignment) {
+				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
+				if (assignment.isDeclaration()) {
+					String name = getDeclarationName(assignment);
+					if (name != null) {
+						declarations.add(new DeclarationInfo(name, assignment.getExpression()));
+					}
+				}
+			}
+		}
+		for (Scope<?> child : scope.getChildren()) {
+			collectDeclarationsRecursive(child, declarations);
+		}
+	}
+
+	/**
+	 * Propagates variance through declaration dependency chains using a fixed-point algorithm.
+	 *
+	 * <p>A declaration is loop-variant if its expression references any variant name (through
+	 * any mechanism: Index objects, Variable dependencies, StaticReference names, or named Index
+	 * objects). When a declaration is found to be variant, its name is added to the variant set,
+	 * which may cause other declarations that reference it to become variant as well.</p>
+	 *
+	 * @param declarations all declarations in the loop body
+	 * @param variantNames the set of variant names (modified in place)
+	 * @param loopIndices indices from this and nested loops
+	 */
+	private void propagateVariance(List<DeclarationInfo> declarations, Set<String> variantNames, List<Index> loopIndices) {
+		boolean changed = true;
+		while (changed) {
+			changed = false;
+			for (DeclarationInfo decl : declarations) {
+				if (!variantNames.contains(decl.name)) {
+					if (!isLoopInvariant(decl.expression, variantNames, loopIndices)) {
+						variantNames.add(decl.name);
+						changed = true;
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Extracts the variable name from a declaration's destination expression.
+	 *
+	 * @param assignment the declaration assignment
+	 * @return the declared variable name, or null if it cannot be determined
+	 */
+	private String getDeclarationName(ExpressionAssignment<?> assignment) {
+		Expression<?> dest = assignment.getDestination();
+		if (dest instanceof StaticReference) {
+			return ((StaticReference<?>) dest).getName();
+		}
+		return null;
+	}
+
+	/**
+	 * Simple record holding a declaration's variable name and its initializer expression.
+	 */
+	private static class DeclarationInfo {
+		final String name;
+		final Expression<?> expression;
+
+		DeclarationInfo(String name, Expression<?> expression) {
+			this.name = name;
+			this.expression = expression;
+		}
 	}
 
 	/**
@@ -243,84 +423,6 @@ public class Repeated<T> extends Scope<T> {
 	}
 
 	/**
-	 * Collects the names of all variables that are assigned inside the loop body.
-	 *
-	 * <p>This includes the loop index variable, any variables declared within child
-	 * scopes, and any variables that are assigned (even if declared elsewhere).</p>
-	 *
-	 * @param scope the scope to analyze
-	 * @return a set of variable names that are assigned inside the loop
-	 */
-	private Set<String> collectLoopAssignedVariables(Repeated<T> scope) {
-		Set<String> assignedVars = new HashSet<>();
-
-		// The loop index itself is loop-variant
-		Variable<Integer, ?> scopeIndex = scope.getIndex();
-		if (scopeIndex != null && scopeIndex.getName() != null) {
-			assignedVars.add(scopeIndex.getName());
-		}
-
-		// Collect all variables assigned in child scopes
-		for (Scope<T> child : scope.getChildren()) {
-			collectAssignedVariablesRecursive(child, assignedVars);
-		}
-
-		return assignedVars;
-	}
-
-	/**
-	 * Recursively collects variable names from all assignments in a scope and its children.
-	 *
-	 * <p>This includes loop index variables from nested {@link Repeated} scopes, since
-	 * those are loop-variant and expressions depending on them cannot be hoisted.</p>
-	 *
-	 * @param scope the scope to analyze
-	 * @param assignedVars the set to add variable names to
-	 */
-	private void collectAssignedVariablesRecursive(Scope<?> scope, Set<String> assignedVars) {
-		// If this scope is a nested Repeated, its index variable is loop-variant
-		if (scope instanceof Repeated) {
-			Repeated<?> nested = (Repeated<?>) scope;
-			Variable<Integer, ?> nestedIndex = nested.getIndex();
-			if (nestedIndex != null && nestedIndex.getName() != null) {
-				assignedVars.add(nestedIndex.getName());
-			}
-		}
-
-		// Collect from statements
-		for (Statement<?> stmt : scope.getStatements()) {
-			if (stmt instanceof ExpressionAssignment) {
-				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
-				Expression<?> dest = assignment.getDestination();
-				if (dest != null) {
-					for (Variable<?, ?> var : dest.getDependencies()) {
-						if (var.getName() != null) {
-							assignedVars.add(var.getName());
-						}
-					}
-				}
-			}
-		}
-
-		// Collect from variables (local declarations)
-		for (ExpressionAssignment<?> var : scope.getVariables()) {
-			Expression<?> dest = var.getDestination();
-			if (dest != null) {
-				for (Variable<?, ?> v : dest.getDependencies()) {
-					if (v.getName() != null) {
-						assignedVars.add(v.getName());
-					}
-				}
-			}
-		}
-
-		// Recurse into child scopes
-		for (Scope<?> child : scope.getChildren()) {
-			collectAssignedVariablesRecursive(child, assignedVars);
-		}
-	}
-
-	/**
 	 * Checks if an expression is loop-invariant.
 	 *
 	 * <p>An expression is loop-invariant if it does not reference the loop index
@@ -333,6 +435,9 @@ public class Repeated<T> extends Scope<T> {
 	 *   <li>Via named Index objects like {@link io.almostrealism.kernel.DefaultIndex}
 	 *       that may not be in the loopIndices list but reference the same variable
 	 *       name (checked via {@code getIndices})</li>
+	 *   <li>Via {@link StaticReference} nodes whose name matches a loop-assigned variable
+	 *       (handles local declarations like {@code double f_0 = ...} that are referenced
+	 *       by subsequent expressions via {@code StaticReference("f_0")})</li>
 	 * </ul>
 	 *
 	 * @param expr the expression to check
@@ -368,7 +473,41 @@ public class Repeated<T> extends Scope<T> {
 			}
 		}
 
+		// Check for StaticReference nodes that reference loop-assigned variables by name.
+		// This handles the case where a declaration like "double f_0 = expr" creates a
+		// StaticReference("f_0") that is used in subsequent expressions. Without this check,
+		// expressions referencing f_0 could be incorrectly hoisted because StaticReference
+		// without a referent returns empty from getDependencies().
+		if (containsStaticReferenceToAny(expr, loopAssignedVariables)) {
+			return false;
+		}
+
 		return true;
+	}
+
+	/**
+	 * Recursively checks whether an expression tree contains any {@link StaticReference}
+	 * whose name matches one of the given variable names.
+	 *
+	 * @param expr the expression tree to search
+	 * @param names the set of variable names to look for
+	 * @return true if a matching {@link StaticReference} is found
+	 */
+	private boolean containsStaticReferenceToAny(Expression<?> expr, Set<String> names) {
+		if (expr instanceof StaticReference) {
+			String name = ((StaticReference<?>) expr).getName();
+			if (name != null && names.contains(name)) {
+				return true;
+			}
+		}
+
+		for (Expression<?> child : expr.getChildren()) {
+			if (containsStaticReferenceToAny(child, names)) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	@Override
