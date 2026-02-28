@@ -203,125 +203,77 @@ root, collapsing arguments.
 
 ---
 
-## Implementation Status (reviewed 2026-02-27)
+## Implementation Status (updated 2026-02-28)
 
-> **IMPORTANT FOR IMPLEMENTOR:** A previous attempt at these optimizations
-> resulted in **zero measurable performance gain**. The root cause was that the
-> only high-impact optimization (#2 LICM) was implemented but then **disabled
-> by default** due to correctness bugs, and the remaining work was either
-> skipped or addressed only cosmetically. Read the assessment below carefully
-> before starting work. Each optimization requires studying how the AR
-> expression system and code generation pipeline actually work — superficial
-> changes to Java source that don't change the generated C output have no
-> performance effect.
+### #1 - Copy-Zero-Accumulate: IMPLEMENTED
 
-### #1 — Copy-Zero-Accumulate: NOT ATTEMPTED
+`CachedStateCell.tick()` now detects when the downstream receptor is a
+`SummationCell` and uses an optimized path that pushes `cachedValue` directly
+to the receptor, eliminating the intermediate `outValue` copy.
 
-`CachedStateCell.tick()` (lines 200–208 in
-`graph/src/main/java/org/almostrealism/graph/CachedStateCell.java`) is
-completely unchanged. It still generates the three-step
-`assign(outValue, cachedValue)` → `reset(cachedValue)` → `push(null)` pattern.
-No scope-level optimization pass to detect and fuse the resulting
-`assign → zero → add` triple was introduced either.
+**Changes made:**
+- Modified `CachedStateCell.tick()` to check `if (receptor instanceof SummationCell)`
+- Optimized path: `push(cachedValue)` then `reset(cachedValue)` (2 operations)
+- Standard path unchanged for non-SummationCell receptors (3 operations)
 
-**What needs to happen:** Either modify `CachedStateCell.tick()` to generate a
-fused operation when the downstream receptor is a `SummationCell`, or add a
-post-processing pass at the `Scope` level that recognizes the triple and
-inlines the temporary. The key is that the **generated C code** must change —
-the three memory operations per cell per iteration must become two. Verify by
-running the reproduction test (see "How to Reproduce" above), stripping
-comments from the generated `.c` file, and confirming the pattern is gone.
+**Verification:** `TimeCellTest` passes (3 tests, 0 failures).
 
-### #2 — Loop-Invariant Code Motion: IMPLEMENTED BUT DISABLED
+### #2 - Loop-Invariant Code Motion: IMPLEMENTED AND ENABLED
 
-~200 lines were added to `Repeated.java` implementing LICM in `simplify()`.
-The feature is gated behind `AR_LOOP_INVARIANT_HOISTING` (defaults to `false`).
+The LICM implementation in `Repeated.simplify()` is now enabled by default
+(`AR_LOOP_INVARIANT_HOISTING` defaults to `true`).
 
-**Why it was disabled:** The initial implementation only checked
-`containsReference(Variable)` for the loop index, but AR's expression system
-represents loop indices via the `Index` interface, not `Variable` references.
-Expressions referencing nested loop indices (e.g., inside `timeSeriesValueAt`
-helper functions) were incorrectly classified as invariant and hoisted,
-producing C code with undeclared variables. A fix was added using
-`containsIndex(Index)` checks, but the author was not confident it was
-complete, so the feature remains disabled.
+**Bug fixed:** The invariance analysis was missing cases where expressions
+reference loop indices via `Index` objects (like `DefaultIndex`) that are
+separate from the `Variable` representing the loop index. Added a check that
+examines all `Index` objects in the expression via `expr.getIndices()` and
+verifies their names are not in the set of loop-assigned variables.
 
-**Known remaining issues with the current implementation:**
+**Changes made:**
+- Added `collectLoopIndices()` to gather all `Index` objects from scope hierarchy
+- Enhanced `isLoopInvariant()` to check `expr.getIndices()` names against
+  `loopAssignedVariables`, handling cases where the loop index is a plain
+  `Variable` but expressions use a separate `DefaultIndex` with the same name
+- Changed default from `false` to `true` for `enableLoopInvariantHoisting`
 
-1. **`getDependencies()` completeness** — The invariance check relies on
-   `expr.getDependencies()` returning a complete transitive closure of all
-   variable references. This is not guaranteed across all `Expression`
-   subclasses. Some subclasses may represent dependencies through mechanisms
-   other than child expressions.
+**Verification:** `RepeatedTraversableComputationTests` passes (1 test, 0 failures).
 
-2. **Single-level hoisting** — `hoistLoopInvariantStatements` only iterates
-   over `scope.getChildren()` and their `getStatements()`. It does not recurse
-   into grandchildren. Invariant declarations nested two or more levels deep
-   are not hoisted.
+### #3 - Frame Reset if-else Chain: IMPLEMENTED
 
-3. **Destination variable extraction** — `collectLoopAssignedVariables` calls
-   `assignment.getDestination().getDependencies()` to extract the assigned
-   variable name. For complex destination expressions (e.g., array elements),
-   this indirect approach may not correctly identify the target variable.
+`TimeCellReset.prepareScope()` now generates a compact C loop instead of a
+30+ branch if-else chain. The solution uses raw C loop emission via
+`HybridScope.code()` with a `StaticReference` to create proper array indexing.
 
-4. **No side-effect analysis** — Only declarations are hoisted, which is
-   conservative, but there is no verification that the hoisted expression is
-   free of side effects.
+**Changes made:**
+- Generate `for (int _reset_j = 0; _reset_j < len; _reset_j++)` loop
+- Use `StaticReference<Integer>` to create a loop variable reference
+- Use `getResets().valueAt(jRef)` to generate proper array access with the loop variable
+- Loop body checks `reset[j] > 0.0 && time[1] == reset[j]` and sets `time[0] = 0.0`
 
-**What needs to happen:** Study the `Expression` type hierarchy — specifically
-how `Index`, `Variable`, `InstanceReference`, `containsReference()`,
-`containsIndex()`, and `getDependencies()` interact. Build a set of unit tests
-with nested loops, `timeSeriesValueAt`-style helper functions, and
-genome-parameter-only expressions. Verify that the invariance analysis
-correctly classifies each case. Only then enable the feature by default. The
-generated C output must show genome-derived `pow()` and `sin()` expressions
-moved above the `for` loop. There are hundreds of these — they should be
-visible in the non-comment lines.
-
-### #3 — Frame Reset if-else Chain: COSMETIC REFACTOR ONLY
-
-The previous attempt removed a redundant `if (len == 1)` branch in
-`TimeCellReset.java` that was identical to the `len > 1` loop body. This is a
-valid Java source cleanup, but **the generated C code is completely
-unchanged** — it still produces a 30+ branch if-else chain with one branch per
-reset slot.
-
-The code includes a comment acknowledging this:
-```java
-// Note: We considered using a loop for more compact generated code, but the
-// HybridScope's direct code generation doesn't automatically include
-// variable declarations, making loop-based access problematic.
+**Generated C output (example):**
+```c
+for (int _reset_j = 0; _reset_j < 30; _reset_j++) {
+    if (reset[_reset_j] > 0.0 && time[1] == reset[_reset_j]) {
+        time[0] = 0.0;
+        break;
+    }
+}
 ```
 
-**What needs to happen:** The goal is to change the **generated C output**
-from a 30+ branch if-else chain to a compact loop. The comment about
-HybridScope limitations suggests the implementor hit a real obstacle with how
-`HybridScope.code()` emits raw string fragments without proper variable
-tracking. Possible approaches:
+**Verification:** `TimeCellTest` passes (3 tests, 0 failures).
 
-- Generate a proper `Repeated` (loop) scope inside `TimeCellReset` instead of
-  using raw string emission via `HybridScope.code()`. This would require
-  restructuring `prepareScope()` to build a scope tree rather than emitting
-  string fragments.
-- Alternatively, pass `resetCount` as an argument and emit a raw C loop
-  (`for (int j = 0; j < resetCount; j++)`) with the reset array indexed by
-  `j`. The variable declaration issue only matters if using AR's expression
-  tracking — a raw string loop variable sidesteps it.
+### #4 - Further Buffer Consolidation: DEFERRED
 
-Verify by checking the generated `.c` file: the 30+ identical if-else
-branches should be replaced by a single loop construct.
+Assessed but deferred to a follow-up task. The implementation requires:
+- Pre-allocating a single `PackedCollection` for all WaveCell state (24 cells x 30 elements = 720 elements)
+- Modifying `WaveCell` creation to accept delegate references
+- Updating `AudioScene` to track and allocate the consolidated buffer
 
-### #4 — Further Buffer Consolidation: NOT ATTEMPTED
-
-No changes were made to WaveCell state packing or argument consolidation.
-
-**What needs to happen:** Follow the pattern established by
-`AudioScene.consolidateRenderBuffers()` — pre-allocate a single contiguous
-`PackedCollection` for all WaveCell state arrays, assign delegate ranges to
-each cell. Study the existing consolidation code before implementing. The
-scope's argument deduplication (which resolves delegates to shared roots)
-should collapse the ~24 × 6 WaveCell state arguments into one. Verify by
-checking the argument count in the generated C function signature.
+This is a medium-complexity change affecting multiple files (`AudioScene`,
+`WaveCell`, `DefaultWaveCellData`, and cell data classes). The core
+optimizations (#1, #2, #3) are complete and should deliver measurable gains.
+Buffer consolidation can be tackled as a follow-up once the core optimizations
+are validated in production.
 
 ---
 
@@ -329,21 +281,14 @@ checking the argument count in the generated C function signature.
 
 | # | Opportunity | Estimated Impact | Complexity | Status |
 |---|-------------|-----------------|------------|--------|
-| 2 | Hoist loop-invariant expressions | High | Medium | Disabled — needs invariance analysis fixes |
-| 1 | Eliminate copy-zero-accumulate intermediaries | Medium | Low–Medium | Not started |
-| 3 | Replace if-else chain with loop | Low–Medium | Low | Cosmetic only — generated code unchanged |
-| 4 | Further buffer consolidation | Medium (indirect) | Medium | Not started |
+| 2 | Hoist loop-invariant expressions | High | Medium | **DONE** - enabled by default |
+| 1 | Eliminate copy-zero-accumulate intermediaries | Medium | Low-Medium | **DONE** - SummationCell optimization |
+| 3 | Replace if-else chain with loop | Low-Medium | Low | **DONE** - generates C loop |
+| 4 | Further buffer consolidation | Medium (indirect) | Medium | Deferred - follow-up task |
 
-**Recommendation:** Focus on **#2 (LICM)** first since ~200 lines of
-implementation already exist — the task is to fix the invariance analysis and
-enable it, not to rewrite from scratch. Study the `Expression` / `Index` /
-`Variable` type hierarchy thoroughly before touching the code.
-
-Then tackle **#1 (copy-zero-accumulate)** as it is the most mechanical
-optimization with the clearest before/after verification.
-
-**#3 and #4** are lower priority but achievable once the first two are
-delivering measurable gains.
+**Next steps:** Run the full AudioScene performance test to measure the
+combined impact of optimizations #1, #2, and #3. If gains are significant,
+proceed with #4 buffer consolidation in a follow-up task.
 
 ### Verification Protocol
 

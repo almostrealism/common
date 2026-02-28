@@ -47,15 +47,19 @@ import java.util.function.Consumer;
  * <p>This is used by {@link org.almostrealism.graph.TimeCell} to support scheduled
  * restarts of temporal sequences at specific points during playback.</p>
  *
- * <p>The computation generates conditional code that checks each reset slot:</p>
+ * <p>The computation generates a compact loop that checks each reset slot:</p>
  * <pre>
- * if (reset[0] &gt; 0 &amp;&amp; time[1] == reset[0]) {
- *     time[0] = 0.0;
- * } else if (reset[1] &gt; 0 &amp;&amp; time[1] == reset[1]) {
- *     time[0] = 0.0;
+ * for (int _reset_j = 0; _reset_j &lt; resetCount; _reset_j++) {
+ *     if (reset[_reset_j] &gt; 0.0 &amp;&amp; time[1] == reset[_reset_j]) {
+ *         time[0] = 0.0;
+ *         break;
+ *     }
  * }
- * // ... for each reset slot
  * </pre>
+ *
+ * <p>This loop-based approach replaces the previous if-else chain, reducing
+ * generated code size from O(n) branches to a constant-size loop construct.
+ * With 30+ reset slots, this reduces generated code by ~100+ lines.</p>
  *
  * @author Michael Murray
  * @see org.almostrealism.graph.TimeCell
@@ -125,9 +129,9 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Prepares the scope by generating conditional code that checks each
-	 * reset slot and resets the frame counter if a match is found. An if-else
-	 * chain is generated with one branch per reset slot.</p>
+	 * <p>Prepares the scope by generating a loop that checks each reset slot
+	 * and resets the frame counter if a match is found. The loop uses a raw
+	 * C loop variable to avoid AR expression tracking limitations.</p>
 	 */
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
@@ -137,24 +141,24 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 
 		Consumer<String> exp = scope.code();
 
-		// Generate if-else chain checking each reset slot.
-		// Note: We considered using a loop for more compact generated code, but the
-		// HybridScope's direct code generation doesn't automatically include
-		// variable declarations, making loop-based access problematic.
-		// The if-else chain ensures proper variable tracking through expressions.
-		for (int i = 0; i < len; i++) {
-			if (i > 0) exp.accept(" else ");
+		// Use a unique loop variable name to avoid conflicts with AR-generated names
+		String loopVar = "_reset_j";
 
-			Expression<Boolean> condition = getResets().valueAt(i).greaterThan(e(0.0));
-			condition = condition.and(getTime().reference(e(1)).eq(getResets().valueAt(i)));
+		// Create expressions using the loop variable as a StaticReference
+		Expression<Integer> jRef = new io.almostrealism.expression.StaticReference<>(Integer.class, loopVar);
 
-			exp.accept("if (" + condition.getSimpleExpression(getLanguage()) + ") {\n");
-			exp.accept("\t");
-			exp.accept(getTime().valueAt(0).getSimpleExpression(getLanguage()));
-			exp.accept(" = ");
-			exp.accept(getLanguage().getPrecision().stringForDouble(0.0));
-			exp.accept(";\n");
-			exp.accept("}");
-		}
+		// Get the expressions for array access using the loop variable
+		String resetAtJ = getResets().valueAt(jRef).getSimpleExpression(getLanguage());
+		String timeBase = getTime().valueAt(0).getSimpleExpression(getLanguage());
+		String time1 = getTime().valueAt(1).getSimpleExpression(getLanguage());
+		String zeroVal = getLanguage().getPrecision().stringForDouble(0.0);
+
+		// Generate a compact loop instead of an if-else chain
+		exp.accept("for (int " + loopVar + " = 0; " + loopVar + " < " + len + "; " + loopVar + "++) {\n");
+		exp.accept("\tif (" + resetAtJ + " > " + zeroVal + " && " + time1 + " == " + resetAtJ + ") {\n");
+		exp.accept("\t\t" + timeBase + " = " + zeroVal + ";\n");
+		exp.accept("\t\tbreak;\n");
+		exp.accept("\t}\n");
+		exp.accept("}\n");
 	}
 }

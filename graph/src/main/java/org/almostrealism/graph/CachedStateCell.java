@@ -194,6 +194,12 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	 * <p>This is the core temporal processing method that should be called
 	 * once per time step in temporal processing scenarios.</p>
 	 *
+	 * <p>When the downstream receptor is a {@link SummationCell}, an optimized
+	 * code path is used that eliminates the intermediate copy to outValue.
+	 * Instead of: copy cached-to-out, zero cached, accumulator+=out, the optimized
+	 * path does: accumulator+=cached, zero cached. This removes one memory read
+	 * and one memory write per cell per frame.</p>
+	 *
 	 * @return operations to perform the tick
 	 */
 	@Override
@@ -201,9 +207,22 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		String name = getClass().getSimpleName();
 		if (name == null || name.length() <= 0) name = "anonymous";
 		OperationList tick = new OperationList("CachedStateCell (" + name + ") Tick");
-		tick.add(assign(p(outValue), p(cachedValue)));
-		tick.add(reset(p(cachedValue)));
-		tick.add(super.push(null));
+
+		// Check if the receptor is a SummationCell for optimized accumulate-and-reset
+		Receptor<T> receptor = getReceptor();
+		if (receptor instanceof SummationCell) {
+			// Optimized path: push cachedValue directly to the SummationCell,
+			// then reset. This eliminates the intermediate outValue copy.
+			// The SummationCell.push() will accumulate cachedValue directly.
+			tick.add(receptor.push(p(cachedValue)));
+			tick.add(reset(p(cachedValue)));
+		} else {
+			// Standard path: copy to outValue, reset cached, push outValue
+			tick.add(assign(p(outValue), p(cachedValue)));
+			tick.add(reset(p(cachedValue)));
+			tick.add(super.push(null));
+		}
+
 		return tick;
 	}
 }

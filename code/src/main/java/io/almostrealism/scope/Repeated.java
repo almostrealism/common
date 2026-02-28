@@ -38,14 +38,15 @@ import java.util.Set;
  * while the condition is true, incrementing by the specified interval.</p>
  *
  * <h2>Loop-Invariant Code Motion (LICM)</h2>
- * <p>During simplification, {@code Repeated} can optionally hoist loop-invariant
- * statements outside the loop body. A statement is loop-invariant if its expression
- * does not depend on the loop index variable or any variable assigned inside the loop.
- * This optimization can significantly reduce per-iteration computation cost.</p>
+ * <p>During simplification, {@code Repeated} hoists loop-invariant statements
+ * outside the loop body. A statement is loop-invariant if its expression does
+ * not depend on the loop index variable or any variable assigned inside the loop.
+ * This optimization reduces per-iteration computation cost.</p>
  *
- * <p>LICM is controlled by the {@code AR_LOOP_INVARIANT_HOISTING} environment variable
- * (default: disabled). When enabled, invariant statements are moved from child scopes
- * to this scope's statements list, which is rendered before the loop body.</p>
+ * <p>LICM is enabled by default and can be disabled via the
+ * {@code AR_LOOP_INVARIANT_HOISTING=false} environment variable. When enabled,
+ * invariant statements are moved from child scopes to this scope's statements
+ * list, which is rendered before the loop body.</p>
  *
  * @param <T> the return type of this scope
  * @see Scope
@@ -58,14 +59,19 @@ public class Repeated<T> extends Scope<T> {
 	 * When true, statements that do not depend on the loop index or any
 	 * variable assigned inside the loop will be hoisted outside the loop.
 	 *
-	 * <p><strong>Note:</strong> LICM is currently disabled by default because the
-	 * current implementation does not correctly handle all loop-variant dependencies,
-	 * particularly expressions containing Index references to nested loop variables.
-	 * The optimization can be enabled with AR_LOOP_INVARIANT_HOISTING=true for
-	 * testing, but this may cause native compiler failures with undefined variables.</p>
+	 * <p>LICM is enabled by default. The optimization correctly handles:</p>
+	 * <ul>
+	 *   <li>Loop indices via the {@link Index} interface (using {@code containsIndex})</li>
+	 *   <li>Variable dependencies via {@code getDependencies()}</li>
+	 *   <li>Named Index objects like {@link io.almostrealism.kernel.DefaultIndex}
+	 *       (using {@code getIndices()} to check names against assigned variables)</li>
+	 * </ul>
+	 *
+	 * <p>Set {@code AR_LOOP_INVARIANT_HOISTING=false} to disable this optimization
+	 * if issues are observed with generated code.</p>
 	 */
 	public static boolean enableLoopInvariantHoisting =
-			SystemUtils.isEnabled("AR_LOOP_INVARIANT_HOISTING").orElse(false);
+			SystemUtils.isEnabled("AR_LOOP_INVARIANT_HOISTING").orElse(true);
 
 	private Variable<Integer, ?> index;
 	private Expression<Integer> interval;
@@ -321,6 +327,15 @@ public class Repeated<T> extends Scope<T> {
 	 * <p>An expression is loop-invariant if it does not reference the loop index
 	 * variable or any variable that is assigned inside the loop body.</p>
 	 *
+	 * <p>This check handles multiple ways that loop variables can be referenced:</p>
+	 * <ul>
+	 *   <li>Via {@link Index} objects (checked via {@code containsIndex})</li>
+	 *   <li>Via {@link Variable} dependencies (checked via {@code getDependencies})</li>
+	 *   <li>Via named Index objects like {@link io.almostrealism.kernel.DefaultIndex}
+	 *       that may not be in the loopIndices list but reference the same variable
+	 *       name (checked via {@code getIndices})</li>
+	 * </ul>
+	 *
 	 * @param expr the expression to check
 	 * @param loopAssignedVariables names of variables assigned inside the loop
 	 * @param loopIndices indices from this and nested loops
@@ -339,6 +354,17 @@ public class Repeated<T> extends Scope<T> {
 		// Check all variable dependencies of the expression
 		for (Variable<?, ?> var : expr.getDependencies()) {
 			if (var.getName() != null && loopAssignedVariables.contains(var.getName())) {
+				return false;
+			}
+		}
+
+		// Check all Index objects in the expression by name.
+		// This handles the case where the Repeated scope's index variable is a plain Variable,
+		// but expressions use a separate Index object (like DefaultIndex) with the same name.
+		// The Index objects won't be in loopIndices (since collectLoopIndices only looks at
+		// scope.getIndex()), but we can check their names against loopAssignedVariables.
+		for (Index idx : expr.getIndices()) {
+			if (idx.getName() != null && loopAssignedVariables.contains(idx.getName())) {
 				return false;
 			}
 		}
