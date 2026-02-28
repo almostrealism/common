@@ -126,9 +126,8 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 	 * {@inheritDoc}
 	 *
 	 * <p>Prepares the scope by generating conditional code that checks each
-	 * reset slot and resets the frame counter if a match is found. For multiple
-	 * reset slots, a loop is generated to reduce code size and improve branch
-	 * prediction.</p>
+	 * reset slot and resets the frame counter if a match is found. An if-else
+	 * chain is generated with one branch per reset slot.</p>
 	 */
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
@@ -138,10 +137,16 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 
 		Consumer<String> exp = scope.code();
 
-		if (len == 1) {
-			// Single reset slot: generate simple conditional
-			Expression<Boolean> condition = getResets().valueAt(0).greaterThan(e(0.0));
-			condition = condition.and(getTime().reference(e(1)).eq(getResets().valueAt(0)));
+		// Generate if-else chain checking each reset slot.
+		// Note: We considered using a loop for more compact generated code, but the
+		// HybridScope's direct code generation doesn't automatically include
+		// variable declarations, making loop-based access problematic.
+		// The if-else chain ensures proper variable tracking through expressions.
+		for (int i = 0; i < len; i++) {
+			if (i > 0) exp.accept(" else ");
+
+			Expression<Boolean> condition = getResets().valueAt(i).greaterThan(e(0.0));
+			condition = condition.and(getTime().reference(e(1)).eq(getResets().valueAt(i)));
 
 			exp.accept("if (" + condition.getSimpleExpression(getLanguage()) + ") {\n");
 			exp.accept("\t");
@@ -150,26 +155,6 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 			exp.accept(getLanguage().getPrecision().stringForDouble(0.0));
 			exp.accept(";\n");
 			exp.accept("}");
-		} else {
-			// Multiple reset slots: generate if-else chain checking each slot
-			// Note: We considered using a loop for more compact code, but the
-			// HybridScope's direct code generation doesn't automatically include
-			// variable declarations, making loop-based access problematic.
-			// The if-else chain ensures proper variable tracking through expressions.
-			for (int i = 0; i < len; i++) {
-				if (i > 0) exp.accept(" else ");
-
-				Expression<Boolean> condition = getResets().valueAt(i).greaterThan(e(0.0));
-				condition = condition.and(getTime().reference(e(1)).eq(getResets().valueAt(i)));
-
-				exp.accept("if (" + condition.getSimpleExpression(getLanguage()) + ") {\n");
-				exp.accept("\t");
-				exp.accept(getTime().valueAt(0).getSimpleExpression(getLanguage()));
-				exp.accept(" = ");
-				exp.accept(getLanguage().getPrecision().stringForDouble(0.0));
-				exp.accept(";\n");
-				exp.accept("}");
-			}
 		}
 	}
 }
