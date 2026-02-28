@@ -153,11 +153,11 @@ for module in $FAILING_MODULES; do
     if [ "$module" = "ml" ]; then
         CI_COMMANDS="${CI_COMMANDS}
 Module: ${module}
-  mcp__ar-test-runner__start_test_run module:\"${module}\" profile:\"pipeline\" timeout_minutes:30"
+  mcp__ar-test-runner__start_test_run module:\"${module}\" profile:\"pipeline\""
     else
         CI_COMMANDS="${CI_COMMANDS}
 Module: ${module}
-  mcp__ar-test-runner__start_test_run module:\"${module}\" timeout_minutes:30"
+  mcp__ar-test-runner__start_test_run module:\"${module}\""
     fi
 done
 
@@ -166,7 +166,7 @@ if [ -z "$CI_COMMANDS" ]; then
     CI_COMMANDS="
 Could not auto-detect failing modules. Examine the failing test class names below,
 find which module they belong to (utils, ml, audio, music, compose), and run:
-  mcp__ar-test-runner__start_test_run module:\"<module>\" timeout_minutes:30
+  mcp__ar-test-runner__start_test_run module:\"<module>\"
 For ML module tests, add profile:\"pipeline\"."
 fi
 
@@ -189,9 +189,11 @@ You MUST reproduce the failure locally before attempting a fix and after applyin
 your fix. Use the MCP test runner with these exact commands:
 ${CI_COMMANDS}
 
-Do NOT run individual test methods with test_methods or test_classes parameters.
-The CI pipeline runs the FULL module test suite. Failures may only manifest when
-the entire suite runs (due to shared state, test ordering, etc.).
+You MAY run individual test methods or classes to reproduce and debug the failure.
+However, passing in isolation does NOT prove the problem is fixed — the CI pipeline
+runs the FULL module test suite, and failures may only manifest when the entire suite
+runs (shared state, test ordering, etc.). Always verify your fix with the full module
+suite before concluding.
 
 ## Investigation steps
 
