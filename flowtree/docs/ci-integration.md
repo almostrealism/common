@@ -420,7 +420,7 @@ protected boolean validateChanges() throws Exception {
         return true;
     }
 
-    Path auditScript = resolveWorkingPath("tools/ci/detect-test-hiding.sh");
+    Path auditScript = resolveWorkingPath("tools/ci/agent-protection/detect-test-hiding.sh");
     if (auditScript == null || !Files.exists(auditScript)) {
         return true;  // Skip if script not found
     }

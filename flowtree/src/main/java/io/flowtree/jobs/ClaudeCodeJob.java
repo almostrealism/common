@@ -660,7 +660,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
 
         // Use the existing detect-test-hiding.sh script for diff auditing
-        Path auditScript = resolveWorkingPath("tools/ci/detect-test-hiding.sh");
+        Path auditScript = resolveWorkingPath("tools/ci/agent-protection/detect-test-hiding.sh");
         if (auditScript == null || !Files.exists(auditScript)) {
             log("detect-test-hiding.sh not found, skipping validation");
             return true;

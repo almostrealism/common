@@ -79,7 +79,7 @@ jobs:
           BRANCH: ${{ steps.new_branch.outputs.branch }}
           BASE_BRANCH: master
         run: |
-          ./tools/ci/build-planning-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-planning-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit planning agent job
         if: steps.branches.outputs.needs_new_branch == 'true'
