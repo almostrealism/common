@@ -16,7 +16,6 @@
 
 package io.flowtree.jobs;
 
-import java.io.File;
 
 /**
  * Utility class for resolving workspace paths and URLs used by
@@ -26,7 +25,7 @@ import java.io.File;
  * It centralizes three concerns that were previously embedded in
  * {@code GitManagedJob}:</p>
  * <ul>
- *   <li>Workspace path resolution with a three-level priority scheme</li>
+ *   <li>Workspace path resolution with a two-level priority scheme</li>
  *   <li>Extraction of a filesystem-safe repository name from a git URL</li>
  *   <li>Replacement of the {@code 0.0.0.0} placeholder in workstream URLs
  *       with the value of the {@code FLOWTREE_ROOT_HOST} environment variable</li>
@@ -45,11 +44,10 @@ public class WorkspaceResolver {
 
     /**
      * Resolves the workspace path for a repository checkout using a
-     * three-level priority scheme.
+     * two-level priority scheme.
      *
      * <ol>
      *   <li>{@code configuredPath} if it is non-null and non-empty</li>
-     *   <li>{@code /workspace/project} if that directory exists on disk</li>
      *   <li>{@code /tmp/flowtree-workspaces/<repoName>} as a fallback,
      *       where {@code repoName} is derived from {@code repoUrl} via
      *       {@link #extractRepoName(String)}</li>
@@ -67,13 +65,7 @@ public class WorkspaceResolver {
             return configuredPath;
         }
 
-        // 2. Check if /workspace/project exists
-        File defaultDir = new File("/workspace/project");
-        if (defaultDir.exists() && defaultDir.isDirectory()) {
-            return "/workspace/project";
-        }
-
-        // 3. Fall back to /tmp with a repo-derived name
+        // 2. Fall back to /tmp with a repo-derived name
         String repoName = extractRepoName(repoUrl);
         return FALLBACK_WORKSPACE_DIR + "/" + repoName;
     }

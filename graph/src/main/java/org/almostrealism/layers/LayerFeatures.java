@@ -921,39 +921,48 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		TraversalPolicy biasShape = shape(filterCount);
 		PackedCollection biases = bias ? new PackedCollection(biasShape) : null;
 
+		final int fc = filterCount;
+		final int ch = channels;
+		final int ks = size;
+		final int oH = outHeight;
+		final int oW = outWidth;
+		final int pH = height;
+		final int pW = width;
+
 		Factor<PackedCollection> operator = input -> {
 			CollectionProducer in = c(input);
+
 			CollectionProducer conv =
-					in.reshape(-1, 1, channels, height, width);
+					in.reshape(-1, 1, ch, pH, pW);
 			CollectionProducer filter =
-					cp(filters.reshape(1, filterCount, channels, size, size));
+					cp(filters.reshape(1, fc, ch, ks, ks));
 
-			int bs = conv.getShape().length(0);
-
-			TraversalPolicy resultShape = shape(batch, filterCount, 1, outHeight, outWidth);
+			TraversalPolicy resultShape = shape(batch, fc, 1, oH, oW);
 			TraversalPolicy inputPositions = resultShape
-					.withRate(1, 1, filterCount)
-					.withRate(2, channels, 1);
+					.withRate(1, 1, fc)
+					.withRate(2, ch, 1);
 			TraversalPolicy filterPositions = resultShape
 					.withRate(0, 1, batch)
-					.withRate(2, channels, 1)
-					.withRate(3, size, outHeight)
-					.withRate(4, size, outWidth);
+					.withRate(2, ch, 1)
+					.withRate(3, ks, oH)
+					.withRate(4, ks, oW);
 			TraversalPolicy groupShape =
-					shape(1, 1, channels, size, size);
-			CollectionProducer result =
-					weightedSum("convolutionFilter",
+					shape(1, 1, ch, ks, ks);
+			CollectionProducer result = weightedSum("convolutionFilter",
 							inputPositions, filterPositions,
 							groupShape, conv, filter);
 
+			result = result.reshape(-1, fc, oH, oW);
+
 			if (biases != null) {
-				int t = outHeight * outWidth;
-				result = result.reshape(bs, filterCount, t)
+				int bs = result.getShape().length(0);
+				int t = oH * oW;
+				result = result.reshape(bs, fc, t)
 						.add(cp(biases).repeat(bs).traverse(2).repeat(t));
 			}
 
 			return result
-					.reshape(-1, filterCount, outHeight, outWidth)
+					.reshape(-1, fc, oH, oW)
 					.traverseEach();
 		};
 
@@ -969,7 +978,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 								operator,
 								biases == null ? List.of(filters) : List.of(filters, biases),
 								setup, requirements);
-
 		if (padding > 0) {
 			SequentialBlock block = new SequentialBlock(inputShape);
 			block.add(pad(inputShape, convInputShape, 0, 0, padding, padding));
