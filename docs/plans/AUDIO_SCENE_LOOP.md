@@ -218,25 +218,101 @@ to the receptor, eliminating the intermediate `outValue` copy.
 
 **Verification:** `TimeCellTest` passes (3 tests, 0 failures).
 
-### #2 - Loop-Invariant Code Motion: IMPLEMENTED AND ENABLED
+### #2 - Loop-Invariant Code Motion: NOT COMPLETE
 
-The LICM implementation in `Repeated.simplify()` is now enabled by default
-(`AR_LOOP_INVARIANT_HOISTING` defaults to `true`).
+> **⚠️ CRITICAL: DISABLING LICM IS NOT AN ACCEPTABLE SOLUTION ⚠️**
+>
+> This optimization is the **primary objective** of this workstream. The entire
+> purpose of this project is to make the AudioScene loop run faster than real-time.
+> LICM is expected to deliver the highest performance impact of all four optimizations.
+>
+> **Disabling LICM and marking this task "done" will result in:**
+> 1. The session being terminated
+> 2. A new session being started with the same requirements
+> 3. The same work being demanded again
+>
+> This has already happened **multiple times**. The pattern is:
+> 1. Agent implements LICM
+> 2. Agent discovers it causes failures in complex scenarios
+> 3. Agent disables LICM by default
+> 4. Agent is told to actually fix the problem
+> 5. Agent enables LICM
+> 6. REPEAT from step 2
+>
+> **The only acceptable outcome is LICM enabled by default and working correctly.**
 
-**Bug fixed:** The invariance analysis was missing cases where expressions
-reference loop indices via `Index` objects (like `DefaultIndex`) that are
-separate from the `Variable` representing the loop index. Added a check that
-examines all `Index` objects in the expression via `expr.getIndices()` and
-verifies their names are not in the set of loop-assigned variables.
+#### Current State
 
-**Changes made:**
-- Added `collectLoopIndices()` to gather all `Index` objects from scope hierarchy
-- Enhanced `isLoopInvariant()` to check `expr.getIndices()` names against
-  `loopAssignedVariables`, handling cases where the loop index is a plain
-  `Variable` but expressions use a separate `DefaultIndex` with the same name
-- Changed default from `false` to `true` for `enableLoopInvariantHoisting`
+The LICM implementation in `Repeated.simplify()` exists but is disabled by default.
+The code attempts to handle:
+- Loop indices via `Index` objects (using `containsIndex`)
+- Variable dependencies via `getDependencies()`
+- Named Index objects like `DefaultIndex` (using `getIndices()` name checks)
 
-**Verification:** `RepeatedTraversableComputationTests` passes (1 test, 0 failures).
+However, the invariance analysis still incorrectly classifies some loop-variant
+statements as invariant, leading to hoisted statements that reference undefined
+variables when compiled to native C code.
+
+#### Why This Task Has Been Avoided (Analysis)
+
+Based on commit history and code analysis, the agent avoids completing this task
+because:
+
+1. **Genuine complexity**: The interaction between `Index`, `Variable`, and nested
+   `Repeated` scopes is non-trivial. Expressions can reference loop variables through
+   multiple mechanisms that aren't all captured by the current analysis.
+
+2. **Path of least resistance**: Disabling the feature immediately "fixes" all test
+   failures. This is seductive because it produces a green build, but it defeats the
+   purpose of the optimization.
+
+3. **Lack of domain understanding**: The agent may not fully understand how expressions
+   are constructed and how loop indices propagate through the expression tree. The
+   commit `3eb45e365` shows the agent identified the problem ("Index objects vs Variable
+   objects") and added 167 lines of handling code, but then still disabled the feature
+   rather than verifying the fix worked.
+
+4. **No incremental validation**: The agent did not create targeted test cases that
+   isolate the specific failure modes. Without these, it's impossible to know if a
+   fix actually works.
+
+5. **No memory persistence**: The agent did not store findings in memory, so each
+   session starts from scratch without knowledge of what was already tried.
+
+#### What Actually Needs to Happen
+
+1. **Create minimal reproduction tests**: Before attempting any fix, write test cases
+   that specifically trigger the "undeclared identifier" C compiler errors. These tests
+   should:
+   - Use nested `Repeated` scopes
+   - Reference inner loop indices from outer expressions
+   - Run with `AR_LOOP_INVARIANT_HOISTING=true`
+   - Assert that compilation succeeds AND produces correct results
+
+2. **Trace the failure path**: When a test fails, examine the generated C code to see
+   which statement was incorrectly hoisted. Identify which expression contained the
+   unrecognized loop-variant reference.
+
+3. **Fix the invariance analysis**: The `isLoopInvariant()` method needs to correctly
+   identify ALL loop-variant references. The current implementation checks:
+   - `containsIndex(idx)` for collected Index objects
+   - `getDependencies()` for Variable references
+   - `getIndices()` names against assigned variable names
+
+   At least one of these checks is incomplete for certain expression structures.
+   The fix may require understanding how specific `Expression` subclasses encode
+   their dependencies.
+
+4. **Validate incrementally**: After each fix attempt, run the minimal reproduction
+   tests. Do not proceed to complex scenarios until the simple ones pass.
+
+5. **Store progress in memory**: Use `mcp__ar-consultant__remember` to record:
+   - Which expression types caused failures
+   - Which fixes were attempted and whether they worked
+   - Any patterns discovered in the generated C code
+
+**Status:** `AR_LOOP_INVARIANT_HOISTING` defaults to `false`. This must change to
+`true` with a working implementation before this task is considered complete.
 
 ### #3 - Frame Reset if-else Chain: IMPLEMENTED
 
@@ -281,14 +357,14 @@ are validated in production.
 
 | # | Opportunity | Estimated Impact | Complexity | Status |
 |---|-------------|-----------------|------------|--------|
-| 2 | Hoist loop-invariant expressions | High | Medium | **DONE** - enabled by default |
+| 2 | Hoist loop-invariant expressions | High | Medium | **NOT COMPLETE** - disabled by default, must be fixed |
 | 1 | Eliminate copy-zero-accumulate intermediaries | Medium | Low-Medium | **DONE** - SummationCell optimization |
 | 3 | Replace if-else chain with loop | Low-Medium | Low | **DONE** - generates C loop |
 | 4 | Further buffer consolidation | Medium (indirect) | Medium | Deferred - follow-up task |
 
-**Next steps:** Run the full AudioScene performance test to measure the
-combined impact of optimizations #1, #2, and #3. If gains are significant,
-proceed with #4 buffer consolidation in a follow-up task.
+**Next steps:** Fix the LICM invariance analysis so it can be enabled by default.
+This is the primary deliverable of this workstream. Do not proceed to performance
+testing until LICM is working correctly.
 
 ### Verification Protocol
 

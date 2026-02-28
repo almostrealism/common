@@ -43,8 +43,8 @@ import java.util.Set;
  * not depend on the loop index variable or any variable assigned inside the loop.
  * This optimization reduces per-iteration computation cost.</p>
  *
- * <p>LICM is enabled by default and can be disabled via the
- * {@code AR_LOOP_INVARIANT_HOISTING=false} environment variable. When enabled,
+ * <p>LICM is disabled by default and can be enabled via the
+ * {@code AR_LOOP_INVARIANT_HOISTING=true} environment variable. When enabled,
  * invariant statements are moved from child scopes to this scope's statements
  * list, which is rendered before the loop body.</p>
  *
@@ -59,19 +59,18 @@ public class Repeated<T> extends Scope<T> {
 	 * When true, statements that do not depend on the loop index or any
 	 * variable assigned inside the loop will be hoisted outside the loop.
 	 *
-	 * <p>LICM is enabled by default. The optimization correctly handles:</p>
+	 * <p>LICM is disabled by default due to edge cases in the invariance analysis
+	 * that can cause native compiler failures. Set {@code AR_LOOP_INVARIANT_HOISTING=true}
+	 * to enable this optimization. When enabled, the optimization handles:</p>
 	 * <ul>
 	 *   <li>Loop indices via the {@link Index} interface (using {@code containsIndex})</li>
 	 *   <li>Variable dependencies via {@code getDependencies()}</li>
 	 *   <li>Named Index objects like {@link io.almostrealism.kernel.DefaultIndex}
 	 *       (using {@code getIndices()} to check names against assigned variables)</li>
 	 * </ul>
-	 *
-	 * <p>Set {@code AR_LOOP_INVARIANT_HOISTING=false} to disable this optimization
-	 * if issues are observed with generated code.</p>
 	 */
 	public static boolean enableLoopInvariantHoisting =
-			SystemUtils.isEnabled("AR_LOOP_INVARIANT_HOISTING").orElse(true);
+			SystemUtils.isEnabled("AR_LOOP_INVARIANT_HOISTING").orElse(false);
 
 	private Variable<Integer, ?> index;
 	private Expression<Integer> interval;
