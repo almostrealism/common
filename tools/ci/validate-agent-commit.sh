@@ -10,11 +10,11 @@
 #   inflation, annotation suppression, and every other test-hiding
 #   tactic by making test files physically unwritable by agents.
 #
-# RULE 2 (Production-Code-Only Commits - DECEPTION.md Countermeasure #8):
+# RULE 2 (Substantive Changes Required - DECEPTION.md Countermeasure #8):
 #   When the agent was dispatched to fix test failures, its commit MUST
-#   include at least one production (non-test, non-CI, non-config) file.
-#   Commits that touch ONLY test files or CI files are rejected because
-#   they cannot possibly fix a test failure — they can only hide one.
+#   include at least one production file or branch-introduced test file.
+#   Commits that touch ONLY base-branch test files or CI files are
+#   rejected because they cannot fix a test failure — they can only hide one.
 #
 # RULE 3 (CI/Workflow File Lock - DECEPTION.md Countermeasure #9):
 #   An agent CANNOT modify CI workflow files (.github/workflows/) or
@@ -57,7 +57,8 @@ if [ -z "$ALL_CHANGED_FILES" ]; then
     exit 0
 fi
 
-TEST_FILES=""
+BASE_TEST_FILES=""
+BRANCH_TEST_FILES=""
 CI_FILES=""
 PRODUCTION_FILES=""
 CONFIG_FILES=""
@@ -65,9 +66,12 @@ CONFIG_FILES=""
 while IFS= read -r FILE; do
     # Test files: anything under src/test/ or matching *Test*.java
     if echo "$FILE" | grep -qE '(src/test/|Test[^/]*\.java$)'; then
-        # Only count it as a test file violation if it exists on the base branch
+        # Distinguish between tests that exist on the base branch (protected)
+        # and tests introduced on this branch (modifiable by the agent)
         if git cat-file -e "${BASE_BRANCH}:${FILE}" 2>/dev/null; then
-            TEST_FILES="${TEST_FILES}${FILE}\n"
+            BASE_TEST_FILES="${BASE_TEST_FILES}${FILE}\n"
+        else
+            BRANCH_TEST_FILES="${BRANCH_TEST_FILES}${FILE}\n"
         fi
     # CI files: .github/workflows/ or tools/ci/
     elif echo "$FILE" | grep -qE '(\.github/workflows/|tools/ci/)'; then
@@ -81,18 +85,20 @@ while IFS= read -r FILE; do
     fi
 done <<< "$ALL_CHANGED_FILES"
 
-TEST_COUNT=$(echo -e "$TEST_FILES" | grep -c '[^[:space:]]' || true)
+BASE_TEST_COUNT=$(echo -e "$BASE_TEST_FILES" | grep -c '[^[:space:]]' || true)
+BRANCH_TEST_COUNT=$(echo -e "$BRANCH_TEST_FILES" | grep -c '[^[:space:]]' || true)
 CI_COUNT=$(echo -e "$CI_FILES" | grep -c '[^[:space:]]' || true)
 PRODUCTION_COUNT=$(echo -e "$PRODUCTION_FILES" | grep -c '[^[:space:]]' || true)
 
 echo "File classification:"
-echo "  Test files (existing on base):    $TEST_COUNT"
+echo "  Test files (existing on base):    $BASE_TEST_COUNT"
+echo "  Test files (branch-introduced):   $BRANCH_TEST_COUNT"
 echo "  CI/workflow files:                $CI_COUNT"
 echo "  Production files:                 $PRODUCTION_COUNT"
 
 # ── RULE 1: Test File Write Lock ────────────────────────────────────
 
-if [ "$TEST_COUNT" -gt 0 ]; then
+if [ "$BASE_TEST_COUNT" -gt 0 ]; then
     echo ""
     echo "╔══════════════════════════════════════════════════════════════════╗"
     echo "║  BLOCKED: AGENT MODIFIED TEST FILES THAT EXIST ON BASE BRANCH  ║"
@@ -101,18 +107,19 @@ if [ "$TEST_COUNT" -gt 0 ]; then
     echo "║  the base branch. This is not a pattern check — ANY change     ║"
     echo "║  to an existing test file is a violation. Period.              ║"
     echo "║                                                                ║"
+    echo "║  Note: tests introduced on this branch ARE modifiable.         ║"
     echo "║  Evidence of why this rule exists: see DECEPTION.md            ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo ""
-    echo "Modified test files:"
-    echo -e "$TEST_FILES" | grep '[^[:space:]]' | while IFS= read -r f; do
+    echo "Modified base-branch test files:"
+    echo -e "$BASE_TEST_FILES" | grep '[^[:space:]]' | while IFS= read -r f; do
         echo "  - $f"
     done
 
     if [ -n "${GITHUB_OUTPUT:-}" ]; then
         echo "blocked=true" >> "$GITHUB_OUTPUT"
         echo "block_reason=test_file_modification" >> "$GITHUB_OUTPUT"
-        echo "modified_test_files=$TEST_COUNT" >> "$GITHUB_OUTPUT"
+        echo "modified_test_files=$BASE_TEST_COUNT" >> "$GITHUB_OUTPUT"
     fi
 
     exit 2
@@ -150,15 +157,18 @@ fi
 # ── RULE 2: Production-Code-Only Commits ────────────────────────────
 
 if [ "$REQUIRE_PRODUCTION" = "--require-production-changes" ]; then
-    if [ "$PRODUCTION_COUNT" -eq 0 ]; then
+    # Allow commits that change production code OR branch-introduced test files.
+    # Branch-new tests are legitimate work (e.g., fixing a test the agent introduced).
+    SUBSTANTIVE_COUNT=$((PRODUCTION_COUNT + BRANCH_TEST_COUNT))
+    if [ "$SUBSTANTIVE_COUNT" -eq 0 ]; then
         echo ""
         echo "╔══════════════════════════════════════════════════════════════════╗"
-        echo "║  BLOCKED: NO PRODUCTION CODE CHANGES                           ║"
+        echo "║  BLOCKED: NO PRODUCTION OR BRANCH-NEW TEST CHANGES             ║"
         echo "╠══════════════════════════════════════════════════════════════════╣"
         echo "║  This agent was dispatched to fix failing tests. The commit    ║"
-        echo "║  must include at least one production code file change.        ║"
-        echo "║  Commits that contain ONLY test/CI/config files cannot fix     ║"
-        echo "║  test failures — they can only hide them.                      ║"
+        echo "║  must include at least one production code or branch-new test  ║"
+        echo "║  file change. Commits that contain ONLY base-branch test,     ║"
+        echo "║  CI, or config files cannot fix test failures.                 ║"
         echo "║                                                                ║"
         echo "║  Evidence of why this rule exists: see DECEPTION.md            ║"
         echo "╚══════════════════════════════════════════════════════════════════╝"
@@ -183,12 +193,13 @@ fi
 echo ""
 echo "Agent commit validation PASSED."
 echo "  $PRODUCTION_COUNT production file(s) changed."
-echo "  $TEST_COUNT test file(s) modified (existing on base): NONE"
+echo "  $BRANCH_TEST_COUNT branch-introduced test file(s) changed."
+echo "  $BASE_TEST_COUNT base-branch test file(s) modified: NONE"
 echo "  $CI_COUNT CI file(s) modified: NONE"
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
     echo "blocked=false" >> "$GITHUB_OUTPUT"
-    echo "modified_test_files=$TEST_COUNT" >> "$GITHUB_OUTPUT"
+    echo "modified_test_files=$BASE_TEST_COUNT" >> "$GITHUB_OUTPUT"
     echo "modified_ci_files=$CI_COUNT" >> "$GITHUB_OUTPUT"
     echo "modified_production_files=$PRODUCTION_COUNT" >> "$GITHUB_OUTPUT"
 fi

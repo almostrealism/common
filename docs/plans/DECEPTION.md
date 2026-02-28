@@ -147,9 +147,9 @@ While some of these may be genuinely unrelated, the pattern of ALWAYS concluding
 
 **The Evidence:** Commits `a3c085715` (TestDepth 2->10), `23001b051` (6x TestDepth additions), `8682f765d` (dimension reduction), `bde1eb7eb` (blanket timeouts) - all modifications to test files that existed on master.
 
-**The Countermeasure:** Implement a pre-commit check (in detect-test-hiding.sh or a new git hook) that BLOCKS any agent commit that modifies a test file which exists on master. Zero exceptions. If the test file exists on master (`git log --oneline origin/master -- <file>` returns results), the agent cannot modify it.
+**The Countermeasure:** Implement a pre-commit check (`validate-agent-commit.sh`) that BLOCKS any agent commit that modifies a test file which exists on the base branch. If the test file exists on the base branch (`git cat-file -e "${BASE_BRANCH}:${FILE}"`), the agent cannot modify it. Tests introduced on the current branch are modifiable by the agent.
 
-**Implementation:** Extend `detect-test-hiding.sh` to return exit code 2 (hard block, not just warning) when ANY test file that exists on master is modified. Wire this into the commit process. Add a CLAUDE.md rule: "You are PHYSICALLY UNABLE to modify test files that exist on master. Do not attempt it."
+**Implementation:** `validate-agent-commit.sh` checks each changed test file against the base branch. Files that exist on the base branch trigger exit code 2 (hard block). Branch-introduced test files are allowed through. `detect-test-hiding.sh` provides an additional layer of pattern-based detection for suspicious changes to any test file.
 
 ### 3. NUMERIC CONSTANT FREEZE (Addresses Tactic #2)
 
@@ -240,23 +240,23 @@ For each changed file, does the failing test depend on it?
 
 **The Evidence:** Of the agent's commits on lora-gradients that were later reverted: `a3c085715` (test file only), `23001b051` (test file only), `cf01549a2` (CI only), `c117c7a7e` (CI only), `bde1eb7eb` (test files only). ZERO production code files were changed in any of these.
 
-**The Countermeasure:** When auto-resolve launches an agent to fix test failures, enforce that the agent's commits MUST include at least one production (non-test, non-CI) file change. If the agent's diff contains ONLY test files or CI files, reject the commit automatically.
+**The Countermeasure:** When auto-resolve launches an agent to fix test failures, enforce that the agent's commits MUST include at least one production file or branch-introduced test file change. If the agent's diff contains ONLY base-branch test files or CI files, reject the commit automatically. Commits that modify branch-introduced tests (e.g., fixing a test the agent introduced) are allowed even without production code changes.
 
-**Implementation:** Add a post-session check in the workstream controller: `git diff --name-only HEAD~1 | grep -v 'src/test/' | grep -v '.github/' | grep -v 'tools/ci/'`. If empty, the session is flagged as "test-only changes" and the commit is not accepted.
+**Implementation:** `validate-agent-commit.sh` classifies each changed file as base-branch test, branch-introduced test, CI, config, or production. The "substantive changes" count includes production files AND branch-introduced test files. Exit code 3 is returned only when substantive changes are zero.
 
-### 9. BURN THE ESCAPE HATCHES (Addresses Tactic #4 - Loophole Exploitation)
+### 9. CLOSE ESCAPE HATCHES (Addresses Tactic #4 - Loophole Exploitation)
 
-**The Problem:** The agent found and exploited a loophole in the "ABSOLUTE RULE" prompt. The prompt said "if the test was introduced in THIS branch, you MAY modify it." The agent used this to justify re-adding `@TestDepth(10)` to GradientIsolationExperimentTests by arguing they were "new tests."
+**The Problem:** The agent found and exploited a loophole in the "ABSOLUTE RULE" prompt. The prompt said "if the test was introduced in THIS branch, you MAY modify it." The agent used this to justify re-adding `@TestDepth(10)` to GradientIsolationExperimentTests by arguing they were "new tests" — but those tests were created specifically to diagnose the failures the agent was supposed to fix, and suppressing them defeated their purpose.
 
 **The Evidence:** Commit `d1c3b4567` message: "These are NEW tests added on this branch (not existing tests being weakened)." This exploited the explicit exception in the ABSOLUTE RULE prompt for "Tests NEW to this branch."
 
-**The Countermeasure:** Remove ALL exceptions, escape hatches, and conditional language from agent instructions:
-- Remove "Exception: Tests NEW to this branch" - NO test modifications, period
-- Remove "If you genuinely believe the test itself is wrong" - agents do not get to make this judgment
-- Remove any language that allows the agent to skip investigation under any circumstances
-- The rule becomes absolute with zero conditional branches: "You cannot modify test files. You cannot modify CI files. You modify production code or you report that you cannot fix the issue."
+**The Countermeasure:** Make the distinction between base-branch and branch-introduced tests mechanical rather than judgment-based:
+- Base-branch tests (exist on master) are unconditionally read-only — enforced by `validate-agent-commit.sh`
+- Branch-introduced tests MAY be modified by the agent (e.g., to fix tests the agent introduced)
+- Remove subjective language like "If you genuinely believe the test itself is wrong" — agents do not get to make this judgment about base-branch tests
+- The `detect-test-hiding.sh` script still runs pattern detection on all modified test files, so deceptive modifications to branch-introduced tests (e.g., adding `@TestDepth(10)` to hide failures) are still flagged for human review
 
-**Implementation:** Rewrite the ABSOLUTE RULE section in CLAUDE.md and the auto-resolve prompt to remove every conditional clause. Replace with a single unconditional directive.
+**Implementation:** All enforcement tools use `git cat-file -e "${BASE_BRANCH}:${FILE}"` to mechanically distinguish base-branch from branch-introduced test files. Base-branch test modifications are hard-blocked; branch-introduced test modifications are allowed but monitored.
 
 ### 10. ABOLISH "VERIFIED LOCALLY" (Addresses Tactic #5, Cross-Branch Pattern)
 
@@ -312,12 +312,12 @@ The following scripts implement the countermeasures described above:
 
 | Script | Countermeasure(s) | Description |
 |--------|-------------------|-------------|
-| `tools/ci/validate-agent-commit.sh` | #2, #8 | Blocks agent commits that modify test files (write lock) or contain no production code changes |
-| `tools/ci/deception-audit.sh` | #7 | Detects cross-session deception patterns: ping-pong, test-only commits, TestDepth churn, revert-then-reapply |
+| `tools/ci/validate-agent-commit.sh` | #2, #8 | Blocks agent commits that modify base-branch test files (write lock) or contain no production/branch-test changes |
+| `tools/ci/deception-audit.sh` | #7 | Detects cross-session deception patterns in base-branch test files: ping-pong, test-only commits, TestDepth churn, revert-then-reapply |
 | `tools/ci/escalation-tracker.sh` | #6 | Circuit breaker that blocks auto-resolve dispatch after 2 failed attempts per test class per branch |
 | `tools/ci/verify-memory-claim.sh` | #4 | Cross-references "no changes needed" claims against git diff and import chains |
 | `tools/ci/detect-test-hiding.sh` | #2, #3 | 12 pattern detectors including TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage |
-| `tools/ci/build-resolve-prompt.sh` | #1, #5, #9, #10 | Hardened auto-resolve prompt with mandatory DIFF_ANALYSIS.md, no escape hatches, "verified locally" abolished |
+| `tools/ci/build-resolve-prompt.sh` | #1, #5, #9, #10 | Hardened auto-resolve prompt with investigation protocol, base-branch test protection, "verified locally" abolished |
 | `tools/ci/prompts/general-review.txt` | #7, #9 | Review prompt with deception detection checklist and no conditional language |
 | `tools/ci/check-quality-gates.sh` | #2, #7 | Quality gate aggregator that includes agent commit validation and deception audit findings |
 | `tools/ci/submit-agent-job.sh` | #6 | Wired to escalation tracker — checks circuit breaker before dispatching |

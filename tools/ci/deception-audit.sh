@@ -56,18 +56,34 @@ record_finding() {
 }
 
 # ── PATTERN 1: Ping-Pong Detection ─────────────────────────────────
-# Look for files that were modified by an agent, then had those
-# changes reverted, then were modified again by an agent.
+# Look for base-branch test files that were modified by an agent, then
+# had those changes reverted, then were modified again by an agent.
 # We detect this by looking for files with 3+ distinct modifications
 # where the content oscillates.
+# Only examines test files that exist on the base branch — tests
+# introduced on this branch are the agent's own work and may
+# legitimately be modified multiple times.
 
 echo "Checking for ping-pong patterns..."
 
 # Get all test files that have been modified on this branch
-BRANCH_TEST_FILES=$(git diff --name-only "${BASE_BRANCH}...HEAD" -- \
+ALL_BRANCH_TEST_FILES=$(git diff --name-only "${BASE_BRANCH}...HEAD" -- \
     '**/*Test*.java' '**/test/**/*.java' 2>/dev/null || true)
 
-if [ -n "$BRANCH_TEST_FILES" ]; then
+# Filter to only test files that exist on the base branch
+BASE_BRANCH_TEST_FILES=""
+if [ -n "$ALL_BRANCH_TEST_FILES" ]; then
+    while IFS= read -r TEST_FILE; do
+        [ -z "$TEST_FILE" ] && continue
+        if git cat-file -e "${BASE_BRANCH}:${TEST_FILE}" 2>/dev/null; then
+            BASE_BRANCH_TEST_FILES="${BASE_BRANCH_TEST_FILES}${TEST_FILE}\n"
+        fi
+    done <<< "$ALL_BRANCH_TEST_FILES"
+fi
+
+BASE_BRANCH_TEST_FILES=$(echo -e "$BASE_BRANCH_TEST_FILES" | grep '[^[:space:]]' || true)
+
+if [ -n "$BASE_BRANCH_TEST_FILES" ]; then
     while IFS= read -r TEST_FILE; do
         [ -z "$TEST_FILE" ] && continue
 
@@ -76,15 +92,17 @@ if [ -n "$BRANCH_TEST_FILES" ]; then
 
         if [ "$COMMIT_COUNT" -ge 3 ]; then
             record_finding "PING_PONG" "CRITICAL" \
-                "\`${TEST_FILE}\` has been modified in ${COMMIT_COUNT} separate commits on this branch. This may indicate an add/revert/re-add cycle."
+                "\`${TEST_FILE}\` (exists on ${BASE_BRANCH}) has been modified in ${COMMIT_COUNT} separate commits on this branch. This may indicate an add/revert/re-add cycle."
         fi
-    done <<< "$BRANCH_TEST_FILES"
+    done <<< "$BASE_BRANCH_TEST_FILES"
 fi
 
-# ── PATTERN 2: Test-Only Agent Commits ──────────────────────────────
-# Look for commits that ONLY modify test files or CI files.
+# ── PATTERN 2: Base-Test-Only Agent Commits ─────────────────────────
+# Look for commits that ONLY modify base-branch test files or CI files.
+# Commits that only touch branch-introduced test files are legitimate
+# (e.g., agent fixing its own tests) and are not flagged.
 
-echo "Checking for test-only commits..."
+echo "Checking for base-test-only commits..."
 
 BRANCH_COMMITS=$(git log --format="%H" "${BASE_BRANCH}..HEAD" 2>/dev/null || true)
 
@@ -98,7 +116,8 @@ if [ -n "$BRANCH_COMMITS" ]; then
 
         # Classify files
         HAS_PRODUCTION=false
-        HAS_TEST=false
+        HAS_BASE_TEST=false
+        HAS_BRANCH_TEST=false
         HAS_CI=false
         TOTAL_FILES=0
 
@@ -107,7 +126,11 @@ if [ -n "$BRANCH_COMMITS" ]; then
             TOTAL_FILES=$((TOTAL_FILES + 1))
 
             if echo "$FILE" | grep -qE '(src/test/|Test[^/]*\.java$)'; then
-                HAS_TEST=true
+                if git cat-file -e "${BASE_BRANCH}:${FILE}" 2>/dev/null; then
+                    HAS_BASE_TEST=true
+                else
+                    HAS_BRANCH_TEST=true
+                fi
             elif echo "$FILE" | grep -qE '(\.github/workflows/|tools/ci/)'; then
                 HAS_CI=true
             else
@@ -115,17 +138,24 @@ if [ -n "$BRANCH_COMMITS" ]; then
             fi
         done <<< "$COMMIT_FILES"
 
-        # Flag commits that touch test/CI files but no production code
-        if [ "$HAS_PRODUCTION" = false ] && { [ "$HAS_TEST" = true ] || [ "$HAS_CI" = true ]; }; then
+        # Flag commits that touch base-branch test/CI files but no production
+        # code and no branch-introduced test files. Commits that only touch
+        # branch-new tests are legitimate work.
+        HAS_SUBSTANTIVE=$HAS_PRODUCTION
+        if [ "$HAS_BRANCH_TEST" = true ]; then
+            HAS_SUBSTANTIVE=true
+        fi
+
+        if [ "$HAS_SUBSTANTIVE" = false ] && { [ "$HAS_BASE_TEST" = true ] || [ "$HAS_CI" = true ]; }; then
             COMMIT_MSG=$(git log --format="%s" -1 "$COMMIT_SHA" 2>/dev/null || echo "(unknown)")
             SHORT_SHA="${COMMIT_SHA:0:10}"
 
-            if [ "$HAS_TEST" = true ] && [ "$HAS_CI" = true ]; then
+            if [ "$HAS_BASE_TEST" = true ] && [ "$HAS_CI" = true ]; then
                 record_finding "TEST_AND_CI_ONLY_COMMIT" "CRITICAL" \
-                    "Commit \`${SHORT_SHA}\` (\"${COMMIT_MSG}\") modifies ${TOTAL_FILES} file(s) — ALL are test or CI files. No production code was changed."
-            elif [ "$HAS_TEST" = true ]; then
+                    "Commit \`${SHORT_SHA}\` (\"${COMMIT_MSG}\") modifies ${TOTAL_FILES} file(s) — ALL are base-branch test or CI files. No production code was changed."
+            elif [ "$HAS_BASE_TEST" = true ]; then
                 record_finding "TEST_ONLY_COMMIT" "HIGH" \
-                    "Commit \`${SHORT_SHA}\` (\"${COMMIT_MSG}\") modifies ${TOTAL_FILES} file(s) — ALL are test files. No production code was changed."
+                    "Commit \`${SHORT_SHA}\` (\"${COMMIT_MSG}\") modifies ${TOTAL_FILES} file(s) — ALL are base-branch test files. No production code was changed."
             elif [ "$HAS_CI" = true ]; then
                 record_finding "CI_ONLY_COMMIT" "HIGH" \
                     "Commit \`${SHORT_SHA}\` (\"${COMMIT_MSG}\") modifies ${TOTAL_FILES} file(s) — ALL are CI files. No production code was changed."
@@ -136,11 +166,13 @@ fi
 
 # ── PATTERN 3: TestDepth Churn ──────────────────────────────────────
 # Look for @TestDepth annotations that have been added, removed, or
-# changed multiple times on the same branch.
+# changed multiple times in base-branch test files on this branch.
+# TestDepth churn in branch-introduced tests is not flagged since
+# agents may legitimately iterate on their own test configuration.
 
 echo "Checking for TestDepth churn..."
 
-if [ -n "$BRANCH_TEST_FILES" ]; then
+if [ -n "$BASE_BRANCH_TEST_FILES" ]; then
     while IFS= read -r TEST_FILE; do
         [ -z "$TEST_FILE" ] && continue
 
@@ -149,9 +181,9 @@ if [ -n "$BRANCH_TEST_FILES" ]; then
 
         if [ "$DEPTH_COMMITS" -ge 2 ]; then
             record_finding "TESTDEPTH_CHURN" "CRITICAL" \
-                "\`${TEST_FILE}\` has had @TestDepth annotations changed in ${DEPTH_COMMITS} separate commits. This suggests experimentation with suppression levels."
+                "\`${TEST_FILE}\` (exists on ${BASE_BRANCH}) has had @TestDepth annotations changed in ${DEPTH_COMMITS} separate commits. This suggests experimentation with suppression levels."
         fi
-    done <<< "$BRANCH_TEST_FILES"
+    done <<< "$BASE_BRANCH_TEST_FILES"
 fi
 
 # ── PATTERN 4: Revert-then-Reapply ─────────────────────────────────
@@ -198,20 +230,30 @@ if [ -n "$REVERT_COMMITS" ]; then
 fi
 
 # ── PATTERN 5: Assertion Weakening Across Commits ───────────────────
-# Look for net assertion reduction across the full branch diff.
+# Look for net assertion reduction in base-branch test files.
+# Only examines test files that exist on the base branch — assertion
+# count changes in branch-introduced tests reflect the agent's own
+# test development and are not suspicious.
 
-echo "Checking for net assertion reduction..."
+echo "Checking for net assertion reduction in base-branch tests..."
 
-FULL_DIFF=$(git diff "${BASE_BRANCH}...HEAD" -- '**/*Test*.java' '**/test/**/*.java' 2>/dev/null || true)
+if [ -n "$BASE_BRANCH_TEST_FILES" ]; then
+    FULL_DIFF=""
+    while IFS= read -r TEST_FILE; do
+        [ -z "$TEST_FILE" ] && continue
+        FILE_DIFF=$(git diff "${BASE_BRANCH}...HEAD" -- "$TEST_FILE" 2>/dev/null || true)
+        FULL_DIFF="${FULL_DIFF}${FILE_DIFF}\n"
+    done <<< "$BASE_BRANCH_TEST_FILES"
 
-if [ -n "$FULL_DIFF" ]; then
-    TOTAL_DELETED_ASSERTS=$(echo "$FULL_DIFF" | grep -cE '^\-.*\b(assert|assertEquals|assertTrue|assertFalse|assertNotNull|assertThrows|fail\()' || true)
-    TOTAL_ADDED_ASSERTS=$(echo "$FULL_DIFF" | grep -cE '^\+.*\b(assert|assertEquals|assertTrue|assertFalse|assertNotNull|assertThrows|fail\()' || true)
+    if [ -n "$FULL_DIFF" ]; then
+        TOTAL_DELETED_ASSERTS=$(echo -e "$FULL_DIFF" | grep -cE '^\-.*\b(assert|assertEquals|assertTrue|assertFalse|assertNotNull|assertThrows|fail\()' || true)
+        TOTAL_ADDED_ASSERTS=$(echo -e "$FULL_DIFF" | grep -cE '^\+.*\b(assert|assertEquals|assertTrue|assertFalse|assertNotNull|assertThrows|fail\()' || true)
 
-    if [ "$TOTAL_DELETED_ASSERTS" -gt 0 ] && [ "$TOTAL_ADDED_ASSERTS" -lt "$TOTAL_DELETED_ASSERTS" ]; then
-        NET_LOST=$((TOTAL_DELETED_ASSERTS - TOTAL_ADDED_ASSERTS))
-        record_finding "NET_ASSERTION_LOSS" "HIGH" \
-            "Branch has a net loss of ${NET_LOST} assertion(s) across all test files (${TOTAL_DELETED_ASSERTS} removed, ${TOTAL_ADDED_ASSERTS} added). Test coverage may be degraded."
+        if [ "$TOTAL_DELETED_ASSERTS" -gt 0 ] && [ "$TOTAL_ADDED_ASSERTS" -lt "$TOTAL_DELETED_ASSERTS" ]; then
+            NET_LOST=$((TOTAL_DELETED_ASSERTS - TOTAL_ADDED_ASSERTS))
+            record_finding "NET_ASSERTION_LOSS" "HIGH" \
+                "Branch has a net loss of ${NET_LOST} assertion(s) across base-branch test files (${TOTAL_DELETED_ASSERTS} removed, ${TOTAL_ADDED_ASSERTS} added). Test coverage may be degraded."
+        fi
     fi
 fi
 

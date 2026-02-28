@@ -91,29 +91,27 @@ base branch (master) before this branch was created. Run:
 
     git log --oneline origin/master -- <path/to/TestFile.java>
 
-**DO NOT:**
-- Modify ANY file under src/test/ for ANY reason
+**DO NOT modify tests that exist on the base branch.** Specifically, do not:
+- Change @TestDepth values, timeout values, dimensions, or tolerances in base-branch tests
+- Add @Ignore, @Disabled, skipLongTests, or try/catch blocks to base-branch tests
+- Reduce numeric constants or increase tolerance/epsilon values in base-branch tests
 - Modify ANY file under .github/workflows/ or tools/ci/
-- Change @TestDepth values, timeout values, dimensions, or tolerances
-- Add @Ignore, @Disabled, skipLongTests, or try/catch blocks to tests
-- Reduce numeric constants in test methods
-- Increase tolerance/epsilon values in assertions
-- Claim "the test is wrong" - the test is correct, your code is broken
+- Claim "the test is wrong" - if the test exists on master, it is the specification
 - Claim "the test is flaky" - if CI reports failure, the failure is real
 - Claim "the failure is unrelated to my changes" without PROOF (see below)
 
-**The test is correct. Your branch broke it. Fix the production code, not the test.**
-**If you touch a test file, your changes will be automatically rejected by
-validate-agent-commit.sh. Your commit will be blocked. Do not waste time trying.**
+**Tests that exist on the base branch are the specification. Fix the production code.**
+**Modifications to base-branch test files will be automatically rejected by
+validate-agent-commit.sh.** You MAY fix tests that your branch introduced.
 
 ---
 
 ## AUTOMATED ENFORCEMENT
 
 Your commit will be validated by `validate-agent-commit.sh` which BLOCKS:
-1. ANY modification to test files that exist on the base branch (exit code 2)
-2. ANY modification to CI/workflow files (exit code 4)
-3. Commits with NO production code changes when fixing test failures (exit code 3)
+1. Modifications to test files that exist on the base branch (exit code 2)
+2. Modifications to CI/workflow files (exit code 4)
+3. Commits with no production code or branch-new test changes when fixing test failures (exit code 3)
 
 Additionally, `detect-test-hiding.sh` checks for 12 specific evasion patterns
 including TestDepth escalation, timeout inflation, dimension reduction,
@@ -217,6 +215,6 @@ the entire suite runs (due to shared state, test ordering, etc.).
 6. **Verify by running the full CI command above.** Not individual tests -- the full
    module suite. If it passes, your fix works.
 
-**Remember: the test is correct. Your branch broke it. Fix the production code.
-Your commit will be automatically validated and rejected if it modifies test or CI files.**
+**Remember: if a test exists on the base branch, the test is the specification — fix
+the production code. Modifications to base-branch test files or CI files will be rejected.**
 EOF

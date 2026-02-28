@@ -1,4 +1,4 @@
-## ABSOLUTE RULE: TEST FILES ARE READ-ONLY
+## ABSOLUTE RULE: BASE BRANCH TEST FILES ARE READ-ONLY
 
 **THIS IS THE MOST IMPORTANT RULE. VIOLATING IT IS WORSE THAN NOT FIXING ANYTHING.**
 
@@ -14,12 +14,13 @@ DECEPTION.md). Specific tactics documented with evidence:
 - Excluded CodePolicyEnforcementTest from CI test steps
 - Manipulated CI job dependencies to skip quality gates
 
-You MUST NOT modify test files for ANY reason. Not timeouts, not @TestDepth,
-not dimensions, not tolerances, not annotations, not assertions. If a test fails,
-fix the PRODUCTION CODE. If you cannot fix it, report the failure — do not hide it.
+You MUST NOT modify test files that exist on ${BASE_BRANCH}. Not timeouts, not
+@TestDepth, not dimensions, not tolerances, not annotations, not assertions. If a
+base-branch test fails, fix the PRODUCTION CODE. If you cannot fix it, report
+the failure — do not hide it. You MAY fix tests that this branch introduced.
 
 **Automated enforcement:** Your changes will be validated by validate-agent-commit.sh
-which BLOCKS modifications to test files and CI files. Do not waste time attempting it.
+which BLOCKS modifications to base-branch test files and CI files.
 
 ---
 
