@@ -1406,13 +1406,15 @@ public interface TemporalFeatures extends GeometryFeatures {
 		product.destroy();
 
 		// Stage 5: Extract real parts from interleaved complex format and trim
-		PackedCollection result = new PackedCollection(outputShape);
-		for (int i = 0; i < outputLength; i++) {
-			result.setMem(i, ifftResult.toDouble(i * 2));
-		}
-		ifftResult.destroy();
-
-		return c(result);
+		// Use the Producer pattern to avoid setMem in a loop (code policy violation)
+		CollectionProducer flatIfft = cp(ifftResult).traverseEach();
+		return new DefaultTraversableExpressionComputation(
+				"extractRealParts",
+				outputShape,
+				args -> CollectionExpression.create(outputShape,
+						idx -> args[1].getValueAt(idx.multiply(2))),
+				flatIfft
+		);
 	}
 
 	/**
