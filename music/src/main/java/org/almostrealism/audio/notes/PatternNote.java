@@ -21,6 +21,7 @@ import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.audio.sources.BufferDetails;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuned;
 import org.almostrealism.audio.tone.KeyboardTuning;
@@ -166,30 +167,47 @@ public class PatternNote extends PatternNoteAudioAdapter {
 	public Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel,
 												  DoubleFunction<PatternNoteAudio> audioSelection) {
 		if (getDelegate() != null) return super.getAudio(target, channel, audioSelection);
-		return combineLayers(target, channel, -1, null, audioSelection);
+		return combineLayers(target, channel, -1, null, audioSelection, null, -1);
 	}
 
+	@Override
 	protected Producer<PackedCollection> computeAudio(KeyPosition<?> target, int channel,
 														 double noteDuration,
 														 Factor<PackedCollection> automationLevel,
-														 DoubleFunction<PatternNoteAudio> audioSelection) {
+														 DoubleFunction<PatternNoteAudio> audioSelection,
+														 PackedCollection offset, int frameCount) {
 		if (getDelegate() != null) {
 			return super.computeAudio(
 					target, channel,
 					noteDuration,
-					automationLevel, audioSelection);
+					automationLevel, audioSelection,
+					offset, frameCount);
 		}
 
-		return combineLayers(target, channel, noteDuration, automationLevel, audioSelection);
+		return combineLayers(target, channel, noteDuration, automationLevel, audioSelection,
+				offset, frameCount);
 	}
 
+	/**
+	 * Combines layers to produce audio, optionally for a specific frame range.
+	 *
+	 * <p>When {@code offset} is non-null, a {@link BufferDetails} sized to {@code frameCount}
+	 * is used so the output buffer is limited to the requested range and each layer
+	 * receives the frame range parameters. When {@code offset} is null, the full note
+	 * buffer is used.</p>
+	 */
 	protected Producer<PackedCollection> combineLayers(KeyPosition<?> target, int channel,
 														  double noteDuration,
 														  Factor<PackedCollection> automationLevel,
-														  DoubleFunction<PatternNoteAudio> audioSelection) {
+														  DoubleFunction<PatternNoteAudio> audioSelection,
+														  PackedCollection offset, int frameCount) {
 		if (noteDuration < 0) {
 			throw new UnsupportedOperationException();
 		}
+
+		BufferDetails buffer = (offset != null)
+				? new BufferDetails(getSampleRate(target, audioSelection), frameCount)
+				: getBufferDetails(target, audioSelection);
 
 		if (layerAggregator == null) {
 			warn("Using PatternNote without SourceAggregation");
@@ -197,7 +215,8 @@ public class PatternNote extends PatternNoteAudioAdapter {
 			return () -> {
 				List<Evaluable<PackedCollection>> layerAudio =
 						layers.stream()
-								.map(l -> l.getAudio(target, channel, noteDuration, automationLevel, audioSelection).get())
+								.map(l -> l.getAudio(target, channel, noteDuration, automationLevel,
+										audioSelection, offset, frameCount).get())
 								.toList();
 				int[] frames = IntStream.range(0, layerAudio.size())
 						.map(i -> (int) (layers.get(i).getDuration(target, audioSelection) *
@@ -219,10 +238,12 @@ public class PatternNote extends PatternNoteAudioAdapter {
 				};
 			};
 		} else {
-			return layerAggregator.getAggregator(c(aggregationChoice)).aggregate(getBufferDetails(target, audioSelection),
+			return layerAggregator.getAggregator(c(aggregationChoice)).aggregate(buffer,
 					null, null,
 					layers.stream()
-							.map(l -> l.getAudio(target, channel, noteDuration, automationLevel, audioSelection))
+							.map(l -> l.getAudio(target, channel, noteDuration,
+									automationLevel, audioSelection,
+									offset, frameCount))
 							.toArray(Producer[]::new));
 		}
 	}

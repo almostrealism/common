@@ -18,6 +18,7 @@
 #   MAX_TURNS         - agent turn budget             (omitted → workstream default)
 #   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
 #   ENFORCE_CHANGES   - require code changes or retry (default: false)
+#   DESCRIPTION       - short label for Slack notifications (e.g., "Resolve test failures")
 #
 # Exit codes:
 #   0 - submission succeeded
@@ -65,6 +66,10 @@ PAYLOAD=$(jq -n \
         protectTestFiles: $protect,
         enforceChanges: $enforce
     }')
+
+if [ -n "${DESCRIPTION:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --arg d "$DESCRIPTION" '. + {description: $d}')
+fi
 
 if [ -n "${MAX_TURNS:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson t "$MAX_TURNS" '. + {maxTurns: $t}')

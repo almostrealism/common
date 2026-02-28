@@ -575,6 +575,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // (targetBranch was already extracted during workstream resolution above)
         String repoUrl = extractJsonField(body, "repoUrl");
         String baseBranch = extractJsonField(body, "baseBranch");
+        String jobDescription = extractJsonField(body, "description");
         int maxTurns = extractJsonIntField(body, "maxTurns");
         double maxBudgetUsd = extractJsonDoubleField(body, "maxBudgetUsd");
         boolean protectTestFiles = extractJsonBooleanField(body, "protectTestFiles");
@@ -582,6 +583,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         // Create job factory with workstream defaults, overridden by request values
         ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
+        if (jobDescription != null && !jobDescription.isEmpty()) {
+            factory.setDescription(jobDescription);
+        }
         factory.setAllowedTools(workstream.getAllowedTools());
         factory.setMaxTurns(maxTurns > 0 ? maxTurns : workstream.getMaxTurns());
         factory.setMaxBudgetUsd(maxBudgetUsd > 0 ? maxBudgetUsd : workstream.getMaxBudgetUsd());
@@ -665,8 +669,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         // Notify that work is starting
-        String description = prompt.length() > 100 ? prompt.substring(0, 97) + "..." : prompt;
-        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), description);
+        String displaySummary = jobDescription != null && !jobDescription.isEmpty()
+            ? jobDescription : ClaudeCodeJob.summarizePrompt(prompt);
+        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
         notifier.onJobStarted(workstream.getWorkstreamId(), startEvent);
 

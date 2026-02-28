@@ -266,7 +266,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 		PatternNoteLayer result = penv.apply(ParameterSet.random(), ChannelInfo.Voicing.MAIN,
 				new SimplePatternNote(provider));
 		result.setTuning(new DefaultKeyboardTuning());
-		new WaveData(result.getAudio(null, 0, 4.0, in -> in, null)
+		new WaveData(result.getAudio(null, 0, 4.0, in -> in, null, null, -1)
 							.evaluate(), 44100)
 				.save(new File("results/parameterized-volume-envelope.wav"));
 	}
@@ -284,7 +284,7 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				penv.apply(ParameterSet.random(), ChannelInfo.Voicing.MAIN,
 						new SimplePatternNote(provider));
 		result.setTuning(new DefaultKeyboardTuning());
-		new WaveData(result.getAudio(null, 0, 4.0, in -> in, null)
+		new WaveData(result.getAudio(null, 0, 4.0, in -> in, null, null, -1)
 								.evaluate(), 44100)
 				.save(new File("results/parameterized-filter-envelope.wav"));
 	}

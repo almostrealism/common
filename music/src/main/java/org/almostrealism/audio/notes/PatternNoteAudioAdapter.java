@@ -24,6 +24,7 @@ import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.DoubleFunction;
+import java.util.function.Supplier;
 
 public abstract class PatternNoteAudioAdapter implements
 		PatternNoteAudio, CellFeatures, SamplingFeatures {
@@ -50,8 +51,9 @@ public abstract class PatternNoteAudioAdapter implements
 	@Override
 	public Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel, double noteDuration,
 												  Factor<PackedCollection> automationLevel,
-												  DoubleFunction<PatternNoteAudio> audioSelection) {
-		return computeAudio(target, channel, noteDuration, automationLevel, audioSelection);
+												  DoubleFunction<PatternNoteAudio> audioSelection,
+												  PackedCollection offset, int frameCount) {
+		return computeAudio(target, channel, noteDuration, automationLevel, audioSelection, offset, frameCount);
 	}
 
 	@Override
@@ -65,10 +67,20 @@ public abstract class PatternNoteAudioAdapter implements
 		return getProvider(target, audioSelection).getAudio(target, channel, audioSelection);
 	}
 
+	/**
+	 * Computes audio for the note, optionally for a specific frame range.
+	 *
+	 * <p>When {@code offset} is non-null, uses
+	 * {@link #sampling(int, PackedCollection, int, java.util.function.Supplier)}
+	 * to set up frame indices offset by the value in {@code offset}, producing only
+	 * {@code frameCount} output frames. When {@code offset} is null, the full note
+	 * is evaluated using the standard sampling context.</p>
+	 */
 	protected Producer<PackedCollection> computeAudio(KeyPosition<?> target, int channel,
 														 double noteDuration,
 														 Factor<PackedCollection> automationLevel,
-														 DoubleFunction<PatternNoteAudio> audioSelection) {
+														 DoubleFunction<PatternNoteAudio> audioSelection,
+														 PackedCollection offset, int frameCount) {
 		if (getDelegate() == null) {
 			PatternNoteAudio p = getProvider(target, audioSelection);
 			if (p == null) {
@@ -77,11 +89,19 @@ public abstract class PatternNoteAudioAdapter implements
 
 			return p.getAudio(target, channel, audioSelection);
 		} else if (noteDuration > 0) {
-			return sampling(getSampleRate(target, audioSelection), getDuration(target, audioSelection),
-					() -> getFilter().apply(getDelegate()
+			int sampleRate = getSampleRate(target, audioSelection);
+			Supplier<Producer<PackedCollection>> filtered = () ->
+					getFilter().apply(getDelegate()
 									.getAudio(target, channel, noteDuration,
-											automationLevel, audioSelection),
-												c(noteDuration), automationLevel.getResultant(c(0.0))));
+											automationLevel, audioSelection,
+											offset, frameCount),
+								c(noteDuration), automationLevel.getResultant(c(0.0)));
+
+			if (offset != null) {
+				return sampling(sampleRate, offset, frameCount, filtered);
+			} else {
+				return sampling(sampleRate, getDuration(target, audioSelection), filtered);
+			}
 		} else {
 			throw new UnsupportedOperationException();
 		}

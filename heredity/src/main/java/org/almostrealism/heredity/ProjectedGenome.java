@@ -153,6 +153,28 @@ public class ProjectedGenome implements Genome<PackedCollection> {
 	}
 
 	/**
+	 * Consolidates gene value storage across all chromosomes.
+	 *
+	 * <p>This method should be called after all chromosomes and genes have been
+	 * added to the genome. It packs each chromosome's gene values into a single
+	 * contiguous {@link PackedCollection}, reducing the number of kernel arguments
+	 * when the computation graph is compiled.</p>
+	 *
+	 * <p>Without consolidation, each gene's values collection becomes a separate
+	 * kernel argument during compilation. With many genes across effects, patterns,
+	 * automation, and mixdown managers, this can exceed 500 arguments. After
+	 * consolidation, each chromosome contributes at most one argument (its
+	 * consolidated buffer), dramatically reducing the total count.</p>
+	 *
+	 * @see ProjectedChromosome#consolidateGeneValues()
+	 */
+	public void consolidateGeneValues() {
+		for (ProjectedChromosome chromosome : chromosomes) {
+			chromosome.consolidateGeneValues();
+		}
+	}
+
+	/**
 	 * Creates and adds a new {@link ProjectedChromosome} to this genome.
 	 * <p>The new chromosome shares the same parameter collection as all other chromosomes.
 	 *

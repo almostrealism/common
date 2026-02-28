@@ -438,8 +438,8 @@ public class SlackListener implements ConsoleFeatures {
         // reply under it to create a thread. If already in a thread, continue there.
         String replyTo = (threadTs == null) ? messageTs : threadTs;
 
-        String description = prompt.length() > 100 ? prompt.substring(0, 97) + "..." : prompt;
-        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), description);
+        String displaySummary = ClaudeCodeJob.summarizePrompt(prompt);
+        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(workstream.getDefaultBranch(), null, null, null, false);
 
         notifier.onJobStarted(workstream.getWorkstreamId(), startEvent, replyTo);
@@ -518,7 +518,7 @@ public class SlackListener implements ConsoleFeatures {
                         + "  `/flowtree cancel [job-id]` \u2014 Cancel a running job\n"
                         + "  `/flowtree config [key] [value]` \u2014 View or update settings\n"
                         + "  `/flowtree jobs` \u2014 List recent jobs\n"
-                        + "  `/flowtree stats` \u2014 Show weekly job statistics");
+                        + "  `/flowtree stats [global]` \u2014 Show weekly job statistics");
             }
         } catch (IOException e) {
             warn("Error responding to slash command: " + e.getMessage());
@@ -526,41 +526,60 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Handles {@code /flowtree setup <working-directory> <branch>}.
+     * Handles {@code /flowtree setup <working-directory-or-repo-url> <branch>}.
      * Creates a new workstream for the channel or updates the existing one.
+     *
+     * <p>The first argument is treated as a git repo URL if it starts with
+     * {@code https://}, {@code http://}, or {@code git@}; otherwise it is
+     * treated as a local working directory path.</p>
      */
     private void handleSetupCommand(String channelId, String channelName,
                                      String args, SlashCommandResponder ctx) throws IOException {
         if (args == null || args.trim().isEmpty()) {
-            ctx.respond(":warning: Usage: `/flowtree setup <working-directory> <branch>`\n"
-                + "Example: `/flowtree setup /workspace/project feature/my-work`");
+            ctx.respond(":warning: Usage: `/flowtree setup <working-directory-or-repo-url> <branch>`\n"
+                + "Example: `/flowtree setup /workspace/project feature/my-work`\n"
+                + "Example: `/flowtree setup https://github.com/org/repo.git feature/my-work`");
             return;
         }
 
         String[] setupArgs = args.trim().split("\\s+", 2);
         if (setupArgs.length < 2) {
-            ctx.respond(":warning: Both working directory and branch are required.\n"
-                + "Usage: `/flowtree setup <working-directory> <branch>`");
+            ctx.respond(":warning: Both working directory (or repo URL) and branch are required.\n"
+                + "Usage: `/flowtree setup <working-directory-or-repo-url> <branch>`");
             return;
         }
 
-        String workingDirectory = setupArgs[0];
+        String location = setupArgs[0];
         String branch = setupArgs[1];
+        boolean isRepoUrl = isGitUrl(location);
 
         SlackWorkstream existing = channelToWorkstream.get(channelId);
         if (existing != null) {
-            String oldDir = existing.getWorkingDirectory();
             String oldBranch = existing.getDefaultBranch();
-            existing.setWorkingDirectory(workingDirectory);
-            existing.setDefaultBranch(branch);
-            persistConfig();
-
-            ctx.respond(":white_check_mark: *Workstream updated*\n"
-                + "   Working directory: `" + (oldDir != null ? oldDir : "(none)") + "` \u2192 `" + workingDirectory + "`\n"
-                + "   Branch: `" + (oldBranch != null ? oldBranch : "(none)") + "` \u2192 `" + branch + "`");
+            if (isRepoUrl) {
+                String oldUrl = existing.getRepoUrl();
+                existing.setRepoUrl(location);
+                existing.setDefaultBranch(branch);
+                persistConfig();
+                ctx.respond(":white_check_mark: *Workstream updated*\n"
+                    + "   Repo URL: `" + (oldUrl != null ? oldUrl : "(none)") + "` \u2192 `" + location + "`\n"
+                    + "   Branch: `" + (oldBranch != null ? oldBranch : "(none)") + "` \u2192 `" + branch + "`");
+            } else {
+                String oldDir = existing.getWorkingDirectory();
+                existing.setWorkingDirectory(location);
+                existing.setDefaultBranch(branch);
+                persistConfig();
+                ctx.respond(":white_check_mark: *Workstream updated*\n"
+                    + "   Working directory: `" + (oldDir != null ? oldDir : "(none)") + "` \u2192 `" + location + "`\n"
+                    + "   Branch: `" + (oldBranch != null ? oldBranch : "(none)") + "` \u2192 `" + branch + "`");
+            }
         } else {
             SlackWorkstream ws = new SlackWorkstream(channelId, channelName);
-            ws.setWorkingDirectory(workingDirectory);
+            if (isRepoUrl) {
+                ws.setRepoUrl(location);
+            } else {
+                ws.setWorkingDirectory(location);
+            }
             ws.setDefaultBranch(branch);
             registerWorkstream(ws);
 
@@ -569,14 +588,23 @@ public class SlackListener implements ConsoleFeatures {
             }
             persistConfig();
 
+            String locationLabel = isRepoUrl ? "Repo URL" : "Working directory";
             ctx.respond(":white_check_mark: *Workstream created*\n"
                 + "   Workstream ID: `" + ws.getWorkstreamId() + "`\n"
                 + "   Channel: " + channelName + "\n"
-                + "   Working directory: `" + workingDirectory + "`\n"
+                + "   " + locationLabel + ": `" + location + "`\n"
                 + "   Branch: `" + branch + "`\n"
                 + "   Max budget: $" + String.format("%.2f", ws.getMaxBudgetUsd()) + "\n"
                 + "   Max turns: " + ws.getMaxTurns());
         }
+    }
+
+    /**
+     * Returns {@code true} if the value looks like a git remote URL
+     * rather than a local filesystem path.
+     */
+    private static boolean isGitUrl(String value) {
+        return value.startsWith("https://") || value.startsWith("http://") || value.startsWith("git@");
     }
 
     /**
@@ -587,7 +615,7 @@ public class SlackListener implements ConsoleFeatures {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
         if (ws == null) {
             ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
             return;
         }
 
@@ -627,7 +655,7 @@ public class SlackListener implements ConsoleFeatures {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
         if (ws == null) {
             ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
             return;
         }
 
@@ -658,7 +686,7 @@ public class SlackListener implements ConsoleFeatures {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
         if (ws == null) {
             ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
             return;
         }
 
@@ -676,7 +704,7 @@ public class SlackListener implements ConsoleFeatures {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
         if (ws == null) {
             ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
             return;
         }
 
@@ -691,7 +719,7 @@ public class SlackListener implements ConsoleFeatures {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
         if (ws == null) {
             ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
             return;
         }
 
@@ -703,6 +731,7 @@ public class SlackListener implements ConsoleFeatures {
             sb.append("   `maxTurns` = ").append(ws.getMaxTurns()).append("\n");
             sb.append("   `defaultBranch` = ").append(ws.getDefaultBranch() != null ? ws.getDefaultBranch() : "(not set)").append("\n");
             sb.append("   `baseBranch` = ").append(ws.getBaseBranch() != null ? ws.getBaseBranch() : "(not set)").append("\n");
+            sb.append("   `repoUrl` = ").append(ws.getRepoUrl() != null ? ws.getRepoUrl() : "(not set)").append("\n");
             sb.append("   `workingDirectory` = ").append(ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)").append("\n");
             sb.append("   `pushToOrigin` = ").append(ws.isPushToOrigin()).append("\n");
             sb.append("   `allowedTools` = ").append(ws.getAllowedTools()).append("\n");
@@ -723,7 +752,7 @@ public class SlackListener implements ConsoleFeatures {
             if (currentValue == null) {
                 ctx.respond(":warning: Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
-                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
+                    + "`baseBranch`, `repoUrl`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
                     + "`gitUserName`, `gitUserEmail`, `planningDocument`");
             } else {
                 ctx.respond(":gear: `" + key + "` = " + currentValue);
@@ -748,7 +777,7 @@ public class SlackListener implements ConsoleFeatures {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
         if (ws == null) {
             ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
+                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
             return;
         }
 
@@ -804,6 +833,7 @@ public class SlackListener implements ConsoleFeatures {
             case "maxTurns": return String.valueOf(ws.getMaxTurns());
             case "defaultBranch": return ws.getDefaultBranch() != null ? ws.getDefaultBranch() : "(not set)";
             case "baseBranch": return ws.getBaseBranch() != null ? ws.getBaseBranch() : "(not set)";
+            case "repoUrl": return ws.getRepoUrl() != null ? ws.getRepoUrl() : "(not set)";
             case "workingDirectory": return ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)";
             case "pushToOrigin": return String.valueOf(ws.isPushToOrigin());
             case "allowedTools": return ws.getAllowedTools();
@@ -843,6 +873,9 @@ public class SlackListener implements ConsoleFeatures {
             case "baseBranch":
                 ws.setBaseBranch(value);
                 return null;
+            case "repoUrl":
+                ws.setRepoUrl(value);
+                return null;
             case "workingDirectory":
                 ws.setWorkingDirectory(value);
                 return null;
@@ -868,43 +901,87 @@ public class SlackListener implements ConsoleFeatures {
             default:
                 return "Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
-                    + "`baseBranch`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
+                    + "`baseBranch`, `repoUrl`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
                     + "`gitUserName`, `gitUserEmail`, `planningDocument`";
         }
     }
 
     /**
-     * Handles {@code /flowtree stats}. Shows weekly job statistics.
+     * Handles {@code /flowtree stats [global]}. Shows weekly job statistics.
+     *
+     * <p>Without arguments, shows stats for the current channel's workstream.
+     * With {@code global}, shows stats across all workstreams.</p>
      */
     private void handleSlashStatsCommand(String channelId, String args,
                                           SlashCommandResponder ctx) throws IOException {
-        SlackWorkstream ws = channelToWorkstream.get(channelId);
-        if (ws == null) {
-            ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory> <branch>` to create one.");
-            return;
-        }
-
         JobStatsStore statsStore = notifier.getStatsStore();
         if (statsStore == null) {
             ctx.respond(":warning: Job statistics are not available.");
             return;
         }
 
-        LocalDate today = LocalDate.now(ZoneId.of("UTC"));
-        LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
+        boolean global = "global".equalsIgnoreCase(args != null ? args.trim() : "");
 
-        JobStatsStore.WeeklyStats thisWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), thisWeekStart);
-        JobStatsStore.WeeklyStats lastWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), lastWeekStart);
+        if (!global) {
+            SlackWorkstream ws = channelToWorkstream.get(channelId);
+            if (ws == null) {
+                ctx.respond(":warning: No workstream configured for this channel.\n"
+                    + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.\n"
+                    + "Or use `/flowtree stats global` for stats across all workstreams.");
+                return;
+            }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append(":bar_chart: *Agent Activity \u2014 ").append(ws.getChannelName()).append("*\n\n");
-        sb.append(formatWeeklyStats("This Week", thisWeekStart, thisWeek));
-        sb.append("\n");
-        sb.append(formatWeeklyStats("Last Week", lastWeekStart, lastWeek));
+            LocalDate today = LocalDate.now(ZoneId.of("UTC"));
+            LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
 
-        ctx.respond(sb.toString());
+            JobStatsStore.WeeklyStats thisWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), thisWeekStart);
+            JobStatsStore.WeeklyStats lastWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), lastWeekStart);
+
+            StringBuilder sb = new StringBuilder();
+            sb.append(":bar_chart: *Agent Activity \u2014 ").append(ws.getChannelName()).append("*\n\n");
+            sb.append(formatWeeklyStats("This Week", thisWeekStart, thisWeek));
+            sb.append("\n");
+            sb.append(formatWeeklyStats("Last Week", lastWeekStart, lastWeek));
+
+            ctx.respond(sb.toString());
+        } else {
+            LocalDate today = LocalDate.now(ZoneId.of("UTC"));
+            LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
+
+            // Build workstream ID to channel name lookup
+            Map<String, String> wsToChannel = new HashMap<>();
+            for (SlackWorkstream ws : channelToWorkstream.values()) {
+                wsToChannel.put(ws.getWorkstreamId(), ws.getChannelName());
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append(":bar_chart: *Agent Activity \u2014 All Workstreams*\n\n");
+
+            // Global totals
+            JobStatsStore.WeeklyStats thisWeekTotal = statsStore.getWeeklyStats(thisWeekStart);
+            JobStatsStore.WeeklyStats lastWeekTotal = statsStore.getWeeklyStats(lastWeekStart);
+            sb.append(formatWeeklyStats("This Week (total)", thisWeekStart, thisWeekTotal));
+            sb.append("\n");
+            sb.append(formatWeeklyStats("Last Week (total)", lastWeekStart, lastWeekTotal));
+
+            // Per-workstream breakdown for this week
+            Map<String, JobStatsStore.WeeklyStats> thisWeekByWs = statsStore.getWeeklyStatsByWorkstream(thisWeekStart);
+            if (!thisWeekByWs.isEmpty()) {
+                sb.append("\n:mag: *This Week by Workstream*\n");
+                for (Map.Entry<String, JobStatsStore.WeeklyStats> entry : thisWeekByWs.entrySet()) {
+                    String label = wsToChannel.getOrDefault(entry.getKey(), entry.getKey());
+                    JobStatsStore.WeeklyStats stats = entry.getValue();
+                    sb.append("  *").append(label).append("*: ");
+                    sb.append(stats.jobCount).append(" jobs, ");
+                    sb.append(formatDuration(stats.totalWallClockMs)).append(", ");
+                    sb.append("$").append(String.format("%.2f", stats.totalCostUsd)).append("\n");
+                }
+            }
+
+            ctx.respond(sb.toString());
+        }
     }
 
     /**

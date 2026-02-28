@@ -1,6 +1,7 @@
 package org.almostrealism.audio.pattern;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.arrange.AudioSceneContext;
@@ -19,15 +20,12 @@ import java.util.List;
  * of the pattern audio generation system. This method converts pattern elements
  * into audio and sums them to a destination buffer.</p>
  *
- * <h2>Unified Render Path</h2>
+ * <h2>Render Path</h2>
  *
- * <p>A single {@link #render} method handles both full-buffer (offline) and
- * frame-range (real-time) rendering. The {@code startFrame} and {@code frameCount}
- * parameters define which portion of the arrangement to render:</p>
- * <ul>
- *   <li><strong>Full render:</strong> {@code startFrame=0, frameCount=destination.length}</li>
- *   <li><strong>Real-time buffer:</strong> {@code startFrame=currentPosition, frameCount=bufferSize}</li>
- * </ul>
+ * <p>Each {@link RenderedNoteAudio} carries a producer factory that creates
+ * frame-count-specific producers via {@link RenderedNoteAudio#getProducer(int)}.
+ * The caller sets the start frame offset in the note's {@code offsetArg} before
+ * evaluation. This is the single render path for both offline and real-time modes.</p>
  *
  * <h2>Optimizations</h2>
  * <ul>
@@ -37,6 +35,9 @@ import java.util.List;
  *   <li><strong>Caching:</strong> When a {@link NoteAudioCache} is provided, evaluated
  *       note audio is cached and reused across consecutive buffer ticks. Notes that
  *       span multiple buffers are evaluated only once.</li>
+ *   <li><strong>Signature independence:</strong> The computation signature is independent
+ *       of the start frame position (the offset is a runtime data argument), so the
+ *       compiled kernel is reused across different frame positions.</li>
  * </ul>
  *
  * @see PatternElement#getNoteDestinations
@@ -61,15 +62,10 @@ public interface PatternFeatures extends CodeFeatures {
 	 *   <li>Pre-filters notes by {@code expectedFrameCount} to skip notes that
 	 *       cannot overlap the frame range (avoids expensive {@code evaluate()})</li>
 	 *   <li>Checks the {@link NoteAudioCache} for previously evaluated audio</li>
-	 *   <li>Evaluates the note's audio producer if not cached</li>
+	 *   <li>Evaluates the note via {@link RenderedNoteAudio#getProducer(int)} for
+	 *       the overlap frame count</li>
 	 *   <li>Computes the overlap region and sums audio to the destination buffer</li>
 	 * </ol>
-	 *
-	 * <h3>Full-buffer rendering</h3>
-	 * <p>For offline rendering of the entire arrangement, pass {@code startFrame=0}
-	 * and {@code frameCount=destination.getShape().length(0)}. The overlap logic
-	 * degenerates to simple clipping at the buffer end, matching the original
-	 * full-render behavior.</p>
 	 *
 	 * <h3>Offset Calculations</h3>
 	 * <ul>
@@ -114,57 +110,105 @@ public interface PatternFeatures extends CodeFeatures {
 						return;
 					}
 
-					// Check cache before expensive evaluate()
+					// Check cache first (fastest path for real-time rendering)
 					PackedCollection audio = (cache != null) ? cache.get(noteStart) : null;
 
-					if (audio == null) {
-						PackedCollection[] evaluated = {null};
-						try {
-							Heap.stage(() ->
-									evaluated[0] = traverse(1, note.getProducer()).get().evaluate());
-						} catch (Exception e) {
-							return;
-						}
-
-						audio = evaluated[0];
-						if (audio == null) return;
-
-						// Store in cache for reuse across buffer ticks
-						if (cache != null) {
-							cache.put(noteStart, audio);
-						}
-					}
-
-					int noteLength = audio.getShape().getCount();
-					int noteAbsoluteEnd = noteStart + noteLength;
-
-					// Post-evaluate overlap check (safety net for inaccurate estimates)
-					if (noteAbsoluteEnd <= startFrame || noteStart >= endFrame) {
+					if (audio != null) {
+						// Cache hit: sum cached audio to destination
+						sumToDestination(destination, audio, noteStart, startFrame,
+								endFrame, frameCount);
 						return;
 					}
 
-					// Calculate overlap region
-					int overlapStart = Math.max(noteStart, startFrame);
-					int overlapEnd = Math.min(noteAbsoluteEnd, endFrame);
-					int overlapLength = overlapEnd - overlapStart;
+					// When a cache is available, evaluate the full note so future
+					// buffer ticks get a cache hit.  Use getProducer(-1) so all
+					// notes share the same compilation signature regardless of
+					// duration (frameCount <= 0 signals null offset in the factory).
+					// This avoids per-note compilation that would occur if each
+					// note's expectedFrameCount were used as a structural parameter.
+					if (cache != null) {
+						try {
+							PackedCollection[] fullResult = {null};
+							Heap.stage(() -> {
+								Producer<PackedCollection> fullProducer =
+										note.getProducer(-1);
+								fullResult[0] =
+										traverse(1, fullProducer).get().evaluate();
+							});
+							if (fullResult[0] != null) {
+								cache.put(noteStart, fullResult[0]);
+								sumToDestination(destination, fullResult[0], noteStart,
+										startFrame, endFrame, frameCount);
+							}
+						} catch (Exception e) {
+							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
+						}
+					} else {
+						// No cache (offline rendering): use an unbounded producer
+						// (frameCount <= 0 signals null offset in the factory) so
+						// all notes share the same computation signature regardless
+						// of duration, enabling kernel compilation reuse.  The
+						// output is clipped to the target range by sumToDestination.
+						if (note.getExpectedFrameCount() <= 0
+								&& endFrame - noteStart <= 0) {
+							return;
+						}
 
-					if (overlapLength <= 0) return;
-
-					int sourceOffset = overlapStart - noteStart;
-					int destOffset = overlapStart - startFrame;
-
-					if (sourceOffset < 0 || sourceOffset + overlapLength > noteLength) return;
-					if (destOffset < 0 || destOffset + overlapLength > frameCount) return;
-
-					try {
-						TraversalPolicy shape = shape(overlapLength);
-						sizes.addEntry(overlapLength);
-						AudioProcessingUtils.getSum().sum(
-								destination.range(shape, destOffset),
-								audio.range(shape, sourceOffset));
-					} catch (Exception e) {
-						// Skip notes that fail during summation
+						try {
+							PackedCollection[] evalResult = {null};
+							Heap.stage(() -> {
+								Producer<PackedCollection> producer = note.getProducer(-1);
+								evalResult[0] = traverse(1, producer).get().evaluate();
+							});
+							if (evalResult[0] != null) {
+								sumToDestination(destination, evalResult[0], noteStart,
+										startFrame, endFrame, frameCount);
+							}
+						} catch (Exception e) {
+							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
+						}
 					}
 				});
+	}
+
+	/**
+	 * Sums cached or fully-evaluated note audio to the destination buffer,
+	 * computing the overlap region between the note and the target frame range.
+	 *
+	 * @param destination buffer to sum audio into
+	 * @param audio the fully-evaluated note audio
+	 * @param noteStart absolute frame position where the note begins
+	 * @param startFrame starting frame of the target range
+	 * @param endFrame ending frame of the target range (exclusive)
+	 * @param frameCount length of the target range ({@code endFrame - startFrame})
+	 */
+	private void sumToDestination(PackedCollection destination, PackedCollection audio,
+								  int noteStart, int startFrame, int endFrame, int frameCount) {
+		int noteLength = audio.getShape().getCount();
+		int noteAbsoluteEnd = noteStart + noteLength;
+
+		if (noteAbsoluteEnd <= startFrame || noteStart >= endFrame) return;
+
+		int overlapStart = Math.max(noteStart, startFrame);
+		int overlapEnd = Math.min(noteAbsoluteEnd, endFrame);
+		int overlapLength = overlapEnd - overlapStart;
+
+		if (overlapLength <= 0) return;
+
+		int sourceOffset = overlapStart - noteStart;
+		int destOffset = overlapStart - startFrame;
+
+		if (sourceOffset < 0 || sourceOffset + overlapLength > noteLength) return;
+		if (destOffset < 0 || destOffset + overlapLength > frameCount) return;
+
+		try {
+			TraversalPolicy shape = shape(overlapLength);
+			sizes.addEntry(overlapLength);
+			AudioProcessingUtils.getSum().sum(
+					destination.range(shape, destOffset),
+					audio.range(shape, sourceOffset));
+		} catch (Exception e) {
+			warn("Note summation failed at offset " + sourceOffset + ": " + e.getMessage());
+		}
 	}
 }
