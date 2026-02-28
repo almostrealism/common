@@ -2,6 +2,15 @@ name: "Build and Test"
 
 on:
   workflow_dispatch:
+    inputs:
+      auto_resolve:
+        description: 'Submit auto-resolve agent jobs to FlowTree'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
   push:
     branches:
       - master
@@ -820,7 +829,7 @@ jobs:
           ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (build failure)
-        if: steps.build-check.outputs.build_failed == 'true'
+        if: steps.build-check.outputs.build_failed == 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -896,7 +905,7 @@ jobs:
           echo "failing_classes=$CLASSES" >> "$GITHUB_OUTPUT"
 
       - name: Submit agent job (test failures)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -924,7 +933,7 @@ jobs:
           ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (incomplete tests)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.test-completeness.outputs.incomplete == 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -954,7 +963,7 @@ jobs:
           ./tools/ci/prompts/build-policy-violation-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (code policy violations)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed != 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -1002,7 +1011,7 @@ jobs:
           ./tools/ci/prompts/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
 
       - name: Submit agent job (quality gates)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -1027,7 +1036,7 @@ jobs:
           ./tools/ci/prompts/build-review-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
