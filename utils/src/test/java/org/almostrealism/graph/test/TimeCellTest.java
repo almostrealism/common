@@ -41,8 +41,8 @@ public class TimeCellTest extends TestSuiteBase {
 
 	/**
 	 * Tests the TimeCell reset functionality with multiple reset slots.
-	 * This verifies the loop-based reset code generation optimization
-	 * introduced in the audio-loop-performance work.
+	 * This verifies the fix for the reset slot indexing bug where the
+	 * condition checked resets[1] instead of resets[i] in the loop.
 	 */
 	@Test(timeout = 10000)
 	public void multipleResets() {

@@ -44,7 +44,7 @@ import java.util.Set;
  * This optimization can significantly reduce per-iteration computation cost.</p>
  *
  * <p>LICM is controlled by the {@code AR_LOOP_INVARIANT_HOISTING} environment variable
- * (default: enabled). When enabled, invariant statements are moved from child scopes
+ * (default: disabled). When enabled, invariant statements are moved from child scopes
  * to this scope's statements list, which is rendered before the loop body.</p>
  *
  * @param <T> the return type of this scope
