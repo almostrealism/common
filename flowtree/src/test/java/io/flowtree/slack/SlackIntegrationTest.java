@@ -1322,7 +1322,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue("Should be the last line", result.contains("\"b\""));
     }
 
-    // -- Workstream registration API tests --
+    // ── Workstream registration API tests ──────────────────────────
 
     /**
      * Tests that POST /api/workstreams registers a new workstream and returns

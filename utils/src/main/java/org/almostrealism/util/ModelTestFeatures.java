@@ -256,12 +256,12 @@ public interface ModelTestFeatures extends TestFeatures {
 					}
 				}
 
-				// Training reached the loss target (even in 1 epoch) - success
+				// Training reached the loss target (even in 1 epoch) — success
 				if (!history.isEmpty() && result.getFinalTrainLoss() <= lossTarget) {
 					return result;
 				}
 
-				// Training made no progress - retry with fresh initialization
+				// Training made no progress — retry with fresh initialization
 				if (attempt < maxRetries - 1) {
 					log("Training made no progress, retrying with fresh initialization " +
 							"(attempt " + (attempt + 2) + "/" + maxRetries + ")");
@@ -269,7 +269,7 @@ public interface ModelTestFeatures extends TestFeatures {
 			}
 		}
 
-		// All retries exhausted - return the last result and let
+		// All retries exhausted — return the last result and let
 		// assertTrainingConvergence report the specific failure
 		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
 		try (CSVReceptor<Double> receptor =
@@ -326,7 +326,7 @@ public interface ModelTestFeatures extends TestFeatures {
 			return;
 		}
 
-		// Loss reached the target but didn't improve from initial - the model
+		// Loss reached the target but didn't improve from initial — the model
 		// was initialized with loss already below target. This is acceptable
 		// as long as training didn't make things worse.
 		if (finalLoss <= maxFinalLoss && finalLoss <= initialLoss) {
@@ -336,7 +336,7 @@ public interface ModelTestFeatures extends TestFeatures {
 			return;
 		}
 
-		// Training did not reach the loss target - analyze the loss curve
+		// Training did not reach the loss target — analyze the loss curve
 		// to determine whether meaningful progress was made
 		if (finalLoss >= initialLoss) {
 			throw new AssertionError("Training did not improve: initial loss " +
@@ -345,7 +345,7 @@ public interface ModelTestFeatures extends TestFeatures {
 					" (" + history.size() + " epochs completed)");
 		}
 
-		// Loss improved but didn't reach the target - check if the decline
+		// Loss improved but didn't reach the target — check if the decline
 		// is meaningful by examining the loss curve trend
 		double improvementRatio = result.getImprovementRatio();
 		double percentReduction = (initialLoss - finalLoss) / initialLoss * 100.0;
