@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# ─── Build the general-review prompt for the FlowTree agent ─────────
+# ─── Build the project-planning prompt for the FlowTree agent ─────────
 #
-# Reads a prompt template file and substitutes environment variables
-# to produce a concrete prompt for the coding agent.
+# Reads the project-planning prompt template and substitutes environment
+# variables to produce a concrete prompt for the coding agent.
 #
 # Usage:
-#   build-review-prompt.sh <output-file>
+#   build-planning-prompt.sh <output-file>
 #
 # Required environment variables:
-#   BRANCH          - branch name under review
-#   BASE_BRANCH     - base branch for comparison
-#   COMMIT_SHA      - commit SHA under review
+#   BRANCH          - branch name for the planning work
+#   BASE_BRANCH     - base branch (master)
 #
 # Exit codes:
 #   0 - prompt written successfully
@@ -25,7 +24,7 @@ if [ -z "$OUTPUT_FILE" ]; then
     exit 1
 fi
 
-for var in BRANCH BASE_BRANCH COMMIT_SHA; do
+for var in BRANCH BASE_BRANCH; do
     if [ -z "${!var:-}" ]; then
         echo "ERROR: ${var} is not set." >&2
         exit 1
@@ -33,7 +32,7 @@ for var in BRANCH BASE_BRANCH COMMIT_SHA; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TEMPLATE="${SCRIPT_DIR}/prompts/general-review.txt"
+TEMPLATE="${SCRIPT_DIR}/project-planning.txt"
 
 if [ ! -f "$TEMPLATE" ]; then
     echo "ERROR: Template not found at ${TEMPLATE}" >&2
@@ -43,5 +42,4 @@ fi
 # Substitute environment variables in the template.
 sed -e "s|\${BRANCH}|${BRANCH}|g" \
     -e "s|\${BASE_BRANCH}|${BASE_BRANCH}|g" \
-    -e "s|\${COMMIT_SHA}|${COMMIT_SHA}|g" \
     "$TEMPLATE" > "$OUTPUT_FILE"

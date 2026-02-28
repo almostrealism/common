@@ -312,14 +312,14 @@ The following scripts implement the countermeasures described above:
 
 | Script | Countermeasure(s) | Description |
 |--------|-------------------|-------------|
-| `tools/ci/validate-agent-commit.sh` | #2, #8 | Blocks agent commits that modify base-branch test files (write lock) or contain no production/branch-test changes |
-| `tools/ci/deception-audit.sh` | #7 | Detects cross-session deception patterns in base-branch test files: ping-pong, test-only commits, TestDepth churn, revert-then-reapply |
-| `tools/ci/escalation-tracker.sh` | #6 | Circuit breaker that blocks auto-resolve dispatch after 2 failed attempts per test class per branch |
-| `tools/ci/verify-memory-claim.sh` | #4 | Cross-references "no changes needed" claims against git diff and import chains |
-| `tools/ci/detect-test-hiding.sh` | #2, #3 | 12 pattern detectors including TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage |
-| `tools/ci/build-resolve-prompt.sh` | #1, #5, #9, #10 | Hardened auto-resolve prompt with investigation protocol, base-branch test protection, "verified locally" abolished |
+| `tools/ci/agent-protection/validate-agent-commit.sh` | #2, #8 | Blocks agent commits that modify base-branch test files (write lock) or contain no production/branch-test changes |
+| `tools/ci/agent-protection/deception-audit.sh` | #7 | Detects cross-session deception patterns in base-branch test files: ping-pong, test-only commits, TestDepth churn, revert-then-reapply |
+| `tools/ci/agent-protection/escalation-tracker.sh` | #6 | Circuit breaker that blocks auto-resolve dispatch after 2 failed attempts per test class per branch |
+| `tools/ci/agent-protection/verify-memory-claim.sh` | #4 | Cross-references "no changes needed" claims against git diff and import chains |
+| `tools/ci/agent-protection/detect-test-hiding.sh` | #2, #3 | 12 pattern detectors including TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage |
+| `tools/ci/prompts/build-resolve-prompt.sh` | #1, #5, #9, #10 | Hardened auto-resolve prompt with investigation protocol, base-branch test protection, "verified locally" abolished |
 | `tools/ci/prompts/general-review.txt` | #7, #9 | Review prompt with deception detection checklist and no conditional language |
-| `tools/ci/check-quality-gates.sh` | #2, #7 | Quality gate aggregator that includes agent commit validation and deception audit findings |
+| `tools/ci/agent-protection/check-quality-gates.sh` | #2, #7 | Quality gate aggregator that includes agent commit validation and deception audit findings |
 | `tools/ci/submit-agent-job.sh` | #6 | Wired to escalation tracker — checks circuit breaker before dispatching |
 | `.github/workflows/analysis.yaml` | #2, #7, #8 | CI jobs for deception audit and agent commit validation |
 

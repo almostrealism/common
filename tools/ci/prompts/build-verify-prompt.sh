@@ -41,7 +41,7 @@ for var in BRANCH BASE_BRANCH COMMIT_SHA; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TEMPLATE="${SCRIPT_DIR}/prompts/verify-completion.txt"
+TEMPLATE="${SCRIPT_DIR}/verify-completion.txt"
 
 if [ ! -f "$TEMPLATE" ]; then
     echo "ERROR: Template not found at ${TEMPLATE}" >&2

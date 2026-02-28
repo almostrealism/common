@@ -50,14 +50,15 @@ CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
 # Check if any failing test class has been dispatched too many times.
 # If so, block dispatch and require human intervention.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -x "${SCRIPT_DIR}/escalation-tracker.sh" ] && [ -n "${FAILING_TEST_CLASSES:-}" ]; then
+ESCALATION_TRACKER="${SCRIPT_DIR}/agent-protection/escalation-tracker.sh"
+if [ -x "${ESCALATION_TRACKER}" ] && [ -n "${FAILING_TEST_CLASSES:-}" ]; then
     for TEST_CLASS in $FAILING_TEST_CLASSES; do
-        if ! "${SCRIPT_DIR}/escalation-tracker.sh" check "$BRANCH" "$TEST_CLASS"; then
+        if ! "${ESCALATION_TRACKER}" check "$BRANCH" "$TEST_CLASS"; then
             echo "::error::Circuit breaker tripped for ${TEST_CLASS} on ${BRANCH}. Manual intervention required."
             exit 0
         fi
         # Record this dispatch attempt
-        "${SCRIPT_DIR}/escalation-tracker.sh" record "$BRANCH" "$TEST_CLASS"
+        "${ESCALATION_TRACKER}" record "$BRANCH" "$TEST_CLASS"
     done
 fi
 

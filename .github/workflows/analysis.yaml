@@ -140,8 +140,8 @@ jobs:
         id: check
         if: github.ref != 'refs/heads/master'
         run: |
-          chmod +x ./tools/ci/detect-test-hiding.sh
-          ./tools/ci/detect-test-hiding.sh origin/master /tmp/test-integrity-report.txt || {
+          chmod +x ./tools/ci/agent-protection/detect-test-hiding.sh
+          ./tools/ci/agent-protection/detect-test-hiding.sh origin/master /tmp/test-integrity-report.txt || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::error::Test integrity violations detected — existing tests were modified to hide failures"
@@ -207,8 +207,8 @@ jobs:
       - name: Run deception audit
         id: audit
         run: |
-          chmod +x ./tools/ci/deception-audit.sh
-          ./tools/ci/deception-audit.sh origin/master /tmp/deception-audit-report.txt || {
+          chmod +x ./tools/ci/agent-protection/deception-audit.sh
+          ./tools/ci/agent-protection/deception-audit.sh origin/master /tmp/deception-audit-report.txt || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::warning::Deception patterns detected on this branch"
@@ -256,8 +256,8 @@ jobs:
       - name: Validate agent commit
         id: validate
         run: |
-          chmod +x ./tools/ci/validate-agent-commit.sh
-          ./tools/ci/validate-agent-commit.sh origin/master --require-production-changes || {
+          chmod +x ./tools/ci/agent-protection/validate-agent-commit.sh
+          ./tools/ci/agent-protection/validate-agent-commit.sh origin/master --require-production-changes || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::error::Agent commit BLOCKED: test file modifications detected"
@@ -817,7 +817,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ./tools/ci/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (build failure)
         if: steps.build-check.outputs.build_failed == 'true'
@@ -885,7 +885,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ./tools/ci/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
 
       - name: Extract failing test class names
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
@@ -921,7 +921,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ./tools/ci/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (incomplete tests)
         if: steps.build-check.outputs.build_failed != 'true' && steps.test-completeness.outputs.incomplete == 'true'
@@ -950,8 +950,8 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          chmod +x ./tools/ci/build-policy-violation-prompt.sh
-          ./tools/ci/build-policy-violation-prompt.sh /tmp/agent-prompt.txt
+          chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
+          ./tools/ci/prompts/build-policy-violation-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (code policy violations)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed != 'true'
@@ -981,7 +981,7 @@ jobs:
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
         run: |
-          ./tools/ci/check-quality-gates.sh /tmp/quality-gate-failures.txt
+          ./tools/ci/agent-protection/check-quality-gates.sh /tmp/quality-gate-failures.txt
 
       - name: Upload quality gate summary
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
@@ -999,7 +999,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ./tools/ci/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
 
       - name: Submit agent job (quality gates)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
@@ -1024,7 +1024,7 @@ jobs:
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          ./tools/ci/build-review-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-review-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (general review)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true'
