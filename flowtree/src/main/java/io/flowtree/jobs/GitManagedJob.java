@@ -602,6 +602,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             throw new RuntimeException(msg);
         }
 
+        // Unstage everything the agent may have staged via `git add`.
+        // This ensures ALL files pass through our guardrails below before
+        // being committed — the agent's own staging is not trusted.
+        executeGit("reset", "HEAD");
+
         // Find and filter changed files
         List<String> changedFiles = findChangedFiles();
         if (changedFiles.isEmpty()) {
