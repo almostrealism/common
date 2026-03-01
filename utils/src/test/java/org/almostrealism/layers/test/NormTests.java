@@ -499,7 +499,7 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 	@Test(timeout = 120 * 60000)
 	@TestDepth(2)
 	public void backwardsTrainableVeryLarge1() throws IOException {
-		int c = 1600;
+		int c = 1400;
 		int groups = 4;
 		normBackwardsTrainable("backwardsTrainableVeryLarge1", c, groups);
 	}

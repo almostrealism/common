@@ -440,29 +440,35 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     /**
      * Resolves the workspace path for a repo URL checkout.
      *
-     * <p>Resolution order:</p>
+     * <p>The resolved path is always a repo-specific subdirectory.
+     * The parent directory is chosen using the following priority:</p>
      * <ol>
      *   <li>{@link #defaultWorkspacePath} if explicitly configured</li>
      *   <li>{@code /workspace/project} if the directory exists</li>
-     *   <li>{@code /tmp/flowtree-workspaces/<repo-name>} as fallback</li>
+     *   <li>{@code /tmp/flowtree-workspaces} as fallback</li>
      * </ol>
+     *
+     * <p>In all cases, the repository name (derived from {@link #repoUrl})
+     * is appended to form the final path, e.g.
+     * {@code /workspace/project/owner-repo}.</p>
      *
      * @return the resolved absolute path for the workspace
      */
     private String resolveWorkspacePath() {
-        // 1. Use configured default workspace path
+        String repoName = extractRepoName(repoUrl);
+
+        // 1. Use configured default workspace path as parent
         if (defaultWorkspacePath != null && !defaultWorkspacePath.isEmpty()) {
-            return defaultWorkspacePath;
+            return defaultWorkspacePath + "/" + repoName;
         }
 
-        // 2. Check if /workspace/project exists
+        // 2. Check if /workspace/project exists as parent
         File defaultDir = new File("/workspace/project");
         if (defaultDir.exists() && defaultDir.isDirectory()) {
-            return "/workspace/project";
+            return "/workspace/project/" + repoName;
         }
 
         // 3. Fall back to /tmp with a repo-derived name
-        String repoName = extractRepoName(repoUrl);
         return FALLBACK_WORKSPACE_DIR + "/" + repoName;
     }
 
