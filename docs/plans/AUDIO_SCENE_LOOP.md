@@ -1,21 +1,48 @@
 # AudioScene Loop Computation: Runtime Optimization
 
+## Decision Journal — MANDATORY
+
+**You MUST document your reasoning in
+[../journals/AUDIO_SCENE_LOOP.md](../journals/AUDIO_SCENE_LOOP.md).**
+
+Before starting work on any item, add a dated entry explaining what you
+understand the problem to be and what approach you're taking. After making
+changes, update the entry with what you observed in the generated code, what
+worked, what didn't, and why. When you hit obstacles (e.g., a test you can't
+run, a verification step you can't perform), document exactly what failed
+and what you did instead.
+
+This is not optional. The journal exists because commit messages like "Fix
+LICM correctness bug" and "Disable LICM by default" don't explain *why*
+decisions were made, what alternatives were considered, or what tradeoffs
+were accepted. Reviewers need to understand your reasoning to evaluate
+whether the approach is sound — not just whether the code compiles.
+
+See the journal file for the entry template and format instructions.
+
+---
+
 ## Context
 
 The real-time AudioScene renderer compiles the entire per-frame DSP pipeline
 into a single native C function executed via JNI. With 6 channels and the
-full effects pipeline enabled, the generated loop body contains **~251 lines
-of actual computation** (down from ~411 before optimizations, plus ~45,000
-lines of metadata comments when `AR_HARDWARE_METADATA=enabled`). The function
-receives **49 arguments** (down from ~300+), runs 4096–16384 iterations per
-buffer tick, and must complete within the buffer's playback duration (~93–372
-ms at 44.1 kHz).
+full effects pipeline enabled, the generated loop body currently contains
+**~2,783 lines of actual computation** (plus ~457,000 lines of metadata
+comments when `AR_HARDWARE_METADATA=enabled`). The function receives **~175
+arguments**, runs 4096 iterations per buffer tick, and must complete within
+the buffer's playback duration (~93 ms at 44.1 kHz).
 
 Current measurements show runtime is **still slightly slower than real-time**.
-Previous optimization rounds have delivered structural improvements (file size
-halved from 11 MB to 5.7 MB, arguments reduced from 300+ to 49, frame reset
-chain replaced with a loop) but the per-iteration computation cost remains
-too high.
+
+> **WARNING — REGRESSION DETECTED (2026-03-01):** The latest changes have
+> caused the generated code to **balloon dramatically**. The loop body went
+> from 251 non-comment lines to 2,783 — an 11x increase. The generated file
+> went from 5.7 MB to 59 MB. This is almost certainly caused by the CSE
+> limit increase from 12 to 48 in `ScopeSettings.maxReplacements`, which
+> has changed how the scope simplification pipeline restructures the code.
+> The `f_assignment` declarations ARE now hoisted (LICM is working), but
+> the overall code structure has degraded severely. See "Regression Analysis"
+> below for details.
 
 ### How to Reproduce
 
@@ -74,9 +101,69 @@ at constant offsets and a frame counter that increments each iteration.
 
 ---
 
+## Regression Analysis (2026-03-01)
+
+The latest round of changes (commits `64bd7804f` through `486d72f31`) made
+LICM work correctly but introduced a severe regression in overall code size:
+
+| Metric | Original | After round 1 | After round 2 (current) |
+|--------|----------|---------------|------------------------|
+| Loop body lines (non-comment) | 411 | 251 | **2,783** |
+| `pow()` calls in loop | ~hundreds | 24 | **126** |
+| `sin()` calls in loop | 0 | 0 | **62** |
+| Function calls in loop | 0 | 0 | **22** |
+| `f_assignment` hoisted before loop? | No | No | **Yes (114 declarations)** |
+| Generated file size | 11 MB | 5.7 MB | **59 MB** |
+| Total non-comment lines | ~411 | 251 | **4,709** |
+
+**What went right:** LICM is now correctly hoisting 114 `f_assignment`
+declarations before the loop. The scope recursion fix works.
+
+**What went wrong:** The CSE limit increase (`ScopeSettings.maxReplacements`
+from 12 to 48) fundamentally changed how the scope simplification pipeline
+restructures the generated code:
+
+1. **Automation LFO expressions are now expanded inline.** There are now 62
+   `sin()` calls in the loop body that weren't there before. Previously
+   these were part of the `timeSeriesValueAt` helper functions that were
+   inlined as separate functions. Now they appear to be partially inlined
+   into the loop body as massive single-line expressions.
+
+2. **22 `f_acceleratedTimeSeriesValueAt` function calls** appear in the loop
+   body. These are calls to helper functions defined before the loop. Each
+   call site is surrounded by 50+ lines of TimeSeries bookkeeping (write to
+   delay buffer, update cursor, search for interpolation point). Previously
+   this was a much more compact structure.
+
+3. **126 `pow()` calls remain in the loop** despite 114 `f_assignment`
+   declarations being hoisted. The envelope accumulate expressions still
+   contain genome-only `pow()` sub-expressions that should also be hoisted
+   (optimization #6 from earlier). The CSE pass is extracting *different*
+   sub-expressions now, not the ones that help with LICM.
+
+**Root cause:** The increase in `maxReplacements` from 12 to 48 allowed the
+CSE pass to extract more sub-expressions, but the CSE pass does not
+prioritize loop-invariant sub-expressions over loop-variant ones. It may be
+extracting sub-expressions that are loop-variant (and thus cannot be hoisted)
+while leaving loop-invariant `pow()` sub-expressions embedded in the large
+envelope lines. The net effect is more extracted variables, more code, and
+no reduction in per-iteration `pow()` calls.
+
+**Recommended fix:** Do NOT simply raise `maxReplacements`. The CSE pass
+needs to either:
+- Prioritize extracting loop-invariant sub-expressions first, OR
+- The `maxReplacements` should be reverted to 12 (or a value that doesn't
+  cause this blowup) and the LICM-specific extraction should be done as a
+  separate pass that specifically targets genome-only sub-expressions
+
+The agent MUST compare the generated code before and after any change to
+`ScopeSettings.maxReplacements` to ensure the code structure doesn't regress.
+
+---
+
 ## Remaining Optimization Opportunities
 
-### 5. LICM Is Not Hoisting `f_assignment` Declarations (CRITICAL)
+### 5. LICM Is Not Hoisting `f_assignment` Declarations — PARTIALLY FIXED
 
 > **This is the single most important remaining optimization. It was the
 > highest-priority item in the original plan. LICM is enabled but is NOT
@@ -231,20 +318,27 @@ documented in [REALTIME_AUDIO_SCENE.md](REALTIME_AUDIO_SCENE.md).
 
 | # | Opportunity | Estimated Impact | Complexity | Status |
 |---|-------------|-----------------|------------|--------|
-| 5 | Fix LICM to hoist `f_assignment` declarations | **Very High** | Low–Medium | NOT WORKING — needs scope recursion fix |
+| 9 | **Revert CSE limit increase — fix code blowup regression** | **Critical** | Low | BLOCKING — must be fixed first |
+| 5 | Fix LICM to hoist `f_assignment` declarations | **Very High** | Low–Medium | PARTIALLY FIXED — hoisting works but code blowup negates it |
 | 6 | Extract + hoist genome sub-expressions from envelope lines | High | Medium | Not started — depends on CSE + LICM interaction |
-| 7 | Eliminate remaining copy-zero pairs | Low–Medium | Low | Partially done — 12 pairs remain |
+| 7 | Eliminate remaining copy-zero pairs | Low–Medium | Low | Partially done |
 | 8 | Eliminate redundant WaveCellPush copies | Low | Medium | Not started |
 
-**Recommendation:** Focus on **#5** first — it is by far the highest impact
-opportunity and may only require making the LICM scope traversal recursive.
-The 24 `f_assignment` declarations are trivially invariant (they only read
-kernel arguments at constant offsets) and contain 48 `pow()` calls that are
-currently recomputed 4096 times each for no reason.
+**Recommendation:** The FIRST action must be to fix the code blowup
+regression (#9). Revert `ScopeSettings.maxReplacements` back to 12 and
+verify the generated code returns to ~251 in-loop lines. Then re-evaluate
+whether LICM is still hoisting the `f_assignment` declarations with the
+original CSE limit. If it is, the regression is fixed and LICM is delivering
+its intended benefit. If the `f_assignment` declarations revert to being
+inside the loop, then a more targeted approach to CSE + LICM interaction is
+needed (see #6).
 
-Then tackle **#6** which is a deeper version of the same optimization — it
-requires CSE to first extract the genome-only sub-expressions from the large
-envelope lines so that LICM can then hoist them.
+**Do not increase `maxReplacements` without first verifying the generated
+code.** The CSE pass extracts sub-expressions in an order that doesn't
+consider loop invariance. Raising the limit causes it to extract more
+loop-variant sub-expressions, which inflates the code without enabling LICM
+to hoist more. The correct approach is either CSE-aware-of-invariance or a
+separate LICM-specific extraction pass.
 
 ### Verification Protocol
 
@@ -254,23 +348,25 @@ For every optimization, the acceptance criterion is a change in the
 1. Run the reproduction test (see "How to Reproduce" above)
 2. Find the largest generated `.c` file in `compose/results/`
 3. Strip comments: `grep -v '^\s*//' <file> > stripped.c`
-4. For **#5 specifically**: Search for `double f_assignment` in the stripped
-   file. All 24 occurrences MUST appear BEFORE the `for (int ... = 0;` line.
-   If any appear after it, they are still inside the loop and the
-   optimization is not working.
-5. Compare the stripped output against the current baseline (~251 non-comment
-   lines). Hoisting #5 should reduce the in-loop line count by ~12 lines and
-   more importantly eliminate ~48 `pow()` calls per iteration.
+4. Count non-comment lines inside the main loop: find the line with
+   `for (int _*_i = 0; _*_i < 4096;)` and count lines until the matching
+   closing brace. **This count MUST NOT exceed ~300 lines.** The current
+   2,783 is a severe regression.
+5. Count `pow()` calls inside the loop. Target: fewer than 30 (down from the
+   current 126).
+6. Check for `double f_assignment_*` declarations — all should appear
+   BEFORE the main `for` loop, not inside it.
 
 If the generated C code looks the same before and after your change, **the
 optimization is not working** regardless of what the Java source looks like.
 
 > **IMPORTANT FOR IMPLEMENTOR:** Previous optimization attempts produced
 > Java-side changes that appeared correct but did not change the generated C
-> output (or were disabled due to bugs). The ONLY way to verify these
-> optimizations is to inspect the actual generated `.c` file. Do not rely on
-> unit tests alone — unit tests verify correctness, not that the optimization
-> is actually taking effect. You must read the generated code.
+> output (or were disabled, or caused regressions that made things worse).
+> The ONLY way to verify these optimizations is to inspect the actual
+> generated `.c` file. Do not rely on unit tests alone — unit tests verify
+> correctness, not that the optimization is actually taking effect or that
+> the code structure hasn't regressed. You must read the generated code.
 
 ---
 
@@ -377,12 +473,47 @@ Do not disable the optimization — fix it.
 
 ---
 
+## Running AudioSceneBufferConsolidationTest for Verification
+
+The agent previously reported being unable to run `effectsEnabledPerformance`
+in its test environment, claiming it "depends on infrastructure not available."
+Investigation shows that **the test already has full synthetic sample fallback
+support** and should work without real audio files:
+
+- `AudioSceneTestBase.resolveSample()` checks if a real `.wav` file exists
+  at `../../Samples/<dir>/<filename>`
+- If it doesn't (the CI/container case), it falls through to
+  `AudioTestFeatures.TestWavFileHolder.getOrCreate()`, which generates
+  synthetic WAV files (sine waves for melodic channels, noise bursts for
+  percussive channels)
+- Generated files are cached in the JVM temp directory
+
+The MCP test runner (`mcp__ar-test-runner__start_test_run`) handles
+environment setup automatically. To run the verification test:
+
+```
+mcp__ar-test-runner__start_test_run
+  module: "compose"
+  test_methods: [{"class": "AudioSceneBufferConsolidationTest", "method": "effectsEnabledPerformance"}]
+  jvm_args: ["-DAR_INSTRUCTION_SET_MONITORING=always"]
+  timeout_minutes: 15
+```
+
+Generated `.c` files will be in `compose/results/`. The largest file is the
+Loop computation. If this test cannot be run, **document in the decision
+journal exactly what error occurs and why** — do not simply skip
+verification and claim the optimization is working.
+
+---
+
 ## Related Documents
 
+- [../journals/AUDIO_SCENE_LOOP.md](../journals/AUDIO_SCENE_LOOP.md) —
+  **Decision journal** (mandatory — document your reasoning here)
 - [REALTIME_AUDIO_SCENE.md](REALTIME_AUDIO_SCENE.md) — Overall real-time
   rendering plan, architecture, and argument count reduction efforts
 - `CachedStateCell.java` — Source of the copy-zero-accumulate pattern
 - `TimeCellReset.java` — Source of the frame reset loop (now optimized)
 - `Scope.simplify()` / `ExpressionCache` — Current CSE optimization pipeline
 - `Repeated.java` — Loop scope code generation and current LICM implementation
-- `ScopeSettings.maxReplacements` — CSE extraction limit (currently 12)
+- `ScopeSettings.maxReplacements` — CSE extraction limit (raised to 48 — **must be reverted**, see regression analysis)
