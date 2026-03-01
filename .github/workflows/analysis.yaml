@@ -810,9 +810,11 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "branch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
             echo "base=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+            echo "head_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
           else
             echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             echo "base=master" >> "$GITHUB_OUTPUT"
+            echo "head_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
 
       # ── Build failure path ──────────────────────────────────────
@@ -823,7 +825,7 @@ jobs:
         if: steps.build-check.outputs.build_failed == 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
           ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
@@ -933,7 +935,7 @@ jobs:
         env:
           FAILURE_COUNT: ${{ steps.failures.outputs.failure_count }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
           ./tools/ci/prompts/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
@@ -970,7 +972,7 @@ jobs:
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
           ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
@@ -998,7 +1000,7 @@ jobs:
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
           ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
@@ -1027,7 +1029,7 @@ jobs:
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
           chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
@@ -1076,7 +1078,7 @@ jobs:
         env:
           FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
           ./tools/ci/prompts/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
@@ -1102,7 +1104,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
         run: |
           ./tools/ci/prompts/build-review-prompt.sh /tmp/agent-prompt.txt
 
