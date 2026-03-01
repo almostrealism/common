@@ -2,6 +2,15 @@ name: "Build and Test"
 
 on:
   workflow_dispatch:
+    inputs:
+      auto_resolve:
+        description: 'Submit auto-resolve agent jobs to FlowTree'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
   push:
     branches:
       - master
@@ -140,8 +149,8 @@ jobs:
         id: check
         if: github.ref != 'refs/heads/master'
         run: |
-          chmod +x ./tools/ci/detect-test-hiding.sh
-          ./tools/ci/detect-test-hiding.sh origin/master /tmp/test-integrity-report.txt || {
+          chmod +x ./tools/ci/agent-protection/detect-test-hiding.sh
+          ./tools/ci/agent-protection/detect-test-hiding.sh origin/master /tmp/test-integrity-report.txt || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::error::Test integrity violations detected — existing tests were modified to hide failures"
@@ -179,6 +188,106 @@ jobs:
             fi
           else
             echo "No test-hiding modifications or enforcement tampering detected." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ─── Deception Audit ─────────────────────────────────────────────
+  # Scans the branch commit history for patterns of coordinated
+  # agent deception: ping-pong modifications, test-only commits,
+  # TestDepth churn, and revert-then-reapply cycles.
+  # This is an informational check — it does not block the build
+  # but its findings are included in the auto-resolve prompt.
+  deception-audit:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/master'
+    outputs:
+      has_findings: ${{ steps.audit.outputs.has_findings }}
+      finding_count: ${{ steps.audit.outputs.finding_count }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
+
+      - name: Run deception audit
+        id: audit
+        run: |
+          chmod +x ./tools/ci/agent-protection/deception-audit.sh
+          ./tools/ci/agent-protection/deception-audit.sh origin/master /tmp/deception-audit-report.txt || {
+            EXIT_CODE=$?
+            if [ "$EXIT_CODE" -eq 2 ]; then
+              echo "::warning::Deception patterns detected on this branch"
+            fi
+            # Do not fail the build — this is informational
+            exit 0
+          }
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Deception Audit" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.audit.outputs.has_findings }}" = "true" ]; then
+            echo "**WARNING: ${{ steps.audit.outputs.finding_count }} deception pattern(s) detected.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            if [ -f /tmp/deception-audit-report.txt ]; then
+              cat /tmp/deception-audit-report.txt >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "No deception patterns detected." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ─── Agent Commit Validation ────────────────────────────────────
+  # Validates that agent commits do not modify test files or CI
+  # files. This is a hard block — agent commits that violate these
+  # rules are rejected. Only runs on non-master branches.
+  agent-commit-validation:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/master'
+    outputs:
+      blocked: ${{ steps.validate.outputs.blocked }}
+      block_reason: ${{ steps.validate.outputs.block_reason }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
+
+      - name: Validate agent commit
+        id: validate
+        run: |
+          chmod +x ./tools/ci/agent-protection/validate-agent-commit.sh
+          ./tools/ci/agent-protection/validate-agent-commit.sh origin/master --require-production-changes || {
+            EXIT_CODE=$?
+            if [ "$EXIT_CODE" -eq 2 ]; then
+              echo "::error::Agent commit BLOCKED: test file modifications detected"
+            elif [ "$EXIT_CODE" -eq 3 ]; then
+              echo "::warning::Agent commit flagged: no production code changes"
+            elif [ "$EXIT_CODE" -eq 4 ]; then
+              echo "::error::Agent commit BLOCKED: CI/workflow file modifications detected"
+            fi
+            # Do not fail the build — the auto-resolve job checks this output
+            exit 0
+          }
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Agent Commit Validation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.validate.outputs.blocked }}" = "true" ]; then
+            echo "**BLOCKED:** ${{ steps.validate.outputs.block_reason }}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Agent commit validation passed." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   javadoc-check:
@@ -668,7 +777,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [build, test, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [build, test, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
@@ -717,15 +826,16 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ./tools/ci/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (build failure)
-        if: steps.build-check.outputs.build_failed == 'true'
+        if: steps.build-check.outputs.build_failed == 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Resolve build failure"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
@@ -784,17 +894,27 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ./tools/ci/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
+
+      - name: Extract failing test class names
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
+        id: test-classes
+        run: |
+          # Extract test class names from the failure summary for the escalation tracker
+          CLASSES=$(grep -oP '[\w.]+Test\w*' /tmp/test-failures.txt 2>/dev/null | sort -u | tr '\n' ' ' || true)
+          echo "failing_classes=$CLASSES" >> "$GITHUB_OUTPUT"
 
       - name: Submit agent job (test failures)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           PROTECT_TEST_FILES: "true"
+          FAILING_TEST_CLASSES: ${{ steps.test-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
+          DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
@@ -810,15 +930,16 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ./tools/ci/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (incomplete tests)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.test-completeness.outputs.incomplete == 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Investigate incomplete test execution"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
@@ -838,16 +959,17 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          chmod +x ./tools/ci/build-policy-violation-prompt.sh
-          ./tools/ci/build-policy-violation-prompt.sh /tmp/agent-prompt.txt
+          chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
+          ./tools/ci/prompts/build-policy-violation-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (code policy violations)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed != 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Resolve code policy violations"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
@@ -863,8 +985,12 @@ jobs:
           TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
           DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
           TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
+          AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
+          AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
+          DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
+          DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
         run: |
-          ./tools/ci/check-quality-gates.sh /tmp/quality-gate-failures.txt
+          ./tools/ci/agent-protection/check-quality-gates.sh /tmp/quality-gate-failures.txt
 
       - name: Upload quality gate summary
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
@@ -882,15 +1008,16 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ./tools/ci/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
 
       - name: Submit agent job (quality gates)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Resolve quality gate failures"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
@@ -906,15 +1033,16 @@ jobs:
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          ./tools/ci/build-review-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-review-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Review branch changes"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 

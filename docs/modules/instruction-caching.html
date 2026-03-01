@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instruction Set Caching - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #1976d2; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #1976d2; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #1976d2; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #1976d2; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .success { background-color: #e8f5e9; border-left: 4px solid #2e7d32; padding: 12px; margin: 15px 0; }
+        .api-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .api-table th, .api-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .api-table th { background-color: #e3f2fd; color: #1976d2; font-weight: bold; }
+        .api-table tr:hover { background-color: #f5f5f5; }
+        .api-table code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }
+        .diagram { background: #fafafa; border: 1px solid #e0e0e0; padding: 20px; margin: 20px 0; border-radius: 4px; overflow-x: auto; }
+        .diagram pre { margin: 0; font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.4; }
+        .integration-card { background: #fff; border: 2px solid #1976d2; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .integration-card h4 { margin-top: 0; color: #1976d2; }
+        .lifecycle-step { display: flex; align-items: flex-start; margin: 10px 0; }
+        .lifecycle-step .step-num { background: #1976d2; color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 12px; flex-shrink: 0; font-size: 0.85em; }
+        .lifecycle-step .step-content { flex: 1; }
+        .flow-diagram { background: #f0f4ff; border: 2px solid #90caf9; padding: 20px; margin: 20px 0; border-radius: 4px; overflow-x: auto; }
+        .flow-diagram pre { margin: 0; font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Instruction Set Caching</h1>
+            <p class="tagline">Signature-Based Kernel Compilation Caching with Argument Substitution</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="hardware.html">Hardware Module</a>
+                <a href="heap.html">Heap</a>
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#signatures">Signatures</a>
+                <a href="#components">Components</a>
+                <a href="#substitution">Substitution</a>
+                <a href="#lifecycle">Lifecycle</a>
+                <a href="#config">Configuration</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The <strong>instruction set caching</strong> system avoids redundant compilation of hardware kernels by caching compiled <code>InstructionSet</code> instances and reusing them across operations that share the same structural signature. Compiling a computation to native code (JNI, OpenCL, Metal) is expensive. Many operations in a computation graph share identical structure but differ only in their data arguments. The caching system exploits this by computing a structural signature, caching the compiled kernel, and substituting arguments when reusing.</p>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Structural Signatures</h4>
+                        <p>Each operation is assigned an MD5 signature based on its type, shapes, precision, and input structure &mdash; not data values. Two operations with the same signature produce identical kernel code.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>FrequencyCache</h4>
+                        <p>Compiled kernels are stored in a hybrid LFU/LRU cache (<code>FrequencyCache</code>) with capacity 500 and a frequency bias of 0.4. Evicted entries have their native resources automatically destroyed.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Argument Substitution</h4>
+                        <p>When a cached kernel is reused, <code>ProcessArgumentMap</code> maps the new operation's data arguments to the kernel's parameter positions, avoiding recompilation entirely.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Lazy Compilation</h4>
+                        <p><code>ScopeInstructionsManager</code> compiles on first access via <code>getOperator()</code>. Subsequent calls return the cached operator instantly.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Architecture</h2>
+
+                <h3>Cache Hierarchy in DefaultComputer</h3>
+                <div class="diagram">
+<pre>
++-----------------------------------------------------------+
+|                    DefaultComputer                         |
+|-----------------------------------------------------------|
+|                                                           |
+|  operationsCache (Map)                                    |
+|  +-- Instruction containers (unlimited)                   |
+|      Used by HardwareFeatures.instruct() pattern          |
+|                                                           |
+|  processTreeCache (FrequencyCache, 500 entries, 0.4 bias) |
+|  +-- Process tree instruction managers                    |
+|                                                           |
+|  instructionsCache (FrequencyCache, 500 entries, 0.4 bias)|
+|  +-- ScopeInstructionsManager instances                   |
+|  +-- Keyed by computation signature strings               |
+|  +-- Auto-destroys evicted managers                       |
+|      PRIMARY INSTRUCTION CACHE                            |
+|                                                           |
++-----------------------------------------------------------+
+</pre>
+                </div>
+
+                <h3>Class Hierarchy</h3>
+                <div class="class-list">
+                    <div class="class-item">
+                        <h4>InstructionSetManager&lt;K&gt;</h4>
+                        <p>Core interface: <code>getOperator(K key)</code> returns compiled <code>Execution</code>. Extends <code>Destroyable</code>.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>AbstractInstructionSetManager&lt;K&gt;</h4>
+                        <p>Holds the <code>ComputeContext</code> reference for compilation and execution.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ScopeInstructionsManager&lt;K&gt;</h4>
+                        <p>Standard implementation: lazy compilation, <code>InstructionSet</code> caching, argument mapping, output tracking, destroy listeners.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ComputableInstructionSetManager&lt;K&gt;</h4>
+                        <p>Interface adding <code>getOutputArgumentIndex(K)</code> and <code>getOutputOffset(K)</code> for result extraction.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ComputationInstructionsManager</h4>
+                        <p>Fallback manager using <code>DefaultExecutionKey</code> (function name + arg count). No cross-operation sharing.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>FrequencyCache&lt;K, V&gt;</h4>
+                        <p>Hybrid LFU/LRU cache with configurable frequency bias and eviction listener. Used by <code>DefaultComputer</code>.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ProcessArgumentMap</h4>
+                        <p>Bidirectional mapping between Process tree positions and scope arguments. Enables argument substitution for kernel reuse.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>ComputationScopeCompiler&lt;T&gt;</h4>
+                        <p>Compiles <code>Computation</code> to <code>Scope</code>. Implements <code>Signature</code> to generate operation signatures.</p>
+                    </div>
+                </div>
+
+                <h3>Data Flow</h3>
+                <div class="flow-diagram">
+<pre>
+Producer.get()
+    |
+    v
+AcceleratedComputationEvaluable
+    |
+    v
+AcceleratedComputationOperation.getInstructionSetManager()
+    |
+    +-- Compute signature via ComputationScopeCompiler
+    |
+    +-- Reuse enabled &amp; signature available?
+    |       |
+    |       YES --> DefaultComputer.getScopeInstructionsManager()
+    |       |           |
+    |       |           +-- FrequencyCache HIT  --> Return existing manager
+    |       |           +-- FrequencyCache MISS --> Create new manager
+    |       |
+    |       NO  --> Create ComputationInstructionsManager (no caching)
+    |
+    v
+AcceleratedComputationOperation.load()
+    |
+    +-- manager.getOperator(key)
+    |       +-- First call: Compile scope --> InstructionSet (EXPENSIVE)
+    |       +-- Subsequent: Return cached operator (FAST)
+    |
+    +-- If reusing shared kernel (arguments null):
+    |       +-- Setup arguments from manager's scope metadata
+    |       +-- Create ProcessArgumentMap with substitutions
+    |       +-- Set evaluator to use substituted arguments
+    |
+    v
+Execution operator (ready for dispatch)
+</pre>
+                </div>
+            </section>
+
+            <section id="signatures">
+                <h2>Signatures</h2>
+
+                <h3>What a Signature Captures</h3>
+                <table class="api-table">
+                    <thead>
+                        <tr>
+                            <th>Included in Signature</th>
+                            <th>NOT Included</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Operation type name (e.g., <code>Add</code>, <code>Multiply</code>)</td>
+                            <td>Actual data values</td>
+                        </tr>
+                        <tr>
+                            <td>Input shapes and dimensions</td>
+                            <td>Memory addresses / pointers</td>
+                        </tr>
+                        <tr>
+                            <td>Precision (FP32 / FP64)</td>
+                            <td>Runtime arguments</td>
+                        </tr>
+                        <tr>
+                            <td>Compute requirements (GPU, CPU)</td>
+                            <td>Object identity / hashCode</td>
+                        </tr>
+                        <tr>
+                            <td>Input operation signatures (recursive)</td>
+                            <td>Thread or timing info</td>
+                        </tr>
+                        <tr>
+                            <td>Number of distinct children</td>
+                            <td>&mdash;</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <p>Two operations with the same signature produce <strong>identical kernel code</strong>. They differ only in which memory buffers they operate on.</p>
+
+                <h3>Signature Generation</h3>
+
+                <div class="integration-card">
+                    <h4>Stage 1: ProducerComputationBase.signature()</h4>
+                    <p>Recursively collects signatures from all input operations (skipping the first input, which is the destination). Combines the computation name, compute requirements, and all input signatures into an MD5 hash. If <em>any</em> input lacks a signature, the entire chain returns <code>null</code> and caching is disabled for this operation.</p>
+                    <div class="code-example">
+<pre>String combined = getName() + "/" + requirements + "|" +
+        String.join(":", inputSignatures);
+return Signature.md5(combined);
+// Result: "a3f2b7c4e8d1..."  (32-char hex MD5)</pre>
+                    </div>
+                </div>
+
+                <div class="integration-card">
+                    <h4>Stage 2: ComputationScopeCompiler.signature()</h4>
+                    <p>Appends <code>&amp;distinct=N;</code> to the base signature, where N is the number of distinct children in the Process tree. This distinguishes <code>add(A, A)</code> (distinct=1) from <code>add(A, B)</code> (distinct=2).</p>
+                    <div class="code-example">
+<pre>// Final format:
+// a3f2b7c4e8d1...&amp;distinct=2;
+//
+// - MD5 hash of structural identity
+// - Number of distinct child processes</pre>
+                    </div>
+                </div>
+            </section>
+
+            <section id="execution-keys">
+                <h2>Execution Keys</h2>
+                <p>Execution keys identify specific operations within an <code>InstructionSetManager</code>. The key type determines caching granularity.</p>
+
+                <table class="api-table">
+                    <thead>
+                        <tr>
+                            <th>Key Type</th>
+                            <th>Fields</th>
+                            <th>When Used</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>ScopeSignatureExecutionKey</code></td>
+                            <td><code>signature: String</code></td>
+                            <td>Primary key when <code>enableInstructionSetReuse=true</code> and signature is available</td>
+                        </tr>
+                        <tr>
+                            <td><code>DefaultExecutionKey</code></td>
+                            <td><code>functionName: String</code>, <code>argsCount: int</code></td>
+                            <td>Fallback when reuse is disabled or signature is null</td>
+                        </tr>
+                        <tr>
+                            <td><code>ProcessTreePositionKey</code> <em>(deprecated)</em></td>
+                            <td><code>position: int[]</code></td>
+                            <td>Used internally by <code>ProcessArgumentMap</code> for tree position tracking</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="components">
+                <h2>Core Components</h2>
+
+                <h3>InstructionSetManager&lt;K&gt;</h3>
+                <p><strong>Package:</strong> <code>org.almostrealism.hardware.instructions</code></p>
+                <table class="api-table">
+                    <thead>
+                        <tr><th>Method</th><th>Returns</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>getOperator(K key)</code></td>
+                            <td><code>Execution</code></td>
+                            <td>Retrieves compiled operator, compiling if necessary. Thread-safe in standard implementations.</td>
+                        </tr>
+                        <tr>
+                            <td><code>destroy()</code></td>
+                            <td><code>void</code></td>
+                            <td>Releases all native resources (compiled code, instruction sets).</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>ScopeInstructionsManager&lt;K&gt;</h3>
+                <p><strong>Package:</strong> <code>org.almostrealism.hardware.instructions</code></p>
+                <p>Standard implementation with lazy compilation, instruction caching, and argument mapping.</p>
+                <table class="api-table">
+                    <thead>
+                        <tr><th>Field</th><th>Type</th><th>Purpose</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>scope</code></td><td><code>Supplier&lt;Scope&lt;?&gt;&gt;</code></td><td>Lazy scope supplier (invoked once on first <code>getOperator()</code>)</td></tr>
+                        <tr><td><code>operators</code></td><td><code>InstructionSet</code></td><td>Cached compiled instructions</td></tr>
+                        <tr><td><code>argumentMap</code></td><td><code>ProcessArgumentMap</code></td><td>Maps Process positions to scope arguments</td></tr>
+                        <tr><td><code>outputArgIndices</code></td><td><code>Map&lt;K, Integer&gt;</code></td><td>Output argument index per execution key</td></tr>
+                        <tr><td><code>outputOffsets</code></td><td><code>Map&lt;K, Integer&gt;</code></td><td>Output memory offset per execution key</td></tr>
+                        <tr><td><code>accessListener</code></td><td><code>Consumer</code></td><td>Invoked on operator access (restores evicted entries)</td></tr>
+                        <tr><td><code>destroyListeners</code></td><td><code>List&lt;Runnable&gt;</code></td><td>Callbacks invoked on destroy</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>FrequencyCache&lt;K, V&gt;</h3>
+                <p><strong>Package:</strong> <code>io.almostrealism.util</code></p>
+                <p>Hybrid LFU/LRU cache used by <code>DefaultComputer</code> to hold compiled instruction managers.</p>
+
+                <div class="integration-card">
+                    <h4>Eviction Score Formula</h4>
+                    <div class="code-example">
+<pre>score = frequencyBias * (frequency / totalAccesses)
+      + (1 - frequencyBias) * (1 - age)
+
+// With frequencyBias = 0.4:
+// score = 0.4 * normalizedFrequency + 0.6 * normalizedRecency
+//
+// Recency (60%) outweighs frequency (40%):
+// recently-used kernels are preferred over historically popular ones.</pre>
+                    </div>
+                </div>
+
+                <table class="api-table">
+                    <thead>
+                        <tr><th>Method</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>get(K key)</code></td><td>Retrieves value, updates frequency and clock. Returns <code>null</code> if absent.</td></tr>
+                        <tr><td><code>put(K key, V value)</code></td><td>Inserts or updates mapping. Deduplicates values via reverse map. May trigger eviction.</td></tr>
+                        <tr><td><code>computeIfAbsent(K key, Supplier&lt;V&gt;)</code></td><td>Returns cached value or computes and caches if absent.</td></tr>
+                        <tr><td><code>evict(K key)</code></td><td>Explicitly removes entry and invokes eviction listener.</td></tr>
+                        <tr><td><code>setEvictionListener(BiConsumer)</code></td><td>Registers callback for eviction events (e.g., resource cleanup).</td></tr>
+                        <tr><td><code>valuesByFrequency(IntPredicate)</code></td><td>Streams values filtered and sorted by access frequency.</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="success">
+                    <strong>Value Deduplication:</strong> Multiple keys can map to the same <code>CacheEntry</code> via a reverse map. Frequency tracking is unified across all keys pointing to the same value. Eviction of a value removes all associated keys.
+                </div>
+            </section>
+
+            <section id="substitution">
+                <h2>Argument Substitution</h2>
+                <p>When a cached kernel is reused by a different operation instance, the compiled code is identical but the data arguments differ. <code>ProcessArgumentMap</code> enables this by mapping Process tree positions to scope arguments and supporting dynamic substitution.</p>
+
+                <h3>ProcessArgumentMap</h3>
+                <p><strong>Package:</strong> <code>org.almostrealism.hardware.arguments</code></p>
+                <table class="api-table">
+                    <thead>
+                        <tr><th>Field</th><th>Type</th><th>Purpose</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>argumentsByPosition</code></td><td><code>Map&lt;ProcessTreePositionKey, ArrayVariable&gt;</code></td><td>Maps tree positions to scope arguments</td></tr>
+                        <tr><td><code>positionsForArguments</code></td><td><code>Map&lt;ArrayVariable, ProcessTreePositionKey&gt;</code></td><td>Reverse map: argument to tree position</td></tr>
+                        <tr><td><code>substitutions</code></td><td><code>Map&lt;ProcessTreePositionKey, Producer&gt;</code></td><td>Replacement producers per tree position</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Substitution Flow</h3>
+                <p>When <code>AcceleratedComputationOperation.load()</code> detects shared instruction reuse (arguments are null after loading the operator):</p>
+
+                <div class="lifecycle-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">Get the shared <code>ScopeInstructionsManager</code> and its scope metadata (inputs, arguments)</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">Call <code>setupArguments()</code> to copy the shared scope's input suppliers and argument list to this operation</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">Create a copy of the <code>ProcessArgumentMap</code> (with fresh, empty substitution map)</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content"><code>putSubstitutions()</code> walks this operation's Process tree and records each node's <code>Producer</code> at the corresponding tree position</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">Set the substitution map as the evaluator. At kernel execution time, argument resolution uses the substituted <code>Producer</code>s instead of the originals</div>
+                </div>
+
+                <div class="code-example">
+<pre>// In AcceleratedComputationOperation.load():
+ScopeInstructionsManager manager =
+    (ScopeInstructionsManager) getInstructionSetManager();
+
+// Copy scope metadata to this operation
+setupArguments(manager.getScopeInputs(), manager.getScopeArguments());
+
+// Create fresh substitution map
+ProcessArgumentMap map = new ProcessArgumentMap(manager.getArgumentMap());
+map.putSubstitutions((Process&lt;?,?&gt;) getComputation());
+
+// Use substituted arguments for execution
+setEvaluator(map);</pre>
+                </div>
+            </section>
+
+            <section id="lifecycle">
+                <h2>Lifecycle</h2>
+
+                <h3>First Compilation (Cache Miss)</h3>
+                <div class="lifecycle-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content"><code>getInstructionSetManager()</code> computes signature, calls <code>DefaultComputer.getScopeInstructionsManager()</code></div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content"><code>FrequencyCache.computeIfAbsent()</code> misses: creates new <code>ScopeInstructionsManager</code> with lazy scope supplier</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content"><code>load()</code> calls <code>manager.getOperator(key)</code>, which invokes the scope supplier, compiles to <code>InstructionSet</code>, returns operator</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">Arguments are available from compilation; normal execution path</div>
+                </div>
+
+                <h3>Subsequent Reuse (Cache Hit)</h3>
+                <div class="lifecycle-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content"><code>getInstructionSetManager()</code> computes same signature, calls <code>DefaultComputer.getScopeInstructionsManager()</code></div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content"><code>FrequencyCache.computeIfAbsent()</code> hits: returns existing <code>ScopeInstructionsManager</code></div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content"><code>load()</code> calls <code>manager.getOperator(key)</code>; <code>operators</code> is non-null so returns cached operator instantly &mdash; <strong>NO recompilation</strong></div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">Arguments are null (not from this operation's compilation); argument substitution via <code>ProcessArgumentMap</code></div>
+                </div>
+
+                <h3>Eviction</h3>
+                <div class="lifecycle-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content"><code>FrequencyCache</code> exceeds capacity 500; computes eviction scores</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">Entry with lowest score is removed; eviction listener calls <code>manager.destroy()</code></div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content"><code>ScopeInstructionsManager.destroy()</code> destroys the <code>InstructionSet</code> (releases native code) and runs all destroy listeners</div>
+                </div>
+                <div class="lifecycle-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">If a lingering operation reference accesses the manager, the access listener restores it to the cache and <code>getOperator()</code> recompiles</div>
+                </div>
+            </section>
+
+            <section id="config">
+                <h2>Configuration</h2>
+                <table class="api-table">
+                    <thead>
+                        <tr><th>Environment Variable</th><th>Default</th><th>Java Field</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>AR_INSTRUCTION_SET_REUSE</code></td>
+                            <td><code>true</code></td>
+                            <td><code>ScopeSettings.enableInstructionSetReuse</code></td>
+                            <td>Enable/disable signature-based instruction caching</td>
+                        </tr>
+                        <tr>
+                            <td><code>AR_REDUNDANT_COMPILATION</code></td>
+                            <td><code>true</code></td>
+                            <td><code>AcceleratedComputationEvaluable.enableRedundantCompilation</code></td>
+                            <td>Allow multiple evaluables with same signature to compile independently</td>
+                        </tr>
+                        <tr>
+                            <td><code>AR_HARDWARE_VERBOSE_COMPILE</code></td>
+                            <td><code>false</code></td>
+                            <td><code>ComputationScopeCompiler.verboseCompile</code></td>
+                            <td>Log compilation events</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="heap-relationship">
+                <h2>Relationship to Heap</h2>
+                <p><code>Heap</code> and instruction caching are <strong>independent</strong> systems operating at different levels:</p>
+                <table class="api-table">
+                    <thead>
+                        <tr><th>Aspect</th><th>Heap</th><th>Instruction Caching</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>What it caches</td><td>Memory allocations (<code>Bytes</code>)</td><td>Compiled kernels (<code>InstructionSet</code>)</td></tr>
+                        <tr><td>Scope</td><td>Thread-local, per-stage</td><td>Global, per-signature</td></tr>
+                        <tr><td>Lifetime</td><td>Scope exit (push/pop)</td><td>Until eviction from <code>FrequencyCache</code></td></tr>
+                        <tr><td>Resource type</td><td>Memory buffers</td><td>Native compiled code</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="warning">
+                    <strong>Important:</strong> <code>Heap.stage()</code> destroys <code>OperationAdapter</code> wrappers via <code>HeapDependencies</code> but does <strong>not</strong> invalidate the instruction cache. A destroyed <code>OperationAdapter</code> triggers recompilation only if the <code>InstructionSet</code> within its <code>ScopeInstructionsManager</code> has also been independently destroyed (e.g., by cache eviction).
+                </div>
+            </section>
+
+            <section id="thread-safety">
+                <h2>Thread Safety</h2>
+                <table class="api-table">
+                    <thead>
+                        <tr><th>Component</th><th>Thread Safety</th><th>Mechanism</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>ScopeInstructionsManager.getOperator()</code></td><td>Thread-safe</td><td><code>synchronized</code> method</td></tr>
+                        <tr><td><code>ScopeInstructionsManager.getInstructionSet()</code></td><td>Thread-safe</td><td><code>synchronized</code> method</td></tr>
+                        <tr><td><code>FrequencyCache.prepareCapacity()</code></td><td>Thread-safe</td><td><code>synchronized</code> method</td></tr>
+                        <tr><td><code>FrequencyCache.get()/put()</code></td><td>NOT thread-safe</td><td>Requires external sync</td></tr>
+                        <tr><td><code>ProcessArgumentMap</code></td><td>NOT thread-safe</td><td>Created per-operation</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="pitfalls">
+                <h2>Common Pitfalls</h2>
+
+                <div class="warning">
+                    <strong>Null Signatures Disable Caching:</strong> If any input in a computation tree does not implement <code>Signature</code> or returns null from <code>signature()</code>, the entire chain returns null and instruction caching is disabled. Every evaluation triggers a fresh compilation. Check whether <code>signature()</code> returns null for the computation.
+                </div>
+
+                <div class="warning">
+                    <strong>Eviction Triggers Recompilation:</strong> When a <code>ScopeInstructionsManager</code> is evicted, its <code>InstructionSet</code> is destroyed. Operations still holding a reference will recompile on next use. This manifests as periodic compilation spikes in long-running applications.
+                </div>
+
+                <div class="warning">
+                    <strong>Argument Substitution Requires Process:</strong> The <code>ProcessArgumentMap.putSubstitutions()</code> mechanism requires the computation to implement <code>Process</code>. Non-<code>Process</code> computations fall back to full recompilation with a log warning.
+                </div>
+
+                <div class="success">
+                    <strong>Access Listener Restores Evicted Entries:</strong> <code>DefaultComputer</code> creates managers with an access listener that calls <code>instructionsCache.computeIfAbsent(signature, () -> mgr)</code>. This means using an evicted manager restores it to the cache, preventing repeated eviction of active kernels.
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

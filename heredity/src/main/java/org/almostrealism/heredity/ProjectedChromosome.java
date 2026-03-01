@@ -71,6 +71,7 @@ public class ProjectedChromosome implements Chromosome<PackedCollection>, Collec
 
 	private List<ProjectedGene> projections;
 	private List<Gene<PackedCollection>> genes;
+	private PackedCollection consolidatedValues;
 
 	/**
 	 * Constructs a new {@code ProjectedChromosome} with the specified source data.
@@ -103,6 +104,50 @@ public class ProjectedChromosome implements Chromosome<PackedCollection>, Collec
 		for (ProjectedGene gene : projections) {
 			gene.refreshValues();
 		}
+	}
+
+	/**
+	 * Consolidates all gene value collections into a single contiguous buffer.
+	 *
+	 * <p>Each {@link ProjectedGene} normally allocates its own {@link PackedCollection}
+	 * for factor values. When the compiled {@code Loop} scope collects arguments, each
+	 * gene's values collection becomes a separate kernel argument. With many genes
+	 * across the scene (effects, patterns, automation, mixdown), this can produce
+	 * hundreds of arguments, slowing down scope generation and native compilation.</p>
+	 *
+	 * <p>This method packs all gene values into one buffer and replaces each gene's
+	 * values with a view (delegate) into that buffer. Because the scope's argument
+	 * deduplication resolves variables to their root delegate, all gene values from
+	 * this chromosome collapse into a single kernel argument.</p>
+	 *
+	 * <p>After consolidation, {@link #refreshValues()} writes through the views
+	 * to the shared buffer, and {@link ProjectedGene#valueAt(int)} creates sub-views
+	 * that resolve to the consolidated buffer during argument collection.</p>
+	 *
+	 * @return the consolidated values buffer
+	 */
+	public PackedCollection consolidateGeneValues() {
+		if (projections.isEmpty()) return null;
+
+		int totalSize = projections.stream().mapToInt(ProjectedGene::length).sum();
+		consolidatedValues = new PackedCollection(totalSize);
+
+		int offset = 0;
+		for (ProjectedGene gene : projections) {
+			int len = gene.length();
+			PackedCollection geneValues = gene.getValues();
+
+			// Copy current values to the consolidated buffer
+			for (int i = 0; i < len; i++) {
+				consolidatedValues.setMem(offset + i, geneValues.toDouble(i));
+			}
+
+			// Replace gene's values with a view of the consolidated buffer
+			gene.replaceValues(consolidatedValues.range(shape(len), offset));
+			offset += len;
+		}
+
+		return consolidatedValues;
 	}
 
 	/**

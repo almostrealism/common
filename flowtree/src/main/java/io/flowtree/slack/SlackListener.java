@@ -438,8 +438,8 @@ public class SlackListener implements ConsoleFeatures {
         // reply under it to create a thread. If already in a thread, continue there.
         String replyTo = (threadTs == null) ? messageTs : threadTs;
 
-        String description = prompt.length() > 100 ? prompt.substring(0, 97) + "..." : prompt;
-        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), description);
+        String displaySummary = ClaudeCodeJob.summarizePrompt(prompt);
+        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(workstream.getDefaultBranch(), null, null, null, false);
 
         notifier.onJobStarted(workstream.getWorkstreamId(), startEvent, replyTo);
@@ -518,7 +518,7 @@ public class SlackListener implements ConsoleFeatures {
                         + "  `/flowtree cancel [job-id]` \u2014 Cancel a running job\n"
                         + "  `/flowtree config [key] [value]` \u2014 View or update settings\n"
                         + "  `/flowtree jobs` \u2014 List recent jobs\n"
-                        + "  `/flowtree stats` \u2014 Show weekly job statistics");
+                        + "  `/flowtree stats [global]` \u2014 Show weekly job statistics");
             }
         } catch (IOException e) {
             warn("Error responding to slash command: " + e.getMessage());
@@ -907,37 +907,81 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Handles {@code /flowtree stats}. Shows weekly job statistics.
+     * Handles {@code /flowtree stats [global]}. Shows weekly job statistics.
+     *
+     * <p>Without arguments, shows stats for the current channel's workstream.
+     * With {@code global}, shows stats across all workstreams.</p>
      */
     private void handleSlashStatsCommand(String channelId, String args,
                                           SlashCommandResponder ctx) throws IOException {
-        SlackWorkstream ws = channelToWorkstream.get(channelId);
-        if (ws == null) {
-            ctx.respond(":warning: No workstream configured for this channel.\n"
-                + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.");
-            return;
-        }
-
         JobStatsStore statsStore = notifier.getStatsStore();
         if (statsStore == null) {
             ctx.respond(":warning: Job statistics are not available.");
             return;
         }
 
-        LocalDate today = LocalDate.now(ZoneId.of("UTC"));
-        LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
+        boolean global = "global".equalsIgnoreCase(args != null ? args.trim() : "");
 
-        JobStatsStore.WeeklyStats thisWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), thisWeekStart);
-        JobStatsStore.WeeklyStats lastWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), lastWeekStart);
+        if (!global) {
+            SlackWorkstream ws = channelToWorkstream.get(channelId);
+            if (ws == null) {
+                ctx.respond(":warning: No workstream configured for this channel.\n"
+                    + "Use `/flowtree setup <working-directory-or-repo-url> <branch>` to create one.\n"
+                    + "Or use `/flowtree stats global` for stats across all workstreams.");
+                return;
+            }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append(":bar_chart: *Agent Activity \u2014 ").append(ws.getChannelName()).append("*\n\n");
-        sb.append(formatWeeklyStats("This Week", thisWeekStart, thisWeek));
-        sb.append("\n");
-        sb.append(formatWeeklyStats("Last Week", lastWeekStart, lastWeek));
+            LocalDate today = LocalDate.now(ZoneId.of("UTC"));
+            LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
 
-        ctx.respond(sb.toString());
+            JobStatsStore.WeeklyStats thisWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), thisWeekStart);
+            JobStatsStore.WeeklyStats lastWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), lastWeekStart);
+
+            StringBuilder sb = new StringBuilder();
+            sb.append(":bar_chart: *Agent Activity \u2014 ").append(ws.getChannelName()).append("*\n\n");
+            sb.append(formatWeeklyStats("This Week", thisWeekStart, thisWeek));
+            sb.append("\n");
+            sb.append(formatWeeklyStats("Last Week", lastWeekStart, lastWeek));
+
+            ctx.respond(sb.toString());
+        } else {
+            LocalDate today = LocalDate.now(ZoneId.of("UTC"));
+            LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
+
+            // Build workstream ID to channel name lookup
+            Map<String, String> wsToChannel = new HashMap<>();
+            for (SlackWorkstream ws : channelToWorkstream.values()) {
+                wsToChannel.put(ws.getWorkstreamId(), ws.getChannelName());
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append(":bar_chart: *Agent Activity \u2014 All Workstreams*\n\n");
+
+            // Global totals
+            JobStatsStore.WeeklyStats thisWeekTotal = statsStore.getWeeklyStats(thisWeekStart);
+            JobStatsStore.WeeklyStats lastWeekTotal = statsStore.getWeeklyStats(lastWeekStart);
+            sb.append(formatWeeklyStats("This Week (total)", thisWeekStart, thisWeekTotal));
+            sb.append("\n");
+            sb.append(formatWeeklyStats("Last Week (total)", lastWeekStart, lastWeekTotal));
+
+            // Per-workstream breakdown for this week
+            Map<String, JobStatsStore.WeeklyStats> thisWeekByWs = statsStore.getWeeklyStatsByWorkstream(thisWeekStart);
+            if (!thisWeekByWs.isEmpty()) {
+                sb.append("\n:mag: *This Week by Workstream*\n");
+                for (Map.Entry<String, JobStatsStore.WeeklyStats> entry : thisWeekByWs.entrySet()) {
+                    String label = wsToChannel.getOrDefault(entry.getKey(), entry.getKey());
+                    JobStatsStore.WeeklyStats stats = entry.getValue();
+                    sb.append("  *").append(label).append("*: ");
+                    sb.append(stats.jobCount).append(" jobs, ");
+                    sb.append(formatDuration(stats.totalWallClockMs)).append(", ");
+                    sb.append("$").append(String.format("%.2f", stats.totalCostUsd)).append("\n");
+                }
+            }
+
+            ctx.respond(sb.toString());
+        }
     }
 
     /**

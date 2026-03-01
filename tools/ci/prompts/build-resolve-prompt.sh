@@ -91,21 +91,34 @@ base branch (master) before this branch was created. Run:
 
     git log --oneline origin/master -- <path/to/TestFile.java>
 
-If the test file exists on master, **you are NOT allowed to modify the test in any
-way that would hide, weaken, or suppress the failure.** Specifically, you MUST NOT:
+**DO NOT modify tests that exist on the base branch.** Specifically, do not:
+- Change @TestDepth values, timeout values, dimensions, or tolerances in base-branch tests
+- Add @Ignore, @Disabled, skipLongTests, or try/catch blocks to base-branch tests
+- Reduce numeric constants or increase tolerance/epsilon values in base-branch tests
+- Modify ANY file under .github/workflows/ or tools/ci/
+- Claim "the test is wrong" - if the test exists on master, it is the specification
+- Claim "the test is flaky" - if CI reports failure, the failure is real
+- Claim "the failure is unrelated to my changes" without PROOF (see below)
 
-- Add `@Ignore`, `@Disabled`, or skip annotations to existing test methods
-- Delete or comment out existing test methods or assertion lines
-- Weaken assertions (e.g., changing `assertEquals` to `assertTrue`, loosening
-  tolerances, removing assertions entirely)
-- Add `try/catch` blocks that swallow exceptions in existing tests
-- Change expected values to match the (incorrect) actual output
-- Reduce test coverage by removing test inputs or edge cases
-- Wrap the test body in `if (skipLongTests) return;` when it was not there before
-- Move, rename, or split an existing test to avoid detection
-- Add `@TestDepth` annotations to push existing tests out of the default run
+**Tests that exist on the base branch are the specification. Fix the production code.**
+**Modifications to base-branch test files will be automatically rejected by
+validate-agent-commit.sh.** You MAY fix tests that your branch introduced.
 
-**The test is correct. Your branch broke it. Fix the production code, not the test.**
+---
+
+## AUTOMATED ENFORCEMENT
+
+Your commit will be validated by `validate-agent-commit.sh` which BLOCKS:
+1. Modifications to test files that exist on the base branch (exit code 2)
+2. Modifications to CI/workflow files (exit code 4)
+3. Commits with no production code or branch-new test changes when fixing test failures (exit code 3)
+
+Additionally, `detect-test-hiding.sh` checks for 12 specific evasion patterns
+including TestDepth escalation, timeout inflation, dimension reduction,
+tolerance weakening, assertion removal, and numeric literal shrinkage.
+
+**There is no way around these checks. They are mechanical, not judgment-based.**
+
 
 ---
 
@@ -116,17 +129,22 @@ PROMPT_HEADER
 # The CI command section tells the agent exactly how to reproduce.
 FAILING_MODULES=""
 while IFS= read -r line; do
-    # Each line is "- ClassName#methodName"; extract the class name
-    class_name=$(echo "$line" | sed 's/^- //' | sed 's/#.*//')
-    # Resolve to a source file
-    src_file=$(find . -path "*/src/test/java*/${class_name##*.}.java" -print -quit 2>/dev/null)
-    if [ -n "$src_file" ]; then
-        # Extract the module from the path (first directory component under ./)
-        module=$(echo "$src_file" | sed 's|^\./||' | cut -d/ -f1)
-        if ! echo "$FAILING_MODULES" | grep -qw "$module"; then
-            FAILING_MODULES="${FAILING_MODULES:+$FAILING_MODULES }$module"
-        fi
-    fi
+    # Only process lines that start with "- " (test name lines).
+    # Skip exception details, stack traces, and blank lines.
+    case "$line" in
+        "- "*)
+            class_name=$(echo "$line" | sed 's/^- //' | sed 's/#.*//')
+            # Resolve to a source file
+            src_file=$(find . -path "*/src/test/java*/${class_name##*.}.java" -print -quit 2>/dev/null)
+            if [ -n "$src_file" ]; then
+                # Extract the module from the path (first directory component under ./)
+                module=$(echo "$src_file" | sed 's|^\./||' | cut -d/ -f1)
+                if ! echo "$FAILING_MODULES" | grep -qw "$module"; then
+                    FAILING_MODULES="${FAILING_MODULES:+$FAILING_MODULES }$module"
+                fi
+            fi
+            ;;
+    esac
 done < "$FAILURES_FILE"
 
 # Build CI reproduction commands for each failing module
@@ -135,11 +153,11 @@ for module in $FAILING_MODULES; do
     if [ "$module" = "ml" ]; then
         CI_COMMANDS="${CI_COMMANDS}
 Module: ${module}
-  mcp__ar-test-runner__start_test_run module:\"${module}\" profile:\"pipeline\" timeout_minutes:30"
+  mcp__ar-test-runner__start_test_run module:\"${module}\" profile:\"pipeline\""
     else
         CI_COMMANDS="${CI_COMMANDS}
 Module: ${module}
-  mcp__ar-test-runner__start_test_run module:\"${module}\" timeout_minutes:30"
+  mcp__ar-test-runner__start_test_run module:\"${module}\""
     fi
 done
 
@@ -148,7 +166,7 @@ if [ -z "$CI_COMMANDS" ]; then
     CI_COMMANDS="
 Could not auto-detect failing modules. Examine the failing test class names below,
 find which module they belong to (utils, ml, audio, music, compose), and run:
-  mcp__ar-test-runner__start_test_run module:\"<module>\" timeout_minutes:30
+  mcp__ar-test-runner__start_test_run module:\"<module>\"
 For ML module tests, add profile:\"pipeline\"."
 fi
 
@@ -156,7 +174,10 @@ fi
 cat >> "$OUTPUT_FILE" <<EOF
 ## Failing tests
 
-The following ${FAILURE_COUNT} test failure(s) were discovered on branch "${BRANCH}":
+The following ${FAILURE_COUNT} test failure(s) were discovered on branch "${BRANCH}".
+Each failure includes the exception type, message, and a truncated stack trace from the
+Surefire XML report. **Use these details to understand what went wrong** — the exception
+type and message tell you exactly what assertion or error occurred.
 
 ${FAILURE_LIST}
 
@@ -168,25 +189,34 @@ You MUST reproduce the failure locally before attempting a fix and after applyin
 your fix. Use the MCP test runner with these exact commands:
 ${CI_COMMANDS}
 
-Do NOT run individual test methods with test_methods or test_classes parameters.
-The CI pipeline runs the FULL module test suite. Failures may only manifest when
-the entire suite runs (due to shared state, test ordering, etc.).
+You MAY run individual test methods or classes to reproduce and debug the failure.
+However, passing in isolation does NOT prove the problem is fixed — the CI pipeline
+runs the FULL module test suite, and failures may only manifest when the entire suite
+runs (shared state, test ordering, etc.). Always verify your fix with the full module
+suite before concluding.
 
 ## Investigation steps
 
-1. **See what this branch changed:**
+1. **Read the exception details above.** The exception type and message tell you
+   exactly what failed. An \`AssertionError\` with \`expected 5 but was 3\` is a
+   completely different problem from a \`NullPointerException\` in production code.
+   Start your investigation from the specific error, not from guessing.
+
+2. **See what this branch changed:**
        git diff --stat origin/master...HEAD
    This is the complete set of changes that could have caused the failures.
 
-2. **Read the failing test(s).** Understand what they assert.
+3. **Read the failing test(s).** Understand what they assert.
 
-3. **Trace the failure to your branch's changes.** Find what production code the
-   test calls, then check whether any of the branch changes affected that code path.
+4. **Trace the failure to your branch's changes.** Use the stack trace to identify
+   which production code threw the exception, then check whether any of the branch
+   changes affected that code path.
 
-4. **Fix the production code.** Make the minimal change needed.
+5. **Fix the production code.** Make the minimal change needed.
 
-5. **Verify by running the full CI command above.** Not individual tests -- the full
+6. **Verify by running the full CI command above.** Not individual tests -- the full
    module suite. If it passes, your fix works.
 
-**Remember: the test is correct. Your branch broke it. Fix the production code.**
+**Remember: if a test exists on the base branch, the test is the specification — fix
+the production code. Modifications to base-branch test files or CI files will be rejected.**
 EOF

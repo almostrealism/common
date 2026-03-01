@@ -46,10 +46,14 @@ import org.almostrealism.audio.generative.NoOpGenerationProvider;
 import org.almostrealism.audio.health.HealthComputationAdapter;
 import org.almostrealism.audio.health.MultiChannelAudioOutput;
 import org.almostrealism.audio.notes.NoteAudioChoice;
+import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.pattern.ChordProgressionManager;
 import org.almostrealism.audio.pattern.PatternAudioBuffer;
 import org.almostrealism.audio.pattern.NoteAudioChoiceList;
+import org.almostrealism.audio.pattern.PatternElement;
+import org.almostrealism.audio.pattern.PatternLayerManager;
 import org.almostrealism.audio.pattern.PatternSystemManager;
+import org.almostrealism.audio.pattern.RenderedNoteAudio;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.KeyPosition;
@@ -58,6 +62,7 @@ import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.jni.LlvmCommandProvider;
 import org.almostrealism.heredity.ProjectedChromosome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
@@ -179,6 +184,7 @@ import java.util.stream.IntStream;
 public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable, CellFeatures {
 	public static final Console console = CellFeatures.console.child();
 	private static final TimingMetric getCellsTime = console.timing("getCells");
+	private static final List<AudioScene<?>> activeInstances = new ArrayList<>();
 
 	public static final int DEFAULT_SOURCE_COUNT = 6;
 	public static final int DEFAULT_REALTIME_BUFFER_SIZE = 1024;
@@ -270,7 +276,10 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	private final ProjectedGenome genome;
 	
 	private OperationList setup;
-	private List<PatternAudioBuffer> renderCells;
+	private List<PatternAudioBuffer> renderCells = new ArrayList<>();
+	private PackedCollection consolidatedRenderBuffer;
+	private int renderBufferIndex;
+	private CellList activeCells;
 	private Function<PackedCollection, Factor<PackedCollection>> automationLevel;
 
 	private final List<Consumer<Frequency>> tempoListeners;
@@ -338,7 +347,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									channels, delayLayers,
 									automation, time.getClock(), getSampleRate());
 
+		// Consolidate gene values so all genes within each chromosome share a
+		// single contiguous PackedCollection.  This reduces the number of kernel
+		// arguments when the Loop scope is compiled for both offline and real-time.
+		genome.consolidateGeneValues();
+
 		this.generation = new GenerationManager(patterns, generation);
+		activeInstances.add(this);
 	}
 
 	@Deprecated
@@ -398,6 +413,22 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 	public ProjectedGenome getGenome() { return new ProjectedGenome(genome.getParameters()); }
 
+	/**
+	 * Assigns new genome parameters and refreshes all derived values.
+	 *
+	 * <p><b>Runner reuse:</b> The cell graph built by {@link #runnerRealTime} is
+	 * structurally independent of the genome. All genome-derived values flow through
+	 * {@link PackedCollection} references (via {@code cp()}) that are updated in-place
+	 * by this method. A runner that was already compiled can be reused after calling
+	 * this method &mdash; the compiled kernel automatically reads the new values on
+	 * its next tick without requiring recompilation.</p>
+	 *
+	 * <p>The pattern preparation phase ({@link PatternAudioBuffer#prepareBatch()})
+	 * runs outside the compiled loop in Java, so it naturally uses the refreshed
+	 * parameter state.</p>
+	 *
+	 * @param genome the new genome whose parameters will be assigned
+	 */
 	public void assignGenome(ProjectedGenome genome) {
 		this.genome.assignTo(genome.getParameters());
 		this.progression.refreshParameters();
@@ -415,6 +446,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public PatternSystemManager getPatternManager() { return patterns; }
 	public AutomationManager getAutomationManager() { return automation; }
 	public EfxManager getEfxManager() { return efx; }
+
+	/**
+	 * Returns the consolidated render buffer that backs all {@link PatternAudioBuffer}
+	 * output buffers, or {@code null} if {@link #getCells} has not been called.
+	 *
+	 * <p>Exposed for testing to verify that output buffer consolidation is active.</p>
+	 */
+	public PackedCollection getConsolidatedRenderBuffer() { return consolidatedRenderBuffer; }
 	public MixdownManager getMixdownManager() { return mixdown; }
 	public GenerationManager getGenerationManager() { return generation; }
 
@@ -655,6 +694,22 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		setup.add(() -> () -> patterns.setTuning(tuning));
 		setup.add(sections.setup());
 
+		// Consolidate render buffers so all PatternAudioBuffer outputs are
+		// delegates of a single PackedCollection.  The Loop scope's argument
+		// deduplication resolves delegates to their root, collapsing all
+		// render buffer arguments into one kernel argument.  This applies
+		// to both offline and real-time modes since both compile a Loop.
+		consolidateRenderBuffers(channels.size(), bufferSize);
+		if (bufferSize < getAvailableSamples()) {
+			efx.consolidateFilterBuffers(channels.size(), bufferSize);
+		}
+
+		// Destroy previous cell graph if getCells() is called again
+		if (activeCells != null) {
+			activeCells.destroy();
+			activeCells = null;
+		}
+
 		CellList cells = cells(
 				getPatternCells(output, channels, ChannelInfo.StereoChannel.LEFT,
 						bufferSize, frameSupplier, setup, waveCellFrame),
@@ -662,7 +717,52 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 						bufferSize, frameSupplier, setup, waveCellFrame));
 
 		cells.addSetup(() -> setup);
+		if (waveCellFrame == null) {
+			// Offline rendering processes every sample through the cell
+			// graph.  Calling tick.run() from Java for each of the
+			// ~176,400 samples incurs ProcessDetailsFactory overhead per
+			// invocation (argument marshalling, async evaluable creation,
+			// thread creation) that dominates runtime.  Wrapping all tick
+			// operations in a compiled Loop executes every iteration in a
+			// single native function call -- one ProcessDetailsFactory
+			// construction for the entire render instead of one per sample.
+			// The returned Runnable executes all iterations on its first
+			// call and is a no-op on subsequent calls.
+			//
+			// The Loop body is compiled at -O0 (NONE) because LLVM -O3
+			// optimization time is super-linear in argument count and
+			// prohibitively slow on aarch64 for the ~140 arguments in the
+			// cell graph.  -O0 compiles instantly; the per-iteration cost
+			// is low since effects are typically disabled for offline mode.
+			cells.setTickPreAction(() ->
+					LlvmCommandProvider.setMathOptLevel(
+							LlvmCommandProvider.MathOptLevel.NONE));
+			cells.setTickLoopCount(bufferSize);
+		}
+		activeCells = cells;
 		return cells.addRequirement(time::tick);
+	}
+
+	/**
+	 * Pre-allocates a single contiguous buffer for all {@link PatternAudioBuffer}
+	 * output buffers.
+	 *
+	 * <p>Each {@link PatternAudioBuffer} receives a delegate (range) into this
+	 * consolidated buffer instead of its own independent {@link PackedCollection}.
+	 * When the compiled {@code Loop} scope collects arguments, the scope's
+	 * deduplication resolves each delegate to the shared root, collapsing all
+	 * render buffer arguments into a single kernel argument.</p>
+	 *
+	 * <p>The total number of render cells is {@code channelCount x 4}
+	 * (MAIN + WET voicing x LEFT + RIGHT stereo).</p>
+	 *
+	 * @param channelCount number of audio channels
+	 * @param bufferSize   frames per render buffer
+	 */
+	private void consolidateRenderBuffers(int channelCount, int bufferSize) {
+		int totalRenderCells = channelCount * 4;
+		consolidatedRenderBuffer = new PackedCollection(bufferSize * totalRenderCells);
+		renderBufferIndex = 0;
 	}
 
 	/**
@@ -688,9 +788,26 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		CellList main = all(idx.length, i ->
 				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.MAIN, audioChannel),
 						bufferSize, frameSupplier, setup, waveCellFrame));
-		CellList wet = all(idx.length, i ->
-				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.WET, audioChannel),
-						bufferSize, frameSupplier, setup, waveCellFrame));
+
+		// Skip WET voicing cells when MixdownManager will not use them.
+		// When enableEfx is false, createEfx() is never called, so WET
+		// cells would tick every frame with their output discarded.
+		// Worse, MixdownManager.createCells still enters the wet-source
+		// branch (line 439) and creates efx/reverb CellList branches
+		// that are never consumed, adding cells and arguments to the
+		// compiled tick function.  Passing wet = null for both modes
+		// routes MixdownManager into its fast path (line 452) which
+		// skips all branching, dramatically reducing cell count and
+		// kernel argument count.
+		CellList wet;
+		if (!MixdownManager.enableEfx) {
+			wet = null;
+		} else {
+			wet = all(idx.length, i ->
+					getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.WET, audioChannel),
+							bufferSize, frameSupplier, setup, waveCellFrame));
+		}
+
 		return mixdown.cells(main, wet, riser.getRise(bufferSize),
 				output, audioChannel, i -> idx[i]);
 	}
@@ -746,8 +863,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									  OperationList setup,
 									  Producer<PackedCollection> waveCellFrame) {
 		Supplier<AudioSceneContext> ctx = () -> getContext(List.of(channel));
+
+		PackedCollection outputBuffer = null;
+		if (consolidatedRenderBuffer != null) {
+			outputBuffer = consolidatedRenderBuffer.range(
+					shape(bufferSize), renderBufferIndex * bufferSize);
+			renderBufferIndex++;
+		}
+
 		PatternAudioBuffer renderCell = new PatternAudioBuffer(
-				patterns, ctx, channel, bufferSize, frameSupplier);
+				patterns, ctx, channel, bufferSize, frameSupplier, outputBuffer);
 
 		setup.add(renderCell.setup());
 		setup.add(renderCell.prepareBatch());
@@ -829,6 +954,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *   <li><strong>Advance phase</strong> - Increments the frame counter by bufferSize.</li>
 	 * </ul>
 	 *
+	 * <p><b>Genome independence:</b> The compiled kernel produced by this runner is
+	 * structurally independent of the genome parameters. All genome-derived values
+	 * are referenced via {@link PackedCollection} handles whose contents are updated
+	 * by {@link #assignGenome}. This means the runner can be built once and reused
+	 * across genome changes without recompilation &mdash; only the underlying
+	 * {@link PackedCollection} values change.</p>
+	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or null for all
 	 * @param bufferSize frames per buffer
@@ -894,6 +1026,88 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		};
 	}
 
+	/**
+	 * Pre-evaluates all note audio to warm the kernel compilation cache.
+	 *
+	 * <p>This method iterates through all pattern elements in the scene,
+	 * evaluates each note's audio producer, and discards the result. The
+	 * purpose is to trigger kernel compilation for all unique instrument
+	 * chains <em>before</em> the real-time loop starts, so that the
+	 * {@code FrequencyCache} (instruction set cache) is populated.</p>
+	 *
+	 * <p>Without warmup, the first buffer that encounters each unique note
+	 * type pays the full compilation cost (~270ms). With warmup, all
+	 * compilations happen upfront during initialization, and the real-time
+	 * loop sees only cache hits.</p>
+	 *
+	 * <p>Call this method after construction and genome assignment, but
+	 * before starting the real-time loop:</p>
+	 * <pre>{@code
+	 * AudioScene scene = new AudioScene<>(...);
+	 * scene.assignGenome(genome);
+	 * int warmed = scene.warmNoteCache();
+	 * TemporalCellular runner = scene.runnerRealTime(output, bufferSize);
+	 * }</pre>
+	 *
+	 * @return the number of notes evaluated during warmup
+	 */
+	public int warmNoteCache() {
+		patterns.setTuning(tuning);
+		patterns.init();
+
+		int notesEvaluated = 0;
+
+		for (PatternLayerManager plm : patterns.getPatterns()) {
+			boolean melodic = plm.isMelodic();
+			ChannelInfo channel = new ChannelInfo(plm.getChannel(),
+					ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
+			AudioSceneContext ctx = getContext(List.of(channel));
+			PackedCollection warmDest = new PackedCollection(4096);
+			ctx.setDestination(warmDest);
+			plm.updateDestination(ctx);
+
+			java.util.Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
+					plm.getAllElementsByChoice(0.0, plm.getDuration());
+
+			for (java.util.Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
+					elementsByChoice.entrySet()) {
+				NoteAudioChoice choice = entry.getKey();
+				List<PatternElement> elements = entry.getValue();
+
+				org.almostrealism.audio.notes.NoteAudioContext audioContext =
+						new org.almostrealism.audio.notes.NoteAudioContext(
+								ChannelInfo.Voicing.MAIN,
+								ChannelInfo.StereoChannel.LEFT,
+								choice.getValidPatternNotes(),
+								pos -> pos + 1.0);
+
+				for (PatternElement element : elements) {
+					List<RenderedNoteAudio> notes =
+							element.getNoteDestinations(melodic, 0.0, ctx, audioContext);
+
+					for (RenderedNoteAudio note : notes) {
+						if (note.getExpectedFrameCount() <= 0) continue;
+
+						Producer<PackedCollection> producer =
+								note.getProducer(note.getExpectedFrameCount());
+						if (producer != null) {
+							try {
+								PackedCollection audio = traverse(1, producer).get().evaluate();
+								if (audio != null) {
+									notesEvaluated++;
+								}
+							} catch (Exception e) {
+								// Skip notes that fail evaluation during warmup
+							}
+						}
+					}
+				}
+			}
+		}
+
+		return notesEvaluated;
+	}
+
 	public void saveSettings(File file) throws IOException {
 		defaultMapper().writeValue(file, getSettings());
 	}
@@ -924,6 +1138,35 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public void destroy() {
 		Destroyable.super.destroy();
 		getSectionManager().destroy();
+
+		if (activeCells != null) {
+			activeCells.destroy();
+			activeCells = null;
+		}
+
+		if (consolidatedRenderBuffer != null) {
+			consolidatedRenderBuffer.destroy();
+			consolidatedRenderBuffer = null;
+		}
+
+		efx.destroyConsolidatedBuffers();
+		activeInstances.remove(this);
+	}
+
+	/**
+	 * Destroys all {@link AudioScene} instances that have not been explicitly
+	 * destroyed yet, freeing their native memory allocations.
+	 *
+	 * <p>This is primarily useful in test environments where multiple scenes
+	 * are created across test methods without explicit cleanup. Each scene's
+	 * {@link #destroy()} method is called to release its cell graph,
+	 * consolidated buffers, and delay line memory.</p>
+	 */
+	public static void destroyAll() {
+		List<AudioScene<?>> scenes = new ArrayList<>(activeInstances);
+		for (AudioScene<?> scene : scenes) {
+			scene.destroy();
+		}
 	}
 
 	public AudioScene<T> clone() {

@@ -77,6 +77,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
 
     private String prompt;
+    private String description;
     private String allowedTools;
     private int maxTurns;
     private double maxBudgetUsd;
@@ -141,9 +142,46 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     @Override
     public String getTaskString() {
+        if (description != null && !description.isEmpty()) {
+            return description;
+        }
         return prompt != null && prompt.length() > 50
             ? prompt.substring(0, 47) + "..."
             : prompt;
+    }
+
+    /**
+     * Returns a short display summary for this job suitable for Slack notifications.
+     *
+     * <p>If a description is set, it is returned directly. Otherwise, short prompts
+     * (80 characters or fewer) are returned as-is, and longer prompts are summarized
+     * as their character count.</p>
+     *
+     * @return the display summary
+     */
+    public String getDisplaySummary() {
+        if (description != null && !description.isEmpty()) {
+            return description;
+        }
+        return summarizePrompt(prompt);
+    }
+
+    /**
+     * Produces a short display string for a prompt. Short prompts (80 characters
+     * or fewer) are returned as-is; longer prompts are summarized as their
+     * character count.
+     *
+     * @param prompt the raw prompt text
+     * @return a concise summary suitable for Slack notifications
+     */
+    public static String summarizePrompt(String prompt) {
+        if (prompt == null) {
+            return "(no prompt)";
+        }
+        if (prompt.length() <= 80) {
+            return prompt;
+        }
+        return String.format("%,d character prompt", prompt.length());
     }
 
     public String getPrompt() {
@@ -152,6 +190,24 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     public void setPrompt(String prompt) {
         this.prompt = prompt;
+    }
+
+    /**
+     * Returns the short human-readable description for this job,
+     * or {@code null} if none was set.
+     */
+    public String getDescription() {
+        return description;
+    }
+
+    /**
+     * Sets a short human-readable description for this job. When set, this
+     * description is used in Slack notifications instead of the prompt text.
+     *
+     * @param description a concise label (e.g., "Resolve test failures")
+     */
+    public void setDescription(String description) {
+        this.description = description;
     }
 
     public String getAllowedTools() {
@@ -604,7 +660,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
 
         // Use the existing detect-test-hiding.sh script for diff auditing
-        Path auditScript = resolveWorkingPath("tools/ci/detect-test-hiding.sh");
+        Path auditScript = resolveWorkingPath("tools/ci/agent-protection/detect-test-hiding.sh");
         if (auditScript == null || !Files.exists(auditScript)) {
             log("detect-test-hiding.sh not found, skipping validation");
             return true;
@@ -880,6 +936,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     public static class Factory extends AbstractJobFactory {
         private List<String> prompts;
+        private String description;
         private int index;
         private String allowedTools = DEFAULT_TOOLS;
         private int maxTurns = 50;
@@ -946,6 +1003,26 @@ public class ClaudeCodeJob extends GitManagedJob {
                 prompts = code == null ? new ArrayList<>() : new ArrayList<>(List.of(code.split(PROMPT_SEPARATOR)));
             }
             return prompts;
+        }
+
+        /**
+         * Returns the short description for jobs created by this factory.
+         */
+        public String getDescription() {
+            if (description == null) {
+                description = base64Decode(get("desc"));
+            }
+            return description;
+        }
+
+        /**
+         * Sets a short human-readable description for jobs created by this factory.
+         *
+         * @param description a concise label (e.g., "Resolve test failures")
+         */
+        public void setDescription(String description) {
+            this.description = description;
+            set("desc", base64Encode(description));
         }
 
         public String getAllowedTools() {
@@ -1257,6 +1334,12 @@ public class ClaudeCodeJob extends GitManagedJob {
             job.setWorkingDirectory(workingDirectory);
             job.setMaxTurns(maxTurns);
             job.setMaxBudgetUsd(maxBudgetUsd);
+
+            // Description for Slack notifications
+            String desc = getDescription();
+            if (desc != null) {
+                job.setDescription(desc);
+            }
 
             // Repository URL for automatic checkout
             if (repoUrl != null) {

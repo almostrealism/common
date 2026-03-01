@@ -128,8 +128,8 @@ jobs:
           BASE_BRANCH: master
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          chmod +x ./tools/ci/build-verify-prompt.sh
-          ./tools/ci/build-verify-prompt.sh /tmp/agent-prompt.txt
+          chmod +x ./tools/ci/prompts/build-verify-prompt.sh
+          ./tools/ci/prompts/build-verify-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job
         env:
@@ -137,6 +137,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ github.ref_name }}
           BASE_BRANCH: master
+          DESCRIPTION: "Verify completion"
         run: |
           chmod +x ./tools/ci/submit-agent-job.sh
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt

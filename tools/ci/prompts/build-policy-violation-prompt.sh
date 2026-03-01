@@ -53,6 +53,25 @@ Specifically, you MUST NOT:
 - Add files or paths to any exclusion list in the enforcement infrastructure
 - Add `@SuppressWarnings` annotations to hide violations
 - Move or rename code to avoid detection patterns
+- **Extract code into a separate method** to move a violation out of a loop's lexical scope.
+  The detector uses lexical analysis. If you extract a `setMem()` call into a helper method
+  so it no longer appears inside a `for` loop, that is **cheating** — the violation still
+  exists at runtime. This INCLUDES naming the method to match initialization patterns
+  (e.g., "prepare", "init", "create") to exploit the detector's whitelist.
+
+**Example of cheating that WILL NOT be tolerated:**
+```java
+// CHEATING — extracting setMem into a method to hide it from the detector
+for (Item item : items) {
+    processItem(item);  // <-- setMem is hidden inside this method
+}
+private void processItem(Item item) {  // "process" or "prepare" matches whitelist
+    item.getData().setMem(0, value);   // detector can't see this is inside a loop
+}
+```
+The correct fix is to **eliminate the `setMem()` call entirely** by using the Producer
+pattern, removing the call if it's redundant, or restructuring the data flow so that
+CPU-side mutation is not needed.
 
 Any modification to the enforcement infrastructure will be detected by the CI integrity
 check and will cause the build to fail. The ONLY way to pass is to fix your code.

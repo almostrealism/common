@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
@@ -26,7 +27,7 @@ import org.almostrealism.time.TemporalFeatures;
 
 import java.util.function.Supplier;
 
-public class AdjustableDelayCell extends SummationCell implements TemporalFeatures {
+public class AdjustableDelayCell extends SummationCell implements TemporalFeatures, Destroyable {
 	public static double defaultPurgeFrequency = 1.0;
 
 	private final int sampleRate;
@@ -47,9 +48,29 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 	public AdjustableDelayCell(int sampleRate,
 							   Producer<PackedCollection> delay,
 							   Producer<PackedCollection> scale) {
+		this(sampleRate, delay, scale, AcceleratedTimeSeries.defaultSize);
+	}
+
+	/**
+	 * Creates a delay cell with a specified buffer capacity.
+	 *
+	 * <p>The buffer size should be at least {@code sampleRate * maxDelaySeconds * 2}
+	 * to accommodate the delay line's read and write cursors. Using a smaller buffer
+	 * than the default {@link AcceleratedTimeSeries#defaultSize} dramatically reduces
+	 * native memory consumption when the maximum delay is known.</p>
+	 *
+	 * @param sampleRate audio sample rate
+	 * @param delay      delay duration producer (in seconds)
+	 * @param scale      playback scale producer
+	 * @param bufferSize maximum number of entries in the delay buffer
+	 */
+	public AdjustableDelayCell(int sampleRate,
+							   Producer<PackedCollection> delay,
+							   Producer<PackedCollection> scale,
+							   int bufferSize) {
 		this.sampleRate = sampleRate;
 		initCursors();
-		buffer = AcceleratedTimeSeries.defaultSeries();
+		buffer = new AcceleratedTimeSeries(bufferSize);
 		this.delay = delay;
 		this.scale = scale;
 	}
@@ -99,5 +120,19 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 	public void reset() {
 		super.reset();
 		buffer.reset();
+	}
+
+	/**
+	 * Releases the native memory held by this delay cell's buffer and cursors.
+	 *
+	 * <p>The {@link AcceleratedTimeSeries} buffer is the largest allocation
+	 * (10M entries by default). Destroying it returns the native memory to
+	 * the {@link org.almostrealism.c.NativeMemoryProvider} immediately rather
+	 * than waiting for garbage collection.</p>
+	 */
+	@Override
+	public void destroy() {
+		buffer.destroy();
+		cursors.destroy();
 	}
 }

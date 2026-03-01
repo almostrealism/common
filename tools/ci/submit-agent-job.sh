@@ -18,6 +18,7 @@
 #   MAX_TURNS         - agent turn budget             (omitted → workstream default)
 #   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
 #   ENFORCE_CHANGES   - require code changes or retry (default: false)
+#   DESCRIPTION       - short label for Slack notifications (e.g., "Resolve test failures")
 #
 # Exit codes:
 #   0 - submission succeeded
@@ -45,6 +46,22 @@ done
 CONTROLLER_HOST="${CONTROLLER_HOST:-localhost}"
 CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
 
+# ── Escalation Circuit Breaker (DECEPTION.md Countermeasure #6) ─────
+# Check if any failing test class has been dispatched too many times.
+# If so, block dispatch and require human intervention.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ESCALATION_TRACKER="${SCRIPT_DIR}/agent-protection/escalation-tracker.sh"
+if [ -x "${ESCALATION_TRACKER}" ] && [ -n "${FAILING_TEST_CLASSES:-}" ]; then
+    for TEST_CLASS in $FAILING_TEST_CLASSES; do
+        if ! "${ESCALATION_TRACKER}" check "$BRANCH" "$TEST_CLASS"; then
+            echo "::error::Circuit breaker tripped for ${TEST_CLASS} on ${BRANCH}. Manual intervention required."
+            exit 0
+        fi
+        # Record this dispatch attempt
+        "${ESCALATION_TRACKER}" record "$BRANCH" "$TEST_CLASS"
+    done
+fi
+
 PROMPT=$(cat "$PROMPT_FILE")
 
 ENDPOINT="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/submit"
@@ -65,6 +82,10 @@ PAYLOAD=$(jq -n \
         protectTestFiles: $protect,
         enforceChanges: $enforce
     }')
+
+if [ -n "${DESCRIPTION:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --arg d "$DESCRIPTION" '. + {description: $d}')
+fi
 
 if [ -n "${MAX_TURNS:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson t "$MAX_TURNS" '. + {maxTurns: $t}')
