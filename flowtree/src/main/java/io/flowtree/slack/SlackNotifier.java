@@ -99,6 +99,15 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Returns all registered workstreams keyed by workstream ID.
+     *
+     * @return an unmodifiable view of the workstream map
+     */
+    public Map<String, SlackWorkstream> getWorkstreams() {
+        return Collections.unmodifiableMap(workstreams);
+    }
+
+    /**
      * Creates a new private Slack channel with the given name.
      *
      * <p>The channel is created as private. If a channel owner user ID has been
