@@ -25,6 +25,7 @@ import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.profile.OperationMetadata;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -42,7 +43,7 @@ import java.util.Set;
  * not depend on the loop index variable or any variable assigned inside the loop.
  * This optimization reduces per-iteration computation cost.</p>
  *
- * <p>LICM is unconditionally enabled. Invariant statements are moved from
+ * <p>LICM is enabled by default. Invariant statements are moved from
  * descendant scopes to this scope's statements list, which is rendered before
  * the loop body. The hoisting recurses into all descendant scopes (including
  * grandchildren and deeper) to find invariant declarations at any nesting
@@ -59,7 +60,9 @@ public class Repeated<T> extends Scope<T> {
 	 * When true, statements that do not depend on the loop index or any
 	 * variable assigned inside the loop will be hoisted outside the loop.
 	 *
-	 * <p>LICM is unconditionally enabled. The invariance analysis uses a
+	 * <p>Defaults to {@code true}. This field is public to support
+	 * differential testing (comparing LICM-enabled vs LICM-disabled output).
+	 * Production code should not disable LICM. The invariance analysis uses a
 	 * fixed-point algorithm that correctly handles:</p>
 	 * <ul>
 	 *   <li>Loop indices via the {@link Index} interface (using {@code containsIndex})</li>

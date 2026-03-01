@@ -344,7 +344,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         SlackWorkstream existing = notifier.findWorkstreamByBranchAndRepo(defaultBranch, repoUrl);
         if (existing != null) {
             log("Workstream already exists for branch " + defaultBranch
-                + ": " + existing.getWorkstreamId() + " - returning existing");
+                + ": " + existing.getWorkstreamId() + " — returning existing");
 
             StringBuilder json = new StringBuilder();
             json.append("{\"ok\":true,\"existing\":true");
