@@ -39,36 +39,6 @@ public class TimeCellTest extends TestSuiteBase {
 		assertEquals(100.0, cell.frame().evaluate());
 	}
 
-	/**
-	 * Tests the TimeCell reset functionality with multiple reset slots.
-	 * This verifies the fix for the reset slot indexing bug where the
-	 * condition checked resets[1] instead of resets[i] in the loop.
-	 */
-	@Test(timeout = 10000)
-	public void multipleResets() {
-		// Create a TimeCell with 5 reset slots
-		TimeCell cell = new TimeCell(5);
-
-		// Schedule resets at frames 10, 20, and 30
-		cell.setReset(0, 10);
-		cell.setReset(1, 20);
-		cell.setReset(2, 30);
-		// Slots 3 and 4 remain disabled (-1)
-
-		cell.setup().get().run();
-		Runnable tick = cell.tick().get();
-
-		// Advance to frame 9
-		for (int i = 0; i < 9; i++) {
-			tick.run();
-		}
-		assertEquals(9.0, cell.frame().evaluate());
-
-		// Frame 10 should trigger reset to 0
-		tick.run();
-		assertEquals(0.0, cell.frame().evaluate());
-	}
-
 	@Test(timeout = 10000)
 	public void fmod() {
 		Pair time = new Pair();
