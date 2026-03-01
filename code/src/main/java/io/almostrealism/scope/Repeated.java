@@ -305,6 +305,15 @@ public class Repeated<T> extends Scope<T> {
 		for (ExpressionAssignment<?> var : scope.getVariables()) {
 			Expression<?> dest = var.getDestination();
 			if (dest != null) {
+				// Collect the destination name directly if it is a StaticReference,
+				// since StaticReference.getDependencies() may return empty
+				if (dest instanceof StaticReference) {
+					String name = ((StaticReference<?>) dest).getName();
+					if (name != null) {
+						variantNames.add(name);
+					}
+				}
+
 				for (Variable<?, ?> v : dest.getDependencies()) {
 					if (v.getName() != null) {
 						variantNames.add(v.getName());
