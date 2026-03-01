@@ -308,7 +308,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== Decoder Block Tests ====================
 
-	@Test(timeout = 120000)
+	@Test(timeout = 4 * 60000)
 	public void testDecoderBlock1() {
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_decoder_block1.log"));

@@ -257,20 +257,20 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     @Override
-    public void onJobStarted(String workstreamId, JobCompletionEvent event) {
-        onJobStarted(workstreamId, event, null);
+    public void onJobSubmitted(String workstreamId, JobCompletionEvent event) {
+        onJobSubmitted(workstreamId, event, null);
     }
 
     /**
-     * Notifies that a job has started, optionally threading under an
-     * existing message.
+     * Notifies that a job has been submitted and dispatched to an agent,
+     * optionally threading under an existing message.
      *
      * @param workstreamId the workstream identifier
-     * @param event        the start event
-     * @param replyTo      if non-null, post the "Starting work" message as a
-     *                      reply under this message timestamp (creating a thread)
+     * @param event        the submission event
+     * @param replyTo      if non-null, post the message as a reply under
+     *                      this message timestamp (creating a thread)
      */
-    public void onJobStarted(String workstreamId, JobCompletionEvent event, String replyTo) {
+    public void onJobSubmitted(String workstreamId, JobCompletionEvent event, String replyTo) {
         SlackWorkstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
             warn("Unknown workstream: " + workstreamId);
@@ -279,12 +279,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         trackJob(workstreamId, event);
 
-        if (statsStore != null) {
-            statsStore.recordJobStarted(event.getJobId(), workstreamId,
-                event.getDescription(), event.getTimestamp());
-        }
-
-        String message = formatStartedMessage(event, workstream);
+        String message = formatSubmittedMessage(event, workstream);
         String ts;
 
         if (replyTo != null && !replyTo.isEmpty()) {
@@ -300,6 +295,32 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             if (ts != null && event.getJobId() != null) {
                 jobThreadTs.put(event.getJobId(), ts);
             }
+        }
+    }
+
+    @Override
+    public void onJobStarted(String workstreamId, JobCompletionEvent event) {
+        SlackWorkstream workstream = workstreams.get(workstreamId);
+        if (workstream == null) {
+            warn("Unknown workstream: " + workstreamId);
+            return;
+        }
+
+        trackJob(workstreamId, event);
+
+        if (statsStore != null) {
+            statsStore.recordJobStarted(event.getJobId(), workstreamId,
+                event.getDescription(), event.getTimestamp());
+        }
+
+        String message = formatStartedMessage(event, workstream);
+
+        // Thread under the submission message if one exists
+        String threadTs = jobThreadTs.get(event.getJobId());
+        if (threadTs != null) {
+            postMessageInThread(workstream.getChannelId(), message, threadTs);
+        } else {
+            postMessage(workstream.getChannelId(), message);
         }
     }
 
@@ -431,7 +452,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
     /**
      * Returns the Slack thread timestamp for a job, if one has been established.
-     * This is the timestamp of the "Starting work" message posted when the job began.
+     * This is the timestamp of the submission message posted when the job was queued.
      *
      * @param jobId the job ID
      * @return the thread timestamp, or null if no thread exists for this job
@@ -493,9 +514,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         Console.root().alert(new Alert(Alert.Severity.INFO, sb.toString()));
     }
 
-    private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
+    private String formatSubmittedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
         StringBuilder sb = new StringBuilder();
-        sb.append(":arrows_counterclockwise: *Starting work:* ");
+        sb.append(":outbox_tray: *Job submitted:* ");
         sb.append(truncate(event.getDescription(), 100));
         sb.append("\n");
 
@@ -506,6 +527,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         sb.append("   Job ID: `").append(event.getJobId()).append("`");
+
+        return sb.toString();
+    }
+
+    private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(":arrows_counterclockwise: *Starting work:* ");
+        sb.append(truncate(event.getDescription(), 100));
 
         return sb.toString();
     }
