@@ -18,7 +18,6 @@ package io.almostrealism.scope;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.Statement;
-import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
@@ -28,10 +27,8 @@ import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.profile.OperationMetadata;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -194,20 +191,8 @@ public class Repeated<T> extends Scope<T> {
 			hoistInvariantDeclarations(child, variantNames, hoisted);
 		}
 
-		// Phase 4: extract loop-invariant sub-expressions from remaining variant
-		// expressions. This handles cases like genome-only pow() sub-expressions
-		// embedded within larger variant envelope accumulate expressions. Each
-		// extracted sub-expression becomes a new declaration that is hoisted.
-		List<Statement<?>> extractedDeclarations = new ArrayList<>();
-		extractInvariantSubExpressions(scope, variantNames, loopIndices, extractedDeclarations);
-
 		// Add all hoisted statements to this scope (before the loop).
-		// Standard hoisted declarations come first, then extracted sub-expression
-		// declarations (which may reference kernel arguments used by hoisted decls).
-		List<Statement<?>> allHoisted = new ArrayList<>();
-		allHoisted.addAll(hoisted);
-		allHoisted.addAll(extractedDeclarations);
-		scope.getStatements().addAll(0, allHoisted);
+		scope.getStatements().addAll(0, hoisted);
 	}
 
 	/**
@@ -246,231 +231,6 @@ public class Repeated<T> extends Scope<T> {
 		for (Scope<?> child : scope.getChildren()) {
 			hoistInvariantDeclarations(child, variantNames, hoisted);
 		}
-	}
-
-	/**
-	 * Extracts loop-invariant sub-expressions from variant expressions in the loop body.
-	 *
-	 * <p>After the standard LICM hoisting (Phase 3), variant expressions may still contain
-	 * invariant sub-trees. For example, an envelope accumulate expression like:</p>
-	 * <pre>
-	 * result += pow((- pow(genome[offset+5], 3.0)) + 1.0, -1.0) * frameCounter
-	 * </pre>
-	 * <p>is loop-variant (references frameCounter), but the sub-expression
-	 * {@code pow((- pow(genome[offset+5], 3.0)) + 1.0, -1.0)} is loop-invariant
-	 * (only references kernel arguments at constant offsets). This method finds such
-	 * sub-expressions, creates new declarations for them, replaces the sub-expressions
-	 * with references to the declarations, and returns the declarations for hoisting.</p>
-	 *
-	 * @param scope the Repeated scope being optimized
-	 * @param variantNames the set of loop-variant variable names
-	 * @param loopIndices all loop indices (outer and nested)
-	 * @param extractedDeclarations list to receive the new extracted declarations
-	 */
-	private void extractInvariantSubExpressions(Repeated<T> scope, Set<String> variantNames,
-												List<Index> loopIndices,
-												List<Statement<?>> extractedDeclarations) {
-		Map<Expression<?>, StaticReference<?>> extracted = new HashMap<>();
-		int[] extractIdx = { 0 };
-
-		for (Scope<T> child : scope.getChildren()) {
-			extractFromScope(child, variantNames, loopIndices, extracted, extractIdx, extractedDeclarations);
-		}
-	}
-
-	/**
-	 * Recursively scans a scope and its descendants for variant expressions containing
-	 * invariant sub-trees and extracts them into declarations.
-	 *
-	 * @param scope the scope to scan
-	 * @param variantNames the set of loop-variant variable names
-	 * @param loopIndices all loop indices
-	 * @param extracted map of already-extracted sub-expressions to their references (for dedup)
-	 * @param extractIdx counter for generating unique declaration names
-	 * @param declarations list to receive new extracted declarations
-	 */
-	private void extractFromScope(Scope<?> scope, Set<String> variantNames,
-								  List<Index> loopIndices,
-								  Map<Expression<?>, StaticReference<?>> extracted,
-								  int[] extractIdx, List<Statement<?>> declarations) {
-		List<Statement<?>> updatedStatements = new ArrayList<>();
-
-		for (Statement<?> stmt : scope.getStatements()) {
-			if (stmt instanceof ExpressionAssignment) {
-				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
-				ExpressionAssignment<?> result = extractSubExpressionsFromAssignment(
-						assignment, variantNames, loopIndices, extracted, extractIdx, declarations);
-				updatedStatements.add(result != assignment ? result : stmt);
-			} else {
-				updatedStatements.add(stmt);
-			}
-		}
-
-		scope.getStatements().clear();
-		scope.getStatements().addAll(updatedStatements);
-
-		// Also process variables (non-statement assignments like array element writes)
-		List<ExpressionAssignment<?>> updatedVariables = new ArrayList<>();
-		boolean variablesChanged = false;
-
-		for (ExpressionAssignment<?> var : scope.getVariables()) {
-			ExpressionAssignment<?> result = extractSubExpressionsFromAssignment(
-					var, variantNames, loopIndices, extracted, extractIdx, declarations);
-			updatedVariables.add(result);
-			if (result != var) variablesChanged = true;
-		}
-
-		if (variablesChanged) {
-			scope.getVariables().clear();
-			scope.getVariables().addAll(updatedVariables);
-		}
-
-		for (Scope<?> child : scope.getChildren()) {
-			extractFromScope(child, variantNames, loopIndices, extracted, extractIdx, declarations);
-		}
-	}
-
-	/**
-	 * Replaces loop-invariant sub-expressions within a single assignment's expression.
-	 *
-	 * <p>If the assignment's expression is loop-variant and contains invariant sub-trees,
-	 * those sub-trees are extracted into new hoisted declarations and replaced with
-	 * references. Returns the original assignment if no replacements were made.</p>
-	 *
-	 * @param assignment the assignment to process
-	 * @param variantNames the set of loop-variant variable names
-	 * @param loopIndices all loop indices
-	 * @param extracted map of already-extracted sub-expressions (for dedup)
-	 * @param extractIdx counter for generating unique declaration names
-	 * @param declarations list to receive new extracted declarations
-	 * @return a new assignment with replacements, or the original if unchanged
-	 */
-	private ExpressionAssignment<?> extractSubExpressionsFromAssignment(
-			ExpressionAssignment<?> assignment, Set<String> variantNames,
-			List<Index> loopIndices, Map<Expression<?>, StaticReference<?>> extracted,
-			int[] extractIdx, List<Statement<?>> declarations) {
-		Expression<?> expr = assignment.getExpression();
-		if (expr != null && !isLoopInvariant(expr, variantNames, loopIndices)) {
-			Expression<?> replaced = replaceInvariantSubExpressions(
-					expr, variantNames, loopIndices, extracted, extractIdx, declarations);
-			if (replaced != expr) {
-				return createAssignment(
-						assignment.isDeclaration(), assignment.getDestination(), replaced);
-			}
-		}
-		return assignment;
-	}
-
-	/**
-	 * Finds and replaces maximal loop-invariant sub-expressions within a variant expression.
-	 * Each invariant sub-expression is extracted into a new declaration variable (deduped
-	 * across the entire loop body), and the sub-expression is replaced with a reference
-	 * to that declaration.
-	 *
-	 * @param expr the variant expression to process
-	 * @param variantNames the set of loop-variant variable names
-	 * @param loopIndices all loop indices
-	 * @param extracted map of already-extracted sub-expressions to their references (for dedup)
-	 * @param extractIdx counter for generating unique declaration names
-	 * @param declarations list to receive new extracted declarations
-	 * @return the expression with invariant sub-expressions replaced, or the original if unchanged
-	 */
-	private Expression<?> replaceInvariantSubExpressions(Expression<?> expr,
-														  Set<String> variantNames,
-														  List<Index> loopIndices,
-														  Map<Expression<?>, StaticReference<?>> extracted,
-														  int[] extractIdx,
-														  List<Statement<?>> declarations) {
-		List<Expression<?>> invariantSubs = findMaximalInvariantSubExpressions(
-				expr, variantNames, loopIndices);
-
-		Expression<?> replaced = expr;
-		for (Expression<?> sub : invariantSubs) {
-			StaticReference<?> ref = extracted.get(sub);
-			if (ref == null) {
-				ref = new StaticReference<>(sub.getType(),
-						"f_licm_" + extractIdx[0]++);
-				extracted.put(sub, ref);
-				declarations.add(createAssignment(true, ref, sub));
-			}
-			replaced = replaced.replace(sub, ref);
-		}
-
-		return replaced;
-	}
-
-	/**
-	 * Creates an {@link ExpressionAssignment} from wildcard-typed expressions.
-	 *
-	 * <p>The LICM sub-expression extraction operates on {@code Expression<?>} trees where
-	 * the concrete type parameter is erased. This helper centralizes the construction of
-	 * {@link ExpressionAssignment} instances from wildcard operands, keeping the raw type
-	 * usage confined to a single location.</p>
-	 *
-	 * @param declaration whether this is a declaration (with type prefix) or plain assignment
-	 * @param destination the destination expression (left-hand side)
-	 * @param expression the value expression (right-hand side)
-	 * @return a new ExpressionAssignment
-	 */
-	private static ExpressionAssignment<?> createAssignment(boolean declaration,
-															 Expression<?> destination,
-															 Expression<?> expression) {
-		return new ExpressionAssignment(declaration, destination, expression);
-	}
-
-	/**
-	 * Finds maximal loop-invariant sub-expression trees within a variant expression.
-	 *
-	 * <p>A "maximal invariant sub-tree" is a sub-expression whose root is loop-invariant
-	 * but whose parent in the expression tree is loop-variant. This finds the largest
-	 * chunks of invariant computation that can be extracted.</p>
-	 *
-	 * <p>Only "substantial" sub-expressions are returned — constants and simple references
-	 * are not worth extracting since they are already cheap to evaluate.</p>
-	 *
-	 * @param expr the expression tree to search (assumed to be variant at the root)
-	 * @param variantNames the set of loop-variant variable names
-	 * @param loopIndices all loop indices
-	 * @return list of maximal invariant sub-expressions suitable for extraction
-	 */
-	private List<Expression<?>> findMaximalInvariantSubExpressions(Expression<?> expr,
-																   Set<String> variantNames,
-																   List<Index> loopIndices) {
-		List<Expression<?>> results = new ArrayList<>();
-
-		for (Expression<?> child : expr.getChildren()) {
-			if (isLoopInvariant(child, variantNames, loopIndices)) {
-				// This child is invariant — it's a maximal invariant sub-tree.
-				// Only extract if it's substantial (not a constant or simple reference).
-				if (isSubstantialForExtraction(child)) {
-					results.add(child);
-				}
-			} else {
-				// This child is variant — recurse to find invariant sub-trees within it
-				results.addAll(findMaximalInvariantSubExpressions(child, variantNames, loopIndices));
-			}
-		}
-
-		return results;
-	}
-
-	/**
-	 * Determines whether a loop-invariant sub-expression is substantial enough to
-	 * warrant extraction into a separate declaration.
-	 *
-	 * <p>Constants and simple static references are not worth extracting since they
-	 * add a declaration overhead without meaningful reduction in per-iteration
-	 * computation. Any expression with at least one child (treeDepth >= 1)
-	 * represents a real computation (e.g., {@code pow(x, 3.0)}) and is worth
-	 * extracting from a loop body.</p>
-	 *
-	 * @param expr the invariant expression to evaluate
-	 * @return true if the expression should be extracted into a declaration
-	 */
-	private boolean isSubstantialForExtraction(Expression<?> expr) {
-		if (expr instanceof Constant) return false;
-		if (expr instanceof StaticReference) return false;
-		return expr.treeDepth() >= 1;
 	}
 
 	/**
