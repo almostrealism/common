@@ -302,23 +302,11 @@ public class Repeated<T> extends Scope<T> {
 
 				// Only process variant expressions — invariant ones were already hoisted
 				if (!isLoopInvariant(expr, variantNames, loopIndices)) {
-					List<Expression<?>> invariantSubs = findMaximalInvariantSubExpressions(
-							expr, variantNames, loopIndices);
-
-					Expression<?> replaced = expr;
-					for (Expression<?> sub : invariantSubs) {
-						StaticReference<?> ref = extracted.get(sub);
-						if (ref == null) {
-							ref = new StaticReference<>(sub.getType(),
-									"f_licm_" + extractIdx[0]++);
-							extracted.put(sub, ref);
-							declarations.add(new ExpressionAssignment(true, ref, sub));
-						}
-						replaced = replaced.replace(sub, ref);
-					}
+					Expression<?> replaced = replaceInvariantSubExpressions(
+							expr, variantNames, loopIndices, extracted, extractIdx, declarations);
 
 					if (replaced != expr) {
-						stmt = new ExpressionAssignment(
+						stmt = createAssignment(
 								assignment.isDeclaration(),
 								assignment.getDestination(),
 								replaced);
@@ -338,23 +326,11 @@ public class Repeated<T> extends Scope<T> {
 		for (ExpressionAssignment<?> var : scope.getVariables()) {
 			Expression<?> expr = var.getExpression();
 			if (expr != null && !isLoopInvariant(expr, variantNames, loopIndices)) {
-				List<Expression<?>> invariantSubs = findMaximalInvariantSubExpressions(
-						expr, variantNames, loopIndices);
-
-				Expression<?> replaced = expr;
-				for (Expression<?> sub : invariantSubs) {
-					StaticReference<?> ref = extracted.get(sub);
-					if (ref == null) {
-						ref = new StaticReference<>(sub.getType(),
-								"f_licm_" + extractIdx[0]++);
-						extracted.put(sub, ref);
-						declarations.add(new ExpressionAssignment(true, ref, sub));
-					}
-					replaced = replaced.replace(sub, ref);
-				}
+				Expression<?> replaced = replaceInvariantSubExpressions(
+						expr, variantNames, loopIndices, extracted, extractIdx, declarations);
 
 				if (replaced != expr) {
-					updatedVariables.add(new ExpressionAssignment(
+					updatedVariables.add(createAssignment(
 							var.isDeclaration(), var.getDestination(), replaced));
 					variablesChanged = true;
 				} else {
@@ -373,6 +349,63 @@ public class Repeated<T> extends Scope<T> {
 		for (Scope<?> child : scope.getChildren()) {
 			extractFromScope(child, variantNames, loopIndices, extracted, extractIdx, declarations);
 		}
+	}
+
+	/**
+	 * Finds and replaces maximal loop-invariant sub-expressions within a variant expression.
+	 * Each invariant sub-expression is extracted into a new declaration variable (deduped
+	 * across the entire loop body), and the sub-expression is replaced with a reference
+	 * to that declaration.
+	 *
+	 * @param expr the variant expression to process
+	 * @param variantNames the set of loop-variant variable names
+	 * @param loopIndices all loop indices
+	 * @param extracted map of already-extracted sub-expressions to their references (for dedup)
+	 * @param extractIdx counter for generating unique declaration names
+	 * @param declarations list to receive new extracted declarations
+	 * @return the expression with invariant sub-expressions replaced, or the original if unchanged
+	 */
+	private Expression<?> replaceInvariantSubExpressions(Expression<?> expr,
+														  Set<String> variantNames,
+														  List<Index> loopIndices,
+														  Map<Expression<?>, StaticReference<?>> extracted,
+														  int[] extractIdx,
+														  List<Statement<?>> declarations) {
+		List<Expression<?>> invariantSubs = findMaximalInvariantSubExpressions(
+				expr, variantNames, loopIndices);
+
+		Expression<?> replaced = expr;
+		for (Expression<?> sub : invariantSubs) {
+			StaticReference<?> ref = extracted.get(sub);
+			if (ref == null) {
+				ref = new StaticReference<>(sub.getType(),
+						"f_licm_" + extractIdx[0]++);
+				extracted.put(sub, ref);
+				declarations.add(createAssignment(true, ref, sub));
+			}
+			replaced = replaced.replace(sub, ref);
+		}
+
+		return replaced;
+	}
+
+	/**
+	 * Creates an {@link ExpressionAssignment} from wildcard-typed expressions.
+	 *
+	 * <p>The LICM sub-expression extraction operates on {@code Expression<?>} trees where
+	 * the concrete type parameter is erased. This helper centralizes the construction of
+	 * {@link ExpressionAssignment} instances from wildcard operands, keeping the raw type
+	 * usage confined to a single location.</p>
+	 *
+	 * @param declaration whether this is a declaration (with type prefix) or plain assignment
+	 * @param destination the destination expression (left-hand side)
+	 * @param expression the value expression (right-hand side)
+	 * @return a new ExpressionAssignment
+	 */
+	private static ExpressionAssignment<?> createAssignment(boolean declaration,
+															 Expression<?> destination,
+															 Expression<?> expression) {
+		return new ExpressionAssignment(declaration, destination, expression);
 	}
 
 	/**
