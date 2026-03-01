@@ -1,15 +1,25 @@
-Fix LICM recursive scope traversal and raise CSE extraction limit
+Fix LICM correctness bug and add missing test coverage
 
-Enable unconditional loop-invariant code motion (LICM) in Repeated.java
-by removing the AR_LOOP_INVARIANT_HOISTING environment variable toggle.
-LICM Phase 3 now recursively traverses grandchild scopes to find and
-hoist invariant declarations, fixing the critical issue where f_assignment
-declarations in nested scopes were not being hoisted out of the loop.
+The LICM (Loop-Invariant Code Motion) implementation in Repeated.java had a
+correctness bug where non-declaration assignments with StaticReference
+destinations were not tracked as variant names. This caused declarations
+depending on those assigned variables to be incorrectly hoisted out of loops.
 
-Raise ScopeSettings.getMaximumReplacements() from 12 to 48 to support
-CSE extraction of genome-only sub-expressions from envelope accumulate
-lines (12 envelopes x 3 sub-expressions = 36 extractions needed).
+Root cause: StaticReference.getDependencies() returns empty, so
+collectBaseVariantNamesRecursive never added the destination name to the
+variant set when the assignment destination was a StaticReference.
 
-Add comprehensive structural tests for LICM covering grandchild hoisting,
-dependency chain variance, transitive invariant chains, mixed
-invariant/variant declarations, and non-declaration filtering.
+Fix: Added explicit StaticReference name extraction in the non-declaration
+assignment handling code in collectBaseVariantNamesRecursive.
+
+Also adds two new LICM test cases from the plan document:
+- nestedInnerLoopDeclarationNotHoisted: verifies inner-loop index
+  references are NOT incorrectly hoisted while outer-loop invariants ARE
+- declarationDependingOnAssignedVariableNotHoisted: verifies that
+  declarations depending on variables assigned elsewhere in the loop body
+  are NOT hoisted (the bug that was fixed)
+
+Test results: 988 utils tests run at depth 0, 916 passed, 71 skipped,
+1 unrelated timeout (WeightedSumIsolationRuntimeTest native compilation).
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>

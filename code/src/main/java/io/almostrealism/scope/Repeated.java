@@ -280,6 +280,15 @@ public class Repeated<T> extends Scope<T> {
 					// inherently loop-variant because they mutate state each iteration
 					Expression<?> dest = assignment.getDestination();
 					if (dest != null) {
+						// Collect the destination name directly if it is a StaticReference,
+						// since StaticReference.getDependencies() may return empty
+						if (dest instanceof StaticReference) {
+							String name = ((StaticReference<?>) dest).getName();
+							if (name != null) {
+								variantNames.add(name);
+							}
+						}
+
 						for (Variable<?, ?> var : dest.getDependencies()) {
 							if (var.getName() != null) {
 								variantNames.add(var.getName());

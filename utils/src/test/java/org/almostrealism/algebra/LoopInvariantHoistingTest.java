@@ -368,6 +368,122 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that declarations inside a nested inner loop are NOT hoisted
+	 * out of the outer loop when they reference the inner loop's index variable.
+	 *
+	 * <p>Scope structure:</p>
+	 * <pre>
+	 * for (i = 0; i < 100; i++) {
+	 *   {
+	 *     double f_outer_inv = 42.0;          // invariant w.r.t. outer loop
+	 *     for (j = 0; j < 10; j++) {
+	 *       { double f_inner_var = j; }       // variant — references inner index j
+	 *     }
+	 *   }
+	 * }
+	 * </pre>
+	 *
+	 * <p>Only {@code f_outer_inv} should be hoisted. {@code f_inner_var} references
+	 * the inner loop index {@code j} and must remain inside the inner loop.</p>
+	 */
+	@Test(timeout = 30000)
+	public void nestedInnerLoopDeclarationNotHoisted() {
+		Variable<Integer, ?> outerIdx = Variable.integer("_test_i");
+		Repeated<Void> outerLoop = new Repeated<>(outerIdx, outerIdx.ref().lessThan(100));
+		outerLoop.setName("nestedTest");
+
+		Scope<Void> outerBody = new Scope<>("outerBody");
+
+		// Invariant declaration (does not reference any loop index)
+		outerBody.getStatements().add(new ExpressionAssignment<>(
+				true,
+				new StaticReference<>(Double.class, "f_outer_inv"),
+				new DoubleConstant(42.0)));
+
+		// Create inner loop
+		Variable<Integer, ?> innerIdx = Variable.integer("_test_j");
+		Repeated<Void> innerLoop = new Repeated<>(innerIdx, innerIdx.ref().lessThan(10));
+		innerLoop.setName("innerLoop");
+
+		Scope<Void> innerBody = new Scope<>("innerBody");
+		// Declaration that references the inner loop index via StaticReference
+		innerBody.getStatements().add(new ExpressionAssignment<>(
+				true,
+				new StaticReference<>(Double.class, "f_inner_var"),
+				new StaticReference<>(Double.class, "_test_j")));
+		innerLoop.getChildren().add(innerBody);
+		outerBody.getChildren().add(innerLoop);
+
+		outerLoop.getChildren().add(outerBody);
+
+		Repeated<Void> simplified = (Repeated<Void>) outerLoop.simplify(new NoOpKernelStructureContext(), 0);
+
+		// f_outer_inv should be hoisted to the outer loop's statements
+		Assert.assertTrue("f_outer_inv should be hoisted out of the outer loop",
+				countDeclarationsNamed(simplified.getStatements(), "f_outer_inv") > 0);
+
+		// f_inner_var should NOT be hoisted — it depends on the inner loop index
+		Assert.assertEquals("f_inner_var should NOT be hoisted out of the outer loop",
+				0, countDeclarationsNamed(simplified.getStatements(), "f_inner_var"));
+	}
+
+	/**
+	 * Verifies that a declaration whose expression references a variable that is
+	 * assigned (via non-declaration assignment) elsewhere in the loop body is
+	 * NOT hoisted. The non-declaration assignment makes the target variable
+	 * loop-variant, and any declaration depending on it must also stay in the loop.
+	 *
+	 * <p>Scope structure:</p>
+	 * <pre>
+	 * for (i = 0; i < 100; i++) {
+	 *   {
+	 *     target[0] = i;                       // non-declaration assignment (mutates target)
+	 *     double f_depends = target;           // variant — depends on loop-mutated target
+	 *     double f_independent = 42.0;         // invariant — no dependencies on loop vars
+	 *   }
+	 * }
+	 * </pre>
+	 */
+	@Test(timeout = 30000)
+	public void declarationDependingOnAssignedVariableNotHoisted() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("assignedVarTest");
+
+		Scope<Void> child = new Scope<>("body");
+
+		// Non-declaration assignment: target = i (mutates target each iteration)
+		child.getStatements().add(new ExpressionAssignment<>(
+				false,
+				new StaticReference<>(Double.class, "target"),
+				new StaticReference<>(Double.class, "_test_i")));
+
+		// Declaration that references the assigned variable "target"
+		child.getStatements().add(new ExpressionAssignment<>(
+				true,
+				new StaticReference<>(Double.class, "f_depends"),
+				new StaticReference<>(Double.class, "target")));
+
+		// Independent invariant declaration
+		child.getStatements().add(new ExpressionAssignment<>(
+				true,
+				new StaticReference<>(Double.class, "f_independent"),
+				new DoubleConstant(42.0)));
+
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		// f_depends should NOT be hoisted because it references "target" which is assigned in the loop
+		Assert.assertEquals("f_depends should NOT be hoisted (depends on loop-assigned target)",
+				0, countDeclarationsNamed(simplified.getStatements(), "f_depends"));
+
+		// f_independent should be hoisted
+		Assert.assertTrue("f_independent should be hoisted",
+				countDeclarationsNamed(simplified.getStatements(), "f_independent") > 0);
+	}
+
+	/**
 	 * Tests that a LoopedWeightedSum computation produces correct results
 	 * with LICM enabled. This computation internally creates a {@link Repeated}
 	 * scope with both loop-invariant (weight loading) and loop-variant
