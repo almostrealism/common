@@ -306,6 +306,8 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             return;
         }
 
+        trackJob(workstreamId, event);
+
         if (statsStore != null) {
             statsStore.recordJobStarted(event.getJobId(), workstreamId,
                 event.getDescription(), event.getTimestamp());
