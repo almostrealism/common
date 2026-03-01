@@ -433,7 +433,7 @@ public class SlackListener implements ConsoleFeatures {
             factory.setWorkstreamUrl(baseUrl);
         }
 
-        // Notify that work is starting (locally, before the job leaves).
+        // Notify that the job has been submitted (locally, before it leaves).
         // If the triggering message is a top-level message (threadTs == null),
         // reply under it to create a thread. If already in a thread, continue there.
         String replyTo = (threadTs == null) ? messageTs : threadTs;
@@ -442,7 +442,7 @@ public class SlackListener implements ConsoleFeatures {
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(workstream.getDefaultBranch(), null, null, null, false);
 
-        notifier.onJobStarted(workstream.getWorkstreamId(), startEvent, replyTo);
+        notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent, replyTo);
 
         // Round-robin to connected agents
         int index = nextAgent++ % peers.length;

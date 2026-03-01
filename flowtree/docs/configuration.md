@@ -277,21 +277,21 @@ The `resolve(String configuredPath, String repoUrl)` method determines where a r
 
 **Priority 1: Configured path**
 
-If a non-null, non-empty `configuredPath` is provided (typically from the `defaultWorkspacePath` field in YAML configuration), it is used directly without any further checks.
+If a non-null, non-empty `configuredPath` is provided (typically from the `defaultWorkspacePath` field in YAML configuration), it is used as the parent directory with the repo name appended.
 
 ```java
-WorkspaceResolver.resolve("/my/configured/path", repoUrl);
-// Returns: "/my/configured/path"
+WorkspaceResolver.resolve("/my/configured/path", "https://github.com/owner/repo.git");
+// Returns: "/my/configured/path/owner-repo"
 ```
 
 **Priority 2: /workspace/project**
 
-If no configured path is provided, the resolver checks whether `/workspace/project` exists on disk. This path is the standard mount point in Flowtree Docker containers, where the host project directory is volume-mounted into the container.
+If no configured path is provided, the resolver checks whether `/workspace/project` exists on disk. This path is the standard mount point in Flowtree Docker containers. The repository is cloned into a repo-specific subdirectory.
 
 ```java
 // If /workspace/project exists as a directory:
-WorkspaceResolver.resolve(null, repoUrl);
-// Returns: "/workspace/project"
+WorkspaceResolver.resolve(null, "https://github.com/owner/repo.git");
+// Returns: "/workspace/project/owner-repo"
 ```
 
 **Priority 3: /tmp/flowtree-workspaces/<repo-name>**

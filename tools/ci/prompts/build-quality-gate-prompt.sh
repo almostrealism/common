@@ -12,7 +12,6 @@
 #   FAILURE_COUNT   - number of quality gate failures
 #   BRANCH          - branch name where failures occurred
 #   COMMIT_SHA      - commit SHA where failures occurred
-#   RUN_URL         - URL to the GitHub Actions run
 #
 # Exit codes:
 #   0 - prompt written successfully
@@ -28,7 +27,7 @@ if [ -z "$FAILURES_FILE" ] || [ -z "$OUTPUT_FILE" ]; then
     exit 1
 fi
 
-for var in FAILURE_COUNT BRANCH COMMIT_SHA RUN_URL; do
+for var in FAILURE_COUNT BRANCH COMMIT_SHA; do
     if [ -z "${!var:-}" ]; then
         echo "ERROR: ${var} is not set." >&2
         exit 1
@@ -41,8 +40,6 @@ cat > "$OUTPUT_FILE" <<EOF
 All tests are passing on branch "${BRANCH}" (commit ${COMMIT_SHA}), but ${FAILURE_COUNT} CI quality gate(s) failed:
 
 ${FAILURE_LIST}
-
-CI run: ${RUN_URL}
 
 These are code quality and style issues, not functional test failures. Please investigate and fix them. Run the indicated commands locally to see the specific violations, then make the minimal changes needed to satisfy each quality gate.
 EOF

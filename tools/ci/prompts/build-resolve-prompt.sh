@@ -11,7 +11,6 @@
 #   FAILURE_COUNT   - number of failures (for the prompt text)
 #   BRANCH          - branch name where failures occurred
 #   COMMIT_SHA      - commit SHA where failures occurred
-#   RUN_URL         - URL to the GitHub Actions run
 #
 # Exit codes:
 #   0 - prompt written successfully
@@ -27,7 +26,7 @@ if [ -z "$FAILURES_FILE" ] || [ -z "$OUTPUT_FILE" ]; then
     exit 1
 fi
 
-for var in FAILURE_COUNT BRANCH COMMIT_SHA RUN_URL; do
+for var in FAILURE_COUNT BRANCH COMMIT_SHA; do
     if [ -z "${!var:-}" ]; then
         echo "ERROR: ${var} is not set." >&2
         exit 1
@@ -56,9 +55,9 @@ to verify your fix works is to run the exact CI command listed below.
 They pass on master, they fail on this branch. Every time. If you claim otherwise
 without actually running the CI command locally and showing it succeeds, you are wrong.
 
-**Fetch the CI run URL with WebFetch.** You do not have permission to access GitHub
-Actions pages and you do not need to. All the information you need is in this prompt.
-The failing tests and the branch diff tell you everything.
+**Browse GitHub Actions or other CI pages with WebFetch.** You do not have permission
+to access GitHub web pages and you do not need to. All the information you need is in
+this prompt. The failing tests and the branch diff tell you everything.
 
 **Look at a single commit and declare it "fine."** The problem is the ENTIRE set of
 changes between origin/master and this branch. Run `git diff origin/master...HEAD` to

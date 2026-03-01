@@ -41,7 +41,20 @@ public interface JobCompletionListener {
     void onJobCompleted(String workstreamId, JobCompletionEvent event);
 
     /**
-     * Called when a job starts execution.
+     * Called when a job has been submitted and dispatched to an agent,
+     * but has not yet begun executing.
+     * Default implementation does nothing.
+     *
+     * @param workstreamId the workstream that owns this job
+     * @param event        the event containing job details
+     */
+    default void onJobSubmitted(String workstreamId, JobCompletionEvent event) {
+        // Default: no-op
+    }
+
+    /**
+     * Called when a job actually begins executing on an agent.
+     * This is triggered by the agent reporting a {@code STARTED} status event.
      * Default implementation does nothing.
      *
      * @param workstreamId the workstream that owns this job

@@ -668,12 +668,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setWorkstreamUrl(baseUrl);
         }
 
-        // Notify that work is starting
+        // Notify that the job has been submitted (not yet executing)
         String displaySummary = jobDescription != null && !jobDescription.isEmpty()
             ? jobDescription : ClaudeCodeJob.summarizePrompt(prompt);
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
-        notifier.onJobStarted(workstream.getWorkstreamId(), startEvent);
+        notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent);
 
         // Round-robin to connected agents
         int index = peers.length > 1 ? (int) (System.currentTimeMillis() % peers.length) : 0;

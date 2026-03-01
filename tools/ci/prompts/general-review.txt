@@ -30,16 +30,16 @@ Your job is to **review the changes on this branch and fix every issue you find.
 You are a coding agent, not a reviewer. Do not post comments suggesting changes —
 make the changes yourself.
 
-Use `git log ${BASE_BRANCH}..HEAD` and `git diff ${BASE_BRANCH}...HEAD` to
+Use `git log origin/${BASE_BRANCH}..HEAD` and `git diff origin/${BASE_BRANCH}...HEAD` to
 understand the full scope of changes.
 
 ## What to look for and fix
 
 ### 1. Test Integrity & Deception Detection (HIGHEST PRIORITY)
 
-Run `git diff ${BASE_BRANCH}...HEAD -- '**/*Test*.java' '**/test/**/*.java'` to
-see all test file changes. For each modified test that existed on ${BASE_BRANCH}
-(check with `git log --oneline ${BASE_BRANCH} -- <file>`):
+Run `git diff origin/${BASE_BRANCH}...HEAD -- '**/*Test*.java' '**/test/**/*.java'` to
+see all test file changes. For each modified test that existed on origin/${BASE_BRANCH}
+(check with `git log --oneline origin/${BASE_BRANCH} -- <file>`):
 
 **Flag as TEST INTEGRITY VIOLATION if you find ANY of these:**
 - @TestDepth values INCREASED (e.g., 2->10) — hides tests from CI
