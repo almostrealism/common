@@ -217,8 +217,20 @@ public class ScopeSettings {
 		return c;
 	}
 
+	/**
+	 * Returns the maximum number of common sub-expression replacements per scope
+	 * during the CSE pass in {@link Scope#simplify}. Each replacement extracts a
+	 * frequently-occurring sub-expression into a named declaration variable.
+	 *
+	 * <p>The limit must accommodate the AudioScene envelope pipeline, which has
+	 * 12 envelope expressions × 3 genome-only sub-expressions each = 36 potential
+	 * extractions. Extracted declarations are then hoisted out of the loop by LICM
+	 * in {@link Repeated}.</p>
+	 *
+	 * @return the maximum number of CSE replacements per scope
+	 */
 	public static int getMaximumReplacements() {
-		return 12;
+		return 48;
 	}
 
 	public static void printStats() {

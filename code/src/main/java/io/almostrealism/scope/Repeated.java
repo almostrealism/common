@@ -25,8 +25,6 @@ import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.profile.OperationMetadata;
-import org.almostrealism.io.SystemUtils;
-
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -44,10 +42,11 @@ import java.util.Set;
  * not depend on the loop index variable or any variable assigned inside the loop.
  * This optimization reduces per-iteration computation cost.</p>
  *
- * <p>LICM is enabled by default and can be disabled via the
- * {@code AR_LOOP_INVARIANT_HOISTING=false} environment variable. When enabled,
- * invariant statements are moved from child scopes to this scope's statements
- * list, which is rendered before the loop body.</p>
+ * <p>LICM is unconditionally enabled. Invariant statements are moved from
+ * descendant scopes to this scope's statements list, which is rendered before
+ * the loop body. The hoisting recurses into all descendant scopes (including
+ * grandchildren and deeper) to find invariant declarations at any nesting
+ * depth.</p>
  *
  * @param <T> the return type of this scope
  * @see Scope
@@ -60,9 +59,8 @@ public class Repeated<T> extends Scope<T> {
 	 * When true, statements that do not depend on the loop index or any
 	 * variable assigned inside the loop will be hoisted outside the loop.
 	 *
-	 * <p>LICM is enabled by default. Set {@code AR_LOOP_INVARIANT_HOISTING=false}
-	 * to disable this optimization. The invariance analysis uses a fixed-point
-	 * algorithm that correctly handles:</p>
+	 * <p>LICM is unconditionally enabled. The invariance analysis uses a
+	 * fixed-point algorithm that correctly handles:</p>
 	 * <ul>
 	 *   <li>Loop indices via the {@link Index} interface (using {@code containsIndex})</li>
 	 *   <li>Variable dependencies via {@code getDependencies()}</li>
@@ -72,8 +70,7 @@ public class Repeated<T> extends Scope<T> {
 	 *       (ensures declarations referencing other loop-variant declarations are not hoisted)</li>
 	 * </ul>
 	 */
-	public static boolean enableLoopInvariantHoisting =
-			SystemUtils.isEnabled("AR_LOOP_INVARIANT_HOISTING").orElse(true);
+	public static boolean enableLoopInvariantHoisting = true;
 
 	private Variable<Integer, ?> index;
 	private Expression<Integer> interval;
@@ -182,31 +179,55 @@ public class Repeated<T> extends Scope<T> {
 		List<DeclarationInfo> allDeclarations = collectDeclarations(scope);
 		propagateVariance(allDeclarations, variantNames, loopIndices);
 
-		// Phase 3: hoist declarations whose names are NOT in the variant set
+		// Phase 3: hoist declarations whose names are NOT in the variant set.
+		// This recurses into all descendant scopes (grandchildren, etc.) to find
+		// invariant declarations at any nesting depth — not just direct children.
 		List<Statement<?>> hoisted = new ArrayList<>();
 
 		for (Scope<T> child : scope.getChildren()) {
-			List<Statement<?>> toRemove = new ArrayList<>();
-
-			for (Statement<?> stmt : child.getStatements()) {
-				if (stmt instanceof ExpressionAssignment) {
-					ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
-
-					if (assignment.isDeclaration()) {
-						String declName = getDeclarationName(assignment);
-						if (declName != null && !variantNames.contains(declName)) {
-							hoisted.add(stmt);
-							toRemove.add(stmt);
-						}
-					}
-				}
-			}
-
-			child.getStatements().removeAll(toRemove);
+			hoistInvariantDeclarations(child, variantNames, hoisted);
 		}
 
 		// Add hoisted statements to this scope (before the loop)
 		scope.getStatements().addAll(0, hoisted);
+	}
+
+	/**
+	 * Recursively finds and removes loop-invariant declaration statements from a scope
+	 * and all its descendants. Removed declarations are added to the {@code hoisted} list
+	 * for placement before the loop.
+	 *
+	 * <p>This recursion ensures that invariant declarations in grandchild scopes (and deeper)
+	 * are hoisted, not just those in direct children. This is critical for the AudioScene
+	 * pipeline where {@code f_assignment} declarations live in nested scope structures.</p>
+	 *
+	 * @param scope the scope to scan for invariant declarations
+	 * @param variantNames the set of loop-variant variable names
+	 * @param hoisted the list to add hoisted statements to
+	 */
+	private void hoistInvariantDeclarations(Scope<?> scope, Set<String> variantNames,
+											List<Statement<?>> hoisted) {
+		List<Statement<?>> toRemove = new ArrayList<>();
+
+		for (Statement<?> stmt : scope.getStatements()) {
+			if (stmt instanceof ExpressionAssignment) {
+				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
+
+				if (assignment.isDeclaration()) {
+					String declName = getDeclarationName(assignment);
+					if (declName != null && !variantNames.contains(declName)) {
+						hoisted.add(stmt);
+						toRemove.add(stmt);
+					}
+				}
+			}
+		}
+
+		scope.getStatements().removeAll(toRemove);
+
+		for (Scope<?> child : scope.getChildren()) {
+			hoistInvariantDeclarations(child, variantNames, hoisted);
+		}
 	}
 
 	/**
