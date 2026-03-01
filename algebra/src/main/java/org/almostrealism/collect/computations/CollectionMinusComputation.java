@@ -16,11 +16,14 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.MatrixFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
@@ -204,6 +207,40 @@ public class CollectionMinusComputation extends TransitiveDeltaExpressionComputa
 	protected CollectionMinusComputation(String name, TraversalPolicy shape,
 										 Producer<PackedCollection>... arguments) {
 		super(name, shape, arguments);
+	}
+
+	/**
+	 * Computes the derivative of this negation operation using the chain rule.
+	 *
+	 * <p>For a negation operation f(x) = -x, the derivative is simply -I (negative identity).
+	 * For a composed operation f(g(x)) = -g(x), the chain rule gives d(-g)/dx = -(dg/dx).</p>
+	 *
+	 * <p>This override avoids the default chain rule path in {@code DeltaFeatures.attemptDelta},
+	 * which would compute {@code matmul(-I, dg/dx)} - an expensive matrix multiplication for
+	 * large Jacobians. Instead, this method directly negates the input's delta using
+	 * {@code minus(input.delta(target))}, which is mathematically equivalent but avoids
+	 * materializing and multiplying the full negative identity matrix.</p>
+	 *
+	 * @param target The {@link Producer} with respect to which the derivative is computed
+	 * @return A {@link CollectionProducer} that computes the derivative
+	 */
+	@Override
+	public CollectionProducer delta(Producer<?> target) {
+		CollectionProducer delta = MatrixFeatures.getInstance().attemptDelta(this, target);
+		if (delta != null) return delta;
+
+		CollectionProducer input = (CollectionProducer) getInputs().get(1);
+		TraversalPolicy targetShape = shape(target);
+		TraversalPolicy jacobianShape = getShape().append(targetShape);
+
+		// Chain rule: d(-f(x))/dx = -(df(x)/dx)
+		// This handles both the direct case (input == target, where inputDelta is identity)
+		// and the indirect case (input depends on target through further computation)
+		CollectionProducer inputDelta = input.delta(target);
+		if (Algebraic.isZero(inputDelta)) {
+			return new CollectionZerosComputation(jacobianShape);
+		}
+		return minus(inputDelta).reshape(jacobianShape);
 	}
 
 	/**

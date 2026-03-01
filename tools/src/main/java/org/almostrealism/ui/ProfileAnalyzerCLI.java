@@ -147,9 +147,11 @@ public class ProfileAnalyzerCLI {
             OperationProfileNode n = topOps.get(i);
             double nodeDuration = getNodeDuration(n);
             double pct = totalDuration > 0 ? (nodeDuration / totalDuration * 100) : 0;
+            String metadataDetail = root.getMetadataDetail(n.getKey());
             json.append("    {");
             json.append("\"key\": \"").append(escapeJson(n.getKey())).append("\", ");
             json.append("\"name\": \"").append(escapeJson(n.getName())).append("\", ");
+            json.append("\"detail\": \"").append(escapeJson(metadataDetail)).append("\", ");
             json.append("\"duration\": ").append(round(nodeDuration, 6)).append(", ");
             json.append("\"duration_formatted\": \"").append(formatDuration(nodeDuration)).append("\", ");
             json.append("\"percentage\": ").append(round(pct, 1));
@@ -189,10 +191,12 @@ public class ProfileAnalyzerCLI {
             OperationProfileNode n = slowest.get(i);
             double nodeDuration = getCategoryDuration(n, category);
             double pct = totalDuration > 0 ? (nodeDuration / totalDuration * 100) : 0;
+            String metadataDetail = root.getMetadataDetail(n.getKey());
 
             json.append("    {");
             json.append("\"key\": \"").append(escapeJson(n.getKey())).append("\", ");
             json.append("\"name\": \"").append(escapeJson(n.getName())).append("\", ");
+            json.append("\"detail\": \"").append(escapeJson(metadataDetail)).append("\", ");
             json.append("\"duration\": ").append(round(nodeDuration, 6)).append(", ");
             json.append("\"duration_formatted\": \"").append(formatDuration(nodeDuration)).append("\", ");
             json.append("\"percentage\": ").append(round(pct, 1)).append(", ");
@@ -251,10 +255,13 @@ public class ProfileAnalyzerCLI {
             }
         }
 
+        String metadataDetail = root.getMetadataDetail(nodeKey);
+
         StringBuilder json = new StringBuilder();
         json.append("{\n");
         json.append("  \"node_key\": \"").append(escapeJson(nodeKey)).append("\",\n");
         json.append("  \"node_name\": \"").append(escapeJson(node.getName())).append("\",\n");
+        json.append("  \"node_detail\": \"").append(escapeJson(metadataDetail)).append("\",\n");
         json.append("  \"compile_time\": ").append(round(compileTime, 6)).append(",\n");
         json.append("  \"compile_time_formatted\": \"").append(formatDuration(compileTime)).append("\",\n");
         json.append("  \"compile_count\": ").append(compileCount).append(",\n");
@@ -309,10 +316,13 @@ public class ProfileAnalyzerCLI {
                 .limit(20)
                 .collect(Collectors.toList());
 
+        String parentDetail = root.getMetadataDetail(parent.getKey());
+
         StringBuilder json = new StringBuilder();
         json.append("{\n");
         json.append("  \"parent_key\": \"").append(escapeJson(parent.getKey())).append("\",\n");
         json.append("  \"parent_name\": \"").append(escapeJson(parent.getName())).append("\",\n");
+        json.append("  \"parent_detail\": \"").append(escapeJson(parentDetail)).append("\",\n");
         json.append("  \"total_children\": ").append(children.size()).append(",\n");
         json.append("  \"showing\": ").append(sortedChildren.size()).append(",\n");
         json.append("  \"children\": [\n");
@@ -321,10 +331,12 @@ public class ProfileAnalyzerCLI {
             OperationProfileNode c = sortedChildren.get(i);
             double pct = parent.getTotalDuration() > 0 ?
                     (c.getTotalDuration() / parent.getTotalDuration() * 100) : 0;
+            String childDetail = root.getMetadataDetail(c.getKey());
 
             json.append("    {");
             json.append("\"key\": \"").append(escapeJson(c.getKey())).append("\", ");
             json.append("\"name\": \"").append(escapeJson(c.getName())).append("\", ");
+            json.append("\"detail\": \"").append(escapeJson(childDetail)).append("\", ");
             json.append("\"duration\": ").append(round(c.getTotalDuration(), 6)).append(", ");
             json.append("\"duration_formatted\": \"").append(formatDuration(c.getTotalDuration())).append("\", ");
             json.append("\"percentage\": ").append(round(pct, 1)).append(", ");
@@ -348,8 +360,15 @@ public class ProfileAnalyzerCLI {
 
         String lowerPattern = pattern.toLowerCase();
 
+        // Search both name and metadata detail for matches
         List<OperationProfileNode> matches = allNodes.stream()
-                .filter(n -> n.getName() != null && n.getName().toLowerCase().contains(lowerPattern))
+                .filter(n -> {
+                    if (n.getName() != null && n.getName().toLowerCase().contains(lowerPattern)) {
+                        return true;
+                    }
+                    String detail = root.getMetadataDetail(n.getKey());
+                    return detail != null && detail.toLowerCase().contains(lowerPattern);
+                })
                 .sorted(Comparator.comparingDouble(OperationProfileNode::getTotalDuration).reversed())
                 .limit(20)
                 .collect(Collectors.toList());
@@ -362,9 +381,11 @@ public class ProfileAnalyzerCLI {
 
         for (int i = 0; i < matches.size(); i++) {
             OperationProfileNode n = matches.get(i);
+            String metadataDetail = root.getMetadataDetail(n.getKey());
             json.append("    {");
             json.append("\"key\": \"").append(escapeJson(n.getKey())).append("\", ");
             json.append("\"name\": \"").append(escapeJson(n.getName())).append("\", ");
+            json.append("\"detail\": \"").append(escapeJson(metadataDetail)).append("\", ");
             json.append("\"duration\": ").append(round(n.getTotalDuration(), 6)).append(", ");
             json.append("\"duration_formatted\": \"").append(formatDuration(n.getTotalDuration())).append("\", ");
             json.append("\"has_source\": ").append(hasSource(n));

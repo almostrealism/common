@@ -228,12 +228,14 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		ProcessOptimizationStrategy strategy = context.getOptimizationStrategy();
 
 		if (strategy != null) {
-			return (ParallelProcess)
-					strategy.optimize(context, (Process) this, children,
-							c -> processChildren(c).map(p -> (P) p));
+			Process<P, T> result = strategy.optimize(context, (Process) this, children,
+					c -> processChildren(c).map(p -> (P) p));
+			if (result != null) {
+				return (ParallelProcess) result;
+			}
 		}
 
-		throw new UnsupportedOperationException();
+		return (ParallelProcess) generate(new ArrayList<>(children));
 	}
 
 	/**
