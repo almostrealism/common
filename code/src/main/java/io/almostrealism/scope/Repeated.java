@@ -298,22 +298,12 @@ public class Repeated<T> extends Scope<T> {
 		for (Statement<?> stmt : scope.getStatements()) {
 			if (stmt instanceof ExpressionAssignment) {
 				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
-				Expression<?> expr = assignment.getExpression();
-
-				// Only process variant expressions — invariant ones were already hoisted
-				if (!isLoopInvariant(expr, variantNames, loopIndices)) {
-					Expression<?> replaced = replaceInvariantSubExpressions(
-							expr, variantNames, loopIndices, extracted, extractIdx, declarations);
-
-					if (replaced != expr) {
-						stmt = createAssignment(
-								assignment.isDeclaration(),
-								assignment.getDestination(),
-								replaced);
-					}
-				}
+				ExpressionAssignment<?> result = extractSubExpressionsFromAssignment(
+						assignment, variantNames, loopIndices, extracted, extractIdx, declarations);
+				updatedStatements.add(result != assignment ? result : stmt);
+			} else {
+				updatedStatements.add(stmt);
 			}
-			updatedStatements.add(stmt);
 		}
 
 		scope.getStatements().clear();
@@ -324,21 +314,10 @@ public class Repeated<T> extends Scope<T> {
 		boolean variablesChanged = false;
 
 		for (ExpressionAssignment<?> var : scope.getVariables()) {
-			Expression<?> expr = var.getExpression();
-			if (expr != null && !isLoopInvariant(expr, variantNames, loopIndices)) {
-				Expression<?> replaced = replaceInvariantSubExpressions(
-						expr, variantNames, loopIndices, extracted, extractIdx, declarations);
-
-				if (replaced != expr) {
-					updatedVariables.add(createAssignment(
-							var.isDeclaration(), var.getDestination(), replaced));
-					variablesChanged = true;
-				} else {
-					updatedVariables.add(var);
-				}
-			} else {
-				updatedVariables.add(var);
-			}
+			ExpressionAssignment<?> result = extractSubExpressionsFromAssignment(
+					var, variantNames, loopIndices, extracted, extractIdx, declarations);
+			updatedVariables.add(result);
+			if (result != var) variablesChanged = true;
 		}
 
 		if (variablesChanged) {
@@ -349,6 +328,37 @@ public class Repeated<T> extends Scope<T> {
 		for (Scope<?> child : scope.getChildren()) {
 			extractFromScope(child, variantNames, loopIndices, extracted, extractIdx, declarations);
 		}
+	}
+
+	/**
+	 * Replaces loop-invariant sub-expressions within a single assignment's expression.
+	 *
+	 * <p>If the assignment's expression is loop-variant and contains invariant sub-trees,
+	 * those sub-trees are extracted into new hoisted declarations and replaced with
+	 * references. Returns the original assignment if no replacements were made.</p>
+	 *
+	 * @param assignment the assignment to process
+	 * @param variantNames the set of loop-variant variable names
+	 * @param loopIndices all loop indices
+	 * @param extracted map of already-extracted sub-expressions (for dedup)
+	 * @param extractIdx counter for generating unique declaration names
+	 * @param declarations list to receive new extracted declarations
+	 * @return a new assignment with replacements, or the original if unchanged
+	 */
+	private ExpressionAssignment<?> extractSubExpressionsFromAssignment(
+			ExpressionAssignment<?> assignment, Set<String> variantNames,
+			List<Index> loopIndices, Map<Expression<?>, StaticReference<?>> extracted,
+			int[] extractIdx, List<Statement<?>> declarations) {
+		Expression<?> expr = assignment.getExpression();
+		if (expr != null && !isLoopInvariant(expr, variantNames, loopIndices)) {
+			Expression<?> replaced = replaceInvariantSubExpressions(
+					expr, variantNames, loopIndices, extracted, extractIdx, declarations);
+			if (replaced != expr) {
+				return createAssignment(
+						assignment.isDeclaration(), assignment.getDestination(), replaced);
+			}
+		}
+		return assignment;
 	}
 
 	/**
@@ -511,49 +521,44 @@ public class Repeated<T> extends Scope<T> {
 				if (!assignment.isDeclaration()) {
 					// Non-declaration assignments (e.g., source[offset] = 0.0) are
 					// inherently loop-variant because they mutate state each iteration
-					Expression<?> dest = assignment.getDestination();
-					if (dest != null) {
-						// Collect the destination name directly if it is a StaticReference,
-						// since StaticReference.getDependencies() may return empty
-						if (dest instanceof StaticReference) {
-							String name = ((StaticReference<?>) dest).getName();
-							if (name != null) {
-								variantNames.add(name);
-							}
-						}
-
-						for (Variable<?, ?> var : dest.getDependencies()) {
-							if (var.getName() != null) {
-								variantNames.add(var.getName());
-							}
-						}
-					}
+					collectDestinationNames(assignment.getDestination(), variantNames);
 				}
 			}
 		}
 
 		for (ExpressionAssignment<?> var : scope.getVariables()) {
-			Expression<?> dest = var.getDestination();
-			if (dest != null) {
-				// Collect the destination name directly if it is a StaticReference,
-				// since StaticReference.getDependencies() may return empty
-				if (dest instanceof StaticReference) {
-					String name = ((StaticReference<?>) dest).getName();
-					if (name != null) {
-						variantNames.add(name);
-					}
-				}
-
-				for (Variable<?, ?> v : dest.getDependencies()) {
-					if (v.getName() != null) {
-						variantNames.add(v.getName());
-					}
-				}
-			}
+			collectDestinationNames(var.getDestination(), variantNames);
 		}
 
 		for (Scope<?> child : scope.getChildren()) {
 			collectBaseVariantNamesRecursive(child, variantNames);
+		}
+	}
+
+	/**
+	 * Collects variable names from an assignment destination expression into the variant set.
+	 *
+	 * <p>Handles both {@link StaticReference} destinations (whose {@code getDependencies()}
+	 * may return empty) and general expressions whose dependencies are collected via
+	 * {@code getDependencies()}.</p>
+	 *
+	 * @param dest the destination expression of an assignment (may be null)
+	 * @param variantNames the set to add variant names to
+	 */
+	private void collectDestinationNames(Expression<?> dest, Set<String> variantNames) {
+		if (dest == null) return;
+
+		if (dest instanceof StaticReference) {
+			String name = ((StaticReference<?>) dest).getName();
+			if (name != null) {
+				variantNames.add(name);
+			}
+		}
+
+		for (Variable<?, ?> var : dest.getDependencies()) {
+			if (var.getName() != null) {
+				variantNames.add(var.getName());
+			}
 		}
 	}
 
