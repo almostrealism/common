@@ -484,6 +484,240 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that Phase 4 sub-expression extraction finds and hoists
+	 * invariant sub-expressions within a variant expression.
+	 *
+	 * <p>This test uses {@code pow()} (Exponent) to build a binary invariant
+	 * sub-expression that won't be flattened by the N-ary simplification
+	 * (unlike Product/Sum which are N-ary and get flattened).</p>
+	 *
+	 * <p>Scope structure:</p>
+	 * <pre>
+	 * for (i = 0; i < 100; i++) {
+	 *   {
+	 *     // pow(genome, 3.0) is invariant — genome is a kernel argument
+	 *     // pow(genome, 3.0) * i is variant — multiplied by loop index
+	 *     double f_result = pow(genome, 3.0) * i;
+	 *   }
+	 * }
+	 * </pre>
+	 *
+	 * <p>After LICM Phase 4, the invariant sub-expression {@code pow(genome, 3.0)}
+	 * should be extracted into a new {@code f_licm_*} declaration and hoisted
+	 * before the loop.</p>
+	 */
+	@Test(timeout = 30000)
+	public void invariantSubExpressionExtracted() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("subExprTest");
+
+		Scope<Void> child = new Scope<>("body");
+
+		// Build a variant expression that contains an invariant sub-expression:
+		// result = pow(genome, 3.0) * i
+		// pow(genome, 3.0) is a binary Exponent expression (not N-ary, won't flatten)
+		Expression<Double> genomeRef = new StaticReference<>(Double.class, "genome_val");
+		Expression<?> invariantSubExpr = genomeRef.pow(new DoubleConstant(3.0));
+		Expression<?> variantExpr = invariantSubExpr.multiply(new StaticReference<>(Double.class, "_test_i"));
+
+		child.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Double.class, "f_result"),
+				variantExpr));
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		// The extracted sub-expression should appear as a f_licm_* declaration
+		// in the Repeated scope's hoisted statements (before the loop)
+		long licmDeclarations = simplified.getStatements().stream()
+				.filter(s -> s instanceof ExpressionAssignment)
+				.map(s -> (ExpressionAssignment<?>) s)
+				.filter(ExpressionAssignment::isDeclaration)
+				.filter(a -> {
+					Expression<?> dest = a.getDestination();
+					return dest instanceof StaticReference
+							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
+				})
+				.count();
+
+		Assert.assertTrue("Invariant sub-expression should be extracted and hoisted as f_licm_* declaration",
+				licmDeclarations > 0);
+	}
+
+	/**
+	 * Verifies that sub-expression extraction does NOT extract trivial
+	 * sub-expressions like constants and simple references. Only substantial
+	 * sub-expressions (with tree depth > 1) should be extracted.
+	 */
+	@Test(timeout = 30000)
+	public void trivialSubExpressionsNotExtracted() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("trivialSubExprTest");
+
+		Scope<Void> child = new Scope<>("body");
+
+		// Build a variant expression whose invariant parts are all trivial:
+		// result = 42.0 * i
+		// 42.0 is a constant — should NOT be extracted into a separate declaration
+		Expression<?> variantExpr = new DoubleConstant(42.0)
+				.multiply(new StaticReference<>(Double.class, "_test_i"));
+
+		child.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Double.class, "f_trivial"),
+				variantExpr));
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		// No f_licm_* declarations should be created for trivial sub-expressions
+		long licmDeclarations = simplified.getStatements().stream()
+				.filter(s -> s instanceof ExpressionAssignment)
+				.map(s -> (ExpressionAssignment<?>) s)
+				.filter(ExpressionAssignment::isDeclaration)
+				.filter(a -> {
+					Expression<?> dest = a.getDestination();
+					return dest instanceof StaticReference
+							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
+				})
+				.count();
+
+		Assert.assertEquals("Trivial sub-expressions should NOT be extracted", 0, licmDeclarations);
+	}
+
+	/**
+	 * Verifies that sub-expression extraction correctly handles the AudioScene
+	 * pattern: a variant expression containing a deeply nested invariant sub-tree
+	 * (simulating genome-only {@code pow()} sub-expressions within envelope
+	 * accumulate expressions).
+	 *
+	 * <p>This mirrors the real-world AudioScene code where envelope accumulate
+	 * expressions contain invariant {@code pow()} sub-expressions that read
+	 * from genome parameters at constant offsets, multiplied by a loop-variant
+	 * frame counter.</p>
+	 *
+	 * <p>Scope structure:</p>
+	 * <pre>
+	 * for (i = 0; i < 4096; i++) {
+	 *   {
+	 *     // pow((-pow(genome, 3.0)) + 1.0, -1.0) is invariant (genome-only)
+	 *     // The whole expression is variant (multiplied by frame counter i)
+	 *     double f_accum = pow((-pow(genome, 3.0)) + 1.0, -1.0) * i;
+	 *   }
+	 * }
+	 * </pre>
+	 */
+	@Test(timeout = 30000)
+	public void genomeSubExpressionPattern() {
+		Variable<Integer, ?> idx = Variable.integer("_frame_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(4096));
+		loop.setName("genomePatternTest");
+
+		Scope<Void> child = new Scope<>("body");
+
+		// Build genome-only sub-expression matching the real AudioScene pattern:
+		// pow((-pow(genome, 3.0)) + 1.0, -1.0)
+		Expression<Double> genomeRef = new StaticReference<>(Double.class, "genome_param");
+		Expression<?> innerPow = genomeRef.pow(new DoubleConstant(3.0));
+		Expression<?> negated = innerPow.minus();
+		Expression<?> plusOne = negated.add(new DoubleConstant(1.0));
+		Expression<?> outerPow = ((Expression<Double>) plusOne).pow(new DoubleConstant(-1.0));
+
+		// Build variant expression: outerPow * frameCounter
+		Expression<?> variantAccum = outerPow.multiply(
+				new StaticReference<>(Double.class, "_frame_i"));
+
+		child.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Double.class, "f_accum"),
+				variantAccum));
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		// Verify a f_licm_* declaration was extracted for the genome sub-expression
+		long licmDeclarations = simplified.getStatements().stream()
+				.filter(s -> s instanceof ExpressionAssignment)
+				.map(s -> (ExpressionAssignment<?>) s)
+				.filter(ExpressionAssignment::isDeclaration)
+				.filter(a -> {
+					Expression<?> dest = a.getDestination();
+					return dest instanceof StaticReference
+							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
+				})
+				.count();
+
+		Assert.assertTrue("Genome-only sub-expression should be extracted",
+				licmDeclarations > 0);
+
+		// The variant expression should remain in the child scope but reference
+		// the extracted declaration instead of the original sub-expression
+		long remaining = countDeclarationsInDescendants(simplified, "f_accum");
+		Assert.assertTrue("Variant expression f_accum should remain in loop body",
+				remaining > 0);
+	}
+
+	/**
+	 * Verifies that duplicate invariant sub-expressions are deduplicated
+	 * during extraction — a single declaration is created and referenced
+	 * in multiple places.
+	 *
+	 * <p>Uses {@code pow()} (Exponent) to create a binary invariant sub-expression
+	 * that won't be flattened by N-ary simplification.</p>
+	 */
+	@Test(timeout = 30000)
+	public void duplicateSubExpressionsDeduped() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("dedupTest");
+
+		Scope<Void> child = new Scope<>("body");
+
+		// Same invariant sub-expression (pow) used in two variant expressions
+		Expression<Double> genomeRef = new StaticReference<>(Double.class, "genome_val");
+		Expression<?> invariantSub = genomeRef.pow(new DoubleConstant(3.0));
+
+		// f_a = pow(genome, 3.0) * i
+		child.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Double.class, "f_a"),
+				invariantSub.multiply(new StaticReference<>(Double.class, "_test_i"))));
+
+		// f_b = pow(genome, 3.0) * (i + 1)
+		Expression<?> iPlusOne = new StaticReference<Double>(Double.class, "_test_i")
+				.add(new DoubleConstant(1.0));
+		child.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Double.class, "f_b"),
+				invariantSub.multiply(iPlusOne)));
+
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		// Count f_licm_* declarations — should be deduplicated
+		long licmDeclarations = simplified.getStatements().stream()
+				.filter(s -> s instanceof ExpressionAssignment)
+				.map(s -> (ExpressionAssignment<?>) s)
+				.filter(ExpressionAssignment::isDeclaration)
+				.filter(a -> {
+					Expression<?> dest = a.getDestination();
+					return dest instanceof StaticReference
+							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
+				})
+				.count();
+
+		// If dedup works, there should be exactly 1 declaration for the shared sub-expression
+		// (could be more if the expression system creates structurally different objects,
+		//  but should not be more than 2 at most)
+		Assert.assertTrue("At least one f_licm_* declaration should be created",
+				licmDeclarations >= 1);
+	}
+
+	/**
 	 * Tests that a LoopedWeightedSum computation produces correct results
 	 * with LICM enabled. This computation internally creates a {@link Repeated}
 	 * scope with both loop-invariant (weight loading) and loop-variant

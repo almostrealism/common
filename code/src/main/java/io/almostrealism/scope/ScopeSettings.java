@@ -222,15 +222,18 @@ public class ScopeSettings {
 	 * during the CSE pass in {@link Scope#simplify}. Each replacement extracts a
 	 * frequently-occurring sub-expression into a named declaration variable.
 	 *
-	 * <p>The limit must accommodate the AudioScene envelope pipeline, which has
-	 * 12 envelope expressions × 3 genome-only sub-expressions each = 36 potential
-	 * extractions. Extracted declarations are then hoisted out of the loop by LICM
-	 * in {@link Repeated}.</p>
+	 * <p>This limit was previously raised to 48 to accommodate genome-only
+	 * sub-expression extraction for LICM, but that caused an 11x code blowup
+	 * in the AudioScene loop body (from 251 to 2,783 lines). The CSE pass does
+	 * not prioritize loop-invariant sub-expressions, so raising the limit causes
+	 * it to extract loop-variant sub-expressions that inflate the code without
+	 * enabling more hoisting. Reverted to 12 per regression analysis.</p>
 	 *
 	 * @return the maximum number of CSE replacements per scope
+	 * @see Repeated
 	 */
 	public static int getMaximumReplacements() {
-		return 48;
+		return 12;
 	}
 
 	public static void printStats() {

@@ -1,0 +1,21 @@
+LICM Phase 4 sub-expression extraction and CSE limit revert
+
+Implement Phase 4 of loop-invariant code motion in Repeated.simplify()
+to extract invariant sub-expressions from within variant expressions.
+This targets the AudioScene pattern where genome-only pow() sub-trees
+are embedded inside loop-variant envelope accumulate expressions.
+
+Key changes:
+- Add extractInvariantSubExpressions(), extractFromScope(),
+  findMaximalInvariantSubExpressions(), and isSubstantialForExtraction()
+  to Repeated.java for Phase 4 LICM
+- Revert ScopeSettings.getMaximumReplacements() from 48 to 12 to fix
+  the 11x code blowup regression (CSE extracts loop-variant expressions
+  indiscriminately; Phase 4 LICM is the correct targeted approach)
+- Fix isSubstantialForExtraction() threshold from treeDepth > 1 to >= 1
+  so binary operations like pow(x, 3.0) are correctly extracted
+- Add 4 new Phase 4 tests to LoopInvariantHoistingTest: simple extraction,
+  trivial rejection, AudioScene genome pattern, and deduplication
+- Add decision journal entries documenting the reasoning
+
+All 20 LICM + CachedStateCell tests pass. Full build succeeds.

@@ -65,4 +65,92 @@ template below.
 
 ## Entries
 
+### 2026-03-01 — Phase 4 sub-expression extraction: treeDepth threshold fix
+
+**Goal:** #6 — Extract and hoist genome sub-expressions from envelope lines
+
+**Context:** Phase 4 sub-expression extraction was implemented in a prior session
+and added to `Repeated.hoistLoopInvariantStatements()`. Four new tests were added
+to `LoopInvariantHoistingTest`. The deeply-nested `genomeSubExpressionPattern` test
+passed but the simpler `invariantSubExpressionExtracted` and `duplicateSubExpressionsDeduped`
+tests failed. The `trivialSubExpressionsNotExtracted` negative test passed.
+
+**Approach:** Added diagnostic logging to `extractFromScope()` and
+`findMaximalInvariantSubExpressions()` to trace the exact behavior during
+simplification. Key finding: `pow(genome_val, 3.0)` (an `Exponent` expression)
+has `treeDepth() == 1` (root + two leaf children). The `isSubstantialForExtraction()`
+filter was using `treeDepth() > 1`, which incorrectly rejected depth-1 expressions
+like binary `pow()` calls.
+
+**Alternatives considered:** Could have lowered the threshold to `> 0` (any
+non-leaf) but `>= 1` is equivalent and more explicit. Could have removed the
+treeDepth check entirely since `Constant` and `StaticReference` instanceof checks
+already filter leaf nodes, but keeping the depth check provides a safety net.
+
+**Observations:**
+- `Exponent(StaticReference, DoubleConstant)` has treeDepth=1, childCount=2
+- The deeply-nested genome pattern has treeDepth >> 1, which is why it passed
+- Product sorts children by depth but this does not affect extraction
+- Debug logging confirmed invariance detection works correctly — only the
+  `isSubstantialForExtraction` filter was wrong
+
+**Outcome:** Changed `treeDepth() > 1` to `treeDepth() >= 1`. All 4 Phase 4
+tests now pass. Full LICM + CachedStateCell test suite (20 tests) passes with
+0 failures. Full build (`mvn clean install -DskipTests`) succeeds across all
+modules.
+
+**Open questions:** None for this fix.
+
+---
+
+### 2026-03-01 — Reverted CSE limit from 48 to 12
+
+**Goal:** #9 (BLOCKING) — Revert maxReplacements increase that caused 11x code blowup
+
+**Context:** A prior session increased `ScopeSettings.getMaximumReplacements()`
+from 12 to 48 to accommodate genome-only sub-expression extraction for LICM.
+Regression analysis in the plan showed this caused the AudioScene loop body to
+blow up from 251 to 2,783 lines because the CSE pass extracts loop-variant
+sub-expressions indiscriminately — it does not prioritize loop-invariant ones.
+
+**Approach:** Reverted `getMaximumReplacements()` to return 12. Updated javadoc
+to explain why the revert was necessary and document the regression. The correct
+approach to genome sub-expression extraction is via Phase 4 LICM (targeted
+extraction) rather than increasing the CSE limit (untargeted extraction).
+
+**Alternatives considered:** Could have modified CSE to prioritize loop-invariant
+sub-expressions, but that would require significant changes to `Scope.processReplacements()`
+and the `ExpressionCache` infrastructure. Phase 4 LICM is simpler and targeted.
+
+**Outcome:** Reverted successfully. No test regressions.
+
+---
+
+### 2026-03-01 — Prior session work summary
+
+**Goal:** #5, #6, #7 — LICM, sub-expression extraction, copy-zero elimination
+
+**Context:** Multiple prior agent sessions implemented foundational work on this
+branch:
+
+1. **LICM (Phases 1-3)** in `Repeated.java`: 3-phase fixed-point algorithm for
+   hoisting loop-invariant declarations. Covers base variant name collection,
+   variance propagation, and recursive hoisting from descendant scopes.
+
+2. **CachedStateCell SummationCell optimization** in `CachedStateCell.java`:
+   Bypasses intermediate outValue copy when downstream receptor is a SummationCell.
+
+3. **TimeCellReset loop generation** in `TimeCellReset.java`: Generates compact
+   loop instead of if-else chain for frame counter resets.
+
+4. **Phase 4 sub-expression extraction** in `Repeated.java`: Finds invariant
+   sub-trees within variant expressions, extracts them into `f_licm_*` declarations,
+   and deduplicates shared sub-expressions.
+
+5. **Test suite**: `LoopInvariantHoistingTest` (16 tests) and
+   `CachedStateCellOptimizationTest` (4 tests).
+
+**Outcome:** All implementations were present on the branch. This session fixed
+the treeDepth threshold bug in Phase 4 and reverted the CSE limit regression.
+
 *(Add new entries above this line, newest first)*
