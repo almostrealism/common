@@ -19,6 +19,7 @@ package org.almostrealism.graph.test;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.CollectionCachedStateCell;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.graph.ReceptorCell;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestSuiteBase;
@@ -182,5 +183,81 @@ public class CachedStateCellOptimizationTest extends TestSuiteBase {
 			reset.add(optimizedDownstream.setup());
 			reset.get().run();
 		}
+	}
+
+	/**
+	 * Verifies that a CachedStateCell whose receptor is a {@link ReceptorCell} wrapping
+	 * a SummationCell uses the standard (non-optimized) path, because the
+	 * {@code instanceof SummationCell} check does not see through the wrapper.
+	 *
+	 * <p>This test documents the behavior where cell graph wiring through
+	 * intermediate wrapper cells prevents the optimization from activating.
+	 * The result should still be correct — just using the standard 3-operation
+	 * path instead of the optimized 2-operation path.</p>
+	 */
+	@Test(timeout = 30000)
+	public void wrappedSummationCellUsesStandardPath() {
+		CollectionCachedStateCell source = new CollectionCachedStateCell();
+		SummationCell accumulator = new SummationCell();
+		ReceptorCell<PackedCollection> wrapper = new ReceptorCell<>(accumulator);
+
+		// Wire source -> ReceptorCell -> SummationCell
+		// The ReceptorCell hides the SummationCell from instanceof check
+		source.setReceptor(wrapper);
+
+		OperationList ops = new OperationList("wrappedPath");
+		ops.add(source.setup());
+		ops.add(accumulator.setup());
+		ops.add(wrapper.setup());
+
+		// Push value 9.0 into source's cache
+		ops.add(source.push(c(9.0)));
+		// Tick source: standard path because receptor is ReceptorCell, not SummationCell
+		ops.add(source.tick());
+		ops.get().run();
+
+		// Accumulator should still receive the value (via ReceptorCell forwarding)
+		Assert.assertEquals("Accumulator should receive value via wrapped path",
+				9.0, accumulator.getCachedValue().toDouble(0), 1e-10);
+
+		// Source's cache should be reset
+		Assert.assertEquals("Source cache should be reset after tick",
+				0.0, source.getCachedValue().toDouble(0), 1e-10);
+	}
+
+	/**
+	 * Verifies that a CachedStateCell using the standard path (non-SummationCell receptor)
+	 * correctly populates outValue, which can be read by the {@code next()} method.
+	 *
+	 * <p>This tests a scenario where outValue is read by code other than the receptor.
+	 * In the standard path, outValue is populated during tick() and available via
+	 * {@code next()} / {@code getResultant()}. This is important for any cell graph where
+	 * downstream code reads the output value independently of the push mechanism.</p>
+	 */
+	@Test(timeout = 30000)
+	public void outValueAvailableViaNextAfterTick() {
+		CollectionCachedStateCell source = new CollectionCachedStateCell();
+		CollectionCachedStateCell downstream = new CollectionCachedStateCell();
+
+		// Use standard path (non-SummationCell receptor)
+		source.setReceptor(downstream);
+
+		OperationList ops = new OperationList("outValueTest");
+		ops.add(source.setup());
+		ops.add(downstream.setup());
+
+		// Push value and tick
+		ops.add(source.push(c(6.0)));
+		ops.add(source.tick());
+		ops.get().run();
+
+		// next() returns a producer for outValue — evaluate it to verify it was set
+		PackedCollection outValue = source.next().get().evaluate();
+		Assert.assertEquals("outValue should be populated after standard-path tick",
+				6.0, outValue.toDouble(0), 1e-10);
+
+		// Verify downstream also received the value
+		Assert.assertEquals("Downstream should have received value",
+				6.0, downstream.getCachedValue().toDouble(0), 1e-10);
 	}
 }

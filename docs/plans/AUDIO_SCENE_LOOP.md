@@ -354,20 +354,21 @@ root cause than the CSE limit.
 | # | Opportunity | Estimated Impact | Complexity | Status |
 |---|-------------|-----------------|------------|--------|
 | 9 | Revert CSE limit increase | **Critical** | Low | **DONE** — reverted to 12, file size fixed |
-| 5 | Fix LICM to hoist `f_assignment` declarations | **Very High** | Medium | **DONE** — all 50 hoisted before inner loop (2026-03-02) |
-| 10 | Debug LICM on real AudioScene scope tree | **Critical** | Medium | **PARTIALLY DONE** — Phases 1-3 working, Phase 4 broken (see root cause) |
-| 6 | Extract + hoist genome sub-expressions from envelope lines | High | Medium | **NOT WORKING** — Phase 4 extracts 0 sub-expressions (see root cause) |
-| 7 | Eliminate remaining copy-zero pairs | Low–Medium | Low | Partially done — 134 `= 0.0;` resets remain in loop |
-| 8 | Eliminate redundant WaveCellPush copies | Low | Medium | Not started |
+| 5 | Fix LICM to hoist `f_assignment` declarations | **Very High** | Medium | **DONE** — all 50 hoisted before inner loop |
+| 10 | Debug LICM on real AudioScene scope tree | **Critical** | Medium | **DONE** — Phases 1-3 and Phase 4 all working (verified 2026-03-02) |
+| 6 | Extract + hoist genome sub-expressions from envelope lines | High | Medium | **DONE** — Phase 4 extracts 133 sub-expressions (verified 2026-03-02) |
+| 7 | Eliminate remaining copy-zero pairs | Low–Medium | Low | **DEFERRED** — root cause identified (composite receptors via Receptor.to()), see journal |
+| 8 | Eliminate redundant WaveCellPush copies | Low | Medium | **DEFERRED** — requires architectural changes to cell graph wiring, see journal |
 
-### #10 — Debug LICM on Real AudioScene Scope Tree — PARTIALLY RESOLVED (2026-03-02)
+### #10 — Debug LICM on Real AudioScene Scope Tree — RESOLVED (2026-03-02)
 
-**PARTIALLY RESOLVED.** LICM Phases 1-3 are working: all 50 `f_assignment`
-declarations are hoisted. However, Phase 4 sub-expression extraction is
-**NOT working** — it extracts 0 sub-expressions on the real AudioScene scope
-tree despite passing unit tests. The root cause is documented above in
-"Root Cause Analysis: Why Phase 4 Extracts 0 Sub-Expressions". The fix plan
-is also documented there. For historical context, the prior issues were:
+**RESOLVED.** All LICM phases are working on the real AudioScene scope tree.
+Phase 4 sub-expression extraction was fixed in commit `110b1b1d2` by reverting
+from `markVariantNodes()` back to `isLoopInvariant()`. Verified on generated
+C file (`jni_instruction_set_135.c`): 50 f_assignments hoisted, 133 f_licm
+sub-expressions extracted, 307 f_licm references. See journal for details.
+
+For historical context, the prior issues were:
 
 1. **Add diagnostic logging** to `hoistLoopInvariantStatements()` that prints:
    - The loop variable name it's looking for

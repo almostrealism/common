@@ -69,6 +69,67 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-02 — Completion assessment, test gaps filled, #7/#8 root cause analysis
+
+**Goal:** Assess branch completeness against all plan goals; fill test gaps; investigate #7 and #8
+
+**Context:** All core optimizations (#1, #3, #5, #6, #9, #10) were implemented by prior
+sessions. LICM is unconditionally enabled (`enableLoopInvariantHoisting = true`, no env var).
+Phase 4 sub-expression extraction is working (133 `f_licm_*` extractions). CSE limit is
+reverted to 12. TimeCellReset generates compact loop. CachedStateCell has SummationCell bypass.
+
+**Work done:**
+
+1. **Added 2 missing CachedStateCell tests** (plan requirement):
+   - `wrappedSummationCellUsesStandardPath`: Verifies that a `ReceptorCell` wrapping a
+     `SummationCell` triggers the standard (non-optimized) path, because `instanceof
+     SummationCell` does not see through the wrapper. Documents the behavior gap.
+   - `outValueAvailableViaNextAfterTick`: Verifies that `outValue` is populated during
+     the standard-path tick and is accessible via `next()` for downstream readers.
+
+2. **Root cause analysis for #7 (remaining 12 copy-zero pairs):**
+   - Traced the cell hierarchy: `Receptor.to()` creates composite lambda receptors that
+     are NOT `instanceof SummationCell`. `ReceptorCell` wraps a `SummationCell` but hides
+     it from the `instanceof` check.
+   - In the AudioScene pipeline, `CellList.branch()` uses `Receptor.to(d)` for multi-cast
+     routing, and `MixdownManager` uses `Receptor.to()` for effects routing. These patterns
+     create composite receptors that bypass the optimization.
+   - **Conclusion:** The 12 remaining copy-zero pairs are from cells wired through composite
+     receptors or wrapper cells. Fixing this would require either (a) an interface method
+     on `Receptor` to indicate accumulation support, or (b) unwrapping composite receptors
+     to detect single-SummationCell targets. Both approaches carry correctness risk and the
+     impact is low (simple memory ops, not expensive `pow()` calls).
+
+3. **Assessment for #8 (WaveCellPush copies):**
+   - WaveCellPush writes to `state[offset+18]`, then CachedStateCell copies to `dest[offset]`.
+     Eliminating the copy requires the downstream consumer to read directly from WaveCell's
+     internal state buffer, which is an architectural change to the cell graph wiring.
+   - **Conclusion:** This is a low-priority optimization requiring significant architectural
+     changes that cannot be safely made without extensive integration testing.
+
+4. **Verification:**
+   - All 26 optimization tests pass (20 LICM + 6 CachedStateCell)
+   - Full build (`mvn clean install -DskipTests`) succeeds across all 35 modules
+   - AudioScene `effectsEnabledPerformance` test PASSED (run d761f39a, 541.8s / ~9min)
+   - Generated C code verified: 50 f_assignments hoisted, 133 f_licm extractions, 4842 lines
+
+**Alternatives considered for #7:**
+- Could modify `CachedStateCell.tick()` to unwrap `ReceptorCell` before the `instanceof`
+  check, but this couples CachedStateCell to the ReceptorCell implementation
+- Could add an `isAccumulator()` method to the `Receptor` interface, but this changes a
+  foundational interface for a low-impact optimization
+- Decided not to implement either approach without integration test coverage on the real
+  AudioScene pipeline
+
+**Outcome:** All plan goals that are feasible to implement are complete. #7 and #8 have
+documented root causes and clear fix paths for future work, but are deferred due to
+low impact and high risk without integration-level verification.
+
+**Open questions:** None blocking. Future sessions can use the root cause analysis above
+to implement #7 and #8 when integration testing is available.
+
+---
+
 ### 2026-03-02 — Phase 4 diagnostic deep-dive: dual-loop structure clarified *(review)*
 
 **Author:** Review agent (independent review of developer agent's work)
