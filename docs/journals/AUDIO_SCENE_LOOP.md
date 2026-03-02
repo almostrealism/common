@@ -65,6 +65,52 @@ template below.
 
 ## Entries
 
+### 2026-03-02 — Extended Phase 4 to non-declaration assignments with two-tier threshold
+
+**Goal:** #6 — Extract and hoist genome sub-expressions from envelope accumulate lines
+
+**Context:** Phase 4 sub-expression extraction only processed declaration assignments
+(`isDeclaration() == true`). The real AudioScene loop body has envelope accumulate lines
+that are non-declaration assignments (array element writes like `source[offset] = expr`).
+These contain genome-only invariant sub-expressions that could be hoisted. A prior session's
+diagnostic run confirmed LICM was working (all 50 declarations hoisted) but the loop body
+still had 2,871 lines with 126 pow() calls because the envelope lines were not being processed.
+
+**Approach:** Extended `extractFromScope()` to process both declaration and non-declaration
+assignments. Also added processing for `scope.getVariables()` (deprecated path).
+
+**Problem encountered:** With the original `treeDepth >= 1` threshold, the extension extracted
+33,249 sub-expressions from the AudioScene scope — every trivially cheap invariant sub-expression
+(array accesses, simple arithmetic) was being extracted. This would cause severe code blowup.
+
+**Solution:** Implemented a two-tier threshold in `isSubstantialForExtraction`:
+- **Declarations** (`isDeclaration() == true`): `treeDepth >= 1` (preserves original behavior,
+  extracts even simple `pow(genome, 3.0)` — these appear in moderate numbers)
+- **Non-declarations** (`isDeclaration() == false`): `treeDepth >= 3` (filters out trivially
+  cheap sub-expressions while capturing genome-derived computations like
+  `pow((- pow(genome[offset+1], 3.0)) + 1.0, -1.0)`)
+
+The `minDepth` parameter is passed from `extractSubExpressionsFromAssignment` through
+`replaceInvariantSubExpressions` to `isSubstantialForExtraction`.
+
+**Debugging note:** Initial test failures after implementing the two-tier threshold were
+caused by not recompiling the `code` module before running `utils` tests. Running
+`mvn install -pl code -DskipTests` first resolved this — the `utils` module picks up
+`Repeated.class` from the local Maven repo, not from the source tree.
+
+**Testing:** Added 2 new tests to `LoopInvariantHoistingTest`:
+- `nonDeclarationAssignmentSubExpressionExtracted`: Deep invariant sub-expression
+  (treeDepth >= 3) in non-declaration assignment is extracted
+- `shallowSubExpressionsNotExtractedFromNonDeclaration`: Shallow invariant sub-expression
+  (treeDepth = 1) in non-declaration assignment is NOT extracted
+
+**Outcome:** All 18 LICM tests pass (16 original + 2 new). AudioScene test pending.
+
+**Open questions:** Need to verify the extraction count on real AudioScene scope is
+reasonable (target ~72 per plan) and not causing code blowup.
+
+---
+
 ### 2026-03-01 — Phase 4 sub-expression extraction: treeDepth threshold fix
 
 **Goal:** #6 — Extract and hoist genome sub-expressions from envelope lines

@@ -886,6 +886,120 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that Phase 4 sub-expression extraction works for non-declaration
+	 * assignments (e.g., array element writes like {@code source[offset] = expr}).
+	 *
+	 * <p>Non-declaration assignments use a higher extraction threshold
+	 * ({@code treeDepth >= 3}) to avoid extracting trivially cheap sub-expressions
+	 * that would cause code blowup. Only deep, computationally expensive invariant
+	 * sub-expressions like nested genome pow() chains should be extracted.</p>
+	 *
+	 * <p>Scope structure:</p>
+	 * <pre>
+	 * for (i = 0; i < 100; i++) {
+	 *   {
+	 *     // Non-declaration: array write with deep invariant sub-expression
+	 *     output[i] = pow(pow(genome, 3.0) + 1.0, -1.0) * frameValue
+	 *   }
+	 * }
+	 * </pre>
+	 *
+	 * <p>The sub-expression {@code pow(pow(genome, 3.0) + 1.0, -1.0)} has
+	 * treeDepth >= 3 and should be extracted, while simpler invariant
+	 * sub-expressions should be left in place.</p>
+	 */
+	@Test(timeout = 30000)
+	public void nonDeclarationAssignmentSubExpressionExtracted() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("nonDeclTest");
+
+		Scope<Void> child = new Scope<>("body");
+
+		// Build a deep invariant sub-expression (treeDepth >= 3):
+		// pow(pow(genome, 3.0) + 1.0, -1.0)
+		Expression<Double> genomeRef = new StaticReference<>(Double.class, "genome_val");
+		Expression<?> innerPow = genomeRef.pow(new DoubleConstant(3.0));  // depth 1
+		Expression<?> sum = innerPow.add(new DoubleConstant(1.0));         // depth 2
+		Expression<?> outerPow = sum.pow(new DoubleConstant(-1.0));        // depth 3
+
+		// Non-declaration: output[i] = deepInvariant * frameValue
+		Expression<?> variantExpr = outerPow.multiply(
+				new StaticReference<>(Double.class, "_test_i"));
+
+		child.getStatements().add(new ExpressionAssignment(
+				false,
+				new StaticReference<>(Double.class, "output"),
+				variantExpr));
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		// The deep invariant sub-expression should be extracted as f_licm_*
+		long licmDeclarations = simplified.getStatements().stream()
+				.filter(s -> s instanceof ExpressionAssignment)
+				.map(s -> (ExpressionAssignment<?>) s)
+				.filter(ExpressionAssignment::isDeclaration)
+				.filter(a -> {
+					Expression<?> dest = a.getDestination();
+					return dest instanceof StaticReference
+							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
+				})
+				.count();
+
+		Assert.assertTrue("Deep invariant sub-expression in non-declaration should be extracted",
+				licmDeclarations > 0);
+	}
+
+	/**
+	 * Verifies that shallow invariant sub-expressions in non-declaration
+	 * assignments are NOT extracted (they use the higher treeDepth >= 3 threshold).
+	 *
+	 * <p>A simple {@code pow(genome, 3.0)} has treeDepth=1, which is below
+	 * the non-declaration threshold of 3. It should be left in place.</p>
+	 */
+	@Test(timeout = 30000)
+	public void shallowSubExpressionsNotExtractedFromNonDeclaration() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("shallowNonDeclTest");
+
+		Scope<Void> child = new Scope<>("body");
+
+		// Shallow invariant sub-expression (treeDepth = 1):
+		// pow(genome, 3.0) — below the non-declaration threshold of 3
+		Expression<Double> genomeRef = new StaticReference<>(Double.class, "genome_val");
+		Expression<?> shallowInvariant = genomeRef.pow(new DoubleConstant(3.0));
+
+		// Non-declaration: output[i] = shallowInvariant * i
+		Expression<?> variantExpr = shallowInvariant.multiply(
+				new StaticReference<>(Double.class, "_test_i"));
+
+		child.getStatements().add(new ExpressionAssignment(
+				false,
+				new StaticReference<>(Double.class, "output"),
+				variantExpr));
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		// No f_licm_* should be created — the sub-expression is too shallow
+		long licmDeclarations = simplified.getStatements().stream()
+				.filter(s -> s instanceof ExpressionAssignment)
+				.map(s -> (ExpressionAssignment<?>) s)
+				.filter(ExpressionAssignment::isDeclaration)
+				.filter(a -> {
+					Expression<?> dest = a.getDestination();
+					return dest instanceof StaticReference
+							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
+				})
+				.count();
+
+		Assert.assertEquals("Shallow invariant sub-expression in non-declaration should NOT be extracted",
+				0, licmDeclarations);
+	}
+
+	/**
 	 * Counts how many declaration statements in the given list have a destination
 	 * name matching the specified name.
 	 */

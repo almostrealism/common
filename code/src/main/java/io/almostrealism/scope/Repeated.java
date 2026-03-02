@@ -78,6 +78,15 @@ public class Repeated<T> extends Scope<T> {
 	 */
 	public static boolean enableLoopInvariantHoisting = true;
 
+	/**
+	 * Controls whether LICM diagnostic logging is enabled.
+	 * When true, detailed information about variance classification is printed
+	 * to stderr for Repeated scopes with more than 10 declarations.
+	 * Can also be enabled via the system property {@code AR_LICM_DIAGNOSTICS=true}.
+	 */
+	public static boolean enableLicmDiagnostics =
+			"true".equalsIgnoreCase(System.getProperty("AR_LICM_DIAGNOSTICS"));
+
 	private Variable<Integer, ?> index;
 	private Expression<Integer> interval;
 	private Expression<Boolean> condition;
@@ -183,7 +192,67 @@ public class Repeated<T> extends Scope<T> {
 		// Since declarations can form dependency chains (f_1 depends on f_0), we
 		// iterate until no new variant names are discovered (fixed-point).
 		List<DeclarationInfo> allDeclarations = collectDeclarations(scope);
+
+		boolean enableDiag = enableLicmDiagnostics && allDeclarations.size() > 10;
+		if (enableDiag) {
+			Variable<Integer, ?> scopeIndex = scope.getIndex();
+			System.err.println("[LICM-DIAG] === hoistLoopInvariantStatements ===");
+			System.err.println("[LICM-DIAG] Scope name: " + scope.getName());
+			System.err.println("[LICM-DIAG] Loop index variable: " +
+					(scopeIndex != null ? scopeIndex.getName() + " (type=" + scopeIndex.getClass().getSimpleName() + ")" : "null"));
+			System.err.println("[LICM-DIAG] Children count: " + scope.getChildren().size());
+			System.err.println("[LICM-DIAG] Total declarations found: " + allDeclarations.size());
+			System.err.println("[LICM-DIAG] Base variant names (before propagation): " + variantNames);
+			System.err.println("[LICM-DIAG] Loop indices count: " + loopIndices.size());
+			for (Index idx : loopIndices) {
+				System.err.println("[LICM-DIAG]   Loop index: " + idx.getName() + " (type=" + idx.getClass().getSimpleName() + ")");
+			}
+		}
+
 		propagateVariance(allDeclarations, variantNames, loopIndices);
+
+		if (enableDiag) {
+			System.err.println("[LICM-DIAG] Variant names (after propagation): " + variantNames);
+			int invariantCount = 0;
+			int variantCount = 0;
+			for (DeclarationInfo decl : allDeclarations) {
+				boolean isVariant = variantNames.contains(decl.name);
+				if (isVariant) {
+					variantCount++;
+					if (decl.name.contains("assignment")) {
+						System.err.println("[LICM-DIAG] VARIANT f_assignment decl: " + decl.name);
+						// Show why it's variant - check each invariance criterion
+						Expression<?> expr = decl.expression;
+						if (expr != null) {
+							for (Index idx : loopIndices) {
+								if (expr.containsIndex(idx)) {
+									System.err.println("[LICM-DIAG]   -> contains loop index: " + idx.getName());
+								}
+							}
+							for (Variable<?, ?> var : expr.getDependencies()) {
+								if (var.getName() != null && variantNames.contains(var.getName())) {
+									System.err.println("[LICM-DIAG]   -> depends on variant variable: " + var.getName());
+								}
+							}
+							for (Index idx : expr.getIndices()) {
+								if (idx.getName() != null && variantNames.contains(idx.getName())) {
+									System.err.println("[LICM-DIAG]   -> contains variant index name: " + idx.getName());
+								}
+							}
+							if (containsStaticReferenceToAny(expr, variantNames)) {
+								System.err.println("[LICM-DIAG]   -> contains StaticReference to variant name");
+								// Find which specific static reference
+								reportVariantStaticReferences(expr, variantNames);
+							}
+						}
+					}
+				} else {
+					invariantCount++;
+				}
+			}
+			System.err.println("[LICM-DIAG] Invariant declarations: " + invariantCount +
+					", Variant declarations: " + variantCount);
+		}
 
 		// Phase 3: hoist declarations whose names are NOT in the variant set.
 		// This recurses into all descendant scopes (grandchildren, etc.) to find
@@ -204,6 +273,12 @@ public class Repeated<T> extends Scope<T> {
 		List<Statement<?>> extractedDeclarations = new ArrayList<>();
 		extractInvariantSubExpressions(scope, variantNames, loopIndices, extractedDeclarations);
 
+		if (enableDiag) {
+			System.err.println("[LICM-DIAG] Phase 3 hoisted: " + hoisted.size() + " declarations");
+			System.err.println("[LICM-DIAG] Phase 4 extracted: " + extractedDeclarations.size() + " sub-expressions");
+			System.err.println("[LICM-DIAG] === end hoistLoopInvariantStatements ===");
+		}
+
 		// Add all hoisted statements to this scope (before the loop).
 		// Standard hoisted declarations come first, then extracted sub-expression
 		// declarations (which may reference kernel arguments used by hoisted decls).
@@ -211,6 +286,22 @@ public class Repeated<T> extends Scope<T> {
 		allHoisted.addAll(hoisted);
 		allHoisted.addAll(extractedDeclarations);
 		scope.getStatements().addAll(0, allHoisted);
+	}
+
+	/**
+	 * Reports which StaticReference nodes in the expression tree reference variant names.
+	 * Used for diagnostic logging only.
+	 */
+	private void reportVariantStaticReferences(Expression<?> expr, Set<String> variantNames) {
+		if (expr instanceof StaticReference) {
+			String name = ((StaticReference<?>) expr).getName();
+			if (name != null && variantNames.contains(name)) {
+				System.err.println("[LICM-DIAG]     StaticReference -> " + name);
+			}
+		}
+		for (Expression<?> child : expr.getChildren()) {
+			reportVariantStaticReferences(child, variantNames);
+		}
 	}
 
 	/**
@@ -287,8 +378,13 @@ public class Repeated<T> extends Scope<T> {
 	}
 
 	/**
-	 * Recursively scans a scope and its descendants for variant declaration expressions
+	 * Recursively scans a scope and its descendants for variant assignment expressions
 	 * containing invariant sub-trees and extracts them into declarations.
+	 *
+	 * <p>Both declaration assignments and non-declaration assignments (array element writes)
+	 * are processed. Non-declaration assignments like envelope accumulate expressions contain
+	 * genome-only sub-expressions (e.g., {@code pow((- pow(genome[offset+1], 3.0)) + 1.0, -1.0)})
+	 * that are loop-invariant and can be extracted into hoisted declarations.</p>
 	 *
 	 * @param scope the scope to scan
 	 * @param variantNames the set of loop-variant variable names
@@ -307,14 +403,10 @@ public class Repeated<T> extends Scope<T> {
 		for (Statement<?> stmt : scope.getStatements()) {
 			if (stmt instanceof ExpressionAssignment) {
 				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
-				if (assignment.isDeclaration()) {
-					ExpressionAssignment<?> result = extractSubExpressionsFromAssignment(
-							assignment, variantNames, loopIndices, extracted, extractIdx, declarations);
-					updatedStatements.add(result);
-					if (result != assignment) statementsChanged = true;
-				} else {
-					updatedStatements.add(stmt);
-				}
+				ExpressionAssignment<?> result = extractSubExpressionsFromAssignment(
+						assignment, variantNames, loopIndices, extracted, extractIdx, declarations);
+				updatedStatements.add(result);
+				if (result != assignment) statementsChanged = true;
 			} else {
 				updatedStatements.add(stmt);
 			}
@@ -325,16 +417,42 @@ public class Repeated<T> extends Scope<T> {
 			scope.getStatements().addAll(updatedStatements);
 		}
 
+		// Also process the deprecated variables list which may contain assignments
+		List<ExpressionAssignment<?>> updatedVariables = new ArrayList<>();
+		boolean variablesChanged = false;
+
+		for (ExpressionAssignment<?> var : scope.getVariables()) {
+			ExpressionAssignment<?> result = extractSubExpressionsFromAssignment(
+					var, variantNames, loopIndices, extracted, extractIdx, declarations);
+			updatedVariables.add(result);
+			if (result != var) variablesChanged = true;
+		}
+
+		if (variablesChanged) {
+			scope.getVariables().clear();
+			scope.getVariables().addAll(updatedVariables);
+		}
+
 		for (Scope<?> child : scope.getChildren()) {
 			extractFromScope(child, variantNames, loopIndices, extracted, extractIdx, declarations);
 		}
 	}
 
 	/**
-	 * Replaces loop-invariant sub-expressions within a single declaration assignment's
-	 * expression. Returns the original assignment if no replacements were made.
+	 * Replaces loop-invariant sub-expressions within an assignment's expression.
+	 * Returns the original assignment if no replacements were made.
 	 *
-	 * @param assignment the declaration assignment to process
+	 * <p>Works for both declaration assignments (e.g., {@code double f_0 = expr}) and
+	 * non-declaration assignments (e.g., {@code array[offset] = expr}). Only the
+	 * right-hand side expression is processed; the destination is left unchanged.</p>
+	 *
+	 * <p>The extraction depth threshold differs by assignment type: declarations use a
+	 * lower threshold ({@code treeDepth >= 1}) since they typically appear in moderate
+	 * numbers, while non-declaration assignments (e.g., envelope accumulate lines) use
+	 * a higher threshold ({@code treeDepth >= 3}) to avoid extracting trivially cheap
+	 * sub-expressions that would cause code blowup.</p>
+	 *
+	 * @param assignment the assignment to process
 	 * @param variantNames the set of loop-variant variable names
 	 * @param loopIndices all loop indices
 	 * @param extracted map of already-extracted sub-expressions (for dedup)
@@ -348,8 +466,9 @@ public class Repeated<T> extends Scope<T> {
 			int[] extractIdx, List<Statement<?>> declarations) {
 		Expression<?> expr = assignment.getExpression();
 		if (expr != null && !isLoopInvariant(expr, variantNames, loopIndices)) {
+			int minDepth = assignment.isDeclaration() ? 1 : 3;
 			Expression<?> replaced = replaceInvariantSubExpressions(
-					expr, variantNames, loopIndices, extracted, extractIdx, declarations);
+					expr, variantNames, loopIndices, extracted, extractIdx, declarations, minDepth);
 			if (replaced != expr) {
 				return new ExpressionAssignment(
 						assignment.isDeclaration(), assignment.getDestination(), replaced);
@@ -382,6 +501,7 @@ public class Repeated<T> extends Scope<T> {
 	 * @param extracted map of already-extracted sub-expressions to their references (for dedup)
 	 * @param extractIdx counter for generating unique declaration names
 	 * @param declarations list to receive new extracted declarations
+	 * @param minDepth minimum tree depth for extraction (1 for declarations, 3 for non-declarations)
 	 * @return the expression with invariant sub-expressions replaced, or the original if unchanged
 	 */
 	private Expression<?> replaceInvariantSubExpressions(Expression<?> expr,
@@ -389,7 +509,8 @@ public class Repeated<T> extends Scope<T> {
 														 List<Index> loopIndices,
 														 Map<Expression<?>, StaticReference<?>> extracted,
 														 int[] extractIdx,
-														 List<Statement<?>> declarations) {
+														 List<Statement<?>> declarations,
+														 int minDepth) {
 		List<Expression<?>> children = expr.getChildren();
 		if (children.isEmpty()) return expr;
 
@@ -400,7 +521,7 @@ public class Repeated<T> extends Scope<T> {
 			Expression<?> child = children.get(i);
 
 			if (isLoopInvariant(child, variantNames, loopIndices)) {
-				if (isSubstantialForExtraction(child)) {
+				if (isSubstantialForExtraction(child, minDepth)) {
 					StaticReference<?> ref = extracted.get(child);
 					if (ref == null) {
 						ref = new StaticReference<>(child.getType(),
@@ -413,7 +534,7 @@ public class Repeated<T> extends Scope<T> {
 				}
 			} else {
 				Expression<?> replaced = replaceInvariantSubExpressions(
-						child, variantNames, loopIndices, extracted, extractIdx, declarations);
+						child, variantNames, loopIndices, extracted, extractIdx, declarations, minDepth);
 				if (replaced != child) {
 					newChildren.set(i, replaced);
 					changed = true;
@@ -431,16 +552,29 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * <p>Constants and simple static references are not worth extracting since they
 	 * add a declaration overhead without meaningful reduction in per-iteration
-	 * computation. Any expression with at least one child (treeDepth >= 1)
-	 * represents a real computation and is worth extracting from a loop body.</p>
+	 * computation.</p>
+	 *
+	 * <p>The {@code minDepth} parameter controls the extraction threshold and differs
+	 * by context:</p>
+	 * <ul>
+	 *   <li><b>Declaration assignments</b> ({@code minDepth = 1}): These appear in moderate
+	 *       numbers so even binary operations like {@code pow(genome, 3.0)} are worth
+	 *       extracting.</li>
+	 *   <li><b>Non-declaration assignments</b> ({@code minDepth = 3}): Envelope accumulate
+	 *       lines and similar non-declaration assignments can contain thousands of trivial
+	 *       invariant sub-expressions (array accesses, simple arithmetic). A higher threshold
+	 *       filters these out while still capturing genome-derived computations like
+	 *       {@code pow((- pow(genome[offset+1], 3.0)) + 1.0, -1.0)}.</li>
+	 * </ul>
 	 *
 	 * @param expr the invariant expression to evaluate
+	 * @param minDepth minimum tree depth for extraction
 	 * @return true if the expression should be extracted into a declaration
 	 */
-	private boolean isSubstantialForExtraction(Expression<?> expr) {
+	private boolean isSubstantialForExtraction(Expression<?> expr, int minDepth) {
 		if (expr instanceof Constant) return false;
 		if (expr instanceof StaticReference) return false;
-		return expr.treeDepth() >= 1;
+		return expr.treeDepth() >= minDepth;
 	}
 
 	/**
@@ -465,6 +599,18 @@ public class Repeated<T> extends Scope<T> {
 		// Collect non-declaration assignment targets and nested loop indices
 		for (Scope<T> child : scope.getChildren()) {
 			collectBaseVariantNamesRecursive(child, variantNames);
+		}
+
+		// Also check scope variables (deprecated path but still populated)
+		int varsBefore = variantNames.size();
+		for (Scope<T> child : scope.getChildren()) {
+			for (ExpressionAssignment<?> var : child.getVariables()) {
+				collectDestinationNames(var.getDestination(), variantNames);
+			}
+		}
+		if (enableLicmDiagnostics && variantNames.size() > varsBefore) {
+			System.err.println("[LICM-DIAG] scope.getVariables() added " +
+					(variantNames.size() - varsBefore) + " variant names");
 		}
 
 		return variantNames;
