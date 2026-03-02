@@ -86,6 +86,19 @@ public interface CodePrintWriter {
 	boolean enableMetadata = SystemUtils.isEnabled("AR_HARDWARE_METADATA").orElse(false);
 
 	/**
+	 * Flag controlling whether the full operation tree is recursively rendered
+	 * in metadata comments. When {@code false} (the default), only top-level
+	 * operation metadata is emitted per scope. When {@code true}, each
+	 * operation's children are recursively rendered with increasing indentation,
+	 * producing a complete tree dump.
+	 *
+	 * <p>This is disabled by default because the recursive tree can be extremely
+	 * large for complex operations (e.g., the AudioScene loop kernel produces
+	 * ~455,000 comment lines with children enabled vs ~4,800 total lines without).
+	 */
+	boolean enableChildrenMetadata = false;
+
+	/**
 	 * Returns the {@link LanguageOperations} instance associated with this writer.
 	 *
 	 * <p>The {@link LanguageOperations} provides language-specific rendering utilities
@@ -328,7 +341,7 @@ public interface CodePrintWriter {
 				comment(indentStr + "     " + metadata.getSignature());
 			}
 
-			if (metadata.getChildren() != null) {
+			if (enableChildrenMetadata && metadata.getChildren() != null) {
 				metadata.getChildren().forEach(meta -> renderMetadata(meta, indent + 1));
 			}
 		}
