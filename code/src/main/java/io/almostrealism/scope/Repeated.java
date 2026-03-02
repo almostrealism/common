@@ -488,13 +488,21 @@ public class Repeated<T> extends Scope<T> {
 			List<Index> loopIndices, Map<Expression<?>, StaticReference<?>> extracted,
 			int[] extractIdx, List<Statement<?>> declarations) {
 		Expression<?> expr = assignment.getExpression();
-		if (expr != null && !isLoopInvariant(expr, variantNames, loopIndices)) {
-			int minDepth = assignment.isDeclaration() ? 1 : 3;
-			Expression<?> replaced = replaceInvariantSubExpressions(
-					expr, variantNames, loopIndices, extracted, extractIdx, declarations, minDepth);
-			if (replaced != expr) {
-				return new ExpressionAssignment(
-						assignment.isDeclaration(), assignment.getDestination(), replaced);
+		if (expr != null) {
+			// Precompute variant nodes in a single O(N) bottom-up pass,
+			// replacing the O(N²) approach where isLoopInvariant() traversed
+			// the full subtree at each node.
+			Set<Expression<?>> variantNodes = new HashSet<>();
+			boolean exprIsVariant = markVariantNodes(expr, variantNames, loopIndices, variantNodes);
+
+			if (exprIsVariant) {
+				int minDepth = assignment.isDeclaration() ? 1 : 3;
+				Expression<?> replaced = replaceInvariantSubExpressions(
+						expr, variantNodes, extracted, extractIdx, declarations, minDepth);
+				if (replaced != expr) {
+					return new ExpressionAssignment(
+							assignment.isDeclaration(), assignment.getDestination(), replaced);
+				}
 			}
 		}
 		return assignment;
@@ -506,8 +514,8 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * <p>For each child of the expression:</p>
 	 * <ul>
-	 *   <li>If the child is loop-invariant and substantial, it is extracted into a new
-	 *       {@code f_licm_*} declaration and replaced with a reference.</li>
+	 *   <li>If the child is loop-invariant (not in variantNodes) and substantial, it is
+	 *       extracted into a new {@code f_licm_*} declaration and replaced with a reference.</li>
 	 *   <li>If the child is loop-variant, this method recurses into it to find deeper
 	 *       invariant sub-trees.</li>
 	 *   <li>If the child is invariant but trivial (constant or simple reference), it is
@@ -519,8 +527,7 @@ public class Repeated<T> extends Scope<T> {
 	 * could replace unintended sub-expressions in complex expression trees.</p>
 	 *
 	 * @param expr the variant expression to process
-	 * @param variantNames the set of loop-variant variable names
-	 * @param loopIndices all loop indices
+	 * @param variantNodes precomputed set of variant expression nodes (from {@link #markVariantNodes})
 	 * @param extracted map of already-extracted sub-expressions to their references (for dedup)
 	 * @param extractIdx counter for generating unique declaration names
 	 * @param declarations list to receive new extracted declarations
@@ -528,8 +535,7 @@ public class Repeated<T> extends Scope<T> {
 	 * @return the expression with invariant sub-expressions replaced, or the original if unchanged
 	 */
 	private Expression<?> replaceInvariantSubExpressions(Expression<?> expr,
-														 Set<String> variantNames,
-														 List<Index> loopIndices,
+														 Set<Expression<?>> variantNodes,
 														 Map<Expression<?>, StaticReference<?>> extracted,
 														 int[] extractIdx,
 														 List<Statement<?>> declarations,
@@ -543,7 +549,7 @@ public class Repeated<T> extends Scope<T> {
 		for (int i = 0; i < children.size(); i++) {
 			Expression<?> child = children.get(i);
 
-			if (isLoopInvariant(child, variantNames, loopIndices)) {
+			if (!variantNodes.contains(child)) {
 				if (isSubstantialForExtraction(child, minDepth)) {
 					StaticReference<?> ref = extracted.get(child);
 					if (ref == null) {
@@ -557,7 +563,7 @@ public class Repeated<T> extends Scope<T> {
 				}
 			} else {
 				Expression<?> replaced = replaceInvariantSubExpressions(
-						child, variantNames, loopIndices, extracted, extractIdx, declarations, minDepth);
+						child, variantNodes, extracted, extractIdx, declarations, minDepth);
 				if (replaced != child) {
 					newChildren.set(i, replaced);
 					changed = true;
@@ -739,18 +745,94 @@ public class Repeated<T> extends Scope<T> {
 	 * @param loopIndices indices from this and nested loops
 	 */
 	private void propagateVariance(List<DeclarationInfo> declarations, Set<String> variantNames, List<Index> loopIndices) {
+		// Precompute the set of all names referenced by each declaration's expression
+		// in a single O(N) traversal per declaration. This replaces repeated O(N) calls
+		// to isLoopInvariant() in the fixed-point loop, reducing total cost from
+		// O(K × D × N) to O(D × N) + O(K × D × S) where S = avg referenced names.
+		List<Set<String>> referencedNameSets = new ArrayList<>(declarations.size());
+		List<Boolean> containsLoopIndexFlags = new ArrayList<>(declarations.size());
+
+		for (DeclarationInfo decl : declarations) {
+			Set<String> names = new HashSet<>();
+			boolean hasLoopIdx = collectAllReferencedNames(decl.expression, loopIndices, names);
+			referencedNameSets.add(names);
+			containsLoopIndexFlags.add(hasLoopIdx);
+		}
+
+		// Fixed-point loop using precomputed name sets
 		boolean changed = true;
 		while (changed) {
 			changed = false;
-			for (DeclarationInfo decl : declarations) {
+			for (int i = 0; i < declarations.size(); i++) {
+				DeclarationInfo decl = declarations.get(i);
 				if (!variantNames.contains(decl.name)) {
-					if (!isLoopInvariant(decl.expression, variantNames, loopIndices)) {
+					if (containsLoopIndexFlags.get(i) || intersectsVariant(referencedNameSets.get(i), variantNames)) {
 						variantNames.add(decl.name);
 						changed = true;
 					}
 				}
 			}
 		}
+	}
+
+	/**
+	 * Checks whether any name in the referenced set is in the variant set.
+	 */
+	private boolean intersectsVariant(Set<String> referencedNames, Set<String> variantNames) {
+		for (String name : referencedNames) {
+			if (variantNames.contains(name)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Collects all variable, index, and static reference names from an expression tree
+	 * in a single O(N) traversal. Also checks whether any loop index object is contained.
+	 *
+	 * @param expr the expression to analyze
+	 * @param loopIndices the loop indices to check for containment
+	 * @param names output set of all referenced names
+	 * @return true if the expression contains any loop index
+	 */
+	private boolean collectAllReferencedNames(Expression<?> expr, List<Index> loopIndices,
+											  Set<String> names) {
+		boolean hasLoopIndex = false;
+
+		if (expr instanceof Index) {
+			String name = ((Index) expr).getName();
+			if (name != null) {
+				names.add(name);
+				for (Index idx : loopIndices) {
+					if (idx.getName() != null && idx.getName().equals(name)) {
+						hasLoopIndex = true;
+						break;
+					}
+				}
+			}
+		}
+
+		if (expr instanceof StaticReference) {
+			String name = ((StaticReference<?>) expr).getName();
+			if (name != null) names.add(name);
+		}
+
+		List<Expression<?>> children = expr.getChildren();
+		if (children.isEmpty()) {
+			for (Variable<?, ?> var : expr.getDependencies()) {
+				if (var.getName() != null) names.add(var.getName());
+			}
+			for (Index idx : expr.getIndices()) {
+				if (idx.getName() != null) names.add(idx.getName());
+			}
+		}
+
+		for (Expression<?> child : children) {
+			if (collectAllReferencedNames(child, loopIndices, names)) {
+				hasLoopIndex = true;
+			}
+		}
+
+		return hasLoopIndex;
 	}
 
 	/**
@@ -912,6 +994,80 @@ public class Repeated<T> extends Scope<T> {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Performs a single bottom-up pass over the expression tree to identify all variant
+	 * (loop-dependent) nodes. A node is variant if it is a loop index, references a
+	 * variant variable, or has any variant child.
+	 *
+	 * <p>This replaces the O(N²) approach where {@code isLoopInvariant()} traversed
+	 * the full subtree at each node. Instead, variant status is computed once in O(N)
+	 * and stored in the provided set for O(1) lookups during sub-expression extraction.</p>
+	 *
+	 * @param expr the expression to analyze
+	 * @param variantNames the set of loop-variant variable names
+	 * @param loopIndices all loop indices
+	 * @param variantNodes output set — all variant nodes are added here
+	 * @return true if the expression itself is variant
+	 */
+	private boolean markVariantNodes(Expression<?> expr, Set<String> variantNames,
+									 List<Index> loopIndices,
+									 Set<Expression<?>> variantNodes) {
+		boolean isVariant = false;
+
+		// Check if this node is a loop index
+		if (expr instanceof Index) {
+			String name = ((Index) expr).getName();
+			for (Index idx : loopIndices) {
+				if (idx.getName() != null && idx.getName().equals(name)) {
+					isVariant = true;
+					break;
+				}
+			}
+			if (!isVariant && name != null && variantNames.contains(name)) {
+				isVariant = true;
+			}
+		}
+
+		// Check if this node is a StaticReference to a variant name
+		if (expr instanceof StaticReference) {
+			String name = ((StaticReference<?>) expr).getName();
+			if (name != null && variantNames.contains(name)) {
+				isVariant = true;
+			}
+		}
+
+		// For leaf nodes, check direct variable dependencies
+		List<Expression<?>> children = expr.getChildren();
+		if (children.isEmpty() && !isVariant) {
+			for (Variable<?, ?> var : expr.getDependencies()) {
+				if (var.getName() != null && variantNames.contains(var.getName())) {
+					isVariant = true;
+					break;
+				}
+			}
+			// Also check Index objects by name for leaves
+			for (Index idx : expr.getIndices()) {
+				if (idx.getName() != null && variantNames.contains(idx.getName())) {
+					isVariant = true;
+					break;
+				}
+			}
+		}
+
+		// Recurse into children — if any child is variant, this node is variant
+		for (Expression<?> child : children) {
+			if (markVariantNodes(child, variantNames, loopIndices, variantNodes)) {
+				isVariant = true;
+			}
+		}
+
+		if (isVariant) {
+			variantNodes.add(expr);
+		}
+
+		return isVariant;
 	}
 
 	@Override
