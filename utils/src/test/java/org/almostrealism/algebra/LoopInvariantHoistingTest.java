@@ -21,7 +21,6 @@ import io.almostrealism.code.Statement;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.scope.Repeated;
