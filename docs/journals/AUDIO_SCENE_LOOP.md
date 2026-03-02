@@ -65,6 +65,57 @@ template below.
 
 ## Entries
 
+### 2026-03-02 — Fix Phase 4 sub-expression extraction by reverting to isLoopInvariant()
+
+**Goal:** #10, #6 — Fix Phase 4 sub-expression extraction that extracts 0 sub-expressions
+
+**Context:** The independent review (see entry below) identified that commit `054552e4c`
+broke Phase 4 by replacing `isLoopInvariant()` with `markVariantNodes()` + `HashSet<Expression<?>>`.
+The `markVariantNodes()` approach only checks `getDependencies()` for leaf nodes (no children),
+while `isLoopInvariant()` calls `getDependencies()` on the root expression which traverses the
+full subtree. Non-leaf expression types that store variable references internally (not as child
+expressions) are missed by `markVariantNodes()`, causing Phase 4 to incorrectly classify
+variant expressions as invariant and skip them entirely.
+
+**Approach:** Reverted Phase 4 (`extractSubExpressionsFromAssignment` and
+`replaceInvariantSubExpressions`) to use `isLoopInvariant()` for invariance checking.
+Removed the `markVariantNodes()` method entirely. Kept the Phase 2 `propagateVariance()`
+optimization (using `collectAllReferencedNames`) which is correct — it uses string-based
+name collection and is only used for declaration-level variance classification.
+
+**Alternatives considered:** Could have tried to fix `markVariantNodes()` to also check
+`getDependencies()` for non-leaf nodes, but this would negate the O(N) optimization and
+effectively reimplement `isLoopInvariant()`. The plan document explicitly says "Do NOT
+attempt to re-optimize Phase 4 to O(N) until it is working correctly."
+
+**Changes made:**
+1. `Repeated.java`: Changed `extractSubExpressionsFromAssignment()` to use
+   `!isLoopInvariant(expr, variantNames, loopIndices)` instead of `markVariantNodes()`.
+2. `Repeated.java`: Changed `replaceInvariantSubExpressions()` to accept
+   `variantNames`/`loopIndices` and use `isLoopInvariant(child, ...)` instead of
+   `!variantNodes.contains(child)`.
+3. `Repeated.java`: Removed `markVariantNodes()` method (no longer referenced).
+4. `LoopInvariantHoistingTest.java`: Added 2 new tests:
+   - `helperFunctionWithOwnLoopIndexNotHoisted`: Nested helper loop (simulating
+     timeSeriesValueAt) with its own loop index — verifies inner declarations are
+     not hoisted to outer loop.
+   - `staticReferenceVariancePropagation`: Transitive variance via StaticReference
+     chain — verifies that declarations depending on variant declarations through
+     StaticReference are not hoisted.
+
+**Testing:** All 20 LICM tests pass (18 original + 2 new). All 4 CachedStateCellOptimization
+tests pass. Full build (`mvn clean install -DskipTests`) succeeds across all 35 modules.
+
+**Outcome:** Phase 4 is now using `isLoopInvariant()` which correctly handles all expression
+types by calling `getDependencies()`, `getIndices()`, and `containsIndex()` on the full
+subtree. This should fix the "0 sub-expressions extracted" issue on the real AudioScene scope
+tree.
+
+**Open questions:** Need to verify Phase 4 on the real AudioScene scope tree by running
+`effectsEnabledPerformance` and checking for `f_licm_*` declarations in the generated C file.
+
+---
+
 ### 2026-03-02 — Independent review: Phase 4 NOT WORKING, root cause identified
 
 **Goal:** Verify Phase 4 sub-expression extraction on real AudioScene scope tree

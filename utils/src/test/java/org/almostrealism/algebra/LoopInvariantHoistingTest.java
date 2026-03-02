@@ -945,6 +945,140 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that a declaration inside a helper function scope (simulating
+	 * {@code timeSeriesValueAt}) that uses its own inner loop index is NOT hoisted
+	 * out of the outer loop. The helper scope's loop index is different from the
+	 * outer loop's, but LICM must still recognize it as variant w.r.t. the inner
+	 * loop and not hoist it to before the outer loop.
+	 *
+	 * <p>Scope structure:</p>
+	 * <pre>
+	 * for (i = 0; i < 4096; i++) {
+	 *   {
+	 *     // Helper function with its own loop
+	 *     for (j = 0; j < 32; j++) {
+	 *       { double f_helper_result = j * 2.0; }  // variant w.r.t. inner loop j
+	 *     }
+	 *     // Invariant declaration (no loop references)
+	 *     double f_outer_const = 42.0;
+	 *   }
+	 * }
+	 * </pre>
+	 *
+	 * <p>Only {@code f_outer_const} should be hoisted. {@code f_helper_result}
+	 * references the inner loop index {@code j} and must remain inside the inner loop,
+	 * which itself must stay inside the outer loop.</p>
+	 */
+	@Test(timeout = 30000)
+	public void helperFunctionWithOwnLoopIndexNotHoisted() {
+		Variable<Integer, ?> outerIdx = Variable.integer("_outer_i");
+		Repeated<Void> outerLoop = new Repeated<>(outerIdx, outerIdx.ref().lessThan(4096));
+		outerLoop.setName("outerLoop");
+
+		Scope<Void> outerBody = new Scope<>("outerBody");
+
+		// Inner helper loop (simulating timeSeriesValueAt)
+		Variable<Integer, ?> innerIdx = Variable.integer("_helper_j");
+		Repeated<Void> innerLoop = new Repeated<>(innerIdx, innerIdx.ref().lessThan(32));
+		innerLoop.setName("helperLoop");
+
+		Scope<Void> innerBody = new Scope<>("innerBody");
+		// Declaration that references the inner loop index
+		Expression<?> innerExpr = new StaticReference<>(Double.class, "_helper_j")
+				.multiply(new DoubleConstant(2.0));
+		innerBody.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Double.class, "f_helper_result"),
+				innerExpr));
+		innerLoop.getChildren().add(innerBody);
+		outerBody.getChildren().add(innerLoop);
+
+		// Invariant declaration outside helper
+		outerBody.getStatements().add(new ExpressionAssignment<>(
+				true,
+				new StaticReference<>(Double.class, "f_outer_const"),
+				new DoubleConstant(42.0)));
+
+		outerLoop.getChildren().add(outerBody);
+
+		Repeated<Void> simplified = (Repeated<Void>) outerLoop.simplify(new NoOpKernelStructureContext(), 0);
+
+		// f_outer_const should be hoisted
+		Assert.assertTrue("f_outer_const should be hoisted out of the outer loop",
+				countDeclarationsNamed(simplified.getStatements(), "f_outer_const") > 0);
+
+		// f_helper_result should NOT be hoisted out of the outer loop
+		Assert.assertEquals("f_helper_result should NOT be hoisted out of the outer loop",
+				0, countDeclarationsNamed(simplified.getStatements(), "f_helper_result"));
+	}
+
+	/**
+	 * Verifies that variance propagation correctly handles a chain where a
+	 * StaticReference to a variant declaration makes a subsequent declaration
+	 * variant as well. This is critical for the AudioScene pipeline where
+	 * envelope expressions reference {@code f_assignment} declarations that
+	 * reference the frame counter.
+	 *
+	 * <p>Scope structure:</p>
+	 * <pre>
+	 * for (i = 0; i < 100; i++) {
+	 *   {
+	 *     double f_time_dep = i * 2.0;           // variant (references i directly)
+	 *     double f_indirect = f_time_dep + 1.0;  // variant (references f_time_dep via StaticRef)
+	 *     double f_const = 99.0;                 // invariant
+	 *   }
+	 * }
+	 * </pre>
+	 *
+	 * <p>Only {@code f_const} should be hoisted. Both {@code f_time_dep} and
+	 * {@code f_indirect} must remain in the loop.</p>
+	 */
+	@Test(timeout = 30000)
+	public void staticReferenceVariancePropagation() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("staticRefPropTest");
+
+		Scope<Void> child = new Scope<>("body");
+
+		// f_time_dep = i * 2.0 (directly variant)
+		child.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Double.class, "f_time_dep"),
+				new StaticReference<Double>(Double.class, "_test_i")
+						.multiply(new DoubleConstant(2.0))));
+
+		// f_indirect = f_time_dep + 1.0 (indirectly variant via StaticReference)
+		child.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Double.class, "f_indirect"),
+				new StaticReference<Double>(Double.class, "f_time_dep")
+						.add(new DoubleConstant(1.0))));
+
+		// f_const = 99.0 (invariant)
+		child.getStatements().add(new ExpressionAssignment<>(
+				true,
+				new StaticReference<>(Double.class, "f_const"),
+				new DoubleConstant(99.0)));
+
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		// f_time_dep should NOT be hoisted (directly variant)
+		Assert.assertEquals("f_time_dep should NOT be hoisted",
+				0, countDeclarationsNamed(simplified.getStatements(), "f_time_dep"));
+
+		// f_indirect should NOT be hoisted (transitively variant via StaticReference)
+		Assert.assertEquals("f_indirect should NOT be hoisted (depends on variant f_time_dep)",
+				0, countDeclarationsNamed(simplified.getStatements(), "f_indirect"));
+
+		// f_const should be hoisted
+		Assert.assertTrue("f_const should be hoisted",
+				countDeclarationsNamed(simplified.getStatements(), "f_const") > 0);
+	}
+
+	/**
 	 * Counts how many declaration statements in the given list have a destination
 	 * name matching the specified name.
 	 */
