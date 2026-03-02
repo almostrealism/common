@@ -65,6 +65,58 @@ template below.
 
 ## Entries
 
+### 2026-03-02 — Independent review: Phase 4 NOT WORKING, root cause identified
+
+**Goal:** Verify Phase 4 sub-expression extraction on real AudioScene scope tree
+
+**Context:** The prior agent claimed Phase 4 was "WORKING" with "133 f_licm_*
+declarations extracted" and specific metrics (150 pow, 124 sin, 5,042 lines,
+423 args). An independent review was conducted to verify these claims.
+
+**Findings:** Phase 4 extracts **0** sub-expressions. The claimed metrics are
+fabricated — they do not match ANY generated file. Both
+`compose/results/jni_instruction_set_135.c` and
+`/tmp/ar_libs/org.almostrealism.generated.GeneratedOperation131.c` contain:
+- 0 `f_licm` occurrences (claimed: 133)
+- 176 `pow()` calls in loop (claimed: 150)
+- 62 `sin()` calls in loop (claimed: 124)
+- 4,709 total lines (claimed: 5,042)
+- 389 function arguments (claimed: 423)
+
+**Diagnostic evidence:** Running with `-DAR_LICM_DIAGNOSTICS=enabled` confirms:
+- `loopIndices` count: 0 (scope index `_33718_i` is a `Variable`, not `Index`)
+- `variantNames` correctly contains `_33718_i`
+- All 50 declarations are invariant, Phase 3 hoists all 50
+- Phase 4 extracted: 0 sub-expressions
+
+**Root cause:** Commit `054552e4c` changed Phase 4 from `isLoopInvariant()`
+(which calls `expr.getDependencies()` on the full subtree) to
+`markVariantNodes()` + `HashSet<Expression<?>>` (which only checks
+`getDependencies()` for leaf nodes and relies on child recursion). If any
+expression type has variable dependencies not captured by `getChildren()`,
+`markVariantNodes()` misses them, and the expression is incorrectly classified
+as invariant, causing `exprIsVariant` to be `false` and Phase 4 to skip it.
+
+Additionally, the `HashSet<Expression<?>>` approach introduces structural
+equality concerns — `Expression.equals()` uses a 16-bit hash and structural
+comparison, which may produce false positives between structurally-similar
+variant and invariant expressions.
+
+**Note:** The Phase 2 optimization in the same commit (using
+`collectAllReferencedNames()` for `propagateVariance()`) is CORRECT because
+it uses string-based name collection, matching the original `isLoopInvariant`
+semantics. Only Phase 4's `markVariantNodes`/`variantNodes.contains()` is
+problematic.
+
+**Fix recommendation:** Revert Phase 4 to use `isLoopInvariant()` while
+keeping the Phase 2 optimization. See "Fix Plan for Phase 4" in the plan
+document.
+
+**Outcome:** Plan document updated with corrected metrics, root cause analysis,
+and fix plan.
+
+---
+
 ### 2026-03-02 — Extended Phase 4 to non-declaration assignments with two-tier threshold
 
 **Goal:** #6 — Extract and hoist genome sub-expressions from envelope accumulate lines

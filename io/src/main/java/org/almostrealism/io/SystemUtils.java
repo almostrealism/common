@@ -149,6 +149,12 @@ public class SystemUtils {
 	public static Optional<Boolean> isEnabled(String key) {
 		String value = getProperty(key);
 
+		if ("true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)) {
+			throw new IllegalArgumentException("System flag " + key +
+					" does not support boolean values " +
+					"(use enabled, disabled, or other key-specific keyword)");
+		}
+
 		if ("enabled".equalsIgnoreCase(value)) {
 			return Optional.of(true);
 		} else if ("disabled".equalsIgnoreCase(value)) {
