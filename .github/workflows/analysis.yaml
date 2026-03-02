@@ -448,7 +448,8 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7
+           -DAR_TEST_GROUPS=7 \
+           2>&1 | tee /tmp/mvn-utils-test.log
 
       - name: Upload Surefire Reports
         if: always()
@@ -468,7 +469,8 @@ jobs:
            -DAR_HARDWARE_LIBS=Extensions \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7
+           -DAR_TEST_GROUPS=7 \
+           2>&1 | tee /tmp/mvn-ml-test.log
 
       - name: Upload ML Surefire Reports
         if: always()
@@ -477,6 +479,20 @@ jobs:
           name: surefire-ml-group-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Extract crash reports
+        if: always()
+        run: |
+          ./tools/ci/extract-crash-reports.sh /tmp/mvn-*.log
+
+      - name: Upload Crash Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-reports-group-${{ matrix.group }}
+          path: /tmp/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -520,7 +536,8 @@ jobs:
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_TEST_PROFILE=pipeline \
+           2>&1 | tee /tmp/mvn-audio-test.log
 
       - name: Run Music Tests
         run: |
@@ -528,7 +545,8 @@ jobs:
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_TEST_PROFILE=pipeline \
+           2>&1 | tee /tmp/mvn-music-test.log
 
       - name: Run Compose Tests
         run: |
@@ -536,7 +554,8 @@ jobs:
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_TEST_PROFILE=pipeline \
+           2>&1 | tee /tmp/mvn-compose-test.log
 
       - name: Upload Surefire Reports
         if: always()
@@ -545,6 +564,20 @@ jobs:
           name: surefire-media
           path: |
             **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Extract crash reports
+        if: always()
+        run: |
+          ./tools/ci/extract-crash-reports.sh /tmp/mvn-*.log
+
+      - name: Upload Crash Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-reports-media
+          path: /tmp/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -852,6 +885,15 @@ jobs:
           path: all-surefire-reports
           merge-multiple: false
 
+      - name: Download Crash Reports
+        if: steps.build-check.outputs.build_failed != 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: crash-reports-*
+          path: all-crash-reports
+          merge-multiple: true
+
       - name: Parse test failures
         if: steps.build-check.outputs.build_failed != 'true'
         id: failures
@@ -964,9 +1006,8 @@ jobs:
 
       # ── Test job failure without surefire XML ──────────────────────
       # When a test job had result "failure" but no surefire failures
-      # were parsed (e.g., JVM OOM, build error inside the test step),
-      # treat it as a build failure. This is a genuine failure, not
-      # "incomplete" testing.
+      # were parsed (e.g., JVM OOM, SIGABRT, native crash), use the
+      # crash-specific prompt with Maven output and dumpstream details.
 
       - name: Build prompt (test job crash)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
@@ -975,7 +1016,17 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports /tmp/agent-prompt.txt
+
+      - name: Extract crashed test class names
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
+        id: crash-classes
+        run: |
+          CLASSES=""
+          if [ -f all-crash-reports/crash-summary.txt ]; then
+            CLASSES=$(grep -oP 'org\.almostrealism\.\S*Test\S*' all-crash-reports/crash-summary.txt 2>/dev/null | sort -u | tr '\n' ' ' || true)
+          fi
+          echo "failing_classes=$CLASSES" >> "$GITHUB_OUTPUT"
 
       - name: Submit agent job (test job crash)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true' && inputs.auto_resolve != 'false'
@@ -985,8 +1036,9 @@ jobs:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           PROTECT_TEST_FILES: "true"
+          FAILING_TEST_CLASSES: ${{ steps.crash-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
-          DESCRIPTION: "Resolve test job failure (no surefire results)"
+          DESCRIPTION: "Resolve JVM crash in test execution"
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
