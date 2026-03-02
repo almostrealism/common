@@ -26,6 +26,7 @@ import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -85,7 +86,7 @@ public class Repeated<T> extends Scope<T> {
 	 * Can also be enabled via the system property {@code AR_LICM_DIAGNOSTICS=true}.
 	 */
 	public static boolean enableLicmDiagnostics =
-			"true".equalsIgnoreCase(System.getProperty("AR_LICM_DIAGNOSTICS"));
+			SystemUtils.isEnabled("AR_LICM_DIAGNOSTICS").orElse(false);
 
 	private Variable<Integer, ?> index;
 	private Expression<Integer> interval;
