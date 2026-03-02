@@ -192,6 +192,14 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			enableLargeInstructionSetMonitoring || enableInstructionSetMonitoring ||
 					SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("failed");
 
+	/**
+	 * Directory where instruction set monitoring files are written.
+	 * Configurable via the {@code AR_INSTRUCTION_SET_OUTPUT_DIR} system property
+	 * or environment variable. Defaults to {@code "results"} (relative to CWD).
+	 */
+	public static String instructionSetOutputDir =
+			SystemUtils.getProperty("AR_INSTRUCTION_SET_OUTPUT_DIR", "results");
+
 	public static TimingMetric prepareArgumentsMetric = Hardware.console.timing("prepareArguments");
 	public static TimingMetric computeDimMasksMetric = Hardware.console.timing("computeDimMasks");
 

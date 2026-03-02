@@ -73,6 +73,7 @@ class RunMetadata:
     command: str = ""
     jmx_monitoring: bool = False
     forked_pid: Optional[int] = None
+    instruction_set_output_dir: Optional[str] = None
 
 
 class TestRunner:
@@ -115,12 +116,14 @@ class TestRunner:
                 pass
 
     def build_maven_command(self, config: RunConfig,
-                            run_dir: Optional[Path] = None) -> list[str]:
+                            run_dir: Optional[Path] = None,
+                            run_id: Optional[str] = None) -> list[str]:
         """Build the maven test command.
 
         Args:
             config: Run configuration.
             run_dir: Run directory, used for JFR output path when jmx_monitoring is enabled.
+            run_id: Run identifier, used to isolate instruction set output files.
         """
         cmd = ["mvn", "test", "-pl", config.module]
 
@@ -146,6 +149,18 @@ class TestRunner:
         if config.profile:
             cmd.append(f"-DAR_TEST_PROFILE={config.profile}")
 
+        # Auto-inject instruction set output directory to prevent file collisions
+        # between concurrent or sequential test runs. Uses <module>/results/<run_id>/
+        # so each run's generated C/MSL files are isolated. Always injected unless
+        # the caller explicitly specified a directory (the Java code only writes files
+        # when monitoring is enabled, so unused properties have no overhead).
+        if run_id:
+            has_output_dir = any("AR_INSTRUCTION_SET_OUTPUT_DIR" in arg
+                                 for arg in config.jvm_args)
+            if not has_output_dir:
+                output_dir = str(PROJECT_ROOT / config.module / "results" / run_id)
+                cmd.append(f"-DAR_INSTRUCTION_SET_OUTPUT_DIR={output_dir}")
+
         # Add test class/method filters
         if config.test_classes:
             cmd.append(f"-Dtest={','.join(config.test_classes)}")
@@ -169,13 +184,21 @@ class TestRunner:
             (run_dir / "jmx" / "snapshots").mkdir(parents=True, exist_ok=True)
 
         # Build command
-        cmd = self.build_maven_command(config, run_dir)
+        cmd = self.build_maven_command(config, run_dir, run_id)
         cmd_str = " ".join(cmd)
 
         # Set environment
         env = os.environ.copy()
         env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
         env["AR_HARDWARE_DRIVER"] = "native"
+
+        # Extract instruction set output dir from command if injected
+        iset_output_dir = None
+        iset_prefix = "-DAR_INSTRUCTION_SET_OUTPUT_DIR="
+        for part in cmd:
+            if part.startswith(iset_prefix):
+                iset_output_dir = part[len(iset_prefix):]
+                break
 
         # Create metadata
         metadata = RunMetadata(
@@ -184,7 +207,8 @@ class TestRunner:
             status="running",
             started_at=datetime.now().isoformat(),
             command=cmd_str,
-            jmx_monitoring=config.jmx_monitoring
+            jmx_monitoring=config.jmx_monitoring,
+            instruction_set_output_dir=iset_output_dir
         )
 
         # Start process
@@ -296,7 +320,7 @@ class TestRunner:
             profile=config.profile,
             jmx_monitoring=False,
         )
-        cmd = self.build_maven_command(degraded_config, run_dir)
+        cmd = self.build_maven_command(degraded_config, run_dir, run_id)
 
         # Log to output.txt
         output_file = run_dir / "output.txt"
@@ -920,13 +944,20 @@ async def call_tool(name: str, arguments: dict):
                 jmx_monitoring=arguments.get("jmx_monitoring", False)
             )
             run_id, command = runner.start_run(config)
+            response = {
+                "run_id": run_id,
+                "status": "started",
+                "command": command
+            }
+            # Include instruction set output directory if it was auto-injected
+            output_dir_prefix = "-DAR_INSTRUCTION_SET_OUTPUT_DIR="
+            for part in command.split():
+                if part.startswith(output_dir_prefix):
+                    response["instruction_set_output_dir"] = part[len(output_dir_prefix):]
+                    break
             return [TextContent(
                 type="text",
-                text=json.dumps({
-                    "run_id": run_id,
-                    "status": "started",
-                    "command": command
-                }, indent=2)
+                text=json.dumps(response, indent=2)
             )]
 
         elif name == "get_run_status":

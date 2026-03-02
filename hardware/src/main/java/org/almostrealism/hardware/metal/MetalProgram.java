@@ -160,13 +160,15 @@ public class MetalProgram implements OperationInfo, Signature, Destroyable, Cons
 		String name = "mtl_instruction_set_" + (monitorOutputCount++) + ".c";
 
 		try {
-			Files.writeString(Path.of("results/" + name), src);
+			Path outputDir = Path.of(HardwareOperator.instructionSetOutputDir);
+			Files.createDirectories(outputDir);
+			Files.writeString(outputDir.resolve(name), src);
 		} catch (IOException ex) {
 			throw new RuntimeException(ex);
 		}
 
 		ScopeSettings.printStats();
-		log("Wrote " + name);
+		log("Wrote " + HardwareOperator.instructionSetOutputDir + "/" + name);
 	}
 
 	/**

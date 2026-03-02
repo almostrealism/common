@@ -360,13 +360,15 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 			String name = "jni_instruction_set_" + (monitorOutputCount++) + ".c";
 
 			try {
-				Files.writeString(Path.of("results/" + name), code);
+				Path outputDir = Path.of(HardwareOperator.instructionSetOutputDir);
+				Files.createDirectories(outputDir);
+				Files.writeString(outputDir.resolve(name), code);
 			} catch (IOException ex) {
 				throw new RuntimeException(ex);
 			}
 
 			ScopeSettings.printStats();
-			log("Wrote " + name);
+			log("Wrote " + HardwareOperator.instructionSetOutputDir + "/" + name);
 		}
 
 		long start = System.nanoTime();
