@@ -531,16 +531,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 
 		// The extracted sub-expression should appear as a f_licm_* declaration
 		// in the Repeated scope's hoisted statements (before the loop)
-		long licmDeclarations = simplified.getStatements().stream()
-				.filter(s -> s instanceof ExpressionAssignment)
-				.map(s -> (ExpressionAssignment<?>) s)
-				.filter(ExpressionAssignment::isDeclaration)
-				.filter(a -> {
-					Expression<?> dest = a.getDestination();
-					return dest instanceof StaticReference
-							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
-				})
-				.count();
+		long licmDeclarations = countDeclarationsWithPrefix(simplified.getStatements(), "f_licm_");
 
 		Assert.assertTrue("Invariant sub-expression should be extracted and hoisted as f_licm_* declaration",
 				licmDeclarations > 0);
@@ -574,16 +565,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
 
 		// No f_licm_* declarations should be created for trivial sub-expressions
-		long licmDeclarations = simplified.getStatements().stream()
-				.filter(s -> s instanceof ExpressionAssignment)
-				.map(s -> (ExpressionAssignment<?>) s)
-				.filter(ExpressionAssignment::isDeclaration)
-				.filter(a -> {
-					Expression<?> dest = a.getDestination();
-					return dest instanceof StaticReference
-							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
-				})
-				.count();
+		long licmDeclarations = countDeclarationsWithPrefix(simplified.getStatements(), "f_licm_");
 
 		Assert.assertEquals("Trivial sub-expressions should NOT be extracted", 0, licmDeclarations);
 	}
@@ -639,16 +621,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
 
 		// Verify a f_licm_* declaration was extracted for the genome sub-expression
-		long licmDeclarations = simplified.getStatements().stream()
-				.filter(s -> s instanceof ExpressionAssignment)
-				.map(s -> (ExpressionAssignment<?>) s)
-				.filter(ExpressionAssignment::isDeclaration)
-				.filter(a -> {
-					Expression<?> dest = a.getDestination();
-					return dest instanceof StaticReference
-							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
-				})
-				.count();
+		long licmDeclarations = countDeclarationsWithPrefix(simplified.getStatements(), "f_licm_");
 
 		Assert.assertTrue("Genome-only sub-expression should be extracted",
 				licmDeclarations > 0);
@@ -699,16 +672,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
 
 		// Count f_licm_* declarations — should be deduplicated
-		long licmDeclarations = simplified.getStatements().stream()
-				.filter(s -> s instanceof ExpressionAssignment)
-				.map(s -> (ExpressionAssignment<?>) s)
-				.filter(ExpressionAssignment::isDeclaration)
-				.filter(a -> {
-					Expression<?> dest = a.getDestination();
-					return dest instanceof StaticReference
-							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
-				})
-				.count();
+		long licmDeclarations = countDeclarationsWithPrefix(simplified.getStatements(), "f_licm_");
 
 		// If dedup works, there should be exactly 1 declaration for the shared sub-expression
 		// (could be more if the expression system creates structurally different objects,
@@ -936,16 +900,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
 
 		// The deep invariant sub-expression should be extracted as f_licm_*
-		long licmDeclarations = simplified.getStatements().stream()
-				.filter(s -> s instanceof ExpressionAssignment)
-				.map(s -> (ExpressionAssignment<?>) s)
-				.filter(ExpressionAssignment::isDeclaration)
-				.filter(a -> {
-					Expression<?> dest = a.getDestination();
-					return dest instanceof StaticReference
-							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
-				})
-				.count();
+		long licmDeclarations = countDeclarationsWithPrefix(simplified.getStatements(), "f_licm_");
 
 		Assert.assertTrue("Deep invariant sub-expression in non-declaration should be extracted",
 				licmDeclarations > 0);
@@ -984,16 +939,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
 
 		// No f_licm_* should be created — the sub-expression is too shallow
-		long licmDeclarations = simplified.getStatements().stream()
-				.filter(s -> s instanceof ExpressionAssignment)
-				.map(s -> (ExpressionAssignment<?>) s)
-				.filter(ExpressionAssignment::isDeclaration)
-				.filter(a -> {
-					Expression<?> dest = a.getDestination();
-					return dest instanceof StaticReference
-							&& ((StaticReference<?>) dest).getName().startsWith("f_licm_");
-				})
-				.count();
+		long licmDeclarations = countDeclarationsWithPrefix(simplified.getStatements(), "f_licm_");
 
 		Assert.assertEquals("Shallow invariant sub-expression in non-declaration should NOT be extracted",
 				0, licmDeclarations);
@@ -1012,6 +958,24 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 					Expression<?> dest = a.getDestination();
 					return dest instanceof StaticReference
 							&& name.equals(((StaticReference<?>) dest).getName());
+				})
+				.count();
+	}
+
+	/**
+	 * Counts how many declaration statements in the given list have a destination
+	 * name starting with the specified prefix (e.g., "f_licm_").
+	 */
+	private long countDeclarationsWithPrefix(List<Statement<?>> statements, String prefix) {
+		return statements.stream()
+				.filter(s -> s instanceof ExpressionAssignment)
+				.map(s -> (ExpressionAssignment<?>) s)
+				.filter(ExpressionAssignment::isDeclaration)
+				.filter(a -> {
+					Expression<?> dest = a.getDestination();
+					return dest instanceof StaticReference
+							&& ((StaticReference<?>) dest).getName() != null
+							&& ((StaticReference<?>) dest).getName().startsWith(prefix);
 				})
 				.count();
 	}
