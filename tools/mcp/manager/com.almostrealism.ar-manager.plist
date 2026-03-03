@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent for ar-manager MCP server.
+
+  Install:
+    cp com.almostrealism.ar-manager.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.almostrealism.ar-manager.plist
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.almostrealism.ar-manager.plist
+    rm ~/Library/LaunchAgents/com.almostrealism.ar-manager.plist
+
+  Logs:
+    tail -f /tmp/ar-manager.log
+    tail -f /tmp/ar-manager.err
+
+  Before installing, edit the paths below to match your environment:
+    - ProgramArguments: path to python3 and server.py
+    - AR_CONTROLLER_URL: Tailscale hostname or IP of controller
+    - AR_MANAGER_GITHUB_TOKEN: your GitHub PAT (or remove the key)
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.almostrealism.ar-manager</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/michael/Projects/AlmostRealism/common/tools/mcp/manager/server.py</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AR_CONTROLLER_URL</key>
+    <string>http://mac-studio:7780</string>
+    <key>MCP_TRANSPORT</key>
+    <string>http</string>
+    <key>MCP_PORT</key>
+    <string>8010</string>
+    <key>AR_MANAGER_TOKEN_FILE</key>
+    <string>/Users/michael/.config/ar/manager-tokens.json</string>
+    <!-- Uncomment and set if you need Tier 2 pipeline tools:
+    <key>AR_MANAGER_GITHUB_TOKEN</key>
+    <string>ghp_YOUR_TOKEN_HERE</string>
+    -->
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/ar-manager.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/ar-manager.err</string>
+
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+</dict>
+</plist>

@@ -39,6 +39,11 @@
       "command": "python3",
       "args": ["tools/mcp/github/server.py"],
       "description": "Read and respond to GitHub PR review comments"
+    },
+    "ar-manager": {
+      "command": "python3",
+      "args": ["tools/mcp/manager/server.py"],
+      "description": "Internet-facing endpoint for managing workstreams and triggering project workflows"
     }
   }
 }
