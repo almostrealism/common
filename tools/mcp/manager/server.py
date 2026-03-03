@@ -800,14 +800,16 @@ def project_verify_branch(
             "next_steps": ["Provide the branch parameter explicitly"],
         }
 
-    inputs = {"branch": effective_branch}
+    inputs = {}
     if plan_file:
         inputs["plan_file"] = plan_file
 
+    # The workflow uses github.ref_name as the branch, so we dispatch
+    # on the target branch (not baseBranch). Inputs only has plan_file.
     result = _github_request(
         "POST",
         f"/repos/{owner}/{repo}/actions/workflows/verify-completion.yaml/dispatches",
-        {"ref": ws.get("baseBranch", "master"), "inputs": inputs},
+        {"ref": effective_branch, "inputs": inputs},
     )
 
     if result.get("ok") or result.get("status") == 204:
