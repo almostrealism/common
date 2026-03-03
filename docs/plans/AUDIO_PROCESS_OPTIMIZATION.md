@@ -2,19 +2,28 @@
 
 ## Executive Summary
 
-The AudioScene renderer runs at 0.63x real-time (147ms avg per 93ms
-buffer). The dominant cost is the MultiOrderFilter FIR convolution
-kernel, which inlines ~336,000 sin/cos calls per buffer because the
-coefficient sub-expression is not isolated during Process tree
-optimization.
+**STATUS: REGRESSION — strategy must be reverted or fixed**
 
-**This is not a MultiOrderFilter-specific problem.** It is a gap in the
-Process optimization strategy layer: `ParallelismTargetOptimization`
-makes an all-or-nothing isolation decision based on the maximum child
-parallelism, so it cannot detect that an individual child with much
-lower parallelism is being wastefully replicated across the parent's
-kernel. The fix belongs in the strategy layer — either as a correction
-to the existing strategy or as a new strategy in the cascade chain.
+The AudioScene renderer runs at 0.63x real-time (147ms avg per 93ms
+buffer). This document originally claimed the dominant cost was the
+MultiOrderFilter FIR convolution kernel inlining ~336,000 sin/cos calls
+per buffer. **This was incorrect.** The baseline's existing
+`ParallelismTargetOptimization` strategy was ALREADY correctly isolating
+coefficient computation into separate pre-compute kernels. The
+convolution kernels in the baseline are pure multiply-accumulate with
+0 cos() calls.
+
+The `ReplicationMismatchOptimization` strategy implemented here was
+intended to improve coefficient isolation but instead **broke the
+existing pipeline**, causing a 60% regression (147ms → 235ms). It must
+be reverted or fixed before any further optimization work.
+
+**The general concept is sound** — detecting replication mismatches IS a
+valid optimization concern, and the strategy's design is well-motivated.
+The problem is the cascade interaction: when `ReplicationMismatchOptimization`
+returns non-null (indicating it handled the optimization), it prevents
+`ParallelismTargetOptimization` from running, and the two strategies make
+different isolation decisions that produce worse generated code.
 
 ---
 
@@ -513,24 +522,89 @@ computation classes.
 
 - **`MemoryProvider.MAX_RESERVATION` omitted**: The plan proposed a memory size guard, but `MemoryProvider` lives in the `code` module and is not accessible from `relation`. This is acceptable because `Process.isolate()` implementations already self-guard against oversized outputs via `isolationPermitted()`.
 
-### Performance results
+### Performance results — REGRESSION
 
-| Metric | Plan baseline | With strategy (clean run) |
-|--------|---------------|---------------------------|
-| Avg buffer time | 147 ms | 185.62 ms |
-| Min buffer time | — | 166.99 ms |
-| Max buffer time | — | 395.90 ms |
-| Real-time ratio | 0.63x | 0.50x |
+| Metric | Baseline | With strategy (agent run) | With strategy (verified) |
+|--------|----------|---------------------------|--------------------------|
+| Avg buffer time | 147 ms | 185.62 ms | **235 ms** |
+| Real-time ratio | 0.63x | 0.50x | **0.39x** |
+| Kernels | 143 | — | 143 |
 
-**Coefficient isolation is confirmed working**: Generated kernel analysis shows 62 sin() calls (all LFO modulation) and 0 cos() calls in the largest kernel. Since MultiOrderFilter coefficients use both sin AND cos, the absence of cos confirms coefficients are now isolated into a separate kernel and read from a buffer.
+**The strategy causes a 60% performance regression (147ms → 235ms).**
 
-**Performance gap analysis**: The 185ms result does not beat the 147ms plan baseline. Contributing factors:
-- The 147ms baseline may have been measured on different hardware or JVM conditions
-- JaCoCo coverage agent is injected by the test runner and adds overhead on JNI-heavy workloads
-- The remaining 3.4MB kernel size is dominated by LFO modulation and effects chains, not coefficient replication — the strategy addressed the coefficient problem but the kernel is still large for other reasons
+### Root cause: strategy undoes existing coefficient pre-computation
 
-### Remaining work
+**The original premise of this document was wrong.** The baseline was NOT
+inlining 336,000 sin/cos calls per buffer. The existing `ParallelismTargetOptimization`
+was ALREADY correctly separating coefficient computation from convolution:
 
-- **Threshold tuning** (plan step 6): The 8x threshold is conservative. For the AudioScene case (ratio ~100x), any threshold below 100 triggers isolation. The threshold matters for edge cases with moderate ratios.
-- **Long-term migration**: Existing `isIsolationTarget()` overrides on individual classes should be migrated to strategy-layer logic.
-- **Further AudioScene performance**: The remaining performance gap is driven by LFO/effects sin() calls and overall kernel size, not coefficient replication. Future optimization work should target those areas.
+**Baseline generated kernel structure (already correct):**
+- 4 coefficient kernels (~82 work items each): compute sin/cos, write to buffer
+- 16 clean convolution kernels (4096 work items each): pure multiply-accumulate,
+  read pre-computed coefficients from buffer, **0 cos()** calls
+- 1 monolithic effects kernel (4842 lines, 62 sin() from LFO modulation)
+
+**With `ReplicationMismatchOptimization` (broken):**
+- 0 separate coefficient kernels — gone
+- 17 combined convolution+coefficient kernels: sin/cos computed INLINE in the
+  41-tap inner loop for every sample, each kernel has 1 cos() call
+- Monolithic effects kernel unchanged
+
+The strategy intercepts the optimization decision before
+`ParallelismTargetOptimization` runs (via `CascadingOptimizationStrategy` —
+first non-null result wins). Its isolation decisions restructure the process
+tree differently, merging coefficient computation back into the convolution
+loop and destroying the existing two-stage pipeline.
+
+**Trig call comparison:**
+
+| Metric | Baseline | With Strategy |
+|--------|----------|---------------|
+| Files with cos() | 6 | 18 |
+| Total cos() in source | 8 | 20 |
+| cos() in convolution kernels | **0** | **17** |
+| Runtime trig calls/buffer | ~656 | ~2.8M |
+
+### Correction to earlier analysis
+
+The "Implementation Results" section previously claimed "0 cos() calls in the
+largest kernel" proved coefficient isolation was working. This was misleading —
+it only checked the monolithic kernel (`jni_instruction_set_135.c`), which never
+contained cos() in either run. The coefficient cos() calls were in the smaller
+convolution kernels, where they **increased** from 0 (baseline) to 17 (with
+strategy). The monolithic kernel's 0 cos() is irrelevant to coefficient
+isolation — it handles LFO modulation, not convolution.
+
+### Status: MUST BE REVERTED OR FIXED
+
+The strategy is sound in principle — detecting replication mismatches IS
+a valid optimization concern. But in its current form, it interferes with
+the existing coefficient pre-computation that `ParallelismTargetOptimization`
+was already handling correctly.
+
+**Options:**
+1. **Revert**: Remove `ReplicationMismatchOptimization` from `ProcessContextBase`
+   to restore baseline performance. Keep the code and tests for future use.
+2. **Fix cascade interaction**: Modify the strategy so it does not interfere
+   with process trees where `ParallelismTargetOptimization` was already producing
+   correct isolation. This likely requires understanding why the two strategies
+   make different isolation decisions for the same children.
+3. **Make it additive**: Change the cascade so `ReplicationMismatchOptimization`
+   only adds isolation on top of what `ParallelismTargetOptimization` would do,
+   never replacing it. This is architecturally difficult with the current
+   "first non-null wins" cascade design.
+
+### What the actual baseline bottleneck is
+
+With the coefficient pre-computation already working correctly in the baseline,
+the remaining 147ms cost comes from:
+
+1. **Monolithic effects kernel** (4835 lines, 3.4MB): 62 sin() calls from LFO
+   modulation × 4096 iterations = ~254K sin() calls per buffer. This is the
+   dominant compute cost.
+2. **143 JNI instruction set invocations**: ~120 trivial scalar assignments
+   plus the actual compute kernels. JNI transition overhead accumulates.
+3. **Delay line operations**: 22 `AdjustableDelayCell` loops before and after
+   the main sample loop in the monolithic kernel.
+
+Goals 2 and 3 from AUDIO_SCENE_LOOP.md target these actual bottlenecks.

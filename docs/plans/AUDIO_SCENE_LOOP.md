@@ -19,13 +19,33 @@ With 6 channels and the full effects pipeline enabled, the system must
 complete within ~93 ms (44.1 kHz, 4096 samples). Currently it runs at
 **0.63x real-time** (147ms avg per buffer).
 
-A comprehensive performance analysis ([AUDIO_PERFORMANCE.md](AUDIO_PERFORMANCE.md))
-identified the **MultiOrderFilter** (FIR convolution) as the dominant cost
-center (~80-90% of compute time), not the envelope `pow()` calls that
-were the focus of earlier optimization work. The filter recomputes
-sinc/Hamming coefficients per sample instead of pre-computing them once
-per buffer, resulting in ~336,000 unnecessary transcendental function
-calls per tick.
+### Corrected bottleneck analysis (2026-03-03)
+
+An earlier analysis ([AUDIO_PERFORMANCE.md](AUDIO_PERFORMANCE.md)) identified
+the **MultiOrderFilter** (FIR convolution) as the dominant cost center,
+claiming ~336,000 unnecessary sin/cos calls per tick from coefficient
+recomputation. **This was incorrect.** Examination of the baseline generated
+kernels shows that the existing `ParallelismTargetOptimization` strategy was
+ALREADY correctly separating coefficient computation into 4 small pre-compute
+kernels (~82 work items each), with the 16 convolution kernels performing
+pure multiply-accumulate (0 cos() calls). The coefficient sin/cos cost in
+the baseline is ~656 calls total — negligible.
+
+**The actual baseline bottlenecks are:**
+
+1. **Monolithic effects kernel** (4835 lines, 3.4MB): Contains 62 sin() calls
+   from LFO modulation, each executing 4096 times per buffer = ~254K
+   transcendental calls per tick. This is the dominant compute cost.
+2. **143 JNI instruction set invocations**: ~120 are trivial scalar assignments.
+   JNI transition overhead accumulates.
+3. **Delay line operations**: 22 `AdjustableDelayCell` loops in the monolithic
+   kernel add sequential overhead.
+
+**WARNING:** The `ReplicationMismatchOptimization` strategy (see
+[AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md)) was intended
+to improve coefficient isolation but actually BROKE the existing pre-computation
+pipeline, causing a 60% regression (147ms → 235ms). It must be reverted or
+fixed before any other optimization work. See the decision journal for details.
 
 ---
 
@@ -43,63 +63,53 @@ From `compose/results/effects-enabled-performance-summary.txt`:
 
 ---
 
-## PREREQUISITE: Revert Failed Optimization Attempt
+## PREREQUISITE: Revert/Fix ReplicationMismatchOptimization Regression
 
-**Status: COMPLETE** (reverted in commit `3ec07ab83`)
+**Status: INCOMPLETE**
 
-The previous attempt at Goal 1 (commits `a1a1f3538` and `9afb4203d`)
-**introduced a performance regression** and was fully reverted. The
-changes had caused:
+There are two regressions to address:
 
-- **Native-only**: 147 ms → 160 ms (+9% slower, 147 kernels vs 143)
-- **Metal**: 147 ms → 247 ms (+68% slower, 171 kernels)
-- **No sin/cos removal**: The generated C code still contains sin/cos
-  inside the inner loop — the coefficient pre-computation did not work
+### Revert A: EfxManager/OperationList changes (COMPLETE)
 
-**What to revert:**
+Reverted in commit `3ec07ab83`. The previous attempt at coefficient
+pre-computation via `EfxManager` changes + OperationList global flag
+changes was fully reverted. See decision journal for details.
 
-1. **`EfxManager.java`**: Remove `consolidatedCoefficientBuffer`,
-   `coefficientBufferIndex`, the `efxGpuPrecompute` OperationList, and
-   the coefficient buffer allocation/destruction. Restore `applyFilter()`
-   to its original form (pass the coefficient expression tree directly
-   to `MultiOrderFilter.create()`).
+### Revert B: ReplicationMismatchOptimization (INCOMPLETE)
 
-2. **`OperationList.java`**: Revert `enableAutomaticOptimization` and
-   `enableSegmenting` back to `false`. These are **global flags** that
-   affect every OperationList in the entire codebase. Changing them is
-   completely unrelated to the MultiOrderFilter optimization and caused
-   additional overhead. See the javadoc on these flags for details about
-   their behavior and risks.
+The `ReplicationMismatchOptimization` strategy (commits `ced2ab523`,
+`e8d1a334f`) causes a **60% performance regression** (147ms → 235ms)
+by interfering with the existing coefficient pre-computation pipeline.
 
-3. **Delete test files** that only test the reverted behavior:
-   - `MultiOrderFilterCoefficientPrecomputationTest.java`
-   - `OperationListSegmentationTest.java`
+**What happened:** The baseline's `ParallelismTargetOptimization` was
+ALREADY correctly separating coefficient computation into pre-compute
+kernels. The new `ReplicationMismatchOptimization`, placed first in the
+`CascadingOptimizationStrategy` chain, intercepts the optimization
+decision and makes DIFFERENT isolation choices that merge coefficients
+back into the convolution inner loop. See the decision journal and
+[AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md) for the
+full analysis.
 
-**After reverting, verify:**
+**What to revert/fix:**
+
+Option 1 — **Revert** (safest):
+1. `ProcessContextBase.java`: Restore default strategy to just
+   `ParallelismTargetOptimization` (remove `CascadingOptimizationStrategy`
+   wrapper and `ReplicationMismatchOptimization`)
+2. Keep `ReplicationMismatchOptimization.java` and its tests for future
+   use — the concept is sound, the cascade interaction is the problem
+
+Option 2 — **Fix cascade interaction** (harder):
+- Understand why the two strategies make different isolation decisions
+  for the MultiOrderFilter process tree
+- Modify `ReplicationMismatchOptimization` so it only adds isolation
+  on top of what `ParallelismTargetOptimization` would produce
+
+**After reverting/fixing, verify:**
 - `effectsEnabledPerformance` runs with avg buffer time ≤ 147 ms
 - 143 JNI instruction sets (not more)
+- Convolution kernels have 0 cos() (coefficient pre-computation intact)
 - All existing tests pass
-
-**Why the previous attempt failed — READ THIS CAREFULLY:**
-
-The previous approach tried to pre-compute coefficients in `EfxManager`
-by evaluating the coefficient expression into a `PackedCollection` buffer,
-then passing `cp(coeffBuffer)` to `MultiOrderFilter.create()`. This does
-NOT work because of how the AR expression tree system operates:
-
-- `MultiOrderFilter.create()` builds an **expression tree** at compile
-  time. The sin/cos coefficient computations are nodes in that tree.
-- Passing `cp(coeffBuffer)` as a `Producer` does not cause the filter
-  to "read from the buffer at runtime." Instead, `cp()` wraps the buffer
-  in a `CollectionProvider` expression node. When the expression tree is
-  compiled, it still generates the same inline coefficient computation
-  because the *expression structure* hasn't changed — only the *source*
-  of one input was wrapped differently.
-- The coefficient buffer was written to (by the separate assignment
-  operation), but `MultiOrderFilter` never reads from it — it still
-  evaluates its own internal sin/cos expression tree per sample.
-
-**The fix must happen inside `MultiOrderFilter.java` itself.** See Goal 1.
 
 ---
 
@@ -117,99 +127,49 @@ NOT work because of how the AR expression tree system operates:
 
 ## Goals
 
-### Goal 1: Pre-compute MultiOrderFilter coefficients
+### Goal 1: ~~Pre-compute MultiOrderFilter coefficients~~ ALREADY DONE IN BASELINE
 
-**Status: INCOMPLETE — the fix is straightforward, see below**
+**Status: NOT NEEDED — baseline already pre-computes coefficients correctly**
 
-**Source:** `time/src/main/java/org/almostrealism/time/computations/MultiOrderFilter.java`
+**IMPORTANT UPDATE (2026-03-03):** Examination of the baseline generated
+kernels reveals that `ParallelismTargetOptimization` was ALREADY correctly
+isolating coefficient computation into separate pre-compute kernels. The
+convolution kernels in the baseline are pure multiply-accumulate with 0 cos()
+calls. The 336,000 unnecessary trig calls described in AUDIO_PERFORMANCE.md
+were never present in the generated code.
 
-The 40th-order FIR filter computes sinc windowed coefficients (involving
-`sin()` and `cos()`) for each of 41 taps, for each of 4096 samples. But
-the cutoff frequency is genome-derived and constant for the entire buffer.
-The coefficients should be computed **once** and reused.
+**Baseline kernel structure (verified from run `f13e3f6b`):**
+- 4 coefficient kernels (e.g., `jni_instruction_set_109.c`): ~82 work items,
+  compute sinc-windowed coefficients with sin/cos, write to buffer
+- 16 clean convolution kernels (e.g., `jni_instruction_set_110.c`): 4096 work
+  items, 41-tap loop, pure MAC: `result = (samples[index] * coefficients[i]) + result`
+- Total coefficient sin/cos calls: ~656 per buffer (negligible)
 
-**Current cost:** 4096 x 41 = 167,936 iterations, each with 2x `sin()`,
-2x `cos()`, 2x division = **~336,000 transcendental calls per buffer**.
+**WARNING:** The `ReplicationMismatchOptimization` strategy attempted to
+improve this but BROKE it — see [AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md).
+It must be reverted or fixed to restore baseline performance before proceeding
+to Goals 2 and 3.
 
-#### Why this is hard (expression tree vs. runtime data)
+#### What remains useful from Goal 1 investigation
 
-The AR framework compiles computation graphs into native code via
-expression trees. When `MultiOrderFilter` builds its expression tree, the
-sinc/Hamming coefficient computation is embedded as expression nodes
-(containing `Sin`, `Cos`, `Quotient`, etc.) that become inline C code in
-the generated kernel. The compiler sees a single expression tree for the
-entire "compute coefficients + convolve" operation, and it compiles into
-a single kernel with the coefficient math inside the per-sample loop.
+The `p()` vs `cp()` analysis and the `MultiOrderFilterConvolutionTest` test
+infrastructure are valuable reference material for understanding how the
+Process optimization system handles coefficient isolation. The two-kernel
+pattern demonstrated in `convolutionWithChosenCoefficients()` is the same
+pattern that `ParallelismTargetOptimization` produces automatically.
 
-The key distinction is between `cp(buffer)` and `p(buffer)`:
+#### Revised acceptance criteria
 
-- `cp(buffer)` wraps the buffer in a `CollectionProducer` computation
-  with an absorbable `Scope`. The expression tree can be inlined.
-- `p(buffer)` creates a `CollectionProviderProducer` — a plain buffer
-  reference with NO computation scope. There is nothing for
-  `Scope.tryAbsorb()` to merge, so the kernel is forced to read from
-  the buffer at runtime rather than inlining the coefficient expressions.
-
-#### The fix: two-kernel approach in EfxManager
-
-A working test already demonstrates the pattern — see
-`MultiOrderFilterConvolutionTest.convolutionWithChosenCoefficients()`.
-The fix applies this same pattern to `EfxManager.applyFilter()`:
-
-1. **Pre-compute coefficients into a physical buffer** as a separate
-   kernel (runs once per buffer, 41 iterations with sin/cos):
-   ```java
-   PackedCollection coeffBuffer = new PackedCollection(filterOrder + 1);
-   setup.add(a("efxCoeffs", cp(coeffBuffer.each()), coefficients));
-   ```
-
-2. **Pass the buffer to MultiOrderFilter via `p(coeffBuffer)`** (plain
-   buffer reference, NOT `cp(coeffBuffer)`):
-   ```java
-   setup.add(a("efxFilter", cp(destination.each()),
-       MultiOrderFilter.create(audio, p(coeffBuffer))));
-   ```
-
-When `MultiOrderFilter.getValueAt(i)` reads from a `p(buffer)` input,
-it reads pre-computed data — no sin/cos expression tree to inline. The
-convolution kernel contains only multiply-accumulate operations.
-
-**No changes to `MultiOrderFilter.java` are required.** The fix is
-entirely in `EfxManager.applyFilter()`.
-
-**NOTE on `reference(i)` vs `getValueAt(i)` in MultiOrderFilter:** A
-previous attempt tried changing `getValueAt(i)` to `reference(i)` in
-`MultiOrderFilter.getScope()`. This is NOT needed and was reverted.
-When the coefficient input is already a physical buffer (via `p()`),
-`getValueAt(i)` correctly reads from it without inlining. The
-`reference(i)` approach was insufficient on its own because of scope
-absorption via `Scope.tryAbsorb()`. The two-kernel separation at the
-call site is what actually prevents inlining.
-
-#### Acceptance criteria
-
-- [ ] Generated C code shows coefficient computation OUTSIDE the sample loop
-- [ ] Inner convolution loop contains only multiply-accumulate (no sin/cos)
-- [ ] `effectsEnabledPerformance` produces correct audio output (non-silent,
-  similar spectral characteristics)
-- [ ] Buffer time drops significantly (target: < 93 ms avg)
-- [ ] All existing tests pass
-
-#### How to verify the generated code
-
-After running `effectsEnabledPerformance` with
-`-DAR_INSTRUCTION_SET_MONITORING=always`, find the largest `.c` file in
-the results directory. That is the MultiOrderFilter kernel. Search for
-`sin(` and `cos(` — if they appear between the `for (... global_id ...)`
-loop start and the loop's closing brace, the optimization is NOT working.
-The convolution inner loop should contain only multiplication and
-addition (dot product of coefficients × samples).
+- [x] Coefficient computation is OUTSIDE the sample loop (already true in baseline)
+- [x] Convolution kernels are pure multiply-accumulate (already true in baseline)
+- [ ] `ReplicationMismatchOptimization` regression reverted/fixed
+- [ ] Baseline performance restored (≤ 147ms avg buffer time)
 
 ---
 
 ### Goal 2: Split pipeline into GPU pre-computation + CPU sequential loop
 
-**Status: INCOMPLETE — do not attempt until Goal 1 is complete**
+**Status: INCOMPLETE — do not attempt until ReplicationMismatchOptimization regression is resolved**
 
 The framework already supports multi-kernel pipelines via `OperationList`
 with per-step `ComputeRequirement`, `PackedCollection` for inter-kernel
@@ -249,7 +209,7 @@ and delay lines require sequential per-frame processing.
 
 ### Goal 3: Reduce JNI call overhead by fusing trivial kernels
 
-**Status: INCOMPLETE — do not attempt until Goal 1 is complete**
+**Status: INCOMPLETE — do not attempt until ReplicationMismatchOptimization regression is resolved**
 
 143 JNI native calls per buffer tick, ~120 of which are trivial scalar
 assignments (`v = 0.0`, `v = 1.0`, `v = 4096.0`). Each JNI transition
@@ -306,8 +266,24 @@ Generated `.c` files appear in `compose/results/<run_id>/`.
 2. **Kernel count:** Count files in the results directory. Target: < 30.
 3. **Audio quality:** Output WAV should be non-silent with reasonable
    spectral content.
-4. **MultiOrderFilter kernel:** The largest `.c` file should NOT contain
-   `sin()` or `cos()` inside the sample loop.
+4. **Convolution kernels (CRITICAL):** Search ALL `.c` files for the
+   41-tap convolution loop (`i <= 40`). These kernels should be pure
+   multiply-accumulate with **0 cos() calls**. Check with:
+   ```bash
+   # Find convolution kernels
+   grep -rl 'i <= 40' compose/results/<run_id>/
+   # Verify no cos() in them
+   for f in $(grep -rl 'i <= 40' compose/results/<run_id>/); do
+     echo "$(basename $f): $(grep -c 'cos(' $f) cos()"; done
+   ```
+   If ANY convolution kernel has cos(), the coefficient pre-computation
+   pipeline is broken. The baseline has 0 cos() in all 16 convolution
+   kernels.
+5. **Do NOT only check the largest `.c` file.** The largest file is the
+   monolithic effects kernel, which handles LFO modulation (not
+   convolution). It has 62 sin() and 0 cos() in both baseline and
+   regression runs. Checking only the largest file will give a false
+   sense that coefficient isolation is working.
 
 **If buffer time is unchanged after your modifications, the optimization
 is not working.** Do not claim completion based on unit tests alone.

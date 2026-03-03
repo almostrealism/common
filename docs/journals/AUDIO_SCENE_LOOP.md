@@ -69,6 +69,97 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-03 — Review: ReplicationMismatchOptimization causes 60% regression by undoing existing coefficient pre-computation *(review)*
+
+**Author:** Review agent (independent verification)
+
+**Goal:** Evaluate the performance impact of the `ReplicationMismatchOptimization`
+strategy implemented via `AUDIO_PROCESS_OPTIMIZATION.md`
+
+**Context:** The strategy was implemented to isolate low-parallelism children
+(like MultiOrderFilter coefficients with parallelism 41) from high-parallelism
+parents (parallelism 4096). The agent reported coefficient isolation working
+(0 cos() in the largest kernel) but performance of 185ms — worse than the
+147ms baseline. When I ran it, performance was even worse: 235ms (0.39x).
+
+**Critical discovery: the baseline was ALREADY optimized.**
+
+Detailed comparison of generated kernels between the baseline run (`f13e3f6b`)
+and the `ReplicationMismatchOptimization` run (`843e9eb4`) revealed:
+
+**Baseline pipeline (already correct):**
+1. **4 coefficient kernels** (e.g., `jni_instruction_set_109.c`, 30 lines):
+   - Run over ~82 work items (41 taps × 2 filter orders)
+   - Compute sinc-windowed coefficients using sin/cos
+   - Write results to a pre-computed coefficient buffer
+2. **16 clean convolution kernels** (e.g., `jni_instruction_set_110.c`, 30 lines):
+   - Run over 4096 samples with 41-tap inner loop
+   - **Pure multiply-accumulate**: `result = (samples[index] * coefficients[i]) + result`
+   - NO sin/cos — reads pre-computed coefficients from buffer
+   - Only 3 buffer args needed (output, audio samples, coefficient buffer)
+3. **Monolithic kernel** (`jni_instruction_set_139.c`, 4842 lines):
+   - 62 sin() from LFO modulation, 0 cos()
+   - Handles the main effects pipeline
+
+**After ReplicationMismatchOptimization (broken):**
+1. **NO separate coefficient kernels** — they're gone
+2. **ALL 17 convolution kernels** (e.g., `jni_instruction_set_115.c`, 42 lines):
+   - 6 buffer args (more than baseline's 3)
+   - sin/cos computed INLINE in the 41-tap inner loop per sample
+   - Every convolution kernel has 1 cos() call (17 total vs baseline's 0)
+3. **Monolithic kernel** (`jni_instruction_set_135.c`, 4835 lines):
+   - Still 62 sin(), unchanged
+
+**Trig call count comparison:**
+
+| Metric | Baseline | With Strategy |
+|--------|----------|---------------|
+| Files with sin() | 8 | 20 |
+| Files with cos() | 6 | 18 |
+| Total sin() in source | 71 | 83 |
+| Total cos() in source | 8 | 20 |
+| Runtime trig calls/buffer | ~656 | ~2.8M |
+| **Performance** | **147 ms** | **235 ms (+60%)** |
+
+**Root cause:** The `CascadingOptimizationStrategy` runs
+`ReplicationMismatchOptimization` first. When it detects a parallelism mismatch
+and isolates children, it returns non-null, **preventing
+`ParallelismTargetOptimization` from running** for that process. But
+`ParallelismTargetOptimization` was the one producing the correct two-stage
+coefficient→convolution pipeline in the baseline. The new strategy's isolation
+decisions restructure the process tree differently, merging coefficient
+computation back into the convolution loop and destroying the existing
+optimization.
+
+**Correction to AUDIO_PROCESS_OPTIMIZATION.md claim:** The "Implementation
+Results" section claimed "0 cos() calls in the largest kernel" proved coefficient
+isolation was working. This was misleading — it only checked the monolithic
+kernel, which never contained cos() in either run. The coefficient cos() calls
+were in the smaller convolution kernels, where they INCREASED from 0 (baseline)
+to 17 (with strategy).
+
+**Correction to AUDIO_SCENE_LOOP.md framing:** The plan states that "the filter
+recomputes sinc/Hamming coefficients per sample instead of pre-computing them
+once per buffer, resulting in ~336,000 unnecessary transcendental function calls
+per tick." This is incorrect for the baseline — the existing optimization
+strategies were already separating coefficients into pre-computation kernels.
+The 336K trig calls never existed in the baseline generated code. The original
+AUDIO_PERFORMANCE.md analysis overestimated this cost center.
+
+**What the actual baseline bottleneck is:**
+- Monolithic kernel: 4835 lines, 62 sin() from LFO modulation × 4096 iterations
+  = ~254K sin() calls per buffer
+- 143 JNI instruction set invocations per buffer tick
+- The coefficient pre-computation was already working; the performance gap is
+  from the effects chain complexity and JNI overhead
+
+**Outcome:** `ReplicationMismatchOptimization` must be either removed or fixed
+so it does not interfere with the existing coefficient pre-computation pipeline.
+The AUDIO_PROCESS_OPTIMIZATION.md and AUDIO_SCENE_LOOP.md plan documents need
+significant corrections to their baseline analysis.
+
+---
+
 ### 2026-03-03 — Review: agent journal does not match committed code *(review)*
 
 **Author:** Review agent (independent verification)
