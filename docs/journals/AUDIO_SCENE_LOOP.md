@@ -69,6 +69,71 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-03 — Pivot: MultiOrderFilter identified as dominant bottleneck *(review)*
+
+**Author:** Review agent (independent analysis)
+
+**Goal:** Identify the actual performance bottleneck and redirect optimization efforts
+
+**Context:** After the developer agent's strength reduction work (150 → 76 pow() calls),
+buffer time improved by only ~2.4% (443ms → 433ms, or 147ms in a separate measurement).
+The pow() calls in the envelope computation, which had been the sole focus of optimization
+work for multiple sessions, turned out to be a secondary cost center. We needed to
+understand where the time was actually going.
+
+**Approach:** Conducted a three-pronged investigation:
+1. Analyzed the generated C code across all 143 JNI instruction sets (not just the
+   loop kernel we had been examining)
+2. Studied all audio effect implementations to classify them as sequential vs.
+   parallelizable
+3. Investigated the GPU/kernel compilation architecture to assess feasibility of
+   splitting the pipeline
+
+**Findings:**
+
+1. **The AudioScene compiles into 143 separate JNI instruction sets**, not a single
+   monolithic loop. The "inner loop pow() count" we were tracking was from just one
+   of these kernels.
+
+2. **The MultiOrderFilter (FIR convolution) is the dominant cost** — estimated 80-90%
+   of total compute time. It's `jni_instruction_set_120.c`, the largest kernel (33,438
+   tokens). It recomputes sinc/Hamming filter coefficients (sin + cos for 41 taps) for
+   every one of 4096 samples, despite the cutoff frequency being constant for the buffer.
+   That's ~336,000 unnecessary transcendental function calls per buffer tick.
+
+3. **JNI transition overhead is significant** (~5-10%). 143 native calls per buffer,
+   ~120 of which are trivial scalar assignments (SummationCell zeroing, WaveCell init).
+
+4. **The envelope pow() calls account for only ~2-5% of runtime.** The strength
+   reduction was correct and valuable, but it was optimizing a minor cost center.
+
+5. **Effects-disabled performance is fine because there's no MultiOrderFilter.** This
+   explains the known observation that playback without effects doesn't have performance
+   issues.
+
+6. **The framework already supports GPU pre-computation + CPU sequential loop splitting**
+   via OperationList, ComputeRequirement, and PackedCollection. Apple Silicon unified
+   memory makes this zero-copy.
+
+**Outcome:** Rewrote the plan document with three new goals:
+- Goal 1: Pre-compute MultiOrderFilter coefficients (highest impact, ~80-90% of cost)
+- Goal 2: Split pipeline into GPU pre-computation + CPU sequential loop
+- Goal 3: Reduce JNI call overhead by fusing trivial kernels
+
+Created `docs/plans/AUDIO_PERFORMANCE.md` with the full analysis including cost breakdown,
+effect-by-effect classification, cell graph topology, and GPU architecture feasibility.
+
+**Open questions:**
+- Is the 147ms measurement (0.63x real-time) or the 433ms measurement (0.21x real-time)
+  more representative? They come from different runs — the 147ms is from the test
+  results on disk, the 433ms from the developer agent's journal. The discrepancy may
+  be due to different hardware (mac-studio vs. development machine) or different
+  branch states.
+- Could the MultiOrderFilter coefficient computation be moved entirely to Java-side
+  setup (compute once when cutoff changes, pass as an argument array)?
+
+---
+
 ### 2026-03-03 — Algebraic strength reduction for pow(), Goal 2 root cause, timing verification
 
 **Goal:** Goals 1, 2, and 3 — Reduce inner-loop pow() count, investigate argument
