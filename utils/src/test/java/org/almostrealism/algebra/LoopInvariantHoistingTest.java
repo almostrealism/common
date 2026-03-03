@@ -786,59 +786,13 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 		LoopedWeightedSumComputation.WeightIndexer weightIndexer = (outputIndex, outerIndex, innerIndex) ->
 				outerIndex.multiply(innerCount).add(innerIndex);
 
-		// Run with LICM disabled
-		double[] withoutLicm;
-		{
-			boolean previous = Repeated.enableLoopInvariantHoisting;
-			Repeated.enableLoopInvariantHoisting = false;
-			try {
-				LoopedWeightedSumComputation computation = new LoopedWeightedSumComputation(
-						"noLicm",
-						outputShape, outerCount, innerCount,
-						inputShape, weightShape,
-						inputIndexer, weightIndexer,
-						cp(input), cp(weights));
+		double[] withoutLicm = runWeightedSumWithLicm(false, "noLicm",
+				outputShape, outerCount, innerCount, inputShape, weightShape,
+				inputIndexer, weightIndexer, input, weights, outputSize);
 
-				OperationList ops = new OperationList();
-				PackedCollection output = new PackedCollection(outputShape);
-				ops.add(a("noLicmResult", p(output), computation));
-				ops.get().run();
-
-				withoutLicm = new double[outputSize];
-				for (int k = 0; k < outputSize; k++) {
-					withoutLicm[k] = output.toDouble(k);
-				}
-			} finally {
-				Repeated.enableLoopInvariantHoisting = previous;
-			}
-		}
-
-		// Run with LICM enabled
-		double[] withLicm;
-		{
-			boolean previous = Repeated.enableLoopInvariantHoisting;
-			Repeated.enableLoopInvariantHoisting = true;
-			try {
-				LoopedWeightedSumComputation computation = new LoopedWeightedSumComputation(
-						"withLicm",
-						outputShape, outerCount, innerCount,
-						inputShape, weightShape,
-						inputIndexer, weightIndexer,
-						cp(input), cp(weights));
-
-				OperationList ops = new OperationList();
-				PackedCollection output = new PackedCollection(outputShape);
-				ops.add(a("withLicmResult", p(output), computation));
-				ops.get().run();
-
-				withLicm = new double[outputSize];
-				for (int k = 0; k < outputSize; k++) {
-					withLicm[k] = output.toDouble(k);
-				}
-			} finally {
-				Repeated.enableLoopInvariantHoisting = previous;
-			}
-		}
+		double[] withLicm = runWeightedSumWithLicm(true, "withLicm",
+				outputShape, outerCount, innerCount, inputShape, weightShape,
+				inputIndexer, weightIndexer, input, weights, outputSize);
 
 		// Compare
 		for (int k = 0; k < outputSize; k++) {
@@ -1076,6 +1030,57 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 		// f_const should be hoisted
 		Assert.assertTrue("f_const should be hoisted",
 				countDeclarationsNamed(simplified.getStatements(), "f_const") > 0);
+	}
+
+	/**
+	 * Runs a {@link LoopedWeightedSumComputation} with the specified LICM setting
+	 * and returns the output values. Used by differential tests to compare
+	 * LICM-enabled vs LICM-disabled results.
+	 *
+	 * @param enableLicm whether to enable loop-invariant code motion
+	 * @param label name prefix for the computation and result assignment
+	 * @param outputShape output shape
+	 * @param outerCount outer loop count
+	 * @param innerCount inner loop count
+	 * @param inputShape input shape
+	 * @param weightShape weight shape
+	 * @param inputIndexer input index function
+	 * @param weightIndexer weight index function
+	 * @param input input data
+	 * @param weights weight data
+	 * @param outputSize number of output elements to extract
+	 * @return the output values as a double array
+	 */
+	private double[] runWeightedSumWithLicm(boolean enableLicm, String label,
+											TraversalPolicy outputShape, int outerCount, int innerCount,
+											TraversalPolicy inputShape, TraversalPolicy weightShape,
+											LoopedWeightedSumComputation.InputIndexer inputIndexer,
+											LoopedWeightedSumComputation.WeightIndexer weightIndexer,
+											PackedCollection input, PackedCollection weights,
+											int outputSize) {
+		boolean previous = Repeated.enableLoopInvariantHoisting;
+		Repeated.enableLoopInvariantHoisting = enableLicm;
+		try {
+			LoopedWeightedSumComputation computation = new LoopedWeightedSumComputation(
+					label,
+					outputShape, outerCount, innerCount,
+					inputShape, weightShape,
+					inputIndexer, weightIndexer,
+					cp(input), cp(weights));
+
+			OperationList ops = new OperationList();
+			PackedCollection output = new PackedCollection(outputShape);
+			ops.add(a(label + "Result", p(output), computation));
+			ops.get().run();
+
+			double[] result = new double[outputSize];
+			for (int k = 0; k < outputSize; k++) {
+				result[k] = output.toDouble(k);
+			}
+			return result;
+		} finally {
+			Repeated.enableLoopInvariantHoisting = previous;
+		}
 	}
 
 	/**

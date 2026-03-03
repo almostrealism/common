@@ -24,6 +24,8 @@ import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
+import java.util.function.IntToDoubleFunction;
+
 /**
  * Tests that {@link MultiOrderFilter} produces correct convolution results
  * when coefficients are provided via expression trees (e.g., from
@@ -38,7 +40,38 @@ import org.junit.Test;
 public class MultiOrderFilterConvolutionTest extends TestSuiteBase {
 
 	/**
-	 * Reference implementation of FIR convolution for test verification.
+	 * Creates a {@link PackedCollection} signal populated by the given generator function.
+	 * Uses bulk {@code setMem(double[])} to avoid per-element mutation in a loop.
+	 *
+	 * @param size number of samples
+	 * @param generator function from sample index to sample value
+	 * @return a packed collection containing the generated signal
+	 */
+	private PackedCollection createSignal(int size, IntToDoubleFunction generator) {
+		double[] data = new double[size];
+		for (int i = 0; i < size; i++) {
+			data[i] = generator.applyAsDouble(i);
+		}
+		PackedCollection signal = new PackedCollection(size);
+		signal.setMem(data);
+		return signal;
+	}
+
+	/**
+	 * Asserts that each element of the result matches the corresponding expected value.
+	 *
+	 * @param expected the expected output values
+	 * @param result the actual convolution result
+	 * @param length number of elements to compare
+	 */
+	private void assertConvolutionEquals(double[] expected, PackedCollection result, int length) {
+		for (int i = 0; i < length; i++) {
+			assertEquals(expected[i], result.toDouble(i));
+		}
+	}
+
+	/**
+	 * Reference implementation of centered FIR convolution for test verification.
 	 */
 	private double[] referenceConvolve(double[] signal, double[] coefficients) {
 		int order = coefficients.length - 1;
@@ -88,10 +121,8 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase {
 		int signalSize = 256;
 		int filterOrder = 10;
 
-		PackedCollection signal = new PackedCollection(signalSize);
-		for (int i = 0; i < signalSize; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * i / 32.0));
-		}
+		PackedCollection signal = createSignal(signalSize,
+				i -> Math.sin(2.0 * Math.PI * i / 32.0));
 
 		double[] coeffs = referenceLowPassCoefficients(5000, 44100, filterOrder);
 		PackedCollection coefficients = new PackedCollection(filterOrder + 1);
@@ -102,10 +133,7 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase {
 		PackedCollection result = filter.get().evaluate();
 
 		double[] expected = referenceConvolve(signal.toArray(0, signalSize), coeffs);
-
-		for (int i = 0; i < signalSize; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertConvolutionEquals(expected, result, signalSize);
 	}
 
 	/**
@@ -122,11 +150,9 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase {
 		double cutoff = 5000.0;
 		int sampleRate = 44100;
 
-		PackedCollection signal = new PackedCollection(signalSize);
-		for (int i = 0; i < signalSize; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * i / 16.0)
-					+ 0.5 * Math.sin(2.0 * Math.PI * i / 4.0));
-		}
+		PackedCollection signal = createSignal(signalSize,
+				i -> Math.sin(2.0 * Math.PI * i / 16.0)
+						+ 0.5 * Math.sin(2.0 * Math.PI * i / 4.0));
 
 		MultiOrderFilter filter = lowPass(
 				traverseEach(cp(signal)), c(cutoff), sampleRate, filterOrder);
@@ -134,10 +160,7 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase {
 
 		double[] coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		double[] expected = referenceConvolve(signal.toArray(0, signalSize), coeffs);
-
-		for (int i = 0; i < signalSize; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertConvolutionEquals(expected, result, signalSize);
 	}
 
 	/**
@@ -153,11 +176,9 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase {
 		double cutoff = 8000.0;
 		int sampleRate = 44100;
 
-		PackedCollection signal = new PackedCollection(signalSize);
-		for (int i = 0; i < signalSize; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * 440.0 * i / sampleRate)
-					+ 0.3 * Math.sin(2.0 * Math.PI * 12000.0 * i / sampleRate));
-		}
+		PackedCollection signal = createSignal(signalSize,
+				i -> Math.sin(2.0 * Math.PI * 440.0 * i / sampleRate)
+						+ 0.3 * Math.sin(2.0 * Math.PI * 12000.0 * i / sampleRate));
 
 		MultiOrderFilter filter = lowPass(
 				traverseEach(cp(signal)), c(cutoff), sampleRate, filterOrder);
@@ -165,10 +186,7 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase {
 
 		double[] coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		double[] expected = referenceConvolve(signal.toArray(0, signalSize), coeffs);
-
-		for (int i = 0; i < signalSize; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertConvolutionEquals(expected, result, signalSize);
 	}
 
 	/**
@@ -190,10 +208,8 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase {
 		double cutoff = 5000.0;
 		int sampleRate = 44100;
 
-		PackedCollection signal = new PackedCollection(signalSize);
-		for (int i = 0; i < signalSize; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * i / 16.0));
-		}
+		PackedCollection signal = createSignal(signalSize,
+				i -> Math.sin(2.0 * Math.PI * i / 16.0));
 
 		Producer<PackedCollection> decision = cp(pack(0.9));
 
@@ -219,9 +235,6 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase {
 
 		double[] coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		double[] expected = referenceConvolve(signal.toArray(0, signalSize), coeffs);
-
-		for (int i = 0; i < signalSize; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertConvolutionEquals(expected, result, signalSize);
 	}
 }

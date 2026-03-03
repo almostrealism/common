@@ -39,7 +39,7 @@ lists cannot be compiled into a single kernel without special handling.
 When `true`, `OperationList.get()` automatically calls `optimize()` on any
 non-uniform list before compiling/running it.
 
-**Code path** (`OperationList.get()`, line 670):
+**Code path** (`OperationList.get()`):
 ```java
 if (enableAutomaticOptimization && !isUniform()) {
     return optimize().get();
@@ -110,7 +110,7 @@ Automatic optimization is disabled by default because:
 |------|-------------|
 | **Missing isolation** | Computations that require isolation (e.g. `LoopedWeightedSumComputation`) will be embedded into parent expressions, potentially causing compilation timeouts |
 | **No segmentation** | Non-uniform lists will no longer be automatically segmented (see `enableSegmenting` below), resulting in more JNI transitions |
-| **Existing tests may fail** | `OperationListSegmentationTest.automaticOptimizationEnabled()` asserts this flag is `true` |
+| **Existing tests may fail** | Tests asserting that `enableAutomaticOptimization` is `true` will fail |
 
 ---
 
@@ -122,7 +122,7 @@ When `true`, the `optimize()` method on `OperationList` groups consecutive
 operations with the same parallelism count into sub-lists before delegating
 to the standard optimization pipeline.
 
-**Code path** (`OperationList.optimize(ProcessContext)`, lines 843-871):
+**Code path** (`OperationList.optimize(ProcessContext)`):
 ```java
 if (!enableSegmenting || size() <= 1 || isUniform())
     return ComputableParallelProcess.super.optimize(context);
@@ -223,7 +223,7 @@ automatically gets `optimize()` called, which in turn triggers segmentation
 | **Tree restructuring** | The process tree changes shape; profiling metadata and node keys may shift | Re-baseline profiling data |
 | **Additional compilation** | Each segment compiles independently, potentially increasing total compilation time for cold starts | Cache compiled kernels |
 | **Recursive overhead** | `op.optimize(context)` is called recursively on the segmented list | Safe due to uniformity guard, but adds stack frames |
-| **Correctness risk** | Reordering is not performed (only grouping of consecutive same-count ops), so execution order is preserved | Verify with correctness tests like `OperationListSegmentationTest` |
+| **Correctness risk** | Reordering is not performed (only grouping of consecutive same-count ops), so execution order is preserved | Verify with correctness tests |
 | **Global scope** | Affects all `OperationList.optimize()` calls, not just the intended pipeline | Cannot be scoped |
 
 ### Risks of Disabling (When Currently Enabled)
@@ -232,7 +232,7 @@ automatically gets `optimize()` called, which in turn triggers segmentation
 |------|-------------|
 | **More JNI transitions** | Non-uniform lists will dispatch each operation as a separate kernel call, increasing overhead |
 | **Performance regression** | The AudioScene pipeline relies on segmentation to reduce 143 JNI calls to fewer grouped calls |
-| **Test failure** | `OperationListSegmentationTest.segmentingEnabled()` asserts this flag is `true` |
+| **Test failure** | Tests asserting that `enableSegmenting` is `true` will fail |
 
 ---
 
@@ -244,7 +244,7 @@ When `true`, allows non-uniform `OperationList` instances to compile into a
 single hardware kernel even when their children have different parallelism
 counts.
 
-**Code path** (`OperationList.get()`, line 672):
+**Code path** (`OperationList.get()`):
 ```java
 } else if (isComputation() && (enableNonUniformCompilation || isUniform())) {
     AcceleratedOperation op = (AcceleratedOperation) compileRunnable(this);
@@ -309,11 +309,13 @@ OperationList.get()
 
 ## Historical Context
 
-These flags were introduced as `false` by default for safety. They were
-changed to `true` on the `feature/audio-loop-performance` branch as part of
-Goal 3 (kernel fusion) of the AudioScene loop optimization. The change
-reduces JNI call overhead by fusing consecutive same-count operations in the
-AudioScene's 143-operation pipeline into fewer grouped kernel calls.
+These flags were introduced as `false` by default for safety. An earlier
+iteration of the `feature/audio-loop-performance` branch temporarily set
+them to `true` as part of Goal 3 (kernel fusion), but this was reverted
+because it caused a performance regression (see plan document prerequisite
+section). The flags remain at their defaults (`false`). If kernel fusion is
+pursued in the future, it should be implemented at the composition level
+rather than by toggling these global flags.
 
 See [../journals/AUDIO_SCENE_LOOP.md](../journals/AUDIO_SCENE_LOOP.md) for
 the decision journal entry.
@@ -322,18 +324,8 @@ the decision journal entry.
 
 ## Testing
 
-The `OperationListSegmentationTest` in the `utils` module verifies:
-
-1. **`automaticOptimizationEnabled`** — asserts `enableAutomaticOptimization == true`
-2. **`segmentingEnabled`** — asserts `enableSegmenting == true`
-3. **`nonUniformListProducesCorrectResults`** — correctness test with mixed
-   scalar/vector operations
-4. **`segmentationGroupsConsecutiveSameCountOps`** — structural test verifying
-   segmentation grouping behavior
-
-When toggling these flags, these tests must be updated or the assertions
-will fail.
-
-The `LoopedSumDiagnosticTest.testWithOptimization()` tests
-`enableAutomaticOptimization` by temporarily enabling it, verifying that
-isolation is triggered for `LoopedWeightedSumComputation`.
+The behavior controlled by these flags can be verified through the existing
+test infrastructure. When toggling these flags, run the full test suite to
+detect any behavioral regressions. In particular, tests that exercise
+`OperationList` compilation paths (such as `LoopedSumDiagnosticTest`) will
+surface issues with changed flag values.
