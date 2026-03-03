@@ -487,10 +487,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
 
 	/** Enable automatic optimization of operation lists before execution. */
-	public static boolean enableAutomaticOptimization = false;
+	public static boolean enableAutomaticOptimization = true;
 
 	/** Enable segmenting of large operation lists into smaller batches. */
-	public static boolean enableSegmenting = false;
+	public static boolean enableSegmenting = true;
 
 	/** Enable non-uniform compilation where operations with different counts can be compiled together. */
 	public static boolean enableNonUniformCompilation = false;

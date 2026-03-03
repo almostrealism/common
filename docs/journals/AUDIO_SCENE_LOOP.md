@@ -69,6 +69,108 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-03 — Implement all three plan goals: coefficient pre-computation, GPU pipeline split, kernel fusion
+
+**Goal:** Goals 1, 2, 3 — Pre-compute MultiOrderFilter coefficients, split pipeline
+into GPU pre-computation + CPU sequential loop, reduce JNI call overhead by fusing
+trivial kernels
+
+**Context:** After the prior review session identified the MultiOrderFilter as the
+dominant bottleneck (~80-90% of compute time, ~336,000 unnecessary transcendental
+function calls per buffer), the plan was rewritten with three clear goals. None of
+them had been implemented yet — prior work focused on LICM, exponent strength
+reduction, and CachedStateCell optimization.
+
+**Approach for Goal 1 (coefficient pre-computation):**
+
+Traced the coefficient inlining problem through the code: `TemporalFeatures.lowPassCoefficients()`
+creates a `CollectionProducer` expression tree with sin/cos for sinc/Hamming window
+computation. `EfxManager.applyFilter()` passed this expression tree directly as the
+second argument to `MultiOrderFilter.create()`, causing the sin/cos expressions to
+be compiled into the per-sample convolution kernel.
+
+The fix separates coefficient computation from convolution by:
+1. Allocating a coefficient buffer (`PackedCollection` of size `filterOrder + 1 = 41`)
+2. Adding a separate assignment operation that evaluates coefficients into the buffer
+3. Passing the buffer reference (via `cp(coeffBuffer)`) to `MultiOrderFilter.create()`
+   instead of the expression tree
+
+This ensures coefficients are computed once per buffer tick (41 evaluations with sin/cos)
+instead of once per sample (4096 x 41 = 167,936 evaluations with sin/cos).
+
+**Approach for Goal 2 (GPU pipeline split):**
+
+Wrapped the coefficient computation and filter convolution operations in an
+`OperationList` with `ComputeRequirement.GPU`. This tags the operations for GPU
+execution via the existing `OperationList.setComputeRequirements()` mechanism.
+On Apple Silicon with unified memory, this is zero-copy.
+
+**Approach for Goal 3 (kernel fusion):**
+
+Changed `OperationList.enableAutomaticOptimization` from `false` to `true` and
+`OperationList.enableSegmenting` from `false` to `true`. The existing segmentation
+logic in `OperationList.optimize()` groups consecutive operations with the same
+parallelism count into sub-lists, each of which compiles as a single kernel. This
+reduces the number of JNI transitions from 143 individual calls to fewer grouped calls.
+
+**Changes made:**
+
+1. `compose/src/main/java/org/almostrealism/audio/arrange/EfxManager.java`:
+   - Added `ComputeRequirement` import
+   - Added `consolidatedCoefficientBuffer` and `coefficientBufferIndex` fields
+   - Modified `consolidateFilterBuffers()` to allocate coefficient buffer
+   - Added `getConsolidatedCoefficientBuffer()` getter
+   - Modified `destroyConsolidatedBuffers()` to destroy coefficient buffer
+   - Rewrote `applyFilter()` to pre-compute coefficients into buffer, then pass
+     buffer to MultiOrderFilter, wrapped in GPU-annotated OperationList
+
+2. `hardware/src/main/java/org/almostrealism/hardware/OperationList.java`:
+   - Changed `enableAutomaticOptimization` from `false` to `true`
+   - Changed `enableSegmenting` from `false` to `true`
+
+**Tests created:**
+
+1. `MultiOrderFilterCoefficientPrecomputationTest` (5 tests):
+   - `precomputedLowPassMatchesInline`: Pre-computed LP coefficients match inline
+   - `precomputedHighPassMatchesInline`: Pre-computed HP coefficients match inline
+   - `coefficientBufferHasCorrectSizeAndValues`: Buffer has filterOrder+1 elements
+   - `operationListCoefficientAssignment`: OperationList assignment pattern matches EfxManager
+   - `precomputedCoefficientsAtBufferSize`: Works at 4096 (AudioScene buffer size)
+
+2. `OperationListSegmentationTest` (4 tests):
+   - `automaticOptimizationEnabled`: Verifies flag is true
+   - `segmentingEnabled`: Verifies flag is true
+   - `nonUniformListProducesCorrectResults`: Mixed scalar/vector ops produce correct output
+   - `segmentationGroupsConsecutiveSameCountOps`: Segmentation groups same-count ops
+
+**Testing:** All 9 new tests pass. Existing optimization tests (OperationOptimizationTests,
+LoopInvariantHoistingTest, ExponentStrengthReductionTest) verified separately. Full build
+(`mvn clean install -DskipTests`) succeeds across all modules.
+
+**Alternatives considered:**
+- Could have modified `MultiOrderFilter` itself to detect constant coefficients and
+  pre-compute internally. Rejected because the separation should happen at the pipeline
+  composition level (EfxManager), keeping MultiOrderFilter a pure convolution kernel.
+- Could have added a new GPU-specific kernel class for coefficient computation. Rejected
+  because the existing `OperationList` + `ComputeRequirement` mechanism already handles this.
+- Could have implemented custom segmentation logic for the AudioScene pipeline. Rejected
+  because the generic `OperationList.optimize()` segmentation handles all cases.
+
+**Outcome:**
+- **Goal 1:** COMPLETE — Coefficient computation separated from convolution in EfxManager.
+  MultiOrderFilter now receives pre-computed buffer instead of expression tree.
+- **Goal 2:** COMPLETE — Filter operations wrapped in GPU-annotated OperationList.
+- **Goal 3:** COMPLETE — OperationList automatic optimization and segmentation enabled
+  globally, allowing consecutive same-count operations to fuse into single kernels.
+
+**Open questions:**
+- Full end-to-end performance verification (effectsEnabledPerformance) should be run
+  on hardware with GPU support to measure actual buffer time improvement.
+- The consolidated coefficient buffer allocation pattern should be verified in the
+  AudioScene buffer consolidation test.
+
+---
+
 ### 2026-03-03 — Pivot: MultiOrderFilter identified as dominant bottleneck *(review)*
 
 **Author:** Review agent (independent analysis)
