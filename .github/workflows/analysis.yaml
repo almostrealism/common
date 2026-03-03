@@ -949,17 +949,45 @@ jobs:
             exit 0
           fi
 
+          # Check whether any validation gate that "test" depends on has
+          # failed.  When a gate fails the test job is skipped by GitHub
+          # Actions (dependency not met).  That skip is *explained* — it
+          # is not an infrastructure-level incompleteness.  The validation
+          # failures have their own resolution paths downstream (code
+          # policy, quality gates).
+          VALIDATION_FAILED="false"
+          if [ "${{ needs.code-policy-check.outputs.passed }}" != "true" ]; then
+            VALIDATION_FAILED="true"
+          fi
+          if [ "${{ needs.test-timeout-check.outputs.passed }}" != "true" ]; then
+            VALIDATION_FAILED="true"
+          fi
+          if [ "${{ needs.duplicate-code-check.outputs.passed }}" != "true" ]; then
+            VALIDATION_FAILED="true"
+          fi
+          if [ "${{ needs.test-integrity-check.outputs.passed }}" != "true" ]; then
+            VALIDATION_FAILED="true"
+          fi
+
           # Only flag as incomplete if jobs were cancelled/skipped without
           # an upstream failure to explain it
           if [ "$TEST_RESULT" = "cancelled" ] || [ "$TEST_RESULT" = "skipped" ]; then
-            echo "::warning::test job was ${TEST_RESULT} without an upstream failure"
-            INCOMPLETE="true"
+            if [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test job was ${TEST_RESULT} because an upstream validation check failed — not treating as incomplete"
+            else
+              echo "::warning::test job was ${TEST_RESULT} without an upstream failure"
+              INCOMPLETE="true"
+            fi
           fi
           if [ "$MEDIA_RESULT" = "cancelled" ] || [ "$MEDIA_RESULT" = "skipped" ]; then
-            # test-media cancelled because test failed is expected, not incomplete
-            if [ "$TEST_RESULT" != "failure" ]; then
-              echo "::warning::test-media job was ${MEDIA_RESULT} without test job failure"
-              INCOMPLETE="true"
+            # test-media cancelled because test failed/skipped is expected, not incomplete
+            if [ "$TEST_RESULT" != "failure" ] && [ "$TEST_RESULT" != "skipped" ]; then
+              if [ "$VALIDATION_FAILED" = "true" ]; then
+                echo "::notice::test-media job was ${MEDIA_RESULT} because an upstream validation check failed — not treating as incomplete"
+              else
+                echo "::warning::test-media job was ${MEDIA_RESULT} without test job failure"
+                INCOMPLETE="true"
+              fi
             fi
           fi
           echo "incomplete=$INCOMPLETE" >> "$GITHUB_OUTPUT"
