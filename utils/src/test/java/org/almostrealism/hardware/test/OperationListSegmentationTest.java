@@ -48,7 +48,7 @@ public class OperationListSegmentationTest extends TestSuiteBase {
 	 * This configuration is required for the AudioScene pipeline to
 	 * automatically segment non-uniform operation lists at compile time.
 	 */
-	@Test
+	@Test(timeout = 10_000)
 	public void automaticOptimizationEnabled() {
 		assertTrue("OperationList.enableAutomaticOptimization must be true " +
 						"for automatic kernel fusion to work",
@@ -61,7 +61,7 @@ public class OperationListSegmentationTest extends TestSuiteBase {
 	 * to be split into groups of same-count operations, each of which
 	 * can be compiled as a single kernel.
 	 */
-	@Test
+	@Test(timeout = 10_000)
 	public void segmentingEnabled() {
 		assertTrue("OperationList.enableSegmenting must be true " +
 						"for JNI call reduction via kernel fusion",
