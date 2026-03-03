@@ -119,7 +119,7 @@ NOT work because of how the AR expression tree system operates:
 
 ### Goal 1: Pre-compute MultiOrderFilter coefficients
 
-**Status: INCOMPLETE**
+**Status: INCOMPLETE — the fix is straightforward, see below**
 
 **Source:** `time/src/main/java/org/almostrealism/time/computations/MultiOrderFilter.java`
 
@@ -141,46 +141,52 @@ the generated kernel. The compiler sees a single expression tree for the
 entire "compute coefficients + convolve" operation, and it compiles into
 a single kernel with the coefficient math inside the per-sample loop.
 
-**You cannot fix this at the call site** (e.g., in `EfxManager`). The
-expression tree is the thing being compiled. Passing a different
-`Producer` wrapper around the same expression tree does not change the
-generated code. The fix must change how `MultiOrderFilter` constructs
-its expression tree so that the coefficient computation is structurally
-separate from the convolution.
+The key distinction is between `cp(buffer)` and `p(buffer)`:
 
-#### Required work
+- `cp(buffer)` wraps the buffer in a `CollectionProducer` computation
+  with an absorbable `Scope`. The expression tree can be inlined.
+- `p(buffer)` creates a `CollectionProviderProducer` — a plain buffer
+  reference with NO computation scope. There is nothing for
+  `Scope.tryAbsorb()` to merge, so the kernel is forced to read from
+  the buffer at runtime rather than inlining the coefficient expressions.
 
-The fix must happen **inside `MultiOrderFilter.java`** (and/or its
-supporting classes in the `time` module). Possible approaches:
+#### The fix: two-kernel approach in EfxManager
 
-1. **Two-kernel approach**: Split `MultiOrderFilter` into two separate
-   `Computation` objects — one that computes the 41 coefficients (runs
-   once, output size = 41), and one that performs the convolution (runs
-   4096 times, reads coefficients from a `PackedCollection`). The caller
-   composes them in an `OperationList`. The convolution kernel's
-   expression tree must read coefficient values from a buffer input
-   (not recompute them), which means using a `CollectionVariable` or
-   similar mechanism to reference the pre-computed data by index.
+A working test already demonstrates the pattern — see
+`MultiOrderFilterConvolutionTest.convolutionWithChosenCoefficients()`.
+The fix applies this same pattern to `EfxManager.applyFilter()`:
 
-2. **Scope restructuring approach**: Restructure the expression tree so
-   that the coefficient computation is a loop-invariant sub-expression
-   that LICM can hoist. This would require the coefficient computation
-   to be expressed as a sub-tree that depends only on the cutoff
-   frequency (not on the sample index), so the existing hoisting passes
-   can extract it.
+1. **Pre-compute coefficients into a physical buffer** as a separate
+   kernel (runs once per buffer, 41 iterations with sin/cos):
+   ```java
+   PackedCollection coeffBuffer = new PackedCollection(filterOrder + 1);
+   setup.add(a("efxCoeffs", cp(coeffBuffer.each()), coefficients));
+   ```
 
-3. **Pre-computed coefficient input**: Change `MultiOrderFilter.create()`
-   to accept a `Producer<PackedCollection>` for pre-computed coefficients
-   (size = filterOrder + 1). When this input is provided, the convolution
-   expression tree reads from it by index instead of computing sinc/Hamming
-   inline. The caller is responsible for evaluating the coefficients into
-   the buffer before invoking the filter. **This differs from the failed
-   approach** because the expression tree itself must be structurally
-   different — the convolution nodes must contain `CollectionVariable`
-   reads from the coefficient buffer, not the original sin/cos expression
-   nodes.
+2. **Pass the buffer to MultiOrderFilter via `p(coeffBuffer)`** (plain
+   buffer reference, NOT `cp(coeffBuffer)`):
+   ```java
+   setup.add(a("efxFilter", cp(destination.each()),
+       MultiOrderFilter.create(audio, p(coeffBuffer))));
+   ```
 
-**Acceptance criteria:**
+When `MultiOrderFilter.getValueAt(i)` reads from a `p(buffer)` input,
+it reads pre-computed data — no sin/cos expression tree to inline. The
+convolution kernel contains only multiply-accumulate operations.
+
+**No changes to `MultiOrderFilter.java` are required.** The fix is
+entirely in `EfxManager.applyFilter()`.
+
+**NOTE on `reference(i)` vs `getValueAt(i)` in MultiOrderFilter:** A
+previous attempt tried changing `getValueAt(i)` to `reference(i)` in
+`MultiOrderFilter.getScope()`. This is NOT needed and was reverted.
+When the coefficient input is already a physical buffer (via `p()`),
+`getValueAt(i)` correctly reads from it without inlining. The
+`reference(i)` approach was insufficient on its own because of scope
+absorption via `Scope.tryAbsorb()`. The two-kernel separation at the
+call site is what actually prevents inlining.
+
+#### Acceptance criteria
 
 - [ ] Generated C code shows coefficient computation OUTSIDE the sample loop
 - [ ] Inner convolution loop contains only multiply-accumulate (no sin/cos)
@@ -189,7 +195,7 @@ supporting classes in the `time` module). Possible approaches:
 - [ ] Buffer time drops significantly (target: < 93 ms avg)
 - [ ] All existing tests pass
 
-**How to verify the generated code:**
+#### How to verify the generated code
 
 After running `effectsEnabledPerformance` with
 `-DAR_INSTRUCTION_SET_MONITORING=always`, find the largest `.c` file in
