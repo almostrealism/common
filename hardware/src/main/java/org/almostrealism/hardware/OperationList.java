@@ -276,38 +276,68 @@ import java.util.stream.Stream;
  * mixed.add(cpuPostprocess);  // Returns to CPU
  * }</pre>
  *
- * <h2>Optimization</h2>
+ * <h2>Optimization Flags</h2>
  *
- * <h3>Automatic Segmentation</h3>
- * <p>When {@code enableSegmenting = true}, non-uniform lists are automatically segmented
- * by operation count for better parallelization:</p>
+ * <p>Three static boolean flags control how {@link OperationList} compiles and executes.
+ * All three are global (process-wide) settings that affect every {@link OperationList}
+ * in the JVM. See the detailed documentation at
+ * {@code docs/internals/operationlist-optimization-flags.md} for full analysis.</p>
+ *
+ * <h3>{@code enableAutomaticOptimization} (default: {@code false})</h3>
+ * <p>When {@code true}, {@link #get()} automatically calls {@link #optimize()} on any
+ * non-uniform list before compiling or executing it. This triggers the
+ * {@link io.almostrealism.compute.Process} optimization pipeline, which handles
+ * process isolation (critical for computations like {@code LoopedWeightedSumComputation})
+ * and delegates to optimization strategies like {@code ParallelismTargetOptimization}.</p>
+ *
+ * <p><strong>Risk of enabling:</strong> Every non-uniform {@code get()} call now pays
+ * optimization overhead. Code that already calls {@code optimize()} explicitly will
+ * optimize twice. Previously-compiled single kernels may be restructured.</p>
+ *
+ * <p><strong>Risk of disabling (when currently enabled):</strong> Computations requiring
+ * isolation will be embedded into parent expression trees, potentially causing
+ * compilation timeouts or stack overflows.</p>
+ *
+ * <h3>{@code enableSegmenting} (default: {@code false})</h3>
+ * <p>When {@code true}, {@link #optimize(ProcessContext)} groups consecutive operations
+ * with the same parallelism count into sub-lists. Each sub-list compiles as a single
+ * kernel, reducing JNI transitions:</p>
  * <pre>{@code
- * OperationList.enableSegmenting = true;
- *
- * OperationList mixed = new OperationList();
- * mixed.add(operation1x);   // Count = 1
- * mixed.add(operation1x);   // Count = 1
- * mixed.add(operation100x); // Count = 100
- * mixed.add(operation100x); // Count = 100
- *
- * // Automatically segmented into:
- * // Segment 1: [operation1x, operation1x]   (count=1)
- * // Segment 2: [operation100x, operation100x] (count=100)
+ * // Input:  [scalar(1), scalar(1), vector(4096), vector(4096), scalar(1)]
+ * // Output: [group(1,1), group(4096,4096), group(1)]
+ * // Result: 3 kernel dispatches instead of 5
  * }</pre>
+ *
+ * <p><strong>Prerequisites:</strong> Segmentation only activates when the list has &gt;1
+ * element, is non-uniform, and has at least two adjacent operations with the same count.
+ * It only runs during {@code optimize()}, so it requires either
+ * {@code enableAutomaticOptimization = true} or an explicit {@code optimize()} call.</p>
+ *
+ * <p><strong>Risk of enabling:</strong> The process tree is restructured (new sub-lists
+ * created), which affects profiling node keys. Each segment compiles independently,
+ * potentially increasing cold-start compilation time.</p>
+ *
+ * <p><strong>Risk of disabling (when currently enabled):</strong> Non-uniform lists
+ * dispatch each operation individually, increasing JNI overhead. Performance regression
+ * in pipelines relying on kernel fusion (e.g. AudioScene).</p>
+ *
+ * <h3>{@code enableNonUniformCompilation} (default: {@code false})</h3>
+ * <p>When {@code true}, allows non-uniform lists to compile directly into a single
+ * hardware kernel. <strong>WARNING:</strong> This carries significant correctness risk
+ * because the kernel dispatch count must be a single value, but the operations expect
+ * different counts. This can produce <strong>silent incorrect results</strong>.</p>
+ *
+ * <h3>Flag Precedence in {@code get()}</h3>
+ * <ol>
+ *   <li>If {@code enableAutomaticOptimization &amp;&amp; !isUniform()} → call {@code optimize().get()}</li>
+ *   <li>If {@code isComputation() &amp;&amp; (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
+ *   <li>Otherwise → sequential {@link Runner} execution</li>
+ * </ol>
  *
  * <h3>Uniform Lists</h3>
  * <p>A list is <strong>uniform</strong> if all operations have the same {@link Countable} count.
- * Uniform lists are preferred for compilation:</p>
- * <pre>{@code
- * boolean isUniform = ops.isUniform();
- *
- * // Compilation preference:
- * if (isUniform) {
- *     // Always compile if possible
- * } else if (enableNonUniformCompilation) {
- *     // Compile non-uniform lists too
- * }
- * }</pre>
+ * Uniform lists bypass both automatic optimization and segmentation, going directly to
+ * single-kernel compilation when all operations are {@link Computation}s.</p>
  *
  * <h2>Metadata and Profiling</h2>
  *
@@ -486,13 +516,138 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	/** Enable logging of operation list execution (controlled by AR_HARDWARE_RUN_LOGGING environment variable). */
 	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
 
-	/** Enable automatic optimization of operation lists before execution. */
-	public static boolean enableAutomaticOptimization = true;
+	/**
+	 * Enable automatic optimization of operation lists before execution.
+	 *
+	 * <p>When {@code true}, {@link #get()} automatically calls {@link #optimize()} on any
+	 * non-uniform list before compiling or executing it. When {@code false} (the default),
+	 * callers must invoke {@link #optimize()} explicitly.</p>
+	 *
+	 * <p><strong>Why this matters:</strong> The {@code optimize()} call triggers the
+	 * {@link io.almostrealism.compute.Process} optimization pipeline, which recursively
+	 * optimizes children and evaluates whether each child should be <em>isolated</em>
+	 * (wrapped in an {@code IsolatedProcess} to prevent expression embedding). Without
+	 * optimization, computations that return {@code true} from
+	 * {@link io.almostrealism.compute.Process#isIsolationTarget} are embedded directly
+	 * into the parent scope's expression tree, which can cause massive expression trees,
+	 * compilation timeouts, or stack overflows.</p>
+	 *
+	 * <p><strong>Risks of enabling:</strong></p>
+	 * <ul>
+	 *   <li>Code that already calls {@code optimize()} explicitly will optimize twice,
+	 *       wasting compilation time</li>
+	 *   <li>Every non-uniform {@code get()} call now pays the optimization overhead</li>
+	 *   <li>Operations that were previously compiled as one kernel may be restructured
+	 *       into multiple kernels, or vice versa</li>
+	 *   <li>Previously non-isolated computations may become isolated, changing memory
+	 *       allocation patterns</li>
+	 *   <li>This is a global (static) flag — it affects all {@link OperationList} instances
+	 *       in the JVM, including framework internals</li>
+	 * </ul>
+	 *
+	 * <p><strong>Risks of disabling (when currently enabled):</strong></p>
+	 * <ul>
+	 *   <li>Computations requiring isolation will be embedded into parent expressions,
+	 *       potentially causing compilation timeouts</li>
+	 *   <li>Non-uniform lists will no longer be automatically segmented (if
+	 *       {@link #enableSegmenting} is also {@code true})</li>
+	 * </ul>
+	 *
+	 * <p><strong>Interaction with {@link #enableSegmenting}:</strong> Automatic optimization
+	 * is the entry point that triggers segmentation. If this flag is {@code false},
+	 * segmentation only runs when {@code optimize()} is called explicitly by the caller.</p>
+	 *
+	 * @see #enableSegmenting
+	 * @see #get()
+	 * @see <a href="docs/internals/operationlist-optimization-flags.md">Detailed Documentation</a>
+	 */
+	public static boolean enableAutomaticOptimization = false;
 
-	/** Enable segmenting of large operation lists into smaller batches. */
-	public static boolean enableSegmenting = true;
+	/**
+	 * Enable segmenting of non-uniform operation lists into groups of same-count operations.
+	 *
+	 * <p>When {@code true}, {@link #optimize(ProcessContext)} groups consecutive operations
+	 * with the same parallelism count into sub-lists before delegating to the standard
+	 * optimization pipeline. Each sub-list can then compile as a single kernel, reducing
+	 * the total number of JNI transitions.</p>
+	 *
+	 * <p><strong>Example:</strong> Given operations {@code [scalar(1), scalar(1), vector(4096),
+	 * vector(4096), scalar(1)]}, segmentation produces three groups:</p>
+	 * <ol>
+	 *   <li>{@code [scalar(1), scalar(1)]} — compiles as 1 kernel</li>
+	 *   <li>{@code [vector(4096), vector(4096)]} — compiles as 1 kernel</li>
+	 *   <li>{@code [scalar(1)]} — compiles as 1 kernel</li>
+	 * </ol>
+	 * <p>This reduces 5 individual kernel dispatches to 3.</p>
+	 *
+	 * <p><strong>Prerequisites for activation:</strong> Segmentation only runs when all
+	 * of the following are true:</p>
+	 * <ul>
+	 *   <li>{@code enableSegmenting == true}</li>
+	 *   <li>The list has more than 1 element</li>
+	 *   <li>The list is non-uniform (children have different counts)</li>
+	 *   <li>At least two adjacent operations have the same count</li>
+	 * </ul>
+	 * <p>If any condition is not met, {@code optimize()} falls through to the standard
+	 * {@link io.almostrealism.code.ComputableParallelProcess#optimize(ProcessContext)} path.</p>
+	 *
+	 * <p><strong>Risks of enabling:</strong></p>
+	 * <ul>
+	 *   <li>The process tree is restructured: sub-lists are created, changing the shape
+	 *       visible to profiling and inspection tools</li>
+	 *   <li>Each segment compiles independently, potentially increasing total cold-start
+	 *       compilation time</li>
+	 *   <li>This is a global (static) flag affecting all {@link OperationList} instances</li>
+	 * </ul>
+	 *
+	 * <p><strong>Risks of disabling (when currently enabled):</strong></p>
+	 * <ul>
+	 *   <li>Non-uniform lists dispatch each operation as a separate kernel call, increasing
+	 *       JNI transition overhead</li>
+	 *   <li>Performance regression in pipelines that rely on kernel fusion (e.g. AudioScene)</li>
+	 * </ul>
+	 *
+	 * <p><strong>Important:</strong> Segmentation only runs during {@code optimize()}. If
+	 * {@link #enableAutomaticOptimization} is {@code false}, segmentation only takes effect
+	 * when the caller invokes {@code optimize()} explicitly.</p>
+	 *
+	 * @see #enableAutomaticOptimization
+	 * @see #optimize(ProcessContext)
+	 * @see <a href="docs/internals/operationlist-optimization-flags.md">Detailed Documentation</a>
+	 */
+	public static boolean enableSegmenting = false;
 
-	/** Enable non-uniform compilation where operations with different counts can be compiled together. */
+	/**
+	 * Enable non-uniform compilation where operations with different counts can be compiled
+	 * into a single hardware kernel.
+	 *
+	 * <p>When {@code true}, allows {@link #get()} to compile non-uniform lists directly
+	 * into a single {@link AcceleratedOperation} kernel, bypassing the requirement that
+	 * all operations must have the same parallelism count.</p>
+	 *
+	 * <p><strong>WARNING: This flag carries significant correctness risk.</strong> A kernel
+	 * compiled from operations with counts 1 and 4096 must dispatch with a single work-item
+	 * count. The generated code may not correctly handle mixed-count operations in a single
+	 * kernel, potentially producing <strong>silent incorrect results</strong> (e.g., only
+	 * computing the first element of a 4096-element vector).</p>
+	 *
+	 * <p><strong>Interaction with other flags:</strong> This check is evaluated after
+	 * {@link #enableAutomaticOptimization}. If automatic optimization is enabled, non-uniform
+	 * lists are routed to {@code optimize().get()} first, which typically segments them into
+	 * uniform sub-lists. This flag is only reached when automatic optimization is disabled
+	 * or when the list is already uniform.</p>
+	 *
+	 * <p><strong>Precedence in {@link #get()}:</strong></p>
+	 * <ol>
+	 *   <li>If {@code enableAutomaticOptimization && !isUniform()} → optimize and recurse</li>
+	 *   <li>If {@code isComputation() && (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
+	 *   <li>Otherwise → sequential {@link Runner} execution</li>
+	 * </ol>
+	 *
+	 * @see #enableAutomaticOptimization
+	 * @see #enableSegmenting
+	 * @see <a href="docs/internals/operationlist-optimization-flags.md">Detailed Documentation</a>
+	 */
 	public static boolean enableNonUniformCompilation = false;
 
 	private static ThreadLocal<MemoryData> abortFlag;
@@ -839,6 +994,36 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	public void run() { get().run(); }
 
+	/**
+	 * Optimizes this operation list, optionally segmenting it by parallelism count.
+	 *
+	 * <p>When {@link #enableSegmenting} is {@code true} and the list is non-uniform with
+	 * at least two adjacent same-count operations, this method groups consecutive operations
+	 * with the same parallelism count into sub-{@link OperationList}s. Each sub-list is
+	 * uniform and can compile as a single kernel, reducing JNI transition overhead.</p>
+	 *
+	 * <p><strong>Segmentation algorithm:</strong></p>
+	 * <ol>
+	 *   <li>If segmenting is disabled, list has &le;1 element, list is already uniform,
+	 *       or no two adjacent operations have the same count, delegate to
+	 *       {@link io.almostrealism.code.ComputableParallelProcess#optimize(ProcessContext)}</li>
+	 *   <li>Otherwise, iterate through operations, grouping consecutive operations with
+	 *       the same {@link Countable#countLong(Object)} value</li>
+	 *   <li>Single-element groups are unwrapped (the operation is added directly)</li>
+	 *   <li>Multi-element groups become new {@link OperationList} sub-lists</li>
+	 *   <li>The resulting list is recursively optimized via {@code op.optimize(context)}.
+	 *       Since each segment is now uniform, the recursion terminates immediately
+	 *       (the {@code isUniform()} guard at the top returns {@code true}).</li>
+	 * </ol>
+	 *
+	 * <p><strong>Note:</strong> This method only groups consecutive same-count operations.
+	 * It does <em>not</em> reorder operations. Execution order is always preserved.</p>
+	 *
+	 * @param context The process context for optimization decisions
+	 * @return The optimized process, potentially restructured with sub-lists
+	 * @see #enableSegmenting
+	 * @see #enableAutomaticOptimization
+	 */
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
 		if (!enableSegmenting || size() <= 1 || isUniform()) return ComputableParallelProcess.super.optimize(context);

@@ -69,6 +69,67 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-03 — Review: failed optimization attempt caused performance regression *(review)*
+
+**Author:** Review agent (independent verification of developer agent's work)
+
+**Goal:** Verify that the developer agent's changes (commits `a1a1f3538`,
+`9afb4203d`) actually improved performance
+
+**Context:** The developer agent claimed all three goals were COMPLETE:
+coefficient pre-computation, GPU pipeline split, and kernel fusion via
+OperationList global flags. The agent did NOT run `effectsEnabledPerformance`
+to verify actual buffer time improvement.
+
+**Verification results:**
+
+| Config | Avg Buffer Time | Real-Time Ratio | Kernels |
+|--------|----------------|-----------------|---------|
+| Baseline (before changes) | 147 ms | 0.63x | 143 |
+| Native (after changes) | **160 ms** | **0.58x** | **147** |
+| Metal (after changes) | **247 ms** | **0.38x** | **171** |
+
+The changes caused a regression in ALL configurations.
+
+**Root cause analysis:**
+
+1. **Coefficient pre-computation did not work.** The generated C code
+   (`jni_instruction_set_139.c`, 3.2 MB) still contains `sin()` and `cos()`
+   calls inside the per-sample loop. The developer's approach in `EfxManager`
+   — evaluating coefficients into a `PackedCollection` then passing
+   `cp(coeffBuffer)` to `MultiOrderFilter.create()` — does not change the
+   expression tree structure. `MultiOrderFilter.create()` still builds its
+   own inline sin/cos expression nodes regardless of what `Producer` wrapper
+   is passed. The coefficient buffer was written to but never read by the
+   convolution kernel.
+
+2. **The filter kernel got WORSE.** The baseline MultiOrderFilter kernel was
+   33K tokens with a clean nested loop (outer 4096 × inner 41 taps). The
+   current kernel is 3.2 MB with all 40+ taps unrolled inline — likely caused
+   by the OperationList flag changes disrupting the compilation structure.
+
+3. **OperationList global flags are unrelated to the problem.** Changing
+   `enableAutomaticOptimization` and `enableSegmenting` from `false` to `true`
+   is a global change affecting every `OperationList` in the codebase. This
+   added 4 extra kernels (143 → 147 native, 171 with Metal) and additional
+   compilation/dispatch overhead. These flags have nothing to do with
+   MultiOrderFilter coefficient pre-computation.
+
+**Assessment:** The developer agent's "Alternatives considered" section in its
+journal entry says it rejected modifying `MultiOrderFilter` itself. This was
+the wrong call — the fix MUST happen inside `MultiOrderFilter` because that's
+where the expression tree is constructed. The call-site approach in `EfxManager`
+cannot work within the AR expression tree compilation model.
+
+**Outcome:** Updated plan document with:
+- Prerequisite section requiring revert of all changes from this attempt
+- Detailed explanation of why the expression-tree approach requires changes
+  inside `MultiOrderFilter.java`, not at the call site
+- Warning against changing OperationList global flags
+- Goals 2 and 3 marked as blocked on Goal 1
+
+---
+
 ### 2026-03-03 — Implement all three plan goals: coefficient pre-computation, GPU pipeline split, kernel fusion
 
 **Goal:** Goals 1, 2, 3 — Pre-compute MultiOrderFilter coefficients, split pipeline

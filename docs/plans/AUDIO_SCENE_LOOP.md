@@ -43,6 +43,66 @@ From `compose/results/effects-enabled-performance-summary.txt`:
 
 ---
 
+## PREREQUISITE: Revert Failed Optimization Attempt
+
+**Status: INCOMPLETE — must be done BEFORE any new work.**
+
+The previous attempt at Goal 1 (commits `a1a1f3538` and `9afb4203d`)
+**introduced a performance regression** and must be fully reverted. The
+changes caused:
+
+- **Native-only**: 147 ms → 160 ms (+9% slower, 147 kernels vs 143)
+- **Metal**: 147 ms → 247 ms (+68% slower, 171 kernels)
+- **No sin/cos removal**: The generated C code still contains sin/cos
+  inside the inner loop — the coefficient pre-computation did not work
+
+**What to revert:**
+
+1. **`EfxManager.java`**: Remove `consolidatedCoefficientBuffer`,
+   `coefficientBufferIndex`, the `efxGpuPrecompute` OperationList, and
+   the coefficient buffer allocation/destruction. Restore `applyFilter()`
+   to its original form (pass the coefficient expression tree directly
+   to `MultiOrderFilter.create()`).
+
+2. **`OperationList.java`**: Revert `enableAutomaticOptimization` and
+   `enableSegmenting` back to `false`. These are **global flags** that
+   affect every OperationList in the entire codebase. Changing them is
+   completely unrelated to the MultiOrderFilter optimization and caused
+   additional overhead. See the javadoc on these flags for details about
+   their behavior and risks.
+
+3. **Delete test files** that only test the reverted behavior:
+   - `MultiOrderFilterCoefficientPrecomputationTest.java`
+   - `OperationListSegmentationTest.java`
+
+**After reverting, verify:**
+- `effectsEnabledPerformance` runs with avg buffer time ≤ 147 ms
+- 143 JNI instruction sets (not more)
+- All existing tests pass
+
+**Why the previous attempt failed — READ THIS CAREFULLY:**
+
+The previous approach tried to pre-compute coefficients in `EfxManager`
+by evaluating the coefficient expression into a `PackedCollection` buffer,
+then passing `cp(coeffBuffer)` to `MultiOrderFilter.create()`. This does
+NOT work because of how the AR expression tree system operates:
+
+- `MultiOrderFilter.create()` builds an **expression tree** at compile
+  time. The sin/cos coefficient computations are nodes in that tree.
+- Passing `cp(coeffBuffer)` as a `Producer` does not cause the filter
+  to "read from the buffer at runtime." Instead, `cp()` wraps the buffer
+  in a `CollectionProvider` expression node. When the expression tree is
+  compiled, it still generates the same inline coefficient computation
+  because the *expression structure* hasn't changed — only the *source*
+  of one input was wrapped differently.
+- The coefficient buffer was written to (by the separate assignment
+  operation), but `MultiOrderFilter` never reads from it — it still
+  evaluates its own internal sin/cos expression tree per sample.
+
+**The fix must happen inside `MultiOrderFilter.java` itself.** See Goal 1.
+
+---
+
 ## Prior Work (completed, do NOT break)
 
 - LICM Phases 1-4: f_assignment hoisting + f_licm sub-expression extraction
@@ -71,18 +131,54 @@ The coefficients should be computed **once** and reused.
 **Current cost:** 4096 x 41 = 167,936 iterations, each with 2x `sin()`,
 2x `cos()`, 2x division = **~336,000 transcendental calls per buffer**.
 
-**Required work:**
+#### Why this is hard (expression tree vs. runtime data)
 
-1. **Separate coefficient computation from convolution** in `MultiOrderFilter`.
-   The 41-tap coefficient array depends only on the cutoff frequency
-   (`f_licm_1` in generated code). Compute it once per buffer.
+The AR framework compiles computation graphs into native code via
+expression trees. When `MultiOrderFilter` builds its expression tree, the
+sinc/Hamming coefficient computation is embedded as expression nodes
+(containing `Sin`, `Cos`, `Quotient`, etc.) that become inline C code in
+the generated kernel. The compiler sees a single expression tree for the
+entire "compute coefficients + convolve" operation, and it compiles into
+a single kernel with the coefficient math inside the per-sample loop.
 
-2. **Store coefficients in a PackedCollection** or local array that the
-   convolution inner loop reads from, replacing the per-sample sinc/Hamming
-   evaluation.
+**You cannot fix this at the call site** (e.g., in `EfxManager`). The
+expression tree is the thing being compiled. Passing a different
+`Producer` wrapper around the same expression tree does not change the
+generated code. The fix must change how `MultiOrderFilter` constructs
+its expression tree so that the coefficient computation is structurally
+separate from the convolution.
 
-3. **Verify the convolution is correct** — the filter must produce
-   identical output to the current implementation.
+#### Required work
+
+The fix must happen **inside `MultiOrderFilter.java`** (and/or its
+supporting classes in the `time` module). Possible approaches:
+
+1. **Two-kernel approach**: Split `MultiOrderFilter` into two separate
+   `Computation` objects — one that computes the 41 coefficients (runs
+   once, output size = 41), and one that performs the convolution (runs
+   4096 times, reads coefficients from a `PackedCollection`). The caller
+   composes them in an `OperationList`. The convolution kernel's
+   expression tree must read coefficient values from a buffer input
+   (not recompute them), which means using a `CollectionVariable` or
+   similar mechanism to reference the pre-computed data by index.
+
+2. **Scope restructuring approach**: Restructure the expression tree so
+   that the coefficient computation is a loop-invariant sub-expression
+   that LICM can hoist. This would require the coefficient computation
+   to be expressed as a sub-tree that depends only on the cutoff
+   frequency (not on the sample index), so the existing hoisting passes
+   can extract it.
+
+3. **Pre-computed coefficient input**: Change `MultiOrderFilter.create()`
+   to accept a `Producer<PackedCollection>` for pre-computed coefficients
+   (size = filterOrder + 1). When this input is provided, the convolution
+   expression tree reads from it by index instead of computing sinc/Hamming
+   inline. The caller is responsible for evaluating the coefficients into
+   the buffer before invoking the filter. **This differs from the failed
+   approach** because the expression tree itself must be structurally
+   different — the convolution nodes must contain `CollectionVariable`
+   reads from the coefficient buffer, not the original sin/cos expression
+   nodes.
 
 **Acceptance criteria:**
 
@@ -93,11 +189,21 @@ The coefficients should be computed **once** and reused.
 - [ ] Buffer time drops significantly (target: < 93 ms avg)
 - [ ] All existing tests pass
 
+**How to verify the generated code:**
+
+After running `effectsEnabledPerformance` with
+`-DAR_INSTRUCTION_SET_MONITORING=always`, find the largest `.c` file in
+the results directory. That is the MultiOrderFilter kernel. Search for
+`sin(` and `cos(` — if they appear between the `for (... global_id ...)`
+loop start and the loop's closing brace, the optimization is NOT working.
+The convolution inner loop should contain only multiplication and
+addition (dot product of coefficients × samples).
+
 ---
 
 ### Goal 2: Split pipeline into GPU pre-computation + CPU sequential loop
 
-**Status: INCOMPLETE**
+**Status: INCOMPLETE — do not attempt until Goal 1 is complete**
 
 The framework already supports multi-kernel pipelines via `OperationList`
 with per-step `ComputeRequirement`, `PackedCollection` for inter-kernel
@@ -137,7 +243,7 @@ and delay lines require sequential per-frame processing.
 
 ### Goal 3: Reduce JNI call overhead by fusing trivial kernels
 
-**Status: INCOMPLETE**
+**Status: INCOMPLETE — do not attempt until Goal 1 is complete**
 
 143 JNI native calls per buffer tick, ~120 of which are trivial scalar
 assignments (`v = 0.0`, `v = 1.0`, `v = 4096.0`). Each JNI transition
@@ -153,6 +259,15 @@ has overhead that adds up.
    a single memset/initialization operation.
 
 3. **Measure the JNI call count reduction** and its impact on buffer time.
+
+**NOTE:** Do NOT attempt to achieve kernel fusion by flipping
+`OperationList.enableAutomaticOptimization` or
+`OperationList.enableSegmenting` to `true`. These are global flags with
+complex interactions across the entire codebase. They are not required
+for this project and must not be changed here. If kernel fusion is
+needed, implement it specifically for the AudioScene pipeline at the
+composition level (e.g., in the cell graph construction), not by changing
+global compilation behavior.
 
 **Acceptance criteria:**
 
@@ -199,6 +314,7 @@ is not working.** Do not claim completion based on unit tests alone.
 - Do NOT increase `ScopeSettings.maxReplacements` beyond 12
 - Do NOT modify pom.xml files
 - Do NOT weaken or disable existing tests
+- Do NOT change global flags in `OperationList.java` (see Goal 3 note)
 - Document all reasoning in the decision journal
 
 ## Key Source Files
@@ -206,7 +322,7 @@ is not working.** Do not claim completion based on unit tests alone.
 | File | Purpose |
 |------|---------|
 | `MultiOrderFilter.java` | FIR filter — **primary optimization target** |
-| `OperationList.java` | Multi-kernel pipeline composition |
+| `OperationList.java` | Multi-kernel pipeline composition (**do not change global flags**) |
 | `ComputeRequirement.java` | CPU/GPU selection per operation |
 | `Repeated.java` | Loop scope generation and LICM |
 | `AcceleratedOperation.java` | Kernel dispatch and execution |
