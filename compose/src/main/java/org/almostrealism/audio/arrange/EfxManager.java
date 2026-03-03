@@ -16,7 +16,6 @@
 
 package org.almostrealism.audio.arrange;
 
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
@@ -104,7 +103,6 @@ public class EfxManager implements CellFeatures {
 
 	private PackedCollection consolidatedFilterBuffer;
 	private int filterBufferIndex;
-
 	private PackedCollection consolidatedCoefficientBuffer;
 	private int coefficientBufferIndex;
 
@@ -128,9 +126,7 @@ public class EfxManager implements CellFeatures {
 		int maxFilters = channelCount * 4;
 		consolidatedFilterBuffer = new PackedCollection(bufferSize * maxFilters);
 		filterBufferIndex = 0;
-
-		int coeffSize = filterOrder + 1;
-		consolidatedCoefficientBuffer = new PackedCollection(coeffSize * maxFilters);
+		consolidatedCoefficientBuffer = new PackedCollection((filterOrder + 1) * maxFilters);
 		coefficientBufferIndex = 0;
 	}
 
@@ -140,17 +136,6 @@ public class EfxManager implements CellFeatures {
 	 * <p>Exposed for testing to verify that filter buffer consolidation is active.</p>
 	 */
 	public PackedCollection getConsolidatedFilterBuffer() { return consolidatedFilterBuffer; }
-
-	/**
-	 * Returns the consolidated coefficient buffer, or {@code null} if not active.
-	 *
-	 * <p>When active, filter coefficients are pre-computed into this buffer
-	 * before the convolution kernel runs. This separates the expensive
-	 * sinc/Hamming coefficient computation (with sin/cos) from the
-	 * convolution inner loop, which then contains only multiply-accumulate
-	 * operations.</p>
-	 */
-	public PackedCollection getConsolidatedCoefficientBuffer() { return consolidatedCoefficientBuffer; }
 
 	/**
 	 * Destroys the consolidated filter buffer, freeing its native memory.
@@ -251,20 +236,6 @@ public class EfxManager implements CellFeatures {
 		}
 	}
 
-	/**
-	 * Applies a frequency filter to the audio signal for the given channel.
-	 *
-	 * <p>The filter type (low-pass or high-pass) and cutoff frequency are
-	 * determined by genome values. Filter coefficients are pre-computed
-	 * into a dedicated buffer before the convolution kernel runs, so that
-	 * the expensive sinc/Hamming window computation (involving sin and cos)
-	 * executes only once per buffer tick rather than once per sample.</p>
-	 *
-	 * @param channel the channel whose genome controls filter parameters
-	 * @param audio   the input audio signal producer
-	 * @param setup   operations list to append filter steps to
-	 * @return a producer referencing the filtered output buffer
-	 */
 	protected Producer<PackedCollection> applyFilter(ChannelInfo channel, Producer<PackedCollection> audio, OperationList setup) {
 		int size = shape(audio).getTotalSize();
 		PackedCollection destination;
@@ -274,16 +245,6 @@ public class EfxManager implements CellFeatures {
 			filterBufferIndex++;
 		} else {
 			destination = PackedCollection.factory().apply(size);
-		}
-
-		int coeffSize = filterOrder + 1;
-		PackedCollection coeffBuffer;
-
-		if (consolidatedCoefficientBuffer != null) {
-			coeffBuffer = consolidatedCoefficientBuffer.range(shape(coeffSize), coefficientBufferIndex * coeffSize);
-			coefficientBufferIndex++;
-		} else {
-			coeffBuffer = PackedCollection.factory().apply(coeffSize);
 		}
 
 		Producer<PackedCollection> decision =
@@ -302,12 +263,24 @@ public class EfxManager implements CellFeatures {
 				shape(filterOrder + 1), decision,
 				concat(shape(2, filterOrder + 1), hpCoefficients, lpCoefficients));
 
-		OperationList gpuPrecompute = new OperationList("efxGpuPrecompute");
-		gpuPrecompute.setComputeRequirements(List.of(ComputeRequirement.GPU));
-		gpuPrecompute.add(a("efxCoefficients", cp(coeffBuffer.each()), coefficients));
-		gpuPrecompute.add(a("efxFilter", cp(destination.each()),
-					MultiOrderFilter.create(audio, cp(coeffBuffer))));
-		setup.add(gpuPrecompute);
+		// Pre-compute coefficients into a buffer (separate kernel).
+		// This evaluates sin/cos/choice once per buffer instead of per sample.
+		PackedCollection coeffBuffer;
+		if (consolidatedCoefficientBuffer != null) {
+			coeffBuffer = consolidatedCoefficientBuffer.range(
+					shape(filterOrder + 1), coefficientBufferIndex * (filterOrder + 1));
+			coefficientBufferIndex++;
+		} else {
+			coeffBuffer = new PackedCollection(filterOrder + 1);
+		}
+
+		setup.add(a("efxCoeffs", cp(coeffBuffer.each()), coefficients));
+
+		// Convolution reads from the pre-computed buffer via p() which
+		// creates a plain buffer reference (no Computation scope to absorb),
+		// ensuring the generated convolution loop contains only multiply-accumulate
+		setup.add(a("efxFilter", cp(destination.each()),
+					MultiOrderFilter.create(audio, p(coeffBuffer))));
 		return cp(destination);
 	}
 }
