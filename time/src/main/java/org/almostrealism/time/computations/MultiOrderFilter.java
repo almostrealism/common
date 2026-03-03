@@ -269,11 +269,8 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 			{
 				Expression index = body.declareInteger("index", kernel(context).add(i.subtract(e(filterOrder / 2))));
 
-				// Use direct buffer reference to prevent TraversableExpression
-				// from inlining coefficient computation (sin/cos) into the
-				// per-sample convolution loop
 				Expression coeff = coefficients.getShape().getDimensions() == 1 ?
-						coefficients.reference(i) : coefficients.getValue(kernel(), i);
+						coefficients.getValueAt(i) : coefficients.getValue(kernel(), i);
 
 				body.addCase(index.greaterThanOrEqual(e(0)).and(index.lessThan(input.length())),
 						result.assign(result.add(input.getValueAt(index).multiply(coeff))));

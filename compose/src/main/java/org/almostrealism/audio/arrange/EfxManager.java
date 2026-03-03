@@ -103,8 +103,6 @@ public class EfxManager implements CellFeatures {
 
 	private PackedCollection consolidatedFilterBuffer;
 	private int filterBufferIndex;
-	private PackedCollection consolidatedCoefficientBuffer;
-	private int coefficientBufferIndex;
 
 	/**
 	 * Pre-allocates a single contiguous buffer for all filter destination buffers.
@@ -126,8 +124,6 @@ public class EfxManager implements CellFeatures {
 		int maxFilters = channelCount * 4;
 		consolidatedFilterBuffer = new PackedCollection(bufferSize * maxFilters);
 		filterBufferIndex = 0;
-		consolidatedCoefficientBuffer = new PackedCollection((filterOrder + 1) * maxFilters);
-		coefficientBufferIndex = 0;
 	}
 
 	/**
@@ -144,10 +140,6 @@ public class EfxManager implements CellFeatures {
 		if (consolidatedFilterBuffer != null) {
 			consolidatedFilterBuffer.destroy();
 			consolidatedFilterBuffer = null;
-		}
-		if (consolidatedCoefficientBuffer != null) {
-			consolidatedCoefficientBuffer.destroy();
-			consolidatedCoefficientBuffer = null;
 		}
 	}
 
@@ -263,24 +255,8 @@ public class EfxManager implements CellFeatures {
 				shape(filterOrder + 1), decision,
 				concat(shape(2, filterOrder + 1), hpCoefficients, lpCoefficients));
 
-		// Pre-compute coefficients into a buffer (separate kernel).
-		// This evaluates sin/cos/choice once per buffer instead of per sample.
-		PackedCollection coeffBuffer;
-		if (consolidatedCoefficientBuffer != null) {
-			coeffBuffer = consolidatedCoefficientBuffer.range(
-					shape(filterOrder + 1), coefficientBufferIndex * (filterOrder + 1));
-			coefficientBufferIndex++;
-		} else {
-			coeffBuffer = new PackedCollection(filterOrder + 1);
-		}
-
-		setup.add(a("efxCoeffs", cp(coeffBuffer.each()), coefficients));
-
-		// Convolution reads from the pre-computed buffer via p() which
-		// creates a plain buffer reference (no Computation scope to absorb),
-		// ensuring the generated convolution loop contains only multiply-accumulate
 		setup.add(a("efxFilter", cp(destination.each()),
-					MultiOrderFilter.create(audio, p(coeffBuffer))));
+					MultiOrderFilter.create(audio, coefficients)));
 		return cp(destination);
 	}
 }
