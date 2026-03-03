@@ -25,8 +25,9 @@ package io.almostrealism.compute;
  * for all base contexts.</p>
  *
  * <h2>Default Optimization Strategy</h2>
- * <p>By default, {@code ProcessContextBase} uses {@link ParallelismTargetOptimization}
- * as its optimization strategy. This can be changed globally via
+ * <p>By default, {@code ProcessContextBase} uses a {@link CascadingOptimizationStrategy}
+ * with {@link ReplicationMismatchOptimization} followed by {@link ParallelismTargetOptimization}.
+ * This can be changed globally via
  * {@link #setDefaultOptimizationStrategy(ProcessOptimizationStrategy)} to affect all
  * subsequently created contexts.</p>
  *
@@ -61,7 +62,10 @@ public class ProcessContextBase implements ProcessContext {
 	private static ProcessOptimizationStrategy defaultOptimizationStrategy;
 
 	static {
-		defaultOptimizationStrategy = new ParallelismTargetOptimization();
+		defaultOptimizationStrategy = new CascadingOptimizationStrategy(
+			new ReplicationMismatchOptimization(),
+			new ParallelismTargetOptimization()
+		);
 	}
 
 	private ProcessOptimizationStrategy optimizationStrategy;
