@@ -45,11 +45,11 @@ From `compose/results/effects-enabled-performance-summary.txt`:
 
 ## PREREQUISITE: Revert Failed Optimization Attempt
 
-**Status: INCOMPLETE — must be done BEFORE any new work.**
+**Status: COMPLETE** (reverted in commit `3ec07ab83`)
 
 The previous attempt at Goal 1 (commits `a1a1f3538` and `9afb4203d`)
-**introduced a performance regression** and must be fully reverted. The
-changes caused:
+**introduced a performance regression** and was fully reverted. The
+changes had caused:
 
 - **Native-only**: 147 ms → 160 ms (+9% slower, 147 kernels vs 143)
 - **Metal**: 147 ms → 247 ms (+68% slower, 171 kernels)
