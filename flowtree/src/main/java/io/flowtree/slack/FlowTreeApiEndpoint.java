@@ -84,6 +84,8 @@ import java.util.regex.Pattern;
  *   <tr><td>POST</td><td>/api/github/proxy?url=...</td>
  *       <td><i>raw JSON payload</i></td>
  *       <td>Proxy a POST request to the GitHub API</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td>
+ *       <td>List all registered workstreams with capabilities</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td>
  *       <td>Health check</td></tr>
  * </table>
@@ -196,6 +198,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
             return handleStatsQuery(session);
+        }
+
+        if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
+            return handleListWorkstreams();
         }
 
         if ("/api/github/proxy".equals(uri)
@@ -861,6 +867,60 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;
         return s.substring(0, maxLength - 3) + "...";
+    }
+
+    /**
+     * Handles {@code GET /api/workstreams}. Returns a JSON array of all
+     * registered workstreams with their configuration and capabilities.
+     *
+     * <p>Sensitive fields (git credentials, env vars, tokens) are omitted.
+     * Each entry includes a {@code pipelineCapable} boolean indicating
+     * whether the workstream has the configuration needed for Tier 2
+     * pipeline operations (requires {@code repoUrl}).</p>
+     *
+     * @return JSON response with an array of workstream summaries
+     */
+    private Response handleListWorkstreams() {
+        Map<String, SlackWorkstream> workstreams = notifier.getWorkstreams();
+
+        StringBuilder json = new StringBuilder();
+        json.append("[");
+
+        boolean first = true;
+        for (SlackWorkstream ws : workstreams.values()) {
+            if (!first) json.append(",");
+            first = false;
+
+            String repoUrl = ws.getRepoUrl();
+            String planningDoc = ws.getPlanningDocument();
+            boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();
+
+            json.append("{");
+            json.append("\"workstreamId\":\"").append(escapeJson(ws.getWorkstreamId())).append("\"");
+
+            if (ws.getChannelName() != null) {
+                json.append(",\"channelName\":\"").append(escapeJson(ws.getChannelName())).append("\"");
+            }
+            if (ws.getDefaultBranch() != null) {
+                json.append(",\"defaultBranch\":\"").append(escapeJson(ws.getDefaultBranch())).append("\"");
+            }
+            if (ws.getBaseBranch() != null) {
+                json.append(",\"baseBranch\":\"").append(escapeJson(ws.getBaseBranch())).append("\"");
+            }
+            if (repoUrl != null) {
+                json.append(",\"repoUrl\":\"").append(escapeJson(repoUrl)).append("\"");
+            }
+
+            json.append(",\"hasPlanningDocument\":").append(planningDoc != null && !planningDoc.isEmpty());
+            json.append(",\"pipelineCapable\":").append(pipelineCapable);
+            json.append(",\"agentCount\":").append(ws.getAgents().size());
+            json.append("}");
+        }
+
+        json.append("]");
+
+        return newFixedLengthResponse(Response.Status.OK,
+                "application/json", json.toString());
     }
 
     /**
