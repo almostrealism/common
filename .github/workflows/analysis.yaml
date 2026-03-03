@@ -850,6 +850,22 @@ jobs:
             echo "head_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check for docs-only changes
+        id: docs-check
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/${{ steps.ctx.outputs.base }}...${{ steps.ctx.outputs.head_sha }} || true)
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          NON_DOCS=$(echo "$CHANGED_FILES" | grep -v '^docs/' || true)
+          if [ -z "$NON_DOCS" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::All changes are under docs/ — will use verify prompt instead of review"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # ── Build failure path ──────────────────────────────────────
       # When the build itself fails, no tests run. Submit an agent
       # job to fix the compilation error directly.
@@ -1174,13 +1190,39 @@ jobs:
         run: |
           ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
 
+      # ── Docs-only verify path ──────────────────────────────────
+      # When all changes are under docs/, skip the general review
+      # and use the verify-completion prompt instead, since these
+      # are typically plan documents for a workstream.
+
+      - name: Build prompt (docs-only verify)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true'
+        env:
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
+        run: |
+          chmod +x ./tools/ci/prompts/build-verify-prompt.sh
+          ./tools/ci/prompts/build-verify-prompt.sh /tmp/agent-prompt.txt
+
+      - name: Submit agent job (docs-only verify)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true' && inputs.auto_resolve != 'false'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          DESCRIPTION: "Verify docs changes"
+        run: |
+          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+
       # ── General review fallback ─────────────────────────────────
       # When all tests and quality gates pass, submit a general
       # review job covering design, test quality, correctness,
       # documentation, and consistency with existing patterns.
 
       - name: Build prompt (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
@@ -1189,7 +1231,7 @@ jobs:
           ./tools/ci/prompts/build-review-prompt.sh /tmp/agent-prompt.txt
 
       - name: Submit agent job (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && inputs.auto_resolve != 'false'
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
@@ -1232,6 +1274,9 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat /tmp/quality-gate-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.docs-check.outputs.docs_only }}" = "true" ]; then
+            echo "All changes are under \`docs/\` — docs-only PR detected." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to verify docs changes." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "All tests and quality gates passed." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was submitted for general review." >> "$GITHUB_STEP_SUMMARY"
