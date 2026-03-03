@@ -90,17 +90,49 @@ public class Exponent extends Expression<Double> {
 		return Expression.process(create(base, exponent));
 	}
 
+	/**
+	 * Creates an exponent expression with algebraic strength reduction.
+	 *
+	 * <p>When the exponent is a small integer constant, the expensive {@code pow()}
+	 * library call is replaced with equivalent multiply/divide operations:</p>
+	 * <ul>
+	 *   <li>{@code pow(x, 2.0)} &rarr; {@code x * x}</li>
+	 *   <li>{@code pow(x, 3.0)} &rarr; {@code x * x * x}</li>
+	 *   <li>{@code pow(x, -1.0)} &rarr; {@code 1.0 / x}</li>
+	 *   <li>{@code pow(x, -2.0)} &rarr; {@code 1.0 / (x * x)}</li>
+	 *   <li>{@code pow(x, -3.0)} &rarr; {@code 1.0 / (x * x * x)}</li>
+	 * </ul>
+	 *
+	 * @param base     the base expression
+	 * @param exponent the exponent expression
+	 * @return an optimized expression equivalent to {@code pow(base, exponent)}
+	 */
 	public static Expression<Double> create(Expression<Double> base, Expression<Double> exponent) {
 		OptionalDouble exponentValue = exponent.doubleValue();
 		OptionalDouble baseValue = base.doubleValue();
 
 		if (exponentValue.isPresent()) {
-			if (exponentValue.getAsDouble() == 0.0) {
+			double exp = exponentValue.getAsDouble();
+
+			if (exp == 0.0) {
 				return new DoubleConstant(1.0);
-			} else if (exponentValue.getAsDouble() == 1.0) {
+			} else if (exp == 1.0) {
 				return base;
 			} else if (baseValue.isPresent()) {
-				return new DoubleConstant(Math.pow(baseValue.getAsDouble(), exponentValue.getAsDouble()));
+				return new DoubleConstant(Math.pow(baseValue.getAsDouble(), exp));
+			}
+
+			// Strength reduction: replace pow() with multiply/divide for small integer exponents
+			if (exp == 2.0) {
+				return (Expression<Double>) Product.of(base, base);
+			} else if (exp == 3.0) {
+				return (Expression<Double>) Product.of(Product.of(base, base), base);
+			} else if (exp == -1.0) {
+				return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), base);
+			} else if (exp == -2.0) {
+				return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), Product.of(base, base));
+			} else if (exp == -3.0) {
+				return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), Product.of(Product.of(base, base), base));
 			}
 		} else if (baseValue.isPresent()) {
 			if (baseValue.getAsDouble() == 0.0) {

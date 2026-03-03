@@ -69,6 +69,116 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-03 — Algebraic strength reduction for pow(), Goal 2 root cause, timing verification
+
+**Goal:** Goals 1, 2, and 3 — Reduce inner-loop pow() count, investigate argument
+count regression, achieve real-time performance
+
+**Context:** Prior sessions implemented LICM Phases 1-4, CachedStateCell optimization,
+and TimeCellReset optimization. All 26 existing optimization tests pass. The generated
+C code baseline (run e82e15a2) showed 150 `pow()` occurrences in the inner loop (126
+lines with pow), 389 arguments, avg buffer time 443.71ms (target 92.88ms, ratio 0.21x).
+
+**Approach for Goal 1:** Implemented algebraic strength reduction in `Exponent.create()`
+to replace `pow()` calls with equivalent multiply/divide operations for small integer
+exponents. This is a standard compiler optimization that avoids the expensive `pow()`
+library call in the generated C code.
+
+Reductions implemented:
+- `pow(x, 2.0)` → `x * x` (via `Product.of(base, base)`)
+- `pow(x, 3.0)` → `x * x * x` (via `Product.of(Product.of(base, base), base)`)
+- `pow(x, -1.0)` → `1.0 / x` (via `Quotient.of(1.0, base)`)
+- `pow(x, -2.0)` → `1.0 / (x * x)` (via `Quotient.of(1.0, Product.of(base, base))`)
+- `pow(x, -3.0)` → `1.0 / (x * x * x)` (via `Quotient.of(1.0, Product.of(Product.of(base, base), base))`)
+
+The reduction is placed after existing constant-folding (exp=0→1, exp=1→base,
+both-constants→evaluate) and before the fallback `new Exponent(base, exponent)`.
+
+**Classification of the baseline 150 pow() calls:**
+- 50 with exponent `3.0` → now strength-reduced to multiplications
+- 24 with exponent `2.0` → now strength-reduced to multiplications
+- 76 with variable exponents (e.g., `pow(expr, f_licm_4)` where `f_licm_4` is a
+  genome-derived expression like `(pow((- genome[offset]) + 1.0, -1.0) + -1.0) * 10.0`)
+  → these CANNOT be strength-reduced because the exponent depends on user-controlled
+  genome parameters at runtime
+
+**Approach for Goal 2:** Investigated the 49→389 argument count "regression" by reading
+`docs/plans/REALTIME_AUDIO_SCENE.md`. The 49 was measured with effects disabled
+(`effectsEnabledPerformance` was not the test used for that metric). With the full
+effects pipeline enabled (6 channels, filters, envelopes), 389 arguments is expected.
+No code change on this branch affects argument collection — the branch only modified
+`Repeated.java`, `CachedStateCell.java`, `TimeCellReset.java`, `SystemUtils.java`,
+`ScopeSettings.java` (javadoc only), and now `Exponent.java`.
+
+**Changes made:**
+1. `code/src/main/java/io/almostrealism/expression/Exponent.java`: Added strength
+   reduction cases in `create()` for exponents 2.0, 3.0, -1.0, -2.0, -3.0. Added
+   javadoc documenting the reductions.
+2. `utils/src/test/java/org/almostrealism/algebra/ExponentStrengthReductionTest.java`:
+   Created 9 unit tests covering all reduction cases, non-reducible preservation,
+   constant folding preservation, numerical correctness, and nested pow patterns.
+
+**Observations (generated C code, run 1e366c2c):**
+- Inner-loop `pow()` calls: **76** (down from 150 baseline, -49%)
+- ALL remaining 76 have variable exponents (`f_licm_*`) — zero constant-exponent pow() remains
+- `f_licm` declarations: **140** (up from 133 — more sub-expressions extracted because
+  strength reduction creates more Product/Quotient nodes that Phase 4 can decompose)
+- `f_assignment` declarations: **36** (down from 50)
+- All hoisted declarations correctly appear before the inner loop
+- Total file: 4835 lines (down from 4842)
+- 389 arguments (unchanged, as expected)
+
+**Timing results comparison:**
+
+| Metric | Baseline (e82e15a2) | With SR (1e366c2c) |
+|--------|---------------------|---------------------|
+| Avg buffer time | 443.71 ms | 433.24 ms |
+| Min buffer time | — | 386.49 ms |
+| Max buffer time | — | 894.76 ms |
+| Real-time ratio | 0.21x | 0.21x |
+| Meets real-time | NO | NO |
+
+The ~2.4% improvement from strength reduction is modest because the 76 remaining
+variable-exponent `pow()` calls dominate the inner loop's runtime. These cannot be
+eliminated without changing the DSP algorithm itself (the envelope expressions use
+genome parameters as exponents to create nonlinear transfer functions).
+
+**Testing:**
+- All 9 ExponentStrengthReductionTest tests pass
+- All 26 existing LICM + CachedStateCell tests pass
+- `effectsEnabledPerformance` test PASSES (run 1e366c2c, 540.3s)
+- Full build (`mvn clean install -DskipTests`) succeeds across all 35 modules
+
+**Alternatives considered:**
+- Strength reduction for `pow(x, 4.0)` via `x*x*x*x`: Not implemented. The plan
+  limits reduction to exponents where the multiply chain is shorter than `pow()`.
+  For exp=4, `x*x*x*x` is 3 multiplies vs one `pow()` call — marginal benefit and
+  no occurrences exist in current generated code.
+- Approximation for variable-exponent pow(): Could use lookup tables or polynomial
+  approximations. Rejected — this would change numerical behavior of the DSP pipeline
+  and requires domain-specific accuracy analysis.
+- Moving strength reduction to `LanguageOperations.pow()`: Rejected — the reduction
+  must happen at the expression tree level (not during code generation) so that
+  Phase 4 LICM can further decompose the resulting Product/Quotient nodes.
+
+**Outcome:**
+- **Goal 1:** PARTIAL — reduced from 150 to 76 pow() calls (-49%). Target was <30.
+  The remaining 76 have variable genome-derived exponents and cannot be strength-reduced
+  at compile time. This is a structural limitation of the DSP algorithm.
+- **Goal 2:** COMPLETE — root cause identified. The 49→389 is effects-disabled vs
+  effects-enabled, not a code regression. No fix needed.
+- **Goal 3:** NOT MET — still 0.21x real-time (433ms vs 93ms target). Achieving
+  real-time would require either (a) eliminating the 76 variable-exponent pow() calls
+  by changing the envelope algorithm, or (b) hardware acceleration (GPU/SIMD).
+
+**Open questions:**
+- Could the envelope expressions be reformulated to avoid variable exponents? This
+  would require understanding the musical semantics of the genome-parameterized
+  nonlinear transfer functions.
+- Would OpenCL/Metal backends handle pow() more efficiently through GPU parallelism?
+
+---
+
 ### 2026-03-02 — Completion assessment, test gaps filled, #7/#8 root cause analysis
 
 **Goal:** Assess branch completeness against all plan goals; fill test gaps; investigate #7 and #8
