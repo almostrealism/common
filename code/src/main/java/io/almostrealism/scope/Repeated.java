@@ -380,9 +380,10 @@ public class Repeated<T> extends Scope<T> {
 	 * sub-expressions, creates new declarations for them, replaces the sub-expressions
 	 * with references to the declarations, and returns the declarations for hoisting.</p>
 	 *
-	 * <p>Only declaration assignments are processed. Non-declaration assignments (array
-	 * element writes) and scope variables are left unchanged to avoid producing invalid
-	 * generated code.</p>
+	 * <p>Both declaration and non-declaration assignments are processed, as well as
+	 * scope variables. Declaration assignments use a lower extraction depth threshold
+	 * ({@code minDepth = 1}) while non-declaration assignments use a higher threshold
+	 * ({@code minDepth = 3}) to avoid extracting trivially cheap sub-expressions.</p>
 	 *
 	 * @param scope the Repeated scope being optimized
 	 * @param variantNames the set of loop-variant variable names
