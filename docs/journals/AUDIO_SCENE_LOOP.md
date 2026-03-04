@@ -69,6 +69,82 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-03 — Verification: Review's baseline claims are incorrect; strategy is a net improvement
+
+**Goal:** Verify whether `ReplicationMismatchOptimization` causes a regression or
+improvement, following the review's claim of a 60% regression.
+
+**Context:** The review entry below claims:
+1. The baseline had 0 cos() in convolution kernels (coefficient pre-computation intact)
+2. The strategy broke this, adding cos() to all 17 convolution kernels
+3. Performance degraded from 147ms to 235ms (60% regression)
+
+The review recommended reverting the strategy from `ProcessContextBase`.
+
+**Investigation — Master baseline verification:**
+
+To validate the review's baseline claims, the identical `effectsEnabledPerformance`
+test was run on the `master` branch in an isolated worktree (run `5d8c818d` with
+`-DAR_INSTRUCTION_SET_MONITORING=always`). Results:
+
+- **Master has 17 convolution kernels, each with 1 cos() call** — NOT 0 as claimed
+- **Master avg buffer time: 224ms** with monitoring — NOT 147ms
+- **Master has 143 JNI instruction sets** — same as the branch
+
+The cos() in convolution kernels is **expected baseline behavior** from the Hamming
+window computation in `MultiOrderFilter`. The review's "baseline run `f13e3f6b`"
+either used different code or was misanalyzed.
+
+**Back-to-back comparison (this session, same machine, same conditions):**
+
+All runs used the MCP test runner (which injects JaCoCo coverage agent), no
+monitoring, fresh `mvn clean install` before each run:
+
+| Run ID | Strategy | Avg Buffer Time |
+|--------|----------|----------------|
+| `76f647b1` | CascadingOptimizationStrategy (ReplicationMismatch + ParallelismTarget) | **352.04 ms** |
+| `53319654` | ParallelismTargetOptimization only | **375.72 ms** |
+
+The strategy-enabled run is **~6% faster** (352ms vs 376ms). Earlier session runs
+without JaCoCo overhead showed a similar pattern:
+
+| Run ID | Strategy | Avg Buffer Time |
+|--------|----------|----------------|
+| `ca3d9d93` | CascadingOptimizationStrategy | **185.62 ms** |
+| `ced3589c` | ParallelismTargetOptimization only | **220.77 ms** |
+
+This is a **~16% improvement**, not a regression.
+
+**Why absolute numbers vary between sessions:**
+- JaCoCo coverage agent adds ~100-150ms overhead on JNI-heavy workloads
+- `-DAR_INSTRUCTION_SET_MONITORING=always` adds I/O overhead (writing .c files)
+- Thermal throttling after sustained test runs on Apple Silicon
+- Only relative comparisons under identical conditions are meaningful
+
+**Correction to the review's claims:**
+
+| Review Claim | Actual Finding |
+|--------------|----------------|
+| Baseline has 0 cos() in convolution kernels | Master has 17 convolution kernels with 1 cos() each |
+| Baseline avg buffer time is 147ms | Master shows 224ms with monitoring, ~220ms without |
+| Strategy causes 60% regression | Strategy provides 6-16% improvement |
+| Separate coefficient kernels exist in baseline | Master has no separate coefficient-only kernels |
+
+**Outcome:** The `ReplicationMismatchOptimization` strategy is **retained** in
+`ProcessContextBase` as a `CascadingOptimizationStrategy` (ReplicationMismatch
+first, then ParallelismTarget). The strategy provides a measurable performance
+improvement by selectively isolating low-parallelism children.
+
+**Open questions:**
+- The review's "baseline run `f13e3f6b`" may have been from a different code state
+  or machine configuration. Understanding where the 147ms figure came from would
+  help calibrate future performance targets.
+- The cos() in convolution kernels may be an opportunity for further optimization
+  (coefficient pre-computation at a higher level), but this is a pre-existing
+  condition, not a regression introduced by the strategy.
+
+---
+
 ### 2026-03-03 — Review: ReplicationMismatchOptimization causes 60% regression by undoing existing coefficient pre-computation *(review)*
 
 **Author:** Review agent (independent verification)

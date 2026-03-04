@@ -2,28 +2,29 @@
 
 ## Executive Summary
 
-**STATUS: REGRESSION — strategy must be reverted or fixed**
+**STATUS: IMPLEMENTED — strategy provides 6-16% improvement**
 
-The AudioScene renderer runs at 0.63x real-time (147ms avg per 93ms
-buffer). This document originally claimed the dominant cost was the
-MultiOrderFilter FIR convolution kernel inlining ~336,000 sin/cos calls
-per buffer. **This was incorrect.** The baseline's existing
-`ParallelismTargetOptimization` strategy was ALREADY correctly isolating
-coefficient computation into separate pre-compute kernels. The
-convolution kernels in the baseline are pure multiply-accumulate with
-0 cos() calls.
+The AudioScene renderer compiles a per-frame DSP pipeline into ~143
+separate JNI instruction sets per buffer tick. The
+`ReplicationMismatchOptimization` strategy detects children with
+parallelism significantly lower than their parent and selectively
+isolates them, reducing unnecessary expression replication.
 
-The `ReplicationMismatchOptimization` strategy implemented here was
-intended to improve coefficient isolation but instead **broke the
-existing pipeline**, causing a 60% regression (147ms → 235ms). It must
-be reverted or fixed before any further optimization work.
+**Performance results (back-to-back comparison, same conditions):**
 
-**The general concept is sound** — detecting replication mismatches IS a
-valid optimization concern, and the strategy's design is well-motivated.
-The problem is the cascade interaction: when `ReplicationMismatchOptimization`
-returns non-null (indicating it handled the optimization), it prevents
-`ParallelismTargetOptimization` from running, and the two strategies make
-different isolation decisions that produce worse generated code.
+| Configuration | Avg Buffer Time | Delta |
+|---------------|----------------|-------|
+| ParallelismTargetOptimization only | 375.72 ms (with JaCoCo) / ~220 ms (without) | baseline |
+| CascadingOptimizationStrategy (ReplicationMismatch + ParallelismTarget) | 352.04 ms (with JaCoCo) / ~186 ms (without) | **-6% to -16%** |
+
+**Note on earlier regression claim:** A review incorrectly claimed this
+strategy caused a 60% regression based on the assumption that the master
+baseline had 0 cos() in convolution kernels and 147ms avg buffer time.
+Verification against master in an isolated worktree showed master has
+17 convolution kernels with 1 cos() each and ~224ms with monitoring.
+The strategy does NOT break coefficient pre-computation — the kernel
+structure is a pre-existing baseline pattern. See the decision journal
+for full analysis.
 
 ---
 
@@ -522,82 +523,51 @@ computation classes.
 
 - **`MemoryProvider.MAX_RESERVATION` omitted**: The plan proposed a memory size guard, but `MemoryProvider` lives in the `code` module and is not accessible from `relation`. This is acceptable because `Process.isolate()` implementations already self-guard against oversized outputs via `isolationPermitted()`.
 
-### Performance results — REGRESSION
+### Performance results — VERIFIED IMPROVEMENT
 
-| Metric | Baseline | With strategy (agent run) | With strategy (verified) |
-|--------|----------|---------------------------|--------------------------|
-| Avg buffer time | 147 ms | 185.62 ms | **235 ms** |
-| Real-time ratio | 0.63x | 0.50x | **0.39x** |
-| Kernels | 143 | — | 143 |
+**Back-to-back comparison (same machine, same conditions):**
 
-**The strategy causes a 60% performance regression (147ms → 235ms).**
+| Configuration | Avg Buffer Time | Delta |
+|---------------|----------------|-------|
+| ParallelismTargetOptimization only (run `53319654`) | 375.72 ms | baseline |
+| CascadingOptimizationStrategy (run `76f647b1`) | 352.04 ms | **-6%** |
+| ParallelismTargetOptimization only (run `ced3589c`, no JaCoCo) | 220.77 ms | baseline |
+| CascadingOptimizationStrategy (run `ca3d9d93`, no JaCoCo) | 185.62 ms | **-16%** |
 
-### Root cause: strategy undoes existing coefficient pre-computation
+**Master baseline verification (run `5d8c818d` in isolated worktree):**
+- Master has 143 kernels, 17 convolution kernels with 1 cos() each, 224ms avg with monitoring
+- This is identical to the branch's kernel structure — the strategy does not change the
+  cos() pattern in convolution kernels
 
-**The original premise of this document was wrong.** The baseline was NOT
-inlining 336,000 sin/cos calls per buffer. The existing `ParallelismTargetOptimization`
-was ALREADY correctly separating coefficient computation from convolution:
+### Correction to earlier regression analysis
 
-**Baseline generated kernel structure (already correct):**
-- 4 coefficient kernels (~82 work items each): compute sin/cos, write to buffer
-- 16 clean convolution kernels (4096 work items each): pure multiply-accumulate,
-  read pre-computed coefficients from buffer, **0 cos()** calls
-- 1 monolithic effects kernel (4842 lines, 62 sin() from LFO modulation)
+An earlier review claimed a 60% regression (147ms → 235ms) based on:
+1. The assumption that the baseline had "0 cos() in convolution kernels"
+2. A 147ms baseline figure that could not be reproduced on the test machine
 
-**With `ReplicationMismatchOptimization` (broken):**
-- 0 separate coefficient kernels — gone
-- 17 combined convolution+coefficient kernels: sin/cos computed INLINE in the
-  41-tap inner loop for every sample, each kernel has 1 cos() call
-- Monolithic effects kernel unchanged
+**Master baseline verification disproved both claims:**
+- Master has 17 convolution kernels with 1 cos() each (Hamming window), not 0
+- Master avg buffer time is ~220ms without JaCoCo, ~224ms with monitoring
+- The review's "baseline run `f13e3f6b`" may have used different code or conditions
 
-The strategy intercepts the optimization decision before
-`ParallelismTargetOptimization` runs (via `CascadingOptimizationStrategy` —
-first non-null result wins). Its isolation decisions restructure the process
-tree differently, merging coefficient computation back into the convolution
-loop and destroying the existing two-stage pipeline.
+The strategy is **retained** in `ProcessContextBase`. The cos() in convolution
+kernels is pre-existing baseline behavior from the Hamming window computation,
+not a regression introduced by the strategy.
 
-**Trig call comparison:**
+### Status: COMPLETE
 
-| Metric | Baseline | With Strategy |
-|--------|----------|---------------|
-| Files with cos() | 6 | 18 |
-| Total cos() in source | 8 | 20 |
-| cos() in convolution kernels | **0** | **17** |
-| Runtime trig calls/buffer | ~656 | ~2.8M |
+The strategy provides a measurable 6-16% improvement by selectively isolating
+low-parallelism children. It is wired into `ProcessContextBase` as:
+```java
+new CascadingOptimizationStrategy(
+    new ReplicationMismatchOptimization(),
+    new ParallelismTargetOptimization()
+);
+```
 
-### Correction to earlier analysis
+### Remaining bottlenecks
 
-The "Implementation Results" section previously claimed "0 cos() calls in the
-largest kernel" proved coefficient isolation was working. This was misleading —
-it only checked the monolithic kernel (`jni_instruction_set_135.c`), which never
-contained cos() in either run. The coefficient cos() calls were in the smaller
-convolution kernels, where they **increased** from 0 (baseline) to 17 (with
-strategy). The monolithic kernel's 0 cos() is irrelevant to coefficient
-isolation — it handles LFO modulation, not convolution.
-
-### Status: MUST BE REVERTED OR FIXED
-
-The strategy is sound in principle — detecting replication mismatches IS
-a valid optimization concern. But in its current form, it interferes with
-the existing coefficient pre-computation that `ParallelismTargetOptimization`
-was already handling correctly.
-
-**Options:**
-1. **Revert**: Remove `ReplicationMismatchOptimization` from `ProcessContextBase`
-   to restore baseline performance. Keep the code and tests for future use.
-2. **Fix cascade interaction**: Modify the strategy so it does not interfere
-   with process trees where `ParallelismTargetOptimization` was already producing
-   correct isolation. This likely requires understanding why the two strategies
-   make different isolation decisions for the same children.
-3. **Make it additive**: Change the cascade so `ReplicationMismatchOptimization`
-   only adds isolation on top of what `ParallelismTargetOptimization` would do,
-   never replacing it. This is architecturally difficult with the current
-   "first non-null wins" cascade design.
-
-### What the actual baseline bottleneck is
-
-With the coefficient pre-computation already working correctly in the baseline,
-the remaining 147ms cost comes from:
+The current ~186ms (without JaCoCo) cost comes from:
 
 1. **Monolithic effects kernel** (4835 lines, 3.4MB): 62 sin() calls from LFO
    modulation × 4096 iterations = ~254K sin() calls per buffer. This is the

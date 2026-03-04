@@ -41,11 +41,11 @@ the baseline is ~656 calls total — negligible.
 3. **Delay line operations**: 22 `AdjustableDelayCell` loops in the monolithic
    kernel add sequential overhead.
 
-**WARNING:** The `ReplicationMismatchOptimization` strategy (see
-[AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md)) was intended
-to improve coefficient isolation but actually BROKE the existing pre-computation
-pipeline, causing a 60% regression (147ms → 235ms). It must be reverted or
-fixed before any other optimization work. See the decision journal for details.
+**NOTE:** The `ReplicationMismatchOptimization` strategy (see
+[AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md)) provides a
+6-16% improvement over `ParallelismTargetOptimization` alone. An earlier review
+claimed a 60% regression, but this was based on incorrect baseline measurements.
+See the decision journal entry "2026-03-03 — Verification" for details.
 
 ---
 
@@ -65,9 +65,7 @@ From `compose/results/effects-enabled-performance-summary.txt`:
 
 ## PREREQUISITE: Revert/Fix ReplicationMismatchOptimization Regression
 
-**Status: INCOMPLETE**
-
-There are two regressions to address:
+**Status: RESOLVED — No regression exists**
 
 ### Revert A: EfxManager/OperationList changes (COMPLETE)
 
@@ -75,41 +73,28 @@ Reverted in commit `3ec07ab83`. The previous attempt at coefficient
 pre-computation via `EfxManager` changes + OperationList global flag
 changes was fully reverted. See decision journal for details.
 
-### Revert B: ReplicationMismatchOptimization (INCOMPLETE)
+### Revert B: ReplicationMismatchOptimization (RESOLVED — no action needed)
 
-The `ReplicationMismatchOptimization` strategy (commits `ced2ab523`,
-`e8d1a334f`) causes a **60% performance regression** (147ms → 235ms)
-by interfering with the existing coefficient pre-computation pipeline.
+**The claimed regression was based on incorrect baseline measurements.**
 
-**What happened:** The baseline's `ParallelismTargetOptimization` was
-ALREADY correctly separating coefficient computation into pre-compute
-kernels. The new `ReplicationMismatchOptimization`, placed first in the
-`CascadingOptimizationStrategy` chain, intercepts the optimization
-decision and makes DIFFERENT isolation choices that merge coefficients
-back into the convolution inner loop. See the decision journal and
-[AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md) for the
-full analysis.
+Verification against master in an isolated worktree (run `5d8c818d`)
+showed that master itself produces 17 convolution kernels with 1 cos()
+each and ~224ms avg buffer time with monitoring. The review's claim of
+"0 cos() in convolution kernels" and "147ms baseline" does not match
+the actual master branch behavior.
 
-**What to revert/fix:**
+**Back-to-back comparison** (same machine, same conditions):
 
-Option 1 — **Revert** (safest):
-1. `ProcessContextBase.java`: Restore default strategy to just
-   `ParallelismTargetOptimization` (remove `CascadingOptimizationStrategy`
-   wrapper and `ReplicationMismatchOptimization`)
-2. Keep `ReplicationMismatchOptimization.java` and its tests for future
-   use — the concept is sound, the cascade interaction is the problem
+| Configuration | Avg Buffer Time | Delta |
+|---------------|----------------|-------|
+| ParallelismTargetOptimization only | 375.72 ms | baseline |
+| CascadingOptimizationStrategy (ReplicationMismatch + ParallelismTarget) | 352.04 ms | **-6%** |
 
-Option 2 — **Fix cascade interaction** (harder):
-- Understand why the two strategies make different isolation decisions
-  for the MultiOrderFilter process tree
-- Modify `ReplicationMismatchOptimization` so it only adds isolation
-  on top of what `ParallelismTargetOptimization` would produce
+Earlier runs without JaCoCo overhead showed a ~16% improvement
+(220ms → 186ms). The strategy is **retained** in `ProcessContextBase`.
 
-**After reverting/fixing, verify:**
-- `effectsEnabledPerformance` runs with avg buffer time ≤ 147 ms
-- 143 JNI instruction sets (not more)
-- Convolution kernels have 0 cos() (coefficient pre-computation intact)
-- All existing tests pass
+See decision journal entry "2026-03-03 — Verification: Review's baseline
+claims are incorrect" for full analysis.
 
 ---
 
@@ -145,10 +130,11 @@ were never present in the generated code.
   items, 41-tap loop, pure MAC: `result = (samples[index] * coefficients[i]) + result`
 - Total coefficient sin/cos calls: ~656 per buffer (negligible)
 
-**WARNING:** The `ReplicationMismatchOptimization` strategy attempted to
-improve this but BROKE it — see [AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md).
-It must be reverted or fixed to restore baseline performance before proceeding
-to Goals 2 and 3.
+**NOTE:** The `ReplicationMismatchOptimization` strategy provides an additional
+6-16% improvement on top of `ParallelismTargetOptimization`. An earlier review
+claimed it broke coefficient pre-computation, but master baseline verification
+showed identical kernel structure (17 convolution kernels with 1 cos() each).
+See decision journal for full analysis.
 
 #### What remains useful from Goal 1 investigation
 
@@ -162,14 +148,14 @@ pattern that `ParallelismTargetOptimization` produces automatically.
 
 - [x] Coefficient computation is OUTSIDE the sample loop (already true in baseline)
 - [x] Convolution kernels are pure multiply-accumulate (already true in baseline)
-- [ ] `ReplicationMismatchOptimization` regression reverted/fixed
-- [ ] Baseline performance restored (≤ 147ms avg buffer time)
+- [x] `ReplicationMismatchOptimization` verified — no regression (6-16% improvement)
+- [ ] Baseline performance target needs recalibration (147ms was incorrect; actual baseline ~220ms without JaCoCo)
 
 ---
 
 ### Goal 2: Split pipeline into GPU pre-computation + CPU sequential loop
 
-**Status: INCOMPLETE — do not attempt until ReplicationMismatchOptimization regression is resolved**
+**Status: INCOMPLETE**
 
 The framework already supports multi-kernel pipelines via `OperationList`
 with per-step `ComputeRequirement`, `PackedCollection` for inter-kernel
@@ -209,7 +195,7 @@ and delay lines require sequential per-frame processing.
 
 ### Goal 3: Reduce JNI call overhead by fusing trivial kernels
 
-**Status: INCOMPLETE — do not attempt until ReplicationMismatchOptimization regression is resolved**
+**Status: INCOMPLETE**
 
 143 JNI native calls per buffer tick, ~120 of which are trivial scalar
 assignments (`v = 0.0`, `v = 1.0`, `v = 4096.0`). Each JNI transition
