@@ -98,6 +98,37 @@ without authentication (for trusted LAN use). A warning is logged on startup.
 
 ## Deployment
 
+### Docker Compose + Tailscale Funnel (recommended)
+
+The quickest path to a public MCP endpoint. Run on a machine that is on your
+Tailnet (e.g., mac-studio):
+
+```bash
+cd tools/mcp/manager
+./setup.sh
+```
+
+This will:
+1. Create `/usr/local/flowtree/manager/` (isolated from controller config)
+2. Generate a bearer token and print it
+3. Build and start the `ar-manager` container via `docker compose`
+4. Set up Tailscale Funnel on port 8010
+
+The public URL will be `https://<hostname>.<tailnet>.ts.net/`. Configure this
+in Claude mobile as a remote MCP server with the bearer token.
+
+To skip Funnel (LAN-only): `./setup.sh --no-funnel`
+To just generate a token: `./setup.sh --token-only`
+
+**File layout on the host:**
+
+```
+/usr/local/flowtree/
+  controller/           # workstreams.yaml, slack-tokens.json (controller only)
+  manager/              # manager-tokens.json (manager only, isolated)
+  memory-data/          # ar-memory FAISS indices and entries
+```
+
 ### Centralized MCP server (production)
 
 Add to your workstreams YAML config under `mcpServers`:
@@ -111,12 +142,14 @@ mcpServers:
       MCP_TRANSPORT: http
       MCP_PORT: "8010"
       AR_MANAGER_GITHUB_TOKEN: ${GITHUB_TOKEN}
-      AR_MANAGER_TOKEN_FILE: /etc/ar/manager-tokens.json
+      AR_MANAGER_TOKEN_FILE: /usr/local/flowtree/manager/manager-tokens.json
 ```
 
 The controller will start it automatically via `FlowTreeController.startCentralizedMcpServers()`.
 
 ### Reverse proxy (TLS + rate limiting)
+
+If using nginx/Caddy instead of Tailscale Funnel:
 
 #### nginx
 

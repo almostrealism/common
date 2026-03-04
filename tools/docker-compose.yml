@@ -12,6 +12,11 @@
 #   GitHub org tokens go in the githubOrgs section of workstreams.yaml.
 #   See flowtree/src/main/resources/workstreams-example.yaml for reference.
 #
+# Manager configuration:
+#   Place manager-tokens.json in /usr/local/flowtree/manager/ on the host.
+#   Generate a token: tools/mcp/manager/generate-token.sh
+#   The manager volume is isolated from the controller volume.
+#
 # Start with:
 #   docker compose -f tools/docker-compose.yml up -d
 #
@@ -45,6 +50,28 @@ services:
       - FLOWTREE_PORT=7766
       - AR_MEMORY_URL=http://ar-memory:8020
     depends_on:
+      ar-memory:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ar-manager:
+    build:
+      context: mcp
+      dockerfile: manager/Dockerfile
+    ports:
+      - "${AR_MANAGER_PORT:-8010}:8010"
+    volumes:
+      - /usr/local/flowtree/manager:/config:ro
+    environment:
+      - AR_CONTROLLER_URL=http://controller:7780
+      - AR_MEMORY_URL=http://ar-memory:8020
+      - AR_MANAGER_GITHUB_TOKEN=${AR_MANAGER_GITHUB_TOKEN:-}
+      - AR_MANAGER_TOKEN_FILE=/config/manager-tokens.json
+      - AR_CONSULTANT_BACKEND=${AR_CONSULTANT_BACKEND:-llamacpp}
+      - AR_CONSULTANT_LLAMA_URL=${AR_CONSULTANT_LLAMA_URL:-}
+    depends_on:
+      controller:
+        condition: service_started
       ar-memory:
         condition: service_healthy
     restart: unless-stopped
