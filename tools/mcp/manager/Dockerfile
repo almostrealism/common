@@ -23,6 +23,6 @@ ENV AR_MANAGER_TOKEN_FILE=/config/manager-tokens.json
 EXPOSE 8010
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8010/mcp', timeout=3)" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8010/_health', timeout=3)" || exit 1
 
 ENTRYPOINT ["python", "server.py"]

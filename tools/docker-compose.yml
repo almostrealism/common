@@ -2,6 +2,16 @@
 #
 # Services that support the FlowTree coding agent system.
 #
+# ⚠ TLS REQUIREMENT ⚠
+#   This compose file exposes services over plain HTTP. Bearer tokens
+#   and API traffic are NOT encrypted in transit. For any public or
+#   internet-facing deployment you MUST place a TLS-terminating reverse
+#   proxy in front of the ar-manager port. Recommended options:
+#     - Tailscale Funnel (zero-config TLS via Tailscale)
+#     - Caddy (automatic HTTPS with Let's Encrypt)
+#     - nginx with certbot / Let's Encrypt
+#   Do NOT expose ar-manager directly to the internet without TLS.
+#
 # Pre-build (run from repo root before `docker compose build`):
 #   mvn package -pl flowtree -am -DskipTests
 #   mvn dependency:copy-dependencies -pl flowtree -DoutputDirectory=target/dependency

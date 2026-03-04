@@ -3,7 +3,7 @@
 # Generate a bearer token for the ar-manager MCP server.
 #
 # Usage:
-#   ./generate-token.sh                          # full access (read+write+pipeline)
+#   ./generate-token.sh                          # full access (read+write+pipeline+memory)
 #   ./generate-token.sh "My label"               # full access with custom label
 #   ./generate-token.sh "Dashboard" read         # read-only token
 #   ./generate-token.sh "Agent" read write       # read+write, no pipeline
@@ -19,7 +19,7 @@ shift 2>/dev/null || true
 
 # Default scopes: full access
 if [ $# -eq 0 ]; then
-    SCOPES=("read" "write" "pipeline")
+    SCOPES=("read" "write" "pipeline" "memory")
 else
     SCOPES=("$@")
 fi
@@ -43,35 +43,38 @@ SCOPES_JSON+="]"
 # Ensure directory exists
 mkdir -p "$(dirname "$TOKEN_FILE")"
 
-# Create or update the token file
+# Create or update the token file — values passed via sys.argv to
+# prevent shell injection through crafted label/token strings.
 if [ -f "$TOKEN_FILE" ]; then
-    # Append to existing tokens array using python (available everywhere)
-    python3 -c "
+    python3 - "$TOKEN_FILE" "$TOKEN_VALUE" "$LABEL" "$SCOPES_JSON" <<'PYEOF'
 import json, sys
-with open('$TOKEN_FILE') as f:
+token_file, token_value, label = sys.argv[1], sys.argv[2], sys.argv[3]
+scopes = json.loads(sys.argv[4])
+with open(token_file) as f:
     data = json.load(f)
 data.setdefault('tokens', []).append({
-    'value': '$TOKEN_VALUE',
-    'scopes': $SCOPES_JSON,
-    'label': '$LABEL'
+    'value': token_value,
+    'scopes': scopes,
+    'label': label,
 })
-with open('$TOKEN_FILE', 'w') as f:
+with open(token_file, 'w') as f:
     json.dump(data, f, indent=2)
-"
+PYEOF
 else
-    # Create new token file
-    python3 -c "
-import json
+    python3 - "$TOKEN_FILE" "$TOKEN_VALUE" "$LABEL" "$SCOPES_JSON" <<'PYEOF'
+import json, sys
+token_file, token_value, label = sys.argv[1], sys.argv[2], sys.argv[3]
+scopes = json.loads(sys.argv[4])
 data = {
     'tokens': [{
-        'value': '$TOKEN_VALUE',
-        'scopes': $SCOPES_JSON,
-        'label': '$LABEL'
+        'value': token_value,
+        'scopes': scopes,
+        'label': label,
     }]
 }
-with open('$TOKEN_FILE', 'w') as f:
+with open(token_file, 'w') as f:
     json.dump(data, f, indent=2)
-"
+PYEOF
     chmod 600 "$TOKEN_FILE"
 fi
 
