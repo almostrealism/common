@@ -1,0 +1,50 @@
+# ─── FlowTree Agent Infrastructure ───────────────────────────────────
+#
+# Services that support the FlowTree coding agent system.
+#
+# Pre-build (run from repo root before `docker compose build`):
+#   mvn package -pl flowtree -am -DskipTests
+#   mvn dependency:copy-dependencies -pl flowtree -DoutputDirectory=target/dependency
+#
+# Controller configuration:
+#   Place workstreams.yaml and slack-tokens.json in
+#   /usr/local/flowtree/controller/ on the host.
+#   GitHub org tokens go in the githubOrgs section of workstreams.yaml.
+#   See flowtree/src/main/resources/workstreams-example.yaml for reference.
+#
+# Start with:
+#   docker compose -f tools/docker-compose.yml up -d
+#
+# ─────────────────────────────────────────────────────────────────────
+
+services:
+  ar-memory:
+    build:
+      context: mcp/memory
+      dockerfile: Dockerfile
+    ports:
+      - "${AR_MEMORY_PORT:-8020}:8020"
+    volumes:
+      - /usr/local/flowtree/memory-data:/data
+    environment:
+      - AR_MEMORY_DATA_DIR=/data
+      - AR_MEMORY_HTTP_PORT=8020
+      - AR_MEMORY_AUTH_TOKEN=${AR_MEMORY_AUTH_TOKEN:-}
+    restart: unless-stopped
+
+  controller:
+    build:
+      context: ../flowtree
+      dockerfile: Dockerfile
+    ports:
+      - "7780:7780"
+      - "7766:7766"
+    volumes:
+      - /usr/local/flowtree/controller:/config
+    environment:
+      - FLOWTREE_PORT=7766
+      - AR_MEMORY_URL=http://ar-memory:8020
+    depends_on:
+      ar-memory:
+        condition: service_healthy
+    restart: unless-stopped

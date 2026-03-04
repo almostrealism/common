@@ -3,14 +3,15 @@
 AR Manager MCP Server
 
 Internet-facing MCP endpoint for managing FlowTree workstreams, submitting
-coding tasks, and triggering project workflows. Designed for naive clients
-(Claude mobile, other AI agents) that have no repo checkout or CLAUDE.md
-context.
+coding tasks, triggering project workflows, and accessing agent memories.
+Designed for naive clients (Claude mobile, other AI agents) that have no
+repo checkout or CLAUDE.md context.
 
 Architecture:
     - Tier 1 tools (universal): Delegate to FlowTree controller REST API
     - Tier 2 tools (pipeline): Call GitHub API directly for workflow dispatch
       and file commits
+    - Tier 3 tools (memory): Access ar-memory HTTP service with LLM synthesis
 
 Configuration via environment variables:
     AR_CONTROLLER_URL       - FlowTree controller base URL
@@ -20,6 +21,7 @@ Configuration via environment variables:
     AR_MANAGER_TOKEN_FILE   - Path to bearer token config file
                               (default: ~/.config/ar/manager-tokens.json)
     AR_MANAGER_TOKENS       - JSON string of token config (overrides file)
+    AR_MEMORY_URL           - ar-memory HTTP server URL (auto-discovered if not set)
     MCP_TRANSPORT           - Transport: stdio (default), http, or sse
     MCP_PORT                - Port for http/sse transport (default: 8010)
 """
@@ -49,6 +51,54 @@ TOKEN_FILE = os.environ.get(
     "AR_MANAGER_TOKEN_FILE",
     os.path.expanduser("~/.config/ar/manager-tokens.json"),
 )
+
+# ---------------------------------------------------------------------------
+# Shared libraries (memory + inference)
+# ---------------------------------------------------------------------------
+
+_COMMON_DIR = os.path.join(os.path.dirname(__file__), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+
+_memory_client = None
+_memory_init_failed = False
+_llm_backend = None
+
+
+def _get_memory_client():
+    """Lazy-initialize the MemoryHTTPClient with graceful degradation."""
+    global _memory_client, _memory_init_failed
+    if _memory_client is not None:
+        return _memory_client
+    if _memory_init_failed:
+        return None
+    try:
+        from memory_http_client import MemoryHTTPClient
+        _memory_client = MemoryHTTPClient()
+        print(f"ar-manager: Connected to ar-memory at {_memory_client.base_url}",
+              file=sys.stderr)
+        return _memory_client
+    except (ConnectionError, ImportError) as e:
+        print(f"ar-manager: ar-memory not available: {e}. Memory tools disabled.",
+              file=sys.stderr)
+        _memory_init_failed = True
+        return None
+
+
+def _get_llm():
+    """Lazy-initialize the LLM inference backend."""
+    global _llm_backend
+    if _llm_backend is not None:
+        return _llm_backend
+    try:
+        from inference import create_backend
+        _llm_backend = create_backend()
+        print(f"ar-manager: LLM backend: {_llm_backend.name}", file=sys.stderr)
+        return _llm_backend
+    except ImportError as e:
+        print(f"ar-manager: LLM inference not available: {e}", file=sys.stderr)
+        return None
+
 
 # Log startup configuration to stderr for diagnostics
 print(f"ar-manager: AR_CONTROLLER_URL={CONTROLLER_URL}", file=sys.stderr)
@@ -948,6 +998,292 @@ def project_commit_plan(
             "Check the GitHub token has 'contents:write' permission",
         ])
     return result
+
+
+# -- Tier 3: Memory tools ---------------------------------------------------
+
+
+def _resolve_branch_context(
+    workstream_id: str = "",
+    repo_url: str = "",
+    branch: str = "",
+) -> tuple[str, str, Optional[dict]]:
+    """Resolve repo_url and branch from workstream_id if needed.
+
+    Returns:
+        (repo_url, branch, error_dict_or_None)
+    """
+    if repo_url and branch:
+        return (repo_url, branch, None)
+
+    if workstream_id:
+        ws = _find_workstream(workstream_id)
+        if ws is None:
+            return ("", "", {
+                "ok": False,
+                "error": f"Workstream '{workstream_id}' not found",
+                "next_steps": ["Use workstream_list to find valid workstream IDs"],
+            })
+        repo_url = repo_url or ws.get("repoUrl", "")
+        branch = branch or ws.get("defaultBranch", "")
+
+    if not repo_url or not branch:
+        return ("", "", {
+            "ok": False,
+            "error": "Either (repo_url + branch) or workstream_id is required",
+            "next_steps": [
+                "Provide repo_url and branch directly, or",
+                "Provide workstream_id to resolve them from the workstream config",
+            ],
+        })
+
+    return (repo_url, branch, None)
+
+
+@mcp.tool()
+def memory_recall(
+    query: str,
+    namespace: str = "default",
+    limit: int = 5,
+    repo_url: str = "",
+    branch: str = "",
+    workstream_id: str = "",
+) -> dict:
+    """Search agent memories with optional LLM synthesis.
+
+    Retrieves semantically similar memories from the ar-memory server.
+    If an LLM backend is available, provides a synthesized summary.
+    Can resolve repo_url/branch from workstream_id if provided.
+
+    Args:
+        query: Natural language search query.
+        namespace: Memory namespace to search.
+        limit: Maximum number of memories to retrieve.
+        repo_url: Optional repository URL filter.
+        branch: Optional branch name filter.
+        workstream_id: Optional workstream to resolve repo/branch from.
+
+    Returns:
+        Dictionary with memories and optional summary.
+    """
+    _require_scope("memory")
+
+    client = _get_memory_client()
+    if client is None:
+        return {
+            "ok": False,
+            "error": "ar-memory server unavailable",
+            "next_steps": [
+                "Start ar-memory: python tools/mcp/memory/server.py --http-only",
+                "Or set AR_MEMORY_URL to point to a running instance",
+            ],
+        }
+
+    # Resolve branch context if filtering requested
+    effective_repo = repo_url
+    effective_branch = branch
+    if workstream_id and (not repo_url or not branch):
+        effective_repo, effective_branch, err = _resolve_branch_context(
+            workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+        )
+        if err:
+            return err
+
+    try:
+        memories = client.search(
+            query=query,
+            namespace=namespace,
+            limit=limit,
+            repo_url=effective_repo or None,
+            branch=effective_branch or None,
+        )
+    except ConnectionError as e:
+        return {"ok": False, "error": f"Memory search failed: {e}"}
+
+    if not memories:
+        return {
+            "ok": True,
+            "summary": f"No memories found for '{query}' in namespace '{namespace}'.",
+            "memories": [],
+        }
+
+    # Attempt LLM synthesis
+    summary = None
+    llm = _get_llm()
+    if llm and llm.available:
+        try:
+            from inference import SYSTEM_PROMPT
+
+            mem_text = ""
+            for i, m in enumerate(memories, 1):
+                score = m.get("score", "?")
+                mem_text += f"### Memory {i} (similarity: {score})\n{m.get('content', '')}\n\n"
+
+            prompt = (
+                f"## Retrieved Memories\n\n{mem_text}\n\n"
+                f"## Task\n\nThe user searched for: \"{query}\"\n\n"
+                "Summarize the retrieved memories. Highlight key findings and "
+                "any decisions or progress notes. Be concise (2-4 sentences)."
+            )
+            summary = llm.generate(prompt, system=SYSTEM_PROMPT)
+        except Exception as e:
+            summary = f"(LLM synthesis failed: {e})"
+
+    result = {
+        "ok": True,
+        "memories": [
+            {
+                "id": m.get("id"),
+                "content": m.get("content"),
+                "score": m.get("score"),
+                "tags": m.get("tags"),
+                "created_at": m.get("created_at"),
+                "repo_url": m.get("repo_url"),
+                "branch": m.get("branch"),
+            }
+            for m in memories
+        ],
+        "count": len(memories),
+        "next_steps": [
+            "Use memory_branch_context for a full branch history",
+            "Use memory_store to add new memories",
+        ],
+    }
+
+    if summary:
+        result["summary"] = summary
+
+    return result
+
+
+@mcp.tool()
+def memory_branch_context(
+    workstream_id: str = "",
+    repo_url: str = "",
+    branch: str = "",
+    namespace: str = "default",
+    limit: int = 20,
+) -> dict:
+    """Get all memories for a specific branch.
+
+    Returns memories ordered by creation time (newest first). Can resolve
+    repo_url/branch from workstream_id if provided.
+
+    Args:
+        workstream_id: Workstream to resolve repo/branch from.
+        repo_url: Repository URL to match.
+        branch: Branch name to match.
+        namespace: Memory namespace to search.
+        limit: Maximum number of entries.
+
+    Returns:
+        Dictionary with branch memories.
+    """
+    _require_scope("memory")
+
+    effective_repo, effective_branch, err = _resolve_branch_context(
+        workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+    )
+    if err:
+        return err
+
+    client = _get_memory_client()
+    if client is None:
+        return {
+            "ok": False,
+            "error": "ar-memory server unavailable",
+            "next_steps": [
+                "Start ar-memory: python tools/mcp/memory/server.py --http-only",
+            ],
+        }
+
+    try:
+        memories = client.search_by_branch(
+            repo_url=effective_repo,
+            branch=effective_branch,
+            namespace=namespace,
+            limit=limit,
+        )
+    except ConnectionError as e:
+        return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
+
+    return {
+        "ok": True,
+        "repo_url": effective_repo,
+        "branch": effective_branch,
+        "namespace": namespace,
+        "memories": memories,
+        "count": len(memories),
+        "next_steps": [
+            "Use memory_recall for semantic search within these memories",
+            "Use memory_store to add a new memory for this branch",
+        ],
+    }
+
+
+@mcp.tool()
+def memory_store(
+    content: str,
+    workstream_id: str = "",
+    repo_url: str = "",
+    branch: str = "",
+    namespace: str = "default",
+    tags: Optional[list[str]] = None,
+    source: Optional[str] = None,
+) -> dict:
+    """Store a memory from an external client.
+
+    Either workstream_id or (repo_url + branch) is required to identify
+    the branch context for the memory.
+
+    Args:
+        content: The text content to store.
+        workstream_id: Resolves to repo_url/branch via workstream config.
+        repo_url: Repository URL.
+        branch: Branch name.
+        namespace: Logical grouping.
+        tags: Optional tags for categorization.
+        source: Optional source identifier.
+
+    Returns:
+        Dictionary with the created entry.
+    """
+    _require_scope("memory")
+
+    effective_repo, effective_branch, err = _resolve_branch_context(
+        workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+    )
+    if err:
+        return err
+
+    client = _get_memory_client()
+    if client is None:
+        return {
+            "ok": False,
+            "error": "ar-memory server unavailable",
+            "next_steps": [
+                "Start ar-memory: python tools/mcp/memory/server.py --http-only",
+            ],
+        }
+
+    try:
+        entry = client.store(
+            content=content,
+            repo_url=effective_repo,
+            branch=effective_branch,
+            namespace=namespace,
+            tags=tags,
+            source=source,
+        )
+    except ConnectionError as e:
+        return {"ok": False, "error": f"Memory store failed: {e}"}
+
+    entry["ok"] = True
+    entry["next_steps"] = [
+        "Use memory_recall to search for this and other memories",
+        "Use memory_branch_context to see all memories for this branch",
+    ]
+    return entry
 
 
 # ---------------------------------------------------------------------------
