@@ -30,9 +30,11 @@ improvement (verified back-to-back on M2 desktop).
 
 **Remaining bottlenecks (in priority order):**
 
-1. **Monolithic effects kernel** (4835 lines, 3.4MB): Contains 62 sin() calls
+1. **Monolithic effects kernel** (~4823 lines): Contains 62 sin() calls
    from LFO modulation, each executing 4096 times per buffer = ~254K
-   transcendental calls per tick. This is the dominant compute cost.
+   transcendental calls per tick. Expression factoring (Goal 4 Phase 1)
+   has reduced per-call argument cost by hoisting invariant sub-expressions,
+   but the sin() calls themselves remain. This is still the dominant cost.
 2. **143 JNI instruction set invocations**: ~120 are trivial scalar assignments.
    JNI transition overhead accumulates.
 3. **Delay line operations**: 22 `AdjustableDelayCell` loops in the monolithic
@@ -114,6 +116,8 @@ claims are incorrect" for full analysis.
 - All optimizations unconditionally enabled (no feature flags)
 - Inner-loop pow() reduced from 150 → 76 (remaining 76 have variable exponents)
 - Argument count regression investigated — 389 args is expected with effects enabled
+- AutomationManager expression factoring for LICM (Goal 4 Phase 1) — sin()
+  arguments restructured so invariant sub-expressions are hoistable
 
 ---
 
@@ -233,41 +237,76 @@ global compilation behavior.
 
 ### Goal 4: Reduce LFO modulation sin() cost in monolithic kernel — NEXT PRIORITY
 
-**Status: INCOMPLETE — this is the highest-impact remaining optimization**
+**Status: PHASE 1 COMPLETE (expression factoring), PHASE 2 NEEDED (measurement + further reduction)**
 
 The monolithic effects kernel (4835 lines, 3.4MB) contains 62 sin() calls
 from LFO/automation modulation. Each executes 4096 times per buffer tick,
 producing ~254K transcendental function calls — the single largest compute
 cost in the pipeline.
 
-**Investigation needed:**
+#### Phase 1: Expression factoring for LICM (COMPLETE)
 
-1. **Identify what generates the 62 sin() calls.** These are from automation
-   curves, LFO modulation, or envelope computation in the effects chain.
-   Use `-DAR_INSTRUCTION_SET_MONITORING=always` and examine the monolithic
-   kernel to trace which source computations produce the sin() expressions.
+`AutomationManager` expressions were algebraically restructured (commit
+`d26249cc5`) so that LICM can hoist loop-invariant sub-expressions. The
+old form `sin(time(phase) * freq)` entangled the loop-variant frame counter
+with invariant parameters (sampleRate, scale, phase), preventing hoisting.
 
-2. **Determine if LFO parameters are per-buffer constants.** If the LFO
-   frequency/phase parameters come from genome values and the frame counter
-   (both constant within a buffer tick), the sin() values could be
-   pre-computed once per buffer instead of per sample.
+The new form factors the argument: `sin(frame * angularRate + phaseContrib)`
+where `angularRate` and `phaseContrib` are loop-invariant and hoisted as
+`f_licm_*` declarations. Generated code confirms:
+- `clock / 44100.0` eliminated from inner loop body (was ~126 occurrences)
+- Hoisted invariants: `f_licm_6` through `f_licm_10` appear before the loop
+- Kernel line count reduced from 4903 → 4823 (80 fewer lines)
+- sin() count: 62 (unchanged — arguments are cheaper, not eliminated)
 
-3. **Evaluate optimization approaches:**
-   - **LICM hoisting**: If the sin() arguments are loop-invariant (same
-     across all 4096 samples), LICM should already hoist them. If they're
-     NOT being hoisted, investigate why — this may be a LICM gap.
-   - **Pre-computation via process isolation**: If the LFO computation has
-     lower parallelism than the monolithic kernel, the
-     `ReplicationMismatchOptimization` should already detect it. If not,
-     the threshold or parallelism detection may need adjustment.
-   - **Cheaper approximation**: If sin() varies per-sample (e.g., driven
-     by a per-sample counter), consider polynomial or lookup table
-     approximations for LFO where precision is not critical.
+**File modified:** `AutomationManager.java` — new `computePeriodicValue()`
+helper, rewrote `getShortPeriodValue`, `getLongPeriodValue`, `getMainValue`.
+`*ValueAt` methods left unchanged for backward compatibility.
+
+#### Phase 2: Measurement + further sin() reduction (NEXT)
+
+**Step 1 — Measure Phase 1 impact (REQUIRED FIRST):**
+
+Run a back-to-back comparison on the M2 desktop (same machine, same
+conditions, sequential runs) to quantify the improvement from expression
+factoring. Compare against the last known baseline on that machine
+(~186ms without JaCoCo with `CascadingOptimizationStrategy`).
+
+**Step 2 — Evaluate whether further optimization is needed:**
+
+62 sin() calls × 4096 samples = 254K transcendental evaluations remain.
+Phase 1 reduces the per-call argument computation cost (eliminating
+divisions) but not the sin() calls themselves. If the Phase 1 improvement
+is insufficient, the following approaches should be evaluated:
+
+- **Polynomial approximation**: For LFO modulation, audio-quality sin()
+  precision is not required. A 3rd-order Chebyshev or Taylor approximation
+  (`x - x³/6 + x⁵/120`) could replace sin() for automation curves where
+  the frequency is low and waveform fidelity is non-critical. This would
+  need to be implemented at the expression tree level (e.g., a
+  `sinApprox()` producer method) so it generates inline polynomial code
+  instead of a sin() call.
+
+- **Per-buffer pre-computation**: If any of the 62 sin() calls have
+  arguments that are actually constant across all 4096 samples (not just
+  cheaper to compute, but truly invariant), they could be hoisted entirely
+  out of the kernel as separate scalar computations. Examine the generated
+  code to check — if some sin() calls already use only `f_licm_*` variables
+  (no `frame` dependency), the LICM pass should already hoist them. If it
+  doesn't, that's a gap in the hoisting logic.
+
+- **LFO value sharing across channels**: If the 62 sin() calls include
+  duplicates across the 6 audio channels (same frequency, same phase),
+  CSE should collapse them. Check if `ScopeSettings.maxReplacements = 12`
+  is preventing this — the 62 calls may have more than 12 common
+  sub-expressions.
 
 **Acceptance criteria:**
 
-- [ ] sin() calls in the monolithic kernel reduced (identify target count)
-- [ ] Buffer time improvement measured (back-to-back, same conditions)
+- [x] Expression factoring enables LICM hoisting of sin() arguments
+- [ ] Phase 1 improvement measured back-to-back on M2 desktop
+- [ ] Decision on whether Phase 2 (sin() elimination/approximation) is needed
+- [ ] If Phase 2 pursued: sin() calls reduced, improvement measured
 - [ ] Audio output quality preserved
 - [ ] All existing tests pass
 
@@ -340,6 +379,15 @@ Generated `.c` files appear in `compose/results/<run_id>/`.
    for f in $(grep -rl 'i <= 40' compose/results/<run_id>/); do
      echo "$(basename $f): $(grep -c 'cos(' $f) cos()"; done
    ```
+5. **LICM hoisting (Goal 4):** In the monolithic kernel (largest `.c`
+   file), verify that `clock / 44100.0` does NOT appear in the inner
+   loop body. Hoisted invariants should appear as `f_licm_*` declarations
+   before the loop. Check with:
+   ```bash
+   BIGGEST=$(ls -lS compose/results/<run_id>/*.c | head -1 | awk '{print $NF}')
+   echo "clock/44100 in loop: $(grep -c '44100' $BIGGEST)"
+   echo "f_licm declarations: $(grep -c 'f_licm_' $BIGGEST)"
+   ```
 
 **If buffer time is unchanged after your modifications, the optimization
 is not working.** Do not claim completion based on unit tests alone.
@@ -359,7 +407,8 @@ is not working.** Do not claim completion based on unit tests alone.
 
 | File | Purpose |
 |------|---------|
-| `MultiOrderFilter.java` | FIR filter — **primary optimization target** |
+| `AutomationManager.java` | LFO/automation modulation — **Goal 4 target** (Phase 1 complete) |
+| `MultiOrderFilter.java` | FIR filter — coefficient optimization target |
 | `OperationList.java` | Multi-kernel pipeline composition (**do not change global flags**) |
 | `ComputeRequirement.java` | CPU/GPU selection per operation |
 | `Repeated.java` | Loop scope generation and LICM |
