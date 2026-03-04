@@ -69,6 +69,65 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-03 — Goal 4: LFO sin() cost reduction via expression factoring for LICM
+
+**Goal:** Reduce ~254K transcendental calls per buffer tick by algebraically
+restructuring `AutomationManager` expressions so that LICM can hoist invariant
+sub-expressions out of the inner loop.
+
+**Context:** The monolithic effects kernel (`jni_instruction_set_135.c`) contains
+62 `sin()` calls and 31 `pow()` calls from LFO automation modulation. Each
+expression was of the form `sin(time(phase) * freq)` where `time(phase)` entangled
+the loop-variant `clock/sampleRate/scale` division with the loop-invariant
+`(2*phase-1)*p` phase contribution. The final `* freq` multiplication prevented
+LICM from hoisting anything because the entire sin argument was variant.
+
+**Approach:** Applied the distributive law `sin((A + B) * C) = sin(A*C + B*C)` to
+factor the sin argument into:
+- `angularRate = freq / (sampleRate * scale)` — loop-invariant
+- `phaseContrib = (2*phase - 1) * p * freq` — loop-invariant
+- Inner loop: `sin(clock.frame() * angularRate + phaseContrib)` — 1 mul + 1 add
+
+Added `computePeriodicValue(phase, freq)` private helper using `clock.frame()`
+directly (bypasses the `time()` intermediate). Rewrote `getShortPeriodValue`,
+`getLongPeriodValue`, and `getMainValue` to use the factored form. All `*ValueAt`
+variants left unchanged for backward compatibility.
+
+**File modified:** `compose/src/main/java/org/almostrealism/audio/arrange/AutomationManager.java`
+
+**Observations from generated C code:**
+- `clock / 44100.0` no longer appears in inner loop body (0 matches, was ~126)
+- `f_licm_*` declarations appear before the loop with hoisted invariants:
+  - `f_licm_6 = 16.0 / (scale * 44100.0)` (short period angularRate)
+  - `f_licm_7 = (phase*2 + -1) * 8.0` (short period phaseContrib, 0.5*16=8)
+  - `f_licm_8 = 2.0 / (scale * 44100.0)` (long period angularRate)
+  - `f_licm_9 = 0.1 / (scale * 44100.0)` (main value rate)
+  - `f_licm_10 = (phase*2 + -1) * 0.05` (main value phaseContrib, 0.5*0.1=0.05)
+- sin() count: 62 (unchanged — we hoist arguments, not eliminate calls)
+- Kernel count: 143 (unchanged)
+- Kernel line count: 4823 (was 4903 — 80 fewer lines from eliminated divisions)
+- Inner loop sin calls now: `sin(clock * f_licm_X + f_licm_Y)`
+
+**Test results:**
+- `effectsEnabledPerformance`: PASSED (1 run, 0 failures)
+- Avg buffer time: 302.43 ms (target: 92.88 ms)
+- Machine: darwin, driver: native (JNI), JaCoCo: not active
+- Audio output generated with spectrogram artifact
+
+**Outcome:** Expression factoring confirmed working. All divisions hoisted out of
+inner loop. No feature flags, no pom.xml changes, no changes to `*ValueAt` methods.
+Build succeeds (`mvn clean install -DskipTests`).
+
+**Note on build fix:** Initial implementation had `computePeriodicValue` returning
+`Producer<PackedCollection>` — chaining `.multiply()` on the result failed because
+`Producer` doesn't expose `multiply()` (only `CollectionProducer` does). Fixed by
+using the static `multiply(producer, producer)` form instead.
+
+**Open questions:** Performance comparison vs. master deferred — requires
+back-to-back runs on same machine under identical conditions for meaningful comparison.
+
+---
+
 ### 2026-03-03 — Review: acknowledging incorrect regression analysis *(review)*
 
 **Author:** Review agent (independent verification — correction of own earlier entry)

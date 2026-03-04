@@ -124,8 +124,28 @@ public class AutomationManager implements Setup, CellFeatures {
 		return scale == null ? value : multiply(value, scale);
 	}
 
+	/**
+	 * Computes a periodic automation value with expression structure optimized for LICM.
+	 * Factors the sin argument into invariant (angularRate, phaseContrib) and variant
+	 * (clock frame) parts so the compiler can hoist invariant sub-expressions.
+	 */
+	private Producer<PackedCollection> computePeriodicValue(Producer<PackedCollection> phase, double freq) {
+		Producer<PackedCollection> angularRate =
+				c(freq).divide(c((double) sampleRate).multiply(cp(scale)));
+		Producer<PackedCollection> phaseContrib =
+				c(2.0).multiply(phase).subtract(c(1.0)).multiply(c(p * freq));
+		return sin(add(multiply(clock.frame(), angularRate), phaseContrib));
+	}
+
 	public Producer<PackedCollection> getMainValue(Producer<PackedCollection> phase, Producer<PackedCollection> offset) {
-		return getMainValueAt(time(phase), offset);
+		Producer<PackedCollection> rate =
+				c(0.1 * r).divide(c((double) sampleRate).multiply(cp(scale)));
+		Producer<PackedCollection> phaseContrib =
+				c(2.0).multiply(phase).subtract(c(1.0)).multiply(c(p * 0.1 * r));
+		Producer<PackedCollection> v =
+				add(multiply(clock.frame(), rate), phaseContrib).pow(c(3.0));
+		v = rectify(add(v, offset));
+		return multiply(v, c(0.01));
 	}
 
 	public Producer<PackedCollection> getMainValueAt(Producer<PackedCollection> position,
@@ -141,7 +161,7 @@ public class AutomationManager implements Setup, CellFeatures {
 	}
 
 	public Producer<PackedCollection> getLongPeriodValue(Producer<PackedCollection> phase) {
-		return getLongPeriodValueAt(time(phase));
+		return c(0.95).add(computePeriodicValue(phase, 2.0 * r)).multiply(c(0.05));
 	}
 
 	public Producer<PackedCollection> getLongPeriodValueAt(Producer<PackedCollection> position, Producer<PackedCollection> phase) {
@@ -153,7 +173,7 @@ public class AutomationManager implements Setup, CellFeatures {
 	}
 
 	public Producer<PackedCollection> getShortPeriodValue(Producer<PackedCollection> phase) {
-		return getShortPeriodValueAt(time(phase));
+		return c(1.0).add(multiply(computePeriodicValue(phase, 16.0 * r), c(-0.04)));
 	}
 
 	public Producer<PackedCollection> getShortPeriodValueAt(Producer<PackedCollection> position, Producer<PackedCollection> phase) {
