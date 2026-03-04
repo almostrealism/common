@@ -110,7 +110,7 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 								chromosome.valueAt(i, 3).getResultant(c(1.0)),
 								chromosome.valueAt(i, 4).getResultant(c(1.0)),
 								chromosome.valueAt(i, 5).getResultant(c(1.0)),
-								clock.time(sampleRate)), in);
+								clock.frame(), sampleRate), in);
 			}
 		};
 	}
@@ -260,17 +260,28 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 				min, max);
 	}
 
+	/**
+	 * Computes a polycyclic modulation factor with expression structure optimized for LICM.
+	 * Factors sin and polynomial arguments so that invariant sub-expressions (angular rates,
+	 * reciprocal wavelengths) are hoistable out of the sample loop.
+	 *
+	 * @param frame the raw frame counter (not divided by sampleRate)
+	 * @param sampleRate the audio sample rate in Hz
+	 */
 	default CollectionProducer polycyclic(Producer<PackedCollection> speedUpWavelength,
 										  Producer<PackedCollection> speedUpAmp,
 										  Producer<PackedCollection> slowDownWavelength,
 										  Producer<PackedCollection> slowDownAmp,
 										  Producer<PackedCollection> polySpeedUpWaveLength,
 										  Producer<PackedCollection> polySpeedUpExp,
-										  Producer<PackedCollection> time) {
-		return c(1.0).add(sinw(time, speedUpWavelength, speedUpAmp).pow(c(2.0)))
-				.multiply(c(1.0).subtract(sinw(time, slowDownWavelength, slowDownAmp).pow(c(2.0))))
-				.multiply(c(1.0).add(pow(polySpeedUpWaveLength, c(-1.0))
-						.multiply(time).pow(polySpeedUpExp)));
+										  Producer<PackedCollection> frame, int sampleRate) {
+		CollectionProducer speedUpRate = c(TWO_PI / sampleRate).divide(speedUpWavelength);
+		CollectionProducer slowDownRate = c(TWO_PI / sampleRate).divide(slowDownWavelength);
+		CollectionProducer polyRate = c(1.0 / sampleRate).divide(polySpeedUpWaveLength);
+
+		return c(1.0).add(sin(speedUpRate.multiply(frame)).multiply(speedUpAmp).pow(c(2.0)))
+				.multiply(c(1.0).subtract(sin(slowDownRate.multiply(frame)).multiply(slowDownAmp).pow(c(2.0))))
+				.multiply(c(1.0).add(polyRate.multiply(frame).pow(polySpeedUpExp)));
 	}
 
 	default CollectionProducer riseFall(double minValue, double maxValue, double minScale,

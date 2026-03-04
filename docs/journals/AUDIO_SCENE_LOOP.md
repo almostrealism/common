@@ -69,6 +69,101 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-03 — Goal 4 Phase 2: Polycyclic factoring + sin() duplication analysis
+
+**Goal:** Measure Phase 1 impact, identify further sin() reduction opportunities,
+and implement any additional expression factoring.
+
+**Context:** Phase 1 factored AutomationManager sin() arguments for LICM. Needed
+to assess impact and look for remaining optimization opportunities.
+
+**Discovery: Polycyclic delay modulation has same LICM anti-pattern**
+
+Analysis of the generated monolithic kernel (`jni_instruction_set_135.c`) revealed
+148 total sin() calls in the 4096-iteration loop (previous count of 62 was lines,
+not occurrences — many lines contain multiple sin() calls). Breakdown:
+
+- **100 sin() calls from AutomationManager** (30 unique patterns × ~3.3x duplication)
+  - All now use factored `sin(frame * f_licm_X + f_licm_Y)` form (Phase 1)
+- **48 sin() calls from `OptimizeFactorFeatures.polycyclic()`** (6 unique × 8 duplicates)
+  - These had: `sin((frame / 44100.0) * 6.283... / f_licm_N)` — unfactored
+  - Source: `toPolycyclicGene()` passes `clock.time(sampleRate)` to `polycyclic()`,
+    which calls `sinw(time, wavelength, amp)` → `sin(2π * time / wavelength) * amp`
+  - Identical LICM anti-pattern: `frame/sampleRate` division entangled with wavelength
+
+**Fix applied: `OptimizeFactorFeatures.polycyclic()` expression factoring**
+
+Modified `polycyclic()` to accept `frame` and `sampleRate` separately instead of
+`time = frame/sampleRate`. Factored sin arguments:
+- Old: `sin(2π * (frame/sampleRate) / wavelength)` — 2 divisions per call
+- New: `sin(c(TWO_PI/sampleRate).divide(wavelength).multiply(frame))` —
+  angular rate `TWO_PI/(sampleRate*wavelength)` is LICM-hoistable
+
+Updated `toPolycyclicGene()` to pass `clock.frame()` and `sampleRate` instead of
+`clock.time(sampleRate)`.
+
+Files modified:
+- `compose/src/main/java/org/almostrealism/audio/optimize/OptimizeFactorFeatures.java`
+
+**Generated code verification (run 089efafc, monitoring):**
+- `sin()` calls with `/ 44100.0`: **0** (was 48)
+- Polycyclic f_licm values now: `1.4247e-4 / (wavelength)` = `TWO_PI/44100 / wavelength`
+- Remaining `/ 44100.0` in loop: **128** — from envelope/time calculations, NOT sin()-related
+- sin() count: **148** (unchanged — arguments are cheaper, not eliminated)
+- Kernel count: **143** (unchanged)
+
+**CSE analysis: why 8x duplication isn't collapsed**
+
+Each of the 6 unique polycyclic sin() patterns appears 8 times with IDENTICAL
+arguments. CSE should collapse these (6 unique patterns < maxReplacements=12).
+However, `ScopeSettings.getMaximumReplacements()` javadoc (line 226) explains:
+> "The CSE pass does not prioritize loop-invariant sub-expressions, so raising
+> the limit causes it to extract loop-variant sub-expressions that inflate the
+> code without enabling more hoisting."
+
+With 30 AutomationManager + 6 polycyclic = 36 unique patterns competing for
+12 CSE slots, and CSE not prioritizing by duplication count or invariance, the
+polycyclic patterns (8x duplication each) may lose slots to AutomationManager
+patterns (4x duplication each). This means **42 redundant sin() calls per
+iteration** (7 duplicates × 6 patterns) cannot be eliminated without either:
+1. Teaching CSE to prioritize by duplication count
+2. Deduplicating at expression tree construction time
+3. Computing shared values in a separate pre-loop kernel
+
+**Performance measurements (M4 laptop, native driver, no JaCoCo):**
+
+| Run | Config | Avg Buffer | Min Buffer | Notes |
+|-----|--------|-----------|-----------|-------|
+| 4e087453 | Phase 1 only | 258.75 ms | 235 ms | First clean run |
+| fb3e2b65 | Phase 1 + polycyclic | 325.03 ms | 269 ms | Later run, higher variance |
+
+Numbers not directly comparable — different thermal states, background load.
+M4 laptop has 116-254ms variance range per plan. Back-to-back comparison on
+M2 desktop needed for meaningful delta measurement.
+
+**Remaining 128 `/ 44100.0` divisions in loop:**
+
+These are from envelope/ramp calculations, not sin() arguments:
+```c
+(frame / 44100.0) + (f_assignment_X * -60.0)) > 0.0 ? pow(...) : ...
+```
+These compute `time = frame/sampleRate` for time-offset comparisons. Fixing
+would require identifying and modifying the source of these envelope expressions
+(likely in `OptimizeFactorFeatures.riseFall()` or similar). Lower priority than
+addressing the sin() duplication.
+
+**Outcome:** Polycyclic factoring eliminates 48 unfactored sin() argument
+divisions. Main remaining opportunity is CSE-level deduplication of identical
+sin() calls across channels (42 redundant calls, but blocked by CSE slot limits
+and lack of priority ordering).
+
+**Open questions:**
+- Back-to-back performance comparison on M2 desktop still needed
+- Should CSE be taught to prioritize by duplication count? (architectural change)
+- Can polycyclic values be shared across channels at construction time in MixdownManager?
+
+---
+
 ### 2026-03-03 — Goal 4: LFO sin() cost reduction via expression factoring for LICM
 
 **Goal:** Reduce ~254K transcendental calls per buffer tick by algebraically
