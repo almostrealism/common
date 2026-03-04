@@ -17,9 +17,15 @@ from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
-# Configuration
+# Configuration — derive PROJECT_ROOT from this file's location
+# server.py lives at tools/mcp/profile-analyzer/server.py, so project root is 3 levels up
+_SERVER_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = os.environ.get(
+    "AR_PROJECT_ROOT",
+    str(_SERVER_DIR.parent.parent.parent)
+)
 DEFAULT_PROFILE_DIR = os.environ.get("AR_PROFILE_DIR", "utils/results")
-TOOLS_DIR = os.environ.get("AR_TOOLS_DIR", "/workspace/project/common/tools")
+TOOLS_DIR = os.environ.get("AR_TOOLS_DIR", str(Path(PROJECT_ROOT) / "tools"))
 
 # Initialize server
 mcp = FastMCP("ar-profile-analyzer")
@@ -37,7 +43,7 @@ def run_java_cli(command: str, file_path: str, *args) -> dict:
     try:
         result = subprocess.run(
             cmd,
-            cwd="/workspace/project/common",
+            cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
             timeout=120
@@ -223,6 +229,54 @@ def find_slowest_by_category(
         return {"error": f"Invalid category: {category}. Must be 'compile', 'run', or 'all'."}
 
     return run_java_cli("slowest", path, str(limit), f"--category={category}")
+
+
+@mcp.tool()
+def get_source(
+    path: str,
+    node_key: str,
+    max_lines: int = 200
+) -> dict:
+    """
+    Get generated source code for an operation node.
+
+    Args:
+        path: Path to the profile XML file.
+        node_key: Node key to retrieve source for.
+        max_lines: Maximum lines of source code to return (default: 200).
+
+    Returns:
+        Dictionary with source code, argument info, and line counts.
+    """
+    if not os.path.exists(path):
+        return {"error": f"File not found: {path}"}
+
+    return run_java_cli("source", path, node_key, str(max_lines))
+
+
+@mcp.tool()
+def get_source_summary(
+    path: str,
+    node_key: str
+) -> dict:
+    """
+    Get a structural summary of generated source code for an operation node.
+
+    Returns function counts by type, duplication analysis, loop counts,
+    math operations, and total lines — without dumping the full source.
+
+    Args:
+        path: Path to the profile XML file.
+        node_key: Node key to analyze.
+
+    Returns:
+        Dictionary with function types, duplication groups, control flow stats,
+        and math operation counts.
+    """
+    if not os.path.exists(path):
+        return {"error": f"File not found: {path}"}
+
+    return run_java_cli("source-summary", path, node_key)
 
 
 if __name__ == "__main__":
