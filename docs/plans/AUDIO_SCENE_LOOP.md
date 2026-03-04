@@ -26,7 +26,7 @@ identified the MultiOrderFilter coefficient computation as a significant
 cost center. The `ReplicationMismatchOptimization` strategy (see
 [AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md)) addresses
 this by selectively isolating low-parallelism children, providing a 6-16%
-improvement (verified back-to-back on M2 desktop).
+improvement (verified back-to-back on M1 Ultra Mac Studio).
 
 **Remaining bottlenecks (in priority order):**
 
@@ -49,8 +49,8 @@ were active. Only back-to-back comparisons under identical conditions are valid.
 | Machine | Driver | JaCoCo | Monitoring | Approx Range |
 |---------|--------|--------|------------|--------------|
 | M4 laptop | native | yes | yes | 116–254 ms (high variance) |
-| M2 desktop | native | yes | no | ~352 ms |
-| M2 desktop | native | no | no | ~186 ms (with ReplicationMismatchOptimization) |
+| M1 Ultra Mac Studio | native | yes | no | ~352 ms |
+| M1 Ultra Mac Studio | native | no | no | ~186 ms (with ReplicationMismatchOptimization) |
 | M4 laptop | * (Metal) | yes | yes | ~247 ms (failed agent code, 171 kernels) |
 
 The 147ms figure in the original baseline table below was from a favorable
@@ -130,7 +130,7 @@ claims are incorrect" for full analysis.
 The `ReplicationMismatchOptimization` strategy selectively isolates
 low-parallelism children in the process tree, which includes the filter
 coefficient computation. This provides a measurable 6-16% improvement
-(verified back-to-back on M2 desktop). See
+(verified back-to-back on M1 Ultra Mac Studio). See
 [AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md) for details.
 
 **Baseline kernel structure** (consistent across all verified runs):
@@ -237,7 +237,7 @@ global compilation behavior.
 
 ### Goal 4: Reduce LFO modulation sin() cost in monolithic kernel — NEXT PRIORITY
 
-**Status: PHASE 1 COMPLETE (expression factoring), PHASE 2 NEEDED (measurement + further reduction)**
+**Status: PHASE 1+2 COMPLETE (expression factoring + polycyclic), MEASUREMENT COMPLETE — regression on native, neutral on Metal**
 
 The monolithic effects kernel (4835 lines, 3.4MB) contains 62 sin() calls
 from LFO/automation modulation. Each executes 4096 times per buffer tick,
@@ -263,71 +263,69 @@ where `angularRate` and `phaseContrib` are loop-invariant and hoisted as
 helper, rewrote `getShortPeriodValue`, `getLongPeriodValue`, `getMainValue`.
 `*ValueAt` methods left unchanged for backward compatibility.
 
-#### Phase 2: Measurement + further sin() reduction (NEXT)
+#### Phase 2: Polycyclic factoring + measurement (COMPLETE)
 
-**Step 1 — Measure Phase 1 impact (REQUIRED FIRST):**
+**Polycyclic factoring** (commit `61cd5805f`): Applied same LICM factoring
+to `OptimizeFactorFeatures.polycyclic()`. Changed `toPolycyclicGene()` to
+pass `clock.frame(), sampleRate` instead of `clock.time(sampleRate)`.
+Factored 48 additional sin() calls (6 unique × 8 duplicates).
 
-Run a back-to-back comparison on the M2 desktop (same machine, same
-conditions, sequential runs) to quantify the improvement from expression
-factoring. Compare against the last known baseline on that machine
-(~186ms without JaCoCo with `CascadingOptimizationStrategy`).
+**Back-to-back measurement** (M1 Ultra Mac Studio, JaCoCo, no monitoring):
 
-**Step 2 — Evaluate whether further optimization is needed:**
+| Run ID | Code | Driver | Avg Buffer | Min Buffer |
+|--------|------|--------|-----------|-----------|
+| 5786d96e | Factored (Phase 1+2) | native (FP64) | 220.90 ms | 189 ms |
+| 0163ddfd | Factored (Phase 1+2) | * (MTL+JNI, FP32) | 230.90 ms | 202 ms |
+| ddb6255e | Unfactored | native (FP64) | 200.06 ms | 181 ms |
+| 3152eed8 | Unfactored | * (MTL+JNI, FP32) | 233.59 ms | 211 ms |
 
-62 sin() calls × 4096 samples = 254K transcendental evaluations remain.
-Phase 1 reduces the per-call argument computation cost (eliminating
-divisions) but not the sin() calls themselves. If the Phase 1 improvement
-is insufficient, the following approaches should be evaluated:
+**Findings:**
+- **Native driver**: Factoring is a ~10% regression (200→221ms). Clang/LLVM
+  already performs its own LICM; manual factoring may increase register
+  pressure from 128 `f_licm_*` variables.
+- **Metal driver**: Factoring is neutral-to-marginal-improvement (234→231ms).
+- **Metal vs Native**: Metal is slower in all cases — 143 sequential kernel
+  launches incur GPU dispatch overhead that outweighs parallelism gains.
 
-- **Polynomial approximation**: For LFO modulation, audio-quality sin()
-  precision is not required. A 3rd-order Chebyshev or Taylor approximation
-  (`x - x³/6 + x⁵/120`) could replace sin() for automation curves where
-  the frequency is low and waveform fidelity is non-critical. This would
-  need to be implemented at the expression tree level (e.g., a
-  `sinApprox()` producer method) so it generates inline polynomial code
-  instead of a sin() call.
+**Decision:** Expression factoring does not help on native driver (primary
+production path). Additional runs recommended to confirm. Further
+sin() reduction approaches still available:
 
-- **Per-buffer pre-computation**: If any of the 62 sin() calls have
-  arguments that are actually constant across all 4096 samples (not just
-  cheaper to compute, but truly invariant), they could be hoisted entirely
-  out of the kernel as separate scalar computations. Examine the generated
-  code to check — if some sin() calls already use only `f_licm_*` variables
-  (no `frame` dependency), the LICM pass should already hoist them. If it
-  doesn't, that's a gap in the hoisting logic.
-
-- **LFO value sharing across channels**: If the 62 sin() calls include
-  duplicates across the 6 audio channels (same frequency, same phase),
-  CSE should collapse them. Check if `ScopeSettings.maxReplacements = 12`
-  is preventing this — the 62 calls may have more than 12 common
-  sub-expressions.
+- **Polynomial approximation**: `sinApprox()` at expression tree level
+- **LFO value sharing**: CSE limited to 12 replacements, 36 unique patterns
+  competing. Teaching CSE to prioritize by duplication count could eliminate
+  42 redundant sin() calls.
+- **Per-buffer pre-computation**: Some sin() args may be fully invariant
 
 **Acceptance criteria:**
 
 - [x] Expression factoring enables LICM hoisting of sin() arguments
-- [ ] Phase 1 improvement measured back-to-back on M2 desktop
-- [ ] Decision on whether Phase 2 (sin() elimination/approximation) is needed
-- [ ] If Phase 2 pursued: sin() calls reduced, improvement measured
-- [ ] Audio output quality preserved
-- [ ] All existing tests pass
+- [x] Phase 1+2 improvement measured back-to-back (2x2 matrix: native/Metal)
+- [x] Decision: factoring is regression on native, neutral on Metal
+- [ ] Confirm regression with additional runs before final revert decision
+- [x] Audio output quality preserved (tests pass)
+- [x] All existing tests pass
 
 ---
 
 ### Goal 5: Test with GPU acceleration (AR_HARDWARE_DRIVER=*)
 
-**Status: NOT TESTED with clean code**
+**Status: INITIAL TESTING COMPLETE (M1 Ultra Mac Studio)**
 
-All MCP test runner runs use `AR_HARDWARE_DRIVER=native` (hardcoded in
-`tools/mcp/test-runner/server.py` line 193). GPU acceleration via Metal
-has never been properly tested with the current clean codebase.
+MCP test runner hardcodes `AR_HARDWARE_DRIVER=native` in env vars, but
+this can be overridden via JVM arg `-DAR_HARDWARE_DRIVER=*` (SystemUtils
+checks system properties first, then env vars).
 
-One test with `-DAR_HARDWARE_DRIVER=*` on the M4 laptop (run `cfcb5834`)
-produced 247ms with 171 kernels, but this was with the failed agent changes
-and is not representative.
+**Results** (M1 Ultra Mac Studio, JaCoCo, no monitoring, see Goal 4 Phase 2 table):
+- Metal is **slower** than native in all configurations tested
+- Factored code: native 221ms vs Metal 231ms (+5%)
+- Unfactored code: native 200ms vs Metal 234ms (+17%)
+- Metal uses FP32 precision, kernel count unchanged at 143
 
 **Required work:**
 
-1. **Run `effectsEnabledPerformance` with `-DAR_HARDWARE_DRIVER=*`** on the
-   M2 desktop to get a proper GPU baseline.
+1. ~~**Run `effectsEnabledPerformance` with `-DAR_HARDWARE_DRIVER=*`**~~ DONE
+   (M1 Ultra Mac Studio). Metal is slower than native with 143 kernels.
 
 2. **Compare kernel count**: Metal may generate additional kernels (171 vs
    143 was observed). Understand why and whether this is expected.
@@ -341,9 +339,9 @@ kernel launches, GPU dispatch overhead may negate parallelism gains.
 
 **Acceptance criteria:**
 
-- [ ] GPU performance measured and compared to native baseline
-- [ ] Kernel count difference documented
-- [ ] Analysis of whether GPU helps or hurts, and why
+- [x] GPU performance measured and compared to native baseline
+- [x] Kernel count: unchanged at 143 (no additional Metal kernels)
+- [x] Analysis: Metal hurts — 143 sequential dispatches incur overhead > parallelism gain
 
 ---
 

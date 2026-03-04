@@ -69,6 +69,77 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-03 — Goal 4 Phase 2: Back-to-back measurement (2x2 matrix)
+
+**Goal:** Quantify the impact of expression factoring (Phase 1 + Phase 2) using
+controlled back-to-back comparisons on the same machine, testing both the `native`
+and `*` (Metal+JNI) hardware drivers.
+
+**Context:** The plan document (Goals 4 and 5) required back-to-back measurements
+and testing with `AR_HARDWARE_DRIVER=*`. All prior measurements used only `native`
+driver and were not controlled back-to-back runs.
+
+**Setup:**
+- Machine: M1 Ultra Mac Studio
+- JaCoCo: yes (via MCP test runner)
+- Monitoring: no (`-DAR_INSTRUCTION_SET_MONITORING` not set)
+- Driver override: `-DAR_HARDWARE_DRIVER=*` via JVM args (overrides test runner's
+  hardcoded `native` env var — confirmed `SystemUtils.getProperty()` checks
+  `System.getProperty()` first, then `System.getenv()`)
+- Reverted AutomationManager.java and OptimizeFactorFeatures.java to pre-Phase 1
+  state for unfactored runs, then restored committed code
+
+**Results (2x2 matrix, sequential runs on same machine):**
+
+| Run ID | Code | Driver | Precision | Avg Buffer | Min Buffer |
+|--------|------|--------|-----------|-----------|-----------|
+| 5786d96e | Factored (Phase 1+2) | native | FP64 | 220.90 ms | 189 ms |
+| 0163ddfd | Factored (Phase 1+2) | * (JNI+MTL+CL) | FP32 | 230.90 ms | 202 ms |
+| ddb6255e | Unfactored (pre-Phase 1) | native | FP64 | 200.06 ms | 181 ms |
+| 3152eed8 | Unfactored (pre-Phase 1) | * (JNI+MTL+CL) | FP32 | 233.59 ms | 211 ms |
+
+**Analysis:**
+
+1. **Native driver (FP64):** Factoring is a **~10% regression** (200→221ms avg,
+   181→189ms min). The C compiler (Clang/LLVM on macOS) already performs its own
+   LICM on the simpler unfactored expressions. Manual factoring may increase
+   register pressure from 128 `f_licm_*` variables, or the restructured expression
+   tree may defeat other compiler optimizations.
+
+2. **Metal driver (* = JNI+MTL+CL, FP32):** Factoring shows a **marginal
+   improvement** (234→231ms avg, 211→202ms min). Metal's FP32 precision may
+   benefit more from the simplified expressions since GPU ALUs handle
+   multiply-add better than division chains.
+
+3. **Metal vs Native overall:** Metal is slower than native in all cases. With
+   143 sequential kernel launches, GPU dispatch overhead outweighs any
+   parallelism gains. This confirms the plan's prediction (Goal 5): "GPU
+   acceleration is most likely to help AFTER Goals 3 and 4 reduce the kernel
+   count and per-kernel compute cost."
+
+4. **Caveat:** These are single runs per configuration on the M1 Ultra Mac
+   Studio. Multiple runs per configuration would increase confidence. The M4
+   laptop (used by the reviewer) has higher variance (116-254ms range per plan).
+
+**Outcome:** Expression factoring does not improve native driver performance on
+this machine — it appears to be a slight regression. The factoring may have
+value on Metal/GPU paths where the compiler's LICM is less aggressive, but the
+improvement is within noise. The changes are algebraically correct (proven in
+Phase 1 journal entry) and don't break tests, so they can be retained as
+preparation for future GPU-focused optimization (after kernel count reduction
+per Goal 3), or reverted if the native regression is confirmed with additional runs.
+
+**Recommendation:** Consider additional runs on this machine (M1 Ultra Mac
+Studio) to confirm the native regression. The reviewer can also cross-check
+on the M4 laptop.
+
+**Open questions:**
+- Is the 10% native regression consistent across multiple runs?
+- Would reducing kernel count (Goal 3) change the Metal vs native comparison?
+- Does `f_licm_*` register pressure increase with 128 hoisted variables?
+
+---
+
 ### 2026-03-03 — Goal 4 Phase 2: Polycyclic factoring + sin() duplication analysis
 
 **Goal:** Measure Phase 1 impact, identify further sin() reduction opportunities,
@@ -130,7 +201,7 @@ iteration** (7 duplicates × 6 patterns) cannot be eliminated without either:
 2. Deduplicating at expression tree construction time
 3. Computing shared values in a separate pre-loop kernel
 
-**Performance measurements (M4 laptop, native driver, no JaCoCo):**
+**Performance measurements (M1 Ultra Mac Studio, native driver, no JaCoCo):**
 
 | Run | Config | Avg Buffer | Min Buffer | Notes |
 |-----|--------|-----------|-----------|-------|
@@ -138,8 +209,8 @@ iteration** (7 duplicates × 6 patterns) cannot be eliminated without either:
 | fb3e2b65 | Phase 1 + polycyclic | 325.03 ms | 269 ms | Later run, higher variance |
 
 Numbers not directly comparable — different thermal states, background load.
-M4 laptop has 116-254ms variance range per plan. Back-to-back comparison on
-M2 desktop needed for meaningful delta measurement.
+M1 Ultra Mac Studio has some variance across runs. Back-to-back comparison
+with multiple runs needed for meaningful delta measurement.
 
 **Remaining 128 `/ 44100.0` divisions in loop:**
 
@@ -158,7 +229,7 @@ sin() calls across channels (42 redundant calls, but blocked by CSE slot limits
 and lack of priority ordering).
 
 **Open questions:**
-- Back-to-back performance comparison on M2 desktop still needed
+- Back-to-back performance comparison with additional runs still needed
 - Should CSE be taught to prioritize by duplication count? (architectural change)
 - Can polycyclic values be shared across channels at construction time in MixdownManager?
 
@@ -262,10 +333,10 @@ claimed a 60% regression (147ms → 235ms).
    the variance exceeds the delta. Only back-to-back comparisons on the same
    machine under identical conditions are valid.
 
-4. **The developer agent's back-to-back comparison on the M2 desktop is the
+4. **The developer agent's back-to-back comparison on the M1 Ultra Mac Studio is the
    reliable measurement.** Their controlled comparison (same machine, same
    conditions, sequential runs) shows 6-16% improvement with the strategy.
-   Their runs are on a different machine (M2 desktop) so the run IDs don't
+   Their runs are on a different machine (M1 Ultra Mac Studio) so the run IDs don't
    appear in the local test runner history — this is expected, not suspicious.
 
 **Lessons for future reviews:**
