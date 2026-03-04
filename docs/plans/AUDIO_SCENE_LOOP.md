@@ -28,17 +28,22 @@ cost center. The `ReplicationMismatchOptimization` strategy (see
 this by selectively isolating low-parallelism children, providing a 6-16%
 improvement (verified back-to-back on M1 Ultra Mac Studio).
 
-**Remaining bottlenecks (in priority order):**
+**Remaining bottlenecks (profile-verified, 2026-03-04):**
 
-1. **Monolithic effects kernel** (~4823 lines): Contains 62 sin() calls
-   from LFO modulation, each executing 4096 times per buffer = ~254K
-   transcendental calls per tick. Expression factoring (Goal 4 Phase 1)
-   has reduced per-call argument cost by hoisting invariant sub-expressions,
-   but the sin() calls themselves remain. This is still the dominant cost.
-2. **143 JNI instruction set invocations**: ~120 are trivial scalar assignments.
+1. **Per-sample sin() calls inside the inner loop**: Profile analysis of
+   `f_loop_33020` (4823 lines, 2776-line inner loop body) reveals **148 sin()
+   calls per sample iteration** × 4096 samples = **606K sin() evaluations per
+   buffer tick**. These are NOT in the f_licm pre-loop section — they depend on
+   the loop variable. This is the dominant per-tick cost.
+2. **Time series interpolation**: 22 `f_acceleratedTimeSeriesValueAt` calls per
+   sample, each doing a **linear search** through time series data. This is
+   O(samples × entries) per call.
+3. **Per-sample arithmetic volume**: 107K additions and 35K multiplications per
+   sample, plus 256 fmod(), 79 pow(), 40 floor() calls.
+4. **143 JNI instruction set invocations**: ~120 are trivial scalar assignments.
    JNI transition overhead accumulates.
-3. **Delay line operations**: 22 `AdjustableDelayCell` loops in the monolithic
-   kernel add sequential overhead.
+5. **Compile time** (23.3s one-time): 4823 lines → Clang overhead. Not a
+   real-time concern but affects developer iteration speed.
 
 ### Baseline calibration
 
@@ -345,6 +350,111 @@ kernel launches, GPU dispatch overhead may negate parallelism gains.
 
 ---
 
+### Goal 6: Reduce per-sample sin() calls — HIGHEST PRIORITY (profile-defended)
+
+**Status: PLANNING**
+
+**Profile evidence:** `f_loop_33020` inner loop (lines 2041-4817 in generated
+C code) contains 148 sin() calls that execute on EVERY sample iteration.
+At 4096 samples per buffer, this produces **606,208 sin() evaluations per tick**.
+The kernel runs at 82ms/tick on M4 laptop — the 93ms real-time target requires
+reducing this to <93ms.
+
+The 128 `f_licm_*` pre-loop declarations already hoist angular rates and phase
+contributions, but the sin() calls themselves CANNOT be hoisted because they
+depend on the loop variable `_33020_i` (the sample frame index):
+`sin(_33020_i * angularRate + phaseContrib)`.
+
+#### Approach A: LFO sub-buffer approximation
+
+LFO frequencies are typically 0.1Hz–20Hz. At 44.1kHz, even a 20Hz LFO
+completes only ~1.86 cycles per 4096-sample buffer. This means the sin()
+value changes slowly across the buffer. Instead of computing sin() per sample:
+
+1. Compute sin() at N evenly-spaced points (e.g., N=16 or N=64)
+2. Linearly interpolate between them for intermediate samples
+
+This reduces 148 × 4096 = 606K sin() calls to 148 × 64 = 9,472 sin() calls
+(~64× reduction). The interpolation cost is a multiply + add per sample.
+
+**Implementation:** This requires changes at the expression tree level
+(probably in `AutomationManager` or the `Repeated` loop generation) to
+detect sin() expressions that vary linearly with the loop counter and replace
+them with a pre-computed lookup + interpolation pattern.
+
+**Risk:** Requires framework-level changes to the expression compilation
+pipeline. The interpolation introduces a small approximation error.
+
+#### Approach B: Polynomial sin() approximation
+
+Replace `sin(x)` with a fast polynomial approximation (e.g., Bhaskara I
+formula or minimax polynomial) at the code generation level. This avoids
+per-sample function call overhead while maintaining reasonable accuracy
+for audio LFO modulation (which doesn't need IEEE 754 precision).
+
+**Implementation:** Add a `sinApprox()` expression node that generates
+inline polynomial code instead of calling `sin()`. Apply it selectively
+to LFO/automation expressions.
+
+**Risk:** Audio quality impact — needs A/B testing. Lower risk than
+Approach A because it's a drop-in replacement, not a structural change.
+
+#### Approach C: Identify and eliminate redundant sin() calls
+
+The 148 sin() calls per sample may include duplicates that CSE failed to
+catch (CSE limit is 12 replacements, 36 unique patterns competing). Profile
+data shows 128 f_licm variables — if some share the same angular rate and
+phase, their sin() values are identical.
+
+**Investigation needed:** Extract the sin() arguments from the loop body
+to identify duplicates that could be merged at the expression tree level.
+
+**Priority:** C first (investigation only), then B or A based on findings.
+
+**Acceptance criteria:**
+
+- [ ] Per-sample sin() call count reduced (target: < 30 per sample)
+- [ ] Buffer time improvement measured back-to-back
+- [ ] Audio output quality preserved (listen test + spectral comparison)
+- [ ] All existing tests pass
+
+---
+
+### Goal 7: Optimize time series interpolation — SECONDARY PRIORITY (profile-defended)
+
+**Status: PLANNING**
+
+**Profile evidence:** 22 `f_acceleratedTimeSeriesValueAt` calls per sample
+iteration, each performing a **linear search** from the beginning of the time
+series data. The search loop (`for (int i = start; i < end; i++)`) scans
+for the correct interpolation interval on every sample.
+
+Since the time series is accessed with monotonically increasing time values
+(the frame counter), the previous position is almost always correct or one
+step forward.
+
+#### Approach: Last-position caching
+
+Add a local variable per time series call that remembers the last found
+index. On the next sample, start the search from that position instead of
+from the beginning.
+
+**Implementation:** Modify the generated `f_acceleratedTimeSeriesValueAt`
+functions to accept and return a position hint variable. Or, modify the
+expression tree representation of `AcceleratedTimeSeries.valueAt()` to
+include a cached position.
+
+**Expected impact:** Reduces O(samples × timeseries_length) to O(samples),
+since each lookup only needs to check 1-2 positions.
+
+**Acceptance criteria:**
+
+- [ ] Time series lookup converted from linear to incremental search
+- [ ] Buffer time improvement measured
+- [ ] All existing tests pass
+
+---
+
 ## Verification Protocol
 
 ### How to run the verification test
@@ -385,6 +495,17 @@ Generated `.c` files appear in `compose/results/<run_id>/`.
    BIGGEST=$(ls -lS compose/results/<run_id>/*.c | head -1 | awk '{print $NF}')
    echo "clock/44100 in loop: $(grep -c '44100' $BIGGEST)"
    echo "f_licm declarations: $(grep -c 'f_licm_' $BIGGEST)"
+   ```
+
+6. **Profile analysis (Goal 6/7):** Run with profiling enabled and use
+   the ar-profile-analyzer MCP tools to compare per-sample operation counts
+   and timing breakdown. The test now saves
+   `results/effects-enabled-performance-profile.xml` when profiling is
+   enabled via `Hardware.getLocalHardware().assignProfile(profile)`.
+   Key commands:
+   ```
+   mcp__ar-profile-analyzer__get_source_summary  node_key:"<loop_key>"
+   mcp__ar-profile-analyzer__get_timing_breakdown node_key:"<loop_key>"
    ```
 
 **If buffer time is unchanged after your modifications, the optimization

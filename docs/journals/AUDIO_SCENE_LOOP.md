@@ -1507,4 +1507,65 @@ branch:
 **Outcome:** All implementations were present on the branch. This session fixed
 the treeDepth threshold bug in Phase 4 and reverted the CSE limit regression.
 
+## 2026-03-04 — Profile-Driven Kernel Analysis (Goal 4/New Goals)
+
+### Approach
+
+Previous sessions guessed at bottlenecks from C code analysis. Expression
+factoring (Goal 4 Phase 1+2) turned out to be a ~10% regression on native.
+This session takes a data-driven approach using `OperationProfileNode` XML
+profiling and the ar-profile-analyzer MCP tools.
+
+### Profile Setup
+
+Added profiling instrumentation to `effectsEnabledPerformance` test:
+- `OperationProfileNode profile = new OperationProfileNode("...")`
+- `Hardware.getLocalHardware().assignProfile(profile)` before scene creation
+- `profile.save(path)` after rendering
+
+Also added `source` and `source-summary` commands to `ProfileAnalyzerCLI.java`
+and corresponding MCP tools to `server.py`, enabling extraction of generated
+kernel source code from profile XML.
+
+### Key Findings from Profile Data
+
+**Overall profile** (run `67f5d4b4`, M4 laptop, native, JaCoCo active):
+
+| Kernel | Compile | Run (total) | Invocations | Per-invocation |
+|--------|---------|-------------|-------------|----------------|
+| f_loop_33020 (monolithic) | 23.3s | 3.53s | 43 ticks | **82ms/tick** |
+| f_multiOrderFilter_28346 | 0.33s | 0.075s | 20 | 3.7ms each |
+| Everything else | <2s total | <0.2s total | — | negligible |
+
+The monolithic loop kernel is effectively the ONLY significant per-tick cost.
+
+**Kernel source analysis** (4,823 lines, 389 arguments, 186 functions):
+
+| Section | Lines | Content |
+|---------|-------|---------|
+| Pre-loop | 2,040 | 128 f_licm declarations, 22 f_acceleratedTimeSeriesValueAt functions, 36 f_assignment helper functions |
+| Inner loop body | 2,776 | 24 sample reads, 148 sin(), 22 time series lookups, automation, mixing |
+
+**Per-sample cost inside `for (_33020_i = 0; _33020_i < 4096;)`:**
+- 148 sin() calls → 606,208 sin() per buffer tick
+- 22 f_acceleratedTimeSeriesValueAt calls (linear search)
+- 107,126 additions, 35,666 multiplications
+- 256 fmod(), 79 pow(), 40 floor()
+
+**This is the key insight the previous sessions missed:** The sin() calls are
+INSIDE the inner loop, not just in the f_licm pre-loop section. LICM hoisted
+the sub-expressions (angular rates, phase contributions), but the sin() calls
+themselves remain per-sample because they depend on the loop variable `_33020_i`.
+
+### Implications
+
+1. **Expression factoring was misguided** — it only affected the f_licm
+   pre-loop computations, not the 148 per-sample sin() calls.
+2. **The real optimization target** is reducing per-sample transcendental
+   function calls. 148 sin() × 4096 = 606K evaluations per tick.
+3. **Time series interpolation** (22 linear searches per sample) is a
+   secondary cost that could be reduced with binary search or position caching.
+4. **Compile time** (23.3s) is one-time and not a real-time concern, but
+   code deduplication could help reduce it as a quality-of-life improvement.
+
 *(Add new entries above this line, newest first)*
