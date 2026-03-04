@@ -539,20 +539,21 @@ computation classes.
 - This is identical to the branch's kernel structure — the strategy does not change the
   cos() pattern in convolution kernels
 
-### Correction to earlier regression analysis
+### Correction to earlier regression analysis (confirmed by reviewer)
 
-An earlier review claimed a 60% regression (147ms → 235ms) based on:
-1. The assumption that the baseline had "0 cos() in convolution kernels"
-2. A 147ms baseline figure that could not be reproduced on the test machine
+An earlier review claimed a 60% regression (147ms → 235ms). The review
+agent has since confirmed this was incorrect (see decision journal):
 
-**Master baseline verification disproved both claims:**
-- Master has 17 convolution kernels with 1 cos() each (Hamming window), not 0
-- Master avg buffer time is ~220ms without JaCoCo, ~224ms with monitoring
-- The review's "baseline run `f13e3f6b`" may have used different code or conditions
+- Run `f13e3f6b` was the failed EfxManager/OperationList agent changes
+  (147 kernels), NOT master. The 0 cos() in its convolution kernels was
+  an anomaly from those changes, not the baseline behavior.
+- Multiple pre-changes runs on the reviewer's M4 laptop (`b03b99a4`,
+  `13531c0f`) all show 17 convolution kernels with 1 cos() each —
+  identical to the strategy-enabled runs.
+- Performance ranged from 116ms to 254ms on the laptop with identical code,
+  making the 147ms→235ms comparison meaningless (thermal variance).
 
-The strategy is **retained** in `ProcessContextBase`. The cos() in convolution
-kernels is pre-existing baseline behavior from the Hamming window computation,
-not a regression introduced by the strategy.
+The strategy is **retained** in `ProcessContextBase`.
 
 ### Status: COMPLETE
 

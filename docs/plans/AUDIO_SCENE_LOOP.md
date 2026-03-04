@@ -19,19 +19,16 @@ With 6 channels and the full effects pipeline enabled, the system must
 complete within ~93 ms (44.1 kHz, 4096 samples). Currently it runs at
 **0.63x real-time** (147ms avg per buffer).
 
-### Corrected bottleneck analysis (2026-03-03)
+### Bottleneck analysis
 
-An earlier analysis ([AUDIO_PERFORMANCE.md](AUDIO_PERFORMANCE.md)) identified
-the **MultiOrderFilter** (FIR convolution) as the dominant cost center,
-claiming ~336,000 unnecessary sin/cos calls per tick from coefficient
-recomputation. **This was incorrect.** Examination of the baseline generated
-kernels shows that the existing `ParallelismTargetOptimization` strategy was
-ALREADY correctly separating coefficient computation into 4 small pre-compute
-kernels (~82 work items each), with the 16 convolution kernels performing
-pure multiply-accumulate (0 cos() calls). The coefficient sin/cos cost in
-the baseline is ~656 calls total — negligible.
+The performance analysis ([AUDIO_PERFORMANCE.md](AUDIO_PERFORMANCE.md))
+identified the MultiOrderFilter coefficient computation as a significant
+cost center. The `ReplicationMismatchOptimization` strategy (see
+[AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md)) addresses
+this by selectively isolating low-parallelism children, providing a 6-16%
+improvement (verified back-to-back on M2 desktop).
 
-**The actual baseline bottlenecks are:**
+**Remaining bottlenecks (in priority order):**
 
 1. **Monolithic effects kernel** (4835 lines, 3.4MB): Contains 62 sin() calls
    from LFO modulation, each executing 4096 times per buffer = ~254K
@@ -41,11 +38,21 @@ the baseline is ~656 calls total — negligible.
 3. **Delay line operations**: 22 `AdjustableDelayCell` loops in the monolithic
    kernel add sequential overhead.
 
-**NOTE:** The `ReplicationMismatchOptimization` strategy (see
-[AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md)) provides a
-6-16% improvement over `ParallelismTargetOptimization` alone. An earlier review
-claimed a 60% regression, but this was based on incorrect baseline measurements.
-See the decision journal entry "2026-03-03 — Verification" for details.
+### Baseline calibration
+
+**Performance varies significantly by machine and conditions.** All absolute
+numbers must record the hardware driver, machine, and whether JaCoCo/monitoring
+were active. Only back-to-back comparisons under identical conditions are valid.
+
+| Machine | Driver | JaCoCo | Monitoring | Approx Range |
+|---------|--------|--------|------------|--------------|
+| M4 laptop | native | yes | yes | 116–254 ms (high variance) |
+| M2 desktop | native | yes | no | ~352 ms |
+| M2 desktop | native | no | no | ~186 ms (with ReplicationMismatchOptimization) |
+| M4 laptop | * (Metal) | yes | yes | ~247 ms (failed agent code, 171 kernels) |
+
+The 147ms figure in the original baseline table below was from a favorable
+thermal state on the M4 laptop. It is not reliably reproducible.
 
 ---
 
@@ -112,44 +119,38 @@ claims are incorrect" for full analysis.
 
 ## Goals
 
-### Goal 1: ~~Pre-compute MultiOrderFilter coefficients~~ ALREADY DONE IN BASELINE
+### Goal 1: Reduce MultiOrderFilter coefficient cost
 
-**Status: NOT NEEDED — baseline already pre-computes coefficients correctly**
+**Status: PARTIALLY ADDRESSED by `ReplicationMismatchOptimization` (6-16% improvement)**
 
-**IMPORTANT UPDATE (2026-03-03):** Examination of the baseline generated
-kernels reveals that `ParallelismTargetOptimization` was ALREADY correctly
-isolating coefficient computation into separate pre-compute kernels. The
-convolution kernels in the baseline are pure multiply-accumulate with 0 cos()
-calls. The 336,000 unnecessary trig calls described in AUDIO_PERFORMANCE.md
-were never present in the generated code.
+The `ReplicationMismatchOptimization` strategy selectively isolates
+low-parallelism children in the process tree, which includes the filter
+coefficient computation. This provides a measurable 6-16% improvement
+(verified back-to-back on M2 desktop). See
+[AUDIO_PROCESS_OPTIMIZATION.md](AUDIO_PROCESS_OPTIMIZATION.md) for details.
 
-**Baseline kernel structure (verified from run `f13e3f6b`):**
-- 4 coefficient kernels (e.g., `jni_instruction_set_109.c`): ~82 work items,
-  compute sinc-windowed coefficients with sin/cos, write to buffer
-- 16 clean convolution kernels (e.g., `jni_instruction_set_110.c`): 4096 work
-  items, 41-tap loop, pure MAC: `result = (samples[index] * coefficients[i]) + result`
-- Total coefficient sin/cos calls: ~656 per buffer (negligible)
+**Baseline kernel structure** (consistent across all verified runs):
+- 17 convolution kernels with 1 cos() each (Hamming window computation)
+- Convolution kernels contain a 41-tap inner loop with inline coefficient
+  computation (sin/cos per tap per sample)
 
-**NOTE:** The `ReplicationMismatchOptimization` strategy provides an additional
-6-16% improvement on top of `ParallelismTargetOptimization`. An earlier review
-claimed it broke coefficient pre-computation, but master baseline verification
-showed identical kernel structure (17 convolution kernels with 1 cos() each).
-See decision journal for full analysis.
+**Further optimization opportunity:** The convolution kernels still compute
+sinc/Hamming coefficients inline. Full coefficient pre-computation into a
+separate buffer (demonstrated in `MultiOrderFilterConvolutionTest
+.convolutionWithChosenCoefficients()` using the `p()` pattern) could
+eliminate the remaining per-sample trig calls. However, this is a lower
+priority than addressing the monolithic kernel's LFO sin() cost (Goal 4).
 
-#### What remains useful from Goal 1 investigation
+#### Reference material
 
 The `p()` vs `cp()` analysis and the `MultiOrderFilterConvolutionTest` test
-infrastructure are valuable reference material for understanding how the
-Process optimization system handles coefficient isolation. The two-kernel
-pattern demonstrated in `convolutionWithChosenCoefficients()` is the same
-pattern that `ParallelismTargetOptimization` produces automatically.
+infrastructure are valuable for understanding how the Process optimization
+system handles coefficient isolation.
 
-#### Revised acceptance criteria
+#### Acceptance criteria
 
-- [x] Coefficient computation is OUTSIDE the sample loop (already true in baseline)
-- [x] Convolution kernels are pure multiply-accumulate (already true in baseline)
-- [x] `ReplicationMismatchOptimization` verified — no regression (6-16% improvement)
-- [ ] Baseline performance target needs recalibration (147ms was incorrect; actual baseline ~220ms without JaCoCo)
+- [x] `ReplicationMismatchOptimization` provides measurable improvement
+- [ ] Further coefficient pre-computation (lower priority than Goal 4)
 
 ---
 
@@ -230,6 +231,83 @@ global compilation behavior.
 
 ---
 
+### Goal 4: Reduce LFO modulation sin() cost in monolithic kernel — NEXT PRIORITY
+
+**Status: INCOMPLETE — this is the highest-impact remaining optimization**
+
+The monolithic effects kernel (4835 lines, 3.4MB) contains 62 sin() calls
+from LFO/automation modulation. Each executes 4096 times per buffer tick,
+producing ~254K transcendental function calls — the single largest compute
+cost in the pipeline.
+
+**Investigation needed:**
+
+1. **Identify what generates the 62 sin() calls.** These are from automation
+   curves, LFO modulation, or envelope computation in the effects chain.
+   Use `-DAR_INSTRUCTION_SET_MONITORING=always` and examine the monolithic
+   kernel to trace which source computations produce the sin() expressions.
+
+2. **Determine if LFO parameters are per-buffer constants.** If the LFO
+   frequency/phase parameters come from genome values and the frame counter
+   (both constant within a buffer tick), the sin() values could be
+   pre-computed once per buffer instead of per sample.
+
+3. **Evaluate optimization approaches:**
+   - **LICM hoisting**: If the sin() arguments are loop-invariant (same
+     across all 4096 samples), LICM should already hoist them. If they're
+     NOT being hoisted, investigate why — this may be a LICM gap.
+   - **Pre-computation via process isolation**: If the LFO computation has
+     lower parallelism than the monolithic kernel, the
+     `ReplicationMismatchOptimization` should already detect it. If not,
+     the threshold or parallelism detection may need adjustment.
+   - **Cheaper approximation**: If sin() varies per-sample (e.g., driven
+     by a per-sample counter), consider polynomial or lookup table
+     approximations for LFO where precision is not critical.
+
+**Acceptance criteria:**
+
+- [ ] sin() calls in the monolithic kernel reduced (identify target count)
+- [ ] Buffer time improvement measured (back-to-back, same conditions)
+- [ ] Audio output quality preserved
+- [ ] All existing tests pass
+
+---
+
+### Goal 5: Test with GPU acceleration (AR_HARDWARE_DRIVER=*)
+
+**Status: NOT TESTED with clean code**
+
+All MCP test runner runs use `AR_HARDWARE_DRIVER=native` (hardcoded in
+`tools/mcp/test-runner/server.py` line 193). GPU acceleration via Metal
+has never been properly tested with the current clean codebase.
+
+One test with `-DAR_HARDWARE_DRIVER=*` on the M4 laptop (run `cfcb5834`)
+produced 247ms with 171 kernels, but this was with the failed agent changes
+and is not representative.
+
+**Required work:**
+
+1. **Run `effectsEnabledPerformance` with `-DAR_HARDWARE_DRIVER=*`** on the
+   M2 desktop to get a proper GPU baseline.
+
+2. **Compare kernel count**: Metal may generate additional kernels (171 vs
+   143 was observed). Understand why and whether this is expected.
+
+3. **Profile**: If GPU doesn't help, determine whether the bottleneck is
+   kernel launch overhead (143+ JNI calls) or data transfer.
+
+**NOTE:** GPU acceleration is most likely to help AFTER Goals 3 and 4
+reduce the kernel count and per-kernel compute cost. With 143 sequential
+kernel launches, GPU dispatch overhead may negate parallelism gains.
+
+**Acceptance criteria:**
+
+- [ ] GPU performance measured and compared to native baseline
+- [ ] Kernel count difference documented
+- [ ] Analysis of whether GPU helps or hurts, and why
+
+---
+
 ## Verification Protocol
 
 ### How to run the verification test
@@ -248,28 +326,20 @@ Generated `.c` files appear in `compose/results/<run_id>/`.
 ### What to check
 
 1. **Timing:** Check `effects-enabled-performance-summary.txt` for avg
-   buffer time. Target: < 93 ms.
-2. **Kernel count:** Count files in the results directory. Target: < 30.
+   buffer time. **Record the machine, AR_HARDWARE_DRIVER, and whether
+   JaCoCo/monitoring were active.** Only compare against runs from the
+   same machine under the same conditions.
+2. **Kernel count:** Count `.c` files in the results directory.
+   Baseline: 143. Target for Goal 3: < 30.
 3. **Audio quality:** Output WAV should be non-silent with reasonable
    spectral content.
-4. **Convolution kernels (CRITICAL):** Search ALL `.c` files for the
-   41-tap convolution loop (`i <= 40`). These kernels should be pure
-   multiply-accumulate with **0 cos() calls**. Check with:
+4. **Convolution kernels:** Search ALL `.c` files for the 41-tap
+   convolution loop (`i <= 40`). Baseline has 17 such kernels, each
+   with 1 cos() call (Hamming window). Check with:
    ```bash
-   # Find convolution kernels
-   grep -rl 'i <= 40' compose/results/<run_id>/
-   # Verify no cos() in them
    for f in $(grep -rl 'i <= 40' compose/results/<run_id>/); do
      echo "$(basename $f): $(grep -c 'cos(' $f) cos()"; done
    ```
-   If ANY convolution kernel has cos(), the coefficient pre-computation
-   pipeline is broken. The baseline has 0 cos() in all 16 convolution
-   kernels.
-5. **Do NOT only check the largest `.c` file.** The largest file is the
-   monolithic effects kernel, which handles LFO modulation (not
-   convolution). It has 62 sin() and 0 cos() in both baseline and
-   regression runs. Checking only the largest file will give a false
-   sense that coefficient isolation is working.
 
 **If buffer time is unchanged after your modifications, the optimization
 is not working.** Do not claim completion based on unit tests alone.
