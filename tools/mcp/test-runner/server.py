@@ -15,8 +15,10 @@ import os
 import re
 import shutil
 import signal
+import statistics
 import subprocess
 import threading
+import time
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field, asdict
@@ -58,6 +60,7 @@ class RunConfig:
     jvm_args: list = field(default_factory=list)
     profile: Optional[str] = None
     jmx_monitoring: bool = False
+    repetitions: int = 1
 
 
 @dataclass
@@ -74,6 +77,9 @@ class RunMetadata:
     jmx_monitoring: bool = False
     forked_pid: Optional[int] = None
     instruction_set_output_dir: Optional[str] = None
+    repetitions: int = 1
+    current_invocation: int = 0
+    invocations: list = field(default_factory=list)
 
 
 class TestRunner:
@@ -187,11 +193,6 @@ class TestRunner:
         cmd = self.build_maven_command(config, run_dir, run_id)
         cmd_str = " ".join(cmd)
 
-        # Set environment
-        env = os.environ.copy()
-        env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
-        env["AR_HARDWARE_DRIVER"] = "native"
-
         # Extract instruction set output dir from command if injected
         iset_output_dir = None
         iset_prefix = "-DAR_INSTRUCTION_SET_OUTPUT_DIR="
@@ -199,6 +200,49 @@ class TestRunner:
             if part.startswith(iset_prefix):
                 iset_output_dir = part[len(iset_prefix):]
                 break
+
+        # Multi-invocation path: delegate to _watch_repetitions thread
+        if config.repetitions > 1:
+            metadata = RunMetadata(
+                run_id=run_id,
+                config=asdict(config),
+                status="running",
+                started_at=datetime.now().isoformat(),
+                command=cmd_str,
+                jmx_monitoring=config.jmx_monitoring,
+                instruction_set_output_dir=iset_output_dir,
+                repetitions=config.repetitions,
+                current_invocation=0,
+                invocations=[]
+            )
+            self._save_metadata(run_id, metadata)
+
+            # Touch empty output file
+            (run_dir / "output.txt").write_text("")
+
+            # Start timeout timer (applies to entire run)
+            if config.timeout_minutes:
+                timer = threading.Timer(
+                    config.timeout_minutes * 60,
+                    self._timeout_run,
+                    [run_id]
+                )
+                timer.start()
+                self.timeout_timers[run_id] = timer
+
+            # Launch repetition watcher thread
+            threading.Thread(
+                target=self._watch_repetitions,
+                args=(run_id, config, run_dir),
+                daemon=True
+            ).start()
+
+            return run_id, cmd_str
+
+        # Single-invocation path (original behavior)
+        env = os.environ.copy()
+        env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
+        env["AR_HARDWARE_DRIVER"] = "native"
 
         # Create metadata
         metadata = RunMetadata(
@@ -457,7 +501,6 @@ class TestRunner:
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
 
-            import time
             time.sleep(1)
 
         return None
@@ -499,6 +542,276 @@ class TestRunner:
                     shutil.copy2(xml_file, reports_dst / xml_file.name)
             except Exception:
                 pass
+
+    def _watch_repetitions(self, run_id: str, config: RunConfig, run_dir: Path):
+        """Run the same test N times sequentially, collecting per-invocation results."""
+        env = os.environ.copy()
+        env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
+        env["AR_HARDWARE_DRIVER"] = "native"
+
+        cmd = self.build_maven_command(config, run_dir, run_id)
+        output_file = run_dir / "output.txt"
+        any_failed = False
+
+        for invocation_num in range(1, config.repetitions + 1):
+            # Check for cancellation or timeout
+            metadata = self._load_metadata(run_id)
+            if not metadata or metadata.get("status") in ("cancelled", "timeout"):
+                return
+
+            # Update current invocation
+            metadata["current_invocation"] = invocation_num
+            self._save_metadata_dict(run_id, metadata)
+
+            # Write invocation marker to output
+            with open(output_file, "a") as f:
+                f.write(f"\n{'='*60}\n")
+                f.write(f"[ar-test-runner] Invocation {invocation_num} of {config.repetitions}\n")
+                f.write(f"{'='*60}\n\n")
+
+            # Start subprocess (append to output)
+            with open(output_file, "a") as f:
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=f,
+                    stderr=subprocess.STDOUT,
+                    env=env,
+                    cwd=PROJECT_ROOT,
+                    preexec_fn=os.setsid
+                )
+
+            # Track the current process so cancel_run and _timeout_run can kill it
+            self.active_runs[run_id] = process
+
+            # For the first invocation with JMX: handle fork failure retry
+            if invocation_num == 1 and config.jmx_monitoring:
+                threading.Thread(
+                    target=self._discover_forked_pid_background,
+                    args=(process.pid, run_id),
+                    daemon=True
+                ).start()
+
+            # Wait for this invocation to complete
+            inv_start = time.monotonic()
+            exit_code = process.wait()
+            inv_duration = time.monotonic() - inv_start
+
+            # Detect JMX fork failure on first invocation
+            if (invocation_num == 1
+                    and config.jmx_monitoring
+                    and exit_code != 0
+                    and inv_duration < EARLY_EXIT_THRESHOLD_SECONDS
+                    and self._is_fork_failure(run_id)):
+                # Rebuild command without JMX args for remaining invocations
+                degraded_config = RunConfig(
+                    depth=config.depth,
+                    module=config.module,
+                    test_classes=list(config.test_classes),
+                    test_methods=list(config.test_methods),
+                    timeout_minutes=config.timeout_minutes,
+                    jvm_args=list(config.jvm_args),
+                    profile=config.profile,
+                    jmx_monitoring=False,
+                    repetitions=config.repetitions
+                )
+                cmd = self.build_maven_command(degraded_config, run_dir, run_id)
+
+                with open(output_file, "a") as f:
+                    f.write("\n[ar-test-runner] JMX monitoring: forked JVM failed. "
+                            "Retrying invocation 1 without JFR/NMT.\n\n")
+
+                metadata = self._load_metadata(run_id)
+                if metadata:
+                    metadata["jmx_monitoring_degraded"] = True
+                    metadata["jmx_retry_reason"] = "Fork failure with JFR/NMT arguments"
+                    self._save_metadata_dict(run_id, metadata)
+
+                # Retry invocation 1
+                with open(output_file, "a") as f:
+                    f.write(f"\n{'='*60}\n")
+                    f.write(f"[ar-test-runner] Invocation 1 of {config.repetitions} (retry)\n")
+                    f.write(f"{'='*60}\n\n")
+
+                with open(output_file, "a") as f:
+                    process = subprocess.Popen(
+                        cmd, stdout=f, stderr=subprocess.STDOUT,
+                        env=env, cwd=PROJECT_ROOT, preexec_fn=os.setsid)
+
+                self.active_runs[run_id] = process
+                inv_start = time.monotonic()
+                exit_code = process.wait()
+                inv_duration = time.monotonic() - inv_start
+
+            # Copy surefire reports for this invocation
+            self._copy_surefire_reports_to_invocation(run_id, config.module, invocation_num)
+
+            # Parse test counts from this invocation's reports
+            inv_reports_dir = run_dir / "reports" / f"invocation_{invocation_num}"
+            inv_counts = self._parse_test_counts(inv_reports_dir) if inv_reports_dir.exists() else {}
+
+            # Record invocation result
+            inv_status = "completed" if exit_code == 0 else "failed"
+            if exit_code != 0:
+                any_failed = True
+
+            invocation_entry = {
+                "invocation": invocation_num,
+                "duration_seconds": round(inv_duration, 3),
+                "exit_code": exit_code,
+                "status": inv_status,
+                **inv_counts
+            }
+
+            metadata = self._load_metadata(run_id)
+            if metadata:
+                metadata.setdefault("invocations", []).append(invocation_entry)
+                self._save_metadata_dict(run_id, metadata)
+
+        # All invocations complete
+        if run_id in self.active_runs:
+            del self.active_runs[run_id]
+
+        # Cancel timeout timer
+        if run_id in self.timeout_timers:
+            self.timeout_timers[run_id].cancel()
+            del self.timeout_timers[run_id]
+
+        # Set overall status
+        metadata = self._load_metadata(run_id)
+        if metadata and metadata.get("status") == "running":
+            metadata["completed_at"] = datetime.now().isoformat()
+            metadata["status"] = "failed" if any_failed else "completed"
+            self._save_metadata_dict(run_id, metadata)
+
+    def _copy_surefire_reports_to_invocation(self, run_id: str, module: str, invocation_num: int):
+        """Copy surefire reports to an invocation-specific subdirectory.
+
+        Since invocations are sequential and Maven overwrites reports each time,
+        no time filtering is needed.
+        """
+        reports_src = PROJECT_ROOT / module / "target" / "surefire-reports"
+        reports_dst = RUNS_DIR / run_id / "reports" / f"invocation_{invocation_num}"
+
+        if not reports_src.exists():
+            return
+
+        reports_dst.mkdir(parents=True, exist_ok=True)
+
+        for xml_file in reports_src.glob("TEST-*.xml"):
+            try:
+                shutil.copy2(xml_file, reports_dst / xml_file.name)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _compute_stats(values: list[float]) -> dict:
+        """Compute statistical summary of a list of values.
+
+        Returns dict with count, mean, median, std_dev, min, max, cv (coefficient of variation %).
+        """
+        if not values:
+            return {"count": 0, "mean": 0, "median": 0, "std_dev": 0, "min": 0, "max": 0, "cv": 0}
+
+        n = len(values)
+        mean = statistics.mean(values)
+        median = statistics.median(values)
+        std_dev = statistics.stdev(values) if n >= 2 else 0
+        cv = (std_dev / mean * 100) if mean > 0 else 0
+
+        return {
+            "count": n,
+            "mean": round(mean, 3),
+            "median": round(median, 3),
+            "std_dev": round(std_dev, 3),
+            "min": round(min(values), 3),
+            "max": round(max(values), 3),
+            "cv": round(cv, 1)
+        }
+
+    def get_run_timing(self, run_id: str) -> Optional[dict]:
+        """Get timing analysis for a multi-invocation run.
+
+        Returns per-invocation durations, aggregate stats, and per-test-method timing stats.
+        """
+        metadata = self._load_metadata(run_id)
+        if not metadata:
+            return None
+
+        repetitions = metadata.get("repetitions", 1)
+        if repetitions <= 1:
+            return {"error": "get_run_timing is only available for multi-invocation runs (repetitions > 1). "
+                             "Use get_run_status for single-invocation timing."}
+
+        invocations = metadata.get("invocations", [])
+
+        # Per-invocation summary
+        inv_durations = [inv["duration_seconds"] for inv in invocations if "duration_seconds" in inv]
+        invocation_stats = self._compute_stats(inv_durations)
+
+        # Per-test-method stats across invocations
+        reports_base = RUNS_DIR / run_id / "reports"
+        test_method_times: dict[str, list[dict]] = {}  # key -> list of {time, status, invocation}
+
+        for inv_dir in sorted(reports_base.glob("invocation_*")):
+            inv_match = re.match(r"invocation_(\d+)", inv_dir.name)
+            if not inv_match:
+                continue
+            inv_num = int(inv_match.group(1))
+
+            for xml_file in inv_dir.glob("TEST-*.xml"):
+                try:
+                    tree = ET.parse(xml_file)
+                    root = tree.getroot()
+                    for testcase in root.findall("testcase"):
+                        classname = testcase.get("classname", "")
+                        method_name = testcase.get("name", "")
+                        time_sec = float(testcase.get("time", 0))
+                        key = f"{classname}#{method_name}"
+
+                        status = "passed"
+                        if testcase.find("failure") is not None:
+                            status = "failed"
+                        elif testcase.find("error") is not None:
+                            status = "error"
+                        elif testcase.find("skipped") is not None:
+                            status = "skipped"
+
+                        test_method_times.setdefault(key, []).append({
+                            "time": time_sec,
+                            "status": status,
+                            "invocation": inv_num
+                        })
+                except Exception:
+                    pass
+
+        # Compute per-method stats
+        test_method_stats = []
+        for key, entries in test_method_times.items():
+            times = [e["time"] for e in entries]
+            failure_count = sum(1 for e in entries if e["status"] in ("failed", "error"))
+            pass_count = sum(1 for e in entries if e["status"] == "passed")
+            total = len(entries)
+            pass_rate = round(pass_count / total * 100, 1) if total > 0 else 0
+
+            test_method_stats.append({
+                "test": key,
+                "timing": self._compute_stats(times),
+                "pass_rate": pass_rate,
+                "failure_count": failure_count,
+                "invocation_count": total
+            })
+
+        # Sort by mean time descending (slowest first)
+        test_method_stats.sort(key=lambda x: x["timing"]["mean"], reverse=True)
+
+        return {
+            "run_id": run_id,
+            "repetitions": repetitions,
+            "invocations_completed": len(invocations),
+            "invocation_stats": invocation_stats,
+            "invocations": invocations,
+            "test_method_stats": test_method_stats
+        }
 
     def _save_metadata(self, run_id: str, metadata: RunMetadata):
         """Save run metadata."""
@@ -542,7 +855,19 @@ class TestRunner:
 
         # Parse surefire reports for test counts
         reports_dir = RUNS_DIR / run_id / "reports"
-        if reports_dir.exists():
+        repetitions = metadata.get("repetitions", 1)
+
+        if repetitions > 1 and reports_dir.exists():
+            # Aggregate counts across all invocation subdirectories
+            counts = {"tests_run": 0, "failures": 0, "errors": 0, "skipped": 0}
+            for inv_dir in sorted(reports_dir.glob("invocation_*")):
+                inv_counts = self._parse_test_counts(inv_dir)
+                for k in counts:
+                    counts[k] += inv_counts.get(k, 0)
+            metadata.update(counts)
+            metadata["invocations_completed"] = len(metadata.get("invocations", []))
+            metadata["invocations_total"] = repetitions
+        elif reports_dir.exists():
             counts = self._parse_test_counts(reports_dir)
             metadata.update(counts)
 
@@ -648,21 +973,22 @@ class TestRunner:
         )
         return '\n'.join(truncated_lines)
 
-    def get_run_failures(self, run_id: str, include_all_tests: bool = False,
-                         truncate_stacktraces: bool = True) -> Optional[dict]:
-        """Get detailed failure information from a run.
+    def _parse_reports_dir(self, reports_dir: Path, include_all_tests: bool = False,
+                           truncate_stacktraces: bool = True,
+                           invocation: Optional[int] = None) -> tuple[list, list, dict]:
+        """Parse surefire XML reports from a directory.
 
         Args:
-            run_id: The run identifier
-            include_all_tests: Include all test results, not just failures (default: False)
-            truncate_stacktraces: Truncate long stacktraces (default: True)
-        """
-        reports_dir = RUNS_DIR / run_id / "reports"
-        if not reports_dir.exists():
-            return {"run_id": run_id, "failures": [], "summary": {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}}
+            reports_dir: Directory containing TEST-*.xml files.
+            include_all_tests: Whether to collect all test entries.
+            truncate_stacktraces: Whether to truncate long stacktraces.
+            invocation: If set, adds an 'invocation' field to each entry.
 
+        Returns:
+            Tuple of (failures, all_tests_or_empty, summary_dict).
+        """
         failures = []
-        all_tests = [] if include_all_tests else None
+        all_tests = []
         summary = {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}
 
         for xml_file in reports_dir.glob("TEST-*.xml"):
@@ -682,6 +1008,8 @@ class TestRunner:
                         "time_seconds": time_sec,
                         "status": "passed"
                     }
+                    if invocation is not None:
+                        test_info["invocation"] = invocation
 
                     # Check for failure
                     failure = testcase.find("failure")
@@ -694,28 +1022,34 @@ class TestRunner:
                         stacktrace = failure.text or ""
                         if truncate_stacktraces:
                             stacktrace = self._truncate_stacktrace(stacktrace)
-                        failures.append({
+                        fail_entry = {
                             "class": classname,
                             "method": name,
                             "time_seconds": time_sec,
                             "type": failure.get("type", ""),
                             "message": failure.get("message", ""),
                             "stacktrace": stacktrace
-                        })
+                        }
+                        if invocation is not None:
+                            fail_entry["invocation"] = invocation
+                        failures.append(fail_entry)
                     elif error is not None:
                         test_info["status"] = "error"
                         summary["error"] += 1
                         stacktrace = error.text or ""
                         if truncate_stacktraces:
                             stacktrace = self._truncate_stacktrace(stacktrace)
-                        failures.append({
+                        fail_entry = {
                             "class": classname,
                             "method": name,
                             "time_seconds": time_sec,
                             "type": error.get("type", ""),
                             "message": error.get("message", ""),
                             "stacktrace": stacktrace
-                        })
+                        }
+                        if invocation is not None:
+                            fail_entry["invocation"] = invocation
+                        failures.append(fail_entry)
                     elif skipped is not None:
                         test_info["status"] = "skipped"
                         summary["skipped"] += 1
@@ -727,14 +1061,66 @@ class TestRunner:
             except Exception:
                 pass
 
-        result = {
-            "run_id": run_id,
-            "failures": failures,
-            "summary": summary
-        }
-        if include_all_tests:
-            result["all_tests"] = all_tests
-        return result
+        return failures, all_tests, summary
+
+    def get_run_failures(self, run_id: str, include_all_tests: bool = False,
+                         truncate_stacktraces: bool = True) -> Optional[dict]:
+        """Get detailed failure information from a run.
+
+        Args:
+            run_id: The run identifier
+            include_all_tests: Include all test results, not just failures (default: False)
+            truncate_stacktraces: Truncate long stacktraces (default: True)
+        """
+        reports_dir = RUNS_DIR / run_id / "reports"
+        empty_result = {"run_id": run_id, "failures": [], "summary": {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}}
+
+        if not reports_dir.exists():
+            return empty_result
+
+        metadata = self._load_metadata(run_id)
+        repetitions = metadata.get("repetitions", 1) if metadata else 1
+
+        if repetitions > 1:
+            # Multi-invocation: iterate invocation subdirectories
+            all_failures = []
+            all_tests_list = []
+            total_summary = {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}
+
+            for inv_dir in sorted(reports_dir.glob("invocation_*")):
+                inv_match = re.match(r"invocation_(\d+)", inv_dir.name)
+                if not inv_match:
+                    continue
+                inv_num = int(inv_match.group(1))
+
+                failures, tests, summary = self._parse_reports_dir(
+                    inv_dir, include_all_tests, truncate_stacktraces, invocation=inv_num)
+                all_failures.extend(failures)
+                all_tests_list.extend(tests)
+                for k in total_summary:
+                    total_summary[k] += summary[k]
+
+            result = {
+                "run_id": run_id,
+                "failures": all_failures,
+                "summary": total_summary
+            }
+            if include_all_tests:
+                result["all_tests"] = all_tests_list
+            return result
+        else:
+            # Single-invocation: parse reports directly
+            failures, all_tests_list, summary = self._parse_reports_dir(
+                reports_dir, include_all_tests, truncate_stacktraces)
+
+            result = {
+                "run_id": run_id,
+                "failures": failures,
+                "summary": summary
+            }
+            if include_all_tests:
+                result["all_tests"] = all_tests_list
+            return result
 
     def list_runs(self, limit: int = 10, status_filter: Optional[str] = None) -> list[dict]:
         """List recent runs."""
@@ -827,6 +1213,12 @@ async def list_tools():
                     "jmx_monitoring": {
                         "type": "boolean",
                         "description": "Enable JMX monitoring: injects JFR/NMT JVM args and discovers forked JVM PID for use with ar-jmx tools (default: false)"
+                    },
+                    "repetitions": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "description": "Number of times to run the test (default: 1). When > 1, runs the test N times sequentially under one run_id. Use get_run_timing to get statistical analysis of results."
                     }
                 }
             }
@@ -924,6 +1316,20 @@ async def list_tools():
                 },
                 "required": ["run_id"]
             }
+        ),
+        Tool(
+            name="get_run_timing",
+            description="Get timing analysis for a multi-invocation run. Returns per-invocation durations, aggregate stats (mean, median, std_dev, min, max, CV%), and per-test-method timing stats sorted by slowest first.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "description": "The run identifier"
+                    }
+                },
+                "required": ["run_id"]
+            }
         )
     ]
 
@@ -941,7 +1347,8 @@ async def call_tool(name: str, arguments: dict):
                 timeout_minutes=arguments.get("timeout_minutes", DEFAULT_TIMEOUT),
                 jvm_args=arguments.get("jvm_args", []),
                 profile=arguments.get("profile"),
-                jmx_monitoring=arguments.get("jmx_monitoring", False)
+                jmx_monitoring=arguments.get("jmx_monitoring", False),
+                repetitions=arguments.get("repetitions", 1)
             )
             run_id, command = runner.start_run(config)
             response = {
@@ -1027,6 +1434,19 @@ async def call_tool(name: str, arguments: dict):
                     "run_id": run_id,
                     "status": "cancelled" if cancelled else "not_found"
                 })
+            )]
+
+        elif name == "get_run_timing":
+            run_id = arguments["run_id"]
+            timing = runner.get_run_timing(run_id)
+            if timing is None:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({"error": f"Run {run_id} not found"})
+                )]
+            return [TextContent(
+                type="text",
+                text=json.dumps(timing, indent=2)
             )]
 
         else:
