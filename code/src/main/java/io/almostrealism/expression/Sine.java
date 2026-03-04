@@ -31,6 +31,9 @@ public class Sine extends Expression<Double> {
 	}
 
 	@Override
+	public int getComputeCost() { return 25; }
+
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		return "sin(" + getChildren().get(0).getExpression(lang) + ")";
 	}

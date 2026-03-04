@@ -604,7 +604,8 @@ public class Repeated<T> extends Scope<T> {
 	private boolean isSubstantialForExtraction(Expression<?> expr, int minDepth) {
 		if (expr instanceof Constant) return false;
 		if (expr instanceof StaticReference) return false;
-		return expr.treeDepth() >= minDepth;
+		return expr.treeDepth() >= minDepth
+				|| expr.totalComputeCost() >= ScopeSettings.getComputeCostCacheThreshold();
 	}
 
 	/**

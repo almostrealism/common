@@ -31,6 +31,9 @@ public class Logarithm extends Expression<Double> {
 	}
 
 	@Override
+	public int getComputeCost() { return 15; }
+
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		return "log(" + getChildren().get(0).getExpression(lang) + ")";
 	}

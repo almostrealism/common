@@ -30,6 +30,9 @@ public class Cosine extends Expression<Double> {
 		super(Double.class, input);
 	}
 
+	@Override
+	public int getComputeCost() { return 25; }
+
 	public String getExpression(LanguageOperations lang) {
 		return "cos(" + getChildren().get(0).getExpression(lang) + ")";
 	}

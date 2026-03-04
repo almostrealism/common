@@ -380,6 +380,18 @@ public class FrequencyCache<K, V> {
 	}
 
 	/**
+	 * Returns a stream of value-frequency pairs filtered by frequency.
+	 *
+	 * @param frequencyFilter predicate to filter entries by access frequency
+	 * @return a stream of map entries mapping values to their frequencies
+	 */
+	public Stream<Map.Entry<V, Integer>> entriesByFrequency(IntPredicate frequencyFilter) {
+		return cache.values().stream()
+				.filter(e -> frequencyFilter.test(e.frequency))
+				.map(e -> Map.entry(e.value, e.frequency));
+	}
+
+	/**
 	 * Iterates over all key-value pairs in the cache.
 	 *
 	 * @param consumer the action to perform for each key-value pair

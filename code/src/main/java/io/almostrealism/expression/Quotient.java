@@ -45,6 +45,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		super((Class<T>) type(values), "/", values);
 	}
 
+	@Override
+	public int getComputeCost() { return 6; }
+
 	public Expression<?> getNumerator() { return getChildren().get(0); }
 
 	public Expression<?> getDenominator() {

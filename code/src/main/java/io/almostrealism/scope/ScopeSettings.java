@@ -207,7 +207,19 @@ public class ScopeSettings {
 
 	public static int getExpressionCacheSize() { return 300; }
 
-	public static int getExpressionCacheFrequencyThreshold() { return 10; }
+	public static int getExpressionCacheFrequencyThreshold() { return 2; }
+
+	/**
+	 * Returns the minimum total compute cost for an expression to be unconditionally
+	 * eligible for caching, bypassing structural filters (depth sets, hash checks).
+	 *
+	 * <p>Expressions whose {@link io.almostrealism.expression.Expression#totalComputeCost()}
+	 * meets or exceeds this threshold are always considered cache targets, ensuring that
+	 * expensive operations like transcendentals are never filtered out by depth-based caching.</p>
+	 *
+	 * @return the compute cost threshold for unconditional caching eligibility
+	 */
+	public static int getComputeCostCacheThreshold() { return 15; }
 
 	public static boolean isExpressionCacheTarget(Expression<?> expression) {
 		boolean c = caching.isExpressionCacheTarget(expression);

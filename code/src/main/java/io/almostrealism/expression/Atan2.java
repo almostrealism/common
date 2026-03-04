@@ -47,6 +47,9 @@ public class Atan2 extends BinaryExpression<Double> {
 		super(Double.class, y, x);
 	}
 
+	@Override
+	public int getComputeCost() { return 30; }
+
 	/**
 	 * Returns the y-coordinate expression (first argument).
 	 *

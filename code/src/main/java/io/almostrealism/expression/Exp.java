@@ -30,6 +30,9 @@ public class Exp extends Expression<Double> {
 	}
 
 	@Override
+	public int getComputeCost() { return 15; }
+
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		return "exp(" + getChildren().get(0).getExpression(lang) + ")";
 	}

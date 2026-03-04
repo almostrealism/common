@@ -33,6 +33,9 @@ public class Exponent extends Expression<Double> {
 	}
 
 	@Override
+	public int getComputeCost() { return 20; }
+
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		return lang.pow(
 				getChildren().get(0).getExpression(lang),

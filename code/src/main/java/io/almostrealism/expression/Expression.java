@@ -170,6 +170,9 @@ public abstract class Expression<T> implements
 	/** Total count of nodes in the expression subtree rooted at this node. */
 	private int nodeCount;
 
+	/** Total runtime compute cost of this expression subtree. */
+	private long computeCost;
+
 	/** Compact hash value computed from children for efficient equality checks. */
 	private short hash;
 
@@ -270,6 +273,8 @@ public abstract class Expression<T> implements
 			this.nodeCount = Math.toIntExact(c + 1);
 		}
 
+		this.computeCost = getChildren().stream().mapToLong(e -> e.computeCost).sum() + getComputeCost();
+
 		this.containsLong = (getType() == Long.class ||
 				getChildren().stream().anyMatch(e -> e.containsLong))
 				&& intValue().isEmpty();
@@ -310,6 +315,41 @@ public abstract class Expression<T> implements
 	 */
 	@Override
 	public int countNodes() { return nodeCount; }
+
+	/**
+	 * Returns the intrinsic compute cost of this node only, excluding children.
+	 *
+	 * <p>The default is 0 for leaf nodes (no children) and 1 for internal nodes
+	 * (a single arithmetic operation). Subclasses representing expensive operations
+	 * (transcendentals, power, division) should override this to return a higher cost.</p>
+	 *
+	 * @return the intrinsic cost of this node (unitless, 1 = single arithmetic op)
+	 */
+	public int getComputeCost() {
+		return getChildren().isEmpty() ? 0 : 1;
+	}
+
+	/**
+	 * Returns the total runtime compute cost of the expression subtree rooted at this node.
+	 *
+	 * <p>This is the sum of {@link #getComputeCost()} for this node plus
+	 * {@code totalComputeCost()} for all children, computed and cached during {@link #init()}.</p>
+	 *
+	 * @return the total compute cost of this subtree
+	 */
+	public long totalComputeCost() { return computeCost; }
+
+	/**
+	 * Checks whether this expression subtree contains any node whose intrinsic
+	 * compute cost meets or exceeds the given threshold.
+	 *
+	 * @param threshold the minimum cost to be considered expensive
+	 * @return {@code true} if any node in this subtree has {@code getComputeCost() >= threshold}
+	 */
+	public boolean containsExpensiveOperation(int threshold) {
+		if (getComputeCost() >= threshold) return true;
+		return getChildren().stream().anyMatch(c -> c.containsExpensiveOperation(threshold));
+	}
 
 	/**
 	 * Checks if this expression produces an integer result.

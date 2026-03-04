@@ -56,6 +56,10 @@ public class SpectrumCaching implements CachingSettings, ConsoleFeatures {
 
 	@Override
 	public boolean isExpressionCacheTarget(Expression<?> expression) {
+		if (expression.totalComputeCost() >= ScopeSettings.getComputeCostCacheThreshold()) {
+			return true;
+		}
+
 		int d = depths.indexOf(expression.treeDepth());
 		if (d < 0) return false;
 
