@@ -221,6 +221,20 @@ public class ScopeSettings {
 	 */
 	public static int getComputeCostCacheThreshold() { return 15; }
 
+	/**
+	 * Returns the maximum base expression compute cost for which exponent
+	 * strength reduction (e.g. {@code pow(x,2) → x*x}) is applied.
+	 *
+	 * <p>When the base expression's {@link Expression#totalComputeCost()} is
+	 * at or above this threshold, the base is too expensive to duplicate in a
+	 * product and {@code pow()} is retained instead. This prevents expressions
+	 * like {@code pow(sin(x), 2)} from expanding into {@code sin(x)*sin(x)},
+	 * which would double the transcendental evaluations.</p>
+	 *
+	 * @return the compute cost threshold for exponent strength reduction
+	 */
+	public static int getStrengthReductionCostThreshold() { return 10; }
+
 	public static boolean isExpressionCacheTarget(Expression<?> expression) {
 		boolean c = caching.isExpressionCacheTarget(expression);
 		if (c) {

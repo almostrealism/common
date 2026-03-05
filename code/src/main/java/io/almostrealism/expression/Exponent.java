@@ -21,6 +21,7 @@ import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ScopeSettings;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -96,15 +97,14 @@ public class Exponent extends Expression<Double> {
 	/**
 	 * Creates an exponent expression with algebraic strength reduction.
 	 *
-	 * <p>When the exponent is a small integer constant, the expensive {@code pow()}
-	 * library call is replaced with equivalent multiply/divide operations:</p>
-	 * <ul>
-	 *   <li>{@code pow(x, 2.0)} &rarr; {@code x * x}</li>
-	 *   <li>{@code pow(x, 3.0)} &rarr; {@code x * x * x}</li>
-	 *   <li>{@code pow(x, -1.0)} &rarr; {@code 1.0 / x}</li>
-	 *   <li>{@code pow(x, -2.0)} &rarr; {@code 1.0 / (x * x)}</li>
-	 *   <li>{@code pow(x, -3.0)} &rarr; {@code 1.0 / (x * x * x)}</li>
-	 * </ul>
+	 * <p>When the exponent is a small integer constant and the base is cheap
+	 * to evaluate ({@code totalComputeCost() < 10}), the expensive {@code pow()}
+	 * library call is replaced with equivalent multiply operations. When the base
+	 * is expensive (e.g. contains transcendental functions like {@code sin}),
+	 * the expansion is suppressed to avoid duplicating the expensive computation.</p>
+	 *
+	 * <p>The {@code pow(x, -1.0) &rarr; 1.0 / x} case is always applied since
+	 * it does not duplicate the base expression.</p>
 	 *
 	 * @param base     the base expression
 	 * @param exponent the exponent expression
@@ -125,17 +125,22 @@ public class Exponent extends Expression<Double> {
 				return new DoubleConstant(Math.pow(baseValue.getAsDouble(), exp));
 			}
 
-			// Strength reduction: replace pow() with multiply/divide for small integer exponents
-			if (exp == 2.0) {
-				return (Expression<Double>) Product.of(base, base);
-			} else if (exp == 3.0) {
-				return (Expression<Double>) Product.of(Product.of(base, base), base);
-			} else if (exp == -1.0) {
+			// Strength reduction: replace pow() with multiply/divide for small integer exponents.
+			// Only expand when the base is cheap to duplicate — if the base contains an
+			// expensive operation (e.g. sin, cos, pow), duplicating it in a product is
+			// worse than a single pow() call that evaluates the base once.
+			if (exp == -1.0) {
 				return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), base);
-			} else if (exp == -2.0) {
-				return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), Product.of(base, base));
-			} else if (exp == -3.0) {
-				return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), Product.of(Product.of(base, base), base));
+			} else if (base.totalComputeCost() < ScopeSettings.getStrengthReductionCostThreshold()) {
+				if (exp == 2.0) {
+					return (Expression<Double>) Product.of(base, base);
+				} else if (exp == 3.0) {
+					return (Expression<Double>) Product.of(Product.of(base, base), base);
+				} else if (exp == -2.0) {
+					return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), Product.of(base, base));
+				} else if (exp == -3.0) {
+					return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), Product.of(Product.of(base, base), base));
+				}
 			}
 		} else if (baseValue.isPresent()) {
 			if (baseValue.getAsDouble() == 0.0) {
