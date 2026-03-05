@@ -1568,4 +1568,129 @@ themselves remain per-sample because they depend on the loop variable `_33020_i`
 4. **Compile time** (23.3s) is one-time and not a real-time concern, but
    code deduplication could help reduce it as a quality-of-life improvement.
 
+### Goal 7 deep investigation: time series interpolation (continued 2026-03-04)
+
+**Findings from generated C code analysis:**
+
+All 22 `f_acceleratedTimeSeriesValueAt` functions are structurally identical —
+same ~30 line body, only variable name prefixes differ. Each operates on a
+DIFFERENT `AcceleratedTimeSeries` buffer (22 unique bank argument pointers).
+No data-level redundancy — all 22 calls are necessary.
+
+**Root cause:** `AcceleratedTimeSeries.valueAt(Producer<CursorPair>)` (line 384)
+still creates `AcceleratedTimeSeriesValueAt` — the `@Deprecated` O(N) linear
+search computation. The replacement `Interpolate` class with
+`enableFunctionalPosition = true` uses O(1) index computation via
+`ceil(indexForTime(time * rate)) - 1`. There's already 1 working `Interpolate`
+instance in the profile (`f_interpolate_29107`, from `WaveDataProviderAdapter`).
+
+**All 22 calls originate from `AdjustableDelayCell.tick()` line 111:**
+```java
+tick.add(a(cp(getOutputValue()), buffer.valueAt(p(cursors))));
+```
+Multiple `AdjustableDelayCell` instances in the pipeline (channel × delay group)
+produce the 22 instances.
+
+**Recommended approach:** Migrate to `Interpolate`. The `TemporalFeatures`
+interface provides factory methods. The key challenge is providing the correct
+`indexForTime` / `timeForIndex` functions for the delay line's cursor-based time
+model, where entries are added at cursor time values that increment by `scale`
+per tick and `beginCursor` advances via purge.
+
+**Fallback:** Add a last-position cache to `AcceleratedTimeSeriesValueAt` if
+the Interpolate migration proves too complex. This would convert O(buffer_size)
+to O(1) amortized by starting each search from the previous position.
+
+---
+
+### 2026-03-04 — Goal 6: Post-Expression-Complexity Verification
+
+**Context:** The Expression complexity system (EXPRESSION_COMPLEXITY.md) was
+implemented in a separate session, adding `getComputeCost()`/`totalComputeCost()`
+to Expression and making CSE ranking, caching eligibility, and LICM cost-aware.
+This entry documents the verification of its impact on the AudioScene kernel.
+
+**Test run:** `a5a98d02` — `effectsEnabledPerformance` with profiling, M4 laptop.
+
+**Key finding: cost-aware LICM is the dominant win.** The change to
+`Repeated.isSubstantialForExtraction()` (hoist if `totalComputeCost() >= 15`)
+moved the vast majority of expensive expressions out of the inner loop:
+
+| Metric | Before (baseline) | After (Expression complexity) |
+|--------|-------------------|-------------------------------|
+| Inner loop sin() | 148 | 18 (88% reduction) |
+| Inner loop pow() | 76 | 12 (84% reduction) |
+| Pre-loop LICM vars | ~128 | 296 |
+| Kernel lines | 4,823 | 5,661 |
+
+**The original Goal 6 plan (dedicated transcendental CSE pass) is largely
+superseded.** The platform-wide cost model achieves most of the same result
+through the general LICM mechanism, without any special-case code.
+
+**Residual opportunities identified:**
+
+1. **Within-statement CSE** (highest value): The pattern `sin(x)*k*sin(x)*k`
+   (a squared modulation) keeps two identical sin() calls inside one expression
+   tree. CSE operates at statement-list level and misses these. Found on 4
+   inner-loop lines (8 redundant sin() calls × 4096 iterations = 32K/tick).
+
+2. **Duplicate LICM declarations**: `f_assignment_19471_0` and
+   `f_assignment_26631_0` are character-for-character identical formulas
+   from different compilation units. The inner-loop sin() that references
+   them is actually the same computation done twice.
+
+3. **Replacement limit cap**: `ScopeSettings.getMaximumReplacements() = 12`
+   prevents CSE from deduplicating all 62 unique pre-loop sin() patterns
+   (254 total calls, 192 redundant). Impact is modest since pre-loop
+   executes once per tick, not per sample.
+
+**Performance:** 164.69ms avg buffer time (test a5a98d02, M4 laptop with
+JaCoCo + monitoring overhead). Not directly comparable to baseline (147ms
+on M1 Ultra Mac Studio) due to different machines. Back-to-back comparison
+on same machine needed for valid measurement.
+
+**Updated Goal 6** in plan document to reflect these findings, with revised
+acceptance criteria and implementation recommendations focusing on the three
+residual improvements rather than the original dedicated CSE pass.
+
+---
+
+### 2026-03-04 — Goal 6: Retest after Exponent strength-reduction fix
+
+**Context:** The previous analysis identified 8 redundant inner-loop sin()
+calls from the pattern `sin(x)*k*sin(x)*k` (a squared modulation). This was
+hypothesized to require within-statement CSE. The actual root cause was
+`Exponent.create()` expanding `pow(sin(x), 2)` into `sin(x)*sin(x)` without
+considering that the base was expensive. Another agent added a cost-awareness
+guard: strength reduction only applies when `base.totalComputeCost() <
+ScopeSettings.getStrengthReductionCostThreshold()` (threshold = 10).
+
+**Test run:** `39d2d825` — `effectsEnabledPerformance`, M4 laptop.
+
+**Results after Exponent fix:**
+
+| Metric | After Expr Cost only | After + Exponent fix |
+|--------|---------------------|----------------------|
+| Inner loop sin() | 18 | **11** |
+| Inner loop pow() | 12 | **11** |
+| Pre-loop sin() | 254 | 234 |
+| Pre-loop pow() | 214 | **345** (pow(sin,2) kept) |
+| Avg buffer time | 164.69ms | **163.57ms** |
+
+The Exponent fix confirmed the hypothesis: the "within-statement CSE"
+problem was really a strength-reduction problem. `pow(sin(x), 2)` is now
+preserved as a single pow() call instead of duplicating sin(x).
+
+Pre-loop pow() increased from 214 to 345 because `pow(base, 2)` is no longer
+expanded to `base*base` when the base is expensive — the pow() calls are now
+in LICM-hoisted pre-loop declarations instead of being invisible multiplications.
+
+**Inner loop analysis:** 11 sin() calls, 10 unique. The sole duplicate is
+`sin(time * f_assignment_26455_0)` on two adjacent lines writing to vector
+elements [0] and [1]. The other 9 are genuinely different LFO patterns
+(same rate `f_licm_2`, different phase offsets from genome/parameter arrays).
+
+**Conclusion:** Goal 6 is effectively complete. Updated plan document to
+mark it resolved with revised acceptance criteria.
+
 *(Add new entries above this line, newest first)*

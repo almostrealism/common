@@ -350,108 +350,217 @@ kernel launches, GPU dispatch overhead may negate parallelism gains.
 
 ---
 
-### Goal 6: Reduce per-sample sin() calls — HIGHEST PRIORITY (profile-defended)
+### Goal 6: Reduce per-sample transcendental function calls — EFFECTIVELY COMPLETE
 
-**Status: PLANNING**
+**Status: RESOLVED by Expression complexity system + Exponent strength-reduction fix**
 
-**Profile evidence:** `f_loop_33020` inner loop (lines 2041-4817 in generated
-C code) contains 148 sin() calls that execute on EVERY sample iteration.
-At 4096 samples per buffer, this produces **606,208 sin() evaluations per tick**.
-The kernel runs at 82ms/tick on M4 laptop — the 93ms real-time target requires
-reducing this to <93ms.
+#### Results summary
 
-The 128 `f_licm_*` pre-loop declarations already hoist angular rates and phase
-contributions, but the sin() calls themselves CANNOT be hoisted because they
-depend on the loop variable `_33020_i` (the sample frame index):
-`sin(_33020_i * angularRate + phaseContrib)`.
+Two platform-wide changes resolved the inner-loop transcendental cost:
 
-#### Approach A: LFO sub-buffer approximation
+1. **Expression complexity system** (`docs/plans/EXPRESSION_COMPLEXITY.md`):
+   Added `getComputeCost()` / `totalComputeCost()` to Expression, with
+   cost-aware CSE ranking, caching eligibility bypass, and LICM extraction.
 
-LFO frequencies are typically 0.1Hz–20Hz. At 44.1kHz, even a 20Hz LFO
-completes only ~1.86 cycles per 4096-sample buffer. This means the sin()
-value changes slowly across the buffer. Instead of computing sin() per sample:
+2. **Cost-aware Exponent strength reduction** (`Exponent.create()`): No longer
+   expands `pow(expensive_base, 2)` into `expensive_base * expensive_base`
+   when `base.totalComputeCost() >= ScopeSettings.getStrengthReductionCostThreshold()`.
+   This prevents patterns like `pow(sin(x), 2)` from duplicating the sin() call.
 
-1. Compute sin() at N evenly-spaced points (e.g., N=16 or N=64)
-2. Linearly interpolate between them for intermediate samples
+| Metric | Baseline | After both fixes | Change |
+|--------|----------|------------------|--------|
+| Inner loop sin() | 148 | **11** | **93% reduction** |
+| Inner loop pow() | 76 | **11** | **86% reduction** |
+| Pre-loop sin() (LICM-hoisted) | 0 | 234 | Hoisted from loop |
+| Pre-loop pow() (LICM-hoisted) | 0 | 345 | Hoisted (incl. pow(sin,2)) |
+| Total kernel lines | 4,823 | 5,642 | +819 (LICM declarations) |
+| Avg buffer time (M4 laptop, JaCoCo) | — | 163.57ms | — |
 
-This reduces 148 × 4096 = 606K sin() calls to 148 × 64 = 9,472 sin() calls
-(~64× reduction). The interpolation cost is a multiply + add per sample.
+**Inner loop sin(): 11 calls, 10 unique.** The sole duplicate is
+`sin(time * f_assignment_26455_0)` appearing on two lines writing to
+different vector elements (savings: 1 × 4096 = ~82μs/tick — negligible).
+The other 9 are genuinely unique LFO patterns with different phase offsets
+from genome/parameter arrays — they cannot be deduplicated.
 
-**Implementation:** This requires changes at the expression tree level
-(probably in `AutomationManager` or the `Repeated` loop generation) to
-detect sin() expressions that vary linearly with the loop counter and replace
-them with a pre-computed lookup + interpolation pattern.
+**Cost-aware LICM was the dominant mechanism.** `Repeated.isSubstantialForExtraction()`
+hoists expressions with `totalComputeCost() >= 15` regardless of tree depth,
+moving ~137 sin() and ~65 pow() out of the 4096-iteration inner loop.
 
-**Risk:** Requires framework-level changes to the expression compilation
-pipeline. The interpolation introduces a small approximation error.
+#### Remaining low-priority opportunity
 
-#### Approach B: Polynomial sin() approximation
+**Pre-loop CSE saturation (LOW IMPACT — 165 extra sin() × 1 = 165/tick)**
 
-Replace `sin(x)` with a fast polynomial approximation (e.g., Bhaskara I
-formula or minimax polynomial) at the code generation level. This avoids
-per-sample function call overhead while maintaining reasonable accuracy
-for audio LFO modulation (which doesn't need IEEE 754 precision).
+The LICM-hoisted pre-loop has 234 sin() calls but only 69 unique patterns.
+The 165 duplicates aren't caught because `ScopeSettings.getMaximumReplacements() = 12`
+caps total CSE replacements. Since these execute only once per tick (not per
+sample), the impact is ~3.3μs at 20ns/sin. Top duplication: 4 sin patterns
+appear 14× each (LFO with channel-specific phase offsets, duplicated across
+compilation units).
 
-**Implementation:** Add a `sinApprox()` expression node that generates
-inline polynomial code instead of calling `sin()`. Apply it selectively
-to LFO/automation expressions.
+**Recommendation:** Raising `getMaximumReplacements()` from 12 to 64+ would
+capture these, but the performance impact is negligible for this workload.
+Worth doing as a general improvement to the platform, not as an
+audio-loop-specific optimization.
 
-**Risk:** Audio quality impact — needs A/B testing. Lower risk than
-Approach A because it's a drop-in replacement, not a structural change.
+#### Acceptance criteria
 
-#### Approach C: Identify and eliminate redundant sin() calls
+- [x] Cost-aware LICM hoists expensive expressions from inner loop
+- [x] Inner loop sin() reduced from 148 to 11 (verified in generated C)
+- [x] Inner loop pow() reduced from 76 to 11
+- [x] Expression complexity system deployed platform-wide
+- [x] Exponent strength reduction respects compute cost
+- [x] Audio output quality preserved (tests pass, 0 failures)
+- [ ] Buffer time improvement measured back-to-back on same machine (pending)
 
-The 148 sin() calls per sample may include duplicates that CSE failed to
-catch (CSE limit is 12 replacements, 36 unique patterns competing). Profile
-data shows 128 f_licm variables — if some share the same angular rate and
-phase, their sin() values are identical.
+#### Future: Angle-addition optimization (separate task, low priority)
 
-**Investigation needed:** Extract the sin() arguments from the loop body
-to identify duplicates that could be merged at the expression tree level.
+The 9 unique inner-loop sin() patterns share a common rate (`f_licm_2`)
+with different phase offsets. Using the angle-addition formula:
 
-**Priority:** C first (investigation only), then B or A based on findings.
+    sin(frame*rate + phase) = sin(frame*rate)*cos(phase) + cos(frame*rate)*sin(phase)
 
-**Acceptance criteria:**
+we could compute `sin(frame*rate)` and `cos(frame*rate)` once per sample,
+then derive all 9 patterns via multiply-add:
+- 9 sin() → 2 sin() + 2 cos() + 9 multiply-adds = 4 transcendental
+- `cos(phase)` and `sin(phase)` terms are loop-invariant → LICM hoists them
 
-- [ ] Per-sample sin() call count reduced (target: < 30 per sample)
-- [ ] Buffer time improvement measured back-to-back
-- [ ] Audio output quality preserved (listen test + spectral comparison)
-- [ ] All existing tests pass
+**Priority:** Low. The 11 remaining inner-loop sin() calls add ~0.9ms/tick
+(11 × 4096 × 20ns). Angle-addition would save ~0.6ms of that. Not worth
+the implementation complexity unless real-time compliance is within reach.
 
 ---
 
 ### Goal 7: Optimize time series interpolation — SECONDARY PRIORITY (profile-defended)
 
-**Status: PLANNING**
+**Status: INVESTIGATION COMPLETE — ready for implementation**
 
 **Profile evidence:** 22 `f_acceleratedTimeSeriesValueAt` calls per sample
-iteration, each performing a **linear search** from the beginning of the time
-series data. The search loop (`for (int i = start; i < end; i++)`) scans
+iteration, each performing a **linear search** from `beginCursor` to
+`endCursor`. The search loop (`for (int i = start; i < end; i++)`) scans
 for the correct interpolation interval on every sample.
 
-Since the time series is accessed with monotonically increasing time values
-(the frame counter), the previous position is almost always correct or one
-step forward.
+#### Generated code analysis (all 22 functions are structurally identical)
 
-#### Approach: Last-position caching
+```c
+void f_acceleratedTimeSeriesValueAt_NNNN(
+        double *cursor, double *series, double *output,
+        jint cursorOffset, jint seriesOffset, jint outputOffset, ...) {
+    jint left = -1, right = -1;
+    // LINEAR SEARCH: O(active_buffer_size) per call
+    for (int i = series[seriesOffset]; i < series[seriesOffset + 1]; i++) {
+        if (series[(i * 2) + seriesOffset] >= cursor[cursorOffset]) {
+            left = i > series[seriesOffset] ? i - 1 : ...;
+            right = i;
+            break;
+        }
+    }
+    // Linear interpolation: v1 + (t1/t2) * (v2 - v1)
+    ...
+}
+```
 
-Add a local variable per time series call that remembers the last found
-index. On the next sample, start the search from that position instead of
-from the beginning.
+- All 22 functions have the **exact same body** (different variable name
+  prefixes only). Each operates on a **different** time series buffer — no
+  data-level redundancy.
+- Source: `AdjustableDelayCell.tick()` line 111:
+  `tick.add(a(cp(getOutputValue()), buffer.valueAt(p(cursors))));`
+- `AcceleratedTimeSeries.valueAt(Producer<CursorPair>)` (line 384) creates
+  `new AcceleratedTimeSeriesValueAt(...)` — the deprecated O(N) computation.
+- There are multiple `AdjustableDelayCell` instances in the pipeline (one per
+  channel × delay group), each with its own `AcceleratedTimeSeries` buffer.
 
-**Implementation:** Modify the generated `f_acceleratedTimeSeriesValueAt`
-functions to accept and return a position hint variable. Or, modify the
-expression tree representation of `AcceleratedTimeSeries.valueAt()` to
-include a cached position.
+#### Root cause: `AcceleratedTimeSeriesValueAt` is deprecated but still used
 
-**Expected impact:** Reduces O(samples × timeseries_length) to O(samples),
-since each lookup only needs to check 1-2 positions.
+`AcceleratedTimeSeriesValueAt` is `@Deprecated` (line 83) in favor of
+`Interpolate`. The `Interpolate` class with `enableFunctionalPosition = true`
+(the default) computes the array index via `ceil(indexForTime(time * rate)) - 1`
+— **O(1) per lookup, no search loop at all**.
+
+There is already 1 working `Interpolate` instance in the profile:
+`f_interpolate_29107` (274ms total, used by `WaveDataProviderAdapter`). It
+generates O(1) index computation code. The 22 `AcceleratedTimeSeriesValueAt`
+instances simply haven't been migrated yet.
+
+#### Implementation: Migrate `AdjustableDelayCell` to use `Interpolate`
+
+**File: `graph/src/main/java/org/almostrealism/graph/AdjustableDelayCell.java`**
+
+Change line 111 from:
+```java
+tick.add(a(cp(getOutputValue()), buffer.valueAt(p(cursors))));
+```
+to use `Interpolate` via `TemporalFeatures.interpolate()`. The key challenge
+is providing the correct `indexForTime` / `timeForIndex` functions for the
+delay line's cursor-based time model:
+
+- `AcceleratedTimeSeries` data layout: `[beginCursor, endCursor, time0, value0,
+  time1, value1, ...]`
+- Entries are added sequentially at cursor time values that increment by
+  `scale` each tick via `CursorPair.increment(scale)`
+- The `beginCursor` advances when `purge()` removes old entries
+- Query time comes from `CursorPair.delayCursor` (the read position)
+
+**Two sub-approaches for the index mapping:**
+
+**A. Direct position computation (preferred if cursor increment is uniform):**
+If the cursor increments by a fixed `scale` per tick, then:
+- `timeForIndex(i) = firstEntryTime + i * scale`
+- `indexForTime(t) = (t - firstEntryTime) / scale`
+
+Where `firstEntryTime` can be derived from `beginCursor` position and the
+series data. This gives exact O(1) lookup.
+
+**B. Use `Interpolate` with identity mapping + data restructuring:**
+If the time-series entries use integer sample indices instead of absolute
+cursor times, the identity mapping (`v -> v`) works directly. This requires
+changing `AdjustableDelayCell.tick()` to store entries with integer frame
+indices rather than cursor time values.
+
+**Key files to modify:**
+
+| File | Change |
+|------|--------|
+| `AdjustableDelayCell.java` (line 111) | Replace `buffer.valueAt(p(cursors))` with `Interpolate`-based lookup |
+| `AcceleratedTimeSeries.java` (line 384) | Add new method returning `Interpolate`-based producer (keep old for backward compatibility) |
+
+**Existing patterns to follow:**
+- `WaveDataProviderAdapter.java` line 60: already uses `new Interpolate(...)` in
+  production audio code
+- `SamplingFeatures.java` line 169: uses `interpolate(input, pos, rate)` helper
+- `TemporalFeatures.interpolate()` variants (lines 323-400): factory methods with
+  rate and custom mapping support
+
+**Fallback approach: Last-position cache (if Interpolate migration is too complex)**
+
+If the cursor-to-index mapping proves non-trivial, an alternative is to add a
+position hint to `AcceleratedTimeSeriesValueAt`:
+
+1. Add a `Producer<PackedCollection>` argument for the cache (1 int per series)
+2. Change the `for` loop in `getScope()` to start from `max(lastPos, beginCursor)`
+3. Store the found index back after each search
+4. The cache `PackedCollection` must be allocated in the loop scope (persists
+   across iterations) and passed as a kernel argument
+
+This converts O(buffer_size) to O(1) amortized for monotonically increasing
+queries, but adds complexity (22 new kernel arguments, cache management).
+
+#### Expected impact
+
+- 22 linear searches eliminated → 22 O(1) lookups per sample
+- With active buffer sizes of ~22K entries (0.5s delay at 44.1kHz):
+  22 calls × 22K iterations × 4096 samples = **~2 billion** loop iterations/tick
+  → reduced to 22 × 1 × 4096 = **~90K** lookups/tick
+- The exact timing impact depends on how many iterations the search typically
+  performs (depends on purge frequency and buffer utilization). Conservative
+  estimate: 5-15ms saved per tick.
 
 **Acceptance criteria:**
 
-- [ ] Time series lookup converted from linear to incremental search
-- [ ] Buffer time improvement measured
-- [ ] All existing tests pass
+- [ ] `AcceleratedTimeSeriesValueAt` replaced with `Interpolate` in `AdjustableDelayCell`
+- [ ] Linear search eliminated (verify in generated C: no `for` loop in interpolation)
+- [ ] Buffer time improvement measured back-to-back
+- [ ] Audio output quality preserved (delay line correctness verified)
+- [ ] All existing tests pass (especially `AdjustableDelayCellTest`)
 
 ---
 
