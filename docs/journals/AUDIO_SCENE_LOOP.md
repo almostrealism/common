@@ -1603,6 +1603,83 @@ to O(1) amortized by starting each search from the previous position.
 
 ---
 
+### 2026-03-04 — COMPUTE_CONTEXT_CHOICE: Investigation of isolation and routing
+
+**Goal:** Understand why collectionZeros and collectionProduct have 1056
+invocations per tick and why they're dramatically slower with `*` driver.
+
+**Finding 1 — collectionZeros is CachedStateCell.reset():**
+
+Every `CachedStateCell.tick()` adds `reset(p(cachedValue))` which is
+`a(1, out, c(0))` — a separate `Assignment` kernel. The AudioScene has
+~88 CachedStateCells × 6 channels × 2 stereo = 1056 independent scalar
+zero-write kernels per tick. These are NOT isolated by `IsolatedProcess` —
+they are separate because `CachedStateCell.tick()` adds them as individual
+`OperationList` entries with no cross-statement fusion.
+
+**Finding 2 — Assignment.get() JVMMemory short-circuit doesn't fire:**
+
+`Assignment.get()` (line 361–368) has a fast path for constant-to-JVMMemory
+writes that bypasses compilation. This doesn't fire on hardware-backed memory,
+so every `a(1, out, c(0))` compiles to a separate native kernel.
+
+**Finding 3 — DefaultComputer.getContext() routing logic:**
+
+The routing uses `count > 128 → GPU`, `count == 1 → CPU`. Scalar operations
+should route to CPU, but the `*` driver enables MetalMemoryProvider shared
+memory which may add overhead even for CPU-routed operations.
+
+**Decision:** Created `docs/plans/COMPUTE_CONTEXT_CHOICE.md` with two
+concerns: (1) whether trivial operations need to be compiled at all, and
+(2) how to improve hardware routing. Identified 6 investigation questions
+and 6 approach options, prioritized by impact.
+
+---
+
+### 2026-03-04 — Goal 5: Profiled AR_HARDWARE_DRIVER=* vs native comparison
+
+**Goal:** Understand how the per-operation cost distribution changes when both
+CPU and GPU backends are available (`AR_HARDWARE_DRIVER=*`), rather than making
+overhead claims based on native-only data.
+
+**Test runs (back-to-back, M4 laptop, JaCoCo + monitoring):**
+- `941a7cf8`: `AR_HARDWARE_DRIVER=native` — 143.33ms avg, 143 JNI kernels
+- `3803d277`: `AR_HARDWARE_DRIVER=*` — 137.46ms avg, 109 JNI + 30 Metal kernels
+
+**Per-operation comparison (runtime only, from profile):**
+
+| Operation | Native | * Driver | Change |
+|-----------|--------|----------|--------|
+| f_loop (monolithic) | 82.5ms/tick | 84.3ms/tick | ~same |
+| multiOrderFilter | 9.2ms/tick (37 inv) | 1.2ms/tick (46 inv) | **-87%** |
+| collectionProduct | 0.7ms/tick (1056 inv) | 5.5ms/tick (1056 inv) | **+686%** |
+| collectionZeros | 0.6ms/tick (1056 inv) | 4.4ms/tick (1056 inv) | **+627%** |
+| collectionAdd | 2.8ms/tick (3263 inv) | 3.5ms/tick (3423 inv) | +25% |
+
+**Key findings:**
+1. The `*` driver routes 17 multiOrderFilter convolution kernels to Metal
+   (visible as `mtl_instruction_set_0` through `mtl_instruction_set_29`).
+   Each is ~47 lines with cos/sin for Hamming window computation.
+2. GPU dispatch overhead on high-frequency small operations (collectionProduct,
+   collectionZeros — 1056 invocations per tick each) costs ~9ms/tick extra.
+3. GPU savings on filters are ~8ms/tick.
+4. Net improvement is ~4% (within thermal variance but consistent with
+   the GPU gains minus dispatch overhead).
+5. The monolithic kernel stays on CPU in both configurations.
+6. Unaccounted overhead (buffer time minus profiled runtime) is ~45ms/tick
+   in both, suggesting Java/JNI dispatch overhead is comparable.
+
+**Optimization opportunity:** If the system could route small collection
+operations to CPU while keeping filters on GPU, the full 8ms filter savings
+would apply without the 9ms dispatch penalty. This is a routing/scheduling
+question, not an expression optimization question.
+
+**Decision:** Updated plan document Goal 5 and runtime budget breakdown
+with profiled data. Removed earlier native-only overhead claims that were
+not valid for the multi-driver case.
+
+---
+
 ### 2026-03-04 — Goal 6: Post-Expression-Complexity Verification
 
 **Context:** The Expression complexity system (EXPRESSION_COMPLEXITY.md) was
@@ -1610,7 +1687,8 @@ implemented in a separate session, adding `getComputeCost()`/`totalComputeCost()
 to Expression and making CSE ranking, caching eligibility, and LICM cost-aware.
 This entry documents the verification of its impact on the AudioScene kernel.
 
-**Test run:** `a5a98d02` — `effectsEnabledPerformance` with profiling, M4 laptop.
+**Test run:** `a5a98d02` — `effectsEnabledPerformance` with profiling, M4 laptop,
+`AR_HARDWARE_DRIVER=native` (CPU/JNI only, no GPU), JaCoCo active.
 
 **Key finding: cost-aware LICM is the dominant win.** The change to
 `Repeated.isSubstantialForExtraction()` (hoist if `totalComputeCost() >= 15`)
@@ -1665,7 +1743,8 @@ considering that the base was expensive. Another agent added a cost-awareness
 guard: strength reduction only applies when `base.totalComputeCost() <
 ScopeSettings.getStrengthReductionCostThreshold()` (threshold = 10).
 
-**Test run:** `39d2d825` — `effectsEnabledPerformance`, M4 laptop.
+**Test run:** `39d2d825` — `effectsEnabledPerformance`, M4 laptop,
+`AR_HARDWARE_DRIVER=native` (CPU/JNI only, no GPU), JaCoCo active.
 
 **Results after Exponent fix:**
 

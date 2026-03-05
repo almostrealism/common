@@ -54,6 +54,8 @@ were active. Only back-to-back comparisons under identical conditions are valid.
 | Machine | Driver | JaCoCo | Monitoring | Approx Range |
 |---------|--------|--------|------------|--------------|
 | M4 laptop | native | yes | yes | 116–254 ms (high variance) |
+| M4 laptop | native | yes | yes (profiled) | ~143 ms (after Expression complexity + Exponent fix) |
+| M4 laptop | * (MTL+JNI) | yes | yes (profiled) | ~137 ms (after Expression complexity + Exponent fix) |
 | M1 Ultra Mac Studio | native | yes | no | ~352 ms |
 | M1 Ultra Mac Studio | native | no | no | ~186 ms (with ReplicationMismatchOptimization) |
 | M4 laptop | * (Metal) | yes | yes | ~247 ms (failed agent code, 171 kernels) |
@@ -315,38 +317,43 @@ sin() reduction approaches still available:
 
 ### Goal 5: Test with GPU acceleration (AR_HARDWARE_DRIVER=*)
 
-**Status: INITIAL TESTING COMPLETE (M1 Ultra Mac Studio)**
+**Status: PROFILED — GPU helps selectively, net 4% improvement on M4**
 
 MCP test runner hardcodes `AR_HARDWARE_DRIVER=native` in env vars, but
 this can be overridden via JVM arg `-DAR_HARDWARE_DRIVER=*` (SystemUtils
 checks system properties first, then env vars).
 
-**Results** (M1 Ultra Mac Studio, JaCoCo, no monitoring, see Goal 4 Phase 2 table):
-- Metal is **slower** than native in all configurations tested
-- Factored code: native 221ms vs Metal 231ms (+5%)
-- Unfactored code: native 200ms vs Metal 234ms (+17%)
-- Metal uses FP32 precision, kernel count unchanged at 143
+**Back-to-back profiled results** (M4 laptop, JaCoCo + monitoring):
 
-**Required work:**
+| Metric | Native (941a7cf8) | * Driver (3803d277) |
+|--------|-------------------|---------------------|
+| Avg buffer time | 143.33ms | **137.46ms (-4%)** |
+| Kernel count | 143 JNI | 109 JNI + 30 Metal |
+| multiOrderFilter runtime | 9.2ms/tick | **1.2ms/tick (-87%)** |
+| collectionProduct runtime | 0.7ms/tick | 5.5ms/tick (+686%) |
+| collectionZeros runtime | 0.6ms/tick | 4.4ms/tick (+627%) |
 
-1. ~~**Run `effectsEnabledPerformance` with `-DAR_HARDWARE_DRIVER=*`**~~ DONE
-   (M1 Ultra Mac Studio). Metal is slower than native with 143 kernels.
+**Earlier results** (M1 Ultra Mac Studio, JaCoCo, no monitoring):
+- Metal was **slower** in all configs (native 200ms vs Metal 234ms)
+- This was before the Expression complexity system optimizations
 
-2. **Compare kernel count**: Metal may generate additional kernels (171 vs
-   143 was observed). Understand why and whether this is expected.
-
-3. **Profile**: If GPU doesn't help, determine whether the bottleneck is
-   kernel launch overhead (143+ JNI calls) or data transfer.
-
-**NOTE:** GPU acceleration is most likely to help AFTER Goals 3 and 4
-reduce the kernel count and per-kernel compute cost. With 143 sequential
-kernel launches, GPU dispatch overhead may negate parallelism gains.
+**Analysis:**
+- The `*` driver routes 17 multiOrderFilter convolution kernels to Metal
+  GPU (30 MTL instruction sets), achieving 87% speedup on those operations.
+- Small collection operations (product, zeros — 1056 invocations each) incur
+  GPU dispatch overhead that makes them 7× slower.
+- The monolithic kernel stays on CPU at ~83ms/tick in both configurations.
+- Net: GPU gains on filters partially offset by dispatch overhead on small ops.
+- **Optimization opportunity:** If small collection operations could be kept on
+  CPU while filters go to GPU, the full 8ms/tick filter savings would apply
+  without the ~9ms/tick penalty from dispatch overhead on small ops.
 
 **Acceptance criteria:**
 
 - [x] GPU performance measured and compared to native baseline
-- [x] Kernel count: unchanged at 143 (no additional Metal kernels)
-- [x] Analysis: Metal hurts — 143 sequential dispatches incur overhead > parallelism gain
+- [x] Kernel count: 109 JNI + 30 Metal (17 convolution kernels on GPU)
+- [x] Profiled per-operation breakdown comparing native vs * driver
+- [x] Analysis: GPU helps filters (-87%), hurts small ops (+686%), net -4%
 
 ---
 
@@ -367,6 +374,9 @@ Two platform-wide changes resolved the inner-loop transcendental cost:
    when `base.totalComputeCost() >= ScopeSettings.getStrengthReductionCostThreshold()`.
    This prevents patterns like `pow(sin(x), 2)` from duplicating the sin() call.
 
+All results: `AR_HARDWARE_DRIVER=native` (CPU/JNI only, no GPU), M4 laptop,
+JaCoCo coverage active.
+
 | Metric | Baseline | After both fixes | Change |
 |--------|----------|------------------|--------|
 | Inner loop sin() | 148 | **11** | **93% reduction** |
@@ -374,7 +384,30 @@ Two platform-wide changes resolved the inner-loop transcendental cost:
 | Pre-loop sin() (LICM-hoisted) | 0 | 234 | Hoisted from loop |
 | Pre-loop pow() (LICM-hoisted) | 0 | 345 | Hoisted (incl. pow(sin,2)) |
 | Total kernel lines | 4,823 | 5,642 | +819 (LICM declarations) |
-| Avg buffer time (M4 laptop, JaCoCo) | — | 163.57ms | — |
+| Avg buffer time | — | 163.57ms | — |
+
+#### Runtime budget breakdown (back-to-back, M4 laptop, JaCoCo + monitoring)
+
+| Operation | Native (941a7cf8) | * Driver (3803d277) | Change |
+|-----------|-------------------|---------------------|--------|
+| **Avg buffer time** | **143.33ms** | **137.46ms** | **-4%** |
+| Kernel count | 143 JNI | 109 JNI + 30 Metal | — |
+| f_loop (monolithic) | 82.5ms/tick | 84.3ms/tick | ~same |
+| multiOrderFilter | 9.2ms/tick (37 inv) | 1.2ms/tick (46 inv) | **-87%** |
+| collectionProduct | 0.7ms/tick (1056 inv) | 5.5ms/tick (1056 inv) | **+686%** |
+| collectionZeros | 0.6ms/tick (1056 inv) | 4.4ms/tick (1056 inv) | **+627%** |
+| collectionAdd | 2.8ms/tick (3263 inv) | 3.5ms/tick (3423 inv) | +25% |
+
+**Key findings:**
+- The `*` driver routes multiOrderFilter convolution to Metal GPU, achieving
+  an **87% speedup** (9.2ms → 1.2ms/tick) on those 17 convolution kernels.
+- Small collection operations (product, zeros) are **dramatically slower** with
+  GPU dispatch overhead — collectionProduct goes from 0.7ms to 5.5ms/tick.
+- The monolithic kernel stays on CPU (JNI) in both configurations at ~83ms/tick.
+- **Net effect is a modest 4% improvement** because GPU gains on filters are
+  partially offset by dispatch overhead on small operations.
+- The unaccounted overhead (buffer time minus profiled runtime) is ~45ms/tick
+  in both cases, suggesting JNI/Java dispatch costs are similar.
 
 **Inner loop sin(): 11 calls, 10 unique.** The sole duplicate is
 `sin(time * f_assignment_26455_0)` appearing on two lines writing to
@@ -430,137 +463,16 @@ the implementation complexity unless real-time compliance is within reach.
 
 ---
 
-### Goal 7: Optimize time series interpolation — SECONDARY PRIORITY (profile-defended)
+### Goal 7: Optimize time series interpolation — DEFERRED
 
-**Status: INVESTIGATION COMPLETE — ready for implementation**
-
-**Profile evidence:** 22 `f_acceleratedTimeSeriesValueAt` calls per sample
-iteration, each performing a **linear search** from `beginCursor` to
-`endCursor`. The search loop (`for (int i = start; i < end; i++)`) scans
-for the correct interpolation interval on every sample.
-
-#### Generated code analysis (all 22 functions are structurally identical)
-
-```c
-void f_acceleratedTimeSeriesValueAt_NNNN(
-        double *cursor, double *series, double *output,
-        jint cursorOffset, jint seriesOffset, jint outputOffset, ...) {
-    jint left = -1, right = -1;
-    // LINEAR SEARCH: O(active_buffer_size) per call
-    for (int i = series[seriesOffset]; i < series[seriesOffset + 1]; i++) {
-        if (series[(i * 2) + seriesOffset] >= cursor[cursorOffset]) {
-            left = i > series[seriesOffset] ? i - 1 : ...;
-            right = i;
-            break;
-        }
-    }
-    // Linear interpolation: v1 + (t1/t2) * (v2 - v1)
-    ...
-}
-```
-
-- All 22 functions have the **exact same body** (different variable name
-  prefixes only). Each operates on a **different** time series buffer — no
-  data-level redundancy.
-- Source: `AdjustableDelayCell.tick()` line 111:
-  `tick.add(a(cp(getOutputValue()), buffer.valueAt(p(cursors))));`
-- `AcceleratedTimeSeries.valueAt(Producer<CursorPair>)` (line 384) creates
-  `new AcceleratedTimeSeriesValueAt(...)` — the deprecated O(N) computation.
-- There are multiple `AdjustableDelayCell` instances in the pipeline (one per
-  channel × delay group), each with its own `AcceleratedTimeSeries` buffer.
-
-#### Root cause: `AcceleratedTimeSeriesValueAt` is deprecated but still used
-
-`AcceleratedTimeSeriesValueAt` is `@Deprecated` (line 83) in favor of
-`Interpolate`. The `Interpolate` class with `enableFunctionalPosition = true`
-(the default) computes the array index via `ceil(indexForTime(time * rate)) - 1`
-— **O(1) per lookup, no search loop at all**.
-
-There is already 1 working `Interpolate` instance in the profile:
-`f_interpolate_29107` (274ms total, used by `WaveDataProviderAdapter`). It
-generates O(1) index computation code. The 22 `AcceleratedTimeSeriesValueAt`
-instances simply haven't been migrated yet.
-
-#### Implementation: Migrate `AdjustableDelayCell` to use `Interpolate`
-
-**File: `graph/src/main/java/org/almostrealism/graph/AdjustableDelayCell.java`**
-
-Change line 111 from:
-```java
-tick.add(a(cp(getOutputValue()), buffer.valueAt(p(cursors))));
-```
-to use `Interpolate` via `TemporalFeatures.interpolate()`. The key challenge
-is providing the correct `indexForTime` / `timeForIndex` functions for the
-delay line's cursor-based time model:
-
-- `AcceleratedTimeSeries` data layout: `[beginCursor, endCursor, time0, value0,
-  time1, value1, ...]`
-- Entries are added sequentially at cursor time values that increment by
-  `scale` each tick via `CursorPair.increment(scale)`
-- The `beginCursor` advances when `purge()` removes old entries
-- Query time comes from `CursorPair.delayCursor` (the read position)
-
-**Two sub-approaches for the index mapping:**
-
-**A. Direct position computation (preferred if cursor increment is uniform):**
-If the cursor increments by a fixed `scale` per tick, then:
-- `timeForIndex(i) = firstEntryTime + i * scale`
-- `indexForTime(t) = (t - firstEntryTime) / scale`
-
-Where `firstEntryTime` can be derived from `beginCursor` position and the
-series data. This gives exact O(1) lookup.
-
-**B. Use `Interpolate` with identity mapping + data restructuring:**
-If the time-series entries use integer sample indices instead of absolute
-cursor times, the identity mapping (`v -> v`) works directly. This requires
-changing `AdjustableDelayCell.tick()` to store entries with integer frame
-indices rather than cursor time values.
-
-**Key files to modify:**
-
-| File | Change |
-|------|--------|
-| `AdjustableDelayCell.java` (line 111) | Replace `buffer.valueAt(p(cursors))` with `Interpolate`-based lookup |
-| `AcceleratedTimeSeries.java` (line 384) | Add new method returning `Interpolate`-based producer (keep old for backward compatibility) |
-
-**Existing patterns to follow:**
-- `WaveDataProviderAdapter.java` line 60: already uses `new Interpolate(...)` in
-  production audio code
-- `SamplingFeatures.java` line 169: uses `interpolate(input, pos, rate)` helper
-- `TemporalFeatures.interpolate()` variants (lines 323-400): factory methods with
-  rate and custom mapping support
-
-**Fallback approach: Last-position cache (if Interpolate migration is too complex)**
-
-If the cursor-to-index mapping proves non-trivial, an alternative is to add a
-position hint to `AcceleratedTimeSeriesValueAt`:
-
-1. Add a `Producer<PackedCollection>` argument for the cache (1 int per series)
-2. Change the `for` loop in `getScope()` to start from `max(lastPos, beginCursor)`
-3. Store the found index back after each search
-4. The cache `PackedCollection` must be allocated in the loop scope (persists
-   across iterations) and passed as a kernel argument
-
-This converts O(buffer_size) to O(1) amortized for monotonically increasing
-queries, but adds complexity (22 new kernel arguments, cache management).
-
-#### Expected impact
-
-- 22 linear searches eliminated → 22 O(1) lookups per sample
-- With active buffer sizes of ~22K entries (0.5s delay at 44.1kHz):
-  22 calls × 22K iterations × 4096 samples = **~2 billion** loop iterations/tick
-  → reduced to 22 × 1 × 4096 = **~90K** lookups/tick
-- The exact timing impact depends on how many iterations the search typically
-  performs (depends on purge frequency and buffer utilization). Conservative
-  estimate: 5-15ms saved per tick.
-
-**Acceptance criteria:**
-
-- [ ] `AcceleratedTimeSeriesValueAt` replaced with `Interpolate` in `AdjustableDelayCell`
-- [ ] Linear search eliminated (verify in generated C: no `for` loop in interpolation)
-- [ ] Buffer time improvement measured back-to-back
-- [ ] Audio output quality preserved (delay line correctness verified)
-- [ ] All existing tests pass (especially `AdjustableDelayCellTest`)
+22 `f_acceleratedTimeSeriesValueAt` calls per sample use O(N) linear search
+via the deprecated `AcceleratedTimeSeriesValueAt`. The replacement
+(`Interpolate` with `enableFunctionalPosition=true`) gives O(1) lookup.
+Source: `AdjustableDelayCell.tick()` line 111. Profile evidence (test
+39d2d825, `AR_HARDWARE_DRIVER=native`): 20 instances totaling 82ms across
+the full test run = ~1.9ms/tick (1.2% of buffer time). Not worth targeting
+until higher-impact opportunities are exhausted. See journal entry
+2026-03-04 for full investigation details.
 
 ---
 
