@@ -109,7 +109,7 @@ cd tools/mcp/manager
 ```
 
 This will:
-1. Create `/usr/local/flowtree/manager/` (isolated from controller config)
+1. Create `/Users/Shared/flowtree/manager/` (isolated from controller config)
 2. Generate a bearer token and print it
 3. Build and start the `ar-manager` container via `docker compose`
 4. Set up Tailscale Funnel on port 8010
@@ -123,7 +123,7 @@ To just generate a token: `./setup.sh --token-only`
 **File layout on the host:**
 
 ```
-/usr/local/flowtree/
+/Users/Shared/flowtree/
   controller/           # workstreams.yaml, slack-tokens.json (controller only)
   manager/              # manager-tokens.json (manager only, isolated)
   memory-data/          # ar-memory FAISS indices and entries
@@ -142,7 +142,7 @@ mcpServers:
       MCP_TRANSPORT: http
       MCP_PORT: "8010"
       AR_MANAGER_GITHUB_TOKEN: ${GITHUB_TOKEN}
-      AR_MANAGER_TOKEN_FILE: /usr/local/flowtree/manager/manager-tokens.json
+      AR_MANAGER_TOKEN_FILE: /Users/Shared/flowtree/manager/manager-tokens.json
 ```
 
 The controller will start it automatically via `FlowTreeController.startCentralizedMcpServers()`.

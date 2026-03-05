@@ -12,7 +12,7 @@ COPY target/ar-flowtree-*.jar /app/lib/
 COPY target/dependency/*.jar /app/lib/
 
 # Working directory for config files (workstreams.yaml, slack-tokens.json)
-# Mount /usr/local/flowtree/controller here at runtime
+# Mount /Users/Shared/flowtree/controller here at runtime
 WORKDIR /config
 
 # HTTP API port

@@ -24,7 +24,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 COMPOSE_FILE="${REPO_ROOT}/tools/docker-compose.yml"
-CONFIG_DIR="/usr/local/flowtree/manager"
+CONFIG_DIR="/Users/Shared/flowtree/manager"
 TOKEN_FILE="${CONFIG_DIR}/manager-tokens.json"
 MANAGER_PORT="${AR_MANAGER_PORT:-8010}"
 
