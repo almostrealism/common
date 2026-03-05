@@ -119,7 +119,7 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 	 * <p>Architecture: Input [6] - Dense [6 - 6] - Norm - Dense [6 - 6] - Norm - Dense [6 - 3] - Output [3]</p>
 	 */
 	@Test(timeout = 13 * 60000)
-	@TestDepth(1)
+	@TestDepth(2)
 	public void denseMultiLayerWithNorm() throws FileNotFoundException {
 		log("=== Test 3.2: Dense Multi-layer with Norm ===");
 
@@ -163,7 +163,7 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 	 * <p>Architecture: Input [12] - Dense [12 - 12] - Norm [groups=3] - Dense [12 - 6] - Output [6]</p>
 	 */
 	@Test(timeout = 10 * 60000)
-	@TestDepth(1)
+	@TestDepth(2)
 	public void groupNorm() throws FileNotFoundException {
 		log("=== Test 3.3: Group Normalization ===");
 
