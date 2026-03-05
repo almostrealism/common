@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
  *   children &lt;file&gt; [node_key]               - List children of a node
  *   search &lt;file&gt; &lt;pattern&gt;                  - Search operations by name pattern
  *   breakdown &lt;file&gt; &lt;node_key&gt;              - Get compile vs run time breakdown for a node
+ *   source &lt;file&gt; &lt;node_key&gt; [max_lines]     - Get generated source code for a node
  * </pre>
  */
 public class ProfileAnalyzerCLI {
@@ -90,6 +91,24 @@ public class ProfileAnalyzerCLI {
                     }
                     printBreakdown(filePath, args[2]);
                     break;
+                case "source":
+                    if (args.length < 3) {
+                        System.err.println("Error: source requires a node_key argument");
+                        System.exit(1);
+                    }
+                    int maxLines = 200;
+                    if (args.length > 3) {
+                        maxLines = Integer.parseInt(args[3]);
+                    }
+                    printSource(filePath, args[2], maxLines);
+                    break;
+                case "source-summary":
+                    if (args.length < 3) {
+                        System.err.println("Error: source-summary requires a node_key argument");
+                        System.exit(1);
+                    }
+                    printSourceSummary(filePath, args[2]);
+                    break;
                 default:
                     System.err.println("Unknown command: " + command);
                     printUsage();
@@ -111,6 +130,7 @@ public class ProfileAnalyzerCLI {
         System.err.println("  children <file> [node_key]               - List children of a node");
         System.err.println("  search <file> <pattern>                  - Search operations by name");
         System.err.println("  breakdown <file> <node_key>              - Get compile vs run time breakdown");
+        System.err.println("  source <file> <node_key> [max_lines]     - Get generated source code for a node");
     }
 
     private static void printSummary(String filePath) throws IOException {
@@ -376,6 +396,324 @@ public class ProfileAnalyzerCLI {
         json.append("}");
 
         System.out.println(json);
+    }
+
+    /**
+     * Prints the generated source code for an operation node.
+     *
+     * <p>Source code is stored on the root profile node's
+     * {@code operationSources} map, keyed by operation name.  This method
+     * looks up the target node's name in the root's sources.</p>
+     */
+    private static void printSource(String filePath, String nodeKey, int maxLines) throws IOException {
+        OperationProfileNode root = OperationProfileNode.load(filePath);
+
+        OperationProfileNode node = findByKey(root, nodeKey);
+        if (node == null) {
+            System.out.println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
+            return;
+        }
+
+        // Sources are stored on the root node, keyed by operation name
+        Map<String, List<OperationSource>> rootSources = root.getOperationSources();
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\n");
+        json.append("  \"node_key\": \"").append(escapeJson(nodeKey)).append("\",\n");
+        json.append("  \"node_name\": \"").append(escapeJson(node.getName())).append("\",\n");
+
+        // Try matching by node name, then by node key
+        List<OperationSource> matched = null;
+        String matchedKey = null;
+
+        if (rootSources != null) {
+            // Try node name first (most common key format)
+            if (rootSources.containsKey(node.getName())) {
+                matched = rootSources.get(node.getName());
+                matchedKey = node.getName();
+            }
+            // Try node key
+            else if (rootSources.containsKey(node.getKey())) {
+                matched = rootSources.get(node.getKey());
+                matchedKey = node.getKey();
+            }
+            // Try partial match on name
+            else {
+                for (Map.Entry<String, List<OperationSource>> entry : rootSources.entrySet()) {
+                    if (entry.getKey().contains(node.getName()) ||
+                            node.getName().contains(entry.getKey())) {
+                        matched = entry.getValue();
+                        matchedKey = entry.getKey();
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (matched != null && !matched.isEmpty()) {
+            json.append("  \"source_key\": \"").append(escapeJson(matchedKey)).append("\",\n");
+            json.append("  \"source_count\": ").append(matched.size()).append(",\n");
+            json.append("  \"sources\": [\n");
+
+            for (int si = 0; si < matched.size(); si++) {
+                OperationSource src = matched.get(si);
+                if (si > 0) json.append(",\n");
+                json.append("    {\n");
+
+                String sourceCode = src.getSource();
+                if (sourceCode != null) {
+                    String[] lines = sourceCode.split("\n");
+                    int totalLines = lines.length;
+                    boolean truncated = totalLines > maxLines;
+                    int showLines = Math.min(totalLines, maxLines);
+
+                    json.append("      \"total_lines\": ").append(totalLines).append(",\n");
+                    json.append("      \"truncated\": ").append(truncated).append(",\n");
+
+                    StringBuilder truncatedSource = new StringBuilder();
+                    for (int i = 0; i < showLines; i++) {
+                        if (i > 0) truncatedSource.append("\n");
+                        truncatedSource.append(lines[i]);
+                    }
+                    if (truncated) {
+                        truncatedSource.append("\n// ... ").append(totalLines - maxLines).append(" more lines ...");
+                    }
+
+                    json.append("      \"source\": \"").append(escapeJson(truncatedSource.toString())).append("\",\n");
+                } else {
+                    json.append("      \"source\": null,\n");
+                }
+
+                List<String> argKeys = src.getArgumentKeys();
+                List<String> argNames = src.getArgumentNames();
+                if (argKeys != null && !argKeys.isEmpty()) {
+                    json.append("      \"argument_count\": ").append(argKeys.size()).append(",\n");
+                    json.append("      \"arguments\": [");
+                    for (int i = 0; i < argKeys.size(); i++) {
+                        if (i > 0) json.append(", ");
+                        json.append("{\"key\": \"").append(escapeJson(argKeys.get(i))).append("\"");
+                        if (argNames != null && i < argNames.size()) {
+                            json.append(", \"name\": \"").append(escapeJson(argNames.get(i))).append("\"");
+                        }
+                        json.append("}");
+                    }
+                    json.append("]\n");
+                } else {
+                    json.append("      \"argument_count\": 0,\n");
+                    json.append("      \"arguments\": []\n");
+                }
+
+                json.append("    }");
+            }
+            json.append("\n  ]\n");
+        } else {
+            json.append("  \"source_count\": 0,\n");
+            json.append("  \"sources\": [],\n");
+
+            // List available source keys for hint
+            if (rootSources != null && !rootSources.isEmpty()) {
+                List<String> availableKeys = rootSources.keySet().stream()
+                        .sorted()
+                        .limit(20)
+                        .collect(Collectors.toList());
+                json.append("  \"available_source_keys\": [");
+                for (int i = 0; i < availableKeys.size(); i++) {
+                    if (i > 0) json.append(", ");
+                    json.append("\"").append(escapeJson(availableKeys.get(i))).append("\"");
+                }
+                json.append("],\n");
+                json.append("  \"total_available_sources\": ").append(rootSources.size()).append(",\n");
+            }
+
+            json.append("  \"hint\": \"No source found for this node name. Try a node whose name matches a compiled kernel.\"\n");
+        }
+
+        json.append("}");
+        System.out.println(json);
+    }
+
+    /**
+     * Prints a structural summary of the generated source code for an operation,
+     * including function counts by type, loop counts, math operations, and total
+     * lines — without dumping the full source.
+     */
+    private static void printSourceSummary(String filePath, String nodeKey) throws IOException {
+        OperationProfileNode root = OperationProfileNode.load(filePath);
+
+        OperationProfileNode node = findByKey(root, nodeKey);
+        if (node == null) {
+            System.out.println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
+            return;
+        }
+
+        Map<String, List<OperationSource>> rootSources = root.getOperationSources();
+        List<OperationSource> matched = null;
+
+        if (rootSources != null) {
+            if (rootSources.containsKey(node.getName())) {
+                matched = rootSources.get(node.getName());
+            } else if (rootSources.containsKey(node.getKey())) {
+                matched = rootSources.get(node.getKey());
+            }
+        }
+
+        if (matched == null || matched.isEmpty()) {
+            System.out.println("{\"error\": \"No source found for node: " + escapeJson(nodeKey) + "\"}");
+            return;
+        }
+
+        String sourceCode = matched.get(0).getSource();
+        if (sourceCode == null) {
+            System.out.println("{\"error\": \"Source is null for node: " + escapeJson(nodeKey) + "\"}");
+            return;
+        }
+
+        String[] lines = sourceCode.split("\n");
+
+        // Count function definitions and categorize them
+        Map<String, Integer> functionTypeCounts = new java.util.LinkedHashMap<>();
+        List<String> functionSignatures = new ArrayList<>();
+        int forLoopCount = 0;
+        int ifCount = 0;
+        int mathOps = 0;
+        int sinCount = 0, cosCount = 0, expCount = 0, powCount = 0;
+        int fmodCount = 0, floorCount = 0, fabsCount = 0;
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+
+            // Count function definitions
+            if ((trimmed.startsWith("void f_") || trimmed.startsWith("double f_")) && trimmed.contains("(")) {
+                functionSignatures.add(trimmed.split("\\(")[0]);
+                // Extract function type prefix (e.g., "f_acceleratedTimeSeriesValueAt")
+                String funcName = trimmed.split("\\(")[0].split("\\s+")[1];
+                String funcType = funcName.replaceAll("_\\d+$", "");
+                functionTypeCounts.merge(funcType, 1, Integer::sum);
+            }
+
+            // Count control flow
+            if (trimmed.startsWith("for (") || trimmed.startsWith("for(")) forLoopCount++;
+            if (trimmed.startsWith("if (") || trimmed.startsWith("if(") ||
+                    trimmed.startsWith("} else if (") || trimmed.startsWith("} else if(")) ifCount++;
+
+            // Count math operations in the line
+            sinCount += countOccurrences(line, "sin(");
+            cosCount += countOccurrences(line, "cos(");
+            expCount += countOccurrences(line, "exp(");
+            powCount += countOccurrences(line, "pow(");
+            fmodCount += countOccurrences(line, "fmod(");
+            floorCount += countOccurrences(line, "floor(");
+            fabsCount += countOccurrences(line, "fabs(");
+        }
+
+        mathOps = sinCount + cosCount + expCount + powCount + fmodCount + floorCount + fabsCount;
+
+        // Count unique function bodies (deduplicate by normalizing variable names)
+        Map<String, Integer> uniqueBodies = new java.util.HashMap<>();
+        StringBuilder currentBody = new StringBuilder();
+        boolean inFunction = false;
+        int braceDepth = 0;
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if ((trimmed.startsWith("void f_") || trimmed.startsWith("double f_")) && trimmed.contains("(")) {
+                inFunction = true;
+                braceDepth = 0;
+                currentBody = new StringBuilder();
+            }
+            if (inFunction) {
+                // Normalize: replace all numeric suffixes in identifiers
+                String normalized = trimmed.replaceAll("_\\d+", "_N");
+                currentBody.append(normalized).append("\n");
+                for (char c : trimmed.toCharArray()) {
+                    if (c == '{') braceDepth++;
+                    if (c == '}') braceDepth--;
+                }
+                if (braceDepth == 0 && currentBody.length() > 10) {
+                    String bodyKey = currentBody.toString();
+                    uniqueBodies.merge(bodyKey, 1, Integer::sum);
+                    inFunction = false;
+                }
+            }
+        }
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\n");
+        json.append("  \"node_key\": \"").append(escapeJson(nodeKey)).append("\",\n");
+        json.append("  \"node_name\": \"").append(escapeJson(node.getName())).append("\",\n");
+        json.append("  \"total_lines\": ").append(lines.length).append(",\n");
+        json.append("  \"argument_count\": ").append(
+                matched.get(0).getArgumentKeys() != null ? matched.get(0).getArgumentKeys().size() : 0
+        ).append(",\n");
+
+        // Function summary
+        int totalFunctions = functionSignatures.size();
+        json.append("  \"total_functions\": ").append(totalFunctions).append(",\n");
+        json.append("  \"unique_function_bodies\": ").append(uniqueBodies.size()).append(",\n");
+        json.append("  \"duplicated_functions\": ").append(totalFunctions - uniqueBodies.size()).append(",\n");
+
+        // Function types breakdown
+        json.append("  \"function_types\": {\n");
+        List<Map.Entry<String, Integer>> sortedTypes = new ArrayList<>(functionTypeCounts.entrySet());
+        sortedTypes.sort(Map.Entry.<String, Integer>comparingByValue().reversed());
+        for (int i = 0; i < sortedTypes.size(); i++) {
+            Map.Entry<String, Integer> entry = sortedTypes.get(i);
+            json.append("    \"").append(escapeJson(entry.getKey())).append("\": ").append(entry.getValue());
+            if (i < sortedTypes.size() - 1) json.append(",");
+            json.append("\n");
+        }
+        json.append("  },\n");
+
+        // Duplication analysis
+        json.append("  \"duplicate_groups\": [\n");
+        List<Map.Entry<String, Integer>> dupGroups = uniqueBodies.entrySet().stream()
+                .filter(e -> e.getValue() > 1)
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .limit(10)
+                .collect(Collectors.toList());
+        for (int i = 0; i < dupGroups.size(); i++) {
+            Map.Entry<String, Integer> group = dupGroups.get(i);
+            // Extract first function name from the body
+            String firstLine = group.getKey().split("\n")[0];
+            String funcType = firstLine.contains("(") ? firstLine.split("\\(")[0] : firstLine;
+            funcType = funcType.replaceAll("_N", "_*");
+            int bodyLines = group.getKey().split("\n").length;
+            json.append("    {\"pattern\": \"").append(escapeJson(funcType.trim())).append("\", ");
+            json.append("\"copies\": ").append(group.getValue()).append(", ");
+            json.append("\"lines_per_copy\": ").append(bodyLines).append("}");
+            if (i < dupGroups.size() - 1) json.append(",");
+            json.append("\n");
+        }
+        json.append("  ],\n");
+
+        // Control flow
+        json.append("  \"for_loops\": ").append(forLoopCount).append(",\n");
+        json.append("  \"if_statements\": ").append(ifCount).append(",\n");
+
+        // Math operations
+        json.append("  \"math_operations\": {\n");
+        json.append("    \"total\": ").append(mathOps).append(",\n");
+        json.append("    \"sin\": ").append(sinCount).append(",\n");
+        json.append("    \"cos\": ").append(cosCount).append(",\n");
+        json.append("    \"exp\": ").append(expCount).append(",\n");
+        json.append("    \"pow\": ").append(powCount).append(",\n");
+        json.append("    \"fmod\": ").append(fmodCount).append(",\n");
+        json.append("    \"floor\": ").append(floorCount).append(",\n");
+        json.append("    \"fabs\": ").append(fabsCount).append("\n");
+        json.append("  }\n");
+
+        json.append("}");
+        System.out.println(json);
+    }
+
+    private static int countOccurrences(String text, String target) {
+        int count = 0;
+        int idx = 0;
+        while ((idx = text.indexOf(target, idx)) != -1) {
+            count++;
+            idx += target.length();
+        }
+        return count;
     }
 
     private static void collectNodes(OperationProfileNode node, List<OperationProfileNode> nodes) {

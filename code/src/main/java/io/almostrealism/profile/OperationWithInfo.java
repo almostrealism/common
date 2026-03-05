@@ -23,10 +23,43 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Supplier;
 
+/**
+ * A decorator that pairs an {@link Operation} with explicit {@link OperationMetadata},
+ * enabling the operation to participate in the profiling system.
+ *
+ * <p>Many operations do not natively implement {@link OperationInfo}. This wrapper
+ * attaches metadata to such operations so that the profiling listeners (e.g.,
+ * {@link OperationTimingListener}) can identify them when recording durations.
+ * The wrapper delegates all {@link Operation} methods to the underlying operation
+ * while providing the metadata via {@link #getMetadata()}.</p>
+ *
+ * <p>When {@link #get()} is called, it returns a {@link RunnableWithInfo} that
+ * similarly wraps the runnable produced by the underlying operation, ensuring
+ * that metadata is preserved through the get-then-run lifecycle.</p>
+ *
+ * <p>Example usage:</p>
+ * <pre>{@code
+ * OperationMetadata meta = new OperationMetadata("MyOp", "Custom operation");
+ * OperationWithInfo wrapped = OperationWithInfo.of(meta, existingOperation);
+ * listener.recordDuration(wrapped.get());  // metadata is available for profiling
+ * }</pre>
+ *
+ * @see OperationInfo
+ * @see OperationMetadata
+ * @see RunnableWithInfo
+ *
+ * @author Michael Murray
+ */
 public class OperationWithInfo implements Operation, OperationInfo {
 	private final OperationMetadata metadata;
 	private final Operation operation;
 
+	/**
+	 * Creates a wrapper pairing the given metadata with the given operation.
+	 *
+	 * @param metadata  the metadata to associate with this operation
+	 * @param operation the underlying operation to delegate to
+	 */
 	public OperationWithInfo(OperationMetadata metadata, Operation operation) {
 		this.metadata = metadata;
 		this.operation = operation;
@@ -61,18 +94,44 @@ public class OperationWithInfo implements Operation, OperationInfo {
 		return getMetadata().getShortDescription();
 	}
 
+	/**
+	 * Creates a wrapper pairing the given metadata with the given operation.
+	 *
+	 * @param metadata  the metadata to associate
+	 * @param operation the underlying operation
+	 * @return a new {@code OperationWithInfo}
+	 */
 	public static OperationWithInfo of(OperationMetadata metadata, Operation operation) {
 		return new OperationWithInfo(metadata, operation);
 	}
 
+	/**
+	 * Creates a wrapper from a metadata and a runnable supplier, converting
+	 * the supplier to an {@link Operation} first.
+	 *
+	 * @param metadata the metadata to associate
+	 * @param op       a supplier that produces a runnable
+	 * @return a new {@code OperationWithInfo}
+	 */
 	public static OperationWithInfo of(OperationMetadata metadata, Supplier<Runnable> op) {
 		return OperationWithInfo.of(metadata, Operation.of(op));
 	}
 
+	/**
+	 * A {@link Runnable} decorator that carries {@link OperationMetadata},
+	 * enabling profiling listeners to identify the operation when timing
+	 * its execution.
+	 */
 	public static class RunnableWithInfo implements OperationInfo, Runnable {
 		private final OperationMetadata metadata;
 		private final Runnable runnable;
 
+		/**
+		 * Creates a runnable wrapper with the given metadata.
+		 *
+		 * @param metadata the metadata to associate
+		 * @param runnable the underlying runnable to delegate to
+		 */
 		public RunnableWithInfo(OperationMetadata metadata, Runnable runnable) {
 			this.metadata = metadata;
 			this.runnable = runnable;

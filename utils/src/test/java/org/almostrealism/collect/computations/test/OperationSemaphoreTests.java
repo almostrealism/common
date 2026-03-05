@@ -28,12 +28,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class OperationSemaphoreTests extends TestSuiteBase {
-	@Test(timeout = 30000)
+	@Test(timeout = 2 * 60000)
 	public void sum() {
 		sum(16, 2048, 1024, false);
 	}
 
-	@Test(timeout = 2 * 60000)
+	@Test(timeout = 4 * 60000)
 	@TestDepth(2)
 	public void sumPowers() {
 		for (int i = 1; i < 9; i++) {

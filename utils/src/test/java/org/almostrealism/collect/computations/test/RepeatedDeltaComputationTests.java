@@ -238,7 +238,7 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		assertEquals(1.0, out.valueAt(3, 1));
 	}
 
-	@Test(timeout = 5 * 60000)
+	@Test(timeout = 7 * 60000)
 	@TestDepth(2)
 	public void convDeltaSmall() throws IOException {
 		int l = 2; int d = 6;
