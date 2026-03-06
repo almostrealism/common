@@ -264,8 +264,15 @@ class BearerAuthMiddleware:
     scopes are stored via ``_set_scopes`` for downstream tool handlers.
     """
 
-    # Paths that bypass authentication (health checks, readiness probes)
-    AUTH_EXEMPT_PATHS = {"/_health"}
+    # Paths that bypass authentication (health checks, OAuth endpoints)
+    AUTH_EXEMPT_PATHS = {
+        "/_health",
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/oauth-protected-resource",
+        "/oauth/register",
+        "/oauth/authorize",
+        "/oauth/token",
+    }
 
     def __init__(self, app, tokens: list):
         self.app = app
@@ -1595,6 +1602,16 @@ if __name__ == "__main__":
 
         if tokens:
             # Wrap the MCP app with auth + rate-limiting middleware
+            # Serve MCP at "/" — Claude mobile ignores the path component
+            # and always sends requests to the root.
+            mcp.settings.streamable_http_path = "/"
+            # Disable DNS rebinding protection — the server runs behind a
+            # TLS-terminating reverse proxy (Tailscale Funnel) where the
+            # Host header is the public DNS name, not localhost.
+            from mcp.server.transport_security import TransportSecuritySettings
+            mcp.settings.transport_security = TransportSecuritySettings(
+                enable_dns_rebinding_protection=False,
+            )
             try:
                 app = mcp.streamable_http_app()
             except AttributeError:
@@ -1610,8 +1627,14 @@ if __name__ == "__main__":
                 sys.exit(1)
 
             # Middleware order (outermost first):
-            #   HealthMiddleware -> RateLimitMiddleware -> BearerAuthMiddleware -> app
+            #   Health -> RateLimit -> OAuth -> BearerAuth -> app
+            # OAuth sits outside BearerAuth so its endpoints (metadata,
+            # registration, authorize, token) are accessible without an
+            # existing bearer token.
+            from oauth import OAuthMiddleware
+            issuer_url = os.environ.get("AR_MANAGER_ISSUER_URL")
             app = BearerAuthMiddleware(app, tokens)
+            app = OAuthMiddleware(app, tokens, issuer_url=issuer_url)
             app = RateLimitMiddleware(app, requests_per_minute=RATE_LIMIT)
             app = HealthMiddleware(app)
 

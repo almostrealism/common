@@ -66,20 +66,46 @@ if [ "$TOKEN_ONLY" = true ]; then
     exit 0
 fi
 
-# ── 3. Build and start the container ─────────────────────────────────
+# ── 3. Resolve Tailscale DNS (needed before container start) ─────────
+
+# Prefer the application binary directly to avoid bundle identifier issues
+# when invoking via symlink on macOS.
+TAILSCALE_BIN="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+if [ ! -x "$TAILSCALE_BIN" ]; then
+    TAILSCALE_BIN="$(command -v tailscale 2>/dev/null || true)"
+fi
+
+TS_DNS=""
+if [ "$SETUP_FUNNEL" = true ]; then
+    if [ -z "$TAILSCALE_BIN" ]; then
+        echo "ERROR: tailscale CLI not found. Install Tailscale or use --no-funnel." >&2
+        exit 1
+    fi
+
+    # Derive the public hostname before starting the container so we can
+    # pass the OAuth issuer URL as an environment variable.
+    TS_DNS=$("$TAILSCALE_BIN" status --self --json 2>/dev/null \
+        | python3 -c "import json,sys; print(json.load(sys.stdin)['Self']['DNSName'].rstrip('.'))" \
+        2>/dev/null || echo "")
+fi
+
+# ── 4. Build and start the container ─────────────────────────────────
 
 echo ""
 echo "==> Building and starting ar-manager..."
 
 # Pass through env vars docker-compose needs
 export AR_MANAGER_PORT="${MANAGER_PORT}"
+if [ -n "$TS_DNS" ]; then
+    export AR_MANAGER_ISSUER_URL="https://${TS_DNS}"
+fi
 
 docker compose -f "${COMPOSE_FILE}" build ar-manager
 docker compose -f "${COMPOSE_FILE}" up -d ar-manager
 
 echo "==> Waiting for ar-manager to be healthy..."
 for i in $(seq 1 15); do
-    if curl -sf --connect-timeout 2 "http://localhost:${MANAGER_PORT}/mcp" > /dev/null 2>&1; then
+    if curl -sf --connect-timeout 2 "http://localhost:${MANAGER_PORT}/_health" > /dev/null 2>&1; then
         echo "==> ar-manager is up on port ${MANAGER_PORT}"
         break
     fi
@@ -90,24 +116,14 @@ for i in $(seq 1 15); do
     sleep 1
 done
 
-# ── 4. Set up Tailscale Funnel ───────────────────────────────────────
+# ── 5. Set up Tailscale Funnel ───────────────────────────────────────
 
 if [ "$SETUP_FUNNEL" = true ]; then
     echo ""
     echo "==> Setting up Tailscale Funnel on port ${MANAGER_PORT}..."
 
-    if ! command -v tailscale >/dev/null 2>&1; then
-        echo "ERROR: tailscale CLI not found. Install Tailscale or use --no-funnel." >&2
-        exit 1
-    fi
-
     # Enable funnel (idempotent — safe to re-run)
-    tailscale funnel --bg "${MANAGER_PORT}"
-
-    # Derive the public URL
-    TS_DNS=$(tailscale status --self --json 2>/dev/null \
-        | python3 -c "import json,sys; print(json.load(sys.stdin)['Self']['DNSName'].rstrip('.'))" \
-        2>/dev/null || echo "")
+    "$TAILSCALE_BIN" funnel --bg "${MANAGER_PORT}"
 
     echo ""
     if [ -n "$TS_DNS" ]; then
@@ -116,7 +132,7 @@ if [ "$SETUP_FUNNEL" = true ]; then
         echo "    https://${TS_DNS}/"
         echo ""
         echo "    Configure this URL in Claude mobile as a remote MCP server."
-        echo "    Use the bearer token printed above for authentication."
+        echo "    OAuth will prompt you to enter your bearer token."
     else
         echo "==> Funnel configured, but could not determine the public URL."
         echo "    Run 'tailscale funnel status' to see the URL."

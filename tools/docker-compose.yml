@@ -77,6 +77,7 @@ services:
       - AR_MEMORY_URL=http://ar-memory:8020
       - AR_MANAGER_GITHUB_TOKEN=${AR_MANAGER_GITHUB_TOKEN:-}
       - AR_MANAGER_TOKEN_FILE=/config/manager-tokens.json
+      - AR_MANAGER_ISSUER_URL=${AR_MANAGER_ISSUER_URL:-}
       - AR_CONSULTANT_BACKEND=${AR_CONSULTANT_BACKEND:-llamacpp}
       - AR_CONSULTANT_LLAMA_URL=${AR_CONSULTANT_LLAMA_URL:-}
     depends_on:
