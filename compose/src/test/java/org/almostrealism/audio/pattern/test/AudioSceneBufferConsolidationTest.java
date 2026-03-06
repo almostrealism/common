@@ -273,9 +273,13 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		// Effects are ON by default - do NOT call disableEffects()
 		PatternSystemManager.enableWarnings = false;
 
-		// Enable per-kernel profiling (compile + run timing for each operation)
-		OperationProfileNode profile = new OperationProfileNode("effects-enabled-performance");
-		Hardware.getLocalHardware().assignProfile(profile);
+		// Enable per-kernel profiling unless explicitly disabled
+		boolean profilingEnabled = !Boolean.getBoolean("AR_DISABLE_PROFILING");
+		OperationProfileNode profile = null;
+		if (profilingEnabled) {
+			profile = new OperationProfileNode("effects-enabled-performance");
+			Hardware.getLocalHardware().assignProfile(profile);
+		}
 
 		AudioScene<?> scene = createSceneWithWorkingSeed(samplesDir);
 		if (scene == null) {
@@ -284,9 +288,12 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		}
 
 		int bufferSize = 4096;
-		double renderSeconds = 4.0;
+		double renderSeconds = Double.parseDouble(
+				System.getProperty("AR_RENDER_SECONDS", "4.0"));
 
 		log("=== Effects-Enabled Performance Test ===");
+		log("Profiling: " + (profilingEnabled ? "ENABLED" : "DISABLED"));
+		log("Render seconds: " + renderSeconds);
 		log("Channels: " + SOURCE_COUNT);
 		log("Buffer size: " + bufferSize + " frames");
 		log("Effects: ENABLED (filters, delays, automation)");
@@ -336,12 +343,14 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 
 		// Save per-kernel profile and clear
 		Hardware.getLocalHardware().clearProfile();
-		try {
-			String profilePath = "results/effects-enabled-performance-profile.xml";
-			profile.save(profilePath);
-			log("Profile saved to: " + profilePath);
-		} catch (Exception e) {
-			log("Failed to save profile: " + e.getMessage());
+		if (profile != null) {
+			try {
+				String profilePath = "results/effects-enabled-performance-profile.xml";
+				profile.save(profilePath);
+				log("Profile saved to: " + profilePath);
+			} catch (Exception e) {
+				log("Failed to save profile: " + e.getMessage());
+			}
 		}
 
 		scene.destroy();

@@ -1772,4 +1772,108 @@ elements [0] and [1]. The other 9 are genuinely different LFO patterns
 **Conclusion:** Goal 6 is effectively complete. Updated plan document to
 mark it resolved with revised acceptance criteria.
 
+---
+
+## 2026-03-06 — Compute Overhead Investigation via JFR CPU Profiling
+
+**Context:** Both M1 Ultra Mac Studio and M4 laptop profiling showed ~32% of
+buffer time was "unaccounted" — not attributable to any kernel or named
+operation. The goal was to identify where this overhead comes from using
+JFR CPU sampling and allocation profiling.
+
+**Approach:** Ran `AudioSceneBufferConsolidationTest#effectsEnabledPerformance`
+with JFR `profile` settings (`-XX:StartFlightRecording=settings=profile`) and
+Metal+JNI driver. Analyzed 85 seconds of recording with 3,786 native method
+samples and 190 Java execution samples.
+
+**Key Finding: Profiling System Is the Dominant Overhead Source**
+
+The `OperationProfileNode` profiling system (always active in this test via
+`Hardware.assignProfile()`) generates ~9 GB of autoboxed `Double`/`Integer`
+allocations per run through `MetricBase.addEntry()`:
+- `entries.merge(name, value, Double::sum)` — Double autoboxing
+- `counts.merge(name, 1, Integer::sum)` — Integer autoboxing
+- `intervalTotals.merge(interval, value, Double::sum)` — Double autoboxing
+- `intervalCounts.merge(interval, 1, Integer::sum)` — Integer autoboxing
+
+Plus `getCurrentInterval()` calls `Instant.now()` (2.2% of native CPU time).
+
+Allocation trace confirmed: 7.0 GB of the 7.4 GB total `Double` allocation
+originates from `MetricBase.addEntry` -> `DistributionMetric.addEntry` ->
+`OperationProfileNode.recordDuration/getScopeListener`.
+
+**Other Findings:**
+- 88.8% of native CPU time during kernel window is C compiler subprocess I/O
+  (`FileInputStream.readBytes` + `ProcessHandleImpl.waitForProcessExit0`) —
+  this is runtime compilation of uncached kernels, expected on first tick
+- Only 5.8% of native time is actual JNI kernel execution
+- Java-side hotspots: `ProviderAwareArgumentMap` stream iteration (16.8%),
+  `ReshapeProducer.get()` (3.6%), `DirectMethodHandle.allocateInstance` (7.3%)
+- Stream API infrastructure creates 1.6 GB of `ReferencePipeline$Head` objects
+
+**JMX Tool Fixes (macOS compatibility):**
+- Fixed `is_process_alive()` in `jvm_diagnostics.py` — was using `/proc/<pid>/stat`
+  which doesn't exist on macOS; added `os.kill(pid, 0)` fallback
+- Fixed `get_ppid()` — added `ps -o ppid=` fallback
+- Fixed PID discovery in test-runner — `jps -l` shows `surefirebooter` jar path,
+  not `ForkedBooter` class name; added match for both
+- Fixed parent check — changed from direct parent to ancestor walk since Maven
+  shell wrapper -> Maven JVM -> Surefire fork is a 2-level chain
+- Added `jfr_settings` parameter to `start_test_run` tool
+
+**Deliverable:** Created `docs/plans/COMPUTE_OVERHEAD.md` with full analysis,
+categorized overhead sources, and prioritized recommendations.
+
+## 2026-03-06 — A/B Profiling Test + Phase Instrumentation
+
+**Context:** Previous journal entry concluded profiling allocations were the dominant
+overhead based on JFR allocation volume. The user disputed this, noting no material
+impact when running the real application with profiling off. Designed a proper 60-second
+A/B experiment to settle the question definitively.
+
+**Warning I/O Discovery:** Before completing the A/B test, discovered that
+`PatternLayerManager` warnings were printing per-tick per-channel, adding ~87ms/tick
+of pure I/O overhead (264ms with warnings → 177ms without). Changed default for
+`PatternLayerManager.enableWarnings` from `true` to `false` (controlled via
+`-DAR_PATTERN_WARNINGS=true` to re-enable). This was the single largest confound
+in all prior measurements.
+
+**A/B Test Results (60s, 645 ticks, Metal, warnings suppressed):**
+- Profiling ON: 207.55 ms avg (3 invocations)
+- Profiling OFF: 197.35 ms avg (3 invocations)
+- Delta: **-10.20 ms (-4.9%)** — profiling is real but small, NOT dominant
+- Key lesson: allocation volume ≠ CPU time. G1GC handles young-gen efficiently.
+
+**Phase Instrumentation (run 80fc54bb):** Added `-DAR_INSTRUMENT_PHASES=true` to
+`RealTimeTestHelper.renderRealTime()`. When the tick `Runnable` is an
+`OperationList.Runner`, extracts sub-operations and times each individually.
+
+**Phase Results (27 sub-operations, avg 192ms/tick):**
+- Phase 0: Reset buffer frame index — 0.014ms (0.0%)
+- Phases 1-24: 24× `PatternAudioBuffer.prepareBatch()` — **52.78ms (27.5%)**
+- Phase 25: `Loop x4096` monolithic kernel — **139.19ms (72.5%)**
+- Phase 26: Advance global frame — 0.002ms (0.0%)
+- Timing overhead: 0.016ms (0.0%)
+
+**Interpretation:** The "unaccounted overhead" from earlier analysis IS the
+`prepareBatch()` calls. They were invisible before because they were part of the
+same `OperationList.Runner.run()` call as the kernel. Now we can see they account
+for 27.5% of each tick — consistent with the ~32% "unaccounted" figure from
+earlier profiling (the difference explained by measurement noise and the profiling
+system's own ~5% contribution).
+
+**Both kernel AND prepareBatch exceed the real-time budget:**
+- Target buffer time: 92.9ms
+- Kernel alone: 139ms (1.5× over budget)
+- PrepareBatch alone: 53ms (would consume 57% of budget even with instant kernel)
+
+**Next steps:**
+1. Optimize kernel via LFO expression factoring for LICM (existing plan)
+2. Profile prepareBatch to understand what the expensive channels are doing
+3. Consider caching pattern resolution across ticks when patterns haven't changed
+
+**Next Steps:** Run the test with vs. without `OperationProfileNode` to quantify
+the exact overhead delta. If confirmed large, either disable profiling in
+performance tests or rewrite `MetricBase` to use primitive-typed accumulators.
+
 *(Add new entries above this line, newest first)*
