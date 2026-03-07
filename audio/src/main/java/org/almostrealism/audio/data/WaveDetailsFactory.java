@@ -20,9 +20,14 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.Ops;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.DoubleStream;
 
 /**
@@ -55,6 +60,11 @@ public class WaveDetailsFactory implements CodeFeatures {
 	public static double defaultWindow = 0.25; // 0.125;
 
 	protected static WaveDetailsFactory defaultFactory;
+
+	/** Default batch size for batched similarity computation. */
+	public static final int SIMILARITY_BATCH_SIZE = 100;
+
+	private static final Map<Long, Evaluable<PackedCollection>> cosineCalc = new HashMap<>();
 
 	private final int sampleRate;
 	private final double fftSampleRate;
@@ -172,10 +182,14 @@ public class WaveDetailsFactory implements CodeFeatures {
 		return existing;
 	}
 
+	/**
+	 * Computes similarity between two audio samples using cached evaluables
+	 * and pre-computed norms to avoid redundant computation object creation.
+	 */
 	public double similarity(WaveDetails a, WaveDetails b) {
 		if (a.getFeatureData() != null && b.getFeatureData() != null) {
 			int limit = Math.max(a.getValidFeatureFrameCount(), b.getValidFeatureFrameCount());
-			return productSimilarity(cp(a.getFeatureData()), cp(b.getFeatureData()), limit);
+			return cachedProductSimilarity(a, b, limit);
 		} else if (enableFreqSimilarity && a.getFreqData() != null && b.getFreqData() != null) {
 			return -WaveDetails.differenceSimilarity(a.getFreqData(0), b.getFreqData(0));
 		} else {
@@ -183,6 +197,157 @@ public class WaveDetailsFactory implements CodeFeatures {
 		}
 	}
 
+	/**
+	 * Computes cosine similarity using a cached evaluable that is compiled
+	 * once per (frames, bins) combination and reused for all comparisons
+	 * with matching dimensions. This eliminates the overhead of creating
+	 * ~12 Computation objects and calling alignTraversalAxes ~9 times
+	 * per comparison.
+	 */
+	private double cachedProductSimilarity(WaveDetails a, WaveDetails b, int limit) {
+		PackedCollection dataA = a.getFeatureData();
+		PackedCollection dataB = b.getFeatureData();
+
+		int framesA = dataA.getShape().length(0);
+		int framesB = dataB.getShape().length(0);
+		int frames = Math.min(framesA, framesB);
+		int bins = dataA.getShape().length(1);
+
+		TraversalPolicy rangeShape = new TraversalPolicy(frames, bins, 1);
+		PackedCollection inputA = frames < framesA ? dataA.range(rangeShape) : dataA;
+		PackedCollection inputB = frames < framesB ? dataB.range(rangeShape) : dataB;
+
+		double[] values = cosineSimilarityEvaluable(frames, bins)
+				.evaluate(inputA, inputB).doubleStream().limit(limit).toArray();
+
+		if (values.length == 0) return -1.0;
+
+		int skip = 0;
+		int total = values.length;
+		if (total > 10) {
+			skip = (int) (values.length * 0.1);
+			total = total - skip - 2;
+		}
+
+		return DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
+	}
+
+	/**
+	 * Computes similarity between a query and multiple targets using batched
+	 * kernel evaluation. Targets are processed in batches of
+	 * {@link #SIMILARITY_BATCH_SIZE}, computing multiple cosine similarities
+	 * in a single kernel call to reduce per-comparison launch overhead.
+	 *
+	 * <p>The query tensor is stacked once per batch (not per comparison),
+	 * and only target data is copied per-batch. For targets without feature
+	 * data or with incompatible bin counts, the result is {@code -Double.MAX_VALUE}.</p>
+	 *
+	 * @param query   the query WaveDetails
+	 * @param targets list of target WaveDetails to compare against
+	 * @return array of similarity scores, one per target, in the same order
+	 */
+	public double[] batchSimilarity(WaveDetails query, List<WaveDetails> targets) {
+		if (targets.isEmpty()) return new double[0];
+
+		PackedCollection queryData = query.getFeatureData();
+		if (queryData == null) {
+			double[] results = new double[targets.size()];
+			Arrays.fill(results, -Double.MAX_VALUE);
+			return results;
+		}
+
+		int queryFrames = queryData.getShape().length(0);
+		int bins = queryData.getShape().length(1);
+		double[] results = new double[targets.size()];
+
+		int batchSize = SIMILARITY_BATCH_SIZE;
+		int batchStart = 0;
+
+		while (batchStart < targets.size()) {
+			int batchEnd = Math.min(batchStart + batchSize, targets.size());
+			int actualBatch = batchEnd - batchStart;
+
+			int frames = queryFrames;
+			for (int i = batchStart; i < batchEnd; i++) {
+				PackedCollection targetData = targets.get(i).getFeatureData();
+				if (targetData != null) {
+					frames = Math.min(frames, targetData.getShape().length(0));
+				}
+			}
+
+			int totalFrames = batchSize * frames;
+			int elementsPerItem = frames * bins;
+			TraversalPolicy rangeShape = new TraversalPolicy(frames, bins, 1);
+
+			PackedCollection queryRange = frames < queryFrames
+					? queryData.range(rangeShape) : queryData;
+
+			PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, bins, 1));
+			for (int b = 0; b < batchSize; b++) {
+				stackedQuery.setMem(b * elementsPerItem, queryRange, 0, elementsPerItem);
+			}
+
+			PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, bins, 1));
+			for (int b = 0; b < actualBatch; b++) {
+				PackedCollection targetData = targets.get(batchStart + b).getFeatureData();
+				if (targetData == null) continue;
+
+				int targetFrames = targetData.getShape().length(0);
+				PackedCollection targetRange = frames < targetFrames
+						? targetData.range(rangeShape) : targetData;
+				stackedTargets.setMem(b * elementsPerItem, targetRange, 0, elementsPerItem);
+			}
+
+			double[] allValues = cosineSimilarityEvaluable(totalFrames, bins)
+					.evaluate(stackedQuery, stackedTargets)
+					.doubleStream().toArray();
+
+			int outputElementsPerItem = frames * bins;
+			for (int b = 0; b < actualBatch; b++) {
+				WaveDetails target = targets.get(batchStart + b);
+				if (target.getFeatureData() == null) {
+					results[batchStart + b] = -Double.MAX_VALUE;
+					continue;
+				}
+
+				int limit = Math.max(query.getValidFeatureFrameCount(),
+						target.getValidFeatureFrameCount());
+				limit = Math.min(limit, frames);
+
+				double[] targetValues = new double[limit];
+				System.arraycopy(allValues, b * outputElementsPerItem, targetValues, 0, limit);
+				results[batchStart + b] = trimmedMean(targetValues);
+			}
+
+			batchStart = batchEnd;
+		}
+
+		return results;
+	}
+
+	/**
+	 * Computes trimmed mean of per-frame similarity values, removing
+	 * the bottom 10% and top 2 values to reduce outlier effects.
+	 */
+	private static double trimmedMean(double[] values) {
+		if (values.length == 0) return -1.0;
+
+		int skip = 0;
+		int total = values.length;
+		if (total > 10) {
+			skip = (int) (values.length * 0.1);
+			total = total - skip - 2;
+		}
+
+		return DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
+	}
+
+	/**
+	 * Computes cosine similarity between two feature vectors by building
+	 * the full expression tree on each call. Retained for backward compatibility.
+	 *
+	 * @see #cachedProductSimilarity(WaveDetails, WaveDetails, int)
+	 */
 	public double productSimilarity(Producer<PackedCollection> a, Producer<PackedCollection> b, int limit) {
 		double[] values = multiply(a, b).sum(1)
 				.divide(multiply(length(1, a), length(1, b)))
@@ -198,8 +363,24 @@ public class WaveDetailsFactory implements CodeFeatures {
 			total = total - skip - 2;
 		}
 
-		// log("Skipping " + skip + " of " + values.length + " values, averaging " + total + " values");
 		return DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
+	}
+
+	private static long shapeKey(int frames, int bins) {
+		return ((long) frames << 32) | bins;
+	}
+
+	/**
+	 * Returns a cached evaluable that computes per-frame cosine similarity
+	 * between two feature tensors of shape (frames, bins, 1). The evaluable
+	 * is compiled once and reused for all comparisons with matching dimensions.
+	 */
+	private static Evaluable<PackedCollection> cosineSimilarityEvaluable(int frames, int bins) {
+		TraversalPolicy shape = new TraversalPolicy(frames, bins, 1);
+		return cosineCalc.computeIfAbsent(shapeKey(frames, bins), k ->
+				Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1)
+						.divide(o.multiply(o.length(1, o.cv(shape, 0)),
+								o.length(1, o.cv(shape, 1))))).get());
 	}
 
 	protected PackedCollection processFft(PackedCollection fft, PackedCollection output) {
