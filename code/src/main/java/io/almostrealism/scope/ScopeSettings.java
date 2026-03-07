@@ -235,7 +235,29 @@ public class ScopeSettings {
 	 */
 	public static int getStrengthReductionCostThreshold() { return 100; }
 
+	/**
+	 * Determines whether the given expression should be cached (extracted into a
+	 * named declaration for reuse).
+	 *
+	 * <p>An expression is eligible for caching if either:</p>
+	 * <ul>
+	 *   <li>Its {@link Expression#totalComputeCost()} meets or exceeds the
+	 *       {@linkplain #getComputeCostCacheThreshold() compute cost threshold},
+	 *       ensuring expensive operations (transcendentals, etc.) are always cached
+	 *       regardless of the active caching strategy; or</li>
+	 *   <li>The active {@link CachingSettings} implementation accepts it based on
+	 *       structural criteria (tree depth, hash, etc.).</li>
+	 * </ul>
+	 *
+	 * @param expression the expression to evaluate for caching eligibility
+	 * @return true if the expression should be cached
+	 */
 	public static boolean isExpressionCacheTarget(Expression<?> expression) {
+		if (expression.totalComputeCost() >= getComputeCostCacheThreshold()) {
+			cacheCount++;
+			return true;
+		}
+
 		boolean c = caching.isExpressionCacheTarget(expression);
 		if (c) {
 			cacheCount++;

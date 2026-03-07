@@ -123,6 +123,16 @@ public class ExpressionCache {
 				k -> new FrequencyCache<>(ScopeSettings.getExpressionCacheSize(), 0.7));
 	}
 
+	/**
+	 * Returns frequently occurring expressions ranked by total compute savings.
+	 *
+	 * <p>Expressions that appear more than
+	 * {@link ScopeSettings#getExpressionCacheFrequencyThreshold()} times are
+	 * collected. They are sorted descending by estimated savings
+	 * (frequency &times; {@link Expression#totalComputeCost()}).</p>
+	 *
+	 * @return expressions ordered by descending compute savings potential
+	 */
 	public List<Expression<?>> getFrequentExpressions() {
 		int threshold = ScopeSettings.getExpressionCacheFrequencyThreshold();
 

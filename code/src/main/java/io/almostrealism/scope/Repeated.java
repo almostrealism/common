@@ -83,7 +83,7 @@ public class Repeated<T> extends Scope<T> {
 	 * Controls whether LICM diagnostic logging is enabled.
 	 * When true, detailed information about variance classification is printed
 	 * to stderr for Repeated scopes with more than 10 declarations.
-	 * Can also be enabled via the system property {@code AR_LICM_DIAGNOSTICS=true}.
+	 * Can also be enabled via the system property {@code AR_LICM_DIAGNOSTICS=enabled}.
 	 */
 	public static boolean enableLicmDiagnostics =
 			SystemUtils.isEnabled("AR_LICM_DIAGNOSTICS").orElse(false);
@@ -194,20 +194,9 @@ public class Repeated<T> extends Scope<T> {
 		// iterate until no new variant names are discovered (fixed-point).
 		List<DeclarationInfo> allDeclarations = collectDeclarations(scope);
 
-		boolean enableDiag = enableLicmDiagnostics && allDeclarations.size() > 10;
-		if (enableDiag) {
-			logPrePropagationDiagnostics(scope, allDeclarations, variantNames, loopIndices);
-		}
-
 		propagateVariance(allDeclarations, variantNames, loopIndices);
 
-		if (enableDiag) {
-			logPostPropagationDiagnostics(allDeclarations, variantNames, loopIndices);
-		}
-
 		// Phase 3: hoist declarations whose names are NOT in the variant set.
-		// This recurses into all descendant scopes (grandchildren, etc.) to find
-		// invariant declarations at any nesting depth — not just direct children.
 		List<Statement<?>> hoisted = new ArrayList<>();
 
 		for (Scope<T> child : scope.getChildren()) {
@@ -215,17 +204,15 @@ public class Repeated<T> extends Scope<T> {
 		}
 
 		// Phase 4: extract loop-invariant sub-expressions from remaining variant
-		// declaration expressions. This handles cases like genome-only pow()
-		// sub-expressions embedded within larger variant envelope accumulate
-		// expressions. Each extracted sub-expression becomes a new declaration
-		// that is hoisted.
+		// declaration expressions.
 		List<Statement<?>> extractedDeclarations = new ArrayList<>();
 		extractInvariantSubExpressions(scope, variantNames, loopIndices, extractedDeclarations);
 
-		if (enableDiag) {
-			System.err.println("[LICM-DIAG] Phase 3 hoisted: " + hoisted.size() + " declarations");
-			System.err.println("[LICM-DIAG] Phase 4 extracted: " + extractedDeclarations.size() + " sub-expressions");
-			System.err.println("[LICM-DIAG] === end hoistLoopInvariantStatements ===");
+		if (enableLicmDiagnostics && allDeclarations.size() > 10) {
+			log("[LICM] " + scope.getName() + ": " +
+					allDeclarations.size() + " decls, " +
+					hoisted.size() + " hoisted, " +
+					extractedDeclarations.size() + " extracted");
 		}
 
 		// Add all hoisted statements to this scope (before the loop).
@@ -235,96 +222,6 @@ public class Repeated<T> extends Scope<T> {
 		allHoisted.addAll(hoisted);
 		allHoisted.addAll(extractedDeclarations);
 		scope.getStatements().addAll(0, allHoisted);
-	}
-
-	/**
-	 * Logs diagnostic information about the LICM scope before variance propagation.
-	 * Includes scope name, loop index, children count, declarations found, and base variant names.
-	 */
-	private void logPrePropagationDiagnostics(Repeated<T> scope, List<DeclarationInfo> allDeclarations,
-											   Set<String> variantNames, List<Index> loopIndices) {
-		Variable<Integer, ?> scopeIndex = scope.getIndex();
-		System.err.println("[LICM-DIAG] === hoistLoopInvariantStatements ===");
-		System.err.println("[LICM-DIAG] Scope name: " + scope.getName());
-		System.err.println("[LICM-DIAG] Loop index variable: " +
-				(scopeIndex != null ? scopeIndex.getName() + " (type=" + scopeIndex.getClass().getSimpleName() + ")" : "null"));
-		System.err.println("[LICM-DIAG] Children count: " + scope.getChildren().size());
-		System.err.println("[LICM-DIAG] Total declarations found: " + allDeclarations.size());
-		System.err.println("[LICM-DIAG] Base variant names (before propagation): " + variantNames);
-		System.err.println("[LICM-DIAG] Loop indices count: " + loopIndices.size());
-		for (Index idx : loopIndices) {
-			System.err.println("[LICM-DIAG]   Loop index: " + idx.getName() + " (type=" + idx.getClass().getSimpleName() + ")");
-		}
-	}
-
-	/**
-	 * Logs diagnostic information about variance classification after propagation.
-	 * For variant {@code f_assignment} declarations, logs the specific reason for variance.
-	 */
-	private void logPostPropagationDiagnostics(List<DeclarationInfo> allDeclarations,
-												Set<String> variantNames, List<Index> loopIndices) {
-		System.err.println("[LICM-DIAG] Variant names (after propagation): " + variantNames);
-		int invariantCount = 0;
-		int variantCount = 0;
-		for (DeclarationInfo decl : allDeclarations) {
-			boolean isVariant = variantNames.contains(decl.name);
-			if (isVariant) {
-				variantCount++;
-				if (decl.name.contains("assignment")) {
-					System.err.println("[LICM-DIAG] VARIANT f_assignment decl: " + decl.name);
-					logVarianceReasons(decl.expression, variantNames, loopIndices);
-				}
-			} else {
-				invariantCount++;
-			}
-		}
-		System.err.println("[LICM-DIAG] Invariant declarations: " + invariantCount +
-				", Variant declarations: " + variantCount);
-	}
-
-	/**
-	 * Logs the specific reasons an expression was classified as loop-variant.
-	 * Checks all variance detection paths: loop indices, variable dependencies,
-	 * named indices, and StaticReference nodes.
-	 */
-	private void logVarianceReasons(Expression<?> expr, Set<String> variantNames, List<Index> loopIndices) {
-		if (expr == null) return;
-
-		for (Index idx : loopIndices) {
-			if (expr.containsIndex(idx)) {
-				System.err.println("[LICM-DIAG]   -> contains loop index: " + idx.getName());
-			}
-		}
-		for (Variable<?, ?> var : expr.getDependencies()) {
-			if (var.getName() != null && variantNames.contains(var.getName())) {
-				System.err.println("[LICM-DIAG]   -> depends on variant variable: " + var.getName());
-			}
-		}
-		for (Index idx : expr.getIndices()) {
-			if (idx.getName() != null && variantNames.contains(idx.getName())) {
-				System.err.println("[LICM-DIAG]   -> contains variant index name: " + idx.getName());
-			}
-		}
-		if (containsStaticReferenceToAny(expr, variantNames)) {
-			System.err.println("[LICM-DIAG]   -> contains StaticReference to variant name");
-			reportVariantStaticReferences(expr, variantNames);
-		}
-	}
-
-	/**
-	 * Reports which StaticReference nodes in the expression tree reference variant names.
-	 * Used for diagnostic logging only.
-	 */
-	private void reportVariantStaticReferences(Expression<?> expr, Set<String> variantNames) {
-		if (expr instanceof StaticReference) {
-			String name = ((StaticReference<?>) expr).getName();
-			if (name != null && variantNames.contains(name)) {
-				System.err.println("[LICM-DIAG]     StaticReference -> " + name);
-			}
-		}
-		for (Expression<?> child : expr.getChildren()) {
-			reportVariantStaticReferences(child, variantNames);
-		}
 	}
 
 	/**
@@ -962,15 +859,9 @@ public class Repeated<T> extends Scope<T> {
 		}
 
 		// Check for StaticReference nodes that reference loop-assigned variables by name.
-		// This handles the case where a declaration like "double f_0 = expr" creates a
-		// StaticReference("f_0") that is used in subsequent expressions. Without this check,
-		// expressions referencing f_0 could be incorrectly hoisted because StaticReference
-		// without a referent returns empty from getDependencies().
-		if (containsStaticReferenceToAny(expr, loopAssignedVariables)) {
-			return false;
-		}
-
-		return true;
+		// StaticReference without a referent returns empty from getDependencies(),
+		// so we must check by name to avoid incorrectly hoisting dependent expressions.
+		return !containsStaticReferenceToAny(expr, loopAssignedVariables);
 	}
 
 	/**

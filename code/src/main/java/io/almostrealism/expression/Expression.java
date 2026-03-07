@@ -340,18 +340,6 @@ public abstract class Expression<T> implements
 	public long totalComputeCost() { return computeCost; }
 
 	/**
-	 * Checks whether this expression subtree contains any node whose intrinsic
-	 * compute cost meets or exceeds the given threshold.
-	 *
-	 * @param threshold the minimum cost to be considered expensive
-	 * @return {@code true} if any node in this subtree has {@code getComputeCost() >= threshold}
-	 */
-	public boolean containsExpensiveOperation(int threshold) {
-		if (getComputeCost() >= threshold) return true;
-		return getChildren().stream().anyMatch(c -> c.containsExpensiveOperation(threshold));
-	}
-
-	/**
 	 * Checks if this expression produces an integer result.
 	 *
 	 * @return {@code true} if the result type is {@link Integer}

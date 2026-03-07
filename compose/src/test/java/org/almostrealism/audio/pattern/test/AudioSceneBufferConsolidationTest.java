@@ -16,7 +16,6 @@
 
 package org.almostrealism.audio.pattern.test;
 
-import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.AudioScene;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.arrange.MixdownManager;
@@ -24,7 +23,6 @@ import org.almostrealism.audio.health.MultiChannelAudioOutput;
 import org.almostrealism.audio.pattern.PatternAudioBuffer;
 import org.almostrealism.audio.pattern.PatternSystemManager;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
@@ -273,28 +271,16 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		// Effects are ON by default - do NOT call disableEffects()
 		PatternSystemManager.enableWarnings = false;
 
-		// Enable per-kernel profiling unless explicitly disabled
-		boolean profilingEnabled = !Boolean.getBoolean("AR_DISABLE_PROFILING");
-		OperationProfileNode profile = null;
-		if (profilingEnabled) {
-			profile = new OperationProfileNode("effects-enabled-performance");
-			Hardware.getLocalHardware().assignProfile(profile);
-		}
-
 		AudioScene<?> scene = createSceneWithWorkingSeed(samplesDir);
 		if (scene == null) {
 			log("No working genome found - skipping test");
 			return;
 		}
 
-		int bufferSize = Integer.parseInt(
-				System.getProperty("AR_BUFFER_SIZE", "4096"));
-		double renderSeconds = Double.parseDouble(
-				System.getProperty("AR_RENDER_SECONDS", "4.0"));
+		int bufferSize = 4096;
+		double renderSeconds = 4.0;
 
 		log("=== Effects-Enabled Performance Test ===");
-		log("Profiling: " + (profilingEnabled ? "ENABLED" : "DISABLED"));
-		log("Render seconds: " + renderSeconds);
 		log("Channels: " + SOURCE_COUNT);
 		log("Buffer size: " + bufferSize + " frames");
 		log("Effects: ENABLED (filters, delays, automation)");
@@ -341,19 +327,6 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		assertNotNull("Filter buffer should be consolidated", filterBuf);
 
 		helper.generateArtifacts(result, "effects-enabled-performance");
-
-		// Save per-kernel profile and clear
-		Hardware.getLocalHardware().clearProfile();
-		if (profile != null) {
-			try {
-				String profilePath = "results/effects-enabled-performance-profile.xml";
-				profile.save(profilePath);
-				log("Profile saved to: " + profilePath);
-			} catch (Exception e) {
-				log("Failed to save profile: " + e.getMessage());
-			}
-		}
-
 		scene.destroy();
 	}
 

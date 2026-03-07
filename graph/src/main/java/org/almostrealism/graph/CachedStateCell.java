@@ -41,15 +41,17 @@ import java.util.function.Supplier;
  *   <li><b>outValue</b> - The value propagated downstream, updated on each tick</li>
  * </ul>
  *
- * <p>On each {@link #tick()}, the cached value is copied to the output value,
- * then the cache is reset. This ensures stable output during a processing cycle
- * while allowing new values to accumulate.</p>
+ * <p>On each {@link #tick()}, the cached value is pushed downstream and
+ * the cache is reset. When a downstream receptor is present, the cached value
+ * is forwarded directly to the receptor without updating outValue (see
+ * {@link #tick()} for details). When no receptor is set, the cached value
+ * is copied to outValue before the reset.</p>
  *
  * <h2>Lifecycle</h2>
  * <ol>
  *   <li>{@link #setup()} - Resets both cached and output values</li>
  *   <li>{@link #push(Producer)} - Stores incoming data to the cached value</li>
- *   <li>{@link #tick()} - Transfers cached to output, resets cache, and pushes output</li>
+ *   <li>{@link #tick()} - Pushes cached value downstream, resets cache</li>
  *   <li>{@link #next()} - Returns a producer for the current output value</li>
  * </ol>
  *
@@ -198,10 +200,11 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	 * directly to it without copying through the intermediate outValue buffer.
 	 * The receptor's {@code push()} consumes the value immediately (e.g.,
 	 * {@link SummationCell} accumulates, other {@link CachedStateCell}s assign
-	 * to their own cache), so the intermediate copy is unnecessary. The
-	 * outValue is still updated for external consumers that call
-	 * {@link #getResultant(io.almostrealism.relation.Producer)} or
-	 * {@link #next()} between ticks (e.g., {@link CellPair} factors).</p>
+	 * to their own cache), so the intermediate copy is unnecessary. Note that
+	 * outValue is <strong>not</strong> updated in this path; external consumers
+	 * that call {@link #getResultant(io.almostrealism.relation.Producer)} or
+	 * {@link #next()} between ticks will see stale data. This is an accepted
+	 * tradeoff for the audio pipeline where meter bypass is acceptable.</p>
 	 *
 	 * <p>When no receptor is set, only the outValue copy and reset are performed.</p>
 	 *

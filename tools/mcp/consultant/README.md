@@ -7,10 +7,14 @@ A documentation-aware assistant that combines documentation retrieval, semantic 
 The consultant wraps three subsystems:
 
 - **DocsRetriever** -- searches the AR documentation corpus (module docs, internals, quick reference, source comments)
-- **MemoryClient** -- reads/writes the persistent semantic memory store (shared with `ar-memory`)
+- **MemoryClient** -- reads/writes the centralized ar-memory HTTP service via `MemoryHTTPClient` (from `tools/mcp/common/`)
 - **InferenceBackend** -- a local LLM that synthesizes retrieved context into concise answers
 
 When no LLM is available, the server falls back to **passthrough mode**, returning raw retrieved documentation without synthesis.
+
+Memory operations require the ar-memory HTTP server to be running (see `tools/mcp/memory/README.md`). When ar-memory is unavailable, memory tools degrade gracefully — returning empty results rather than errors.
+
+Git context (repo_url, branch) is auto-detected from the working directory when not explicitly provided to `remember` and `recall` tools.
 
 ## Inference Backends
 
@@ -160,35 +164,7 @@ export AR_CONSULTANT_BACKEND=passthrough
 | `AR_CONSULTANT_MODEL` | `qwen2.5-coder:32b-instruct-q4_K_M` | Ollama model name |
 | `AR_CONSULTANT_MLX_MODEL` | `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit` | MLX model path |
 | `AR_CONSULTANT_HISTORY_DIR` | `tools/mcp/consultant/data` | Directory for `history.db` |
-| `AR_MEMORY_DATA_DIR` | (shared with ar-memory) | Memory store directory |
-| `AR_MEMORY_BACKEND` | (shared with ar-memory) | Memory embedding backend |
-
-## Installation
-
-```bash
-pip install -r requirements.txt
-```
-
-Or install all MCP server dependencies at once:
-
-```bash
-pip install -r tools/mcp/requirements.txt
-```
-
-## MCP Configuration
-
-Already configured in `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "ar-consultant": {
-      "command": "python3",
-      "args": ["tools/mcp/consultant/server.py"]
-    }
-  }
-}
-```
+| `AR_MEMORY_URL` | (auto-discovered) | ar-memory HTTP server URL |
 
 ## Available Tools
 
@@ -215,6 +191,14 @@ The consultant could not find any LLM backend at startup. Check:
 2. If running on a remote host, is it reachable? (`curl http://mac-studio:8083/health`)
 3. If reachable via `nc` but not `curl`, check the [macOS firewall](#macos-firewall-common-issue) section
 4. After fixing, **restart the MCP server** -- the backend is cached at startup
+
+### "memory_available: false" in consultant_status
+
+The ar-memory HTTP server is not reachable. Check:
+
+1. Is ar-memory running? (`curl http://localhost:8020/api/health`)
+2. If using Docker: `docker compose -f tools/docker-compose.yml ps ar-memory`
+3. Set `AR_MEMORY_URL` explicitly if auto-discovery fails
 
 ### Slow first response
 
