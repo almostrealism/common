@@ -18,13 +18,18 @@ package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.Ops;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
+import java.util.stream.DoubleStream;
 
 /**
  * Simulates the pairwise comparison pattern used by PrototypeDiscovery
@@ -246,6 +251,72 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Measures the optimized path using a single cached cosine similarity
+	 * evaluable, matching the Phase 1 optimization in {@code WaveDetailsFactory}.
+	 */
+	@Test(timeout = 120_000)
+	public void cachedCosineSimilarity() {
+		int count = 100;
+		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
+
+		Evaluable<PackedCollection> cosineEval = cosineSimilarityEvaluable(FRAMES, BINS);
+
+		long totalComparisons = 0;
+		long start = System.nanoTime();
+
+		for (int i = 0; i < count; i++) {
+			for (int j = i + 1; j < count; j++) {
+				double[] values = cosineEval.evaluate(tensors[i], tensors[j])
+						.doubleStream().limit(FRAMES).toArray();
+
+				int skip = (int) (values.length * 0.1);
+				int total = values.length - skip - 2;
+				DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
+				totalComparisons++;
+			}
+		}
+
+		long elapsed = System.nanoTime() - start;
+		log("=== Cached Cosine Similarity Evaluable ===");
+		log("Comparisons: " + totalComparisons + " in " +
+				String.format("%.1f", elapsed / 1_000_000_000.0) + "s (" +
+				String.format("%.3f", elapsed / (double) totalComparisons / 1_000_000.0) +
+				" ms/comparison)");
+	}
+
+	/**
+	 * Validates that the cached cosine similarity evaluable produces the
+	 * same results as the original expression-tree-per-call approach.
+	 */
+	@Test(timeout = 120_000)
+	public void cachedResultsMatchBaseline() {
+		int count = 20;
+		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
+
+		Evaluable<PackedCollection> cosineEval = cosineSimilarityEvaluable(FRAMES, BINS);
+
+		for (int i = 0; i < count; i++) {
+			for (int j = i + 1; j < count; j++) {
+				double baseline = productSimilarity(cp(tensors[i]), cp(tensors[j]), FRAMES);
+
+				double[] values = cosineEval.evaluate(tensors[i], tensors[j])
+						.doubleStream().limit(FRAMES).toArray();
+
+				int skip = (int) (values.length * 0.1);
+				int total = values.length - skip - 2;
+				double cached = DoubleStream.of(values).sorted().skip(skip)
+						.limit(total).average().orElseThrow();
+
+				Assert.assertEquals("Mismatch at (" + i + ", " + j + ")",
+						baseline, cached, 1e-6);
+			}
+		}
+
+		log("All " + (count * (count - 1) / 2) + " comparisons match between " +
+				"baseline and cached approaches");
+	}
+
+	/**
 	 * Replicates the {@code WaveDetailsFactory.productSimilarity} computation:
 	 * {@code multiply(a, b).sum(1).divide(multiply(length(1, a), length(1, b)))}.
 	 */
@@ -288,6 +359,21 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 				.traverseEach()
 				.magnitude()
 				.get();
+	}
+
+	private static final Map<Long, Evaluable<PackedCollection>> cosineCache = new HashMap<>();
+
+	/**
+	 * Returns a cached evaluable that computes per-frame cosine similarity
+	 * between two feature tensors of shape (frames, bins, 1).
+	 */
+	private static Evaluable<PackedCollection> cosineSimilarityEvaluable(int frames, int bins) {
+		long key = ((long) frames << 32) | bins;
+		TraversalPolicy shape = new TraversalPolicy(frames, bins, 1);
+		return cosineCache.computeIfAbsent(key, k ->
+				Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1)
+						.divide(o.multiply(o.length(1, o.cv(shape, 0)),
+								o.length(1, o.cv(shape, 1))))).get());
 	}
 
 	private PackedCollection[] createRandomTensors(int count, int frames, int bins) {
