@@ -69,6 +69,58 @@ template below.
 > special label. Entries written during the independent review are marked with
 > *(review)* in the title and include an **Author** line.
 
+### 2026-03-06 — Priority 1 & 2 Implementation: Copy Elimination + Exponent Strength Reduction
+
+**Goal:** Implement the top 2 priorities from Phase 6 analysis: (1) eliminate
+CachedStateCell copy chains for all receptor types, (2) remove totalComputeCost
+gate on Exponent strength reduction for |exp| <= 3.
+
+**Changes made:**
+
+1. `CachedStateCell.java` — Changed `tick()` to push `cachedValue` directly to
+   ANY receptor (not just SummationCell). When receptor is present, `outValue`
+   copy is skipped. Safety analysis: `outValue` via `getResultant()`/`next()` is
+   only consumed by `CellPair` factors, which are not used in the audio pipeline.
+
+2. `Exponent.java` — Moved `pow(x,2)`, `pow(x,3)`, `pow(x,-2)`, `pow(x,-3)`
+   cases ABOVE the `totalComputeCost` threshold check so they always expand to
+   multiply/divide chains. Higher exponents (|exp|>3) remain gated. Also added
+   `pow(x,4)` as `sq*sq` for cheap bases.
+
+**Generated code verification:**
+- 111 fewer `powf` calls (352 → 241, -31.5%) — strength reduction confirmed
+- 46 fewer array assignments (2372 → 2326) — copy elimination confirmed
+- Kernel shrank from 4591 to 4569 lines
+
+**Performance results (4096 frames):**
+- Kernel: 139.19ms → 139.71ms (UNCHANGED)
+- Avg buffer: 192ms → 179ms (prepareBatch variance, not kernel)
+
+**Key insight: GPU compiler already performs these optimizations.** The OpenCL
+backend compiles `powf(x, 3.0)` to multiplications independently. Array copy
+operations execute in single clock cycles on GPU ALUs. Source-level expression
+optimizations produce identical GPU machine code.
+
+**Conclusion:** Expression-level optimizations are invisible to GPU kernel time.
+Future work should focus on architectural changes the GPU compiler cannot discover:
+skip silent channels, sub-block automation, per-channel kernel splitting, or
+cache-friendly array layout. Priority 3 (fuse zero+accumulate) is also deprioritized
+for the same reason — the GPU handles it natively.
+
+**Alternatives considered:**
+- `pow(x, 0.5) → sqrt(x)`: No `Sqrt` expression class exists; only 2 occurrences;
+  not worth adding infrastructure.
+- Attempting to reorder or eliminate the remaining 241 `powf` calls: These have
+  variable (non-constant) exponents, so strength reduction cannot apply.
+
+**Open questions:**
+- Would the same optimizations help under the `native` (CPU JNI) driver where
+  the C compiler may not be as aggressive as the OpenCL compiler?
+- Is the 4096-frame avg improvement (192→179ms) real or run-to-run variance?
+  The 16384-frame run showed no improvement (concurrent execution, resource contention).
+
+---
+
 ### 2026-03-03 — Goal 4 Phase 2: Back-to-back measurement (2x2 matrix)
 
 **Goal:** Quantify the impact of expression factoring (Phase 1 + Phase 2) using
@@ -1868,12 +1920,106 @@ system's own ~5% contribution).
 - PrepareBatch alone: 53ms (would consume 57% of budget even with instant kernel)
 
 **Next steps:**
-1. Optimize kernel via LFO expression factoring for LICM (existing plan)
+1. ~~Optimize kernel via LFO expression factoring for LICM~~ — see entry below
 2. Profile prepareBatch to understand what the expensive channels are doing
 3. Consider caching pattern resolution across ticks when patterns haven't changed
 
-**Next Steps:** Run the test with vs. without `OperationProfileNode` to quantify
-the exact overhead delta. If confirmed large, either disable profiling in
-performance tests or rewrite `MetricBase` to use primitive-typed accumulators.
+## 2026-03-06 — AutomationManager LICM Factoring: No Impact
+
+**Context:** The plan hypothesized that 62 sin() calls with entangled invariant/variant
+sub-expressions were a major kernel cost. The `computePeriodicValue` helper was already
+implemented in `AutomationManager` to factor `sin((A + B) * freq)` into
+`sin(clock * angularRate + phaseContrib)`, enabling LICM hoisting of invariants.
+
+**Verification (run cc0b621a):** Ran 60-second test with `AR_INSTRUCTION_SET_MONITORING=always`
+to inspect generated C code alongside phase timing.
+
+**Generated C analysis** (`jni_instruction_set_106.c`, 4591 lines):
+- **216 of 229 sin() calls hoisted BEFORE the loop** as `f_licm_*` variables — LICM works!
+- **13 sin() calls remain in-loop** — these come from `getAggregatedValueAt` (position-based
+  overload) where the phase reads from a mutable buffer, making it genuinely loop-variant
+- **25 `/44100` divisions remain in-loop** — same cause (frame counter in pow expressions)
+- **62 `f_licm_*` variables** created before the loop
+
+**Inner loop body profile (2783 lines × 4096 iterations):**
+- 2530 array assignments — dominant cost
+- 231 fmin/fmax (clamp operations)
+- 57 powf (volume envelopes/curves)
+- 40 floor (sample index computation)
+- 13 sin (remaining periodic values)
+
+**Performance result:**
+- Baseline kernel: 139.19 ms
+- With LICM factoring: 140.22 ms
+- Delta: **+1.0 ms (+0.7%) — within noise, NO measurable improvement**
+
+**Root cause of no improvement:** sin() was never the bottleneck. Even at 62 × 4096 =
+254K sin calls per tick, that's ~25ms of the 140ms kernel (ARM NEON sin ~100ns each).
+The real cost is **2530 array-indexed memory operations per iteration × 4096 iterations =
+10.4 million memory accesses per tick**, plus 233K powf calls. This is a memory bandwidth
+and computation volume problem, not a transcendental function problem.
+
+**Conclusion:** The LICM expression factoring is correct and works at the code generation
+level. However, it doesn't improve runtime because the kernel is dominated by array
+computation, not transcendental functions. The only path to reducing the 140ms kernel
+time is reducing the total computation volume — fewer channels, simpler effects, or
+splitting the monolithic kernel into parallelizable pieces.
+
+---
+
+## 2026-03-06 — Buffer Size Scaling: 4096 vs 16384 Frames
+
+**Question**: Does using 4× longer loops (16384 frames, ~372ms latency) materially
+change optimization priorities?
+
+**Experiment**: Added `AR_BUFFER_SIZE` system property to
+`AudioSceneBufferConsolidationTest`. Ran the effects-enabled performance test with
+`-DAR_BUFFER_SIZE=16384` and phase instrumentation. Run ID: `9fab3066`.
+
+**Results**:
+- Kernel time scales nearly linearly: 139ms (4096) → 547ms (16384) = 3.93×
+- PrepareBatch *decreases*: 53ms → 36ms (fewer batch boundaries to cross)
+- Real-time ratio improves: 0.48× → 0.64× (33% better from amortization alone)
+- Kernel share of tick: 72.5% → 93.7%
+
+**Conclusion**: At longer buffer sizes, the kernel dominates so completely that
+prepareBatch optimization becomes nearly irrelevant. All effort should focus on
+reducing per-sample computation in the inner loop. The priority shift is significant:
+prepareBatch drops from "27.5% of tick" to "6.2% of tick".
+
+---
+
+## 2026-03-06 — Inner Loop Array Assignment Deep Dive
+
+**Objective**: Trace the 535 simple copies found in the generated C inner loop back
+to their source in the Cell/Computation framework.
+
+**Method**: Read `CachedStateCell.java`, `SummationCell.java`, `CellAdapter.java`,
+`CollectionCachedStateCell.java`, `BatchedCell.java`, `FilteredCell.java`,
+`CellPair.java`, and correlated with the generated C code patterns.
+
+**Key finding**: The copy chain traces to `CachedStateCell.tick()`:
+1. `assign(outValue, cachedValue)` → one copy
+2. `reset(cachedValue)` → one zero
+3. `super.push(outValue)` → one or more downstream copies through the receptor chain
+
+With 24 render cells × multiple effects stages, this cascades into 535 copies and
+103 zero resets per iteration.
+
+**Existing optimization found**: `CachedStateCell.tick()` already has a special case
+(lines 213-218) that short-circuits when the receptor is a `SummationCell` — pushing
+`cachedValue` directly instead of copying to `outValue` first. This proves the pattern
+is recognized and the approach is viable.
+
+**Low-hanging fruit identified**:
+1. Extend SummationCell optimization to other receptor types (PassThroughCell,
+   ReceptorCell, direct CachedStateCell chains) — could eliminate 200-300 copies
+2. Expression aliasing at code generation level — copy propagation
+3. Fuse zero-reset + accumulate pairs into direct assignment
+
+**Assessment**: The user was right that this is low-hanging fruit. The `CachedStateCell`
+double-buffering pattern is the dominant source of unnecessary memory operations, and
+the existing SummationCell optimization shows exactly how to fix it — it just needs
+to be generalized.
 
 *(Add new entries above this line, newest first)*

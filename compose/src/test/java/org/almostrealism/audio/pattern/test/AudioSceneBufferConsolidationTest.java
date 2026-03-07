@@ -287,7 +287,8 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 			return;
 		}
 
-		int bufferSize = 4096;
+		int bufferSize = Integer.parseInt(
+				System.getProperty("AR_BUFFER_SIZE", "4096"));
 		double renderSeconds = Double.parseDouble(
 				System.getProperty("AR_RENDER_SECONDS", "4.0"));
 

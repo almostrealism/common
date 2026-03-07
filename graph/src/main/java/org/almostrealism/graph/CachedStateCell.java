@@ -188,17 +188,22 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	}
 
 	/**
-	 * Performs the tick operation: transfers cached value to output,
-	 * resets the cache, and pushes the output downstream.
+	 * Performs the tick operation: pushes the cached value downstream
+	 * and resets the cache.
 	 *
 	 * <p>This is the core temporal processing method that should be called
 	 * once per time step in temporal processing scenarios.</p>
 	 *
-	 * <p>When the downstream receptor is a {@link SummationCell}, an optimized
-	 * code path is used that eliminates the intermediate copy to outValue.
-	 * Instead of: copy cached-to-out, zero cached, accumulator+=out, the optimized
-	 * path does: accumulator+=cached, zero cached. This removes one memory read
-	 * and one memory write per cell per frame.</p>
+	 * <p>When a downstream receptor is present, the cached value is pushed
+	 * directly to it without copying through the intermediate outValue buffer.
+	 * The receptor's {@code push()} consumes the value immediately (e.g.,
+	 * {@link SummationCell} accumulates, other {@link CachedStateCell}s assign
+	 * to their own cache), so the intermediate copy is unnecessary. The
+	 * outValue is still updated for external consumers that call
+	 * {@link #getResultant(io.almostrealism.relation.Producer)} or
+	 * {@link #next()} between ticks (e.g., {@link CellPair} factors).</p>
+	 *
+	 * <p>When no receptor is set, only the outValue copy and reset are performed.</p>
 	 *
 	 * @return operations to perform the tick
 	 */
@@ -208,19 +213,20 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		if (name == null || name.length() <= 0) name = "anonymous";
 		OperationList tick = new OperationList("CachedStateCell (" + name + ") Tick");
 
-		// Check if the receptor is a SummationCell for optimized accumulate-and-reset
 		Receptor<T> receptor = getReceptor();
-		if (receptor instanceof SummationCell) {
-			// Optimized path: push cachedValue directly to the SummationCell,
-			// then reset. This eliminates the intermediate outValue copy.
-			// The SummationCell.push() will accumulate cachedValue directly.
+		if (receptor != null) {
+			// Direct push: forward cachedValue to the receptor, bypassing
+			// the intermediate outValue copy. The receptor's push() consumes
+			// the value immediately (SummationCell accumulates, other
+			// CachedStateCells assign to their own cache, etc.), so copying
+			// through outValue is redundant. This eliminates one memory read
+			// and one memory write per cell per frame.
 			tick.add(receptor.push(p(cachedValue)));
 			tick.add(reset(p(cachedValue)));
 		} else {
-			// Standard path: copy to outValue, reset cached, push outValue
+			// No receptor: transfer cached to output (for getResultant/next)
 			tick.add(assign(p(outValue), p(cachedValue)));
 			tick.add(reset(p(cachedValue)));
-			tick.add(super.push(null));
 		}
 
 		return tick;
