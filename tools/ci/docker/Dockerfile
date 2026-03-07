@@ -60,7 +60,7 @@ ENV PATH="${MAVEN_HOME}/bin:${PATH}"
 
 # ---------- AR environment ----------
 ENV AR_HARDWARE_LIBS=/tmp/ar_libs/
-ENV AR_HARDWARE_DRIVER=native
+# AR_HARDWARE_DRIVER is intentionally left unset to auto-detect the best available backend
 
 # ---------- Runner user ----------
 RUN useradd -m -s /bin/bash runner && \

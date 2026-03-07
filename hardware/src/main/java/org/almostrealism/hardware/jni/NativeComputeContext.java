@@ -93,8 +93,9 @@ import org.almostrealism.hardware.metal.MetalMemoryProvider;
  *
  * <h2>Integration with Hardware.getLocalHardware()</h2>
  *
- * <p>When {@code AR_HARDWARE_DRIVER=native}, {@link org.almostrealism.hardware.Hardware} creates
- * this compute context as the default backend:</p>
+ * <p>When {@code AR_HARDWARE_DRIVER} includes {@code native} (or is left unset, since native
+ * is included in the default backend selection), {@link org.almostrealism.hardware.Hardware}
+ * creates this compute context:</p>
  * <pre>{@code
  * // In Hardware initialization:
  * NativeComputer computer = new NativeComputer();

@@ -56,7 +56,6 @@ import java.util.List;
  * To run with default settings (uses first available device):
  * <pre>
  * export AR_HARDWARE_LIBS=/tmp/ar_libs/
- * export AR_HARDWARE_DRIVER=native
  * cd common
  * mvn test -pl audio -Dtest=MidiSynthesizerManualTest#playWithMidiController
  * </pre>

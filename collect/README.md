@@ -39,7 +39,7 @@ PackedCollection tensor = new PackedCollection<>(shape);
 
 PackedCollection stores data in **row-major order**:
 ```
-3D tensor [2, 3, 4] → Linear memory:
+3D tensor [2, 3, 4] -> Linear memory:
 [0,0,0] [0,0,1] [0,0,2] [0,0,3]  [0,1,0] [0,1,1] ...
    0       1       2       3        4       5     ...
 ```
@@ -119,7 +119,7 @@ PackedCollection output = pipeline.get().evaluate();
 Maps 1D physical memory to N-D logical space:
 
 ```java
-// 2D matrix: 3 rows × 4 columns
+// 2D matrix: 3 rows x 4 columns
 TraversalPolicy shape = shape(3, 4);
 
 // Access element at [row=1, col=2]
@@ -148,7 +148,7 @@ shape(batch, channels, height, width)
 ```java
 TraversalPolicy fixed = shape(100, 50);
 fixed.isFixedCount();  // true
-fixed.getCountLong();  // 5000 (100 × 50)
+fixed.getCountLong();  // 5000 (100 x 50)
 ```
 
 **Variable Count** (size determined at runtime):
@@ -159,8 +159,8 @@ variable.isFixedCount();  // false
 ```
 
 **Impact on GPU compilation:**
-- Fixed → Compile specialized kernel with known size
-- Variable → Compile adaptive kernel
+- Fixed -> Compile specialized kernel with known size
+- Variable -> Compile adaptive kernel
 
 ## Hardware Acceleration Integration
 
@@ -168,30 +168,24 @@ variable.isFixedCount();  // false
 
 ```
 Application Code
-       ↓
+       |
 CollectionProducer (lazy computation description)
-       ↓
+       |
 Computation (operation implementation)
-       ↓
+       |
 Hardware Layer (kernel compilation)
-       ↓
+       |
 Memory (GPU/CPU buffers)
 ```
 
 ### Environment Setup
 
-**Required environment variables:**
+**Required environment variable:**
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native  # or opencl, metal
 ```
 
-### Supported Backends
-
-- **native** - JNI with runtime-generated native code
-- **opencl** - OpenCL acceleration (CPU/GPU)
-- **metal** - Metal GPU acceleration (Apple Silicon)
-- **external** - Generated executable approach
+`AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `opencl`, `metal`, or `external`.
 
 ### Hardware Workflow
 
@@ -241,13 +235,13 @@ PackedCollection output = result.get().evaluate();
 ### Converting Between Them
 
 ```java
-// PackedCollection → CollectionProducer
+// PackedCollection -> CollectionProducer
 PackedCollection data = new PackedCollection<>(shape(10));
 CollectionProducer producer = cp(data);           // Static method
 CollectionProducer producer2 = c(data);           // Alternative
 CollectionProducer producer3 = p(data);           // Producer wrapper
 
-// CollectionProducer → PackedCollection
+// CollectionProducer -> PackedCollection
 CollectionProducer computation = producer.multiply(2.0);
 Evaluable<PackedCollection> evaluable = computation.get();  // Compile
 PackedCollection result = evaluable.evaluate();              // Execute
@@ -266,8 +260,8 @@ PackedCollection result = evaluable.evaluate();              // Execute
 
 PackedCollection uses a threshold-based memory allocation strategy:
 
-- **Small collections (< 1024 elements)** → Java heap (on-heap)
-- **Large collections (≥ 1024 elements)** → Native memory (off-heap)
+- **Small collections (< 1024 elements)** -> Java heap (on-heap)
+- **Large collections (>= 1024 elements)** -> Native memory (off-heap)
 
 ```java
 // Small collection: allocated on Java heap
@@ -326,9 +320,9 @@ output.destroy();
 
 ```
 MemoryData (logical region)
-     ↓
+     |
 Memory (physical buffer)
-     ↓
+     |
 MemoryProvider (allocation strategy)
 ```
 
@@ -499,7 +493,7 @@ CollectionProducer traversed = cp(data).traverse(axis);
 ### Common Issues
 
 **NoClassDefFoundError: PackedCollection**
-- Missing environment variables: Set `AR_HARDWARE_LIBS` and `AR_HARDWARE_DRIVER`
+- Missing environment variable: Set `AR_HARDWARE_LIBS`
 
 **Shape mismatch errors**
 - Check TraversalPolicy dimensions match data

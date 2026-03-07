@@ -292,7 +292,7 @@ normalize(cp(vector)).into(vector).evaluate();</code></pre>
                         <a href="../apidocs/org/almostrealism/hardware/jni/NativeDataContext.html">NativeDataContext</a>
                     </p>
                     <p><strong>Use Case:</strong> CPU-bound workloads, development, systems without GPU support</p>
-                    <p><strong>Configuration:</strong> <span class="env-var">AR_HARDWARE_DRIVER=native</span> or <span class="env-var">cpu</span></p>
+                    <p><strong>Configuration:</strong> <span class="env-var">AR_HARDWARE_DRIVER=native</span> or <span class="env-var">cpu</span> (auto-detected when left unset)</p>
                     <ul>
                         <li>Dynamic C code generation and compilation</li>
                         <li>GCC/Clang support with optimization flags</li>
@@ -554,9 +554,10 @@ Runnable compiled = op.get();</pre>
                 <h2>Usage Examples</h2>
 
                 <h3>Environment Setup</h3>
-                <pre><code class="language-bash"># Required: Set these before running any Almost Realism code
+                <pre><code class="language-bash"># Required: Set this before running any Almost Realism code
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native  # or: cl, mtl, gpu, cpu, *
+# AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
+# Override options: native, cl, mtl, gpu, cpu, *
 
 # Optional: Precision and memory
 export AR_HARDWARE_PRECISION=FP32  # or FP64
@@ -800,10 +801,9 @@ encoder.dispatchThreadgroups(
 
                 <div class="warning">
                     <strong>Error:</strong> <code>NoClassDefFoundError: Could not initialize class <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">org.almostrealism.collect.PackedCollection</a></code><br>
-                    <strong>Cause:</strong> Missing AR_HARDWARE_LIBS or AR_HARDWARE_DRIVER environment variables<br>
+                    <strong>Cause:</strong> Missing AR_HARDWARE_LIBS environment variable<br>
                     <strong>Solution:</strong>
-                    <pre>export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native</pre>
+                    <pre>export AR_HARDWARE_LIBS=/tmp/ar_libs/</pre>
                 </div>
 
                 <div class="warning">

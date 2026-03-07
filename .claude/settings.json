@@ -6,8 +6,7 @@
       "Bash(mvn clean compile:*)",
       "Bash(mvn install:*)",
       "Bash(mvn test:*)",
-      "Bash(export AR_HARDWARE_LIBS=/home/developer/.libs/)",
-      "Bash(export AR_HARDWARE_DRIVER=native)"
+      "Bash(export AR_HARDWARE_LIBS=/home/developer/.libs/)"
     ],
     "deny": [],
     "ask": []

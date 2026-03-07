@@ -31,12 +31,15 @@
  *
  * <h2>Environment Configuration</h2>
  * <p>
- * Hardware acceleration requires environment variables to be set:
+ * Hardware acceleration requires the library directory to be configured:
  * </p>
  * <pre>{@code
  * export AR_HARDWARE_LIBS=/tmp/ar_libs/
- * export AR_HARDWARE_DRIVER=native  # or opencl, metal
  * }</pre>
+ * <p>
+ * {@code AR_HARDWARE_DRIVER} is optional and best left unset. When unset, the system
+ * automatically selects the best available backend(s) for the current platform.
+ * </p>
  *
  * <h2>Usage Example</h2>
  * <pre>{@code

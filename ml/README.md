@@ -268,20 +268,20 @@ config.ropeTheta = 1000000.0;   // RoPE base frequency
 
 ```
 Qwen3 Model
-├── Token Embeddings (151669 x 3584)
-├── 36 Transformer Layers
-│   ├── Self-Attention
-│   │   ├── QK-Norm (query/key normalization)
-│   │   ├── Multi-Head Attention (32 heads)
-│   │   ├── Grouped-Query (8 KV heads)
-│   │   └── RoPE (rotary position embeddings)
-│   ├── Feed-Forward
-│   │   ├── Gate Projection (W1)
-│   │   ├── Up Projection (W3)
-│   │   ├── SwiGLU Activation
-│   │   └── Down Projection (W2)
-│   └── RMSNorm (pre-attention, pre-FFN)
-└── Output Projection (shared with embeddings)
++-- Token Embeddings (151669 x 3584)
++-- 36 Transformer Layers
+|   +-- Self-Attention
+|   |   +-- QK-Norm (query/key normalization)
+|   |   +-- Multi-Head Attention (32 heads)
+|   |   +-- Grouped-Query (8 KV heads)
+|   |   +-- RoPE (rotary position embeddings)
+|   +-- Feed-Forward
+|   |   +-- Gate Projection (W1)
+|   |   +-- Up Projection (W3)
+|   |   +-- SwiGLU Activation
+|   |   +-- Down Projection (W2)
+|   +-- RMSNorm (pre-attention, pre-FFN)
++-- Output Projection (shared with embeddings)
 ```
 
 ## Common Patterns
@@ -527,12 +527,13 @@ See `DiffusionTransformer.prependConditioning()` for implementation.
 
 ## Environment Configuration
 
-Hardware acceleration requires environment variables:
+Hardware acceleration requires the following environment variable:
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native  # or opencl, metal
 ```
+
+`AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `opencl`, or `metal`.
 
 ## Performance Features
 

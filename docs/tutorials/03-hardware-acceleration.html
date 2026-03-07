@@ -61,31 +61,24 @@
                 <h3>Linux/macOS</h3>
                 <pre><code class="language-bash"># Set the library directory (any writable location)
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 
-# Set the hardware driver
-export AR_HARDWARE_DRIVER=native
-
-# Verify they're set
-echo $AR_HARDWARE_LIBS
-echo $AR_HARDWARE_DRIVER</code></pre>
+# Verify library dir is set
+echo $AR_HARDWARE_LIBS</code></pre>
 
                 <h3>Windows (PowerShell)</h3>
                 <pre><code class="language-powershell"># Set the library directory
 $env:AR_HARDWARE_LIBS="C:\Temp\ar_libs\"
-
-# Set the hardware driver
-$env:AR_HARDWARE_DRIVER="native"
+# AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 
 # Verify
-echo $env:AR_HARDWARE_LIBS
-echo $env:AR_HARDWARE_DRIVER</code></pre>
+echo $env:AR_HARDWARE_LIBS</code></pre>
 
                 <h3>Windows (Command Prompt)</h3>
                 <pre><code class="language-bash">set AR_HARDWARE_LIBS=C:\Temp\ar_libs\
-set AR_HARDWARE_DRIVER=native
+:: AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 
-echo %AR_HARDWARE_LIBS%
-echo %AR_HARDWARE_DRIVER%</code></pre>
+echo %AR_HARDWARE_LIBS%</code></pre>
             </section>
 
             <section>
@@ -100,10 +93,10 @@ echo %AR_HARDWARE_DRIVER%</code></pre>
                     <li>Caches compiled kernels for faster startup</li>
                 </ul>
 
-                <h3>AR_HARDWARE_DRIVER</h3>
-                <p>Specifies which hardware backend to use:</p>
+                <h3>AR_HARDWARE_DRIVER (Optional)</h3>
+                <p>Best left unset to auto-detect the best available backend. Available overrides:</p>
                 <ul>
-                    <li><strong>native:</strong> Standard JNI operations with runtime-generated native code (default, most compatible)</li>
+                    <li><strong>native:</strong> Standard JNI operations with runtime-generated native code</li>
                     <li><strong>opencl:</strong> OpenCL acceleration for CPU/GPU (Linux, Windows)</li>
                     <li><strong>metal:</strong> Metal GPU acceleration (Apple Silicon Macs)</li>
                     <li><strong>external:</strong> Generated executable approach (experimental)</li>
@@ -116,13 +109,11 @@ echo %AR_HARDWARE_DRIVER%</code></pre>
 
                 <h3>Bash (~/.bashrc or ~/.bash_profile)</h3>
                 <pre><code class="language-bash"># Add to ~/.bashrc
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native</code></pre>
+export AR_HARDWARE_LIBS=/tmp/ar_libs/</code></pre>
 
                 <h3>Zsh (~/.zshrc)</h3>
                 <pre><code class="language-bash"># Add to ~/.zshrc
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native</code></pre>
+export AR_HARDWARE_LIBS=/tmp/ar_libs/</code></pre>
 
                 <h3>Apply Changes</h3>
                 <pre><code class="language-bash"># Reload your shell configuration
@@ -137,24 +128,21 @@ source ~/.bashrc  # or ~/.zshrc
 
                 <pre><code class="language-bash"># Run tests
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl algebra
 
 # Run specific test
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=TransformerTest
 
 # Run all module tests
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test</code></pre>
 
                 <h3>Alternative: Set in IDE</h3>
                 <p>In IntelliJ IDEA or Eclipse, add environment variables to run configurations:</p>
                 <ul>
                     <li>Run → Edit Configurations</li>
-                    <li>Environment variables: AR_HARDWARE_LIBS=/tmp/ar_libs/;AR_HARDWARE_DRIVER=native</li>
+                    <li>Environment variables: AR_HARDWARE_LIBS=/tmp/ar_libs/</li>
                 </ul>
             </section>
 
@@ -202,7 +190,6 @@ public class HardwareTest {
 
                 <p><strong>Expected Output:</strong></p>
                 <pre><code>AR_HARDWARE_LIBS: /tmp/ar_libs/
-AR_HARDWARE_DRIVER: native
 Processed 1000000 elements in 45ms
 First result: 3.2156...</code></pre>
             </section>
@@ -210,7 +197,14 @@ First result: 3.2156...</code></pre>
             <section>
                 <h2>Step 7: Choosing the Right Driver</h2>
 
-                <h3>native (Recommended Default)</h3>
+                <h3>Unset (Recommended — Auto-Detect)</h3>
+                <ul>
+                    <li>✓ Automatically selects the best available backend</li>
+                    <li>✓ No manual configuration required</li>
+                    <li>✓ Adapts to the system's hardware capabilities</li>
+                </ul>
+
+                <h3>native</h3>
                 <ul>
                     <li>✓ Works on all platforms</li>
                     <li>✓ Most stable and tested</li>
@@ -244,9 +238,8 @@ First result: 3.2156...</code></pre>
                 <h3>Error: NoClassDefFoundError PackedCollection</h3>
                 <p><strong>Cause:</strong> Environment variables not set before JVM starts.</p>
                 <p><strong>Solution:</strong></p>
-                <pre><code class="language-bash"># Ensure variables are set BEFORE running Java
+                <pre><code class="language-bash"># Ensure AR_HARDWARE_LIBS is set BEFORE running Java
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 # THEN run your application
 java -jar myapp.jar</code></pre>
 
@@ -264,7 +257,7 @@ java -jar myapp.jar</code></pre>
                 <p><strong>Solution:</strong></p>
                 <ul>
                     <li>Install GPU drivers (NVIDIA CUDA, AMD ROCm)</li>
-                    <li>Or fall back to native: <code>export AR_HARDWARE_DRIVER=native</code></li>
+                    <li>Or leave AR_HARDWARE_DRIVER unset to auto-detect the best available backend</li>
                 </ul>
 
                 <h3>Slow Performance</h3>

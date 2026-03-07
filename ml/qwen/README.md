@@ -8,7 +8,6 @@ Qwen2.5-0.5B-Instruct implementation for the AR framework.
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 java -cp target/ar-ml-0.72.jar org.almostrealism.ml.qwen3.Qwen3 \
   <checkpoint.bin> <tokenizer.bin> "<prompt>"
 ```
@@ -17,7 +16,6 @@ java -cp target/ar-ml-0.72.jar org.almostrealism.ml.qwen3.Qwen3 \
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=Qwen3GenerationDemo
 ```
 
@@ -46,7 +44,6 @@ Quick validation without long compilation:
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=SimpleTransformerValidationTest
 ```
 

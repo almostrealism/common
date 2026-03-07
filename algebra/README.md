@@ -466,7 +466,7 @@ PackedCollection result = delegated.get().evaluate();
 
 ---
 
-### ⚠️ Process Isolation - Critical Concept
+### Process Isolation - Critical Concept
 
 Some computations (like `LoopedWeightedSumComputation`) MUST be isolated into separate execution units during optimization. Without proper isolation, expression trees can grow exponentially large, causing:
 
@@ -498,14 +498,14 @@ public boolean isIsolationTarget(ProcessContext context) {
 // WRONG: Never return null to force isolation
 @Override
 public Expression<Double> getValueAt(Expression index) {
-    if (shouldIsolate) return null;  // ❌ NEVER DO THIS
+    if (shouldIsolate) return null;  // NEVER DO THIS
     return ...;
 }
 
 // CORRECT: Override isIsolationTarget() and let Process.optimize() handle it
 @Override
 public boolean isIsolationTarget(ProcessContext context) {
-    return iterationCount > 1000;  // ✓ Proper approach
+    return iterationCount > 1000;  // Proper approach
 }
 ```
 
@@ -553,8 +553,9 @@ Before running any code that uses hardware acceleration:
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 ```
+
+`AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `cl`, `mtl`, or another supported value.
 
 See [CLAUDE.md](../CLAUDE.md) for detailed setup instructions.
 
