@@ -24,7 +24,9 @@ import org.almostrealism.Ops;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.DoubleStream;
 
@@ -58,6 +60,9 @@ public class WaveDetailsFactory implements CodeFeatures {
 	public static double defaultWindow = 0.25; // 0.125;
 
 	protected static WaveDetailsFactory defaultFactory;
+
+	/** Default batch size for batched similarity computation. */
+	public static final int SIMILARITY_BATCH_SIZE = 100;
 
 	private static final Map<Long, Evaluable<PackedCollection>> cosineCalc = new HashMap<>();
 
@@ -215,6 +220,116 @@ public class WaveDetailsFactory implements CodeFeatures {
 		double[] values = cosineSimilarityEvaluable(frames, bins)
 				.evaluate(inputA, inputB).doubleStream().limit(limit).toArray();
 
+		if (values.length == 0) return -1.0;
+
+		int skip = 0;
+		int total = values.length;
+		if (total > 10) {
+			skip = (int) (values.length * 0.1);
+			total = total - skip - 2;
+		}
+
+		return DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
+	}
+
+	/**
+	 * Computes similarity between a query and multiple targets using batched
+	 * kernel evaluation. Targets are processed in batches of
+	 * {@link #SIMILARITY_BATCH_SIZE}, computing multiple cosine similarities
+	 * in a single kernel call to reduce per-comparison launch overhead.
+	 *
+	 * <p>The query tensor is stacked once per batch (not per comparison),
+	 * and only target data is copied per-batch. For targets without feature
+	 * data or with incompatible bin counts, the result is {@code -Double.MAX_VALUE}.</p>
+	 *
+	 * @param query   the query WaveDetails
+	 * @param targets list of target WaveDetails to compare against
+	 * @return array of similarity scores, one per target, in the same order
+	 */
+	public double[] batchSimilarity(WaveDetails query, List<WaveDetails> targets) {
+		if (targets.isEmpty()) return new double[0];
+
+		PackedCollection queryData = query.getFeatureData();
+		if (queryData == null) {
+			double[] results = new double[targets.size()];
+			Arrays.fill(results, -Double.MAX_VALUE);
+			return results;
+		}
+
+		int queryFrames = queryData.getShape().length(0);
+		int bins = queryData.getShape().length(1);
+		double[] results = new double[targets.size()];
+
+		int batchSize = SIMILARITY_BATCH_SIZE;
+		int batchStart = 0;
+
+		while (batchStart < targets.size()) {
+			int batchEnd = Math.min(batchStart + batchSize, targets.size());
+			int actualBatch = batchEnd - batchStart;
+
+			int frames = queryFrames;
+			for (int i = batchStart; i < batchEnd; i++) {
+				PackedCollection targetData = targets.get(i).getFeatureData();
+				if (targetData != null) {
+					frames = Math.min(frames, targetData.getShape().length(0));
+				}
+			}
+
+			int totalFrames = batchSize * frames;
+			int elementsPerItem = frames * bins;
+			TraversalPolicy rangeShape = new TraversalPolicy(frames, bins, 1);
+
+			PackedCollection queryRange = frames < queryFrames
+					? queryData.range(rangeShape) : queryData;
+
+			PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, bins, 1));
+			for (int b = 0; b < batchSize; b++) {
+				stackedQuery.setMem(b * elementsPerItem, queryRange, 0, elementsPerItem);
+			}
+
+			PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, bins, 1));
+			for (int b = 0; b < actualBatch; b++) {
+				PackedCollection targetData = targets.get(batchStart + b).getFeatureData();
+				if (targetData == null) continue;
+
+				int targetFrames = targetData.getShape().length(0);
+				PackedCollection targetRange = frames < targetFrames
+						? targetData.range(rangeShape) : targetData;
+				stackedTargets.setMem(b * elementsPerItem, targetRange, 0, elementsPerItem);
+			}
+
+			double[] allValues = cosineSimilarityEvaluable(totalFrames, bins)
+					.evaluate(stackedQuery, stackedTargets)
+					.doubleStream().toArray();
+
+			int outputElementsPerItem = frames * bins;
+			for (int b = 0; b < actualBatch; b++) {
+				WaveDetails target = targets.get(batchStart + b);
+				if (target.getFeatureData() == null) {
+					results[batchStart + b] = -Double.MAX_VALUE;
+					continue;
+				}
+
+				int limit = Math.max(query.getValidFeatureFrameCount(),
+						target.getValidFeatureFrameCount());
+				limit = Math.min(limit, frames);
+
+				double[] targetValues = new double[limit];
+				System.arraycopy(allValues, b * outputElementsPerItem, targetValues, 0, limit);
+				results[batchStart + b] = trimmedMean(targetValues);
+			}
+
+			batchStart = batchEnd;
+		}
+
+		return results;
+	}
+
+	/**
+	 * Computes trimmed mean of per-frame similarity values, removing
+	 * the bottom 10% and top 2 values to reduce outlier effects.
+	 */
+	private static double trimmedMean(double[] values) {
 		if (values.length == 0) return -1.0;
 
 		int skip = 0;

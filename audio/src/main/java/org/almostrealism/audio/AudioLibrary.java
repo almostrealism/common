@@ -628,21 +628,26 @@ public class AudioLibrary implements ConsoleFeatures {
 		if (details == null) return null;
 
 		try {
-			allDetails()
+			List<WaveDetails> targets = allDetails()
 					.filter(d -> !Objects.equals(d.getIdentifier(), details.getIdentifier()))
 					.filter(d -> !details.getSimilarities().containsKey(d.getIdentifier()))
-					.forEach(d -> {
-						double similarity = factory.similarity(details, d);
+					.collect(Collectors.toList());
 
-						if (Math.abs(similarity - 1.0) < 1e-5) {
-							warn("Identical features for distinct files");
-						}
+			double[] similarities = factory.batchSimilarity(details, targets);
 
-						details.getSimilarities().put(d.getIdentifier(), similarity);
+			for (int i = 0; i < targets.size(); i++) {
+				WaveDetails target = targets.get(i);
+				double similarity = similarities[i];
 
-						if (details.getIdentifier() != null)
-							d.getSimilarities().put(details.getIdentifier(), similarity);
-					});
+				if (Math.abs(similarity - 1.0) < 1e-5) {
+					warn("Identical features for distinct files");
+				}
+
+				details.getSimilarities().put(target.getIdentifier(), similarity);
+
+				if (details.getIdentifier() != null)
+					target.getSimilarities().put(details.getIdentifier(), similarity);
+			}
 		} catch (Exception e) {
 			log("Failed to load similarities for " + details.getIdentifier() +
 					" (" + Optional.ofNullable(e.getMessage()).orElse(e.getClass().getSimpleName()) + ")");

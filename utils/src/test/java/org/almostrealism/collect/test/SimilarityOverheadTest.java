@@ -361,11 +361,265 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 				.get();
 	}
 
+	/**
+	 * Measures the batched cosine similarity approach where one query
+	 * tensor is compared against a batch of targets in a single kernel
+	 * call. This is the Phase 2 optimization that reduces kernel launch
+	 * overhead by processing {@code BATCH_SIZE} comparisons per launch.
+	 */
+	@Test(timeout = 120_000)
+	public void batchedCosineSimilarity() {
+		int count = 100;
+		int batchSize = 50;
+		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
+
+		int totalFrames = batchSize * FRAMES;
+		Evaluable<PackedCollection> batchEval = cosineSimilarityEvaluable(totalFrames, BINS);
+
+		long totalComparisons = 0;
+		long dataStackTime = 0;
+		long kernelTime = 0;
+		long extractTime = 0;
+
+		for (int i = 0; i < count; i++) {
+			int remaining = count - i - 1;
+			if (remaining == 0) continue;
+
+			for (int batchStart = i + 1; batchStart < count; batchStart += batchSize) {
+				int batchEnd = Math.min(batchStart + batchSize, count);
+				int actualBatch = batchEnd - batchStart;
+
+				long t0 = System.nanoTime();
+
+				int elementsPerItem = FRAMES * BINS;
+				PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, BINS, 1));
+				for (int b = 0; b < batchSize; b++) {
+					stackedQuery.setMem(b * elementsPerItem, tensors[i], 0, elementsPerItem);
+				}
+
+				PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, BINS, 1));
+				for (int b = 0; b < actualBatch; b++) {
+					stackedTargets.setMem(b * elementsPerItem, tensors[batchStart + b], 0, elementsPerItem);
+				}
+
+				long t1 = System.nanoTime();
+
+				PackedCollection allResults = batchEval.evaluate(stackedQuery, stackedTargets);
+				double[] allValues = allResults.doubleStream().toArray();
+
+				long t2 = System.nanoTime();
+
+				int outputElementsPerItem = FRAMES * BINS;
+				for (int b = 0; b < actualBatch; b++) {
+					double[] values = new double[FRAMES];
+					System.arraycopy(allValues, b * outputElementsPerItem, values, 0, FRAMES);
+
+					int skip = (int) (values.length * 0.1);
+					int total = values.length - skip - 2;
+					DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
+					totalComparisons++;
+				}
+
+				long t3 = System.nanoTime();
+				dataStackTime += (t1 - t0);
+				kernelTime += (t2 - t1);
+				extractTime += (t3 - t2);
+			}
+		}
+
+		long totalTime = dataStackTime + kernelTime + extractTime;
+		log("=== Batched Cosine Similarity (batch=" + batchSize + ") ===");
+		log("Comparisons: " + totalComparisons + " in " +
+				String.format("%.1f", totalTime / 1_000_000_000.0) + "s (" +
+				String.format("%.3f", totalTime / (double) totalComparisons / 1_000_000.0) +
+				" ms/comparison)");
+		log("  Data stacking: " +
+				String.format("%.3f", dataStackTime / (double) totalComparisons / 1_000_000.0) +
+				" ms/comparison (" +
+				String.format("%.1f%%", 100.0 * dataStackTime / totalTime) + ")");
+		log("  Kernel:        " +
+				String.format("%.3f", kernelTime / (double) totalComparisons / 1_000_000.0) +
+				" ms/comparison (" +
+				String.format("%.1f%%", 100.0 * kernelTime / totalTime) + ")");
+		log("  Extraction:    " +
+				String.format("%.3f", extractTime / (double) totalComparisons / 1_000_000.0) +
+				" ms/comparison (" +
+				String.format("%.1f%%", 100.0 * extractTime / totalTime) + ")");
+	}
+
+	/**
+	 * Validates that the batched cosine similarity approach produces
+	 * the same results as the pairwise cached approach. This ensures
+	 * that stacking tensors and computing in a single kernel does not
+	 * introduce numerical differences.
+	 */
+	@Test(timeout = 120_000)
+	public void batchedResultsMatchCached() {
+		int count = 5;
+		int batchSize = 3;
+		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
+
+		Evaluable<PackedCollection> singleEval = cosineSimilarityEvaluable(FRAMES, BINS);
+
+		// First, verify single eval output shape and size
+		PackedCollection singleResult = singleEval.evaluate(tensors[0], tensors[1]);
+		log("Single eval output: shape=" + singleResult.getShape() +
+				" memLength=" + singleResult.getMemLength() +
+				" totalSize=" + singleResult.getShape().getTotalSize());
+
+		// Now test batched: stack 3 targets
+		int totalFrames = batchSize * FRAMES;
+		Evaluable<PackedCollection> batchEval = cosineSimilarityEvaluable(totalFrames, BINS);
+		int elementsPerItem = FRAMES * BINS;
+
+		PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, BINS, 1));
+		for (int b = 0; b < batchSize; b++) {
+			stackedQuery.setMem(b * elementsPerItem, tensors[0], 0, elementsPerItem);
+		}
+
+		PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, BINS, 1));
+		for (int b = 0; b < batchSize; b++) {
+			stackedTargets.setMem(b * elementsPerItem, tensors[1 + b], 0, elementsPerItem);
+		}
+
+		PackedCollection batchResult = batchEval.evaluate(stackedQuery, stackedTargets);
+		log("Batch eval output: shape=" + batchResult.getShape() +
+				" memLength=" + batchResult.getMemLength() +
+				" totalSize=" + batchResult.getShape().getTotalSize());
+
+		double[] batchAllValues = batchResult.doubleStream().toArray();
+		log("Batch output stream length: " + batchAllValues.length);
+
+		// Compare per-frame values for first target (tensors[1])
+		double[] singleValues = singleResult.doubleStream().toArray();
+		log("Single output stream length: " + singleValues.length);
+		log("First 5 single values: " + singleValues[0] + ", " + singleValues[1] +
+				", " + singleValues[2] + ", " + singleValues[3] + ", " + singleValues[4]);
+		log("First 5 batch values: " + batchAllValues[0] + ", " + batchAllValues[1] +
+				", " + batchAllValues[2] + ", " + batchAllValues[3] + ", " + batchAllValues[4]);
+
+		// Check if batch values at offset FRAMES match single values for second target
+		double[] singleValues2 = singleEval.evaluate(tensors[0], tensors[2]).doubleStream().toArray();
+		log("Single(0,2) first 5: " + singleValues2[0] + ", " + singleValues2[1] +
+				", " + singleValues2[2] + ", " + singleValues2[3] + ", " + singleValues2[4]);
+		if (batchAllValues.length > FRAMES + 4) {
+			log("Batch[FRAMES+0..4]: " + batchAllValues[FRAMES] + ", " + batchAllValues[FRAMES + 1] +
+					", " + batchAllValues[FRAMES + 2] + ", " + batchAllValues[FRAMES + 3] +
+					", " + batchAllValues[FRAMES + 4]);
+		}
+
+		// Each batch item's output occupies FRAMES*BINS elements (same layout as single eval),
+		// with the per-frame cosine similarities at the first FRAMES positions of each block
+		int outputElementsPerItem = FRAMES * BINS;
+
+		// Verify each target
+		int matched = 0;
+		for (int b = 0; b < batchSize; b++) {
+			double[] targetSingle = singleEval.evaluate(tensors[0], tensors[1 + b])
+					.doubleStream().limit(FRAMES).toArray();
+			int singleSkip = (int) (targetSingle.length * 0.1);
+			int singleTotal = targetSingle.length - singleSkip - 2;
+			double singleMean = DoubleStream.of(targetSingle).sorted()
+					.skip(singleSkip).limit(singleTotal).average().orElseThrow();
+
+			double[] targetBatch = new double[FRAMES];
+			int batchOffset = b * outputElementsPerItem;
+			if (batchOffset + FRAMES <= batchAllValues.length) {
+				System.arraycopy(batchAllValues, batchOffset, targetBatch, 0, FRAMES);
+			} else {
+				log("ERROR: batch output too small for target " + b +
+						", needed offset " + batchOffset + "+" + FRAMES +
+						" but length=" + batchAllValues.length);
+				continue;
+			}
+
+			int batchSkip = (int) (targetBatch.length * 0.1);
+			int batchTotal = targetBatch.length - batchSkip - 2;
+			double batchMean = DoubleStream.of(targetBatch).sorted()
+					.skip(batchSkip).limit(batchTotal).average().orElseThrow();
+
+			log("Target " + b + ": single=" + singleMean + " batch=" + batchMean);
+			Assert.assertEquals("Mismatch at target " + b + " (tensors[0] vs tensors[" + (1 + b) + "])",
+					singleMean, batchMean, 1e-6);
+			matched++;
+		}
+
+		log("All " + matched + " comparisons match between single and batched approaches");
+	}
+
+	/**
+	 * Full-scale batched comparison at 1000 tensors to measure end-to-end
+	 * throughput of the Phase 2 batched approach.
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(3)
+	public void batchedSimilarityAtScale() {
+		int count = 1000;
+		int batchSize = 100;
+		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
+
+		int totalFrames = batchSize * FRAMES;
+		Evaluable<PackedCollection> batchEval = cosineSimilarityEvaluable(totalFrames, BINS);
+
+		long totalComparisons = 0;
+		long startTime = System.nanoTime();
+		int elementsPerItem = FRAMES * BINS;
+
+		for (int i = 0; i < count; i++) {
+			for (int batchStart = i + 1; batchStart < count; batchStart += batchSize) {
+				int batchEnd = Math.min(batchStart + batchSize, count);
+				int actualBatch = batchEnd - batchStart;
+
+				PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, BINS, 1));
+				for (int b = 0; b < batchSize; b++) {
+					stackedQuery.setMem(b * elementsPerItem, tensors[i], 0, elementsPerItem);
+				}
+
+				PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, BINS, 1));
+				for (int b = 0; b < actualBatch; b++) {
+					stackedTargets.setMem(b * elementsPerItem, tensors[batchStart + b], 0, elementsPerItem);
+				}
+
+				PackedCollection allResults = batchEval.evaluate(stackedQuery, stackedTargets);
+				double[] allValues = allResults.doubleStream().toArray();
+
+				int outputElementsPerItem = FRAMES * BINS;
+				for (int b = 0; b < actualBatch; b++) {
+					double[] values = new double[FRAMES];
+					System.arraycopy(allValues, b * outputElementsPerItem, values, 0, FRAMES);
+
+					int skip = (int) (values.length * 0.1);
+					int total = values.length - skip - 2;
+					DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
+					totalComparisons++;
+				}
+			}
+
+			if (i % 100 == 0 && i > 0) {
+				long elapsed = System.nanoTime() - startTime;
+				log("After " + totalComparisons + " comparisons (" + i +
+						" of " + count + " rows): " +
+						String.format("%.3f", elapsed / (double) totalComparisons / 1_000_000.0) +
+						" ms/comparison, " +
+						String.format("%.1f", elapsed / 1_000_000_000.0) + "s total");
+			}
+		}
+
+		long elapsed = System.nanoTime() - startTime;
+		log("=== Batched Similarity at Scale (batch=" + batchSize + ") ===");
+		log("Completed " + totalComparisons + " comparisons in " +
+				String.format("%.1f", elapsed / 1_000_000_000.0) + "s (" +
+				String.format("%.3f", elapsed / (double) totalComparisons / 1_000_000.0) +
+				" ms/comparison)");
+	}
+
 	private static final Map<Long, Evaluable<PackedCollection>> cosineCache = new HashMap<>();
 
 	/**
 	 * Returns a cached evaluable that computes per-frame cosine similarity
-	 * between two feature tensors of shape (frames, bins, 1).
+	 * between two feature tensors of shape (frames, bins, 1). This same
+	 * evaluable works for batched computation by passing
+	 * {@code (batchSize * frames)} as the frames parameter.
 	 */
 	private static Evaluable<PackedCollection> cosineSimilarityEvaluable(int frames, int bins) {
 		long key = ((long) frames << 32) | bins;
@@ -374,6 +628,23 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 				Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1)
 						.divide(o.multiply(o.length(1, o.cv(shape, 0)),
 								o.length(1, o.cv(shape, 1))))).get());
+	}
+
+	/**
+	 * Computes trimmed mean of cosine similarity values, matching
+	 * the {@code WaveDetailsFactory.cachedProductSimilarity} approach.
+	 */
+	private static double trimmedMean(double[] values) {
+		if (values.length == 0) return -1.0;
+
+		int skip = 0;
+		int total = values.length;
+		if (total > 10) {
+			skip = (int) (values.length * 0.1);
+			total = total - skip - 2;
+		}
+
+		return DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
 	}
 
 	private PackedCollection[] createRandomTensors(int count, int frames, int bins) {
