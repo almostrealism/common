@@ -95,7 +95,9 @@ def _build_consult_prompt(question: str, doc_context: str, memory_context: str,
 
     parts.append(
         "Answer the question using ONLY the documentation context above. "
-        "If no relevant documentation was found, respond with 'Not documented'."
+        "If the documentation does not directly answer the question but contains "
+        "related material, summarize what IS covered and cite the relevant sources. "
+        "Only respond with 'Not documented' if the context is completely empty."
     )
 
     return "\n\n".join(parts)
@@ -238,8 +240,7 @@ def consult(
     # Source references: markdown files used in context + HTML for exploration
     sources = list({r["file"] for r in doc_results})
 
-    return {
-        "answer": answer,
+    result = {
         "sources": sources,
         "html_refs": html_refs,  # HTML docs for agent to explore if needed
         "related_memories": [
@@ -248,6 +249,21 @@ def consult(
         ],
         "backend": llm.name,
     }
+
+    # When the LLM could not synthesize an answer, replace "answer" with
+    # a "note" that encourages the caller to explore the listed sources.
+    if answer.strip().lower() in ("not documented", "not documented."):
+        if sources or html_refs:
+            result["note"] = (
+                "No direct answer was synthesized, but the sources listed "
+                "below may contain related information worth exploring."
+            )
+        else:
+            result["answer"] = answer
+    else:
+        result["answer"] = answer
+
+    return result
 
 
 @mcp.tool()

@@ -18,6 +18,31 @@ import numpy as np
 from embedder import Embedder
 
 
+def _normalize_repo_url(url: Optional[str]) -> Optional[str]:
+    """Normalize a repository URL to the canonical SSH form.
+
+    Converts HTTPS URLs (https://github.com/org/repo) to SSH format
+    (git@github.com:org/repo.git) so that exact-match comparisons
+    work regardless of which format was used at storage time.
+    The SSH form is canonical because all checkouts use SSH keys.
+    """
+    if not url:
+        return url
+    normalized = url.strip().rstrip("/")
+    # HTTPS → SSH: https://github.com/org/repo → git@github.com:org/repo
+    if normalized.startswith("https://") or normalized.startswith("http://"):
+        without_scheme = normalized.split("://", 1)[1]
+        slash_idx = without_scheme.find("/")
+        if slash_idx > 0:
+            host = without_scheme[:slash_idx]
+            path = without_scheme[slash_idx + 1:]
+            normalized = f"git@{host}:{path}"
+    # Ensure trailing .git
+    if not normalized.endswith(".git"):
+        normalized += ".git"
+    return normalized
+
+
 class MemoryStore:
     """Persistent memory store combining SQLite for metadata and FAISS for vector search."""
 
@@ -73,6 +98,25 @@ class MemoryStore:
         if "branch" not in columns:
             self._conn.execute("ALTER TABLE entries ADD COLUMN branch TEXT")
         self._conn.commit()
+        self._migrate_normalize_repo_urls()
+
+    def _migrate_normalize_repo_urls(self):
+        """Normalize existing repo_url values to canonical SSH form."""
+        rows = self._conn.execute(
+            "SELECT rowid, repo_url FROM entries WHERE repo_url IS NOT NULL"
+        ).fetchall()
+        updated = 0
+        for row in rows:
+            original = row["repo_url"]
+            normalized = _normalize_repo_url(original)
+            if normalized != original:
+                self._conn.execute(
+                    "UPDATE entries SET repo_url = ? WHERE rowid = ?",
+                    (normalized, row["rowid"]),
+                )
+                updated += 1
+        if updated:
+            self._conn.commit()
 
     def _index_path(self, namespace: str) -> Path:
         return self._data_dir / f"{namespace}.index"
@@ -160,6 +204,7 @@ class MemoryStore:
         entry_id = str(uuid.uuid4())
         created_at = datetime.now(timezone.utc).isoformat()
         tags_json = json.dumps(tags) if tags else None
+        repo_url = _normalize_repo_url(repo_url)
 
         self._conn.execute(
             "INSERT INTO entries (id, namespace, content, tags, source, created_at, repo_url, branch) "
@@ -225,6 +270,7 @@ class MemoryStore:
         if index.ntotal == 0:
             return []
 
+        repo_url = _normalize_repo_url(repo_url)
         query_vec = self._embedder.embed(query).reshape(1, -1)
 
         # Search more than needed if we'll post-filter
@@ -254,8 +300,8 @@ class MemoryStore:
                 if not (entry["tags"] and tag in entry["tags"]):
                     continue
 
-            # Post-filter by repo_url
-            if repo_url and entry.get("repo_url") != repo_url:
+            # Post-filter by repo_url (normalize stored value for pre-fix entries)
+            if repo_url and _normalize_repo_url(entry.get("repo_url")) != repo_url:
                 continue
 
             # Post-filter by branch
@@ -291,6 +337,7 @@ class MemoryStore:
         Returns:
             List of entry dicts ordered by creation time (newest first).
         """
+        repo_url = _normalize_repo_url(repo_url)
         rows = self._conn.execute(
             "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
             "FROM entries WHERE namespace = ? AND repo_url = ? AND branch = ? "

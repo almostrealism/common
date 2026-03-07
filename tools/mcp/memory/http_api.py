@@ -136,15 +136,29 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         return JSONResponse({"results": results, "count": len(results)})
 
     async def memory_branch_endpoint(request: Request) -> JSONResponse:
-        """GET /api/memory/branch/{repo_url}/{branch} - Branch context lookup."""
+        """POST /api/memory/branch - Branch context lookup."""
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
 
-        repo_url = request.path_params["repo_url"]
-        branch = request.path_params["branch"]
-        namespace = request.query_params.get("namespace", "default")
-        limit = int(request.query_params.get("limit", "20"))
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            return JSONResponse(
+                {"ok": False, "error": "Invalid JSON body"},
+                status_code=400,
+            )
+
+        repo_url = body.get("repo_url", "")
+        branch = body.get("branch", "")
+        if not repo_url or not branch:
+            return JSONResponse(
+                {"ok": False, "error": "repo_url and branch are required"},
+                status_code=400,
+            )
+
+        namespace = body.get("namespace", "default")
+        limit = body.get("limit", 20)
 
         results = store.search_by_branch(
             repo_url=repo_url,
@@ -152,7 +166,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             namespace=namespace,
             limit=limit,
         )
-        return JSONResponse(results)
+        return JSONResponse({"results": results, "count": len(results)})
 
     async def memory_delete_endpoint(request: Request) -> JSONResponse:
         """DELETE /api/memory/{entry_id} - Delete by ID."""
@@ -254,7 +268,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/api/health", health, methods=["GET"]),
         Route("/api/memory/store", memory_store_endpoint, methods=["POST"]),
         Route("/api/memory/search", memory_search_endpoint, methods=["POST"]),
-        Route("/api/memory/branch/{repo_url:path}/{branch:path}", memory_branch_endpoint, methods=["GET"]),
+        Route("/api/memory/branch", memory_branch_endpoint, methods=["POST"]),
         Route("/api/memory/{entry_id}", memory_delete_endpoint, methods=["DELETE"]),
         Route("/api/memory/list", memory_list_endpoint, methods=["GET"]),
         Route("/api/memory/import", memory_import_endpoint, methods=["POST"]),

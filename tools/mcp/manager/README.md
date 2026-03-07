@@ -1,8 +1,9 @@
 # AR Manager MCP Server
 
 Internet-facing MCP endpoint for managing FlowTree workstreams, submitting
-coding tasks, and triggering project workflows. Designed for naive clients
-(Claude mobile, other AI agents) that have no repo checkout or CLAUDE.md context.
+coding tasks, triggering project workflows, and accessing agent memories.
+Designed for naive clients (Claude mobile, other AI agents) that have no
+repo checkout or CLAUDE.md context.
 
 ## Architecture
 
@@ -11,23 +12,26 @@ Claude Mobile / External AI
      |
      | HTTPS (TLS terminated at reverse proxy)
      |
-[Reverse proxy: Caddy/nginx]  -- rate limiting, TLS
+[Reverse proxy: Tailscale Funnel / Caddy / nginx]
      |
      | HTTP (localhost)
      |
 [ar-manager MCP server]  (port 8010)
-     |         \
-     |          \-- GitHub API (direct, for workflow dispatch + Contents API)
+     |         \          \
+     |          \          \-- ar-memory HTTP (port 8020)
+     |           \
+     |            \-- GitHub API (workflow dispatch + Contents API)
      |
      | HTTP (port 7780)
      |
 [FlowTree controller]  (FlowTreeApiEndpoint)
 ```
 
-The server is **stateless** -- all workstream state lives in the controller. It is
-a thin orchestration facade that:
+The server is **stateless** -- all workstream state lives in the controller. It
+is a thin orchestration facade that:
 - Calls the controller REST API for Tier 1 operations (CRUD)
 - Calls the GitHub API directly for Tier 2 operations (workflow dispatch, file commits)
+- Calls the ar-memory HTTP API for Tier 3 operations (memory recall, store, branch context)
 - Validates bearer tokens at the HTTP transport level
 - Returns self-documenting responses with `next_steps` guidance
 
@@ -52,14 +56,29 @@ a thin orchestration facade that:
 | `project_verify_branch` | pipeline | Dispatch verify-completion workflow |
 | `project_commit_plan` | pipeline | Commit a plan document to a branch |
 
+### Tier 3: Memory
+
+| Tool | Scope | Description |
+|------|-------|-------------|
+| `memory_recall` | memory | Semantic search with optional LLM synthesis |
+| `memory_branch_context` | memory | Get all memories for a specific branch |
+| `memory_store` | memory | Store a memory from an external client |
+
+Memory tools resolve `repo_url` and `branch` from a `workstream_id` when not
+provided directly. LLM synthesis (via llama.cpp) is attempted for `memory_recall`
+summaries when a backend is available.
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AR_CONTROLLER_URL` | `http://localhost:7780` | FlowTree controller base URL |
+| `AR_MEMORY_URL` | (auto-discovered) | ar-memory HTTP server URL |
 | `AR_MANAGER_GITHUB_TOKEN` | (none) | GitHub PAT for Tier 2 ops (falls back to `GITHUB_TOKEN`) |
 | `AR_MANAGER_TOKEN_FILE` | `~/.config/ar/manager-tokens.json` | Bearer token config file |
 | `AR_MANAGER_TOKENS` | (none) | JSON string of token config (overrides file) |
+| `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis |
+| `AR_CONSULTANT_LLAMA_URL` | (auto-discovered) | llama.cpp server URL |
 | `MCP_TRANSPORT` | `stdio` | Transport: `stdio`, `http`, or `sse` |
 | `MCP_PORT` | `8010` | Port for http/sse transport |
 
@@ -67,29 +86,40 @@ a thin orchestration facade that:
 
 ### Token file format
 
-Create `~/.config/ar/manager-tokens.json`:
-
 ```json
 {
   "tokens": [
     {
-      "value": "tok_abc123",
-      "scopes": ["read", "write", "pipeline"],
+      "value": "armt_...",
+      "scopes": ["read", "write", "pipeline", "memory"],
       "label": "Claude mobile"
     },
     {
-      "value": "tok_xyz456",
-      "scopes": ["read"],
+      "value": "armt_...",
+      "scopes": ["read", "memory"],
       "label": "Monitoring dashboard"
     }
   ]
 }
 ```
 
+Generate a token with `tools/mcp/manager/generate-token.sh`. Default scopes
+are `read`, `write`, `pipeline`, `memory`.
+
 **Scopes:**
 - `read` -- list workstreams, get stats, health check
 - `write` -- submit tasks, register/update workstreams
 - `pipeline` -- trigger GitHub workflows, commit plan files
+- `memory` -- recall, store, and browse agent memories
+
+### Security
+
+- Timing-safe token comparison (`hmac.compare_digest`)
+- Per-client rate limiting (60 req/min sliding window)
+- Input length validation on all parameters
+- Path traversal protection on `project_commit_plan`
+- Audit logging with token labels
+- Auth-exempt `/_health` endpoint for Docker healthchecks
 
 ### No-auth mode
 
@@ -98,58 +128,30 @@ without authentication (for trusted LAN use). A warning is logged on startup.
 
 ## Deployment
 
-### Docker Compose + Tailscale Funnel (recommended)
+### Docker Compose (recommended)
 
-The quickest path to a public MCP endpoint. Run on a machine that is on your
-Tailnet (e.g., mac-studio):
+ar-manager is defined as a service in `tools/docker-compose.yml` alongside
+ar-memory and the FlowTree controller:
+
+```bash
+docker compose -f tools/docker-compose.yml up -d
+```
+
+Place `manager-tokens.json` in `/Users/Shared/flowtree/manager/` on the host.
+
+**TLS is required for public deployments.** The compose file exposes plain HTTP.
+Use Tailscale Funnel, Caddy, or nginx as a TLS-terminating reverse proxy.
+
+### Tailscale Funnel (quickest public endpoint)
 
 ```bash
 cd tools/mcp/manager
 ./setup.sh
 ```
 
-This will:
-1. Create `/Users/Shared/flowtree/manager/` (isolated from controller config)
-2. Generate a bearer token and print it
-3. Build and start the `ar-manager` container via `docker compose`
-4. Set up Tailscale Funnel on port 8010
+This generates a token, builds the container, and sets up Tailscale Funnel.
 
-The public URL will be `https://<hostname>.<tailnet>.ts.net/`. Configure this
-in Claude mobile as a remote MCP server with the bearer token.
-
-To skip Funnel (LAN-only): `./setup.sh --no-funnel`
-To just generate a token: `./setup.sh --token-only`
-
-**File layout on the host:**
-
-```
-/Users/Shared/flowtree/
-  controller/           # workstreams.yaml, slack-tokens.json (controller only)
-  manager/              # manager-tokens.json (manager only, isolated)
-  memory-data/          # ar-memory FAISS indices and entries
-```
-
-### Centralized MCP server (production)
-
-Add to your workstreams YAML config under `mcpServers`:
-
-```yaml
-mcpServers:
-  ar-manager:
-    command: python3
-    args: [tools/mcp/manager/server.py]
-    env:
-      MCP_TRANSPORT: http
-      MCP_PORT: "8010"
-      AR_MANAGER_GITHUB_TOKEN: ${GITHUB_TOKEN}
-      AR_MANAGER_TOKEN_FILE: /Users/Shared/flowtree/manager/manager-tokens.json
-```
-
-The controller will start it automatically via `FlowTreeController.startCentralizedMcpServers()`.
-
-### Reverse proxy (TLS + rate limiting)
-
-If using nginx/Caddy instead of Tailscale Funnel:
+### Reverse proxy examples
 
 #### nginx
 
@@ -191,21 +193,6 @@ manager.example.com {
 }
 ```
 
-### Local development (stdio)
-
-The server is configured in `.mcp.json` for stdio-mode local development:
-
-```json
-{
-  "mcpServers": {
-    "ar-manager": {
-      "command": "python3",
-      "args": ["tools/mcp/manager/server.py"]
-    }
-  }
-}
-```
-
 ## Response Format
 
 Every tool response includes `next_steps` -- a list of strings guiding the
@@ -219,21 +206,6 @@ client on what to do next:
     "next_steps": [
         "Use workstream_get_status to check job progress",
         "The agent will push commits to branch 'feature/my-work'"
-    ]
-}
-```
-
-### Capability errors (Tier 2 on non-pipeline workstream)
-
-```json
-{
-    "ok": false,
-    "error": "Workstream 'ws-foo' does not support pipeline operations",
-    "reason": "Missing: repo_url is not configured",
-    "suggestion": "Use workstream_update_config to set repo_url",
-    "next_steps": [
-        "Call workstream_update_config with repo_url=...",
-        "Then call workstream_list to confirm pipeline_capable=true"
     ]
 }
 ```

@@ -156,12 +156,13 @@ class MemoryHTTPClient:
         Returns:
             List of memory entries ordered by creation time (newest first).
         """
-        encoded_url = quote(repo_url, safe="")
-        encoded_branch = quote(branch, safe="")
-        params = urlencode({"namespace": namespace, "limit": limit})
-        return self._get(
-            f"/api/memory/branch/{encoded_url}/{encoded_branch}?{params}"
-        )
+        payload = {
+            "repo_url": repo_url,
+            "branch": branch,
+            "namespace": namespace,
+            "limit": limit,
+        }
+        return self._post("/api/memory/branch", payload)
 
     def delete(self, entry_id: str, namespace: str = "default") -> dict:
         """Delete a memory entry by ID.
