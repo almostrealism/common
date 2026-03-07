@@ -11,6 +11,9 @@ Every tool invocation is recorded in a local SQLite history database for
 quality evaluation, retrieval accuracy assessment, and fine-tuning
 dataset construction.
 
+Memory access is via the ar-memory HTTP service (see tools/mcp/memory/).
+If ar-memory is unavailable, memory features degrade gracefully.
+
 Environment variables:
     AR_CONSULTANT_BACKEND      - "llamacpp", "ollama", "mlx", "passthrough", or "auto" (default)
     AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: localhost:8083 on host, host.docker.internal:8083 in containers)
@@ -18,8 +21,7 @@ Environment variables:
     AR_CONSULTANT_MLX_MODEL    - MLX model path (default: mlx-community/Qwen2.5-Coder-32B-Instruct-4bit)
     AR_CONSULTANT_OLLAMA_URL   - Ollama base URL (default: http://localhost:11434)
     AR_CONSULTANT_HISTORY_DIR  - Directory for history.db (default: tools/mcp/consultant/data)
-    AR_MEMORY_DATA_DIR         - Shared memory data directory
-    AR_MEMORY_BACKEND          - Memory embedding backend
+    AR_MEMORY_URL              - ar-memory HTTP server URL (auto-discovered if not set)
 """
 
 import json
@@ -93,7 +95,9 @@ def _build_consult_prompt(question: str, doc_context: str, memory_context: str,
 
     parts.append(
         "Answer the question using ONLY the documentation context above. "
-        "If no relevant documentation was found, respond with 'Not documented'."
+        "If the documentation does not directly answer the question but contains "
+        "related material, summarize what IS covered and cite the relevant sources. "
+        "Only respond with 'Not documented' if the context is completely empty."
     )
 
     return "\n\n".join(parts)
@@ -236,8 +240,7 @@ def consult(
     # Source references: markdown files used in context + HTML for exploration
     sources = list({r["file"] for r in doc_results})
 
-    return {
-        "answer": answer,
+    result = {
         "sources": sources,
         "html_refs": html_refs,  # HTML docs for agent to explore if needed
         "related_memories": [
@@ -246,6 +249,21 @@ def consult(
         ],
         "backend": llm.name,
     }
+
+    # When the LLM could not synthesize an answer, replace "answer" with
+    # a "note" that encourages the caller to explore the listed sources.
+    if answer.strip().lower() in ("not documented", "not documented."):
+        if sources or html_refs:
+            result["note"] = (
+                "No direct answer was synthesized, but the sources listed "
+                "below may contain related information worth exploring."
+            )
+        else:
+            result["answer"] = answer
+    else:
+        result["answer"] = answer
+
+    return result
 
 
 @mcp.tool()
@@ -324,6 +342,9 @@ def remember(
     and the reformulated version are persisted, preserving the agent's
     intent while adding documentation context.
 
+    If repo_url/branch are not provided, they are auto-detected from
+    the current git working directory.
+
     Args:
         content: The raw note to store.
         namespace: Memory namespace.
@@ -335,6 +356,19 @@ def remember(
     Returns:
         Dictionary with both versions of the text and the entry ID.
     """
+    # Auto-detect git context if not provided
+    if not repo_url or not branch:
+        try:
+            _common_dir = os.path.join(os.path.dirname(__file__), "..", "common")
+            if _common_dir not in sys.path:
+                sys.path.insert(0, _common_dir)
+            from git_context import detect_git_context
+            detected_url, detected_branch = detect_git_context()
+            repo_url = repo_url or detected_url
+            branch = branch or detected_branch
+        except (ValueError, ImportError):
+            pass  # Git detection is best-effort
+
     # Get documentation context for the note's subject matter
     doc_retrieval = docs.get_context_for_query(content)
     doc_context = doc_retrieval["context"]
@@ -361,16 +395,22 @@ def remember(
         branch=branch,
     )
 
-    return {
+    result = {
         "reformulated": reformulated,
         "original": content,
-        "entry_id": entry["id"],
         "namespace": namespace,
         "tags": tags,
         "repo_url": repo_url,
         "branch": branch,
         "backend": llm.name,
     }
+
+    if "error" in entry:
+        result["error"] = entry["error"]
+    else:
+        result["entry_id"] = entry["id"]
+
+    return result
 
 
 @mcp.tool()
@@ -765,6 +805,7 @@ def consultant_status() -> dict:
     return {
         "backend": llm.name,
         "backend_available": llm.available,
+        "memory_available": memory.available,
         "active_sessions": len(_sessions),
         "session_ttl_seconds": _SESSION_TTL,
         "docs_modules_available": len(docs._all_doc_files()),

@@ -1,3 +1,4 @@
 # AR Manager MCP Server
 mcp>=1.0.0
 uvicorn
+# Memory tools use tools/mcp/common/ (no extra pip deps - stdlib only)
