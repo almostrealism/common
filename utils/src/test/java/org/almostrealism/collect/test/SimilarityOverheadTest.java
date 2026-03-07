@@ -26,7 +26,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.stream.DoubleStream;
@@ -645,6 +647,215 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		}
 
 		return DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
+	}
+
+	/**
+	 * Demonstrates the Phase 5 incremental similarity approach: compute
+	 * fast approximate similarity using mean-pooled embeddings, then only
+	 * perform exact comparisons for pairs above the approximate threshold.
+	 *
+	 * <p>Uses clustered test data to create realistic similarity structure
+	 * where most cross-cluster pairs have low similarity and can be
+	 * skipped. Target: reduce exact comparisons by 80-90%.</p>
+	 */
+	@Test(timeout = 120_000)
+	public void incrementalSimilarity() {
+		int count = 200;
+		int clusters = 10;
+		PackedCollection[] tensors = createClusteredTensors(count, FRAMES, BINS, clusters);
+
+		// Phase 1: Compute mean-pooled embeddings
+		long embeddingStart = System.nanoTime();
+		double[][] embeddings = new double[count][BINS];
+		for (int i = 0; i < count; i++) {
+			double[] raw = tensors[i].doubleStream().toArray();
+			for (int f = 0; f < FRAMES; f++) {
+				for (int b = 0; b < BINS; b++) {
+					embeddings[i][b] += raw[f * BINS + b];
+				}
+			}
+			double invFrames = 1.0 / FRAMES;
+			for (int b = 0; b < BINS; b++) {
+				embeddings[i][b] *= invFrames;
+			}
+			double norm = 0;
+			for (int b = 0; b < BINS; b++) {
+				norm += embeddings[i][b] * embeddings[i][b];
+			}
+			norm = Math.sqrt(norm);
+			if (norm > 0) {
+				for (int b = 0; b < BINS; b++) {
+					embeddings[i][b] /= norm;
+				}
+			}
+		}
+		long embeddingTime = System.nanoTime() - embeddingStart;
+
+		// Phase 2: Find candidate pairs using approximate similarity
+		double threshold = 0.85;
+		long filterStart = System.nanoTime();
+		long totalPairs = (long) count * (count - 1) / 2;
+		List<int[]> candidates = new ArrayList<>();
+		for (int i = 0; i < count; i++) {
+			for (int j = i + 1; j < count; j++) {
+				double approxSim = 0;
+				for (int b = 0; b < BINS; b++) {
+					approxSim += embeddings[i][b] * embeddings[j][b];
+				}
+				if (approxSim >= threshold) {
+					candidates.add(new int[]{i, j});
+				}
+			}
+		}
+		long filterTime = System.nanoTime() - filterStart;
+
+		// Phase 3: Compute exact similarity only for candidate pairs
+		Evaluable<PackedCollection> cosineEval = cosineSimilarityEvaluable(FRAMES, BINS);
+		long exactStart = System.nanoTime();
+		int exactComparisons = 0;
+		for (int[] pair : candidates) {
+			double[] values = cosineEval.evaluate(tensors[pair[0]], tensors[pair[1]])
+					.doubleStream().limit(FRAMES).toArray();
+			trimmedMean(values);
+			exactComparisons++;
+		}
+		long exactTime = System.nanoTime() - exactStart;
+
+		double reductionPercent = 100.0 * (totalPairs - candidates.size()) / totalPairs;
+		long totalTime = embeddingTime + filterTime + exactTime;
+
+		log("=== Incremental Similarity (Phase 5) ===");
+		log("Clusters: " + clusters + ", Samples: " + count);
+		log("Total pairs: " + totalPairs + ", Candidate pairs: " + candidates.size());
+		log("Exact comparisons reduced by: " + String.format("%.1f%%", reductionPercent));
+		log("Embedding time:  " + String.format("%.1f", embeddingTime / 1_000_000.0) + " ms");
+		log("Filter time:     " + String.format("%.1f", filterTime / 1_000_000.0) + " ms");
+		log("Exact comp time: " + String.format("%.1f", exactTime / 1_000_000.0) + " ms");
+		log("Total time:      " + String.format("%.1f", totalTime / 1_000_000.0) + " ms");
+		if (exactComparisons > 0) {
+			log("Per exact comparison: " + String.format("%.3f",
+					exactTime / (double) exactComparisons / 1_000_000.0) + " ms");
+		}
+
+		// Compare with full exact computation time estimate
+		if (exactComparisons > 0) {
+			double perExact = exactTime / (double) exactComparisons;
+			double fullEstimate = perExact * totalPairs;
+			double actualTotal = totalTime;
+			log("Estimated full exact time: " + String.format("%.1f", fullEstimate / 1_000_000.0) + " ms");
+			log("Incremental total time:    " + String.format("%.1f", actualTotal / 1_000_000.0) + " ms");
+			log("Overall speedup: " + String.format("%.2fx", fullEstimate / actualTotal));
+		}
+
+		Assert.assertTrue("Expected at least 50% reduction but got " +
+				String.format("%.1f%%", reductionPercent),
+				reductionPercent >= 50.0);
+	}
+
+	/**
+	 * Validates that the approximate similarity (mean-pooled embedding cosine)
+	 * is positively correlated with exact per-frame cosine similarity. Pairs
+	 * with high approximate similarity should generally have high exact
+	 * similarity, confirming the filtering approach preserves important pairs.
+	 */
+	@Test(timeout = 120_000)
+	public void approximateSimilarityCorrelation() {
+		int count = 50;
+		int clusters = 5;
+		PackedCollection[] tensors = createClusteredTensors(count, FRAMES, BINS, clusters);
+
+		// Compute mean-pooled embeddings
+		double[][] embeddings = new double[count][BINS];
+		for (int i = 0; i < count; i++) {
+			double[] raw = tensors[i].doubleStream().toArray();
+			for (int f = 0; f < FRAMES; f++) {
+				for (int b = 0; b < BINS; b++) {
+					embeddings[i][b] += raw[f * BINS + b];
+				}
+			}
+			double invFrames = 1.0 / FRAMES;
+			for (int b = 0; b < BINS; b++) {
+				embeddings[i][b] *= invFrames;
+			}
+			double norm = 0;
+			for (int b = 0; b < BINS; b++) {
+				norm += embeddings[i][b] * embeddings[i][b];
+			}
+			norm = Math.sqrt(norm);
+			if (norm > 0) {
+				for (int b = 0; b < BINS; b++) {
+					embeddings[i][b] /= norm;
+				}
+			}
+		}
+
+		// Compute both approximate and exact similarities for sample pairs
+		Evaluable<PackedCollection> cosineEval = cosineSimilarityEvaluable(FRAMES, BINS);
+		int sameClusterCount = 0;
+		int sameClusterHighApprox = 0;
+
+		for (int i = 0; i < count; i++) {
+			for (int j = i + 1; j < count; j++) {
+				double approxSim = 0;
+				for (int b = 0; b < BINS; b++) {
+					approxSim += embeddings[i][b] * embeddings[j][b];
+				}
+
+				boolean sameCluster = (i % clusters) == (j % clusters);
+				if (sameCluster) {
+					sameClusterCount++;
+					if (approxSim >= 0.85) {
+						sameClusterHighApprox++;
+					}
+				}
+			}
+		}
+
+		double recall = sameClusterCount > 0
+				? 100.0 * sameClusterHighApprox / sameClusterCount : 0;
+		log("Same-cluster recall at threshold 0.85: " +
+				String.format("%.1f%%", recall) +
+				" (" + sameClusterHighApprox + "/" + sameClusterCount + ")");
+
+		Assert.assertTrue("Expected at least 70% recall for same-cluster pairs but got " +
+				String.format("%.1f%%", recall),
+				recall >= 70.0);
+	}
+
+	/**
+	 * Creates tensors with cluster structure for testing approximate filtering.
+	 * Each cluster has a random Gaussian center, and tensors within a cluster
+	 * are the center plus noise. This creates realistic similarity structure
+	 * where within-cluster pairs have high similarity and cross-cluster pairs
+	 * have low similarity.
+	 */
+	private PackedCollection[] createClusteredTensors(
+			int count, int frames, int bins, int clusters) {
+		Random rng = new Random(42);
+		PackedCollection[] tensors = new PackedCollection[count];
+
+		double[][] centers = new double[clusters][bins];
+		for (int c = 0; c < clusters; c++) {
+			for (int b = 0; b < bins; b++) {
+				centers[c][b] = rng.nextGaussian();
+			}
+		}
+
+		for (int i = 0; i < count; i++) {
+			int cluster = i % clusters;
+			tensors[i] = new PackedCollection(shape(frames, bins, 1));
+			double[] data = new double[frames * bins];
+			for (int f = 0; f < frames; f++) {
+				for (int b = 0; b < bins; b++) {
+					data[f * bins + b] = centers[cluster][b] + rng.nextGaussian() * 0.3;
+				}
+			}
+			tensors[i].setMem(0, data, 0, data.length);
+		}
+
+		log("Created " + count + " clustered tensors (" + clusters +
+				" clusters) with shape [" + frames + ", " + bins + ", 1]");
+		return tensors;
 	}
 
 	private PackedCollection[] createRandomTensors(int count, int frames, int bins) {

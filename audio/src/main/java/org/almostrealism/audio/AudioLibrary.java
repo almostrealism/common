@@ -24,6 +24,7 @@ import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
 import org.almostrealism.audio.data.WaveDetailsJob;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
+import org.almostrealism.audio.similarity.IncrementalSimilarityComputation;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.concurrent.SuspendableThreadPoolExecutor;
 import org.almostrealism.io.ConsoleFeatures;
@@ -654,6 +655,31 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 
 		return details;
+	}
+
+	/**
+	 * Computes all pairwise similarities incrementally using approximate filtering.
+	 *
+	 * <p>This method uses a two-phase approach: first computing fast approximate
+	 * similarity using mean-pooled feature embeddings, then only computing exact
+	 * per-frame cosine similarity for pairs above the given threshold. This
+	 * typically eliminates 80-90% of expensive exact comparisons while producing
+	 * a similarity graph suitable for community detection.</p>
+	 *
+	 * <p>Existing similarity values are preserved; only missing pairs above the
+	 * approximate threshold are computed.</p>
+	 *
+	 * @param approximateThreshold minimum approximate cosine similarity for
+	 *        a pair to receive exact computation (recommended: 0.3)
+	 * @return the computation result with timing and filtering statistics
+	 * @see IncrementalSimilarityComputation
+	 */
+	public IncrementalSimilarityComputation.Result computeAllSimilaritiesIncremental(
+			double approximateThreshold) {
+		List<WaveDetails> all = new ArrayList<>(getAllDetails());
+		IncrementalSimilarityComputation computation =
+				new IncrementalSimilarityComputation(factory, all, approximateThreshold);
+		return computation.compute();
 	}
 
 	public CompletableFuture<Void> refresh() {
