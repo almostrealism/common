@@ -222,20 +222,20 @@ public class LightingEngine<T extends ContinuousField> {
 
 ```
 1. Camera Ray Generation
-   ↓
+   |
 2. Ray-Scene Intersection
-   ↓
+   |
 3. Closest Surface Selection
-   ↓
+   |
 4. Shader Evaluation
-   ├── Diffuse lighting
-   ├── Specular highlights
-   ├── Shadows (optional)
-   ├── Reflections (recursive)
-   └── Refractions (recursive)
-   ↓
+   +-- Diffuse lighting
+   +-- Specular highlights
+   +-- Shadows (optional)
+   +-- Reflections (recursive)
+   +-- Refractions (recursive)
+   |
 5. Supersampling Average
-   ↓
+   |
 6. Final Pixel Color
 ```
 
@@ -494,8 +494,9 @@ Thread pool: ~8x speedup on 8-core CPU
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native  # or opencl, metal
 ```
+
+`AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `opencl`, or `metal`.
 
 ## Testing
 

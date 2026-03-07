@@ -122,7 +122,7 @@ mkdir -p "${RUNNER_WORKDIR}"
 # ---------- Set AR environment variables ----------
 
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
+# AR_HARDWARE_DRIVER is intentionally left unset to auto-detect the best available backend
 mkdir -p "${AR_HARDWARE_LIBS}"
 
 # ---------- Helper: remove runner config ----------

@@ -85,6 +85,8 @@ import java.util.function.Consumer;
  *
  * <h3>AR_HARDWARE_DRIVER</h3>
  * <p><strong>Purpose:</strong> Specifies which hardware acceleration backend(s) to use.</p>
+ * <p><strong>Optional:</strong> Best left unset to inherit the best available backend(s)
+ * for the current platform (equivalent to {@code *}).</p>
  * <p><strong>Values:</strong></p>
  * <ul>
  *   <li><strong>{@code native}</strong> - JNI backend with runtime-generated C code (default for CPU)</li>
@@ -92,7 +94,7 @@ import java.util.function.Consumer;
  *   <li><strong>{@code mtl}</strong> - Metal backend for Apple Silicon GPU</li>
  *   <li><strong>{@code cpu}</strong> - Abstract CPU requirement (maps to JNI on x86, JNI on ARM)</li>
  *   <li><strong>{@code gpu}</strong> - Abstract GPU requirement (maps to CL on x86, MTL on ARM)</li>
- *   <li><strong>{@code *}</strong> - Automatic selection (default):
+ *   <li><strong>{@code *}</strong> - Automatic selection (default when unset):
  *     <ul>
  *       <li>ARM64 (Apple Silicon): JNI, MTL, CL</li>
  *       <li>x86/x64: CL, JNI (not on macOS)</li>
@@ -178,7 +180,6 @@ import java.util.function.Consumer;
  * <h3>Development (Fast Compilation, CPU Execution)</h3>
  * <pre>
  * export AR_HARDWARE_LIBS=/tmp/ar_libs/
- * export AR_HARDWARE_DRIVER=native
  * export AR_HARDWARE_PRECISION=FP64
  * </pre>
  *
@@ -417,7 +418,6 @@ import java.util.function.Consumer;
  *
  * # GOOD: Set AR_HARDWARE_LIBS before running
  * export AR_HARDWARE_LIBS=/tmp/ar_libs/
- * export AR_HARDWARE_DRIVER=native
  * java -jar myapp.jar
  * </pre>
  *

@@ -412,7 +412,7 @@ graph TB
                 <h3>Environment Setup</h3>
                 <p>For hardware acceleration, set environment variables:</p>
                 <pre><code>export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native  # or opencl, metal</code></pre>
+# AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend</code></pre>
 
                 <h3>Quick Example</h3>
                 <pre><code class="language-java">import org.almostrealism.algebra.*;

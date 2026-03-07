@@ -16,8 +16,9 @@ This file contains concatenated documentation for AI agents. For navigation, see
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/   # Any writable directory
-export AR_HARDWARE_DRIVER=native        # native|opencl|metal|external
 ```
+
+Optional: `AR_HARDWARE_DRIVER` controls the backend (`native|opencl|metal|external|*`). Best left unset to inherit the best available backend(s) for the platform.
 
 ---
 
@@ -338,7 +339,6 @@ public class MyTest implements TestFeatures, ConsoleFeatures {
 ### Run Tests
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl <module> -Dtest=<TestName>
 ```
 
@@ -348,7 +348,7 @@ mvn test -pl <module> -Dtest=<TestName>
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `NoClassDefFoundError: PackedCollection` | Missing env vars | Set AR_HARDWARE_LIBS, AR_HARDWARE_DRIVER |
+| `NoClassDefFoundError: PackedCollection` | Missing env vars | Set AR_HARDWARE_LIBS |
 | `Shape mismatch` | Incompatible dimensions | Check tensor shapes before operations |
 | `OutOfMemoryError` | GPU memory exhausted | Reduce batch size, use CPU |
 | `NullPointerException` in evaluate | Producer not compiled | Call `.get()` before `.evaluate()` |
@@ -404,8 +404,9 @@ import org.almostrealism.io.ConsoleFeatures;
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 ```
+
+`AR_HARDWARE_DRIVER` is optional and best left unset to inherit the best available backend(s) for the platform.
 
 **Note**: `AR_HARDWARE_LIBS` can be set to **any writable directory** - the system just needs a place to generate and load hardware acceleration libraries. Common choices include `/tmp/ar_libs/`, `/home/developer/.libs/`, or any other temp directory.
 
@@ -414,7 +415,6 @@ export AR_HARDWARE_DRIVER=native
 1. **Set environment variables** before running Java code:
    ```bash
    export AR_HARDWARE_LIBS=/tmp/ar_libs/
-   export AR_HARDWARE_DRIVER=native
    ```
 
    The directory will be created automatically if it doesn't exist.
@@ -422,18 +422,18 @@ export AR_HARDWARE_DRIVER=native
 2. **For Maven tests**, always prefix test commands with the environment variables:
    ```bash
    export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-   export AR_HARDWARE_DRIVER=native && \
    mvn test -pl <module>
    ```
 
 ### What These Variables Do
 
 - **`AR_HARDWARE_LIBS`**: Specifies the directory where hardware acceleration libraries (JNI .so files, OpenCL kernels, etc.) will be generated and loaded from
-- **`AR_HARDWARE_DRIVER`**: Specifies which hardware backend to use:
-  - `native`: Standard JNI operations with runtime-generated native code (default)
+- **`AR_HARDWARE_DRIVER`** (optional): Specifies which hardware backend to use. Best left unset to auto-select. Available values:
+  - `native`: Standard JNI operations with runtime-generated native code
   - `opencl`: OpenCL acceleration (CPU/GPU)
   - `metal`: Metal GPU acceleration (Apple Silicon)
   - `external`: Generated executable approach
+  - `*`: Auto-select best available backends (default when unset)
 
 ### Common Issues
 
@@ -443,10 +443,9 @@ export AR_HARDWARE_DRIVER=native
 - Missing library errors
 - Failures during model inference
 
-✅ **Always verify** these are set before running:
+Always verify AR_HARDWARE_LIBS is set before running:
 ```bash
 echo $AR_HARDWARE_LIBS
-echo $AR_HARDWARE_DRIVER
 ```
 
 ---
@@ -628,17 +627,14 @@ Always set environment variables when running tests:
 ```bash
 # Single module
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml
 
 # Specific test
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=MyTest
 
 # All modules
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test
 ```
 
@@ -1418,7 +1414,6 @@ Memory (GPU/CPU buffers)
 **Required environment variables:**
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native  # or opencl, metal
 ```
 
 ### Supported Backends
@@ -1620,7 +1615,7 @@ CollectionProducer<?> traversed = cp(data).traverse(axis);
 ### Common Issues
 
 **NoClassDefFoundError: PackedCollection**
-- Missing environment variables: Set `AR_HARDWARE_LIBS` and `AR_HARDWARE_DRIVER`
+- Missing environment variables: Set `AR_HARDWARE_LIBS`
 
 **Shape mismatch errors**
 - Check TraversalPolicy dimensions match data
@@ -2121,10 +2116,9 @@ Before running any code that uses hardware acceleration:
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 ```
 
-See [CLAUDE.md](../CLAUDE.md) for detailed setup instructions.
+`AR_HARDWARE_DRIVER` is optional and best left unset to inherit the best available backend(s). See [CLAUDE.md](../CLAUDE.md) for detailed setup instructions.
 
 ---
 
@@ -2907,12 +2901,13 @@ for (int step = 0; step < maxTokens; step++) {
 
 ## Environment Configuration
 
-Hardware acceleration requires environment variables:
+Hardware acceleration requires the following environment variable:
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native  # or opencl, metal
 ```
+
+`AR_HARDWARE_DRIVER` is optional and best left unset to inherit the best available backend(s).
 
 ## Performance Features
 
@@ -3016,15 +3011,14 @@ The hardware module enables:
 
 ### 1. Environment Setup
 
-Before using any Almost Realism functionality, set these **required** environment variables:
+Before using any Almost Realism functionality, set this **required** environment variable:
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 ```
 
 - `AR_HARDWARE_LIBS`: Directory for generated native libraries
-- `AR_HARDWARE_DRIVER`: Execution backend (`native`, `cl`, `mtl`, `gpu`, `cpu`, `*`)
+- `AR_HARDWARE_DRIVER` (optional): Execution backend (`native`, `cl`, `mtl`, `gpu`, `cpu`, `*`). Best left unset to auto-select.
 
 ### 2. Basic Usage
 
@@ -3050,11 +3044,10 @@ public class Example implements HardwareFeatures {
 
 ### 3. Test Execution
 
-Always set environment variables when running tests:
+Always set the required environment variable when running tests:
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test
 ```
 
@@ -3471,12 +3464,13 @@ try {
 ```bash
 # Directory for generated libraries (REQUIRED)
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-
-# Execution backend (REQUIRED)
-export AR_HARDWARE_DRIVER=native
 ```
 
+`AR_HARDWARE_DRIVER` is optional and best left unset to auto-select the best available backend(s).
+
 ### Backend Selection
+
+When unset, `AR_HARDWARE_DRIVER` defaults to `*` (auto-select). To override:
 
 ```bash
 # CPU Backends
@@ -3491,7 +3485,7 @@ export AR_HARDWARE_DRIVER=gpu     # Abstract GPU (auto-selects)
 # Multi-Backend
 export AR_HARDWARE_DRIVER=cl,native  # OpenCL + JNI fallback
 
-# Auto-Select (recommended for development)
+# Auto-Select (default when unset)
 export AR_HARDWARE_DRIVER=*
 ```
 
@@ -3527,7 +3521,6 @@ export AR_HARDWARE_NIO_MEMORY=true
 **Development (Fast Compilation, Easy Debugging):**
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 export AR_HARDWARE_PRECISION=FP64
 ```
 
@@ -3776,7 +3769,6 @@ if (deep.getDepth() > 500) {
 **Solution:**
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 ```
 
 ### Slow First Execution
@@ -4431,7 +4423,6 @@ See [../claude.md](../claude.md) for AR_HARDWARE setup instructions.
 
 ```bash
 export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=<TestName>
 ```
 

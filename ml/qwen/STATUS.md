@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: ✅ VALIDATED
+## Current Status: VALIDATED
 
 The Qwen3 transformer implementation is fully functional and produces correct token predictions matching PyTorch reference output.
 
@@ -55,8 +55,8 @@ io.almostrealism.scope.ScopeSettings.maxStatements = 1 << 18;  // 262144 for lar
 6. Analyzed weight norms - mathematically impossible to produce PyTorch's extreme values (-64, +51)
 
 **Root cause discovered**: PyTorch's `output_hidden_states=True` returns `final_norm(layer_N_output)` in `hidden_states[N+1]`, not raw layer output. We were comparing:
-- AR: raw layer 23 output (std ≈ 2.9)
-- PyTorch ref: final_norm(layer 23 output) (std ≈ 7.8)
+- AR: raw layer 23 output (std ~ 2.9)
+- PyTorch ref: final_norm(layer 23 output) (std ~ 7.8)
 
 **Verification**: Applying final norm to AR output reduced error from 3.34 to 0.02 (99.3% improvement).
 
@@ -76,12 +76,10 @@ io.almostrealism.scope.ScopeSettings.maxStatements = 1 << 18;  // 262144 for lar
 ```bash
 # Quick validation (uses manual logits - no long compilation)
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=SimpleTransformerValidationTest
 
 # Full model test (20+ min compilation)
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=Qwen3LogitsTest
 ```
 
