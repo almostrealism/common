@@ -29,6 +29,7 @@ import org.almostrealism.time.computations.MultiOrderFilter;
 import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestDepth;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Collection;
@@ -120,16 +121,16 @@ public class ReplicationMismatchOptimizationTest extends TestSuiteBase implement
 				ProcessContext.base(), filter, children,
 				c -> c.stream().map(p -> (Process<?, ?>) p));
 
-		// With pre-computed coefficients, the coefficient child should have
-		// parallelism 1 (not a ParallelProcess) or matching parallelism,
-		// so the ratio check may or may not trigger. Log what actually happens.
 		for (Process<?, ?> child : children) {
 			long childP = ParallelProcess.parallelism(child);
 			log("Child parallelism: " + childP +
 					" (type: " + child.getClass().getSimpleName() + ")");
 		}
 
-		log("Strategy result: " + (result != null ? "non-null (handled)" : "null (deferred)"));
+		// With pre-computed coefficients, the coefficient child has parallelism
+		// matching the parent or is not a ParallelProcess, so the strategy
+		// should return null (deferring to the next strategy in the cascade).
+		Assert.assertNull("Strategy should return null when no replication mismatch is detected", result);
 	}
 
 	/**
@@ -206,10 +207,7 @@ public class ReplicationMismatchOptimizationTest extends TestSuiteBase implement
 
 		double[] coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		double[] expected = referenceConvolve(signal.toArray(0, signalSize), coeffs);
-
-		for (int i = 0; i < signalSize; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertConvolutionEquals(expected, result, signalSize);
 	}
 
 	/**
@@ -235,9 +233,6 @@ public class ReplicationMismatchOptimizationTest extends TestSuiteBase implement
 
 		double[] coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		double[] expected = referenceConvolve(signal.toArray(0, signalSize), coeffs);
-
-		for (int i = 0; i < signalSize; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertConvolutionEquals(expected, result, signalSize);
 	}
 }

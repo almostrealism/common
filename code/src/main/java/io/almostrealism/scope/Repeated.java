@@ -101,10 +101,9 @@ public class Repeated<T> extends Scope<T> {
 
 	public Repeated(String name, OperationMetadata metadata) {
 		this(name);
-		setMetadata(new OperationMetadata(metadata));
-
 		if (metadata == null)
 			throw new IllegalArgumentException();
+		setMetadata(new OperationMetadata(metadata));
 	}
 
 	public Repeated(Variable<Integer, ?> idx, Expression<Boolean> condition) {

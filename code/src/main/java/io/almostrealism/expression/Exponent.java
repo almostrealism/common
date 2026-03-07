@@ -33,6 +33,7 @@ public class Exponent extends Expression<Double> {
 		super(Double.class, base, exponent);
 	}
 
+	/** {@inheritDoc} Returns 20, reflecting the cost of the {@code pow()} library call. */
 	@Override
 	public int getComputeCost() { return 20; }
 
@@ -98,7 +99,8 @@ public class Exponent extends Expression<Double> {
 	 * Creates an exponent expression with algebraic strength reduction.
 	 *
 	 * <p>When the exponent is a small integer constant and the base is cheap
-	 * to evaluate ({@code totalComputeCost() < 10}), the expensive {@code pow()}
+	 * to evaluate (below {@link ScopeSettings#getStrengthReductionCostThreshold()}),
+	 * the expensive {@code pow()}
 	 * library call is replaced with equivalent multiply operations. When the base
 	 * is expensive (e.g. contains transcendental functions like {@code sin}),
 	 * the expansion is suppressed to avoid duplicating the expensive computation.</p>

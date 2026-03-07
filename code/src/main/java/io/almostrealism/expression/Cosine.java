@@ -30,6 +30,7 @@ public class Cosine extends Expression<Double> {
 		super(Double.class, input);
 	}
 
+	/** {@inheritDoc} Returns 25, reflecting the cost of the {@code cos()} transcendental. */
 	@Override
 	public int getComputeCost() { return 25; }
 

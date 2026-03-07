@@ -43,9 +43,6 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 	private boolean fp;
 
-	@Override
-	public int getComputeCost() { return 8; }
-
 	protected Mod(Expression<T> a, Expression<T> b, boolean fp) {
 		super(a.getType(), a, b);
 		this.fp = fp;
@@ -61,6 +58,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			warn("Module zero encountered while creating expression");
 		}
 	}
+
+	/** {@inheritDoc} */
+	@Override
+	public int getComputeCost() { return 8; }
 
 	@Override
 	public String getExpression(LanguageOperations lang) {

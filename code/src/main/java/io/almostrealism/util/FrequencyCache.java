@@ -386,7 +386,7 @@ public class FrequencyCache<K, V> {
 	 * @return a stream of map entries mapping values to their frequencies
 	 */
 	public Stream<Map.Entry<V, Integer>> entriesByFrequency(IntPredicate frequencyFilter) {
-		return cache.values().stream()
+		return reverseCache.values().stream()
 				.filter(e -> frequencyFilter.test(e.frequency))
 				.map(e -> Map.entry(e.value, e.frequency));
 	}

@@ -249,8 +249,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 																double min,
 																double max,
 																boolean relative) {
-		CollectionProducer periodicAmp = c(1.0);
-
 		if (relative) scale = multiply(scale, initial);
 		CollectionProducer pos = subtract(time, offset);
 		return bound(pos.greaterThan(c(0.0),

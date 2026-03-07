@@ -39,19 +39,6 @@ import org.junit.Test;
 public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements FirFilterTestFeatures {
 
 	/**
-	 * Asserts that each element of the result matches the corresponding expected value.
-	 *
-	 * @param expected the expected output values
-	 * @param result the actual convolution result
-	 * @param length number of elements to compare
-	 */
-	private void assertConvolutionEquals(double[] expected, PackedCollection result, int length) {
-		for (int i = 0; i < length; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
-	}
-
-	/**
 	 * Verifies that MultiOrderFilter with pre-computed constant
 	 * coefficients produces correct convolution results.
 	 */

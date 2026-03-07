@@ -30,7 +30,7 @@ import java.util.function.IntToDoubleFunction;
  * @see org.almostrealism.time.computations.test.MultiOrderFilterConvolutionTest
  * @see io.almostrealism.compute.test.ReplicationMismatchOptimizationTest
  */
-public interface FirFilterTestFeatures {
+public interface FirFilterTestFeatures extends TestFeatures {
 
 	/**
 	 * Creates a {@link PackedCollection} signal populated by the given generator function.
@@ -74,6 +74,27 @@ public interface FirFilterTestFeatures {
 		}
 
 		return coefficients;
+	}
+
+	/**
+	 * Reference implementation of centered FIR convolution for test verification.
+	 *
+	 * @param signal the input signal
+	 * @param coefficients the FIR filter coefficients
+	 * @return the convolved output signal
+	 */
+	/**
+	 * Asserts that a convolution result matches the expected output element-by-element
+	 * using hardware-precision tolerance from {@link TestFeatures#assertEquals(double, double)}.
+	 *
+	 * @param expected the expected output values
+	 * @param result the actual convolution result
+	 * @param length number of elements to compare
+	 */
+	default void assertConvolutionEquals(double[] expected, PackedCollection result, int length) {
+		for (int i = 0; i < length; i++) {
+			assertEquals(expected[i], result.toDouble(i));
+		}
 	}
 
 	/**

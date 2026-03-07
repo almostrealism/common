@@ -30,6 +30,7 @@ public class Logarithm extends Expression<Double> {
 		super(Double.class, input);
 	}
 
+	/** {@inheritDoc} Returns 15, reflecting the cost of the {@code log()} library call. */
 	@Override
 	public int getComputeCost() { return 15; }
 

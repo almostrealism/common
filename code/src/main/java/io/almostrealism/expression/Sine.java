@@ -30,6 +30,7 @@ public class Sine extends Expression<Double> {
 		super(Double.class, input);
 	}
 
+	/** {@inheritDoc} Returns 25, reflecting the cost of the {@code sin()} transcendental. */
 	@Override
 	public int getComputeCost() { return 25; }
 

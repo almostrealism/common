@@ -45,6 +45,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		super((Class<T>) type(values), "/", values);
 	}
 
+	/** {@inheritDoc} Returns 6, reflecting the cost of a hardware division. */
 	@Override
 	public int getComputeCost() { return 6; }
 
