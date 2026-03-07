@@ -26,12 +26,12 @@ import io.almostrealism.compute.ProcessOptimizationStrategy;
 import io.almostrealism.compute.ReplicationMismatchOptimization;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.computations.MultiOrderFilter;
+import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
 import java.util.Collection;
-import java.util.function.IntToDoubleFunction;
 
 /**
  * Tests for {@link ReplicationMismatchOptimization}, verifying that the strategy
@@ -46,63 +46,7 @@ import java.util.function.IntToDoubleFunction;
  * @see ParallelismTargetOptimization
  * @see CascadingOptimizationStrategy
  */
-public class ReplicationMismatchOptimizationTest extends TestSuiteBase {
-
-	/**
-	 * Creates a {@link PackedCollection} signal populated by the given generator function.
-	 * Uses bulk {@code setMem(double[])} to avoid per-element mutation in a loop.
-	 */
-	private PackedCollection createSignal(int size, IntToDoubleFunction generator) {
-		double[] data = new double[size];
-		for (int i = 0; i < size; i++) {
-			data[i] = generator.applyAsDouble(i);
-		}
-		PackedCollection signal = new PackedCollection(size);
-		signal.setMem(data);
-		return signal;
-	}
-
-	/**
-	 * Reference implementation of low-pass FIR coefficient computation
-	 * using sinc-windowed Hamming window.
-	 */
-	private double[] referenceLowPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
-		double[] coefficients = new double[filterOrder + 1];
-		double normalizedCutoff = 2.0 * cutoff / sampleRate;
-
-		for (int i = 0; i <= filterOrder; i++) {
-			if (i == filterOrder / 2) {
-				coefficients[i] = normalizedCutoff;
-			} else {
-				int k = i - filterOrder / 2;
-				coefficients[i] = Math.sin(Math.PI * k * normalizedCutoff) / (Math.PI * k);
-			}
-			coefficients[i] *= 0.54 - 0.46 * Math.cos(2.0 * Math.PI * i / filterOrder);
-		}
-
-		return coefficients;
-	}
-
-	/**
-	 * Reference implementation of centered FIR convolution for test verification.
-	 */
-	private double[] referenceConvolve(double[] signal, double[] coefficients) {
-		int order = coefficients.length - 1;
-		double[] output = new double[signal.length];
-
-		for (int n = 0; n < signal.length; n++) {
-			double sum = 0.0;
-			for (int k = 0; k <= order; k++) {
-				int idx = n + k - order / 2;
-				if (idx >= 0 && idx < signal.length) {
-					sum += signal[idx] * coefficients[k];
-				}
-			}
-			output[n] = sum;
-		}
-
-		return output;
-	}
+public class ReplicationMismatchOptimizationTest extends TestSuiteBase implements FirFilterTestFeatures {
 
 	/**
 	 * Verifies that the {@link ReplicationMismatchOptimization} strategy detects

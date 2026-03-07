@@ -198,10 +198,11 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	 * directly to it without copying through the intermediate outValue buffer.
 	 * The receptor's {@code push()} consumes the value immediately (e.g.,
 	 * {@link SummationCell} accumulates, other {@link CachedStateCell}s assign
-	 * to their own cache), so the intermediate copy is unnecessary. The
-	 * outValue is still updated for external consumers that call
-	 * {@link #getResultant(io.almostrealism.relation.Producer)} or
-	 * {@link #next()} between ticks (e.g., {@link CellPair} factors).</p>
+	 * to their own cache), so the intermediate copy is unnecessary. Note that
+	 * outValue is <strong>not</strong> updated in this path; external consumers
+	 * that call {@link #getResultant(io.almostrealism.relation.Producer)} or
+	 * {@link #next()} between ticks will see stale data. This is an accepted
+	 * tradeoff for the audio pipeline where meter bypass is acceptable.</p>
 	 *
 	 * <p>When no receptor is set, only the outValue copy and reset are performed.</p>
 	 *
