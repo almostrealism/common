@@ -215,13 +215,15 @@ Selects the hardware backend for computation. Available drivers:
 
 | Value | Description |
 |-------|-------------|
-| `native` | Standard JNI operations with runtime-generated native code (default) |
+| `native` | Standard JNI operations with runtime-generated native code |
 | `opencl` | OpenCL acceleration (CPU/GPU) |
 | `metal` | Metal GPU acceleration (Apple Silicon) |
 | `external` | Generated executable approach |
 
+This variable is best left unset to auto-detect the best available backend. To override:
+
 ```bash
-export AR_HARDWARE_DRIVER=native
+export AR_HARDWARE_DRIVER=opencl  # Example: force OpenCL
 ```
 
 ### AR_HARDWARE_MEMORY_SCALE

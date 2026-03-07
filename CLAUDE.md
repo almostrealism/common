@@ -352,42 +352,41 @@ See [docs/internals/test-examples.md](docs/internals/test-examples.md) for wrong
 
 ## Setup Instructions
 
-**Required environment variables** before running Java code:
+**Required environment variable** before running Java code:
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 ```
 
 The directory will be created automatically if it doesn't exist.
 
-**For Maven tests**, always prefix test commands with the environment variables:
+**Note:** `AR_HARDWARE_DRIVER` should be left unset so the system automatically selects the best available backend for your platform.
+
+**For Maven tests**, always prefix test commands with the environment variable:
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl <module>
 ```
 
 ### What These Variables Do
 
 - **`AR_HARDWARE_LIBS`**: Directory where hardware acceleration libraries (JNI .so files, OpenCL kernels, etc.) will be generated and loaded from
-- **`AR_HARDWARE_DRIVER`**: Hardware backend to use:
-  - `native`: Standard JNI operations with runtime-generated native code (default)
+- **`AR_HARDWARE_DRIVER`** *(optional -- best left unset)*: Overrides the hardware backend. When unset, the system automatically selects the best available backend for your platform. Possible override values:
+  - `native`: Standard JNI operations with runtime-generated native code
   - `opencl`: OpenCL acceleration (CPU/GPU)
   - `metal`: Metal GPU acceleration (Apple Silicon)
   - `external`: Generated executable approach
 
 ### Common Issues
 
-Forgetting to set these variables will result in:
+Forgetting to set `AR_HARDWARE_LIBS` will result in:
 - `NoClassDefFoundError: Could not initialize class org.almostrealism.collect.PackedCollection`
 - Runtime errors when trying to compile operations
 - Missing library errors
 - Failures during model inference
 
-**Always verify** these are set before running:
+**Always verify** it is set before running:
 ```bash
 echo $AR_HARDWARE_LIBS
-echo $AR_HARDWARE_DRIVER
 ```
 
 ### Memory Configuration
@@ -409,7 +408,6 @@ export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
 ```bash
 export AR_HARDWARE_MEMORY_SCALE=8 && \
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=OobleckValidationTest
 ```
 
@@ -557,7 +555,6 @@ default Block mistralAttention(...) { /* ... */ }
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn clean install -DskipTests
 ```
 

@@ -2,9 +2,9 @@
 
 ---
 
-# 🛑 STOP. READ THIS FIRST. 🛑
+# STOP. READ THIS FIRST.
 
-## ⚠️ ABSOLUTE PREREQUISITE: USE AR-DOCS MCP BEFORE ANY ACTION ⚠️
+## ABSOLUTE PREREQUISITE: USE AR-DOCS MCP BEFORE ANY ACTION
 
 **BEFORE you write ANY code, make ANY assumptions, or take ANY action:**
 
@@ -18,7 +18,7 @@ See [../CLAUDE.md](../CLAUDE.md) for the full policy on why this is mandatory.
 
 ---
 
-## ⚠️ CRITICAL: DO NOT COMMIT CODE ⚠️
+## CRITICAL: DO NOT COMMIT CODE
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
 
@@ -31,7 +31,7 @@ See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
 
 ---
 
-## ⚠️ CRITICAL: DO NOT MODIFY POM.XML FILES ⚠️
+## CRITICAL: DO NOT MODIFY POM.XML FILES
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
 
@@ -44,7 +44,7 @@ See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
 
 ---
 
-## ⚠️ CRITICAL: NEVER REFERENCE VERSION NUMBERS ⚠️
+## CRITICAL: NEVER REFERENCE VERSION NUMBERS
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
 
@@ -60,7 +60,7 @@ See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
 
 ---
 
-## ⚠️ CRITICAL: USE MCP TEST RUNNER FOR ALL TESTS ⚠️
+## CRITICAL: USE MCP TEST RUNNER FOR ALL TESTS
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
 
@@ -83,7 +83,7 @@ See [../CLAUDE.md](../CLAUDE.md) for full MCP test runner documentation.
 
 ---
 
-## ⚠️ CRITICAL: TEST CLASS REQUIREMENTS ⚠️
+## CRITICAL: TEST CLASS REQUIREMENTS
 
 All test classes **MUST** extend `TestSuiteBase`. See [../CLAUDE.md](../CLAUDE.md) for:
 - Why `TestSuiteBase` is required (test grouping, depth filtering)
@@ -108,15 +108,15 @@ When implementing a new language model (e.g., Llama, Qwen, Mistral):
 
 ```
 org.almostrealism.ml/
-├── AttentionFeatures.java      # Generalized attention mechanisms
-├── LayerFeatures.java           # Layer utilities (inherited from graph module)
-├── AutoregressiveModel.java    # Autoregressive inference wrapper
-├── StateDictionary.java         # Standard weight storage
-├── BPE.java                     # Tokenization utilities
-└── <model>/                     # Model-specific implementations
-    ├── <Model>Config.java       # Configuration
-    ├── <Model>Tokenizer.java    # Tokenizer (if model-specific)
-    └── <Model>.java             # Main model class
++-- AttentionFeatures.java      # Generalized attention mechanisms
++-- LayerFeatures.java           # Layer utilities (inherited from graph module)
++-- AutoregressiveModel.java    # Autoregressive inference wrapper
++-- StateDictionary.java         # Standard weight storage
++-- BPE.java                     # Tokenization utilities
++-- <model>/                     # Model-specific implementations
+    +-- <Model>Config.java       # Configuration
+    +-- <Model>Tokenizer.java    # Tokenizer (if model-specific)
+    +-- <Model>.java             # Main model class
 ```
 
 ### Example: Implementing a New Model
@@ -199,7 +199,7 @@ export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
 
 ### Test Structure
 
-**⚠️ Use MCP test runner - NOT bash commands!**
+**Use MCP test runner - NOT bash commands!**
 
 ```
 # Run all ML tests with pipeline profile (skips comparison tests):
@@ -223,7 +223,6 @@ mcp__ar-test-runner__start_test_run
 # DO NOT RUN DIRECTLY - use MCP tool instead
 export AR_HARDWARE_MEMORY_SCALE=8 && \
 export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=<TestName> -DAR_TEST_PROFILE=pipeline
 ```
 
@@ -311,7 +310,7 @@ public void compareLogits() throws Exception {
 ```java
 // In AttentionFeatures.java
 
-// ✅ GOOD: Generalized method with optional parameters
+// GOOD: Generalized method with optional parameters
 default Block attention(int heads, int kvHeads, int headSize,
                        PackedCollection<?> wq,
                        PackedCollection<?> wk,
@@ -329,7 +328,7 @@ default Block attention(int heads, int kvHeads, int headSize,
 ```
 
 ```java
-// ❌ AVOID: Model-specific duplicate methods
+// AVOID: Model-specific duplicate methods
 default Block qwen3Attention(...) { /* copy-paste */ }
 default Block llamaAttention(...) { /* copy-paste */ }
 ```

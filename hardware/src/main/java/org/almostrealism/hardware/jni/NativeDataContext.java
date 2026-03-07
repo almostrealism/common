@@ -135,7 +135,8 @@ import java.util.concurrent.Callable;
  *
  * <h2>Integration with Hardware</h2>
  *
- * <p>When {@code AR_HARDWARE_DRIVER=native}, {@link Hardware} creates this data context:</p>
+ * <p>When {@code AR_HARDWARE_DRIVER} includes {@code native} (or is left unset, since native
+ * is included in the default backend selection), {@link Hardware} creates this data context:</p>
  * <pre>{@code
  * // In Hardware.init():
  * NativeDataContext dataContext = new NativeDataContext(

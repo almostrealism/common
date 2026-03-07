@@ -89,11 +89,12 @@ import java.util.stream.LongStream;
  * }</pre>
  *
  * <h2>Environment Setup</h2>
- * <p>Tests using this interface require hardware acceleration environment variables:</p>
+ * <p>Tests using this interface require the hardware acceleration library path to be set:</p>
  * <pre>
  * export AR_HARDWARE_LIBS=/tmp/ar_libs/
- * export AR_HARDWARE_DRIVER=native
  * </pre>
+ * <p>{@code AR_HARDWARE_DRIVER} is optional and best left unset to inherit the best
+ * available backend for the current platform.</p>
  *
  * @author Michael Murray
  * @see TestSettings for test configuration options

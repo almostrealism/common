@@ -4,7 +4,7 @@
 
 This guide explains how to extract weights from Hugging Face Qwen3 models and use them with the AR framework implementation.
 
-## Phase 3: Weight Conversion Complete ✅
+## Phase 3: Weight Conversion Complete
 
 The weight conversion system supports loading Qwen3 models from Hugging Face checkpoints via protobuf format.
 
@@ -56,13 +56,13 @@ python extract_qwen3_weights.py Qwen/Qwen3-Instruct-2507-4B ./qwen3_weights --no
 
 ```
 qwen3_weights/
-├── embeddings         # Token embeddings, final norm, lm_head
-├── layer_00          # Layer 0 weights
-├── layer_01          # Layer 1 weights
-├── ...
-├── layer_35          # Layer 35 weights
-├── vocab.txt         # Vocabulary file
-└── tokenizer_config.json  # Tokenizer configuration
++-- embeddings         # Token embeddings, final norm, lm_head
++-- layer_00          # Layer 0 weights
++-- layer_01          # Layer 1 weights
++-- ...
++-- layer_35          # Layer 35 weights
++-- vocab.txt         # Vocabulary file
++-- tokenizer_config.json  # Tokenizer configuration
 ```
 
 ---
@@ -175,7 +175,7 @@ The system automatically maps Hugging Face weight keys to AR framework format:
 
 ## Key Features
 
-### ✅ QK-Norm Support
+### QK-Norm Support
 
 The implementation includes full QK-Norm support:
 - RMSNorm applied to Q and K projections (epsilon = 1e-6)
@@ -183,20 +183,20 @@ The implementation includes full QK-Norm support:
 - Per-head normalization weights
 - Critical for training stability at scale
 
-### ✅ Grouped Query Attention (GQA)
+### Grouped Query Attention (GQA)
 
 - 32 query heads
 - 8 KV heads (4:1 ratio)
 - Reduces memory and computation for K/V caches
 - Maintains quality with fewer parameters
 
-### ✅ SwiGLU Activation
+### SwiGLU Activation
 
 - Gated FFN with SiLU activation
 - `FFN(x) = (W1(x) * silu(W3(x))) @ W2`
 - Improves model quality
 
-### ✅ RoPE with Extended Context
+### RoPE with Extended Context
 
 - Base frequency: 1,000,000 (vs 10,000 in original)
 - Supports 128K context length
@@ -206,12 +206,13 @@ The implementation includes full QK-Norm support:
 
 ## Hardware Acceleration
 
-⚠️ **CRITICAL**: Set environment variables before running:
+**CRITICAL**: Set the required environment variable before running:
 
 ```bash
 export AR_HARDWARE_LIBS=/home/developer/.libs/
-export AR_HARDWARE_DRIVER=native
 ```
+
+`AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `cl`, or `mtl`.
 
 See [`claude.md`](./claude.md) for details.
 
@@ -312,9 +313,8 @@ The tokenizer uses byte-level BPE where:
 # 1. Extract weights (Python)
 python extract_qwen3_weights.py Qwen/Qwen3-Instruct-2507-4B ./qwen3_weights --bf16
 
-# 2. Set environment variables
+# 2. Set environment variable
 export AR_HARDWARE_LIBS=/home/developer/.libs/
-export AR_HARDWARE_DRIVER=native
 
 # 3. Run Java code
 cat > Qwen3Demo.java << 'EOF'

@@ -219,16 +219,16 @@ The typical rendering flow:
 
 ```
 1. Ray intersects surface
-   ↓
+   |
 2. Compute surface normal
-   ↓
+   |
 3. Create ShaderContext with:
    - Light sources
    - View direction
    - Surface properties
-   ↓
+   |
 4. Shader.shade() produces RGB
-   ↓
+   |
 5. Final pixel color
 ```
 
@@ -355,8 +355,9 @@ The color module respects the standard hardware acceleration environment variabl
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native  # or opencl, metal
 ```
+
+`AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `opencl`, or `metal`.
 
 ## Dependencies
 

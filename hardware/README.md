@@ -32,15 +32,14 @@ The hardware module enables:
 
 ### 1. Environment Setup
 
-Before using any Almost Realism functionality, set these **required** environment variables:
+Before using any Almost Realism functionality, set the **required** environment variable:
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 ```
 
-- `AR_HARDWARE_LIBS`: Directory for generated native libraries
-- `AR_HARDWARE_DRIVER`: Execution backend (`native`, `cl`, `mtl`, `gpu`, `cpu`, `*`)
+- `AR_HARDWARE_LIBS`: Directory for generated native libraries (required)
+- `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). Can be set to `native`, `cl`, `mtl`, `gpu`, `cpu`, or `*` to force a specific backend.
 
 ### 2. Basic Usage
 
@@ -66,60 +65,59 @@ public class Example implements HardwareFeatures {
 
 ### 3. Test Execution
 
-Always set environment variables when running tests:
+Always set the required environment variable when running tests:
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test
 ```
 
 ## Architecture
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                      Hardware Module                           │
-├───────────────────────────────────────────────────────────────┤
-│                                                                │
-│  ┌─────────────┐        ┌──────────────┐                      │
-│  │  Hardware   │───────▶│DefaultComputer│                     │
-│  │  (Config)   │        │  (Caching)    │                     │
-│  └─────────────┘        └──────────────┘                      │
-│         │                       │                              │
-│         │                       │                              │
-│    ┌────▼────────────────────────▼─────┐                      │
-│    │     DataContext (per backend)     │                      │
-│    ├────────────────────────────────────┤                     │
-│    │  • CLDataContext (OpenCL)          │                     │
-│    │  • MetalDataContext (Metal)        │                     │
-│    │  • NativeDataContext (JNI)         │                     │
-│    │                                    │                     │
-│    │  Provides:                         │                     │
-│    │  • MemoryProvider (allocation)     │                     │
-│    │  • ComputeContext (compilation)    │                     │
-│    └────────────────────────────────────┘                     │
-│                                                                │
-│  ┌──────────────────────────────────────────┐                 │
-│  │         Memory Abstraction                │                 │
-│  ├──────────────────────────────────────────┤                 │
-│  │  MemoryData ◄─── MemoryBank              │                 │
-│  │      ▲              (Collection)          │                 │
-│  │      │                                    │                 │
-│  │      └──── PackedCollection               │                 │
-│  └──────────────────────────────────────────┘                 │
-│                                                                │
-│  ┌──────────────────────────────────────────┐                 │
-│  │      Computation Framework                │                 │
-│  ├──────────────────────────────────────────┤                 │
-│  │  Producer ──▶ Computation ──▶ Evaluable   │                 │
-│  │      │             │             │         │                 │
-│  │      │             │             ▼         │                 │
-│  │      │             │      Hardware Kernel  │                 │
-│  │      │             │                       │                 │
-│  │      └──▶ OperationList (composition)      │                 │
-│  └──────────────────────────────────────────┘                 │
-│                                                                │
-└───────────────────────────────────────────────────────────────┘
++---------------------------------------------------------------+
+|                      Hardware Module                           |
++---------------------------------------------------------------+
+|                                                                |
+|  +-------------+        +--------------+                      |
+|  |  Hardware   |------->|DefaultComputer|                     |
+|  |  (Config)   |        |  (Caching)    |                     |
+|  +-------------+        +--------------+                      |
+|         |                       |                              |
+|         |                       |                              |
+|    +----v----------------------------v-----+                  |
+|    |     DataContext (per backend)     |                      |
+|    +------------------------------------+                     |
+|    |  * CLDataContext (OpenCL)          |                     |
+|    |  * MetalDataContext (Metal)        |                     |
+|    |  * NativeDataContext (JNI)         |                     |
+|    |                                    |                     |
+|    |  Provides:                         |                     |
+|    |  * MemoryProvider (allocation)     |                     |
+|    |  * ComputeContext (compilation)    |                     |
+|    +------------------------------------+                     |
+|                                                                |
+|  +------------------------------------------+                 |
+|  |         Memory Abstraction                |                 |
+|  +------------------------------------------+                 |
+|  |  MemoryData <--- MemoryBank              |                 |
+|  |      ^              (Collection)          |                 |
+|  |      |                                    |                 |
+|  |      +---- PackedCollection               |                 |
+|  +------------------------------------------+                 |
+|                                                                |
+|  +------------------------------------------+                 |
+|  |      Computation Framework                |                 |
+|  +------------------------------------------+                 |
+|  |  Producer --> Computation --> Evaluable   |                 |
+|  |      |             |             |         |                 |
+|  |      |             |             v         |                 |
+|  |      |             |      Hardware Kernel  |                 |
+|  |      |             |                       |                 |
+|  |      +--> OperationList (composition)      |                 |
+|  +------------------------------------------+                 |
+|                                                                |
++---------------------------------------------------------------+
 ```
 
 ### Key Components
@@ -147,7 +145,7 @@ The hardware module includes comprehensive implementations for multiple accelera
 | **[ctx](src/main/java/org/almostrealism/hardware/ctx/)** | Context management | AbstractDataContext, AbstractComputeContext |
 | **[instructions](src/main/java/org/almostrealism/hardware/instructions/)** | Kernel compilation and caching | InstructionsManager, InstructionSetCompiler |
 
-> **📚 API Documentation:** Comprehensive JavaDoc is available for all 128+ classes in the hardware module. Generate it with `mvn javadoc:aggregate` and view at `target/site/apidocs/index.html`.
+> **API Documentation:** Comprehensive JavaDoc is available for all 128+ classes in the hardware module. Generate it with `mvn javadoc:aggregate` and view at `target/site/apidocs/index.html`.
 
 ## Core Concepts
 
@@ -251,7 +249,7 @@ training.run();  // Executes entire sequence
 - **Compiled**: All operations merged into single kernel (fast)
 - **Sequential**: Operations executed one-by-one (flexible)
 
-#### ⚠️ CRITICAL: Call optimize() Before get()
+#### CRITICAL: Call optimize() Before get()
 
 When using OperationList with computations that require isolation (like LoopedWeightedSumComputation), you **MUST** call `optimize()` before `get()`:
 
@@ -488,11 +486,11 @@ data.reallocate(cpuProvider);  // Reuses cached CPU version (fast!)
 
 ```java
 // Without aggregation: 3 separate kernel arguments
-kernel.execute(cpuMem1, cpuMem2, cpuMem3);  // 3 CPU→GPU transfers
+kernel.execute(cpuMem1, cpuMem2, cpuMem3);  // 3 CPU->GPU transfers
 
 // With aggregation (automatic):
 // All 3 arguments packed into single buffer
-// kernel.execute(aggregatedBuffer);  // 1 CPU→GPU transfer
+// kernel.execute(aggregatedBuffer);  // 1 CPU->GPU transfer
 ```
 
 **Aggregation Rules:**
@@ -544,7 +542,7 @@ MemoryData root = new Bytes(10000);
 MemoryData view1 = root.range(0, 100);    // Offset 0
 MemoryData view2 = root.range(500, 200);  // Offset 500
 
-// Both views share root → Single temp allocation
+// Both views share root -> Single temp allocation
 // Temp covers min offset (0) to max offset (700)
 // Only 700 bytes allocated instead of 300
 ```
@@ -579,7 +577,7 @@ temp.destroy();
 ```java
 // Aggregation happens automatically when:
 // 1. Multiple small arguments (<1MB each)
-// 2. From non-kernel provider (e.g., CPU → GPU)
+// 2. From non-kernel provider (e.g., CPU -> GPU)
 // 3. AR_HARDWARE_ARGUMENT_AGGREGATION=true
 
 // No code changes needed - just configure environment
@@ -604,27 +602,26 @@ try {
 ```bash
 # Directory for generated libraries (REQUIRED)
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-
-# Execution backend (REQUIRED)
-export AR_HARDWARE_DRIVER=native
 ```
 
 ### Backend Selection
 
+`AR_HARDWARE_DRIVER` is optional and best left unset to let the system auto-detect the best available backend for your system. Set it only if you need to force a specific backend:
+
 ```bash
-# CPU Backends
+# CPU Backends (optional overrides)
 export AR_HARDWARE_DRIVER=native  # JNI (fast CPU execution)
 export AR_HARDWARE_DRIVER=cpu     # Abstract CPU (auto-selects)
 
-# GPU Backends
+# GPU Backends (optional overrides)
 export AR_HARDWARE_DRIVER=cl      # OpenCL (cross-platform GPU)
 export AR_HARDWARE_DRIVER=mtl     # Metal (Apple Silicon GPU)
 export AR_HARDWARE_DRIVER=gpu     # Abstract GPU (auto-selects)
 
-# Multi-Backend
+# Multi-Backend (optional override)
 export AR_HARDWARE_DRIVER=cl,native  # OpenCL + JNI fallback
 
-# Auto-Select (recommended for development)
+# Explicit auto-select
 export AR_HARDWARE_DRIVER=*
 ```
 
@@ -641,7 +638,7 @@ export AR_HARDWARE_PRECISION=FP64
 ### Memory Configuration
 
 ```bash
-# Maximum memory allocation (2^SCALE × 64MB)
+# Maximum memory allocation (2^SCALE x 64MB)
 export AR_HARDWARE_MEMORY_SCALE=4   # 1GB (default)
 export AR_HARDWARE_MEMORY_SCALE=6   # 4GB
 export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
@@ -660,8 +657,8 @@ export AR_HARDWARE_NIO_MEMORY=true
 **Development (Fast Compilation, Easy Debugging):**
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 export AR_HARDWARE_PRECISION=FP64
+# AR_HARDWARE_DRIVER left unset to auto-detect the best available backend
 ```
 
 **Production GPU (Maximum Performance):**
@@ -758,18 +755,18 @@ computation.get().evaluate();
 ### 1. Use Instruction Caching
 
 ```java
-// ✗ BAD: Recompiles every time
+// BAD: Recompiles every time
 for (int i = 0; i < 1000; i++) {
     multiply(v1, v2).get().evaluate();
 }
 
-// ✓ GOOD: Compile once, reuse 1000 times
+// GOOD: Compile once, reuse 1000 times
 Evaluable<?> cached = multiply(v1, v2).get();
 for (int i = 0; i < 1000; i++) {
     cached.evaluate();
 }
 
-// ✓ BEST: Use instruct() for automatic caching
+// BEST: Use instruct() for automatic caching
 Producer<?> result = instruct("multiply",
     args -> multiply(args[0], args[1]),
     v1, v2
@@ -782,11 +779,11 @@ for (int i = 0; i < 1000; i++) {
 ### 2. Use PassThroughProducer for Kernel Reuse
 
 ```java
-// ✗ BAD: Bakes data into kernel
+// BAD: Bakes data into kernel
 Producer<?> static = multiply(cp(data), c(2.0));
 static.get().evaluate();  // Can't reuse with different data
 
-// ✓ GOOD: Dynamic input allows reuse
+// GOOD: Dynamic input allows reuse
 Producer<?> dynamic = multiply(v(shape(1000), 0), c(2.0));
 dynamic.get().evaluate(data1);
 dynamic.get().evaluate(data2);  // Same kernel, different data
@@ -795,13 +792,13 @@ dynamic.get().evaluate(data2);  // Same kernel, different data
 ### 3. Minimize Memory Transfers
 
 ```java
-// ✗ BAD: Multiple transfers
+// BAD: Multiple transfers
 PackedCollection<?> a = new PackedCollection<>(1000);
 operation1.get().into(a.traverseEach()).evaluate();
 PackedCollection<?> b = new PackedCollection<>(1000);
 operation2.get().into(b.traverseEach()).evaluate();
 
-// ✓ GOOD: Compose on GPU
+// GOOD: Compose on GPU
 OperationList composed = new OperationList();
 composed.add(operation1);
 composed.add(operation2);
@@ -811,12 +808,12 @@ composed.get().run();  // Single transfer of final result
 ### 4. Choose Appropriate Backend
 
 ```java
-// Sequential operations → CPU
+// Sequential operations -> CPU
 if (count == 1) {
     op.setComputeRequirements(List.of(ComputeRequirement.CPU));
 }
 
-// Parallel operations → GPU
+// Parallel operations -> GPU
 if (count > 1000) {
     op.setComputeRequirements(List.of(ComputeRequirement.GPU));
 }
@@ -825,13 +822,13 @@ if (count > 1000) {
 ### 5. Use MemoryBank for Batch Data
 
 ```java
-// ✗ BAD: Individual allocations
+// BAD: Individual allocations
 for (int i = 0; i < 1000; i++) {
     PackedCollection<?> v = new PackedCollection<>(3);
     // 1000 separate GPU buffers
 }
 
-// ✓ GOOD: Single bank allocation
+// GOOD: Single bank allocation
 MemoryBank<PackedCollection<?>> bank =
     new MemoryBankAdapter<>(1000, 3, ...);
 // 1 GPU buffer, 1000 elements
@@ -909,7 +906,6 @@ if (deep.getDepth() > 500) {
 **Solution:**
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 ```
 
 ### Slow First Execution

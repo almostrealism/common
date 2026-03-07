@@ -550,7 +550,7 @@ cells.f(i -> highPass)
                 <p><code>NoteAudioProvider</code> caches up to <code>200</code> computed note audio samples.</p>
 
                 <div class="tip">
-                    <strong>Performance Tip:</strong> For real-time processing, use hardware acceleration by setting <code>AR_HARDWARE_DRIVER=native</code> or <code>opencl</code>.
+                    <strong>Performance Tip:</strong> For real-time processing, ensure hardware acceleration is enabled. <code>AR_HARDWARE_DRIVER</code> is best left unset to auto-detect the best available backend.
                 </div>
 
                 <div class="warning">
@@ -564,7 +564,6 @@ cells.f(i -> highPass)
                 <h3>Running Tests</h3>
                 <div class="code-example">
 <pre>export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 mvn test -pl audio</pre>
                 </div>
 

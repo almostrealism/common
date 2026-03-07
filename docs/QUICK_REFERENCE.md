@@ -6,7 +6,8 @@
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/   # Any writable directory
-export AR_HARDWARE_DRIVER=native        # native|opencl|metal|external
+# AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
+# Override options: native|opencl|metal|external
 ```
 
 ---
@@ -437,7 +438,6 @@ public class MyTest implements TestFeatures, ConsoleFeatures {
 ### Run Tests
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-export AR_HARDWARE_DRIVER=native && \
 mvn test -pl <module> -Dtest=<TestName>
 ```
 

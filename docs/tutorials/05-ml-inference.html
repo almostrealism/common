@@ -41,11 +41,10 @@
                 <p>Before running ML models, ensure hardware acceleration is configured:</p>
 
                 <pre><code class="language-bash">export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
+# AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 
 # Verify setup
-echo $AR_HARDWARE_LIBS
-echo $AR_HARDWARE_DRIVER</code></pre>
+echo $AR_HARDWARE_LIBS</code></pre>
 
                 <p>Add the ML module dependency to your project:</p>
 

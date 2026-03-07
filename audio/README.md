@@ -17,56 +17,56 @@ The module integrates deeply with the Almost Realism framework's computational g
 
 ```
 ar-audio
-├── Root Package (org.almostrealism.audio)
-│   ├── CellFeatures      - Factory methods for creating audio cells
-│   ├── SamplingFeatures  - Sample rate and frame context management
-│   ├── CellList          - Hierarchical cell container with lifecycle
-│   ├── WavFile           - WAV file I/O (RIFF/PCM format)
-│   └── WaveOutput        - Audio output coordination
-│
-├── sources/              - Signal Generators
-│   ├── SineWaveCell      - Sine wave oscillator
-│   ├── NoiseGenerator    - White noise generation
-│   └── SourceAggregator  - Mixing and combining sources
-│
-├── synth/                - Synthesis Models
-│   ├── AudioSynthesizer  - Main synthesis engine
-│   ├── OvertoneSeries    - Harmonic overtone generation
-│   └── UniformFrequencySeries - Uniform frequency sets
-│
-├── filter/               - Effects Processing
-│   ├── AudioPassFilter   - High-pass and low-pass filters
-│   ├── DelayNetwork      - Delay lines and reverb
-│   ├── BasicDelayCell    - Simple delay effect
-│   └── EnvelopeProcessor - ADSR envelope processing
-│
-├── data/                 - Audio Data Management
-│   ├── WaveData          - Audio sample container with FFT
-│   ├── WaveDataProvider  - Abstract data source
-│   ├── FileWaveDataProvider - File-based audio loading
-│   └── WaveDetails       - Audio file metadata
-│
-├── line/                 - Hardware Audio I/O
-│   ├── AudioLine         - Full-duplex audio interface
-│   ├── InputLine         - Audio capture
-│   ├── OutputLine        - Audio playback
-│   └── SourceDataOutputLine - Java Sound API output
-│
-├── notes/                - Sample-Based Playback
-│   ├── NoteAudioProvider - Note management with caching
-│   ├── NoteAudioFilter   - Note effect processing
-│   └── TremoloAudioFilter - Tremolo effect
-│
-├── tone/                 - Musical Tuning
-│   ├── KeyboardTuning    - Tuning system interface
-│   ├── DefaultKeyboardTuning - Standard 12-TET tuning
-│   ├── WesternChromatic  - 88-key chromatic scale enum
-│   ├── Scale             - Musical scale abstraction
-│   └── WesternScales     - Major/minor scale factory
-│
-└── sequence/             - Timed Value Updates
-    ├── ValueSequenceCell - Sequenced value playback
-    └── TempoAware        - Tempo-aware operations
++-- Root Package (org.almostrealism.audio)
+|   +-- CellFeatures      - Factory methods for creating audio cells
+|   +-- SamplingFeatures  - Sample rate and frame context management
+|   +-- CellList          - Hierarchical cell container with lifecycle
+|   +-- WavFile           - WAV file I/O (RIFF/PCM format)
+|   +-- WaveOutput        - Audio output coordination
+|
++-- sources/              - Signal Generators
+|   +-- SineWaveCell      - Sine wave oscillator
+|   +-- NoiseGenerator    - White noise generation
+|   +-- SourceAggregator  - Mixing and combining sources
+|
++-- synth/                - Synthesis Models
+|   +-- AudioSynthesizer  - Main synthesis engine
+|   +-- OvertoneSeries    - Harmonic overtone generation
+|   +-- UniformFrequencySeries - Uniform frequency sets
+|
++-- filter/               - Effects Processing
+|   +-- AudioPassFilter   - High-pass and low-pass filters
+|   +-- DelayNetwork      - Delay lines and reverb
+|   +-- BasicDelayCell    - Simple delay effect
+|   +-- EnvelopeProcessor - ADSR envelope processing
+|
++-- data/                 - Audio Data Management
+|   +-- WaveData          - Audio sample container with FFT
+|   +-- WaveDataProvider  - Abstract data source
+|   +-- FileWaveDataProvider - File-based audio loading
+|   +-- WaveDetails       - Audio file metadata
+|
++-- line/                 - Hardware Audio I/O
+|   +-- AudioLine         - Full-duplex audio interface
+|   +-- InputLine         - Audio capture
+|   +-- OutputLine        - Audio playback
+|   +-- SourceDataOutputLine - Java Sound API output
+|
++-- notes/                - Sample-Based Playback
+|   +-- NoteAudioProvider - Note management with caching
+|   +-- NoteAudioFilter   - Note effect processing
+|   +-- TremoloAudioFilter - Tremolo effect
+|
++-- tone/                 - Musical Tuning
+|   +-- KeyboardTuning    - Tuning system interface
+|   +-- DefaultKeyboardTuning - Standard 12-TET tuning
+|   +-- WesternChromatic  - 88-key chromatic scale enum
+|   +-- Scale             - Musical scale abstraction
+|   +-- WesternScales     - Major/minor scale factory
+|
++-- sequence/             - Timed Value Updates
+    +-- ValueSequenceCell - Sequenced value playback
+    +-- TempoAware        - Tempo-aware operations
 ```
 
 ## Dependencies on Other Modules
@@ -324,8 +324,7 @@ WaveData uses 1024-bin FFT for frequency analysis, defined in `WaveData.FFT_BINS
 Run the audio module tests:
 
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
 mvn test -pl audio
 ```
 
@@ -494,8 +493,8 @@ for (WaveDetails details : library.getAllDetails()) {
 
 ### Internal Data Structures
 
-- `identifiers` map: key (file path) → identifier (MD5 hash)
-- `info` map: identifier → WaveDetails
+- `identifiers` map: key (file path) -> identifier (MD5 hash)
+- `info` map: identifier -> WaveDetails
 
 For detailed documentation, see [Audio Library Documentation](docs/AUDIO_LIBRARY.md).
 
