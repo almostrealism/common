@@ -27,7 +27,6 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.pattern.PatternSystemManager;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -195,64 +194,13 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 		List<Long> bufferTimings = new ArrayList<>();
 		Runnable tick = runner.tick().get();
 
-		boolean instrumentPhases = Boolean.getBoolean("AR_INSTRUMENT_PHASES");
-		List<Runnable> phaseOps = null;
-		long[] phaseTotals = null;
-		int[] phaseCounts = null;
-		String[] phaseNames = null;
-
-		if (instrumentPhases && tick instanceof OperationList.Runner) {
-			phaseOps = ((OperationList.Runner) tick).getOperations();
-			int n = phaseOps.size();
-			phaseTotals = new long[n];
-			phaseCounts = new int[n];
-			phaseNames = new String[n];
-			for (int i = 0; i < n; i++) {
-				Runnable op = phaseOps.get(i);
-				phaseNames[i] = op instanceof io.almostrealism.profile.OperationInfo
-						? ((io.almostrealism.profile.OperationInfo) op).describe()
-						: op.getClass().getSimpleName();
-			}
-			log("Phase instrumentation enabled: " + n + " sub-operations");
-			for (int i = 0; i < n; i++) {
-				log("  Phase " + i + ": " + phaseNames[i]);
-			}
-		}
-
 		long startTime = System.nanoTime();
 		for (int buf = 0; buf < numBuffers; buf++) {
 			long bufferStart = System.nanoTime();
-
-			if (phaseOps != null) {
-				for (int p = 0; p < phaseOps.size(); p++) {
-					long phaseStart = System.nanoTime();
-					phaseOps.get(p).run();
-					phaseTotals[p] += System.nanoTime() - phaseStart;
-					phaseCounts[p]++;
-				}
-			} else {
-				tick.run();
-			}
-
+			tick.run();
 			bufferTimings.add(System.nanoTime() - bufferStart);
 		}
 		long totalTime = System.nanoTime() - startTime;
-
-		if (phaseTotals != null) {
-			log("");
-			log("--- Per-Phase Timing (avg over " + numBuffers + " ticks) ---");
-			long totalPhaseTime = 0;
-			for (int i = 0; i < phaseTotals.length; i++) {
-				double avgMs = phaseTotals[i] / (double) phaseCounts[i] / 1_000_000.0;
-				double pct = phaseTotals[i] * 100.0 / totalTime;
-				log(String.format("  Phase %d: %8.3f ms (%5.1f%%) - %s",
-						i, avgMs, pct, phaseNames[i]));
-				totalPhaseTime += phaseTotals[i];
-			}
-			double overheadMs = (totalTime - totalPhaseTime) / (double) numBuffers / 1_000_000.0;
-			log(String.format("  Overhead: %8.3f ms (%5.1f%%) - loop/timing infrastructure",
-					overheadMs, (totalTime - totalPhaseTime) * 100.0 / totalTime));
-		}
 
 		output.write().get().run();
 
