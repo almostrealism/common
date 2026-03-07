@@ -54,6 +54,13 @@ public class SpectrumCaching implements CachingSettings, ConsoleFeatures {
 //				" | m = " + Arrays.toString(m) + " (" + fScale + ")");
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Uses a hash-based filter: the expression's node count is hashed with a
+	 * prime multiplier and checked against a depth-specific threshold derived from
+	 * the frequency scale.</p>
+	 */
 	@Override
 	public boolean isExpressionCacheTarget(Expression<?> expression) {
 		int d = depths.indexOf(expression.treeDepth());
