@@ -233,7 +233,7 @@ public class ScopeSettings {
 	 *
 	 * @return the compute cost threshold for exponent strength reduction
 	 */
-	public static int getStrengthReductionCostThreshold() { return 10; }
+	public static int getStrengthReductionCostThreshold() { return 100; }
 
 	public static boolean isExpressionCacheTarget(Expression<?> expression) {
 		boolean c = caching.isExpressionCacheTarget(expression);
