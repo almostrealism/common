@@ -117,12 +117,11 @@ mcp__ar-consultant__end_consultation session_id:"..."  # Summary stored as memor
 
 ### Direct Tool Access (When Needed)
 
-The `ar-docs` and `ar-memory` MCP servers are still available for direct access. Use them when:
+The `ar-docs` MCP server is still available for direct access when you need raw documentation without LLM synthesis (e.g., reading a full module page, checking quick reference, searching source comments):
 
-- **ar-docs** (`mcp__ar-docs__*`): You need raw documentation without LLM synthesis (e.g., reading a full module page, checking quick reference, searching source comments)
-- **ar-memory** (`mcp__ar-memory__*`): You need raw memory operations without reformulation (e.g., deleting entries, listing by tag, bulk operations)
+- **ar-docs** (`mcp__ar-docs__*`): Raw documentation lookups
 
-For **all other documentation and memory needs**, prefer `ar-consultant`. It searches the same documentation and memory stores but adds synthesis, contextualization, and quality control.
+For **all other documentation and memory needs**, prefer `ar-consultant`. It searches the same documentation and memory stores but adds synthesis, contextualization, and quality control. Memory operations (store, recall, delete) all go through the ar-consultant tools, which delegate to the centralized ar-memory HTTP service.
 
 ---
 

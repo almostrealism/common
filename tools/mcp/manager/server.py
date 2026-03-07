@@ -3,14 +3,15 @@
 AR Manager MCP Server
 
 Internet-facing MCP endpoint for managing FlowTree workstreams, submitting
-coding tasks, and triggering project workflows. Designed for naive clients
-(Claude mobile, other AI agents) that have no repo checkout or CLAUDE.md
-context.
+coding tasks, triggering project workflows, and accessing agent memories.
+Designed for naive clients (Claude mobile, other AI agents) that have no
+repo checkout or CLAUDE.md context.
 
 Architecture:
     - Tier 1 tools (universal): Delegate to FlowTree controller REST API
     - Tier 2 tools (pipeline): Call GitHub API directly for workflow dispatch
       and file commits
+    - Tier 3 tools (memory): Access ar-memory HTTP service with LLM synthesis
 
 Configuration via environment variables:
     AR_CONTROLLER_URL       - FlowTree controller base URL
@@ -20,16 +21,20 @@ Configuration via environment variables:
     AR_MANAGER_TOKEN_FILE   - Path to bearer token config file
                               (default: ~/.config/ar/manager-tokens.json)
     AR_MANAGER_TOKENS       - JSON string of token config (overrides file)
+    AR_MEMORY_URL           - ar-memory HTTP server URL (auto-discovered if not set)
     MCP_TRANSPORT           - Transport: stdio (default), http, or sse
     MCP_PORT                - Port for http/sse transport (default: 8010)
 """
 
 import base64
 import contextvars
+import hmac
 import json
+import logging
 import os
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.error import HTTPError, URLError
@@ -50,6 +55,82 @@ TOKEN_FILE = os.environ.get(
     os.path.expanduser("~/.config/ar/manager-tokens.json"),
 )
 
+# Rate limit: requests per minute per token/IP (configurable)
+RATE_LIMIT = int(os.environ.get("AR_MANAGER_RATE_LIMIT", "60"))
+
+# Input length limits
+MAX_PROMPT_LEN = 50_000
+MAX_CONTENT_LEN = 100_000
+MAX_SHORT_STRING_LEN = 1_000
+
+# Audit logger — writes to stderr alongside normal diagnostics
+audit_log = logging.getLogger("ar-manager.audit")
+audit_log.setLevel(logging.INFO)
+if not audit_log.handlers:
+    _handler = logging.StreamHandler(sys.stderr)
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    audit_log.addHandler(_handler)
+
+# Paths that are never valid targets for project_commit_plan
+_SENSITIVE_PATH_PREFIXES = (".github/workflows/", ".github/actions/")
+
+# ---------------------------------------------------------------------------
+# Shared libraries (memory + inference)
+# ---------------------------------------------------------------------------
+
+_COMMON_DIR = os.path.join(os.path.dirname(__file__), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+
+_memory_client = None
+_memory_init_failed = False
+_llm_backend = None
+_init_lock = threading.Lock()
+
+
+def _get_memory_client():
+    """Lazy-initialize the MemoryHTTPClient with graceful degradation."""
+    global _memory_client, _memory_init_failed
+    if _memory_client is not None:
+        return _memory_client
+    if _memory_init_failed:
+        return None
+    with _init_lock:
+        if _memory_client is not None:
+            return _memory_client
+        if _memory_init_failed:
+            return None
+        try:
+            from memory_http_client import MemoryHTTPClient
+            _memory_client = MemoryHTTPClient()
+            print(f"ar-manager: Connected to ar-memory at {_memory_client.base_url}",
+                  file=sys.stderr)
+            return _memory_client
+        except (ConnectionError, ImportError) as e:
+            print(f"ar-manager: ar-memory not available: {e}. Memory tools disabled.",
+                  file=sys.stderr)
+            _memory_init_failed = True
+            return None
+
+
+def _get_llm():
+    """Lazy-initialize the LLM inference backend."""
+    global _llm_backend
+    if _llm_backend is not None:
+        return _llm_backend
+    with _init_lock:
+        if _llm_backend is not None:
+            return _llm_backend
+        try:
+            from inference import create_backend
+            _llm_backend = create_backend()
+            print(f"ar-manager: LLM backend: {_llm_backend.name}", file=sys.stderr)
+            return _llm_backend
+        except ImportError as e:
+            print(f"ar-manager: LLM inference not available: {e}", file=sys.stderr)
+            return None
+
+
 # Log startup configuration to stderr for diagnostics
 print(f"ar-manager: AR_CONTROLLER_URL={CONTROLLER_URL}", file=sys.stderr)
 print(
@@ -67,6 +148,9 @@ print(
 _request_scopes: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar(
     "_request_scopes", default=None
 )
+_request_token_label: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "_request_token_label", default=None
+)
 _thread_local = threading.local()
 
 
@@ -78,10 +162,20 @@ def _get_scopes() -> Optional[list]:
     return getattr(_thread_local, "scopes", None)
 
 
-def _set_scopes(scopes: list) -> None:
-    """Store scopes for the current request in both storage mechanisms."""
+def _get_token_label() -> str:
+    """Return the label of the token used for the current request."""
+    label = _request_token_label.get(None)
+    if label is not None:
+        return label
+    return getattr(_thread_local, "token_label", "anonymous")
+
+
+def _set_scopes(scopes: list, label: str = "anonymous") -> None:
+    """Store scopes and token label for the current request."""
     _request_scopes.set(scopes)
+    _request_token_label.set(label)
     _thread_local.scopes = scopes
+    _thread_local.token_label = label
 
 
 def _require_scope(scope: str) -> None:
@@ -97,6 +191,37 @@ def _require_scope(scope: str) -> None:
         raise PermissionError(
             f"Token does not have required scope: {scope}"
         )
+
+
+def _audit(tool_name: str, **params) -> None:
+    """Log an audit entry for a tool invocation."""
+    label = _get_token_label()
+    sanitized = {k: (v[:80] + "...") if isinstance(v, str) and len(v) > 80 else v
+                 for k, v in params.items()}
+    audit_log.info("tool=%s token=%s params=%s", tool_name, label, sanitized)
+
+
+def _check_length(value: str, name: str, max_len: int) -> Optional[dict]:
+    """Return an error dict if *value* exceeds *max_len*, else None."""
+    if len(value) > max_len:
+        return {
+            "ok": False,
+            "error": f"'{name}' exceeds maximum length of {max_len:,} characters "
+                     f"(got {len(value):,})",
+        }
+    return None
+
+
+def _check_short_strings(**kwargs) -> Optional[dict]:
+    """Validate that all provided string kwargs are within MAX_SHORT_STRING_LEN."""
+    for name, value in kwargs.items():
+        if isinstance(value, str) and len(value) > MAX_SHORT_STRING_LEN:
+            return {
+                "ok": False,
+                "error": f"'{name}' exceeds maximum length of {MAX_SHORT_STRING_LEN:,} "
+                         f"characters (got {len(value):,})",
+            }
+    return None
 
 
 def _load_tokens() -> Optional[list]:
@@ -139,25 +264,55 @@ class BearerAuthMiddleware:
     scopes are stored via ``_set_scopes`` for downstream tool handlers.
     """
 
+    # Paths that bypass authentication (health checks, OAuth endpoints)
+    AUTH_EXEMPT_PATHS = {
+        "/_health",
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/oauth-protected-resource",
+        "/oauth/register",
+        "/oauth/authorize",
+        "/oauth/token",
+    }
+
     def __init__(self, app, tokens: list):
         self.app = app
-        # Build a lookup: token value -> scopes list
-        self.token_map = {}
+        # Build a lookup: token value -> (scopes, label)
+        self.token_entries = []
         for t in tokens:
             value = t.get("value", "")
             scopes = t.get("scopes", [])
+            label = t.get("label", "unlabeled")
             if value:
-                self.token_map[value] = scopes
+                self.token_entries.append((value, scopes, label))
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
+            # Allow auth-exempt paths (health checks)
+            path = scope.get("path", "")
+            if path in self.AUTH_EXEMPT_PATHS:
+                await self.app(scope, receive, send)
+                return
+
             headers = dict(scope.get("headers", []))
             auth = headers.get(b"authorization", b"").decode("utf-8", errors="replace")
 
             if auth.startswith("Bearer "):
                 token_value = auth[7:].strip()
-                if token_value in self.token_map:
-                    _set_scopes(self.token_map[token_value])
+                # Timing-safe comparison: iterate all entries to prevent
+                # timing side-channels that reveal token existence
+                matched_scopes = None
+                matched_label = None
+                for stored_value, scopes, label in self.token_entries:
+                    if hmac.compare_digest(
+                        token_value.encode("utf-8"),
+                        stored_value.encode("utf-8"),
+                    ):
+                        matched_scopes = scopes
+                        matched_label = label
+                        break
+
+                if matched_scopes is not None:
+                    _set_scopes(matched_scopes, matched_label)
                     await self.app(scope, receive, send)
                     return
 
@@ -177,6 +332,92 @@ class BearerAuthMiddleware:
             return
 
         # Non-HTTP scopes (lifespan, websocket) pass through
+        await self.app(scope, receive, send)
+
+
+class RateLimitMiddleware:
+    """ASGI middleware implementing a per-client sliding-window rate limiter.
+
+    The client key is the raw Bearer token (before auth validation) or the
+    source IP for unauthenticated requests. Applied before auth so that
+    brute-force token guessing is also rate-limited.
+    """
+
+    def __init__(self, app, requests_per_minute: int = 60):
+        self.app = app
+        self.rpm = requests_per_minute
+        self.window = 60.0  # seconds
+        self._buckets: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def _client_key(self, scope) -> str:
+        """Extract a rate-limit key from the ASGI scope."""
+        headers = dict(scope.get("headers", []))
+        auth = headers.get(b"authorization", b"").decode("utf-8", errors="replace")
+        if auth.startswith("Bearer "):
+            return f"token:{auth[7:].strip()[:16]}"
+        # Fall back to source IP
+        client = scope.get("client")
+        if client:
+            return f"ip:{client[0]}"
+        return "unknown"
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        key = self._client_key(scope)
+        now = time.monotonic()
+        with self._lock:
+            timestamps = self._buckets.get(key, [])
+            # Evict expired entries
+            cutoff = now - self.window
+            timestamps = [t for t in timestamps if t > cutoff]
+            if len(timestamps) >= self.rpm:
+                self._buckets[key] = timestamps
+                retry_after = int(self.window - (now - timestamps[0])) + 1
+                await send({
+                    "type": "http.response.start",
+                    "status": 429,
+                    "headers": [
+                        [b"content-type", b"application/json"],
+                        [b"retry-after", str(retry_after).encode()],
+                    ],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": b'{"error":"Rate limit exceeded. Try again later."}',
+                })
+                return
+            timestamps.append(now)
+            self._buckets[key] = timestamps
+
+        await self.app(scope, receive, send)
+
+
+class HealthMiddleware:
+    """ASGI middleware that handles ``/_health`` before the wrapped app.
+
+    Returns HTTP 200 for ``/_health`` requests so Docker/load-balancer
+    health checks work without authentication.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path") == "/_health":
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [[b"content-type", b"application/json"]],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": b'{"status":"ok"}',
+            })
+            return
         await self.app(scope, receive, send)
 
 
@@ -203,14 +444,17 @@ def _controller_get(path: str, timeout: int = 10) -> dict:
             return json.loads(body) if body else {}
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
+        logging.getLogger("ar-manager").error(
+            "Controller GET %s: HTTP %d: %s", path, e.code, body[:500])
         try:
             return json.loads(body)
         except json.JSONDecodeError:
-            return {"ok": False, "error": f"HTTP {e.code}: {body[:300]}"}
+            return {"ok": False, "error": f"Controller returned HTTP {e.code}"}
     except URLError as e:
         return {"ok": False, "error": f"Controller unreachable: {e.reason}"}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        logging.getLogger("ar-manager").error("Controller GET %s: %s", path, e)
+        return {"ok": False, "error": "Internal error contacting controller"}
 
 
 def _controller_post(path: str, payload: dict, timeout: int = 15) -> dict:
@@ -238,14 +482,17 @@ def _controller_post(path: str, payload: dict, timeout: int = 15) -> dict:
             return json.loads(body) if body else {"ok": True}
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
+        logging.getLogger("ar-manager").error(
+            "Controller POST %s: HTTP %d: %s", path, e.code, body[:500])
         try:
             return json.loads(body)
         except json.JSONDecodeError:
-            return {"ok": False, "error": f"HTTP {e.code}: {body[:300]}"}
+            return {"ok": False, "error": f"Controller returned HTTP {e.code}"}
     except URLError as e:
         return {"ok": False, "error": f"Controller unreachable: {e.reason}"}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        logging.getLogger("ar-manager").error("Controller POST %s: %s", path, e)
+        return {"ok": False, "error": "Internal error contacting controller"}
 
 
 # ---------------------------------------------------------------------------
@@ -289,15 +536,18 @@ def _github_request(method: str, path: str, payload: dict = None,
             return json.loads(body)
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
+        logging.getLogger("ar-manager").error(
+            "GitHub %s %s: HTTP %d: %s", method, path, e.code, body[:500])
         try:
             err = json.loads(body)
-            return {"ok": False, "error": f"GitHub {e.code}: {err.get('message', body[:300])}"}
+            return {"ok": False, "error": f"GitHub returned HTTP {e.code}: {err.get('message', '')}"}
         except json.JSONDecodeError:
-            return {"ok": False, "error": f"GitHub HTTP {e.code}: {body[:300]}"}
+            return {"ok": False, "error": f"GitHub returned HTTP {e.code}"}
     except URLError as e:
         return {"ok": False, "error": f"GitHub API unreachable: {e.reason}"}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        logging.getLogger("ar-manager").error("GitHub %s %s: %s", method, path, e)
+        return {"ok": False, "error": "Internal error contacting GitHub API"}
 
 
 def _extract_owner_repo(repo_url: str) -> Optional[tuple]:
@@ -387,6 +637,7 @@ def controller_health() -> dict:
         Dictionary with controller status and version info.
     """
     _require_scope("read")
+    _audit("controller_health")
     result = _controller_get("/api/health")
     result["next_steps"] = [
         "Use workstream_list to see available workstreams",
@@ -415,6 +666,7 @@ def workstream_list() -> dict:
         Dictionary with list of workstream summaries.
     """
     _require_scope("read")
+    _audit("workstream_list")
     result = _controller_get("/api/workstreams")
 
     if isinstance(result, list):
@@ -451,6 +703,10 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
         Dictionary with thisWeek and lastWeek stats.
     """
     _require_scope("read")
+    err = _check_short_strings(workstream_id=workstream_id, period=period)
+    if err:
+        return err
+    _audit("workstream_get_status", workstream_id=workstream_id)
     params = urlencode({"workstream": workstream_id, "period": period})
     result = _controller_get(f"/api/stats?{params}")
     result["workstream_id"] = workstream_id
@@ -500,6 +756,17 @@ def workstream_submit_task(
         Dictionary with job_id and workstream_id on success.
     """
     _require_scope("write")
+    err = _check_length(prompt, "prompt", MAX_PROMPT_LEN)
+    if err:
+        return err
+    err = _check_short_strings(
+        workstream_id=workstream_id, target_branch=target_branch,
+        description=description,
+    )
+    if err:
+        return err
+    _audit("workstream_submit_task", workstream_id=workstream_id,
+           target_branch=target_branch, prompt_len=len(prompt))
 
     payload = {"prompt": prompt}
     if workstream_id:
@@ -564,6 +831,14 @@ def workstream_register(
         Dictionary with workstreamId and channel info on success.
     """
     _require_scope("write")
+    err = _check_short_strings(
+        default_branch=default_branch, base_branch=base_branch,
+        repo_url=repo_url, planning_document=planning_document,
+        channel_name=channel_name,
+    )
+    if err:
+        return err
+    _audit("workstream_register", default_branch=default_branch)
 
     payload = {"defaultBranch": default_branch}
     if base_branch:
@@ -624,6 +899,14 @@ def workstream_update_config(
         Dictionary confirming the update.
     """
     _require_scope("write")
+    err = _check_short_strings(
+        workstream_id=workstream_id, default_branch=default_branch,
+        base_branch=base_branch, repo_url=repo_url,
+        planning_document=planning_document, channel_name=channel_name,
+    )
+    if err:
+        return err
+    _audit("workstream_update_config", workstream_id=workstream_id)
 
     payload = {}
     if default_branch:
@@ -697,6 +980,16 @@ def project_create_branch(
         Dictionary confirming the workflow was dispatched.
     """
     _require_scope("pipeline")
+    err = _check_short_strings(
+        workstream_id=workstream_id, plan_title=plan_title,
+    )
+    if err:
+        return err
+    if plan_content:
+        err = _check_length(plan_content, "plan_content", MAX_CONTENT_LEN)
+        if err:
+            return err
+    _audit("project_create_branch", workstream_id=workstream_id, plan_title=plan_title)
 
     ws = _find_workstream(workstream_id)
     if ws is None:
@@ -770,6 +1063,12 @@ def project_verify_branch(
         Dictionary confirming the workflow was dispatched.
     """
     _require_scope("pipeline")
+    err = _check_short_strings(
+        workstream_id=workstream_id, branch=branch, plan_file=plan_file,
+    )
+    if err:
+        return err
+    _audit("project_verify_branch", workstream_id=workstream_id, branch=branch)
 
     ws = _find_workstream(workstream_id)
     if ws is None:
@@ -860,6 +1159,16 @@ def project_commit_plan(
         Dictionary with commit SHA and file path on success.
     """
     _require_scope("pipeline")
+    err = _check_length(content, "content", MAX_CONTENT_LEN)
+    if err:
+        return err
+    err = _check_short_strings(
+        workstream_id=workstream_id, path=path, branch=branch,
+        commit_message=commit_message,
+    )
+    if err:
+        return err
+    _audit("project_commit_plan", workstream_id=workstream_id, path=path, branch=branch)
 
     ws = _find_workstream(workstream_id)
     if ws is None:
@@ -900,6 +1209,20 @@ def project_commit_plan(
             .lower()[:40]
         )
         path = f"docs/plans/PLAN-{date_str}-{slug}.md"
+
+    # Path traversal protection
+    normalized = os.path.normpath(path)
+    if normalized.startswith("..") or "/../" in path or path.startswith("/"):
+        return {
+            "ok": False,
+            "error": "Invalid path: must be a relative path without '..' segments",
+        }
+    for prefix in _SENSITIVE_PATH_PREFIXES:
+        if normalized.startswith(prefix) or path.startswith(prefix):
+            return {
+                "ok": False,
+                "error": f"Invalid path: cannot target '{prefix}' directory",
+            }
 
     if not commit_message:
         commit_message = f"Add plan document: {path}"
@@ -950,6 +1273,316 @@ def project_commit_plan(
     return result
 
 
+# -- Tier 3: Memory tools ---------------------------------------------------
+
+
+def _resolve_branch_context(
+    workstream_id: str = "",
+    repo_url: str = "",
+    branch: str = "",
+) -> tuple[str, str, Optional[dict]]:
+    """Resolve repo_url and branch from workstream_id if needed.
+
+    Returns:
+        (repo_url, branch, error_dict_or_None)
+    """
+    if repo_url and branch:
+        return (repo_url, branch, None)
+
+    if workstream_id:
+        ws = _find_workstream(workstream_id)
+        if ws is None:
+            return ("", "", {
+                "ok": False,
+                "error": f"Workstream '{workstream_id}' not found",
+                "next_steps": ["Use workstream_list to find valid workstream IDs"],
+            })
+        repo_url = repo_url or ws.get("repoUrl", "")
+        branch = branch or ws.get("defaultBranch", "")
+
+    if not repo_url or not branch:
+        return ("", "", {
+            "ok": False,
+            "error": "Either (repo_url + branch) or workstream_id is required",
+            "next_steps": [
+                "Provide repo_url and branch directly, or",
+                "Provide workstream_id to resolve them from the workstream config",
+            ],
+        })
+
+    return (repo_url, branch, None)
+
+
+@mcp.tool()
+def memory_recall(
+    query: str,
+    namespace: str = "default",
+    limit: int = 5,
+    repo_url: str = "",
+    branch: str = "",
+    workstream_id: str = "",
+) -> dict:
+    """Search agent memories with optional LLM synthesis.
+
+    Retrieves semantically similar memories from the ar-memory server.
+    If an LLM backend is available, provides a synthesized summary.
+    Can resolve repo_url/branch from workstream_id if provided.
+
+    Args:
+        query: Natural language search query.
+        namespace: Memory namespace to search.
+        limit: Maximum number of memories to retrieve.
+        repo_url: Optional repository URL filter.
+        branch: Optional branch name filter.
+        workstream_id: Optional workstream to resolve repo/branch from.
+
+    Returns:
+        Dictionary with memories and optional summary.
+    """
+    _require_scope("memory")
+    err = _check_short_strings(
+        query=query, namespace=namespace, repo_url=repo_url,
+        branch=branch, workstream_id=workstream_id,
+    )
+    if err:
+        return err
+    _audit("memory_recall", query=query, namespace=namespace)
+
+    client = _get_memory_client()
+    if client is None:
+        return {
+            "ok": False,
+            "error": "ar-memory server unavailable",
+            "next_steps": [
+                "Start ar-memory: python tools/mcp/memory/server.py --http-only",
+                "Or set AR_MEMORY_URL to point to a running instance",
+            ],
+        }
+
+    # Resolve branch context if filtering requested
+    effective_repo = repo_url
+    effective_branch = branch
+    if workstream_id and (not repo_url or not branch):
+        effective_repo, effective_branch, err = _resolve_branch_context(
+            workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+        )
+        if err:
+            return err
+
+    try:
+        memories = client.search(
+            query=query,
+            namespace=namespace,
+            limit=limit,
+            repo_url=effective_repo or None,
+            branch=effective_branch or None,
+        )
+    except ConnectionError as e:
+        return {"ok": False, "error": f"Memory search failed: {e}"}
+
+    if not memories:
+        return {
+            "ok": True,
+            "summary": f"No memories found for '{query}' in namespace '{namespace}'.",
+            "memories": [],
+        }
+
+    # Attempt LLM synthesis
+    summary = None
+    llm = _get_llm()
+    if llm and llm.available:
+        try:
+            from inference import SYSTEM_PROMPT
+
+            mem_text = ""
+            for i, m in enumerate(memories, 1):
+                score = m.get("score", "?")
+                mem_text += f"### Memory {i} (similarity: {score})\n{m.get('content', '')}\n\n"
+
+            prompt = (
+                f"## Retrieved Memories\n\n{mem_text}\n\n"
+                f"## Task\n\nThe user searched for: \"{query}\"\n\n"
+                "Summarize the retrieved memories. Highlight key findings and "
+                "any decisions or progress notes. Be concise (2-4 sentences)."
+            )
+            summary = llm.generate(prompt, system=SYSTEM_PROMPT)
+        except Exception as e:
+            summary = f"(LLM synthesis failed: {e})"
+
+    result = {
+        "ok": True,
+        "memories": [
+            {
+                "id": m.get("id"),
+                "content": m.get("content"),
+                "score": m.get("score"),
+                "tags": m.get("tags"),
+                "created_at": m.get("created_at"),
+                "repo_url": m.get("repo_url"),
+                "branch": m.get("branch"),
+            }
+            for m in memories
+        ],
+        "count": len(memories),
+        "next_steps": [
+            "Use memory_branch_context for a full branch history",
+            "Use memory_store to add new memories",
+        ],
+    }
+
+    if summary:
+        result["summary"] = summary
+
+    return result
+
+
+@mcp.tool()
+def memory_branch_context(
+    workstream_id: str = "",
+    repo_url: str = "",
+    branch: str = "",
+    namespace: str = "default",
+    limit: int = 20,
+) -> dict:
+    """Get all memories for a specific branch.
+
+    Returns memories ordered by creation time (newest first). Can resolve
+    repo_url/branch from workstream_id if provided.
+
+    Args:
+        workstream_id: Workstream to resolve repo/branch from.
+        repo_url: Repository URL to match.
+        branch: Branch name to match.
+        namespace: Memory namespace to search.
+        limit: Maximum number of entries.
+
+    Returns:
+        Dictionary with branch memories.
+    """
+    _require_scope("memory")
+    err = _check_short_strings(
+        workstream_id=workstream_id, repo_url=repo_url,
+        branch=branch, namespace=namespace,
+    )
+    if err:
+        return err
+    _audit("memory_branch_context", workstream_id=workstream_id, branch=branch)
+
+    effective_repo, effective_branch, err = _resolve_branch_context(
+        workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+    )
+    if err:
+        return err
+
+    client = _get_memory_client()
+    if client is None:
+        return {
+            "ok": False,
+            "error": "ar-memory server unavailable",
+            "next_steps": [
+                "Start ar-memory: python tools/mcp/memory/server.py --http-only",
+            ],
+        }
+
+    try:
+        memories = client.search_by_branch(
+            repo_url=effective_repo,
+            branch=effective_branch,
+            namespace=namespace,
+            limit=limit,
+        )
+    except ConnectionError as e:
+        return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
+
+    return {
+        "ok": True,
+        "repo_url": effective_repo,
+        "branch": effective_branch,
+        "namespace": namespace,
+        "memories": memories,
+        "count": len(memories),
+        "next_steps": [
+            "Use memory_recall for semantic search within these memories",
+            "Use memory_store to add a new memory for this branch",
+        ],
+    }
+
+
+@mcp.tool()
+def memory_store(
+    content: str,
+    workstream_id: str = "",
+    repo_url: str = "",
+    branch: str = "",
+    namespace: str = "default",
+    tags: Optional[list[str]] = None,
+    source: Optional[str] = None,
+) -> dict:
+    """Store a memory from an external client.
+
+    Either workstream_id or (repo_url + branch) is required to identify
+    the branch context for the memory.
+
+    Args:
+        content: The text content to store.
+        workstream_id: Resolves to repo_url/branch via workstream config.
+        repo_url: Repository URL.
+        branch: Branch name.
+        namespace: Logical grouping.
+        tags: Optional tags for categorization.
+        source: Optional source identifier.
+
+    Returns:
+        Dictionary with the created entry.
+    """
+    _require_scope("memory")
+    err = _check_length(content, "content", MAX_PROMPT_LEN)
+    if err:
+        return err
+    err = _check_short_strings(
+        workstream_id=workstream_id, repo_url=repo_url,
+        branch=branch, namespace=namespace,
+    )
+    if err:
+        return err
+    _audit("memory_store", namespace=namespace, content_len=len(content))
+
+    effective_repo, effective_branch, err = _resolve_branch_context(
+        workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+    )
+    if err:
+        return err
+
+    client = _get_memory_client()
+    if client is None:
+        return {
+            "ok": False,
+            "error": "ar-memory server unavailable",
+            "next_steps": [
+                "Start ar-memory: python tools/mcp/memory/server.py --http-only",
+            ],
+        }
+
+    try:
+        entry = client.store(
+            content=content,
+            repo_url=effective_repo,
+            branch=effective_branch,
+            namespace=namespace,
+            tags=tags,
+            source=source,
+        )
+    except ConnectionError as e:
+        return {"ok": False, "error": f"Memory store failed: {e}"}
+
+    entry["ok"] = True
+    entry["next_steps"] = [
+        "Use memory_recall to search for this and other memories",
+        "Use memory_branch_context to see all memories for this branch",
+    ]
+    return entry
+
+
 # ---------------------------------------------------------------------------
 # Server startup
 # ---------------------------------------------------------------------------
@@ -968,31 +1601,62 @@ if __name__ == "__main__":
         port = int(os.environ.get("MCP_PORT", "8010"))
 
         if tokens:
-            # Wrap the MCP app with auth middleware
+            # Wrap the MCP app with auth + rate-limiting middleware
+            # Serve MCP at "/" — Claude mobile ignores the path component
+            # and always sends requests to the root.
+            mcp.settings.streamable_http_path = "/"
+            # Disable DNS rebinding protection — the server runs behind a
+            # TLS-terminating reverse proxy (Tailscale Funnel) where the
+            # Host header is the public DNS name, not localhost.
+            from mcp.server.transport_security import TransportSecuritySettings
+            mcp.settings.transport_security = TransportSecuritySettings(
+                enable_dns_rebinding_protection=False,
+            )
             try:
                 app = mcp.streamable_http_app()
-                app = BearerAuthMiddleware(app, tokens)
-                print(f"ar-manager: Starting with auth on port {port}", file=sys.stderr)
-
-                import uvicorn
-                uvicorn.run(app, host="0.0.0.0", port=port)
             except AttributeError:
+                # CRITICAL: If streamable_http_app() is unavailable we cannot
+                # apply auth middleware. Refuse to start rather than silently
+                # running without authentication.
                 print(
-                    "ar-manager: WARNING: streamable_http_app() not available — "
-                    "falling back to mcp.run() without auth wrapping",
+                    "ar-manager: FATAL: Cannot apply auth middleware — "
+                    "streamable_http_app() not available in this MCP version. "
+                    "Upgrade the mcp package or remove tokens to run without auth.",
                     file=sys.stderr,
                 )
-                from mcp.server.transport_security import TransportSecuritySettings
-                mcp.settings.host = "0.0.0.0"
-                mcp.settings.port = port
-                mcp.settings.transport_security = TransportSecuritySettings(
-                    enable_dns_rebinding_protection=False,
-                )
-                mcp.run(transport="streamable-http" if transport == "http" else "sse")
+                sys.exit(1)
+
+            # Middleware order (outermost first):
+            #   Health -> RateLimit -> OAuth -> BearerAuth -> app
+            # OAuth sits outside BearerAuth so its endpoints (metadata,
+            # registration, authorize, token) are accessible without an
+            # existing bearer token.
+            from oauth import OAuthMiddleware
+            issuer_url = os.environ.get("AR_MANAGER_ISSUER_URL")
+            app = BearerAuthMiddleware(app, tokens)
+            app = OAuthMiddleware(app, tokens, issuer_url=issuer_url)
+            app = RateLimitMiddleware(app, requests_per_minute=RATE_LIMIT)
+            app = HealthMiddleware(app)
+
+            # Warn if binding publicly without TLS
+            print(f"ar-manager: Starting with auth on port {port}", file=sys.stderr)
+            print(
+                "ar-manager: WARNING: Listening on 0.0.0.0 without TLS. "
+                "Bearer tokens will be transmitted in cleartext. "
+                "Use a TLS-terminating reverse proxy for public deployments.",
+                file=sys.stderr,
+            )
+
+            import uvicorn
+            uvicorn.run(app, host="0.0.0.0", port=port)
         else:
             from mcp.server.transport_security import TransportSecuritySettings
             mcp.settings.host = "0.0.0.0"
             mcp.settings.port = port
+            # DNS rebinding protection is disabled because the server is
+            # typically deployed behind a TLS-terminating reverse proxy
+            # (Tailscale Funnel, Caddy, nginx) where the Host header does
+            # not match localhost.
             mcp.settings.transport_security = TransportSecuritySettings(
                 enable_dns_rebinding_protection=False,
             )
