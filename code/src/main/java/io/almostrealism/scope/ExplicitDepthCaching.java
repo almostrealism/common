@@ -20,10 +20,6 @@ import io.almostrealism.expression.Expression;
 
 public class ExplicitDepthCaching implements CachingSettings {
 	public boolean isExpressionCacheTarget(Expression<?> e) {
-		if (e.totalComputeCost() >= ScopeSettings.getComputeCostCacheThreshold()) {
-			return true;
-		}
-
 		int depth = e.treeDepth();
 //		return depth == 7 || depth == 11;
 		return depth == 7;
