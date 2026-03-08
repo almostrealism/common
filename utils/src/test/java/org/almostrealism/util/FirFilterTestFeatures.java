@@ -77,13 +77,6 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	}
 
 	/**
-	 * Reference implementation of centered FIR convolution for test verification.
-	 *
-	 * @param signal the input signal
-	 * @param coefficients the FIR filter coefficients
-	 * @return the convolved output signal
-	 */
-	/**
 	 * Asserts that a convolution result matches the expected output element-by-element
 	 * using hardware-precision tolerance from {@link TestFeatures#assertEquals(double, double)}.
 	 *

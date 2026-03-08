@@ -104,17 +104,17 @@ public class ReplicationMismatchOptimization implements ProcessOptimizationStrat
 			Function<Collection<P>, Stream<P>> childProcessor) {
 		listeners.forEach(l -> l.accept(parent));
 
-		long cn = ParallelProcess.parallelism(parent);
-		if (cn <= 0) return null;
+		long parentParallelism = ParallelProcess.parallelism(parent);
+		if (parentParallelism <= 0) return null;
 
 		boolean anyMismatch = false;
 		List<P> result = new ArrayList<>(children.size());
 
 		for (P child : children) {
-			long childP = ParallelProcess.parallelism(child);
+			long childParallelism = ParallelProcess.parallelism(child);
 
-			if (childP > 1 && childP < cn
-					&& cn / childP >= replicationThreshold) {
+			if (childParallelism > 1 && childParallelism < parentParallelism
+					&& parentParallelism / childParallelism >= replicationThreshold) {
 				result.add((P) parent.isolate((Process) child));
 				anyMismatch = true;
 			} else {

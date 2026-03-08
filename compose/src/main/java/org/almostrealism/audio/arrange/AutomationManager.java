@@ -138,12 +138,12 @@ public class AutomationManager implements Setup, CellFeatures {
 	}
 
 	public Producer<PackedCollection> getMainValue(Producer<PackedCollection> phase, Producer<PackedCollection> offset) {
-		Producer<PackedCollection> rate =
-				c(0.1 * r).divide(c((double) sampleRate).multiply(cp(scale)));
+		Producer<PackedCollection> invRate =
+				c(1.0).divide(c((double) sampleRate).multiply(cp(scale)));
 		Producer<PackedCollection> phaseContrib =
-				c(2.0).multiply(phase).subtract(c(1.0)).multiply(c(p * 0.1 * r));
-		Producer<PackedCollection> v =
-				add(multiply(clock.frame(), rate), phaseContrib).pow(c(3.0));
+				c(2.0).multiply(phase).subtract(c(1.0)).multiply(c(p));
+		Producer<PackedCollection> v = multiply(c(0.1 * r),
+				add(multiply(clock.frame(), invRate), phaseContrib).pow(c(3.0)));
 		v = rectify(add(v, offset));
 		return multiply(v, c(0.01));
 	}
@@ -155,7 +155,7 @@ public class AutomationManager implements Setup, CellFeatures {
 	}
 
 	public Producer<PackedCollection> getMainValueAt(Producer<PackedCollection> time, Producer<PackedCollection> offset) {
-		Producer<PackedCollection> v = c(0.1 * r).multiply(time).pow(c(3.0));
+		Producer<PackedCollection> v = multiply(c(0.1 * r), pow(time, c(3.0)));
 		v = rectify(add(v, offset));
 		return multiply(v, c(0.01));
 	}

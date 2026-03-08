@@ -690,7 +690,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	 * The weight indexing expressions are loop-invariant with respect to the output index
 	 * but the accumulation is loop-variant.</p>
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 60000) @TestDepth(2)
 	public void loopedSumWithLicm() {
 		boolean previous = Repeated.enableLoopInvariantHoisting;
 		Repeated.enableLoopInvariantHoisting = true;
