@@ -152,7 +152,7 @@ Forgetting `AR_HARDWARE_LIBS` causes `NoClassDefFoundError: PackedCollection` an
 export AR_HARDWARE_MEMORY_SCALE=8   # 16GB (default is 7 = 8GB)
 ```
 
-See [hardware/README.md](hardware/README.md).
+See [hardware/README.md](base/hardware/README.md).
 
 **Build verification** — before declaring a task complete:
 ```bash
@@ -207,4 +207,4 @@ Consult the linked references before writing related code.
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** — Condensed API cheatsheet
 - **[llms.txt](llms.txt)** — Documentation index
 - **[CI Pipeline](.github/workflows/analysis.yaml)** — Build and test workflow
-- **Module guidelines**: [ML](./ml/claude.md), [Graph](./graph/README.md), [Collect](./collect/README.md)
+- **Module guidelines**: [ML](./engine/ml/claude.md), [Graph](./domain/graph/README.md), [Collect](./base/collect/README.md)

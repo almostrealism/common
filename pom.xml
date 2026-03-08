@@ -27,40 +27,55 @@
 	</properties>
 
 	<modules>
-		<module>relation</module>
-		<module>io</module>
-		<module>code</module>
-		<module>hardware</module>
-		<module>algebra</module>
-		<module>geometry</module>
-		<module>graph</module>
-		<module>stats</module>
-		<module>uml</module>
-		<module>chemistry</module>
-		<module>color</module>
-		<module>heredity</module>
-		<module>physics</module>
-		<module>space</module>
-		<module>time</module>
-		<module>utils</module>
-		<module>optimize</module>
-		<module>collect</module>
-		<module>ml</module>
-		<module>ml-script</module>
-		<module>llvm</module>
-		<module>tools</module>
-		<module>render</module>
-		<module>audio</module>
-		<module>music</module>
-		<module>compose</module>
+		<!-- base — Foundation -->
+		<module>base/uml</module>
+		<module>base/io</module>
+		<module>base/relation</module>
+		<module>base/code</module>
+		<module>base/collect</module>
+		<module>base/hardware</module>
+
+		<!-- compute — Mathematical Domains -->
+		<module>compute/algebra</module>
+		<module>compute/geometry</module>
+		<module>compute/stats</module>
+		<module>compute/time</module>
+
+		<!-- domain — Domain Models -->
+		<module>domain/color</module>
+		<module>domain/heredity</module>
+		<module>domain/graph</module>
+		<module>domain/physics</module>
+		<module>domain/space</module>
+		<module>domain/chemistry</module>
+		<module>domain/llvm</module>
+
+		<!-- engine — Applications & Training -->
+		<module>engine/optimize</module>
+		<module>engine/render</module>
+		<module>engine/ml</module>
+		<module>engine/audio</module>
+		<module>engine/utils</module>
+		<module>engine/utils-http</module>
+
+		<!-- extern — External Integrations -->
+		<module>extern/ml-djl</module>
+		<module>extern/ml-onnx</module>
+		<module>extern/ml-script</module>
+
+		<!-- studio — Multimedia Composition -->
+		<module>studio/music</module>
+		<module>studio/spatial</module>
+		<module>studio/compose</module>
+
+		<!-- Workflow Orchestration -->
 		<module>graphpersist</module>
 		<module>flowtreeapi</module>
 		<module>flowtree-python</module>
 		<module>flowtree</module>
-		<module>ml-onnx</module>
-		<module>ml-djl</module>
-		<module>spatial</module>
-		<module>utils-http</module>
+
+		<!-- Standalone -->
+		<module>tools</module>
 	</modules>
 
 	<packaging>pom</packaging>

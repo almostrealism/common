@@ -443,7 +443,7 @@ jobs:
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          LD_LIBRARY_PATH=Extensions mvn test -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
@@ -463,7 +463,7 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl ml \
+          LD_LIBRARY_PATH=Extensions mvn test -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
@@ -532,7 +532,7 @@ jobs:
 
       - name: Run Audio Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl audio \
+          LD_LIBRARY_PATH=Extensions mvn test -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
@@ -541,7 +541,7 @@ jobs:
 
       - name: Run Music Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl music \
+          LD_LIBRARY_PATH=Extensions mvn test -pl studio/music \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
@@ -550,7 +550,7 @@ jobs:
 
       - name: Run Compose Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl compose \
+          LD_LIBRARY_PATH=Extensions mvn test -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
@@ -626,7 +626,7 @@ jobs:
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl utils \
+          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/utils \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
@@ -635,7 +635,7 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl ml \
+          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/ml \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
@@ -665,21 +665,21 @@ jobs:
 
       - name: Run Audio Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl audio \
+          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/audio \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions
 
       - name: Run Music Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl music \
+          DYLD_LIBRARY_PATH=Extensions mvn test -pl studio/music \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions
 
       - name: Run Compose Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl compose \
+          DYLD_LIBRARY_PATH=Extensions mvn test -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS=Extensions \
