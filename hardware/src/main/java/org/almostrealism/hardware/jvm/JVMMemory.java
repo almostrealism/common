@@ -18,6 +18,9 @@ package org.almostrealism.hardware.jvm;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.MemoryData;
+
+import java.util.Arrays;
 
 /**
  * {@link Memory} implementation backed by a Java heap double array.
@@ -87,5 +90,24 @@ public class JVMMemory implements Memory {
 	 */
 	public void destroy() {
 		this.data = null;
+	}
+
+	/**
+	 * Fills all elements of the given {@link MemoryData} with a constant value
+	 * using {@link Arrays#fill}, which is safe and efficient for JVM heap memory.
+	 *
+	 * @param dest   the destination memory to fill
+	 * @param length the number of elements to fill
+	 * @param value  the constant value to write
+	 * @throws IllegalArgumentException if the destination is not backed by {@link JVMMemory}
+	 */
+	public static Runnable fill(MemoryData dest, int length, double value) {
+		if (!(dest.getMem() instanceof JVMMemory)) {
+			throw new IllegalArgumentException(
+					"JVMMemory.fill requires JVM heap memory, got " + dest.getMem().getClass().getName());
+		}
+
+		return () -> Arrays.fill(((JVMMemory) dest.getMem()).data,
+				dest.getOffset(), dest.getOffset() + length, value);
 	}
 }

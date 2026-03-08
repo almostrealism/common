@@ -50,7 +50,6 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 /**
  * {@link OperationComputationAdapter} that assigns computed values to a destination memory location.
@@ -362,9 +361,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				MemoryData d = ((Provider<MemoryData>) out.get()).get();
 
 				if (d.getMem() instanceof JVMMemory) {
-					double v = s.getAsDouble();
 					int len = getCount() * memLength;
-					return () -> IntStream.range(0, len).parallel().forEach(i -> d.setMem(i, v));
+					return JVMMemory.fill(d, len, s.getAsDouble());
 				}
 			}
 
