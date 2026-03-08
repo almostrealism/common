@@ -100,8 +100,7 @@ public class CodePolicyViolationDetector {
 			"RunningAverageCell.java",
 			"FrequencyToAudioConverter.java",
 			"WaveData.java",
-			"WaveDetailsFactory.java",
-			// Ray tracing - kernel result extraction and setup
+				// Ray tracing - kernel result extraction and setup
 			"LightingEngineAggregator.java",
 			"CachedMeshIntersectionKernel.java",
 			"MeshData.java",
@@ -362,7 +361,7 @@ public class CodePolicyViolationDetector {
 		// Look for patterns where the second argument looks like a collection variable
 		// Common patterns: setMem(0, source), setMem(offset, data, 0, len)
 		// Check if the line looks like it's passing a collection/memorydata as argument
-		return line.matches(".*\\.setMem\\s*\\([^,]+,\\s*[a-z][\\w.]*(?:\\s*,\\s*\\d+\\s*,\\s*[\\w.]+)?\\s*\\).*")
+		return line.matches(".*\\.setMem\\s*\\([^,]+,\\s*[a-z][\\w.]*\\s*,\\s*[^,]+\\s*,\\s*[^)]+\\).*")
 				|| line.matches(".*\\.setMem\\s*\\([^,]+,\\s*[a-z][\\w.]*\\s*\\).*")
 				|| line.contains("getChannelData")  // Common bulk copy source
 				|| line.contains(".range(")         // View-based copy
