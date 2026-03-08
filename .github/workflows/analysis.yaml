@@ -892,6 +892,17 @@ jobs:
 
       # ── Test failure path ───────────────────────────────────────
       # When the build succeeded, download and parse Surefire reports.
+      # Only linux test results are considered — test-mac failures are
+      # not treated as requiring auto-resolution.
+
+      - name: Clean stale surefire reports
+        if: steps.build-check.outputs.build_failed != 'true'
+        run: |
+          # On self-hosted runners, previous test-mac runs may leave
+          # surefire reports in the workspace. Remove them so they
+          # cannot contaminate the artifact download directory.
+          find . -path "*/target/surefire-reports" -type d -exec rm -rf {} + 2>/dev/null || true
+          rm -rf all-surefire-reports
 
       - name: Download Surefire Reports
         if: steps.build-check.outputs.build_failed != 'true'
@@ -909,6 +920,27 @@ jobs:
           pattern: crash-reports-*
           path: all-crash-reports
           merge-multiple: true
+
+      - name: Filter to linux-only surefire reports
+        if: steps.build-check.outputs.build_failed != 'true'
+        run: |
+          # Only keep artifacts from known linux test jobs:
+          #   surefire-utils-group-*, surefire-ml-group-*, surefire-media
+          # Remove any unexpected directories (e.g., if a mac job ever
+          # starts uploading surefire artifacts).
+          mkdir -p all-surefire-reports
+          for dir in all-surefire-reports/*/; do
+            base=$(basename "$dir")
+            case "$base" in
+              surefire-utils-group-*|surefire-ml-group-*|surefire-media)
+                echo "::notice::Keeping linux surefire artifact: $base"
+                ;;
+              *)
+                echo "::warning::Removing non-linux surefire artifact: $base"
+                rm -rf "$dir"
+                ;;
+            esac
+          done
 
       - name: Parse test failures
         if: steps.build-check.outputs.build_failed != 'true'
