@@ -308,7 +308,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 				limit = Math.min(limit, frames);
 
 				double[] targetValues = new double[limit];
-				System.arraycopy(allValues, b * elementsPerItem, targetValues, 0, limit);
+				System.arraycopy(allValues, b * frames, targetValues, 0, limit);
 				results[batchStart + b] = trimmedMean(targetValues);
 			}
 
