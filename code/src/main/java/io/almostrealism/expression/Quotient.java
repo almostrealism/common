@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -44,6 +44,10 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	protected Quotient(List<Expression<?>> values) {
 		super((Class<T>) type(values), "/", values);
 	}
+
+	/** {@inheritDoc} Returns 6, reflecting the cost of a hardware division. */
+	@Override
+	public int getComputeCost() { return 6; }
 
 	public Expression<?> getNumerator() { return getChildren().get(0); }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -58,6 +58,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			warn("Module zero encountered while creating expression");
 		}
 	}
+
+	/** {@inheritDoc} Returns 8, reflecting the cost of the {@code fmod()}/{@code %} operation. */
+	@Override
+	public int getComputeCost() { return 8; }
 
 	@Override
 	public String getExpression(LanguageOperations lang) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,6 +29,10 @@ public class Sine extends Expression<Double> {
 	protected Sine(Expression<Double> input) {
 		super(Double.class, input);
 	}
+
+	/** {@inheritDoc} Returns 25, reflecting the cost of the {@code sin()} transcendental. */
+	@Override
+	public int getComputeCost() { return 25; }
 
 	@Override
 	public String getExpression(LanguageOperations lang) {

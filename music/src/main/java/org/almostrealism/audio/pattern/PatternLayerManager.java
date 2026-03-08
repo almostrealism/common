@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -117,7 +117,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	public static int AUTOMATION_GENE_LENGTH = 6;
 	public static int MAX_LAYERS = 32;
 
-	public static boolean enableWarnings = SystemUtils.isEnabled("AR_PATTERN_WARNINGS").orElse(true);
+	public static boolean enableWarnings = SystemUtils.isEnabled("AR_PATTERN_WARNINGS").orElse(false);
 	public static boolean enableLogging = SystemUtils.isEnabled("AR_PATTERN_LOGGING").orElse(false);
 
 	private int channel;

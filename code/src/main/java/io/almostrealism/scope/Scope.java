@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -1241,6 +1241,88 @@ public class Scope<T> extends ArrayList<Scope<T>>
 				}
 			}
 		};
+	}
+
+	/**
+	 * Recursively collects all declaration {@link ExpressionAssignment}s from this scope
+	 * and all descendant scopes.
+	 *
+	 * <p>A declaration assignment is one where {@link ExpressionAssignment#isDeclaration()}
+	 * returns true (e.g., {@code double f_0 = ...}). This is useful for scope-wide
+	 * analysis such as dependency tracking, variance propagation, and optimization passes
+	 * like loop-invariant code motion.</p>
+	 *
+	 * @return a list of all declaration assignments in this scope tree
+	 */
+	public List<ExpressionAssignment<?>> collectDeclarations() {
+		List<ExpressionAssignment<?>> declarations = new ArrayList<>();
+		collectDeclarations(declarations);
+		return declarations;
+	}
+
+	/**
+	 * Recursively collects declaration assignments into the provided list.
+	 *
+	 * @param declarations the list to add declarations to
+	 */
+	private void collectDeclarations(List<ExpressionAssignment<?>> declarations) {
+		for (Statement<?> stmt : getStatements()) {
+			if (stmt instanceof ExpressionAssignment) {
+				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
+				if (assignment.isDeclaration()) {
+					declarations.add(assignment);
+				}
+			}
+		}
+
+		for (Scope<?> child : getChildren()) {
+			child.collectDeclarations(declarations);
+		}
+	}
+
+	/**
+	 * Extracts the declared variable name from a declaration assignment's destination.
+	 *
+	 * <p>If the destination is a {@link StaticReference}, returns its name.
+	 * Otherwise returns null. This is a convenience method for scope analysis
+	 * operations that need to identify declared variable names.</p>
+	 *
+	 * @param assignment the declaration assignment to inspect
+	 * @return the declared variable name, or null if it cannot be determined
+	 */
+	public static String getDeclarationName(ExpressionAssignment<?> assignment) {
+		Expression<?> dest = assignment.getDestination();
+		if (dest instanceof StaticReference) {
+			return ((StaticReference<?>) dest).getName();
+		}
+		return null;
+	}
+
+	/**
+	 * Collects variable names from an assignment destination expression into the given set.
+	 *
+	 * <p>Handles both {@link StaticReference} destinations (whose {@code getDependencies()}
+	 * may return empty) and general expressions whose dependencies are collected via
+	 * {@link Expression#getDependencies()}.</p>
+	 *
+	 * @param dest the destination expression of an assignment (may be null)
+	 * @param names the set to add variable names to
+	 */
+	public static void collectDestinationNames(Expression<?> dest, Set<String> names) {
+		if (dest == null) return;
+
+		if (dest instanceof StaticReference) {
+			String name = ((StaticReference<?>) dest).getName();
+			if (name != null) {
+				names.add(name);
+			}
+		}
+
+		for (Variable<?, ?> var : dest.getDependencies()) {
+			if (var.getName() != null) {
+				names.add(var.getName());
+			}
+		}
 	}
 
 	/**

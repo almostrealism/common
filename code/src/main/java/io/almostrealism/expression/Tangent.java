@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,6 +32,10 @@ public class Tangent extends Expression<Double> {
 		super(Double.class, input);
 		this.hyperbolic = hyperbolic;
 	}
+
+	/** {@inheritDoc} Returns 30, reflecting the cost of the {@code tan()}/{@code tanh()} library call. */
+	@Override
+	public int getComputeCost() { return 30; }
 
 	@Override
 	public String getExpression(LanguageOperations lang) {

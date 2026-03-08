@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -377,6 +377,18 @@ public class FrequencyCache<K, V> {
 				.filter(e -> frequencyFilter.test(e.frequency))
 				.sorted(Comparator.comparing(v -> v.frequency))
 				.map(e -> e.value);
+	}
+
+	/**
+	 * Returns a stream of value-frequency pairs filtered by frequency.
+	 *
+	 * @param frequencyFilter predicate to filter entries by access frequency
+	 * @return a stream of map entries mapping values to their frequencies
+	 */
+	public Stream<Map.Entry<V, Integer>> entriesByFrequency(IntPredicate frequencyFilter) {
+		return reverseCache.values().stream()
+				.filter(e -> frequencyFilter.test(e.frequency))
+				.map(e -> Map.entry(e.value, e.frequency));
 	}
 
 	/**

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -141,20 +141,29 @@ public class SystemUtils {
 
 	/**
 	 * Checks if a feature is enabled or disabled via property.
-	 * <p>The property should have value "enabled" or "disabled" (case-insensitive).</p>
+	 *
+	 * <p>The property value must be exactly "enabled" or "disabled" (case-insensitive).
+	 * Values like "true" or "false" are intentionally rejected because some properties
+	 * support a wider range of options than just on/off, and permitting boolean synonyms
+	 * could mask misconfiguration.</p>
 	 *
 	 * @param key the property key
-	 * @return Optional.of(true) if enabled, Optional.of(false) if disabled, empty if unset
+	 * @return Optional.of(true) if "enabled", Optional.of(false) if "disabled", empty if unset
+	 * @throws IllegalArgumentException if the value is set but is not "enabled" or "disabled"
 	 */
 	public static Optional<Boolean> isEnabled(String key) {
 		String value = getProperty(key);
 
-		if ("enabled".equalsIgnoreCase(value)) {
+		if (value == null) {
+			return Optional.empty();
+		} else if ("enabled".equalsIgnoreCase(value)) {
 			return Optional.of(true);
 		} else if ("disabled".equalsIgnoreCase(value)) {
 			return Optional.of(false);
 		} else {
-			return Optional.empty();
+			throw new IllegalArgumentException(
+					"Invalid value for " + key + ": \"" + value + "\". " +
+					"Use \"enabled\" or \"disabled\" (not \"true\"/\"false\")");
 		}
 	}
 

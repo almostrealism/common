@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,6 +28,10 @@ public class Exp extends Expression<Double> {
 	protected Exp(Expression<Double> input) {
 		super(Double.class, input);
 	}
+
+	/** {@inheritDoc} Returns 15, reflecting the cost of the {@code exp()} library call. */
+	@Override
+	public int getComputeCost() { return 15; }
 
 	@Override
 	public String getExpression(LanguageOperations lang) {

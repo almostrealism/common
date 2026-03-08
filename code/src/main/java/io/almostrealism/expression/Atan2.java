@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -46,6 +46,10 @@ public class Atan2 extends BinaryExpression<Double> {
 	public Atan2(Expression<Double> y, Expression<Double> x) {
 		super(Double.class, y, x);
 	}
+
+	/** {@inheritDoc} Returns 30, reflecting the cost of the {@code atan2()} library call. */
+	@Override
+	public int getComputeCost() { return 30; }
 
 	/**
 	 * Returns the y-coordinate expression (first argument).

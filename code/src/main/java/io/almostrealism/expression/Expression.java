@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -170,6 +170,9 @@ public abstract class Expression<T> implements
 	/** Total count of nodes in the expression subtree rooted at this node. */
 	private int nodeCount;
 
+	/** Total runtime compute cost of this expression subtree. */
+	private long computeCost;
+
 	/** Compact hash value computed from children for efficient equality checks. */
 	private short hash;
 
@@ -270,6 +273,8 @@ public abstract class Expression<T> implements
 			this.nodeCount = Math.toIntExact(c + 1);
 		}
 
+		this.computeCost = getChildren().stream().mapToLong(e -> e.computeCost).sum() + getComputeCost();
+
 		this.containsLong = (getType() == Long.class ||
 				getChildren().stream().anyMatch(e -> e.containsLong))
 				&& intValue().isEmpty();
@@ -310,6 +315,29 @@ public abstract class Expression<T> implements
 	 */
 	@Override
 	public int countNodes() { return nodeCount; }
+
+	/**
+	 * Returns the intrinsic compute cost of this node only, excluding children.
+	 *
+	 * <p>The default is 0 for leaf nodes (no children) and 1 for internal nodes
+	 * (a single arithmetic operation). Subclasses representing expensive operations
+	 * (transcendentals, power, division) should override this to return a higher cost.</p>
+	 *
+	 * @return the intrinsic cost of this node (unitless, 1 = single arithmetic op)
+	 */
+	public int getComputeCost() {
+		return getChildren().isEmpty() ? 0 : 1;
+	}
+
+	/**
+	 * Returns the total runtime compute cost of the expression subtree rooted at this node.
+	 *
+	 * <p>This is the sum of {@link #getComputeCost()} for this node plus
+	 * {@code totalComputeCost()} for all children, computed and cached during {@link #init()}.</p>
+	 *
+	 * @return the total compute cost of this subtree
+	 */
+	public long totalComputeCost() { return computeCost; }
 
 	/**
 	 * Checks if this expression produces an integer result.
@@ -629,6 +657,76 @@ public abstract class Expression<T> implements
 	 */
 	public boolean containsReference(Variable var) {
 		return getChildren().stream().anyMatch(e -> e.containsReference(var));
+	}
+
+	/**
+	 * Checks whether this expression tree contains any {@link StaticReference}
+	 * whose name matches one of the given variable names.
+	 *
+	 * <p>This is useful for detecting dependencies on locally-declared variables
+	 * (e.g., {@code double f_0 = ...}) that are referenced via {@link StaticReference}
+	 * nodes rather than through {@link Variable} dependencies.</p>
+	 *
+	 * @param names the set of variable names to look for
+	 * @return true if a matching {@link StaticReference} is found anywhere in this subtree
+	 */
+	public boolean containsStaticReferenceToAny(Set<String> names) {
+		if (this instanceof StaticReference) {
+			String name = ((StaticReference<?>) this).getName();
+			if (name != null && names.contains(name)) {
+				return true;
+			}
+		}
+
+		for (Expression<?> child : getChildren()) {
+			if (child.containsStaticReferenceToAny(names)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Collects all variable, index, and {@link StaticReference} names referenced
+	 * by this expression tree in a single traversal.
+	 *
+	 * <p>This method gathers names from three sources at each node:</p>
+	 * <ul>
+	 *   <li>{@link Index} nodes — the index name</li>
+	 *   <li>{@link StaticReference} nodes — the reference name</li>
+	 *   <li>Leaf nodes — names from {@link #getDependencies()} and {@link #getIndices()}</li>
+	 * </ul>
+	 *
+	 * <p>The combined set represents every named entity this expression depends on,
+	 * which is useful for variance analysis, dependency tracking, and scope optimization.</p>
+	 *
+	 * @param names the output set to which all referenced names are added
+	 */
+	public void collectReferencedNames(Set<String> names) {
+		if (this instanceof Index) {
+			String name = ((Index) this).getName();
+			if (name != null) names.add(name);
+		}
+
+		if (this instanceof StaticReference) {
+			String name = ((StaticReference<?>) this).getName();
+			if (name != null) names.add(name);
+		}
+
+		List<Expression<?>> children = getChildren();
+		if (children.isEmpty()) {
+			for (Variable<?, ?> var : getDependencies()) {
+				if (var.getName() != null) names.add(var.getName());
+			}
+			for (Index idx : getIndices()) {
+				if (idx.getName() != null) names.add(idx.getName());
+			}
+		}
+
+		for (Expression<?> child : children) {
+			child.collectReferencedNames(names);
+		}
 	}
 
 	/**
