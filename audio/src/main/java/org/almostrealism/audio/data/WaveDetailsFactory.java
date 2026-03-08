@@ -18,16 +18,15 @@ package org.almostrealism.audio.data;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.DoubleStream;
 
 /**
@@ -64,7 +63,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 	/** Default batch size for batched similarity computation. */
 	public static final int SIMILARITY_BATCH_SIZE = 100;
 
-	private static final Map<Long, Evaluable<PackedCollection>> cosineCalc = new HashMap<>();
+	private static final Map<Long, Evaluable<PackedCollection>> cosineCalc = new ConcurrentHashMap<>();
 
 	private final int sampleRate;
 	private final double fftSampleRate;
@@ -220,16 +219,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 		double[] values = cosineSimilarityEvaluable(frames, bins)
 				.evaluate(inputA, inputB).doubleStream().limit(limit).toArray();
 
-		if (values.length == 0) return -1.0;
-
-		int skip = 0;
-		int total = values.length;
-		if (total > 10) {
-			skip = (int) (values.length * 0.1);
-			total = total - skip - 2;
-		}
-
-		return DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
+		return trimmedMean(values);
 	}
 
 	/**
@@ -271,6 +261,10 @@ public class WaveDetailsFactory implements CodeFeatures {
 			for (int i = batchStart; i < batchEnd; i++) {
 				PackedCollection targetData = targets.get(i).getFeatureData();
 				if (targetData != null) {
+					if (targetData.getShape().length(1) != bins) {
+						results[i] = -Double.MAX_VALUE;
+						continue;
+					}
 					frames = Math.min(frames, targetData.getShape().length(0));
 				}
 			}
@@ -302,7 +296,6 @@ public class WaveDetailsFactory implements CodeFeatures {
 					.evaluate(stackedQuery, stackedTargets)
 					.doubleStream().toArray();
 
-			int outputElementsPerItem = frames * bins;
 			for (int b = 0; b < actualBatch; b++) {
 				WaveDetails target = targets.get(batchStart + b);
 				if (target.getFeatureData() == null) {
@@ -315,7 +308,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 				limit = Math.min(limit, frames);
 
 				double[] targetValues = new double[limit];
-				System.arraycopy(allValues, b * outputElementsPerItem, targetValues, 0, limit);
+				System.arraycopy(allValues, b * elementsPerItem, targetValues, 0, limit);
 				results[batchStart + b] = trimmedMean(targetValues);
 			}
 
@@ -343,29 +336,9 @@ public class WaveDetailsFactory implements CodeFeatures {
 	}
 
 	/**
-	 * Computes cosine similarity between two feature vectors by building
-	 * the full expression tree on each call. Retained for backward compatibility.
-	 *
-	 * @see #cachedProductSimilarity(WaveDetails, WaveDetails, int)
+	 * Encodes a (frames, bins) pair into a single long key for cache lookup.
+	 * Frames occupy the upper 32 bits, bins the lower 32 bits.
 	 */
-	public double productSimilarity(Producer<PackedCollection> a, Producer<PackedCollection> b, int limit) {
-		double[] values = multiply(a, b).sum(1)
-				.divide(multiply(length(1, a), length(1, b)))
-				.evaluate().doubleStream().limit(limit).toArray();
-		if (values.length == 0) return -1.0;
-
-		int skip = 0;
-		int total = values.length;
-		if (total > 10) {
-			// If there is enough material, remove the bottom 10%
-			// and the top 2 values to reduce outlier effects
-			skip = (int) (values.length * 0.1);
-			total = total - skip - 2;
-		}
-
-		return DoubleStream.of(values).sorted().skip(skip).limit(total).average().orElseThrow();
-	}
-
 	private static long shapeKey(int frames, int bins) {
 		return ((long) frames << 32) | bins;
 	}
