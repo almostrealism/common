@@ -70,6 +70,28 @@ specification. Fix the production code to make the original test pass.
   weights, etc.)?
 - Is the level of abstraction appropriate?
 - Is there code duplication that should be extracted into a shared method?
+- **Method placement — OOP fundamentals**: Every method must live on the class
+  it naturally belongs to. This is the most basic principle of object-oriented
+  design. Ask yourself for every new method:
+  - Does this method use instance state of its containing class, or could it be
+    static? If it could be static, it probably belongs somewhere else — or at
+    minimum must be declared static to make its independence explicit.
+  - Is this method a general-purpose traversal or query that operates on a base
+    type (e.g., `Expression`, `Scope`)? If so, it MUST be defined on that base
+    type, not on a subclass. Defining `collectAllReferencedNames(Expression)`
+    as a private method of `Repeated` instead of as an instance method on
+    `Expression` prevents all other code from reusing it and violates the
+    single-responsibility principle.
+  - Would this method be useful to other callers? Utility methods for collecting
+    declarations from a scope tree, extracting names from assignment
+    destinations, or traversing expression trees for references are inherently
+    general-purpose. They belong on `Scope` or `Expression`, not buried as
+    private helpers in a specific subclass.
+  - **Flag as a design violation** if you find methods defined on a subclass
+    that: (a) do not reference any instance fields of that subclass, AND
+    (b) operate on parameters of a base type. These must be moved to the base
+    type or made static utilities on the appropriate class. Fix them — do not
+    just flag them.
 - **Backwards compatibility vs. clarity**: Ask yourself — are these changes
   preserving a probably-useless kind of backwards compatibility at the expense
   of creating a lot more effort to understand the intended behavior? Prefer a

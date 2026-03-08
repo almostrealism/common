@@ -191,7 +191,10 @@ public class Repeated<T> extends Scope<T> {
 		// A declaration is variant if its expression references any variant name.
 		// Since declarations can form dependency chains (f_1 depends on f_0), we
 		// iterate until no new variant names are discovered (fixed-point).
-		List<DeclarationInfo> allDeclarations = collectDeclarations(scope);
+		List<ExpressionAssignment<?>> allDeclarations = new ArrayList<>();
+		for (Scope<T> child : scope.getChildren()) {
+			allDeclarations.addAll(child.collectDeclarations());
+		}
 
 		propagateVariance(allDeclarations, variantNames, loopIndices);
 
@@ -236,8 +239,8 @@ public class Repeated<T> extends Scope<T> {
 	 * @param variantNames the set of loop-variant variable names
 	 * @param hoisted the list to add hoisted statements to
 	 */
-	private void hoistInvariantDeclarations(Scope<?> scope, Set<String> variantNames,
-											List<Statement<?>> hoisted) {
+	private static void hoistInvariantDeclarations(Scope<?> scope, Set<String> variantNames,
+												List<Statement<?>> hoisted) {
 		List<Statement<?>> toRemove = new ArrayList<>();
 
 		for (Statement<?> stmt : scope.getStatements()) {
@@ -245,7 +248,7 @@ public class Repeated<T> extends Scope<T> {
 				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
 
 				if (assignment.isDeclaration()) {
-					String declName = getDeclarationName(assignment);
+					String declName = Scope.getDeclarationName(assignment);
 					if (declName != null && !variantNames.contains(declName)) {
 						hoisted.add(stmt);
 						toRemove.add(stmt);
@@ -497,7 +500,7 @@ public class Repeated<T> extends Scope<T> {
 	 * @param minDepth minimum tree depth for extraction
 	 * @return true if the expression should be extracted into a declaration
 	 */
-	private boolean isSubstantialForExtraction(Expression<?> expr, int minDepth) {
+	private static boolean isSubstantialForExtraction(Expression<?> expr, int minDepth) {
 		if (expr instanceof Constant) return false;
 		if (expr instanceof StaticReference) return false;
 		return expr.treeDepth() >= minDepth
@@ -514,7 +517,7 @@ public class Repeated<T> extends Scope<T> {
 	 * @param scope the repeated scope to analyze
 	 * @return a set of variable names that are inherently loop-variant
 	 */
-	private Set<String> collectBaseVariantNames(Repeated<T> scope) {
+	private static <T> Set<String> collectBaseVariantNames(Repeated<T> scope) {
 		Set<String> variantNames = new HashSet<>();
 
 		// The loop index itself is loop-variant
@@ -537,7 +540,7 @@ public class Repeated<T> extends Scope<T> {
 	 * @param scope the scope to analyze
 	 * @param variantNames the set to add variant names to
 	 */
-	private void collectBaseVariantNamesRecursive(Scope<?> scope, Set<String> variantNames) {
+	private static void collectBaseVariantNamesRecursive(Scope<?> scope, Set<String> variantNames) {
 		if (scope instanceof Repeated) {
 			Repeated<?> nested = (Repeated<?>) scope;
 			Variable<Integer, ?> nestedIndex = nested.getIndex();
@@ -552,81 +555,17 @@ public class Repeated<T> extends Scope<T> {
 				if (!assignment.isDeclaration()) {
 					// Non-declaration assignments (e.g., source[offset] = 0.0) are
 					// inherently loop-variant because they mutate state each iteration
-					collectDestinationNames(assignment.getDestination(), variantNames);
+					Scope.collectDestinationNames(assignment.getDestination(), variantNames);
 				}
 			}
 		}
 
 		for (ExpressionAssignment<?> var : scope.getVariables()) {
-			collectDestinationNames(var.getDestination(), variantNames);
+			Scope.collectDestinationNames(var.getDestination(), variantNames);
 		}
 
 		for (Scope<?> child : scope.getChildren()) {
 			collectBaseVariantNamesRecursive(child, variantNames);
-		}
-	}
-
-	/**
-	 * Collects variable names from an assignment destination expression into the variant set.
-	 *
-	 * <p>Handles both {@link StaticReference} destinations (whose {@code getDependencies()}
-	 * may return empty) and general expressions whose dependencies are collected via
-	 * {@code getDependencies()}.</p>
-	 *
-	 * @param dest the destination expression of an assignment (may be null)
-	 * @param variantNames the set to add variant names to
-	 */
-	private void collectDestinationNames(Expression<?> dest, Set<String> variantNames) {
-		if (dest == null) return;
-
-		if (dest instanceof StaticReference) {
-			String name = ((StaticReference<?>) dest).getName();
-			if (name != null) {
-				variantNames.add(name);
-			}
-		}
-
-		for (Variable<?, ?> var : dest.getDependencies()) {
-			if (var.getName() != null) {
-				variantNames.add(var.getName());
-			}
-		}
-	}
-
-	/**
-	 * Collects all declaration statements from child scopes of the given Repeated scope.
-	 *
-	 * @param scope the repeated scope whose children to scan
-	 * @return a list of declaration info records
-	 */
-	private List<DeclarationInfo> collectDeclarations(Repeated<T> scope) {
-		List<DeclarationInfo> declarations = new ArrayList<>();
-		for (Scope<T> child : scope.getChildren()) {
-			collectDeclarationsRecursive(child, declarations);
-		}
-		return declarations;
-	}
-
-	/**
-	 * Recursively collects declaration statements from a scope and its children.
-	 *
-	 * @param scope the scope to scan
-	 * @param declarations the list to add declarations to
-	 */
-	private void collectDeclarationsRecursive(Scope<?> scope, List<DeclarationInfo> declarations) {
-		for (Statement<?> stmt : scope.getStatements()) {
-			if (stmt instanceof ExpressionAssignment) {
-				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
-				if (assignment.isDeclaration()) {
-					String name = getDeclarationName(assignment);
-					if (name != null) {
-						declarations.add(new DeclarationInfo(name, assignment.getExpression()));
-					}
-				}
-			}
-		}
-		for (Scope<?> child : scope.getChildren()) {
-			collectDeclarationsRecursive(child, declarations);
 		}
 	}
 
@@ -642,17 +581,29 @@ public class Repeated<T> extends Scope<T> {
 	 * @param variantNames the set of variant names (modified in place)
 	 * @param loopIndices indices from this and nested loops
 	 */
-	private void propagateVariance(List<DeclarationInfo> declarations, Set<String> variantNames, List<Index> loopIndices) {
-		// Precompute the set of all names referenced by each declaration's expression
-		// in a single O(N) traversal per declaration. This replaces repeated O(N) calls
-		// to isLoopInvariant() in the fixed-point loop, reducing total cost from
-		// O(K × D × N) to O(D × N) + O(K × D × S) where S = avg referenced names.
+	private static void propagateVariance(List<ExpressionAssignment<?>> declarations,
+										  Set<String> variantNames, List<Index> loopIndices) {
+		// Precompute declaration names and the set of all names referenced by each
+		// declaration's expression in a single O(N) traversal per declaration.
+		List<String> declNames = new ArrayList<>(declarations.size());
 		List<Set<String>> referencedNameSets = new ArrayList<>(declarations.size());
 		List<Boolean> containsLoopIndexFlags = new ArrayList<>(declarations.size());
 
-		for (DeclarationInfo decl : declarations) {
+		for (ExpressionAssignment<?> decl : declarations) {
+			declNames.add(Scope.getDeclarationName(decl));
+
+			Expression<?> expr = decl.getExpression();
 			Set<String> names = new HashSet<>();
-			boolean hasLoopIdx = collectAllReferencedNames(decl.expression, loopIndices, names);
+			expr.collectReferencedNames(names);
+
+			boolean hasLoopIdx = false;
+			for (Index idx : loopIndices) {
+				if (expr.containsIndex(idx)) {
+					hasLoopIdx = true;
+					break;
+				}
+			}
+
 			referencedNameSets.add(names);
 			containsLoopIndexFlags.add(hasLoopIdx);
 		}
@@ -662,10 +613,10 @@ public class Repeated<T> extends Scope<T> {
 		while (changed) {
 			changed = false;
 			for (int i = 0; i < declarations.size(); i++) {
-				DeclarationInfo decl = declarations.get(i);
-				if (!variantNames.contains(decl.name)) {
+				String name = declNames.get(i);
+				if (name != null && !variantNames.contains(name)) {
 					if (containsLoopIndexFlags.get(i) || intersectsVariant(referencedNameSets.get(i), variantNames)) {
-						variantNames.add(decl.name);
+						variantNames.add(name);
 						changed = true;
 					}
 				}
@@ -676,88 +627,11 @@ public class Repeated<T> extends Scope<T> {
 	/**
 	 * Checks whether any name in the referenced set is in the variant set.
 	 */
-	private boolean intersectsVariant(Set<String> referencedNames, Set<String> variantNames) {
+	private static boolean intersectsVariant(Set<String> referencedNames, Set<String> variantNames) {
 		for (String name : referencedNames) {
 			if (variantNames.contains(name)) return true;
 		}
 		return false;
-	}
-
-	/**
-	 * Collects all variable, index, and static reference names from an expression tree
-	 * in a single O(N) traversal. Also checks whether any loop index object is contained.
-	 *
-	 * @param expr the expression to analyze
-	 * @param loopIndices the loop indices to check for containment
-	 * @param names output set of all referenced names
-	 * @return true if the expression contains any loop index
-	 */
-	private boolean collectAllReferencedNames(Expression<?> expr, List<Index> loopIndices,
-											  Set<String> names) {
-		boolean hasLoopIndex = false;
-
-		if (expr instanceof Index) {
-			String name = ((Index) expr).getName();
-			if (name != null) {
-				names.add(name);
-				for (Index idx : loopIndices) {
-					if (idx.getName() != null && idx.getName().equals(name)) {
-						hasLoopIndex = true;
-						break;
-					}
-				}
-			}
-		}
-
-		if (expr instanceof StaticReference) {
-			String name = ((StaticReference<?>) expr).getName();
-			if (name != null) names.add(name);
-		}
-
-		List<Expression<?>> children = expr.getChildren();
-		if (children.isEmpty()) {
-			for (Variable<?, ?> var : expr.getDependencies()) {
-				if (var.getName() != null) names.add(var.getName());
-			}
-			for (Index idx : expr.getIndices()) {
-				if (idx.getName() != null) names.add(idx.getName());
-			}
-		}
-
-		for (Expression<?> child : children) {
-			if (collectAllReferencedNames(child, loopIndices, names)) {
-				hasLoopIndex = true;
-			}
-		}
-
-		return hasLoopIndex;
-	}
-
-	/**
-	 * Extracts the variable name from a declaration's destination expression.
-	 *
-	 * @param assignment the declaration assignment
-	 * @return the declared variable name, or null if it cannot be determined
-	 */
-	private String getDeclarationName(ExpressionAssignment<?> assignment) {
-		Expression<?> dest = assignment.getDestination();
-		if (dest instanceof StaticReference) {
-			return ((StaticReference<?>) dest).getName();
-		}
-		return null;
-	}
-
-	/**
-	 * Simple record holding a declaration's variable name and its initializer expression.
-	 */
-	private static class DeclarationInfo {
-		final String name;
-		final Expression<?> expression;
-
-		DeclarationInfo(String name, Expression<?> expression) {
-			this.name = name;
-			this.expression = expression;
-		}
 	}
 
 	/**
@@ -769,7 +643,7 @@ public class Repeated<T> extends Scope<T> {
 	 * @param scope the scope to analyze
 	 * @return a list of all Index objects from this and nested loops
 	 */
-	private List<Index> collectLoopIndices(Repeated<T> scope) {
+	private static <T> List<Index> collectLoopIndices(Repeated<T> scope) {
 		List<Index> indices = new ArrayList<>();
 
 		// Add this scope's index if it implements Index
@@ -792,7 +666,7 @@ public class Repeated<T> extends Scope<T> {
 	 * @param scope the scope to analyze
 	 * @param indices the list to add indices to
 	 */
-	private void collectLoopIndicesRecursive(Scope<?> scope, List<Index> indices) {
+	private static void collectLoopIndicesRecursive(Scope<?> scope, List<Index> indices) {
 		if (scope instanceof Repeated) {
 			Repeated<?> nested = (Repeated<?>) scope;
 			Variable<Integer, ?> nestedIndex = nested.getIndex();
@@ -860,32 +734,7 @@ public class Repeated<T> extends Scope<T> {
 		// Check for StaticReference nodes that reference loop-assigned variables by name.
 		// StaticReference without a referent returns empty from getDependencies(),
 		// so we must check by name to avoid incorrectly hoisting dependent expressions.
-		return !containsStaticReferenceToAny(expr, loopAssignedVariables);
-	}
-
-	/**
-	 * Recursively checks whether an expression tree contains any {@link StaticReference}
-	 * whose name matches one of the given variable names.
-	 *
-	 * @param expr the expression tree to search
-	 * @param names the set of variable names to look for
-	 * @return true if a matching {@link StaticReference} is found
-	 */
-	private boolean containsStaticReferenceToAny(Expression<?> expr, Set<String> names) {
-		if (expr instanceof StaticReference) {
-			String name = ((StaticReference<?>) expr).getName();
-			if (name != null && names.contains(name)) {
-				return true;
-			}
-		}
-
-		for (Expression<?> child : expr.getChildren()) {
-			if (containsStaticReferenceToAny(child, names)) {
-				return true;
-			}
-		}
-
-		return false;
+		return !expr.containsStaticReferenceToAny(loopAssignedVariables);
 	}
 
 	@Override

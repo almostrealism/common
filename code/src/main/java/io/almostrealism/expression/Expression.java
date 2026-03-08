@@ -660,6 +660,76 @@ public abstract class Expression<T> implements
 	}
 
 	/**
+	 * Checks whether this expression tree contains any {@link StaticReference}
+	 * whose name matches one of the given variable names.
+	 *
+	 * <p>This is useful for detecting dependencies on locally-declared variables
+	 * (e.g., {@code double f_0 = ...}) that are referenced via {@link StaticReference}
+	 * nodes rather than through {@link Variable} dependencies.</p>
+	 *
+	 * @param names the set of variable names to look for
+	 * @return true if a matching {@link StaticReference} is found anywhere in this subtree
+	 */
+	public boolean containsStaticReferenceToAny(Set<String> names) {
+		if (this instanceof StaticReference) {
+			String name = ((StaticReference<?>) this).getName();
+			if (name != null && names.contains(name)) {
+				return true;
+			}
+		}
+
+		for (Expression<?> child : getChildren()) {
+			if (child.containsStaticReferenceToAny(names)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Collects all variable, index, and {@link StaticReference} names referenced
+	 * by this expression tree in a single traversal.
+	 *
+	 * <p>This method gathers names from three sources at each node:</p>
+	 * <ul>
+	 *   <li>{@link Index} nodes — the index name</li>
+	 *   <li>{@link StaticReference} nodes — the reference name</li>
+	 *   <li>Leaf nodes — names from {@link #getDependencies()} and {@link #getIndices()}</li>
+	 * </ul>
+	 *
+	 * <p>The combined set represents every named entity this expression depends on,
+	 * which is useful for variance analysis, dependency tracking, and scope optimization.</p>
+	 *
+	 * @param names the output set to which all referenced names are added
+	 */
+	public void collectReferencedNames(Set<String> names) {
+		if (this instanceof Index) {
+			String name = ((Index) this).getName();
+			if (name != null) names.add(name);
+		}
+
+		if (this instanceof StaticReference) {
+			String name = ((StaticReference<?>) this).getName();
+			if (name != null) names.add(name);
+		}
+
+		List<Expression<?>> children = getChildren();
+		if (children.isEmpty()) {
+			for (Variable<?, ?> var : getDependencies()) {
+				if (var.getName() != null) names.add(var.getName());
+			}
+			for (Index idx : getIndices()) {
+				if (idx.getName() != null) names.add(idx.getName());
+			}
+		}
+
+		for (Expression<?> child : children) {
+			child.collectReferencedNames(names);
+		}
+	}
+
+	/**
 	 * Returns the kernel series that describes the repetition pattern of this expression.
 	 *
 	 * <p>The kernel series is used for optimization to identify expressions that
