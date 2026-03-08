@@ -33,6 +33,10 @@ public class Tangent extends Expression<Double> {
 		this.hyperbolic = hyperbolic;
 	}
 
+	/** {@inheritDoc} Returns 30, reflecting the cost of the {@code tan()}/{@code tanh()} library call. */
+	@Override
+	public int getComputeCost() { return 30; }
+
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		return (hyperbolic ? "tanh(" : "tan(") + getChildren().get(0).getExpression(lang) + ")";

@@ -21,7 +21,6 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.util.FrequencyCache;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -124,18 +123,30 @@ public class ExpressionCache {
 				k -> new FrequencyCache<>(ScopeSettings.getExpressionCacheSize(), 0.7));
 	}
 
+	/**
+	 * Returns frequently occurring expressions ranked by total compute savings.
+	 *
+	 * <p>Expressions that appear more than
+	 * {@link ScopeSettings#getExpressionCacheFrequencyThreshold()} times are
+	 * collected. They are sorted descending by estimated savings
+	 * (frequency &times; {@link Expression#totalComputeCost()}).</p>
+	 *
+	 * @return expressions ordered by descending compute savings potential
+	 */
 	public List<Expression<?>> getFrequentExpressions() {
-		List<Integer> depths = caches.keySet().stream().sorted().collect(Collectors.toList());
-		List<Expression<?>> expressions = new ArrayList<>();
+		int threshold = ScopeSettings.getExpressionCacheFrequencyThreshold();
 
-		for (Integer d : depths) {
-			getCache(d)
-					.valuesByFrequency(f -> f > ScopeSettings.getExpressionCacheFrequencyThreshold())
-					.forEach(expressions::add);
+		List<Map.Entry<Expression<?>, Long>> candidates = new ArrayList<>();
+		for (FrequencyCache<Expression<?>, Expression<?>> cache : caches.values()) {
+			cache.entriesByFrequency(f -> f > threshold)
+					.forEach(e -> {
+						long savings = (long) e.getValue() * e.getKey().totalComputeCost();
+						candidates.add(Map.entry(e.getKey(), savings));
+					});
 		}
 
-		Collections.reverse(expressions);
-		return expressions;
+		candidates.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+		return candidates.stream().map(Map.Entry::getKey).collect(Collectors.toList());
 	}
 
 	public boolean isEmpty() {

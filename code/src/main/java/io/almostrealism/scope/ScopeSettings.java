@@ -207,9 +207,57 @@ public class ScopeSettings {
 
 	public static int getExpressionCacheSize() { return 300; }
 
-	public static int getExpressionCacheFrequencyThreshold() { return 10; }
+	public static int getExpressionCacheFrequencyThreshold() { return 2; }
 
+	/**
+	 * Returns the minimum total compute cost for an expression to be unconditionally
+	 * eligible for caching, bypassing structural filters (depth sets, hash checks).
+	 *
+	 * <p>Expressions whose {@link io.almostrealism.expression.Expression#totalComputeCost()}
+	 * meets or exceeds this threshold are always considered cache targets, ensuring that
+	 * expensive operations like transcendentals are never filtered out by depth-based caching.</p>
+	 *
+	 * @return the compute cost threshold for unconditional caching eligibility
+	 */
+	public static int getComputeCostCacheThreshold() { return 15; }
+
+	/**
+	 * Returns the maximum base expression compute cost for which exponent
+	 * strength reduction (e.g. {@code pow(x,2) → x*x}) is applied.
+	 *
+	 * <p>When the base expression's {@link Expression#totalComputeCost()} is
+	 * at or above this threshold, the base is too expensive to duplicate in a
+	 * product and {@code pow()} is retained instead. This prevents expressions
+	 * like {@code pow(sin(x), 2)} from expanding into {@code sin(x)*sin(x)},
+	 * which would double the transcendental evaluations.</p>
+	 *
+	 * @return the compute cost threshold for exponent strength reduction
+	 */
+	public static int getStrengthReductionCostThreshold() { return 100; }
+
+	/**
+	 * Determines whether the given expression should be cached (extracted into a
+	 * named declaration for reuse).
+	 *
+	 * <p>An expression is eligible for caching if either:</p>
+	 * <ul>
+	 *   <li>Its {@link Expression#totalComputeCost()} meets or exceeds the
+	 *       {@linkplain #getComputeCostCacheThreshold() compute cost threshold},
+	 *       ensuring expensive operations (transcendentals, etc.) are always cached
+	 *       regardless of the active caching strategy; or</li>
+	 *   <li>The active {@link CachingSettings} implementation accepts it based on
+	 *       structural criteria (tree depth, hash, etc.).</li>
+	 * </ul>
+	 *
+	 * @param expression the expression to evaluate for caching eligibility
+	 * @return true if the expression should be cached
+	 */
 	public static boolean isExpressionCacheTarget(Expression<?> expression) {
+		if (expression.totalComputeCost() >= getComputeCostCacheThreshold()) {
+			cacheCount++;
+			return true;
+		}
+
 		boolean c = caching.isExpressionCacheTarget(expression);
 		if (c) {
 			cacheCount++;
@@ -217,6 +265,21 @@ public class ScopeSettings {
 		return c;
 	}
 
+	/**
+	 * Returns the maximum number of common sub-expression replacements per scope
+	 * during the CSE pass in {@link Scope#simplify}. Each replacement extracts a
+	 * frequently-occurring sub-expression into a named declaration variable.
+	 *
+	 * <p>This limit was previously raised to 48 to accommodate genome-only
+	 * sub-expression extraction for LICM, but that caused an 11x code blowup
+	 * in the AudioScene loop body (from 251 to 2,783 lines). The CSE pass does
+	 * not prioritize loop-invariant sub-expressions, so raising the limit causes
+	 * it to extract loop-variant sub-expressions that inflate the code without
+	 * enabling more hoisting. Reverted to 12 per regression analysis.</p>
+	 *
+	 * @return the maximum number of CSE replacements per scope
+	 * @see Repeated
+	 */
 	public static int getMaximumReplacements() {
 		return 12;
 	}

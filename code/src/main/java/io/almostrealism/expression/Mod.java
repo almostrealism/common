@@ -59,6 +59,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 	}
 
+	/** {@inheritDoc} */
+	@Override
+	public int getComputeCost() { return 8; }
+
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		return fp ? "fmod(" + getChildren().get(0).getExpression(lang) + ", " + getChildren().get(1).getExpression(lang) + ")" :

@@ -60,6 +60,7 @@ class RunConfig:
     jvm_args: list = field(default_factory=list)
     profile: Optional[str] = None
     jmx_monitoring: bool = False
+    jfr_settings: str = "default"
     repetitions: int = 1
 
 
@@ -138,7 +139,7 @@ class TestRunner:
         if config.jmx_monitoring and run_dir is not None:
             jfr_path = run_dir / "jmx" / "jfr_recording.jfr"
             jvm_args = [
-                f"-XX:StartFlightRecording=filename={jfr_path},settings=default,dumponexit=true",
+                f"-XX:StartFlightRecording=filename={jfr_path},settings={config.jfr_settings},dumponexit=true",
                 "-XX:NativeMemoryTracking=summary",
             ] + jvm_args
 
@@ -447,7 +448,8 @@ class TestRunner:
         return False
 
     def _get_ppid(self, pid: int) -> Optional[int]:
-        """Read parent PID from /proc/<pid>/stat."""
+        """Get parent PID. Uses /proc on Linux, ps on macOS."""
+        # Try /proc first (Linux)
         try:
             stat_path = Path(f"/proc/{pid}/stat")
             text = stat_path.read_text()
@@ -457,9 +459,33 @@ class TestRunner:
             fields = text[close_paren + 2:].split()
             if len(fields) >= 2:
                 return int(fields[1])
-            return None
         except (OSError, PermissionError, ValueError):
-            return None
+            pass
+
+        # Fallback: ps (macOS / general Unix)
+        try:
+            result = subprocess.run(
+                ["ps", "-o", "ppid=", "-p", str(pid)],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return int(result.stdout.strip())
+        except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
+            pass
+
+        return None
+
+    def _is_descendant_of(self, pid: int, ancestor_pid: int) -> bool:
+        """Check if pid is a descendant of ancestor_pid by walking the parent chain."""
+        current = pid
+        for _ in range(10):  # Max depth to prevent infinite loops
+            ppid = self._get_ppid(current)
+            if ppid is None or ppid <= 1:
+                return False
+            if ppid == ancestor_pid:
+                return True
+            current = ppid
+        return False
 
     def _discover_forked_pid(self, maven_pid: int, run_id: str) -> Optional[int]:
         """Poll jps for a ForkedBooter process whose parent is the maven process.
@@ -480,14 +506,13 @@ class TestRunner:
                 )
                 if result.returncode == 0:
                     for line in result.stdout.strip().split("\n"):
-                        if "ForkedBooter" in line:
+                        if "ForkedBooter" in line or "surefirebooter" in line:
                             parts = line.split(None, 1)
                             if parts:
                                 try:
                                     candidate_pid = int(parts[0])
-                                    # Verify this is a child of our maven process
-                                    ppid = self._get_ppid(candidate_pid)
-                                    if ppid == maven_pid:
+                                    # Verify this is a descendant of our maven process
+                                    if self._is_descendant_of(candidate_pid, maven_pid):
                                         # Write to metadata
                                         metadata = self._load_metadata(run_id)
                                         if metadata:
@@ -1211,6 +1236,11 @@ async def list_tools():
                         "type": "boolean",
                         "description": "Enable JMX monitoring: injects JFR/NMT JVM args and discovers forked JVM PID for use with ar-jmx tools (default: false)"
                     },
+                    "jfr_settings": {
+                        "type": "string",
+                        "enum": ["default", "profile"],
+                        "description": "JFR settings profile: 'default' for allocation profiling, 'profile' for CPU method sampling (~20ms interval). Only used when jmx_monitoring is true (default: 'default')"
+                    },
                     "repetitions": {
                         "type": "integer",
                         "minimum": 1,
@@ -1345,6 +1375,7 @@ async def call_tool(name: str, arguments: dict):
                 jvm_args=arguments.get("jvm_args", []),
                 profile=arguments.get("profile"),
                 jmx_monitoring=arguments.get("jmx_monitoring", False),
+                jfr_settings=arguments.get("jfr_settings", "default"),
                 repetitions=arguments.get("repetitions", 1)
             )
             run_id, command = runner.start_run(config)

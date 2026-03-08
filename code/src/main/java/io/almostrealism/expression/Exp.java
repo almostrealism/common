@@ -29,6 +29,10 @@ public class Exp extends Expression<Double> {
 		super(Double.class, input);
 	}
 
+	/** {@inheritDoc} Returns 15, reflecting the cost of the {@code exp()} library call. */
+	@Override
+	public int getComputeCost() { return 15; }
+
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		return "exp(" + getChildren().get(0).getExpression(lang) + ")";
