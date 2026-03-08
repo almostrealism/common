@@ -59,7 +59,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 	}
 
-	/** {@inheritDoc} */
+	/** {@inheritDoc} Returns 8, reflecting the cost of the {@code fmod()}/{@code %} operation. */
 	@Override
 	public int getComputeCost() { return 8; }
 
