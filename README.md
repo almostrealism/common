@@ -174,6 +174,36 @@ using a native lib on windows and an external native process in the cloud - all 
 language for defining your expressions.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+### Module Map
+
+```
+common/
+├── base/                              — Foundation
+│   uml, io, relation, code, collect, hardware
+│
+├── compute/                           — Mathematical Domains
+│   algebra, geometry, stats, time
+│
+├── domain/                            — Domain Models
+│   color, heredity, graph, physics, space, chemistry, llvm
+│
+├── engine/                            — Applications & Training
+│   optimize, render, ml, audio, utils, utils-http
+│
+├── extern/                            — External Integrations
+│   ml-djl, ml-onnx, ml-script
+│
+├── studio/                            — Multimedia Composition
+│   music, spatial, compose
+│
+├── flowtree, flowtreeapi,             — Workflow Orchestration
+│   flowtree-python, graphpersist
+│
+├── tools/                             — Dev Tools & MCP Servers
+├── docs/                              — Documentation
+└── scripts/                           — Build Helpers
+```
+
 ### Tutorial
 
 *All of these examples are found in the test directory of the utils module in this repository*

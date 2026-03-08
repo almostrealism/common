@@ -4,44 +4,58 @@
 
 # MODULE MAP
 
-| Directory | Module | Description |
-|-----------|--------|-------------|
-| `uml/` | ar-uml | Foundation layer: UML abstractions, no dependencies |
-| `relation/` | ar-relation | Computation relations, process optimization |
-| `code/` | ar-code | Expression trees, scope management, code generation |
-| `io/` | ar-io | File I/O, console logging, output features |
-| `algebra/` | ar-algebra | Vector, matrix, and algebraic operations |
-| `collect/` | ar-collect | PackedCollection: hardware-accelerated tensor storage |
-| `hardware/` | ar-hardware | GPU/CPU acceleration, memory management, kernel compilation |
-| `graph/` | ar-graph | Neural network layers, computation graphs, backpropagation |
-| `optimize/` | ar-optimize | Optimization algorithms and graph analysis |
-| `ml/` | ar-ml | Large language models, transformers, attention, tokenizers |
-| `ml-djl/` | ar-ml-djl | DJL framework integration for model loading |
-| `ml-onnx/` | ar-ml-onnx | ONNX runtime integration for inference |
-| `ml-script/` | ar-ml-script | Groovy script execution for model scripting |
-| `audio/` | ar-audio | Audio synthesis, signal processing, filters, sample playback |
-| `music/` | ar-music | Musical patterns, notes, scales, composition |
-| `compose/` | ar-compose | Audio scene composition, arrangement, effects processing |
-| `spatial/` | ar-spatial | Spatial audio, 3D sound, composition integration |
-| `geometry/` | ar-geometry | Rays, vectors, transformations, ray-tracing infrastructure |
-| `color/` | ar-color | RGB/RGBA colors, lighting models, shaders, textures |
-| `render/` | ar-render | Ray tracing, rendering pipeline, image output |
-| `space/` | ar-space | 3D scene representation, objects, spatial hierarchy |
-| `physics/` | ar-physics | Atomic/molecular structures, simulation, forces |
-| `chemistry/` | ar-chemistry | Periodic table and chemical element representations |
-| `heredity/` | ar-heredity | Genetic algorithms, evolution, probabilistic factories |
-| `stats/` | ar-stats | Statistical operations and probability distributions |
-| `time/` | ar-time | Temporal operations, timing, frequency, sequences |
-| `llvm/` | ar-llvm | LLVM polyglot integration for code generation |
-| `utils/` | ar-utils | Cross-module utilities and core framework services |
-| `utils-http/` | ar-utils-http | HTTP client utilities and REST integration |
-| `graphpersist/` | ar-graphpersist | Database persistence, NFS/SSH access, graph storage |
-| `flowtree/` | ar-flowtree | Workflow orchestration controller with Slack integration |
-| `flowtreeapi/` | ar-flowtreeapi | FlowTree API and protocol abstractions |
-| `flowtree-python/` | ar-flowtree-python | Python bindings for FlowTree |
-| `tools/` | ar-tools | JavaFX development tools; also contains `mcp/` MCP servers |
-| `docs/` | — | Documentation portal, internals, tutorials, API reference |
-| `scripts/` | — | Build and code generation helper scripts |
+```
+common/
+├── base/                          # Layer 1 — Foundation
+│   ├── uml/                       #   ar-uml: Annotations, lifecycle, semantic metadata
+│   ├── io/                        #   ar-io: Logging, metrics, alerts, lifecycle management
+│   ├── relation/                  #   ar-relation: Producer/Evaluable model, process optimization
+│   ├── code/                      #   ar-code: Expression trees, scopes, code generation
+│   ├── collect/                   #   ar-collect: PackedCollection, tensor storage
+│   └── hardware/                  #   ar-hardware: GPU/CPU acceleration, memory, kernel compilation
+│
+├── compute/                       # Layer 2 — Mathematical Domains
+│   ├── algebra/                   #   ar-algebra: Vector, matrix, numerical computing
+│   ├── geometry/                  #   ar-geometry: Rays, transforms, ray-tracing infrastructure
+│   ├── stats/                     #   ar-stats: Probability distributions, statistical sampling
+│   └── time/                      #   ar-time: Temporal processing, FFT, signal analysis
+│
+├── domain/                        # Layer 3 — Domain Models
+│   ├── color/                     #   ar-color: RGB/RGBA, lighting, shaders, textures
+│   ├── heredity/                  #   ar-heredity: Genetic algorithms, evolutionary computation
+│   ├── graph/                     #   ar-graph: Neural network layers, computation graphs, autodiff
+│   ├── physics/                   #   ar-physics: Atomic structures, photon fields, rigid body dynamics
+│   ├── space/                     #   ar-space: 3D scenes, meshes, CSG, spatial acceleration
+│   ├── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
+│   └── llvm/                      #   ar-llvm: LLVM IR / C code integration via GraalVM polyglot
+│
+├── engine/                        # Layer 4 — Applications & Training
+│   ├── optimize/                  #   ar-optimize: Adam, evolutionary algorithms, training loops
+│   ├── render/                    #   ar-render: Ray tracing engine, lighting, image output
+│   ├── ml/                        #   ar-ml: Transformers, attention, tokenizers, diffusion
+│   ├── audio/                     #   ar-audio: Audio synthesis, signal processing, filters
+│   ├── utils/                     #   ar-utils: Testing framework, cross-module utilities
+│   └── utils-http/                #   ar-utils-http: HTTP client, REST integration
+│
+├── extern/                        # Layer 5 — External Integrations
+│   ├── ml-djl/                    #   ar-ml-djl: DJL SentencePiece tokenization
+│   ├── ml-onnx/                   #   ar-ml-onnx: ONNX Runtime inference
+│   └── ml-script/                 #   ar-ml-script: Groovy scripting for model definition
+│
+├── studio/                        # Layer 6 — Multimedia Composition
+│   ├── music/                     #   ar-music: Pattern-based music composition
+│   ├── spatial/                   #   ar-spatial: Spatial audio visualization
+│   └── compose/                   #   ar-compose: Audio scene orchestration, arrangement
+│
+├── flowtree/                      # FlowTree — Workflow Orchestration
+├── flowtreeapi/                   #   FlowTree API and protocol abstractions
+├── flowtree-python/               #   Python bindings for FlowTree
+├── graphpersist/                  #   Database persistence, NFS/SSH, graph storage
+│
+├── tools/                         # Standalone — Dev tools, MCP servers
+├── docs/                          # Documentation portal, internals, tutorials
+└── scripts/                       # Build and code generation helpers
+```
 
 ---
 
