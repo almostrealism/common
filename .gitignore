@@ -23,8 +23,8 @@ commands/**
 **/*.hprof
 **/hs_err_pid**
 **/results/**
-/utils/data/**
-/utils/generated_images/**
+**/utils/data/**
+**/utils/generated_images/**
 
 # Python
 **/__pycache__/
