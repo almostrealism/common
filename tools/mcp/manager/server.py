@@ -1321,6 +1321,7 @@ def memory_recall(
     repo_url: str = "",
     branch: str = "",
     workstream_id: str = "",
+    include_messages: bool = False,
 ) -> dict:
     """Search agent memories with optional LLM synthesis.
 
@@ -1335,6 +1336,8 @@ def memory_recall(
         repo_url: Optional repository URL filter.
         branch: Optional branch name filter.
         workstream_id: Optional workstream to resolve repo/branch from.
+        include_messages: If true, also search the "messages" namespace
+            and merge results. Defaults to false.
 
     Returns:
         Dictionary with memories and optional summary.
@@ -1379,6 +1382,23 @@ def memory_recall(
         )
     except ConnectionError as e:
         return {"ok": False, "error": f"Memory search failed: {e}"}
+
+    # Merge results from the "messages" namespace if requested
+    if include_messages and namespace != "messages":
+        try:
+            msg_memories = client.search(
+                query=query,
+                namespace="messages",
+                limit=limit,
+                repo_url=effective_repo or None,
+                branch=effective_branch or None,
+            )
+            if msg_memories:
+                memories = memories + msg_memories
+                memories.sort(key=lambda m: m.get("score", 999))
+                memories = memories[:limit]
+        except ConnectionError:
+            pass  # Non-critical: proceed without messages
 
     if not memories:
         return {
@@ -1443,6 +1463,7 @@ def memory_branch_context(
     branch: str = "",
     namespace: str = "default",
     limit: int = 20,
+    include_messages: bool = True,
 ) -> dict:
     """Get all memories for a specific branch.
 
@@ -1455,6 +1476,8 @@ def memory_branch_context(
         branch: Branch name to match.
         namespace: Memory namespace to search.
         limit: Maximum number of entries.
+        include_messages: If true (default), also include memories from the
+            "messages" namespace. Set to false to exclude Slack messages.
 
     Returns:
         Dictionary with branch memories.
@@ -1493,6 +1516,25 @@ def memory_branch_context(
         )
     except ConnectionError as e:
         return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
+
+    # Merge results from the "messages" namespace if requested
+    if include_messages and namespace != "messages":
+        try:
+            msg_memories = client.search_by_branch(
+                repo_url=effective_repo,
+                branch=effective_branch,
+                namespace="messages",
+                limit=limit,
+            )
+            if msg_memories:
+                memories = memories + msg_memories
+                memories.sort(
+                    key=lambda m: m.get("created_at", ""),
+                    reverse=True,
+                )
+                memories = memories[:limit]
+        except ConnectionError:
+            pass  # Non-critical: proceed without messages
 
     return {
         "ok": True,

@@ -110,6 +110,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private String githubToken;
     private Map<String, String> githubOrgTokens = new HashMap<>();
 
+    /** Tracks which jobs should have a PR auto-created on success. */
+    private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
+
     private Server server;
     private SlackListener listener;
 
@@ -586,6 +589,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         double maxBudgetUsd = extractJsonDoubleField(body, "maxBudgetUsd");
         boolean protectTestFiles = extractJsonBooleanField(body, "protectTestFiles");
         boolean enforceChanges = extractJsonBooleanField(body, "enforceChanges");
+        boolean autoCreatePr = extractJsonBooleanField(body, "autoCreatePr");
 
         // Create job factory with workstream defaults, overridden by request values
         ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
@@ -663,6 +667,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Enforcement mode (require code changes or loop)
         if (enforceChanges) {
             factory.setEnforceChanges(true);
+        }
+
+        // Auto-create PR on successful completion
+        if (autoCreatePr) {
+            factory.setAutoCreatePr(true);
+            autoCreatePrJobs.put(factory.getTaskId(), new AutoPrContext(
+                effectiveRepoUrl, effectiveBase, workstream.getGithubOrg(),
+                jobDescription != null ? jobDescription : ClaudeCodeJob.summarizePrompt(prompt)));
         }
 
         // Build workstream URL for status reporting
@@ -779,6 +791,34 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
+
+        // Auto-create PR on successful completion if requested at submission time
+        if (eventStatus == JobCompletionEvent.Status.SUCCESS && jobId != null) {
+            AutoPrContext prCtx = autoCreatePrJobs.remove(jobId);
+            if (prCtx != null && event.getTargetBranch() != null
+                    && event.getPullRequestUrl() == null) {
+                String token = resolveGithubToken(prCtx.githubOrg);
+                if (token != null) {
+                    String ownerRepo = extractOwnerRepo(prCtx.repoUrl);
+                    if (ownerRepo != null) {
+                        String base = prCtx.baseBranch != null ? prCtx.baseBranch : "master";
+                        String prUrl = createGitHubPullRequest(
+                            ownerRepo, event.getTargetBranch(), base,
+                            prCtx.description, prCtx.description, token);
+                        if (prUrl != null) {
+                            event.withPullRequestUrl(prUrl);
+                        }
+                    } else {
+                        log("Cannot auto-create PR: unable to extract owner/repo from " + prCtx.repoUrl);
+                    }
+                } else {
+                    log("Cannot auto-create PR: no GitHub token available for org " + prCtx.githubOrg);
+                }
+            }
+        } else if (jobId != null) {
+            // Clean up context for non-success completions
+            autoCreatePrJobs.remove(jobId);
+        }
 
         if (eventStatus == JobCompletionEvent.Status.STARTED) {
             notifier.onJobStarted(workstreamId, event);
@@ -993,17 +1033,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
         // Resolve token: org-specific > instance-level > env var
         String org = session.getParms().get("org");
-        String token = null;
-        if (org != null && !org.isEmpty() && githubOrgTokens.containsKey(org)) {
-            token = githubOrgTokens.get(org);
-        }
-        if (token == null || token.trim().isEmpty()) {
-            token = this.githubToken;
-        }
-        if (token == null || token.trim().isEmpty()) {
-            token = System.getenv("GITHUB_TOKEN");
-        }
-        if (token == null || token.trim().isEmpty()) {
+        String token = resolveGithubToken(org);
+        if (token == null) {
             return errorResponse("GITHUB_TOKEN not configured on controller");
         }
 
@@ -1115,5 +1146,120 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         json.append(",\"totalCostUsd\":").append(stats.totalCostUsd);
         json.append(",\"totalTurns\":").append(stats.totalTurns);
         json.append("}");
+    }
+
+    /**
+     * Context stored at job submission time for auto-creating a pull request
+     * when the job completes successfully.
+     */
+    private static class AutoPrContext {
+        final String repoUrl;
+        final String baseBranch;
+        final String githubOrg;
+        final String description;
+
+        AutoPrContext(String repoUrl, String baseBranch, String githubOrg, String description) {
+            this.repoUrl = repoUrl;
+            this.baseBranch = baseBranch;
+            this.githubOrg = githubOrg;
+            this.description = description;
+        }
+    }
+
+    /**
+     * Extracts the GitHub {@code owner/repo} from a git repository URL.
+     *
+     * <p>Handles both HTTPS ({@code https://github.com/owner/repo.git})
+     * and SSH ({@code git@github.com:owner/repo.git}) URL formats.</p>
+     *
+     * @param repoUrl the repository URL
+     * @return the {@code owner/repo} string, or null if the URL is not recognized
+     */
+    private static String extractOwnerRepo(String repoUrl) {
+        if (repoUrl == null) return null;
+        // SSH format: git@github.com:owner/repo.git
+        Matcher ssh = Pattern.compile("git@github\\.com:([^/]+/[^/]+?)(?:\\.git)?$").matcher(repoUrl);
+        if (ssh.find()) return ssh.group(1);
+        // HTTPS format: https://github.com/owner/repo.git
+        Matcher https = Pattern.compile("github\\.com/([^/]+/[^/]+?)(?:\\.git)?$").matcher(repoUrl);
+        if (https.find()) return https.group(1);
+        return null;
+    }
+
+    /**
+     * Creates a GitHub pull request using the controller's token.
+     *
+     * @param ownerRepo the {@code owner/repo} string
+     * @param head      the head branch name
+     * @param base      the base branch name
+     * @param title     the PR title
+     * @param body      the PR body text
+     * @param token     the GitHub API token
+     * @return the pull request URL, or null on failure
+     */
+    private String createGitHubPullRequest(String ownerRepo, String head, String base,
+                                            String title, String body, String token) {
+        try {
+            String apiUrl = "https://api.github.com/repos/" + ownerRepo + "/pulls";
+            String payload = "{\"title\":\"" + escapeJson(title)
+                    + "\",\"head\":\"" + escapeJson(head)
+                    + "\",\"base\":\"" + escapeJson(base)
+                    + "\",\"body\":\"" + escapeJson(body) + "\"}";
+
+            URL url = URI.create(apiUrl).toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            conn.setDoOutput(true);
+            OutputStream os = conn.getOutputStream();
+            os.write(payload.getBytes(StandardCharsets.UTF_8));
+            os.close();
+
+            int status = conn.getResponseCode();
+            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = is != null
+                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
+            if (is != null) is.close();
+
+            if (status == 201) {
+                Matcher m = Pattern.compile("\"html_url\"\\s*:\\s*\"([^\"]+)\"").matcher(responseBody);
+                if (m.find()) {
+                    String prUrl = m.group(1);
+                    log("Auto-created PR: " + prUrl);
+                    return prUrl;
+                }
+            }
+
+            log("GitHub PR creation returned HTTP " + status + ": " + responseBody.substring(0,
+                    Math.min(200, responseBody.length())));
+        } catch (Exception e) {
+            log("GitHub PR creation failed: " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Resolves the GitHub API token for the given organization.
+     *
+     * @param org the GitHub organization name (may be null)
+     * @return the resolved token, or null if no token is available
+     */
+    private String resolveGithubToken(String org) {
+        String token = null;
+        if (org != null && !org.isEmpty() && githubOrgTokens.containsKey(org)) {
+            token = githubOrgTokens.get(org);
+        }
+        if (token == null || token.trim().isEmpty()) {
+            token = this.githubToken;
+        }
+        if (token == null || token.trim().isEmpty()) {
+            token = System.getenv("GITHUB_TOKEN");
+        }
+        return (token != null && !token.trim().isEmpty()) ? token : null;
     }
 }

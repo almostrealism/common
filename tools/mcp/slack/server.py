@@ -13,6 +13,7 @@ Configuration via environment variables:
 """
 
 import json
+import logging
 import os
 import sys
 from urllib.error import HTTPError, URLError
@@ -21,7 +22,97 @@ from urllib.request import Request, urlopen
 
 from mcp.server.fastmcp import FastMCP
 
+log = logging.getLogger(__name__)
+
 WORKSTREAM_URL = os.environ.get("AR_WORKSTREAM_URL", "")
+
+# ---------------------------------------------------------------------------
+# Memory client for storing sent messages
+# ---------------------------------------------------------------------------
+
+_COMMON_DIR = os.path.join(os.path.dirname(__file__), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+
+_memory_client = None
+_memory_init_attempted = False
+
+
+def _get_memory_client():
+    """Lazy-initialize the memory client for storing sent messages."""
+    global _memory_client, _memory_init_attempted
+    if _memory_client is not None:
+        return _memory_client
+    if _memory_init_attempted:
+        return None
+    _memory_init_attempted = True
+    try:
+        from memory_http_client import MemoryHTTPClient
+        client = MemoryHTTPClient()
+        if client.available:
+            _memory_client = client
+            print("ar-slack: memory client connected", file=sys.stderr)
+            return client
+        print("ar-slack: memory server not available, message archiving disabled", file=sys.stderr)
+    except Exception as e:
+        print(f"ar-slack: memory client init failed: {e}", file=sys.stderr)
+    return None
+
+
+def _derive_branch_context() -> tuple[str, str]:
+    """Derive repo_url and branch from the workstream URL via the controller."""
+    if not WORKSTREAM_URL:
+        return "", ""
+    try:
+        parts = WORKSTREAM_URL.split("/api/workstreams/")
+        if len(parts) < 2:
+            return "", ""
+        base_url = parts[0]
+        workstream_id = parts[1].split("/")[0]
+        url = f"{base_url}/api/workstreams"
+        req = Request(url, headers={"Accept": "application/json"})
+        with urlopen(req, timeout=5) as resp:
+            workstreams = json.loads(resp.read().decode("utf-8"))
+            for ws in workstreams:
+                if ws.get("workstreamId") == workstream_id:
+                    return ws.get("repoUrl", ""), ws.get("defaultBranch", "")
+        return "", ""
+    except Exception as e:
+        print(f"ar-slack: failed to derive branch context: {e}", file=sys.stderr)
+        return "", ""
+
+
+_cached_branch_context = None
+
+
+def _get_branch_context() -> tuple[str, str]:
+    """Return cached (repo_url, branch) for the current workstream."""
+    global _cached_branch_context
+    if _cached_branch_context is None:
+        _cached_branch_context = _derive_branch_context()
+    return _cached_branch_context
+
+
+def _store_message_as_memory(text: str) -> None:
+    """Store the sent message in the 'messages' namespace for archival."""
+    client = _get_memory_client()
+    if client is None:
+        return
+    try:
+        repo_url, branch = _get_branch_context()
+        if not repo_url or not branch:
+            print("ar-slack: skipping message archival (no branch context)", file=sys.stderr)
+            return
+        client.store(
+            content=text,
+            repo_url=repo_url,
+            branch=branch,
+            namespace="messages",
+            tags=["slack-message"],
+            source="ar-slack",
+        )
+    except Exception as e:
+        print(f"ar-slack: failed to archive message: {e}", file=sys.stderr)
 
 # Log startup configuration to stderr for diagnostics
 print(f"ar-slack: AR_WORKSTREAM_URL={'<not set>' if not WORKSTREAM_URL else WORKSTREAM_URL}",
@@ -76,7 +167,10 @@ def slack_send_message(text: str) -> dict:
     Returns:
         Dictionary with ok=true on success or ok=false with error details.
     """
-    return _post_message(text)
+    result = _post_message(text)
+    if result.get("ok"):
+        _store_message_as_memory(text)
+    return result
 
 
 @mcp.tool()
