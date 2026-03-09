@@ -39,6 +39,97 @@ The platform is pursuing a layered strategy:
 
 ## Planning History
 
+### 2026-03-09 — Document the ML Inference Pipeline Internals
+
+**Plan:** [`PLAN-20260309-ml-inference-pipeline-docs.md`](PLAN-20260309-ml-inference-pipeline-docs.md)
+**Category:** Documentation
+
+#### What I Investigated
+
+With the compilation pipeline documentation completed in the prior session (three internals
+docs: `computation-graph-to-process-tree.md`, `process-optimization-pipeline.md`,
+`backend-compilation-and-dispatch.md`), I evaluated the two documentation gaps identified
+in the previous planning cycle:
+
+1. **Memory management architecture** — The prior session flagged this as the #2 priority.
+   However, investigation revealed that `hardware/README.md` already contains 350+ lines
+   of memory management documentation covering zero-copy delegation, thread-local arena
+   allocation (Heap), GC-integrated native memory, memory versioning, argument aggregation,
+   and memory replacement for kernels. While there's no standalone internals doc, the
+   coverage in the README is substantial and actionable. This gap is real but smaller than
+   initially assessed.
+
+2. **ML inference pipeline** — The ML module has good API-level documentation (README.md,
+   CLAUDE.md) covering `AttentionFeatures`, `AutoregressiveModel`, `StateDictionary`, and
+   model implementation patterns. However, there is **no internals documentation** explaining
+   how the inference pipeline actually works — specifically:
+   - How KV caches are allocated, written at each position, and read during attention
+   - The GQA expansion strategy (expand at cache write time, not read time)
+   - How `AutoregressiveModel` coordinates the two-phase generation loop (prompt vs. generation)
+   - How position tracking feeds into RoPE computation and cache indexing
+   - How causal masking prevents attention to future cache positions
+
+   These are the mechanics that anyone extending, optimizing, or debugging the inference
+   pipeline needs to understand. The ML README says "KV Caching" is a feature but never
+   explains the implementation.
+
+#### Why This Task
+
+The ML inference pipeline documentation is more impactful than memory management for
+three reasons:
+
+1. **Directly enables proof-of-value work.** The next major milestone for the platform is
+   demonstrating real ML capabilities — model replication, inference optimization, eventually
+   self-hosted training. Every one of these tasks requires understanding how attention,
+   caching, and autoregressive generation work together. This doc is the prerequisite.
+
+2. **The gap is deeper.** Memory management has substantial README coverage; the inference
+   pipeline's internal mechanics are genuinely undocumented. The `attention()` method in
+   `AttentionFeatures.java` is ~200 lines of carefully orchestrated cache management,
+   GQA expansion, causal masking, and RoPE application — none of which is explained
+   outside the source code.
+
+3. **Advances the self-understanding vision.** If we want models to reason about the
+   platform's ML capabilities, the inference pipeline must be documented in a way that
+   is precise and mechanically understandable. This doc teaches both humans and future
+   models how the platform does ML inference.
+
+#### What Comes Next
+
+After ML inference pipeline documentation:
+
+1. **Documentation:** Memory management internals doc — consolidate and extend the
+   hardware/README.md coverage into a dedicated internals doc with architecture diagrams.
+   This would complete the "big three" subsystem docs (compilation, inference, memory).
+
+2. **Code Quality:** `@TestDepth` standardization on expensive tests. Small consistency
+   win that's been deferred appropriately.
+
+3. **Performance/Proof of Value:** With compilation pipeline, inference pipeline, and
+   memory management all documented, we'll be in a strong position to propose a real
+   proof-of-value task — likely inference optimization or a new model replication that
+   exercises the documented subsystems.
+
+#### Balance Reflection
+
+This is the second planning cycle, and we're still in Documentation. That's correct —
+we identified three major subsystem documentation gaps (compilation pipeline, inference
+pipeline, memory management), and we've completed one. The inference pipeline is the
+natural second priority because it most directly enables the ML proof-of-value work that
+represents the platform's ultimate trajectory.
+
+After this cycle, I expect one more documentation pass (memory management) before we can
+confidently move to code quality or performance work. The documentation investment is
+paying off: each new doc builds on the previous ones and makes future development faster.
+The compilation pipeline docs are already referenced by the inference pipeline plan, and
+the inference pipeline docs will be essential context for any future ML optimization work.
+
+We're building toward the moment when we can say: "the platform's core subsystems are
+thoroughly documented, the code quality is strong, and we're ready to push the boundaries
+of what it can do." That moment is approaching.
+
+---
+
 ### 2026-03-08 — Document the Compilation Pipeline
 
 **Plan:** [`PLAN-20260308-compilation-pipeline-docs.md`](PLAN-20260308-compilation-pipeline-docs.md)
