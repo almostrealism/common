@@ -373,6 +373,68 @@ public class AudioLibraryPersistence {
 		return recordings;
 	}
 
+	/**
+	 * Loads a single {@link WaveDetails} entry by content identifier from
+	 * protobuf library files at the given data prefix.
+	 *
+	 * <p>This method scans through all batch files (PREFIX_0.bin, PREFIX_1.bin, ...)
+	 * and returns the first matching entry. It is intended for on-demand loading
+	 * of entries that have been evicted from the in-memory cache.</p>
+	 *
+	 * @param dataPrefix the path prefix for library protobuf files
+	 * @param identifier the content identifier (MD5 hash) to look up
+	 * @return the decoded WaveDetails, or null if not found
+	 */
+	public static WaveDetails loadSingleDetail(String dataPrefix, String identifier) {
+		try {
+			return loadSingleDetail(new LibraryDestination(dataPrefix).in(), identifier);
+		} catch (IOException e) {
+			Console.root().features(AudioLibraryPersistence.class)
+					.warn("Failed to load WaveDetails for " + identifier + ": " + e.getMessage());
+			return null;
+		}
+	}
+
+	/**
+	 * Loads a single {@link WaveDetails} entry by content identifier from
+	 * the given input stream supplier (which yields successive batch files).
+	 *
+	 * @param in supplier of input streams for each batch file (returns null when exhausted)
+	 * @param identifier the content identifier (MD5 hash) to look up
+	 * @return the decoded WaveDetails, or null if not found
+	 * @throws IOException if reading from the input stream fails
+	 */
+	public static WaveDetails loadSingleDetail(Supplier<InputStream> in, String identifier) throws IOException {
+		InputStream input = in.get();
+
+		while (input != null) {
+			Audio.AudioLibraryData data = Audio.AudioLibraryData.newBuilder().mergeFrom(input).build();
+			Audio.WaveDetailData d = data.getInfoMap().get(identifier);
+			if (d != null) {
+				return decode(d);
+			}
+
+			input = in.get();
+		}
+
+		return null;
+	}
+
+	/**
+	 * Creates a loader function suitable for use with
+	 * {@link AudioLibrary#setDetailsLoader(java.util.function.Function)}.
+	 *
+	 * <p>The returned function loads a single {@link WaveDetails} from the protobuf
+	 * files at the given data prefix, scanning all batch files for the requested
+	 * identifier.</p>
+	 *
+	 * @param dataPrefix the path prefix for library protobuf files
+	 * @return a function that loads a WaveDetails by identifier from disk
+	 */
+	public static java.util.function.Function<String, WaveDetails> createDetailsLoader(String dataPrefix) {
+		return identifier -> loadSingleDetail(dataPrefix, identifier);
+	}
+
 	public static Audio.WaveDetailData encode(WaveDetails details, boolean includeAudio) {
 		return encode(details, includeAudio ? Precision.FP32 : null);
 	}
