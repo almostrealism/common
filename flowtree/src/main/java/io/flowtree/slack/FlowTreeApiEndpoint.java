@@ -801,7 +801,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             AutoPrContext prCtx = autoCreatePrJobs.remove(jobId);
             if (prCtx != null && event.getTargetBranch() != null
                     && event.getPullRequestUrl() == null) {
-                String token = resolveGithubToken(prCtx.githubOrg);
+                // Resolve org: explicit config first, then derive from repo URL
+                String effectiveOrg = prCtx.githubOrg;
+                if (effectiveOrg == null || effectiveOrg.isEmpty()) {
+                    effectiveOrg = extractOrgFromRepoUrl(prCtx.repoUrl);
+                }
+                String token = resolveGithubToken(effectiveOrg);
                 if (token != null) {
                     String ownerRepo = extractOwnerRepo(prCtx.repoUrl);
                     if (ownerRepo != null) {
@@ -816,7 +821,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                         log("Cannot auto-create PR: unable to extract owner/repo from " + prCtx.repoUrl);
                     }
                 } else {
-                    log("Cannot auto-create PR: no GitHub token available for org " + prCtx.githubOrg);
+                    log("Cannot auto-create PR: no GitHub token available for org " + effectiveOrg);
                 }
             }
         } else if (jobId != null) {
@@ -959,6 +964,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 json.append(",\"githubOrg\":\"").append(escapeJson(ws.getGithubOrg())).append("\"");
             }
 
+            if (planningDoc != null && !planningDoc.isEmpty()) {
+                json.append(",\"planningDocument\":\"").append(escapeJson(planningDoc)).append("\"");
+            }
             json.append(",\"hasPlanningDocument\":").append(planningDoc != null && !planningDoc.isEmpty());
             json.append(",\"pipelineCapable\":").append(pipelineCapable);
             json.append(",\"agentCount\":").append(ws.getAgents().size());
@@ -1262,6 +1270,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Resolves the GitHub API token for the given organization.
      *
+     * <p>Checks the org-specific token map first, then falls back to the
+     * instance-level token and finally the {@code GITHUB_TOKEN} env var.</p>
+     *
      * @param org the GitHub organization name (may be null)
      * @return the resolved token, or null if no token is available
      */
@@ -1277,5 +1288,18 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             token = System.getenv("GITHUB_TOKEN");
         }
         return (token != null && !token.trim().isEmpty()) ? token : null;
+    }
+
+    /**
+     * Extracts the GitHub organization (owner) from a repository URL.
+     *
+     * @param repoUrl the repository URL (HTTPS or SSH format)
+     * @return the organization name, or null if not parseable
+     */
+    private static String extractOrgFromRepoUrl(String repoUrl) {
+        String ownerRepo = extractOwnerRepo(repoUrl);
+        if (ownerRepo == null) return null;
+        int slash = ownerRepo.indexOf('/');
+        return slash > 0 ? ownerRepo.substring(0, slash) : null;
     }
 }
