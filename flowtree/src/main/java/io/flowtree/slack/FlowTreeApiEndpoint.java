@@ -84,6 +84,9 @@ import java.util.regex.Pattern;
  *   <tr><td>POST</td><td>/api/github/proxy?url=...</td>
  *       <td><i>raw JSON payload</i></td>
  *       <td>Proxy a POST request to the GitHub API</td></tr>
+ *   <tr><td>PUT</td><td>/api/github/proxy?url=...</td>
+ *       <td><i>raw JSON payload</i></td>
+ *       <td>Proxy a PUT request to the GitHub API</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td>
  *       <td>List all registered workstreams with capabilities</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td>
@@ -208,7 +211,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if ("/api/github/proxy".equals(uri)
-                && (Method.GET.equals(method) || Method.POST.equals(method))) {
+                && (Method.GET.equals(method) || Method.POST.equals(method)
+                    || Method.PUT.equals(method))) {
             return handleGitHubProxy(session, method);
         }
 
@@ -951,6 +955,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 json.append(",\"repoUrl\":\"").append(escapeJson(repoUrl)).append("\"");
             }
 
+            if (ws.getGithubOrg() != null) {
+                json.append(",\"githubOrg\":\"").append(escapeJson(ws.getGithubOrg())).append("\"");
+            }
+
             json.append(",\"hasPlanningDocument\":").append(planningDoc != null && !planningDoc.isEmpty());
             json.append(",\"pipelineCapable\":").append(pipelineCapable);
             json.append(",\"agentCount\":").append(ws.getAgents().size());
@@ -1043,11 +1051,18 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Missing required query parameter: url");
         }
 
-        String githubMethod = Method.POST.equals(method) ? "POST" : "GET";
-
-        // Read body for POST requests (forwarded to GitHub as-is)
-        String payload = null;
+        String githubMethod;
         if (Method.POST.equals(method)) {
+            githubMethod = "POST";
+        } else if (Method.PUT.equals(method)) {
+            githubMethod = "PUT";
+        } else {
+            githubMethod = "GET";
+        }
+
+        // Read body for POST/PUT requests (forwarded to GitHub as-is)
+        String payload = null;
+        if (Method.POST.equals(method) || Method.PUT.equals(method)) {
             payload = readBody(session);
         }
 
@@ -1071,7 +1086,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
 
-            if ("POST".equals(githubMethod) && payload != null && !payload.isEmpty()) {
+            if (("POST".equals(githubMethod) || "PUT".equals(githubMethod))
+                    && payload != null && !payload.isEmpty()) {
                 conn.setDoOutput(true);
                 conn.setRequestProperty("Content-Type", "application/json");
                 OutputStream os = conn.getOutputStream();

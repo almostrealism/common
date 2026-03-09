@@ -496,28 +496,119 @@ def _controller_post(path: str, payload: dict, timeout: int = 15) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# GitHub API helpers
+# GitHub API helpers — routed through the FlowTree controller proxy
 # ---------------------------------------------------------------------------
+
+# Thread-local org context set by Tier 2 tools before calling _github_request
+_current_github_org: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "_current_github_org", default=None,
+)
+
 
 def _github_request(method: str, path: str, payload: dict = None,
                     timeout: int = 15) -> dict:
-    """Make an authenticated request to the GitHub API.
+    """Make a GitHub API request via the controller's proxy endpoint.
+
+    The controller resolves the GitHub token from its per-organization
+    token map (``githubOrgs`` in ``workstreams.yaml``), falling back to
+    its instance-level token and then the ``GITHUB_TOKEN`` env var.
+
+    If the controller proxy is unreachable and a local ``GITHUB_TOKEN``
+    is available, falls back to a direct API call.
 
     Args:
         method: HTTP method (GET, POST, PUT).
-        path: API path (e.g., ``/repos/owner/repo/actions/workflows/...``).
+        path: GitHub API path (e.g., ``/repos/owner/repo/...``).
         payload: Optional dict to JSON-encode as the request body.
         timeout: Request timeout in seconds.
 
     Returns:
         Parsed JSON response, or a status dict for empty responses (204).
     """
+    org = _current_github_org.get()
+
+    # Try controller proxy first
+    result = _github_proxy_request(method, path, payload, org, timeout)
+    if result is not None:
+        return result
+
+    # Fallback to direct API call if a local token is available
     if not GITHUB_TOKEN:
         return {
             "ok": False,
-            "error": "GitHub token not configured. Set AR_MANAGER_GITHUB_TOKEN or GITHUB_TOKEN.",
+            "error": (
+                "GitHub API unavailable: controller proxy unreachable "
+                "and no local GITHUB_TOKEN configured."
+            ),
+            "next_steps": [
+                "Ensure the FlowTree controller is running and reachable",
+                "Or set AR_MANAGER_GITHUB_TOKEN / GITHUB_TOKEN as fallback",
+            ],
         }
 
+    return _github_direct_request(method, path, payload, timeout)
+
+
+def _github_proxy_request(method: str, path: str, payload: dict = None,
+                          org: str = None, timeout: int = 15) -> Optional[dict]:
+    """Route a GitHub API request through the controller's proxy.
+
+    Returns:
+        Parsed response dict, or None if the proxy is unreachable.
+    """
+    params = f"url={quote(path, safe='')}"
+    if org:
+        params += f"&org={quote(org, safe='')}"
+    proxy_url = CONTROLLER_URL.rstrip("/") + f"/api/github/proxy?{params}"
+
+    data = json.dumps(payload).encode("utf-8") if payload else None
+    req = Request(proxy_url, data=data, method=method)
+    req.add_header("Accept", "application/json")
+    if data:
+        req.add_header("Content-Type", "application/json")
+
+    print(f"ar-manager: {method} {path} (via controller proxy, org={org})",
+          file=sys.stderr)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            if not body:
+                return {"ok": True, "status": 204}
+            wrapper = json.loads(body)
+
+        # The proxy wraps responses as {"status": N, "link": "...", "body": <json>}
+        gh_status = wrapper.get("status", 0)
+        gh_body = wrapper.get("body")
+
+        if gh_status == 204 or gh_body is None:
+            return {"ok": True, "status": gh_status}
+        if isinstance(gh_body, dict) and 200 <= gh_status < 300:
+            return gh_body
+        if isinstance(gh_body, dict):
+            msg = gh_body.get("message", "")
+            return {"ok": False, "error": f"GitHub returned HTTP {gh_status}: {msg}"}
+        return {"ok": False, "error": f"GitHub returned HTTP {gh_status}"}
+    except (URLError, OSError, TimeoutError) as e:
+        print(f"ar-manager: controller proxy unreachable: {e}", file=sys.stderr)
+        return None
+    except Exception as e:
+        logging.getLogger("ar-manager").error("GitHub proxy %s %s: %s", method, path, e)
+        return None
+
+
+def _github_direct_request(method: str, path: str, payload: dict = None,
+                           timeout: int = 15) -> dict:
+    """Direct GitHub API call using local GITHUB_TOKEN (fallback only).
+
+    Args:
+        method: HTTP method (GET, POST, PUT).
+        path: GitHub API path.
+        payload: Optional request body.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        Parsed JSON response.
+    """
     url = f"https://api.github.com{path}"
     data = json.dumps(payload).encode("utf-8") if payload else None
     req = Request(url, data=data, method=method)
@@ -527,7 +618,7 @@ def _github_request(method: str, path: str, payload: dict = None,
     if data:
         req.add_header("Content-Type", "application/json")
 
-    print(f"ar-manager: {method} {url}", file=sys.stderr)
+    print(f"ar-manager: {method} {url} (direct fallback)", file=sys.stderr)
     try:
         with urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8")
@@ -548,6 +639,11 @@ def _github_request(method: str, path: str, payload: dict = None,
     except Exception as e:
         logging.getLogger("ar-manager").error("GitHub %s %s: %s", method, path, e)
         return {"ok": False, "error": "Internal error contacting GitHub API"}
+
+
+def _set_github_org(ws: dict) -> None:
+    """Set the GitHub org context from a workstream for token routing."""
+    _current_github_org.set(ws.get("githubOrg"))
 
 
 def _extract_owner_repo(repo_url: str) -> Optional[tuple]:
@@ -999,6 +1095,8 @@ def project_create_branch(
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
 
+    _set_github_org(ws)
+
     repo_url = ws.get("repoUrl")
     if not repo_url:
         return _pipeline_error(workstream_id, "repo_url is not configured")
@@ -1077,6 +1175,8 @@ def project_verify_branch(
             "error": f"Workstream '{workstream_id}' not found",
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
+
+    _set_github_org(ws)
 
     repo_url = ws.get("repoUrl")
     if not repo_url:
@@ -1177,6 +1277,8 @@ def project_commit_plan(
             "error": f"Workstream '{workstream_id}' not found",
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
+
+    _set_github_org(ws)
 
     repo_url = ws.get("repoUrl")
     if not repo_url:
