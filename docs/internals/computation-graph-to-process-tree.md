@@ -56,10 +56,11 @@ representation of the computation that can be compiled to native code.
 ### The Computation Hierarchy
 
 ```
-Computation<T>                         (base interface — has getScope())
-├── ComputationBase<I, O, R>           (base implementation)
-│   ├── OperationComputation<T>        (produces Runnable — for side effects)
-│   └── ProducerComputationBase<I, O>  (produces Evaluable — for values)
+Computation<T>                                   (base interface — has getScope())
+├── ComputationBase<I, O, R>                     (base implementation)
+│   ├── OperationComputationAdapter<T>           (produces Runnable — for side effects)
+│   └── ProducerComputationBase<I, O>            (produces Evaluable — for values)
+│       └── CollectionProducerComputationBase    (PackedCollection-typed producers)
 ```
 
 - **`Computation<T>`** (`base/code/src/.../code/Computation.java`) — Defines the
@@ -69,11 +70,18 @@ Computation<T>                         (base interface — has getScope())
 - **`ComputationBase`** — Manages the argument list, input preparation, and scope
   lifecycle. Handles `ArgumentMap` setup and `ScopeInputManager` integration.
 
-- **`OperationComputation<T>`** — For computations that produce side effects (write to
-  memory) rather than return values. These become `Runnable` operations.
+- **`OperationComputationAdapter<T>`** (`base/hardware/src/.../hardware/OperationComputationAdapter.java`)
+  — For computations that produce side effects (write to memory) rather than return
+  values. These become `Runnable` operations.
 
 - **`ProducerComputationBase<I, O>`** — For computations that produce values. These
   become `Evaluable` instances.
+
+- **`CollectionProducerComputationBase`** (`compute/algebra/src/.../collect/computations/CollectionProducerComputationBase.java`)
+  — The primary base class for `PackedCollection`-typed computations. Most concrete
+  producer classes (arithmetic, traversal, reshaping) extend this. It provides shape
+  management, delta computation for autodiff, and index expression generation. This is
+  the class most users interact with when building computation graphs.
 
 ### Scope: The Computation AST
 
@@ -256,6 +264,7 @@ Runnable compiled = optimized.get();
 - `Process.java` (`base/relation/src/.../compute/Process.java`) — Core process interface
 - `ParallelProcess.java` (`base/relation/src/.../compute/ParallelProcess.java`) — Parallelism extension
 - `Computation.java` (`base/code/src/.../code/Computation.java`) — Scope generation contract
+- `CollectionProducerComputationBase.java` (`compute/algebra/src/.../collect/computations/`) — PackedCollection producer base
 - `OperationList.java` (`base/hardware/src/.../hardware/OperationList.java`) — Top-level container
 - `Producer.java` (`base/relation/src/.../relation/Producer.java`) — Computation description
 - `Evaluable.java` (`base/relation/src/.../relation/Evaluable.java`) — Compiled execution
