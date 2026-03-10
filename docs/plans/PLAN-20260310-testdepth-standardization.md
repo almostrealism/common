@@ -134,6 +134,14 @@ Phase 1. The remaining tests are likely quick enough to run unconditionally.
 - None. This task builds on the existing `TestSuiteBase` and `@TestDepth` infrastructure
   which is already in place and working.
 
+## Status
+
+**Reverted** — The Phase 1 and Phase 2 changes were reverted because CI agent
+protection rules prohibit agents from modifying test files that exist on the
+base branch (see `tools/ci/agent-protection/validate-agent-commit.sh`). The
+`@TestDepth` annotations and `TestSuiteBase` fixes must be applied by a human
+contributor or through a branch where the test files are not protected.
+
 ## Notes
 
 - Do NOT change test logic or assertions — only add annotations and fix class hierarchy

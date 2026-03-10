@@ -34,7 +34,6 @@ import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.time.computations.MultiOrderFilter;
-import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
 import org.junit.Test;
@@ -48,7 +47,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	int filterOrder = 40;
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void attackSample() throws IOException {
 		Assume.assumeTrue(new File("Library/organ.wav").exists());
 		WaveData.load(new File("Library/organ.wav"))
@@ -57,7 +55,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void attack() {
 		double attack = 0.5;
 
@@ -71,7 +68,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void adsr() {
 		double duration = 8.0;
 		double attack = 0.5;
@@ -93,7 +89,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void asr() {
 		double d0 = 0.5;
 		double d1 = 3.0;
@@ -117,7 +112,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void adsrFilter() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		double duration = 4.0;
@@ -141,7 +135,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void adsrMultiOrderFilter() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		double duration = 4.0;
@@ -168,7 +161,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void adsrMultiOrderFilterArguments1() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		double duration = 4.0;
@@ -198,7 +190,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void adsrMultiOrderFilterArguments2() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		double duration = 8.0;
@@ -232,7 +223,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void adsrMultiOrderFilterCoefficientArguments() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		double duration = 4.0;
@@ -265,7 +255,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void parameterizedVolumeEnvelope() {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		NoteAudioProvider provider =
@@ -283,7 +272,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void parameterizedFilterEnvelope() {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
 		NoteAudioProvider provider =
@@ -302,7 +290,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void envelope() {
 		double duration = 8.0;
 		double attack = 0.5;
@@ -320,7 +307,6 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 	}
 
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void extractEnvelope() throws IOException {
 		Assume.assumeTrue(new File("Library/Snare Gold 1.wav").exists());
 		VolumeEnvelopeExtraction extraction = new VolumeEnvelopeExtraction();

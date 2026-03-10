@@ -100,7 +100,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * provide baseline timing data.
 	 */
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void pairwiseSimilarityBaseline() {
 		int count = 100;
 		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
@@ -143,7 +142,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * a {@link PackedCollection} into a {@code Producer} on every comparison.
 	 */
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void cpWrappingOverhead() {
 		int count = 100;
 		int iterations = 10_000;
@@ -167,7 +165,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * evaluation — isolating the expression tree construction overhead.
 	 */
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void computationCreationOnly() {
 		int count = 100;
 		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
@@ -196,7 +193,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * the computation graph and only swapping input data.
 	 */
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void cachedComputationEvaluation() {
 		int count = 100;
 		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
@@ -228,7 +224,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * {@code computeMissingSimilarities()} method.
 	 */
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void differenceSimilarityBaseline() {
 		int count = 100;
 		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
@@ -262,7 +257,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * evaluable, matching the Phase 1 optimization in {@code WaveDetailsFactory}.
 	 */
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void cachedCosineSimilarity() {
 		int count = 100;
 		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
@@ -297,7 +291,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * same results as the original expression-tree-per-call approach.
 	 */
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void cachedResultsMatchBaseline() {
 		int count = 20;
 		PackedCollection[] tensors = createRandomTensors(count, FRAMES, BINS);
@@ -377,7 +370,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * overhead by processing {@code BATCH_SIZE} comparisons per launch.
 	 */
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void batchedCosineSimilarity() {
 		int count = 100;
 		int batchSize = 50;
@@ -464,7 +456,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * introduce numerical differences.
 	 */
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void batchedResultsMatchCached() {
 		int count = 5;
 		int batchSize = 3;
@@ -668,7 +659,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * skipped. Target: reduce exact comparisons by 80-90%.</p>
 	 */
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void incrementalSimilarity() {
 		int count = 200;
 		int clusters = 10;
@@ -769,7 +759,6 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * similarity, confirming the filtering approach preserves important pairs.
 	 */
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void approximateSimilarityCorrelation() {
 		int count = 50;
 		int clusters = 5;

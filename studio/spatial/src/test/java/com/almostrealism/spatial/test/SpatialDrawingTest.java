@@ -11,7 +11,6 @@ import com.almostrealism.spatial.SphericalBrush;
 import com.almostrealism.spatial.TemporalSpatialContext;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -20,7 +19,7 @@ import java.util.List;
 /**
  * Tests for the spatial drawing feature components.
  */
-public class SpatialDrawingTest extends TestSuiteBase {
+public class SpatialDrawingTest {
 
 	/**
 	 * Tests that position() and inverse() are true inverses.

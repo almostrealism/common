@@ -147,7 +147,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * audio quality over an extended duration.</p>
 	 */
 	@Test(timeout = 30 * 60000)
-	@TestDepth(3)
 	public void realTimeTwoMinuteRender() {
 		helper.disableEffects();
 		File samplesDir = helper.requireSamplesDir();
@@ -266,7 +265,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * performance (no timing assertions).</p>
 	 */
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void realTimeFrameAdvancement() {
 		helper.disableEffects();
 		File samplesDir = helper.requireSamplesDir();
@@ -313,7 +311,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * See {@link #realTimeProducesAudio} for full pipeline testing.</p>
 	 */
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void frameRangeSumProducesAudio() {
 		helper.disableEffects();
 		File samplesDir = helper.requireSamplesDir();
@@ -510,7 +507,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * for content verification.</p>
 	 */
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void frameRangeWithEffects() {
 		helper.disableEffects();
 		File samplesDir = helper.requireSamplesDir();
@@ -738,7 +734,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * <p>No assertions - informational only. Does not verify audio correctness.</p>
 	 */
 	@Test(timeout = 180_000)
-	@TestDepth(2)
 	public void renderTimingVsBufferSize() {
 		helper.disableEffects();
 		File samplesDir = helper.requireSamplesDir();
@@ -812,7 +807,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * <p>No assertions - purely informational. Does not verify audio correctness.</p>
 	 */
 	@Test(timeout = 180_000)
-	@TestDepth(2)
 	public void renderNoteAudioLengthAnalysis() {
 		helper.disableEffects();
 		File samplesDir = helper.requireSamplesDir();
@@ -1005,7 +999,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * </ul>
 	 */
 	@Test(timeout = 60_000)
-	@TestDepth(2)
 	public void waveCellFramePositionDiagnostic() {
 		log("=== WaveCell Frame Position Diagnostic ===");
 
@@ -1111,7 +1104,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * @see PatternLayerManager
 	 */
 	@Test(timeout = 300_000)
-	@TestDepth(3)
 	public void cacheWarmingBenefit() {
 		helper.disableEffects();
 		File samplesDir = helper.requireSamplesDir();
@@ -1263,7 +1255,6 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 	 * and the filter/automation only processes the needed range.</p>
 	 */
 	@Test(timeout = 300_000)
-	@TestDepth(3)
 	public void partialNoteRenderingPerformance() {
 		helper.disableEffects();
 		File samplesDir = helper.requireSamplesDir();

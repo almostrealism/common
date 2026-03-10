@@ -32,7 +32,6 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Frequency;
-import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
 import org.junit.Test;
@@ -46,7 +45,6 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 	private static final String ORGAN_FILE = "Library/organ.wav";
 
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void grainsTimeSeries() {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		WaveOutput source = new WaveOutput();
@@ -87,7 +85,6 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 	}
 
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void grains() throws IOException {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		WaveData wav = WaveData.load(new File(ORGAN_FILE));
@@ -130,7 +127,6 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 	}
 
 	@Test(timeout = 300_000)
-	@TestDepth(3)
 	public void grainProcessor() throws IOException {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		WaveData wav = WaveData.load(new File(ORGAN_FILE));
@@ -170,7 +166,6 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 	}
 
 	@Test(timeout = 300_000)
-	@TestDepth(3)
 	public void grainProcessorEnvelope() throws IOException {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		WaveData wav = WaveData.load(new File(ORGAN_FILE));
@@ -216,7 +211,6 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 	}
 
 	@Test(timeout = 120_000)
-	@TestDepth(2)
 	public void granularSynth() {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		GranularSynthesizer synth = new GranularSynthesizer(OutputLine.sampleRate);

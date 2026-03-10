@@ -21,12 +21,11 @@ import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.ProjectedGenome;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class ChordProgressionManagerTest extends TestSuiteBase {
+public class ChordProgressionManagerTest {
 	@Test(timeout = 10_000)
 	public void progression() {
 		int params = 8;
