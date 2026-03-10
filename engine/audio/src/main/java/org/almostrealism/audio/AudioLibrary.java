@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -234,7 +235,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	public AudioLibrary(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root, int sampleRate) {
 		this.root = root;
 		this.sampleRate = sampleRate;
-		this.identifiers = new java.util.HashMap<>();
+		this.identifiers = new HashMap<>();
 		this.detailsCache = new FrequencyCache<>(DEFAULT_DETAIL_CACHE_CAPACITY, 0.4);
 		this.allIdentifiers = new HashSet<>();
 		this.factory = new WaveDetailsFactory(sampleRate);
@@ -582,7 +583,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @return  {@link CompletableFuture} with the {@link WaveDetails} for the given provider.
 	 */
 	protected CompletableFuture<WaveDetails> getDetails(WaveDataProvider provider, boolean persistent, double priority) {
-		WaveDetails existing = detailsCache.get(provider.getIdentifier());
+		WaveDetails existing = getOrLoad(provider.getIdentifier());
 
 		if (!isComplete(existing)) {
 			return submitJob(provider, persistent, priority).getFuture();
@@ -665,7 +666,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	public void resetSimilarities() {
-		detailsCache.forEach((k, d) -> d.getSimilarities().clear());
+		allDetails().forEach(d -> d.getSimilarities().clear());
 		similaritiesVersion++;
 	}
 
@@ -843,9 +844,8 @@ public class AudioLibrary implements ConsoleFeatures {
 					if (provider == null) return;
 
 					String id = provider.getIdentifier();
-					WaveDetails cached = detailsCache.get(id);
-					if (cached != null && isComplete(cached)) return;
-					if (cached == null && allIdentifiers.contains(id)) return;
+					WaveDetails existing = getOrLoad(id);
+					if (existing != null && isComplete(existing)) return;
 
 					// Similarities may no longer be valid if the library is being updated
 					skipped = false;

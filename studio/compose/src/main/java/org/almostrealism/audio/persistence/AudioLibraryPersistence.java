@@ -42,6 +42,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -422,7 +423,7 @@ public class AudioLibraryPersistence {
 
 	/**
 	 * Creates a loader function suitable for use with
-	 * {@link AudioLibrary#setDetailsLoader(java.util.function.Function)}.
+	 * {@link AudioLibrary#setDetailsLoader(Function)}.
 	 *
 	 * <p>The returned function loads a single {@link WaveDetails} from the protobuf
 	 * files at the given data prefix, scanning all batch files for the requested
@@ -431,7 +432,7 @@ public class AudioLibraryPersistence {
 	 * @param dataPrefix the path prefix for library protobuf files
 	 * @return a function that loads a WaveDetails by identifier from disk
 	 */
-	public static java.util.function.Function<String, WaveDetails> createDetailsLoader(String dataPrefix) {
+	public static Function<String, WaveDetails> createDetailsLoader(String dataPrefix) {
 		return identifier -> loadSingleDetail(dataPrefix, identifier);
 	}
 
