@@ -614,17 +614,19 @@ public class AudioLibrary implements ConsoleFeatures {
 				}
 			}
 
+			if (details == null) {
+				return null;
+			}
+
 			allIdentifiers.add(id);
 
-			if (details != null && getWaveDetailsFactory().getFeatureProvider() != null
+			if (getWaveDetailsFactory().getFeatureProvider() != null
 					&& details.getFeatureData() == null) {
 				details = computeDetails(provider, details, persistent);
 				detailsCache.put(id, details);
 			}
 
-			if (details != null) {
-				details.setPersistent(persistent || details.isPersistent());
-			}
+			details.setPersistent(persistent || details.isPersistent());
 			return details;
 		} catch (Exception e) {
 			warn("Failed to create WaveDetails for " +
