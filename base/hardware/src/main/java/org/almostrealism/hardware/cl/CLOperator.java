@@ -19,6 +19,7 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.concurrent.Semaphore;
+import java.lang.ref.Reference;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
@@ -292,6 +293,11 @@ public class CLOperator extends HardwareOperator {
 						" (total bytes = " + totalSize + ")", e);
 			}
 		});
+
+		// Prevent the JIT from allowing GC to collect data[] or args
+		// before kernel execution completes
+		Reference.reachabilityFence(data);
+		Reference.reachabilityFence(args);
 
 		return null;
 	}
