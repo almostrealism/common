@@ -606,14 +606,9 @@ public class AudioLibrary implements ConsoleFeatures {
 		try {
 			String id = provider.getIdentifier();
 
-			WaveDetails details = detailsCache.get(id);
+			WaveDetails details = getOrLoad(id);
 			if (details == null) {
-				if (detailsLoader != null) {
-					details = detailsLoader.apply(id);
-				}
-				if (details == null) {
-					details = computeDetails(provider, null, persistent);
-				}
+				details = computeDetails(provider, null, persistent);
 				if (details != null) {
 					detailsCache.put(id, details);
 				}
@@ -665,8 +660,18 @@ public class AudioLibrary implements ConsoleFeatures {
 		return computeSimilarities(getDetailsAwait(provider, false)).getSimilarities();
 	}
 
+	/**
+	 * Clears similarity scores for all entries currently held in the in-memory
+	 * cache and increments the version counter.
+	 *
+	 * <p>Only entries resident in the {@link #detailsCache} are cleared. Entries
+	 * evicted to disk retain their similarity data until reloaded and
+	 * recomputed. This avoids loading all entries from disk (which would thrash
+	 * the cache) and is safe because similarity recomputation overwrites any
+	 * stale values when entries are loaded on demand.</p>
+	 */
 	public void resetSimilarities() {
-		allDetails().forEach(d -> d.getSimilarities().clear());
+		detailsCache.forEach((key, d) -> d.getSimilarities().clear());
 		similaritiesVersion++;
 	}
 
