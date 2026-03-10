@@ -21,6 +21,7 @@ import org.almostrealism.algebra.computations.LoopedWeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -34,6 +35,7 @@ public class LoopedSumDiagnosticTest extends TestSuiteBase {
 	 * Small test with instruction set monitoring to see generated code.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testGeneratedCode() {
 		// Enable verbose logging
 		HardwareOperator.enableInstructionSetMonitoring = true;
@@ -98,6 +100,7 @@ public class LoopedSumDiagnosticTest extends TestSuiteBase {
 	 * Test with optimization enabled to verify that isolation works.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testWithOptimization() {
 		// Enable verbose logging
 		HardwareOperator.enableInstructionSetMonitoring = true;
@@ -179,6 +182,7 @@ public class LoopedSumDiagnosticTest extends TestSuiteBase {
 	 * Compare timing of scope generation vs expression building.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testTimingBreakdown() {
 		int outerCount = 64;
 		int innerCount = 16;

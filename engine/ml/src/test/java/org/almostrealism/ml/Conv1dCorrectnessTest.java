@@ -27,6 +27,8 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -35,13 +37,14 @@ import org.junit.Test;
  * Uses simple inputs and hand-calculated expected outputs
  * to verify the implementation is correct.
  */
-public class Conv1dCorrectnessTest implements LayerFeatures {
+public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeatures {
 
 	/**
 	 * Test weightedSum directly with the same parameters as conv1d.
 	 * This isolates whether the bug is in convolution1d setup or weightedSum.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testWeightedSumDirect() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -119,6 +122,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * This verifies that basic element-by-element operations work.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testManualConv() {
 		// Input: [1, 2, 3, 4, 5]
 		// Weights: [0.5, 1.0, 0.5]
@@ -153,6 +157,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testSimpleConv1d() {
 		// Disable debug logging - it causes toArray() errors with parameterized expressions
 		io.almostrealism.collect.SubsetTraversalExpression.enableLogging = false;
@@ -214,6 +219,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * This calls weightedSum with reshape (like conv1d does) but without a Model wrapper.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testWeightedSumWithReshape() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -285,6 +291,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * This should reproduce the conv1d bug.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testWeightedSumWithReshapeNoStrideRate() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -367,6 +374,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Expected: [1, 2, 3, 4, 5, 6]
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testPositionVariesAcrossSequence() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -433,6 +441,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Tests that each output channel gets the right filter applied.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testMultipleOutputChannels() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -499,6 +508,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Tests that stride correctly skips input positions.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testStride2() {
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -555,6 +565,7 @@ public class Conv1dCorrectnessTest implements LayerFeatures {
 	 * Verifies that all input channels are summed correctly.
 	 */
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void testMultipleInputChannels() {
 		int batchSize = 1;
 		int inputChannels = 2;

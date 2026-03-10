@@ -24,6 +24,7 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -58,6 +59,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * If output varies correctly, the issue is in a later layer.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testFirstWNConv1dOnly() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -159,6 +161,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * the transposed convolution's index expressions at large scale.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testFirstWNConvTranspose1dOnly() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -269,6 +272,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * If this combination produces constant output, the issue is in WNConv1d.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testFirstConvPlusSnake() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -349,6 +353,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * This includes the large-scale WNConvTranspose1d that is suspected of having index issues.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testThroughFirstDecoderBlock() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -475,6 +480,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * If it works, the issue is in the combination of multiple residual blocks.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testSingleResidualBlock() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -618,6 +624,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * <p>Single residual block works. This test checks if TWO residual blocks cause NaN.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testTwoResidualBlocks() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -763,6 +770,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * If this produces constant output, the issue is in the residual block composition.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testCompleteFirstDecoderBlock() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -903,6 +911,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * the issue is in block 2. Otherwise, it's in later stages.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testDecoderBlocks1And2() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -1042,6 +1051,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * Otherwise, continue to blocks 1-4.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testDecoderBlocks1To3() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -1182,6 +1192,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * the issue is in the final output projection (layers.7).</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testAllBlocksWithoutOutputProj() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -1333,6 +1344,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * for the decoder's constant output issue.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testOutputProjectionIsolation() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -1438,6 +1450,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * <p>Uses synthetic input to simulate block 2 output with much shorter sequence length.</p>
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testBlock3Isolation() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -1566,6 +1579,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * Tests just the Snake activation for block 3 settings.
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testBlock3SnakeOnly() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -1601,6 +1615,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * Tests just the WNConvTranspose1d for block 3 settings (512->256, stride=8).
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testBlock3TransposeOnly() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -1643,6 +1658,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * Tests Snake + WNConvTranspose1d for block 3 (no residuals).
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testBlock3SnakeAndTranspose() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -1692,6 +1708,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 	 * Tests Snake + WNConvTranspose1d + 1 residual block for block 3.
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void testBlock3OneResidual() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);

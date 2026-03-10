@@ -17,7 +17,7 @@
 package org.almostrealism.audio.midi.test;
 
 import org.almostrealism.audio.midi.MidiCCSource;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -25,7 +25,7 @@ import static org.junit.Assert.*;
 /**
  * Tests for {@link MidiCCSource}.
  */
-public class MidiCCSourceTest implements TestFeatures {
+public class MidiCCSourceTest extends TestSuiteBase {
 
 	@Test(timeout = 5000)
 	public void testDefaultRange() {

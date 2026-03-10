@@ -30,6 +30,7 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
@@ -47,6 +48,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	private static final int TEST_INV_FREQ_SIZE = TEST_DIM_HEAD / 4;
 
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void attentionKeys() {
 		int seqLength = 128;
 		int heads = 12;
@@ -95,6 +97,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
 
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void attentionValues() {
 		int seqLength = 1024;
 		int heads = 12;
@@ -147,6 +150,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void linearAttention() {
 		int batchSize = 1;
 		int dim = 8;
@@ -167,6 +171,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void qkvSplitOperation() {
 		int batchSize = 1;
 		int seqLen = 4;
@@ -226,6 +231,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * This helps debug the norm step in sequenceAttention by testing it in isolation.
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void qkNormCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -293,6 +299,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * to isolate and verify just the attention computation mechanism.
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void scaledDotProductAttentionCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -343,6 +350,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	}
 
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void sequenceAttentionSimplified() {
 		// Use smaller dimensions for easier debugging
 		int batchSize = 1;
@@ -409,6 +417,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * matches the real Python behavior rather than a made-up reference.
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void sequenceAttentionCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -498,6 +507,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * matches the real Python cross-attention behavior.
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void sequenceCrossAttentionCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -606,6 +616,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * matches the real Python behavior.
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void feedForwardCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -688,6 +699,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * matches the real Python behavior.
 	 */
 	@Test(timeout = 120000)
+	@TestDepth(2)
 	public void transformerBlockCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

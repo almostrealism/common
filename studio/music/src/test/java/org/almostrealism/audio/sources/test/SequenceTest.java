@@ -37,6 +37,7 @@ import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
 import org.junit.Test;
@@ -118,6 +119,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	@Test(timeout = 120_000)
+	@TestDepth(2)
 	public void valueSequenceWithDynamicCell() {
 		SineWaveCell cell1 = cell(196);
 		SineWaveCell cell2 = cell(261);
@@ -141,6 +143,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	@Test(timeout = 60_000)
+	@TestDepth(2)
 	public void notes() {
 		CellList cells = w(new Frequency(196), new Frequency(196));
 		((SineWaveCell) cells.get(0)).setNoteLength(2000);
@@ -153,6 +156,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	@Test(timeout = 120_000)
+	@TestDepth(2)
 	public void samples() {
 		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
 		int count = 32;
@@ -167,6 +171,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	@Test(timeout = 120_000)
+	@TestDepth(2)
 	public void stems() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		int count = 212;
@@ -186,6 +191,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	@Test(timeout = 120_000)
+	@TestDepth(2)
 	public void mix() {
 		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
@@ -206,6 +212,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	@Test(timeout = 120_000)
+	@TestDepth(2)
 	public void parameterizedMix() {
 		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
@@ -230,6 +237,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	@Test(timeout = 120_000)
+	@TestDepth(2)
 	public void mixExport() throws IOException {
 		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());

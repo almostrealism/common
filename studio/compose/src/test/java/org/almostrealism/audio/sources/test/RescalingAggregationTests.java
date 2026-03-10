@@ -38,6 +38,7 @@ import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -51,6 +52,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 	private final int sampleRate = OutputLine.sampleRate;
 
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void loadAggregated() throws IOException {
 		if (skipKnownIssues) return;
 		// Use synthetic audio for testing FFT aggregation
@@ -71,6 +73,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void rescaleVolume() throws IOException {
 		VolumeRescalingSourceAggregator aggregator = new VolumeRescalingSourceAggregator();
 
@@ -90,6 +93,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 
 
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void rescaleFrequency() throws IOException {
 		FrequencyRescalingSourceAggregator aggregator = new FrequencyRescalingSourceAggregator();
 
@@ -108,6 +112,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void rescaleModular1() throws IOException {
 		modularRescale("rescaling-modular-1",
 				ModularSourceAggregator.InputType.SOURCE,
@@ -116,6 +121,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void rescaleModular2() throws IOException {
 		modularRescale("rescaling-modular-2",
 				ModularSourceAggregator.InputType.SOURCE,
@@ -143,6 +149,7 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 	}
 
 	@Test(timeout = 60000)
+	@TestDepth(2)
 	public void aggregatedPattern() {
 		// Define the shared parameters, including how notes should be
 		// tuned and a root for the scale and the synth
