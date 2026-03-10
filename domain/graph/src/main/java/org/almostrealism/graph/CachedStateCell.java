@@ -217,13 +217,19 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		OperationList tick = new OperationList("CachedStateCell (" + name + ") Tick");
 
 		Receptor<T> receptor = getReceptor();
-		if (receptor != null) {
-			// Direct push: forward cachedValue to the receptor, bypassing
-			// the intermediate outValue copy. The receptor's push() consumes
-			// the value immediately (SummationCell accumulates, other
-			// CachedStateCells assign to their own cache, etc.), so copying
-			// through outValue is redundant. This eliminates one memory read
-			// and one memory write per cell per frame.
+		if (receptor instanceof SummationCell) {
+			// Optimized path: forward cachedValue directly to the SummationCell,
+			// bypassing the intermediate outValue copy. The SummationCell's push()
+			// accumulates the value immediately, so copying through outValue is
+			// redundant. This eliminates one memory read and one memory write per
+			// cell per frame. Note that outValue is NOT updated in this path.
+			tick.add(receptor.push(p(cachedValue)));
+			tick.add(reset(p(cachedValue)));
+		} else if (receptor != null) {
+			// Standard path with receptor: copy cachedValue to outValue (so
+			// getResultant/next can read the output), push to the receptor,
+			// then reset the cache.
+			tick.add(assign(p(outValue), p(cachedValue)));
 			tick.add(receptor.push(p(cachedValue)));
 			tick.add(reset(p(cachedValue)));
 		} else {
