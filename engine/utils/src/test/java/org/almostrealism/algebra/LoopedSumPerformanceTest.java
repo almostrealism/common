@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.computations.LoopedWeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -52,8 +53,8 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 	 * Run with AR_LONG_TESTS=true to enable.
 	 */
 	@Test(timeout = 3600000) // 1 hour - this test runs many configurations
+	@TestProperties(longRunning = true)
 	public void testPerformanceMatrix() throws IOException {
-		if (skipLongTests) return;
 		List<TestResult> results = new ArrayList<>();
 
 		System.out.println("=== LoopedWeightedSumComputation Performance Analysis ===");

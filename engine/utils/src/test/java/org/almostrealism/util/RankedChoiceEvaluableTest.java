@@ -36,8 +36,8 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 	private final double gap = 10 * Hardware.getLocalHardware().getPrecision().epsilon(true);
 
 	@Test(timeout = 10000)
+	@TestProperties(knownIssue = true)
 	public void highestRank() {
-		if (skipKnownIssues) return;
 
 		IntStream.range(0, 5).forEach(i -> {
 			PackedCollection in = new PackedCollection(1);

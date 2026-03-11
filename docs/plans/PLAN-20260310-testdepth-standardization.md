@@ -1,6 +1,6 @@
-# Plan: @TestDepth Standardization and TestSuiteBase Compliance
+# Plan: @TestDepth Standardization, TestProperties Annotation, and TestSuiteBase Compliance
 
-**Date:** 2026-03-10
+**Date:** 2026-03-10 (revised 2026-03-11)
 **Category:** Code Quality
 **Estimated Complexity:** Medium
 
@@ -19,24 +19,53 @@ However, adoption is critically low:
 - **20+ expensive tests with 60-120 second timeouts lack any depth annotation**,
   meaning they run unconditionally regardless of `AR_TEST_DEPTH`
 
-The infrastructure is sound — 87.3% of test classes already extend `TestSuiteBase` —
-but the annotation mechanism is severely underutilized. This means CI cannot
-effectively distinguish quick smoke tests from expensive integration tests, leading
-to longer pipeline times and slower developer feedback.
+Additionally, test properties like `skipLongTests`, `skipHighMemTests`, and
+`skipKnownIssues` are evaluated via inline `if` guards scattered across test methods.
+This pattern is error-prone (easy to forget), not machine-readable, and inconsistent
+with the declarative annotation model established by `@TestDepth`.
 
 This task connects to the larger vision in two ways:
 
 1. **Faster iteration cycles** — When CI can skip expensive tests for routine changes,
    development velocity increases. This matters for both human contributors and AI
    agents working on the platform.
-2. **Self-describing test infrastructure** — `@TestDepth` annotations make the test
-   suite's cost structure explicit and machine-readable. A model reasoning about the
-   codebase can understand which tests are expensive and why, enabling smarter test
-   selection strategies.
+2. **Self-describing test infrastructure** — Declarative annotations (`@TestDepth`,
+   `@TestProperties`) make the test suite's cost structure and requirements explicit
+   and machine-readable. A model reasoning about the codebase can understand which
+   tests are expensive and why, enabling smarter test selection strategies.
 
 ## Scope
 
-### Phase 1: Annotate Expensive Timeout-Bearing Tests (HIGH PRIORITY)
+### Phase 1: Create @TestProperties Annotation and Enforcement (HIGH PRIORITY)
+
+Create a `@TestProperties` annotation that replaces the inline `if (skipX) return;`
+pattern with a declarative mechanism enforced by `TestDepthRule`.
+
+**New annotation:**
+
+```java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+public @interface TestProperties {
+    boolean longRunning() default false;
+    boolean highMemory() default false;
+    boolean knownIssue() default false;
+}
+```
+
+**Enforcement in `TestDepthRule.apply()`:** When a method is annotated with
+`@TestProperties`, the rule checks the corresponding `TestSettings` flags and skips
+the test via `Assume.assumeTrue()` — identical to how `@TestDepth` is enforced today.
+
+**Migration scope (inline guards to remove):**
+
+| Flag | Test files | Occurrences |
+|------|-----------|-------------|
+| `skipLongTests` | ~10 | ~21 |
+| `skipHighMemTests` | 1 | 1 |
+| `skipKnownIssues` | ~33 | ~44 |
+
+### Phase 2: Annotate Expensive Timeout-Bearing Tests (HIGH PRIORITY)
 
 Add `@TestDepth` annotations to all test methods that have explicit timeouts >= 60
 seconds but lack depth annotations. These are the most impactful targets because
@@ -63,10 +92,8 @@ they are both expensive and currently unfiltered.
   audio rendering
 - `@TestDepth(3)` — Very expensive: 120+ second timeouts, model training, inference
   chains, large dataset processing
-- `skipLongTests` guard — Tests taking 30+ minutes (existing convention per
-  `docs/internals/test-examples.md`)
 
-### Phase 2: Fix TestSuiteBase Violations (MEDIUM PRIORITY)
+### Phase 3: Fix TestSuiteBase Violations (MEDIUM PRIORITY)
 
 Fix test classes that do not extend `TestSuiteBase`. There are 36 such classes.
 For each:
@@ -75,6 +102,10 @@ For each:
 2. If the class extends a custom base class (e.g., `AudioSceneTestBase`), verify
    that the base class extends `TestSuiteBase`. If not, fix the base class.
 3. If the class only implements `TestFeatures`, replace with `extends TestSuiteBase`
+
+**Caution:** Changing a base class like `AudioSceneTestBase` to extend `TestSuiteBase`
+may introduce `@Before`/`@After` lifecycle behavior that existing tests don't expect.
+Verify each base class change doesn't break existing tests.
 
 **Key targets:**
 
@@ -86,48 +117,73 @@ For each:
 - Multiple `studio/compose` tests extending `AudioSceneTestBase` — Verify
   `AudioSceneTestBase` extends `TestSuiteBase`
 
-### Phase 3: Systematic Review of Remaining Tests (LOWER PRIORITY)
+### Phase 4: Migrate Inline Guards to @TestProperties
 
-After Phases 1 and 2, perform a broader review of test methods that lack
-`@TestDepth` but may still warrant annotation:
+Replace all `if (skipLongTests) return;`, `if (skipHighMemTests) return;`, and
+`if (skipKnownIssues) return;` guards with `@TestProperties` annotations. This is
+mechanical: for each occurrence, add the annotation to the method and remove the
+guard line.
 
-- Tests that load files from disk (audio samples, model weights)
-- Tests that perform network operations
-- Tests that compile complex expression trees (kernel compilation overhead)
-- Tests with `Thread.sleep()` calls
+**Example migration:**
 
-This phase is lower priority because the highest-impact tests are covered in
-Phase 1. The remaining tests are likely quick enough to run unconditionally.
+Before:
+```java
+@Test
+public void myTest() {
+    if (skipKnownIssues) return;
+    // test body
+}
+```
+
+After:
+```java
+@Test
+@TestProperties(knownIssue = true)
+public void myTest() {
+    // test body
+}
+```
+
+Methods with multiple flags get multiple properties:
+```java
+@TestProperties(longRunning = true, knownIssue = true)
+```
 
 ## Approach
 
-1. **Start with Phase 1** — This is mechanical and high-impact. For each file:
-   - Read the test class
-   - Identify methods with explicit timeouts >= 60 seconds
-   - Add `@TestDepth(N)` with the appropriate depth value
-   - Ensure the `@TestDepth` import is present
+All changes are made interactively in a supervised session due to CI agent protection
+rules that prohibit automated agents from modifying test files on the base branch.
 
-2. **Move to Phase 2** — For each non-compliant class:
-   - Determine the correct fix (extend TestSuiteBase, fix base class, etc.)
-   - Apply the fix
-   - Verify the class still compiles
+1. **Phase 1** — Create `TestProperties.java` annotation and update `TestDepthRule`
+   to enforce it. Build to verify.
 
-3. **Verify the build** — Run `mvn clean install -DskipTests` to confirm all
+2. **Phase 2** — Annotate expensive timeout-bearing tests with `@TestDepth`. This
+   is mechanical: read each file, identify methods with timeouts >= 60s, add annotation.
+
+3. **Phase 3** — Fix TestSuiteBase violations. For each class, determine the correct
+   fix and apply it. Verify compilation after each base class change.
+
+4. **Phase 4** — Migrate inline guards to `@TestProperties`. Work module by module.
+   After each module, verify compilation.
+
+5. **Verify the build** — Run `mvn clean install -DskipTests` to confirm all
    changes compile correctly.
 
-4. **Run a sample test** — Execute a few of the modified test classes at different
-   `AR_TEST_DEPTH` levels to verify filtering works as expected.
+6. **Run sample tests** — Execute a few modified test classes at different
+   `AR_TEST_DEPTH` levels and with different skip flags to verify both `@TestDepth`
+   and `@TestProperties` filtering work as expected.
 
 ## Success Criteria
 
-1. All test methods with explicit timeouts >= 60 seconds have `@TestDepth` annotations
-2. All test classes that can reasonably extend `TestSuiteBase` do so (target: reduce
+1. `@TestProperties` annotation exists and is enforced by `TestDepthRule`
+2. All `if (skipLongTests) return;` / `if (skipHighMemTests) return;` /
+   `if (skipKnownIssues) return;` guards are replaced with `@TestProperties`
+3. All test methods with explicit timeouts >= 60 seconds have `@TestDepth` annotations
+4. All test classes that can reasonably extend `TestSuiteBase` do so (target: reduce
    the 36 violations to < 10, accounting for legitimate exceptions)
-3. `@TestDepth` adoption increases from 5.2% to at least 10% (covering the most
-   expensive tests)
-4. `mvn clean install -DskipTests` passes with all changes applied
-5. Running tests with `AR_TEST_DEPTH=1` correctly skips the newly-annotated expensive
-   tests
+5. `mvn clean install -DskipTests` passes with all changes applied
+6. Running tests with `AR_TEST_DEPTH=1` correctly skips `@TestDepth(2)` methods
+7. Running tests with `AR_KNOWN_ISSUES=false` correctly skips `@TestProperties(knownIssue = true)` methods
 
 ## Dependencies
 
@@ -136,17 +192,17 @@ Phase 1. The remaining tests are likely quick enough to run unconditionally.
 
 ## Status
 
-**Reverted** — The Phase 1 and Phase 2 changes were reverted because CI agent
-protection rules prohibit agents from modifying test files that exist on the
-base branch (see `tools/ci/agent-protection/validate-agent-commit.sh`). The
-`@TestDepth` annotations and `TestSuiteBase` fixes must be applied by a human
-contributor or through a branch where the test files are not protected.
+**In Progress** — Working interactively in a supervised session. Previous automated
+attempt was reverted due to CI agent protection rules.
 
 ## Notes
 
-- Do NOT change test logic or assertions — only add annotations and fix class hierarchy
+- Do NOT change test logic or assertions — only add annotations, fix class hierarchy,
+  and remove inline guards
 - Do NOT modify tests that are intentionally lightweight (even if they lack `@TestDepth`,
   fast tests don't need it)
 - When uncertain about depth value, prefer `@TestDepth(2)` as the default for tests
   with 60+ second timeouts
-- The `@TestDepth` import is `org.almostrealism.util.TestDepth` (verify before adding)
+- The `@TestDepth` import is `org.almostrealism.util.TestDepth`
+- The `@TestProperties` import will be `org.almostrealism.util.TestProperties`
+- Phase 3 base class changes may introduce lifecycle side effects — test after each change

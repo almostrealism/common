@@ -115,13 +115,13 @@ public class TestDepthRule implements MethodRule {
 		}
 
 		// Check test depth
-		TestDepth annotation = method.getAnnotation(TestDepth.class);
-		if (annotation != null && currentDepth < annotation.value()) {
+		TestDepth depthAnnotation = method.getAnnotation(TestDepth.class);
+		if (depthAnnotation != null && currentDepth < depthAnnotation.value()) {
 			return new Statement() {
 				@Override
 				public void evaluate() {
 					Assume.assumeTrue(
-						"Test requires depth " + annotation.value() +
+						"Test requires depth " + depthAnnotation.value() +
 						", current depth is " + currentDepth,
 						false
 					);
@@ -129,6 +129,29 @@ public class TestDepthRule implements MethodRule {
 			};
 		}
 
+		// Check test properties
+		TestProperties properties = method.getAnnotation(TestProperties.class);
+		if (properties != null) {
+			if (properties.longRunning() && TestUtils.getSkipLongTests()) {
+				return skipStatement("Test is long-running and long tests are disabled");
+			}
+			if (properties.highMemory() && TestUtils.getSkipHighMemoryTests()) {
+				return skipStatement("Test requires high memory and high-memory tests are disabled");
+			}
+			if (properties.knownIssue() && TestUtils.getSkipKnownIssues()) {
+				return skipStatement("Test covers a known issue and known-issue tests are disabled");
+			}
+		}
+
 		return base;
+	}
+
+	private Statement skipStatement(String reason) {
+		return new Statement() {
+			@Override
+			public void evaluate() {
+				Assume.assumeTrue(reason, false);
+			}
+		};
 	}
 }
