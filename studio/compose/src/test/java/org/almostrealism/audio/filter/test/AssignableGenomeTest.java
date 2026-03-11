@@ -35,6 +35,7 @@ import org.almostrealism.hardware.mem.MemoryBankAdapter.CacheLevel;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.AfterClass;
@@ -83,6 +84,7 @@ public class AssignableGenomeTest extends TestSuiteBase implements CellFeatures 
 
 	@Test(timeout = 300_000)
 	@TestProperties(knownIssue = true)
+	@TestDepth(1)
 	public void cellExamples() {
 		AcceleratedTimeSeries.defaultCacheLevel = CacheLevel.ALL;
 

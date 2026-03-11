@@ -29,6 +29,7 @@ import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.optimize.PopulationOptimizer;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -78,6 +79,7 @@ public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatur
 
 	@Test(timeout = 600_000)
 	@TestProperties(knownIssue = true)
+	@TestDepth(1)
 	public void optimize() {
 		PopulationOptimizer.enableVerbose = true;
 		optimizer().run();
@@ -85,6 +87,7 @@ public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatur
 
 	@Test(timeout = 900_000)
 	@TestProperties(knownIssue = true)
+	@TestDepth(1)
 	public void healthTest() throws IOException {
 		AudioScene<?> scene = scene();
 

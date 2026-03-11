@@ -24,6 +24,7 @@ import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assume;
@@ -55,6 +56,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 	 * Compares each step against PyTorch reference logits.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(1)
 	public void testMultiTokenGeneration() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 

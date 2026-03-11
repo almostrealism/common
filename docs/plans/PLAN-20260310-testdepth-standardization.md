@@ -86,12 +86,21 @@ they are both expensive and currently unfiltered.
 
 **Depth value assignment convention:**
 
-- `@TestDepth(1)` — Moderately expensive: 10-30 second timeouts, significant
-  computation but no external resources (model weights, audio files)
-- `@TestDepth(2)` — Expensive: 30-120 second timeouts, file I/O, model compilation,
-  audio rendering
-- `@TestDepth(3)` — Very expensive: 120+ second timeouts, model training, inference
-  chains, large dataset processing
+Depth is NOT a proxy for test duration. Each tier should contain a representative
+mix of fast and slow tests so that even a low-depth run exercises the full range
+of functionality. Target time budgets:
+
+- **No annotation (depth 0)**: ~20 minutes total — core coverage across all modules,
+  including some long-running tests that validate critical paths
+- `@TestDepth(1)` — ~60 minutes total — broader coverage, adds tests that provide
+  additional confidence beyond depth 0
+- `@TestDepth(2)` — ~2 hours total — comprehensive coverage, diminishing-return tests
+- `@TestDepth(3)` — Full suite — everything runs (~4+ hours)
+
+When assigning depth, consider: "Does this test add unique coverage that isn't
+already present at a lower depth?" A 2-minute test for a critical code path
+belongs at depth 0. A 5-second test that duplicates existing depth-0 coverage
+belongs at depth 1+.
 
 ### Phase 3: Fix TestSuiteBase Violations (MEDIUM PRIORITY)
 

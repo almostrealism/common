@@ -23,6 +23,7 @@ import org.almostrealism.ml.audio.OobleckEncoder;
 import org.almostrealism.ml.audio.VAEBottleneck;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -47,6 +48,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	 * This should complete relatively quickly.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(1)
 	public void profileEncoderSmall() throws IOException {
 		profileEncoder(1.0, "encoder_1sec");
 	}
@@ -55,6 +57,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	 * Profile encoder compilation with 2-second audio (medium).
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void profileEncoderMedium() throws IOException {
 		profileEncoder(2.0, "encoder_2sec");
 	}
@@ -63,6 +66,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	 * Profile encoder compilation with 5-second audio (large - the problematic case).
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void profileEncoderLarge() throws IOException {
 		profileEncoder(5.0, "encoder_5sec");
 	}
@@ -71,6 +75,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	 * Profile just the encoder model construction (no compilation).
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void profileEncoderConstruction() throws IOException {
 		if (!Files.exists(AUTOENCODER_DIR)) {
 			log("Autoencoder weights not found at " + AUTOENCODER_DIR + ", skipping");
@@ -114,6 +119,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	 * Profile just the compilation step (after model is built).
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void profileEncoderCompilationOnly() throws IOException {
 		if (!Files.exists(AUTOENCODER_DIR)) {
 			log("Autoencoder weights not found at " + AUTOENCODER_DIR + ", skipping");

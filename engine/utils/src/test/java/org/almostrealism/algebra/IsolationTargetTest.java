@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.LoopedWeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -166,6 +167,7 @@ public class IsolationTargetTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 4 * 60000)
 	@TestProperties(longRunning = true)
+	@TestDepth(1)
 	public void testLoopedWeightedSumLarge() {
 		int outerCount = 2048;
 		int innerCount = 16;

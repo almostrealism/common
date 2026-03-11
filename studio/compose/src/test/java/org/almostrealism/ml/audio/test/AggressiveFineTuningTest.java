@@ -31,6 +31,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.optimize.MeanSquaredError;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.TrainingResult;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -97,6 +98,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5 * 60000)
 	@TestProperties(knownIssue = true)
+	@TestDepth(1)
 	public void testAggressiveFineTuning() throws IOException {
 		Files.createDirectories(OUTPUT_DIR);
 
@@ -131,6 +133,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5 * 60000)
 	@TestProperties(knownIssue = true)
+	@TestDepth(2)
 	public void testCompilationScaling() {
 		int[][] configs = {
 				// {embedDim, ioChannels, depth, numHeads, condTokenDim, globalCondDim}
@@ -188,6 +191,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5 * 60000)
 	@TestProperties(knownIssue = true)
+	@TestDepth(2)
 	public void testProfiledFineTuning() throws IOException {
 		Files.createDirectories(Path.of("/workspace/project/common/utils/results"));
 

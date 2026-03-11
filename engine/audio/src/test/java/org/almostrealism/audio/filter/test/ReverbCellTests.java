@@ -22,6 +22,7 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.filter.DelayNetwork;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.graph.TimeCell;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -41,6 +42,7 @@ public class ReverbCellTests extends TestSuiteBase implements CellFeatures, Audi
 	}
 
 	@Test(timeout = 6 * 60000)
+	@TestDepth(1)
 	public void reverbAutomation() {
 		TimeCell clock = new TimeCell();
 
@@ -54,6 +56,7 @@ public class ReverbCellTests extends TestSuiteBase implements CellFeatures, Audi
 	}
 
 	@Test(timeout = 6 * 60000)
+	@TestDepth(1)
 	public void delayReverb() {
 		CellList c = w(0, getTestWavPath())
 				.d(i -> c(2.0))

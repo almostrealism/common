@@ -327,6 +327,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	@Test(timeout = 5 * 60000)
 	@TestProperties(highMemory = true)
+	@TestDepth(2)
 	public void testDecoderBlock5() {
 
 		Console.root().addListener(OutputFeatures.fileOutput(

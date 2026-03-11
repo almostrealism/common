@@ -32,6 +32,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -73,6 +74,7 @@ public class MixdownManagerTests extends TestSuiteBase implements CellFeatures, 
 
 	@Test(timeout = 600_000)
 	@TestProperties(knownIssue = true)
+	@TestDepth(1)
 	public void mixdown1() throws IOException {
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfxFilters = true;

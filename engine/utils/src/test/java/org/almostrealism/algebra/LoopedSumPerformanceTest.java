@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.computations.LoopedWeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -54,6 +55,7 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 3600000) // 1 hour - this test runs many configurations
 	@TestProperties(longRunning = true)
+	@TestDepth(2)
 	public void testPerformanceMatrix() throws IOException {
 		List<TestResult> results = new ArrayList<>();
 

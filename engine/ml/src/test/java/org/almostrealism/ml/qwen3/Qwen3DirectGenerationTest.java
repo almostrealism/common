@@ -6,6 +6,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
@@ -40,6 +41,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 	 * This isolates the model's forward pass to verify logits match PyTorch.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(1)
 	public void testDirectGeneration() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
