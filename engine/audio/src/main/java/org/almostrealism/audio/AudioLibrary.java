@@ -369,18 +369,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @return the WaveDetails, or null if not found in cache or on disk
 	 */
 	private WaveDetails getOrLoad(String identifier) {
-		WaveDetails cached = detailsCache.get(identifier);
-		if (cached != null) return cached;
-
-		if (detailsLoader != null) {
-			WaveDetails loaded = detailsLoader.apply(identifier);
-			if (loaded != null) {
-				detailsCache.put(identifier, loaded);
-				return loaded;
-			}
-		}
-
-		return null;
+		return resolveDetails(identifier, true);
 	}
 
 	/**
@@ -397,11 +386,31 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @return the WaveDetails, or null if not found
 	 */
 	private WaveDetails getOrLoadPassthrough(String identifier) {
+		return resolveDetails(identifier, false);
+	}
+
+	/**
+	 * Shared implementation for retrieving a {@link WaveDetails} by identifier.
+	 * Checks the in-memory cache first, then falls back to the
+	 * {@link #detailsLoader} if available.
+	 *
+	 * @param identifier   the content identifier to look up
+	 * @param cacheOnLoad  if true, loaded entries are inserted into the cache;
+	 *                     if false, they are returned without caching (passthrough)
+	 * @return the WaveDetails, or null if not found
+	 */
+	private WaveDetails resolveDetails(String identifier, boolean cacheOnLoad) {
 		WaveDetails cached = detailsCache.get(identifier);
 		if (cached != null) return cached;
 
 		if (detailsLoader != null) {
-			return detailsLoader.apply(identifier);
+			WaveDetails loaded = detailsLoader.apply(identifier);
+			if (loaded != null) {
+				if (cacheOnLoad) {
+					detailsCache.put(identifier, loaded);
+				}
+				return loaded;
+			}
 		}
 
 		return null;
