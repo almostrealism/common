@@ -321,59 +321,50 @@ public class DetailsLoaderTest extends TestSuiteBase {
 	}
 
 	/**
-	 * FM1.2: saveLibrary writes only cached entries when no loader is set,
-	 * resulting in data loss on disk.
+	 * FM1.2: saveLibrary throws {@link IllegalStateException} when no loader
+	 * is set and evicted entries cannot be loaded, preventing silent data loss.
 	 */
-	@Test
-	public void fm1_saveLibraryWritesSubsetWithoutLoader() {
+	@Test(expected = IllegalStateException.class)
+	public void fm1_saveLibraryThrowsWithoutLoader() {
 		AudioLibrary lib = createLibrary();
 		int total = TEST_CACHE_CAPACITY + 10;
 		populateLibrary(lib, total);
 
 		String prefix = savePrefix();
 		AudioLibraryPersistence.saveLibrary(lib, prefix);
-
-		int savedCount = countSavedEntries(prefix);
-		assertTrue("Save should have written fewer than " + total + " entries "
-						+ "(wrote " + savedCount + ") because evicted entries are lost",
-				savedCount < total);
 	}
 
 	/**
-	 * FM1.3: A save-load-save cycle progressively shrinks the dataset
-	 * when no loader is configured for the intermediate library.
+	 * FM1.3: A save-load-save cycle preserves all entries because
+	 * {@link AudioLibraryPersistence#loadLibrary(AudioLibrary, String)}
+	 * auto-wires the details loader, preventing data loss.
 	 */
 	@Test
-	public void fm1_saveLoadSaveCycleLosesData() {
+	public void fm1_saveLoadSaveCyclePreservesDataWithAutoWiring() {
 		AudioLibrary lib = createLibrary();
 		int total = TEST_CACHE_CAPACITY + 10;
 		populateLibrary(lib, total);
 
 		// First save with loader set (preserves all entries)
-		Map<String, WaveDetails> allEntries = populateLibrary(createLibrary(), 0);
-		lib.setDetailsLoader(id -> {
-			WaveDetails d = createDetails(id);
-			return d;
-		});
+		lib.setDetailsLoader(id -> createDetails(id));
 
 		String prefix = savePrefix();
 		AudioLibraryPersistence.saveLibrary(lib, prefix);
 		int firstSaveCount = countSavedEntries(prefix);
+		assertEquals("First save should write all entries", total, firstSaveCount);
 
-		// Load into new library WITHOUT setting loader, then save again
+		// Load into new library — loadLibrary auto-wires the details loader
 		lib.stop();
 		library = null;
 		AudioLibrary secondLib = createLibrary();
 		AudioLibraryPersistence.loadLibrary(secondLib, prefix);
-		// No setDetailsLoader call - this is the bug
 
 		String prefix2 = new File(tmpDir, "library2").getAbsolutePath();
 		AudioLibraryPersistence.saveLibrary(secondLib, prefix2);
 		int secondSaveCount = countSavedEntries(prefix2);
 
-		assertTrue("Second save should have fewer entries than first "
-						+ "(first=" + firstSaveCount + ", second=" + secondSaveCount + ")",
-				secondSaveCount <= firstSaveCount);
+		assertEquals("Second save should preserve all entries via auto-wired loader",
+				firstSaveCount, secondSaveCount);
 	}
 
 	/**
@@ -994,6 +985,45 @@ public class DetailsLoaderTest extends TestSuiteBase {
 				SAMPLE_RATE, loaded.getSampleRate());
 	}
 
+	/**
+	 * FM5.6: loadSingleDetail returns null for a non-existent identifier
+	 * without throwing an exception.
+	 */
+	@Test
+	public void fm5_loadSingleDetailReturnsNullForMissingEntry() {
+		AudioLibrary lib = createLibrary();
+		populateLibrary(lib, TEST_CACHE_CAPACITY);
+
+		String prefix = savePrefix();
+		AudioLibraryPersistence.saveLibrary(lib, prefix);
+
+		WaveDetails missing = AudioLibraryPersistence.loadSingleDetail(prefix, "nonexistent-id");
+		Assert.assertNull("loadSingleDetail should return null for unknown identifier", missing);
+	}
+
+	/**
+	 * FM5.7: saveLibrary throws {@link IllegalStateException} when the
+	 * save guard detects unloadable entries, verifying that the guard
+	 * message includes the entry counts.
+	 */
+	@Test
+	public void fm5_saveGuardIncludesEntryCounts() {
+		AudioLibrary lib = createLibrary();
+		int total = TEST_CACHE_CAPACITY + 5;
+		populateLibrary(lib, total);
+
+		String prefix = savePrefix();
+		try {
+			AudioLibraryPersistence.saveLibrary(lib, prefix);
+			Assert.fail("saveLibrary should throw IllegalStateException when entries are unloadable");
+		} catch (IllegalStateException e) {
+			assertTrue("Exception message should mention entry counts",
+					e.getMessage().contains("of " + total));
+			assertTrue("Exception message should mention setDetailsLoader",
+					e.getMessage().contains("setDetailsLoader"));
+		}
+	}
+
 	// ============================================================
 	// FM6: Cache Thrashing During Bulk Operations
 	//
@@ -1225,19 +1255,23 @@ public class DetailsLoaderTest extends TestSuiteBase {
 		AudioLibrary lib = createLibrary();
 
 		// Create entries with pre-set similarities and store in loader
-		Map<String, WaveDetails> loaderData = new HashMap<>();
 		String targetId = "stale-target";
 		WaveDetails target = createDetails(targetId);
 		target.getSimilarities().put("stale-ref", 0.77);
-		loaderData.put(targetId, target);
 		lib.include(target);
 
+		// Snapshot the similarities independently from the live object so
+		// that resetSimilarities() on the cached entry cannot mutate the
+		// loader's copy (simulates loading from disk).
+		Map<String, Map<String, Double>> loaderSimilarities = new HashMap<>();
+		loaderSimilarities.put(targetId, new HashMap<>(target.getSimilarities()));
+
 		lib.setDetailsLoader(id -> {
-			WaveDetails d = loaderData.get(id);
-			if (d == null) return null;
+			Map<String, Double> sims = loaderSimilarities.get(id);
+			if (sims == null) return null;
 			// Simulate loading from disk: returns entry with original similarities
 			WaveDetails copy = createDetails(id);
-			copy.getSimilarities().putAll(d.getSimilarities());
+			copy.getSimilarities().putAll(sims);
 			return copy;
 		});
 
@@ -1830,11 +1864,12 @@ public class DetailsLoaderTest extends TestSuiteBase {
 
 	/**
 	 * FM10.4: Save from a library with a loader, then load into a new
-	 * library without a loader. This simulates the PrototypeDiscovery
-	 * save-then-discover workflow where the loader is forgotten.
+	 * library. {@link AudioLibraryPersistence#loadLibrary(AudioLibrary, String)}
+	 * auto-wires the details loader, so all entries remain accessible even
+	 * when the number of entries exceeds cache capacity.
 	 */
 	@Test
-	public void fm10_saveWithLoaderThenLoadWithoutLosesData() {
+	public void fm10_saveAndReloadPreservesAllEntriesViaAutoWiring() {
 		AudioLibrary lib = createLibrary();
 		int total = TEST_CACHE_CAPACITY + 10;
 		Map<String, WaveDetails> entries = populateLibrary(lib, total);
@@ -1850,16 +1885,14 @@ public class DetailsLoaderTest extends TestSuiteBase {
 		lib.stop();
 		library = null;
 
-		// Load into new library WITHOUT setting loader
+		// Load into new library — loadLibrary auto-wires the details loader
 		AudioLibrary discoveryLib = createLibrary();
 		AudioLibraryPersistence.loadLibrary(discoveryLib, prefix);
 
-		// getAllDetails() without loader - data loss
+		// getAllDetails() should return all entries via auto-wired loader
 		Collection<WaveDetails> discoveredDetails = discoveryLib.getAllDetails();
-		assertTrue("Loading " + total + " entries into capacity "
-						+ TEST_CACHE_CAPACITY + " library without loader should lose data "
-						+ "(got " + discoveredDetails.size() + ")",
-				discoveredDetails.size() < total);
+		assertEquals("Auto-wired loader should make all entries accessible",
+				total, discoveredDetails.size());
 	}
 
 	/**

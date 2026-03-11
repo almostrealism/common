@@ -42,10 +42,11 @@ import java.util.function.Supplier;
  * </ul>
  *
  * <p>On each {@link #tick()}, the cached value is pushed downstream and
- * the cache is reset. When a downstream receptor is present, the cached value
- * is forwarded directly to the receptor without updating outValue (see
- * {@link #tick()} for details). When no receptor is set, the cached value
- * is copied to outValue before the reset.</p>
+ * the cache is reset. When the downstream receptor is a {@link SummationCell},
+ * the cached value is forwarded directly without updating outValue (see
+ * {@link #tick()} for details). For all other receptors, the cached value is
+ * first copied to outValue before being pushed. When no receptor is set, only
+ * the outValue copy and reset are performed.</p>
  *
  * <h2>Lifecycle</h2>
  * <ol>
@@ -196,15 +197,17 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	 * <p>This is the core temporal processing method that should be called
 	 * once per time step in temporal processing scenarios.</p>
 	 *
-	 * <p>When a downstream receptor is present, the cached value is pushed
-	 * directly to it without copying through the intermediate outValue buffer.
-	 * The receptor's {@code push()} consumes the value immediately (e.g.,
-	 * {@link SummationCell} accumulates, other {@link CachedStateCell}s assign
-	 * to their own cache), so the intermediate copy is unnecessary. Note that
-	 * outValue is <strong>not</strong> updated in this path; external consumers
-	 * that call {@link #getResultant(io.almostrealism.relation.Producer)} or
-	 * {@link #next()} between ticks will see stale data. This is an accepted
-	 * tradeoff for the audio pipeline where meter bypass is acceptable.</p>
+	 * <p>When the downstream receptor is a {@link SummationCell}, the cached
+	 * value is pushed directly to it without copying through the intermediate
+	 * outValue buffer. The SummationCell's {@code push()} accumulates the value
+	 * immediately, so copying through outValue is redundant. Note that outValue
+	 * is <strong>not</strong> updated in this path; external consumers that call
+	 * {@link #getResultant(io.almostrealism.relation.Producer)} or {@link #next()}
+	 * between ticks will see stale data.</p>
+	 *
+	 * <p>For all other receptors, the cached value is first copied to outValue
+	 * (so that {@link #getResultant(io.almostrealism.relation.Producer)} and
+	 * {@link #next()} return current data), then pushed to the receptor.</p>
 	 *
 	 * <p>When no receptor is set, only the outValue copy and reset are performed.</p>
 	 *
@@ -217,13 +220,19 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		OperationList tick = new OperationList("CachedStateCell (" + name + ") Tick");
 
 		Receptor<T> receptor = getReceptor();
-		if (receptor != null) {
-			// Direct push: forward cachedValue to the receptor, bypassing
-			// the intermediate outValue copy. The receptor's push() consumes
-			// the value immediately (SummationCell accumulates, other
-			// CachedStateCells assign to their own cache, etc.), so copying
-			// through outValue is redundant. This eliminates one memory read
-			// and one memory write per cell per frame.
+		if (receptor instanceof SummationCell) {
+			// Optimized path: forward cachedValue directly to the SummationCell,
+			// bypassing the intermediate outValue copy. The SummationCell's push()
+			// accumulates the value immediately, so copying through outValue is
+			// redundant. This eliminates one memory read and one memory write per
+			// cell per frame. Note that outValue is NOT updated in this path.
+			tick.add(receptor.push(p(cachedValue)));
+			tick.add(reset(p(cachedValue)));
+		} else if (receptor != null) {
+			// Standard path with receptor: copy cachedValue to outValue (so
+			// getResultant/next can read the output), push to the receptor,
+			// then reset the cache.
+			tick.add(assign(p(outValue), p(cachedValue)));
 			tick.add(receptor.push(p(cachedValue)));
 			tick.add(reset(p(cachedValue)));
 		} else {
