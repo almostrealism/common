@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -136,7 +137,31 @@ public class AudioLibraryPersistence {
 		return decode(Audio.WaveDetailData.newBuilder().mergeFrom(new FileInputStream(source)).build());
 	}
 
+	/**
+	 * Saves the library to protobuf files at the given prefix.
+	 *
+	 * <p>Before writing, this method verifies that all known identifiers can be
+	 * loaded (either from cache or via the details loader). If loadable entries
+	 * are fewer than the total known identifiers, saving would destroy the
+	 * unloadable entries on disk, so an {@link IllegalStateException} is thrown
+	 * instead.</p>
+	 *
+	 * @param library    the library to save
+	 * @param dataPrefix path prefix for protobuf output files
+	 * @throws IllegalStateException if saving would lose data because some
+	 *         entries cannot be loaded from cache or disk
+	 */
 	public static void saveLibrary(AudioLibrary library, String dataPrefix) {
+		int identifierCount = library.getAllIdentifiers().size();
+		Collection<WaveDetails> loadable = library.getAllDetails();
+		if (loadable.size() < identifierCount) {
+			throw new IllegalStateException(
+					"Refusing to save: only " + loadable.size() + " of " +
+					identifierCount + " entries are loadable. " +
+					"Configure a details loader via setDetailsLoader() before saving " +
+					"to prevent data loss.");
+		}
+
 		try (LibraryDestination.Writer out = new LibraryDestination(dataPrefix).out()) {
 			saveLibrary(library, out);
 		} catch (IOException e) {
@@ -206,17 +231,45 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/**
+	 * Creates a new {@link AudioLibrary} from a samples directory and loads
+	 * pre-computed data from protobuf files at the given prefix.
+	 *
+	 * <p>Automatically configures the details loader so evicted cache entries
+	 * can be reloaded from disk on demand.</p>
+	 *
+	 * @param root       directory containing audio sample files
+	 * @param sampleRate target sample rate for analysis
+	 * @param dataPrefix path prefix for protobuf files
+	 * @return the populated AudioLibrary
+	 */
 	public static AudioLibrary loadLibrary(File root, int sampleRate, String dataPrefix) {
 		try {
-			return loadLibrary(root, sampleRate, new LibraryDestination(dataPrefix).in());
+			AudioLibrary library = loadLibrary(root, sampleRate, new LibraryDestination(dataPrefix).in());
+			library.setDetailsLoader(createDetailsLoader(dataPrefix));
+			return library;
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
 	}
 
+	/**
+	 * Loads library data from protobuf files at the given prefix and automatically
+	 * configures the {@link AudioLibrary#setDetailsLoader(Function) detailsLoader}
+	 * so that entries evicted from the in-memory cache can be reloaded on demand.
+	 *
+	 * <p>This is the preferred entry point for loading a library. Without the
+	 * automatic loader wiring, evicted entries become unreachable and operations
+	 * like {@link AudioLibrary#getAllDetails()} or {@link #saveLibrary(AudioLibrary, String)}
+	 * silently operate on a subset, potentially destroying data on disk.</p>
+	 *
+	 * @param library    the library to populate
+	 * @param dataPrefix path prefix for protobuf files (e.g. {@code /path/to/library})
+	 */
 	public static void loadLibrary(AudioLibrary library, String dataPrefix) {
 		try {
 			loadLibrary(library, new LibraryDestination(dataPrefix).in());
+			library.setDetailsLoader(createDetailsLoader(dataPrefix));
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
