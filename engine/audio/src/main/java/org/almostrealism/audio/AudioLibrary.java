@@ -362,7 +362,8 @@ public class AudioLibrary implements ConsoleFeatures {
 
 	/**
 	 * Retrieves a {@link WaveDetails} by identifier, first checking the in-memory
-	 * cache and falling back to the {@link #detailsLoader} if set.
+	 * cache and falling back to the {@link #detailsLoader} if set. Loaded entries
+	 * are inserted into the cache.
 	 *
 	 * @param identifier the content identifier to look up
 	 * @return the WaveDetails, or null if not found in cache or on disk
@@ -382,12 +383,47 @@ public class AudioLibrary implements ConsoleFeatures {
 		return null;
 	}
 
+	/**
+	 * Retrieves a {@link WaveDetails} by identifier without inserting loaded
+	 * entries into the cache. This avoids cache thrashing during bulk iteration
+	 * (e.g., saving or building similarity graphs over the entire library).
+	 *
+	 * <p>Entries already in the cache are returned directly (and their access
+	 * stats updated). Entries not in the cache are loaded from disk via the
+	 * {@link #detailsLoader} but not cached, so they do not evict other
+	 * entries.</p>
+	 *
+	 * @param identifier the content identifier to look up
+	 * @return the WaveDetails, or null if not found
+	 */
+	private WaveDetails getOrLoadPassthrough(String identifier) {
+		WaveDetails cached = detailsCache.get(identifier);
+		if (cached != null) return cached;
+
+		if (detailsLoader != null) {
+			return detailsLoader.apply(identifier);
+		}
+
+		return null;
+	}
+
 	public int getTotalJobs() { return totalJobs; }
 	public int getPendingJobs() { return queue.size(); }
 
+	/**
+	 * Returns a stream of all {@link WaveDetails} in this library, including
+	 * entries that have been evicted from the in-memory cache.
+	 *
+	 * <p>This method uses passthrough loading to avoid cache thrashing: entries
+	 * not currently in the cache are loaded from disk via the details loader
+	 * but are not inserted into the cache. This prevents a full iteration from
+	 * evicting all cached entries.</p>
+	 *
+	 * @return a stream of all WaveDetails (entries that cannot be loaded are excluded)
+	 */
 	public Stream<WaveDetails> allDetails() {
 		return new ArrayList<>(allIdentifiers).stream()
-				.map(this::getOrLoad)
+				.map(this::getOrLoadPassthrough)
 				.filter(Objects::nonNull);
 	}
 
@@ -778,7 +814,11 @@ public class AudioLibrary implements ConsoleFeatures {
 		if (details == null) return null;
 
 		try {
-			List<WaveDetails> targets = allDetails()
+			// Use getOrLoad (not passthrough) so that targets are cached and
+			// the bidirectional similarity writes persist across calls.
+			List<WaveDetails> targets = new ArrayList<>(allIdentifiers).stream()
+					.map(this::getOrLoad)
+					.filter(Objects::nonNull)
 					.filter(d -> !Objects.equals(d.getIdentifier(), details.getIdentifier()))
 					.filter(d -> !details.getSimilarities().containsKey(d.getIdentifier()))
 					.collect(Collectors.toList());
