@@ -23,6 +23,8 @@ import org.almostrealism.audio.health.StableDurationHealthComputation;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.hardware.mem.MemoryBankAdapter.CacheLevel;
 import org.almostrealism.time.AcceleratedTimeSeries;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -51,8 +53,9 @@ public class PeriodicCellAdjustmentTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 300_000)
+	@TestProperties(knownIssue = true)
+	@TestDepth(1)
 	public void healthTestNoAdjustment() {
-		if (skipKnownIssues) return;
 		if (testDepth < 1) return;
 
 		StableDurationHealthComputation health = new StableDurationHealthComputation(2, false);
@@ -66,8 +69,9 @@ public class PeriodicCellAdjustmentTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 300_000)
+	@TestProperties(knownIssue = true)
+	@TestDepth(1)
 	public void healthTestWithAdjustment() {
-		if (skipKnownIssues) return;
 		if (testDepth < 1) return;
 
 		StableDurationHealthComputation health = new StableDurationHealthComputation(2, false);

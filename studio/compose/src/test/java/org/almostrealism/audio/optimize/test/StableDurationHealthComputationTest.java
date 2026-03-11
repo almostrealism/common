@@ -32,6 +32,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.CellAdapter;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.TemporalCellular;
+import org.almostrealism.util.TestDepth;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -86,6 +87,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 	}
 
 	@Test(timeout = 600_000)
+	@TestDepth(1)
 	public void cellsPatternDataContext() {
 		AtomicInteger index = new AtomicInteger();
 
@@ -106,6 +108,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 	}
 
 	@Test(timeout = 300_000)
+	@TestDepth(1)
 	public void cellsPatternSmall() {
 		int channels = 5;
 
@@ -129,6 +132,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 	}
 
 	@Test(timeout = 300_000)
+	@TestDepth(2)
 	public void cellsPatternLarge() {
 		SilenceDurationHealthComputation.enableSilenceCheck = false;
 		HealthComputationAdapter.setStandardDuration(150);
@@ -144,6 +148,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 	}
 
 	@Test(timeout = 900_000)
+	@TestDepth(2)
 	public void samplesPopulationHealth() throws IOException {
 		AudioScene<?> scene = pattern(2, 2);
 

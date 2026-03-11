@@ -19,6 +19,7 @@ package org.almostrealism.ml.audio.test;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.audio.DiffusionTransformer;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -47,6 +48,7 @@ public class DiffusionTransformerForwardTest extends TestSuiteBase {
 	 * This must not cause UnsupportedOperationException.</p>
 	 */
 	@Test(timeout = 600_000)
+	@TestDepth(1)
 	public void testForwardWithNullGlobalCond() throws IOException {
 		if (!Files.exists(WEIGHTS_DIR)) {
 			log("Weights directory not found, skipping test");

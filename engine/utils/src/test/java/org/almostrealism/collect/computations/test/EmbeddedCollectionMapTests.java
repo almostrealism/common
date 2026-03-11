@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations.test;
 
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -113,8 +114,8 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 	}
 
 	@Test(timeout = 30000)
+	@TestProperties(knownIssue = true)
 	public void singleEnumerateMax() {
-		if (skipKnownIssues) return;
 
 		int c = 16;
 		int d = 1;

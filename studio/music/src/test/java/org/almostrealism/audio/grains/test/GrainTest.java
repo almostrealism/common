@@ -32,6 +32,7 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Frequency;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
 import org.junit.Test;
@@ -166,6 +167,7 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 	}
 
 	@Test(timeout = 300_000)
+	@TestDepth(1)
 	public void grainProcessorEnvelope() throws IOException {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
 		WaveData wav = WaveData.load(new File(ORGAN_FILE));
