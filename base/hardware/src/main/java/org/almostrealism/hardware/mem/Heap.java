@@ -466,6 +466,7 @@ public class Heap {
 	 * <p>Removes the topmost stage and calls {@link HeapStage#destroy()} on it,
 	 * which:</p>
 	 * <ol>
+	 *   <li>Waits for all pending kernel semaphores to complete</li>
 	 *   <li>Clears the allocation entry list</li>
 	 *   <li>Resets the bump pointer to zero</li>
 	 *   <li>Destroys the backing {@link Bytes} memory block</li>
@@ -622,9 +623,6 @@ public class Heap {
 	 * @see Bytes
 	 */
 	public class HeapStage implements Destroyable {
-		/** Timeout in milliseconds for waiting on pending kernel semaphores during destroy. */
-		private static final long PENDING_KERNEL_TIMEOUT_MS = 30_000;
-
 		/**
 		 * List of all {@link Bytes} instances allocated from this stage, in allocation order.
 		 *
