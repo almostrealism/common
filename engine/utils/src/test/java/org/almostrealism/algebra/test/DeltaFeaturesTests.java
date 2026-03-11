@@ -23,6 +23,7 @@ import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -67,8 +68,8 @@ public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 	}
 
 	@Test(timeout = 60000)
+	@TestProperties(knownIssue = true)
 	public void embeddedPower() {
-		if (skipKnownIssues) return;
 
 		int dim = 3;
 		int count = 2;

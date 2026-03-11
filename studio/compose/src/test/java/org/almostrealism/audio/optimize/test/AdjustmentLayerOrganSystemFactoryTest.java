@@ -21,6 +21,7 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.health.MultiChannelAudioOutput;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
 import java.io.File;
@@ -28,6 +29,7 @@ import java.io.File;
 public class AdjustmentLayerOrganSystemFactoryTest extends AudioSceneOptimizationTest {
 
 	@Test(timeout = 300_000)
+	@TestDepth(2)
 	public void compare() {
 		dc(() -> {
 			WaveOutput outa = new WaveOutput(new File("results/layered-organ-factory-comp-a.wav"));
@@ -50,6 +52,7 @@ public class AdjustmentLayerOrganSystemFactoryTest extends AudioSceneOptimizatio
 	}
 
 	@Test(timeout = 300_000)
+	@TestDepth(1)
 	public void layered() {
 		WaveOutput out = new WaveOutput(new File("results/layered-organ-factory-test.wav"));
 		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));

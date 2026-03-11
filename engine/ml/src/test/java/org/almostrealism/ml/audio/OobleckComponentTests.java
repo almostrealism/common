@@ -26,6 +26,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -130,8 +131,8 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	@Test(timeout = 120000)
 	@TestDepth(2)
+	@TestProperties(knownIssue = true)
 	public void testSnakeLarge() {
-		if (skipKnownIssues) return;
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_snake_large.log"));
@@ -193,8 +194,8 @@ public class OobleckComponentTests extends TestSuiteBase {
 	// ==================== WNConvTranspose1d Tests ====================
 
 	@Test(timeout = 120000)
+	@TestProperties(knownIssue = true)
 	public void testWNConvTranspose16x() {
-		if (skipKnownIssues) return;
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_wnconvtranspose_16x.log"));
@@ -325,8 +326,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 5 * 60000)
+	@TestProperties(highMemory = true)
+	@TestDepth(2)
 	public void testDecoderBlock5() {
-		if (skipHighMemTests) return;
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/component_decoder_block5.log"));

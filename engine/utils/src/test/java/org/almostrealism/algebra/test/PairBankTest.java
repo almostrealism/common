@@ -4,6 +4,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -61,8 +62,8 @@ public class PairBankTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 10000)
+	@TestProperties(knownIssue = true)
 	public void map() {
-		if (skipKnownIssues) return;
 
 		Producer<PackedCollection> in = v(shape(4, 1), 0);
 

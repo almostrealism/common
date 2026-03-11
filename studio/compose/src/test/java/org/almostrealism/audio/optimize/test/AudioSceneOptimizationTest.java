@@ -32,6 +32,7 @@ import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
 import org.junit.Before;
@@ -118,6 +119,7 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 	}
 
 	@Test(timeout = 180_000)
+	@TestDepth(1)
 	public void withOutput() {
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;
@@ -130,6 +132,7 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 	}
 
 	@Test(timeout = 600_000)
+	@TestDepth(2)
 	public void many() {
 		WaveOutput out = new WaveOutput(new File("results/organ-factory-many-test.wav"));
 		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));
@@ -144,6 +147,7 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 	}
 
 	@Test(timeout = 180_000)
+	@TestDepth(1)
 	public void random() {
 		WaveOutput out = new WaveOutput(new File("factory-rand-test.wav"));
 		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));

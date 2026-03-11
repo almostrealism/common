@@ -20,11 +20,12 @@ import org.almostrealism.event.DefaultEvent;
 import org.almostrealism.event.EventDeliveryQueue;
 import org.almostrealism.event.SimpleEventServer;
 import org.almostrealism.event.DefaultHttpEventDelivery;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.IOException;
 
-public class EventDeliveryTest {
+public class EventDeliveryTest extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void deliver() throws IOException, InterruptedException {
 		SimpleEventServer server = new SimpleEventServer();

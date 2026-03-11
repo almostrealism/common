@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -208,8 +209,9 @@ public class WeightedSumWrappingDiagnosticTest extends TestSuiteBase {
 	 * Skipped by default (skipLongTests). Run with AR_LONG_TESTS=true to enable.
 	 */
 	@Test(timeout = 3600000) // 1 hour - intentionally slow diagnostic test
+	@TestProperties(longRunning = true)
+	@TestDepth(2)
 	public void largeWeightedSumNoReshape() {
-		if (skipLongTests) return;
 
 		int inputChannels = 2048;  // Large
 		int kernelSize = 16;
@@ -255,8 +257,9 @@ public class WeightedSumWrappingDiagnosticTest extends TestSuiteBase {
 	 * Skipped by default (skipLongTests). Run with AR_LONG_TESTS=true to enable.
 	 */
 	@Test(timeout = 3600000) // 1 hour - intentionally slow diagnostic test
+	@TestProperties(longRunning = true)
+	@TestDepth(2)
 	public void largeWeightedSumWithReshape() {
-		if (skipLongTests) return; // Only run when long tests are explicitly enabled
 		int inputChannels = 2048;
 		int kernelSize = 16;
 		int outLen = 8;

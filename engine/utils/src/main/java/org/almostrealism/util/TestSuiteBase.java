@@ -49,12 +49,13 @@ import org.junit.Rule;
  * }</pre>
  *
  * <h2>Test Depth Tiers</h2>
+ * <p>Each tier contains a representative mix of test types and durations.
+ * Depth is not a proxy for test duration — it controls thoroughness.</p>
  * <ul>
- *   <li><b>No annotation</b>: Basic smoke tests (always run)</li>
- *   <li><b>@TestDepth(1)</b>: Medium complexity tests</li>
- *   <li><b>@TestDepth(2)</b>: Comprehensive tests</li>
- *   <li><b>@TestDepth(3)</b>: Heavy/expensive tests</li>
- *   <li><b>@TestDepth(10)</b>: Very expensive tests</li>
+ *   <li><b>No annotation</b>: Core coverage (~20 min total), mix of fast and slow</li>
+ *   <li><b>@TestDepth(1)</b>: Broader coverage (~60 min total)</li>
+ *   <li><b>@TestDepth(2)</b>: Comprehensive coverage (~2 hr total)</li>
+ *   <li><b>@TestDepth(3+)</b>: Full suite (~4+ hr total)</li>
  * </ul>
  *
  * <h2>Environment Variables</h2>

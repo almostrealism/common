@@ -25,6 +25,7 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -67,6 +68,7 @@ public class OobleckValidationTest extends TestSuiteBase {
 	 * </ol>
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(1)
 	public void testEncoderAgainstPyTorchReference() throws IOException {
 		// Skip if test data not available
 		if (!WEIGHTS_DIR.toFile().exists()) {
@@ -136,6 +138,7 @@ public class OobleckValidationTest extends TestSuiteBase {
 	 * where any discrepancies might originate.</p>
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void testEncoderIntermediatesAgainstPyTorch() throws IOException {
 		// Skip if test data not available
 		if (!WEIGHTS_DIR.toFile().exists()) {
@@ -174,6 +177,7 @@ public class OobleckValidationTest extends TestSuiteBase {
 	 * Tests decoder output against PyTorch reference.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(1)
 	public void testDecoderAgainstPyTorchReference() throws IOException {
 		// Skip if test data not available
 		if (!WEIGHTS_DIR.toFile().exists()) {
@@ -339,6 +343,7 @@ public class OobleckValidationTest extends TestSuiteBase {
 	 * </ul>
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void testDecoderBlockByBlockComparison() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
@@ -529,6 +534,7 @@ public class OobleckValidationTest extends TestSuiteBase {
 	 * Tests: Snake, WNConvTranspose1d, each residual block in sequence.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void testBlock1SubComponents() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
 			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);

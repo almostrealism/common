@@ -27,12 +27,13 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSettings;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class MyNativeEnabledApplication implements CodeFeatures {
+public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFeatures {
 	public static void main(String[] args) {
 		new MyNativeEnabledApplication().performMath();
 	}
