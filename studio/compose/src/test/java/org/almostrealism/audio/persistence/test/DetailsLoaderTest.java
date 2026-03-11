@@ -1255,19 +1255,23 @@ public class DetailsLoaderTest extends TestSuiteBase {
 		AudioLibrary lib = createLibrary();
 
 		// Create entries with pre-set similarities and store in loader
-		Map<String, WaveDetails> loaderData = new HashMap<>();
 		String targetId = "stale-target";
 		WaveDetails target = createDetails(targetId);
 		target.getSimilarities().put("stale-ref", 0.77);
-		loaderData.put(targetId, target);
 		lib.include(target);
 
+		// Snapshot the similarities independently from the live object so
+		// that resetSimilarities() on the cached entry cannot mutate the
+		// loader's copy (simulates loading from disk).
+		Map<String, Map<String, Double>> loaderSimilarities = new HashMap<>();
+		loaderSimilarities.put(targetId, new HashMap<>(target.getSimilarities()));
+
 		lib.setDetailsLoader(id -> {
-			WaveDetails d = loaderData.get(id);
-			if (d == null) return null;
+			Map<String, Double> sims = loaderSimilarities.get(id);
+			if (sims == null) return null;
 			// Simulate loading from disk: returns entry with original similarities
 			WaveDetails copy = createDetails(id);
-			copy.getSimilarities().putAll(d.getSimilarities());
+			copy.getSimilarities().putAll(sims);
 			return copy;
 		});
 
