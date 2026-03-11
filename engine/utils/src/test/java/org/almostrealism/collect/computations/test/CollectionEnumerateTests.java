@@ -24,6 +24,7 @@ import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -239,8 +240,8 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 30000)
+	@TestProperties(knownIssue = true)
 	public void dynamicSum() {
-		if (skipKnownIssues) return;
 
 		int r = 4;
 		int c = 2;

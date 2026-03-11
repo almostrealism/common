@@ -23,6 +23,7 @@ import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.health.MultiChannelAudioOutput;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.TemporalCellular;
+import org.almostrealism.util.TestDepth;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -128,6 +129,7 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 	 * and real-time rendering to ensure timing is correct.</p>
 	 */
 	@Test(timeout = 300_000)
+	@TestDepth(1)
 	public void testPerSecondTimingAccuracy() {
 		log("=== Test: Per-Second Timing Accuracy ===");
 
@@ -179,6 +181,7 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 	 * <p>Verifies that different buffer sizes produce consistent results.</p>
 	 */
 	@Test(timeout = 300_000)
+	@TestDepth(1)
 	public void testBufferSizeConsistency() {
 		log("=== Test: Buffer Size Consistency ===");
 
@@ -218,6 +221,7 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 	 * <p>Verifies that audio coverage doesn't degrade over longer durations.</p>
 	 */
 	@Test(timeout = 300_000)
+	@TestDepth(1)
 	public void testLongDurationCoverage() {
 		log("=== Test: Long Duration Coverage (30s) ===");
 

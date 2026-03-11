@@ -32,6 +32,7 @@ import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -123,8 +124,8 @@ public class ConvolutionModelTests extends TestSuiteBase implements ModelFeature
 	}
 
 	@Test(timeout = 30000)
+	@TestProperties(knownIssue = true)
 	public void convBackwardsMediumAtomPadded() throws IOException {
-		if (skipKnownIssues) return;
 
 		convBackwards("convBackwardsMediumAtomPadded", 1, 28, 28, 28, 1, 28,1, true);
 	}

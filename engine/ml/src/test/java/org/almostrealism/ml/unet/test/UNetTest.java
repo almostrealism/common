@@ -38,6 +38,7 @@ import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.texture.GraphicsConverter;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
@@ -234,8 +235,8 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 	}
 
 	@Test(timeout = 120000)
+	@TestProperties(knownIssue = true)
 	public void resNet() {
-		if (skipKnownIssues) return;
 
 		int initDim = 28;
 		int rows = 28, cols = 28;

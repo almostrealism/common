@@ -35,6 +35,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
@@ -51,8 +52,8 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 	private TraversalPolicy inputShape = shape(h, w);
 
 	@Test(timeout = 120000)
+	@TestProperties(knownIssue = true)
 	public void dense() {
-		if (skipKnownIssues) return;
 
 		int size = 30;
 		int nodes = 10;
@@ -241,8 +242,8 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 
 	@Test(timeout = 30 * 60000)
 	@TestDepth(3)
+	@TestProperties(knownIssue = true)
 	public void trainSmall() throws IOException {
-		if (skipKnownIssues) return;
 
 		int dim = 28;
 		int filters = 8;
@@ -253,8 +254,8 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 
 	@Test(timeout = 120000)
 	@TestDepth(10)
+	@TestProperties(longRunning = true)
 	public void trainMedium() throws IOException {
-		if (skipLongTests) return;
 
 		int dim = 54;
 		int filters = 8;
@@ -265,8 +266,8 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 
 	@Test(timeout = 120000)
 	@TestDepth(10)
+	@TestProperties(longRunning = true)
 	public void trainLarge() throws IOException {
-		if (skipLongTests) return;
 
 		try {
 			int dim = 72;
@@ -281,8 +282,8 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 
 	@Test(timeout = 120000)
 	@TestDepth(10)
+	@TestProperties(longRunning = true)
 	public void trainProgressive() throws IOException {
-		if (skipLongTests) return;
 
 		double size = 10;
 

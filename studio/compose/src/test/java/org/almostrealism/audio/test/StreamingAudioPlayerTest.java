@@ -25,6 +25,7 @@ import org.almostrealism.audio.line.DelegatedAudioLine;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.line.SharedMemoryAudioLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
 import org.junit.Before;
@@ -288,8 +289,8 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 10_000)
+	@TestProperties(knownIssue = true)
 	public void testWithRecordingLine() {
-		if (skipKnownIssues) return;
 		OutputLine recordingLine = createMockOutputLine();
 		config = createPlayer(recordingLine);
 

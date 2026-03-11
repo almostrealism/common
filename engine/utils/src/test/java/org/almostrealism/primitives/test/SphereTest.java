@@ -25,6 +25,7 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.projection.OrthographicCamera;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -136,8 +137,8 @@ public class SphereTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 10000)
+	@TestProperties(knownIssue = true)
 	public void intersectionSmallBatch() {
-		if (skipKnownIssues) return;
 
 		// Test full intersection (not just discriminant) with 3 rays to isolate batch issue
 		Sphere s = new Sphere();

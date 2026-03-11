@@ -28,6 +28,7 @@ import org.almostrealism.collect.computations.IndexProjectionProducerComputation
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
@@ -256,8 +257,8 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 
 	@Test(timeout = 60000)
 	@TestDepth(1)
+	@TestProperties(longRunning = true)
 	public void convDeltaGradSmall() throws IOException {
-		if (skipLongTests) return;
 
 		try {
 			ParallelProcess.explicitIsolationTargets
@@ -270,8 +271,8 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 60000)
+	@TestProperties(knownIssue = true)
 	public void convDeltaGradLarge() throws IOException {
-		if (skipKnownIssues) return;
 
 		convDelta("convDeltaGradLarge", 14, 28, true);
 	}

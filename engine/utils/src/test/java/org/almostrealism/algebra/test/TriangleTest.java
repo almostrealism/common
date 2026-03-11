@@ -34,6 +34,7 @@ import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.space.Triangle;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -183,8 +184,8 @@ public class TriangleTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 10000)
+	@TestProperties(knownIssue = true)
 	public void intersection() {
-		if (skipKnownIssues) return;
 
 		Evaluable<Ray> ev = intersectAt().get();
 
