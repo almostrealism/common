@@ -62,12 +62,11 @@ import java.util.Map;
  * @see BufferedAudioPlayer for the player implementation
  * @see BufferedOutputScheduler for the scheduling mechanism
  * @see AudioServer for the streaming server
+ * <p>The multi-channel support is legacy; a single channel is sufficient
+ * for normal playback.</p>
+ *
  * @see DelegatedAudioLine for streaming/DAW integration output
  * @see SourceDataOutputLine for direct hardware playback output
- */
-/**
- * Manages audio streaming channels and playback. The multi-channel support
- * is legacy; a single channel is sufficient for normal playback.
  */
 public class AudioStreamManager implements ConsoleFeatures {
 	public static final int PORT = 7799;

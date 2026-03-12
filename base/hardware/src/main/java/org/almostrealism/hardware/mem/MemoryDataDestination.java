@@ -77,14 +77,12 @@ import java.util.function.IntFunction;
  * }
  * }</pre>
  *
+ * <p>A future enhancement could implement StreamingEvaluable for streaming
+ * evaluation pipelines.</p>
+ *
  * @param <T> MemoryData type for destinations
  * @see Evaluable
  * @see Multiple
- */
-/**
- * An {@link Evaluable} that provides pre-allocated memory destinations.
- * A future enhancement could implement StreamingEvaluable for streaming
- * evaluation pipelines.
  */
 public class MemoryDataDestination<T extends MemoryData> implements Evaluable<T> {
 	private final IntFunction<Multiple<T>> provider;
