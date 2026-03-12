@@ -31,6 +31,7 @@ import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
 import org.almostrealism.space.Triangle;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Before;
@@ -77,8 +78,8 @@ public class MeshIntersectionTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 10000)
+	@TestProperties(knownIssue = true)
 	public void intersectAt() {
-		if (skipKnownIssues) return;
 
 		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(data, ray);
 

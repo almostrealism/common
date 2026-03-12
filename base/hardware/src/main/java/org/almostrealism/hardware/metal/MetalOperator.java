@@ -19,11 +19,11 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.concurrent.Semaphore;
-import java.lang.ref.Reference;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 
+import java.lang.ref.Reference;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;

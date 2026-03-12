@@ -455,8 +455,8 @@ public class FrequencyCache<K, V> {
 	 * @return the eviction score (higher = more valuable)
 	 */
 	protected double score(CacheEntry entry) {
-		double age = (clock - entry.time) / (double) clock;
-		double f = entry.frequency / (double) count;
+		double age = clock > 0 ? (clock - entry.time) / (double) clock : 0;
+		double f = count > 0 ? entry.frequency / (double) count : 0;
 		return frequencyBias * f + (1 - frequencyBias) * (1 - age);
 	}
 }

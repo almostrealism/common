@@ -31,6 +31,8 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.optimize.MeanSquaredError;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.TrainingResult;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -95,8 +97,9 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 * expected to take a significant amount of time.
 	 */
 	@Test(timeout = 5 * 60000)
+	@TestProperties(knownIssue = true)
+	@TestDepth(1)
 	public void testAggressiveFineTuning() throws IOException {
-		if (skipKnownIssues) return;
 		Files.createDirectories(OUTPUT_DIR);
 
 		runFineTuningPipeline(
@@ -129,8 +132,9 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 * </ul>
 	 */
 	@Test(timeout = 5 * 60000)
+	@TestProperties(knownIssue = true)
+	@TestDepth(2)
 	public void testCompilationScaling() {
-		if (skipKnownIssues) return;
 		int[][] configs = {
 				// {embedDim, ioChannels, depth, numHeads, condTokenDim, globalCondDim}
 				{8,   4,  1, 1, 0, 8},
@@ -186,8 +190,9 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	 * The profile is saved to {@code utils/results/finetune_profile_embed64.xml}.
 	 */
 	@Test(timeout = 5 * 60000)
+	@TestProperties(knownIssue = true)
+	@TestDepth(2)
 	public void testProfiledFineTuning() throws IOException {
-		if (skipKnownIssues) return;
 		Files.createDirectories(Path.of("/workspace/project/common/utils/results"));
 
 		int embedDim = 64;

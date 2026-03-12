@@ -38,6 +38,7 @@ import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -51,8 +52,8 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 	private final int sampleRate = OutputLine.sampleRate;
 
 	@Test(timeout = 60000)
+	@TestProperties(knownIssue = true)
 	public void loadAggregated() throws IOException {
-		if (skipKnownIssues) return;
 		// Use synthetic audio for testing FFT aggregation
 		WaveData data = WaveData.load(getTestWavFile(440.0, 2.0));
 		PackedCollection eq = data.aggregatedFft(true);

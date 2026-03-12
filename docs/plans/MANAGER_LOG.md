@@ -39,6 +39,134 @@ The platform is pursuing a layered strategy:
 
 ## Planning History
 
+### 2026-03-10 — @TestDepth Standardization and TestSuiteBase Compliance
+
+**Plan:** [`PLAN-20260310-testdepth-standardization.md`](PLAN-20260310-testdepth-standardization.md)
+**Category:** Code Quality
+
+#### What I Investigated
+
+With both the compilation pipeline (3 internals docs) and the ML inference pipeline
+(`ml-inference-pipeline.md`) documentation now complete, I evaluated whether the
+documentation category still has meaningful work before moving on.
+
+**Documentation assessment:**
+
+- **Internals docs:** 20 documents now covering compilation pipeline, ML inference,
+  CellList, expression evaluation, profiling, optimization flags, training/sampling
+  loops, packed collections, and more. Coverage is comprehensive.
+- **Module READMEs:** 31 of 37 modules have READMEs (84%). All existing READMEs are
+  substantive (82+ lines minimum). The 6 missing modules are peripheral: `ml-djl`,
+  `ml-onnx`, `utils-http`, `flowtreeapi`, `graphpersist`, `flowtree-python`.
+- **Memory management:** The prior cycle flagged a standalone internals doc as the
+  next documentation priority. However, `hardware/README.md` already contains 350+
+  lines of detailed memory management documentation covering zero-copy delegation,
+  arena allocation, GC-integrated native memory, memory versioning, argument
+  aggregation, and memory replacement. Creating a separate internals doc would
+  largely duplicate this existing coverage.
+- **Layer-level CLAUDE.md files:** All 6 layer directories have navigation guides.
+  Module-level CLAUDE.md exists for `engine/ml`.
+
+**Conclusion:** The documentation is genuinely excellent. The two critical subsystem
+gaps (compilation pipeline, ML inference) are addressed. Memory management is
+well-covered in its README. The remaining gaps are in peripheral modules that don't
+affect core platform understanding. **It is time to move to Code Quality.**
+
+**Code quality assessment — test infrastructure:**
+
+The investigation revealed a much larger problem than the "minor issue" described in
+earlier planning cycles:
+
+| Metric | Value | Assessment |
+|--------|-------|------------|
+| Total test methods | 1,898 | — |
+| Methods with `@TestDepth` | 99 (5.2%) | **CRITICAL** |
+| Test classes extending `TestSuiteBase` | 248 of 284 (87.3%) | Good |
+| Test classes NOT extending `TestSuiteBase` | 36 (12.7%) | Needs fixing |
+| Expensive tests (60-120s timeout) without `@TestDepth` | 20+ | **CRITICAL** |
+
+The 2026-03-08 cycle described this as "some expensive tests missing `@TestDepth`
+annotations" with "~50% adoption." The actual number is 5.2%. The infrastructure is
+in place (TestSuiteBase adoption is strong at 87%), but the annotation mechanism that
+makes it useful is barely utilized.
+
+**Specific high-impact findings:**
+
+- `EnvelopeTests.java` (studio/music): 14 consecutive test methods with 60-second
+  timeouts, zero `@TestDepth` annotations
+- `GrainTest.java` (studio/music): 3 methods with 120-second timeouts, no annotations
+- `SequenceTest.java` (studio/music): 5+ methods with 60-120s timeouts, no annotations
+- `AggressiveFineTuningTest.java` (studio/compose): Full ML training pipeline tests,
+  no depth annotations
+- `OobleckLayerValidationTest.java` (engine/ml): Model weight loading and layer-by-layer
+  validation, 120s timeout, no annotation
+- `SimilarityOverheadTest.java` (engine/utils): 9 of 10 methods lack annotations despite
+  120s timeouts (the 10th has `@TestDepth(3)` — showing the pattern IS used here)
+
+#### Why This Task
+
+This is the first code quality task after two documentation cycles. The documentation
+foundation is strong — moving on is the right call. And within code quality, `@TestDepth`
+standardization is the highest-impact work because:
+
+1. **It directly improves CI performance.** Without depth annotations, CI cannot
+   distinguish quick smoke tests from 2-minute integration tests. Every pipeline run
+   pays the full cost regardless of `AR_TEST_DEPTH` settings.
+
+2. **It's mechanical and low-risk.** Adding annotations and fixing class hierarchy
+   does not change test behavior. The risk of introducing bugs is near zero.
+
+3. **It's well-scoped.** The highest-impact work (Phase 1: annotating timeout-bearing
+   tests) is a focused task that a coding agent can complete in one session. Phases 2
+   and 3 extend naturally.
+
+4. **It advances the self-understanding vision.** Explicit `@TestDepth` annotations
+   make the test suite's cost structure machine-readable. A model analyzing the codebase
+   can understand which tests are expensive and make intelligent decisions about test
+   selection — a prerequisite for any self-testing capability.
+
+#### What Comes Next
+
+After `@TestDepth` standardization:
+
+1. **Code Quality:** Review the 506 TODO/FIXME comments — triage into actionable bugs,
+   performance opportunities, and speculative noise. Remove or address the critical ones
+   (e.g., the known-broken `ImageResource.clip()` method, the lazy memory allocation
+   issue in `PackedCollection`).
+
+2. **Code Quality:** Evaluate the 90 auto-generated method stubs (dead code) in
+   peripheral modules (`HybridJobFactory`, `GraphFileSystem`, `AtomicProtonCloud`).
+   Remove if unused, implement if needed.
+
+3. **Performance/Proof of Value:** With documentation strong and code quality improving,
+   we're approaching readiness for a proof-of-value task. The natural candidate is an
+   ML inference optimization or a new model replication that exercises the compilation
+   pipeline, inference pipeline, and memory management — all now well-documented.
+
+#### Balance Reflection
+
+This is the third planning cycle, and we're moving from Documentation to Code Quality.
+This transition feels right. The documentation investment over the first two cycles was
+substantial — 4 major internals documents, comprehensive module READMEs, layer-level
+CLAUDE.md navigation — and the payoff is already visible: each subsequent investigation
+is faster because the docs exist.
+
+The `@TestDepth` gap is more severe than previously estimated (5.2% vs. the "~50%"
+mentioned in the 2026-03-08 cycle). This likely happened because the annotation was
+added to the framework relatively recently and adoption hasn't kept pace with test
+growth. The fix is straightforward and the impact on CI is immediate.
+
+After this cycle, I expect one more code quality pass (TODO triage, dead code cleanup)
+before we're ready for performance or proof-of-value work. The foundation is getting
+solid — documentation is strong, and once the test infrastructure is properly annotated,
+the platform will be in excellent shape for ambitious work.
+
+We're getting close to the inflection point where we can shift from "making the
+foundation solid" to "pushing the boundaries of what the platform can do." The next
+planning cycle should seriously evaluate whether we're ready for a proof-of-value task.
+
+---
+
 ### 2026-03-09 — Document the ML Inference Pipeline Internals
 
 **Plan:** [`PLAN-20260309-ml-inference-pipeline-docs.md`](PLAN-20260309-ml-inference-pipeline-docs.md)

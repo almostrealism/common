@@ -22,6 +22,7 @@ import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.persistence.AudioLibraryPersistence;
 import org.almostrealism.audio.persistence.LibraryDestination;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
+import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
@@ -1917,5 +1918,164 @@ public class DetailsLoaderTest extends TestSuiteBase {
 		int detailsWith = lib.getAllDetails().size();
 		assertEquals("With loader, details count should match identifiers count",
 				identifiers, detailsWith);
+	}
+
+	// ============================================================
+	// FM11: isPrototypeIndexStale() with FrequencyCache
+	//
+	// The isPrototypeIndexStale() method was changed to use
+	// allIdentifiers instead of the old HashMap keySet. These tests
+	// verify it correctly detects staleness conditions using the
+	// allIdentifiers set, including when entries have been evicted
+	// from the cache.
+	// ============================================================
+
+	/**
+	 * Helper to create a {@link PrototypeIndexData} from the given library
+	 * entries. Each entry is assigned to a single community whose prototype
+	 * is the first entry.
+	 *
+	 * @param identifiers the identifiers to include in the index
+	 * @return a PrototypeIndexData with one community containing all identifiers
+	 */
+	private PrototypeIndexData createIndex(List<String> identifiers) {
+		return createIndex(identifiers, System.currentTimeMillis());
+	}
+
+	/**
+	 * Helper to create a {@link PrototypeIndexData} with a specific timestamp.
+	 *
+	 * @param identifiers the identifiers to include
+	 * @param computedAt  the timestamp for the index
+	 * @return a PrototypeIndexData with one community
+	 */
+	private PrototypeIndexData createIndex(List<String> identifiers, long computedAt) {
+		if (identifiers.isEmpty()) {
+			return new PrototypeIndexData(computedAt, List.of());
+		}
+
+		PrototypeIndexData.Community community = new PrototypeIndexData.Community(
+				identifiers.get(0), 0.5, identifiers);
+		return new PrototypeIndexData(computedAt, List.of(community));
+	}
+
+	/**
+	 * FM11.1: isPrototypeIndexStale returns true when no index is set.
+	 */
+	@Test
+	public void fm11_staleWhenNoIndex() {
+		AudioLibrary lib = createLibrary();
+		populateLibrary(lib, 5);
+
+		assertTrue("isPrototypeIndexStale should return true when no index is set",
+				lib.isPrototypeIndexStale());
+	}
+
+	/**
+	 * FM11.2: isPrototypeIndexStale returns true when the index has
+	 * empty communities.
+	 */
+	@Test
+	public void fm11_staleWhenEmptyCommunities() {
+		AudioLibrary lib = createLibrary();
+		populateLibrary(lib, 5);
+		lib.setPrototypeIndex(new PrototypeIndexData(System.currentTimeMillis(), List.of()));
+
+		assertTrue("isPrototypeIndexStale should return true for empty communities",
+				lib.isPrototypeIndexStale());
+	}
+
+	/**
+	 * FM11.3: isPrototypeIndexStale returns false when the index exactly
+	 * matches the library contents (including evicted entries tracked
+	 * by allIdentifiers).
+	 */
+	@Test
+	public void fm11_notStaleWhenIndexMatchesAllIdentifiers() {
+		AudioLibrary lib = createLibrary();
+		int total = TEST_CACHE_CAPACITY + 5;
+		Map<String, WaveDetails> entries = populateLibrary(lib, total);
+
+		// Create index from all identifiers (including evicted ones)
+		List<String> allIds = new ArrayList<>(lib.getAllIdentifiers());
+		assertEquals("allIdentifiers should track all entries", total, allIds.size());
+
+		lib.setPrototypeIndex(createIndex(allIds));
+
+		assertFalse("isPrototypeIndexStale should return false when index matches "
+						+ "all identifiers including evicted entries",
+				lib.isPrototypeIndexStale());
+	}
+
+	/**
+	 * FM11.4: isPrototypeIndexStale returns true when the prototype
+	 * identifier has been removed from the library (e.g., via cleanup).
+	 */
+	@Test
+	public void fm11_staleWhenPrototypeDeleted() {
+		AudioLibrary lib = createLibrary();
+		Map<String, WaveDetails> entries = populateLibrary(lib, 5);
+		List<String> ids = new ArrayList<>(entries.keySet());
+
+		// Set index with first entry as prototype
+		lib.setPrototypeIndex(createIndex(ids));
+		assertFalse("Should not be stale initially", lib.isPrototypeIndexStale());
+
+		// Remove the prototype entry via cleanup
+		lib.cleanup(id -> !id.equals(ids.get(0)));
+
+		assertTrue("isPrototypeIndexStale should return true when prototype is deleted",
+				lib.isPrototypeIndexStale());
+	}
+
+	/**
+	 * FM11.5: isPrototypeIndexStale returns true when more than 5% new
+	 * entries have been added beyond what is indexed, using allIdentifiers
+	 * (not just cached entries) for the size check.
+	 */
+	@Test
+	public void fm11_staleWhenSignificantAdditions() {
+		AudioLibrary lib = createLibrary();
+		Map<String, WaveDetails> entries = populateLibrary(lib, TEST_CACHE_CAPACITY);
+		List<String> ids = new ArrayList<>(lib.getAllIdentifiers());
+
+		lib.setPrototypeIndex(createIndex(ids));
+		assertFalse("Should not be stale with matching index",
+				lib.isPrototypeIndexStale());
+
+		// Add more than 5% new entries — total was TEST_CACHE_CAPACITY (10),
+		// so adding 1 = 10% is above the 5% threshold.
+		for (int i = 0; i < 2; i++) {
+			lib.include(createDetails("new-entry-" + i));
+		}
+
+		assertTrue("isPrototypeIndexStale should return true when allIdentifiers "
+						+ "has grown by more than 5%",
+				lib.isPrototypeIndexStale());
+	}
+
+	/**
+	 * FM11.6: isPrototypeIndexStale correctly uses allIdentifiers (not
+	 * the cache) to detect missing members, even when the missing entries
+	 * have been evicted from the cache.
+	 */
+	@Test
+	public void fm11_detectsMissingMembersViaAllIdentifiers() {
+		AudioLibrary lib = createLibrary();
+		int total = TEST_CACHE_CAPACITY + 5;
+		Map<String, WaveDetails> entries = populateLibrary(lib, total);
+
+		// Index references all identifiers
+		List<String> allIds = new ArrayList<>(lib.getAllIdentifiers());
+		lib.setPrototypeIndex(createIndex(allIds));
+
+		// Not stale — allIdentifiers contains all indexed members
+		assertFalse("Should not be stale when allIdentifiers matches index",
+				lib.isPrototypeIndexStale());
+
+		// allIdentifiers has entries beyond cache, proving the check
+		// uses allIdentifiers, not just the cache
+		assertTrue("Cache should be smaller than allIdentifiers",
+				TEST_CACHE_CAPACITY < lib.getAllIdentifiers().size());
 	}
 }

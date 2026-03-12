@@ -33,6 +33,7 @@ import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.KeyUtils;
+import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
 import java.io.File;
@@ -61,6 +62,7 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 	}
 
 	@Test(timeout = 300_000)
+	@TestDepth(1)
 	public void genomesFromPopulation() {
 		WaveOutput out = new WaveOutput(new File("layered-organ-pop-test.wav"));
 		AudioScenePopulation pop = population(pattern(1, 1), new MultiChannelAudioOutput(out));
@@ -84,6 +86,7 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 	}
 
 	@Test(timeout = 600_000)
+	@TestDepth(1)
 	public void genomesFromPopulationHealth() {
 		AtomicInteger index = new AtomicInteger();
 

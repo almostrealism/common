@@ -436,6 +436,17 @@ public class AudioLibrary implements ConsoleFeatures {
 				.filter(Objects::nonNull);
 	}
 
+	/**
+	 * Returns all {@link WaveDetails} in this library as a collection, including
+	 * entries that have been evicted from the in-memory cache.
+	 *
+	 * <p>This is a convenience method that collects the results of {@link #allDetails()}
+	 * into an unmodifiable list. Like {@code allDetails()}, it uses passthrough loading
+	 * to avoid cache thrashing.</p>
+	 *
+	 * @return a collection of all WaveDetails (entries that cannot be loaded are excluded)
+	 * @see #allDetails()
+	 */
 	public Collection<WaveDetails> getAllDetails() {
 		return allDetails().toList();
 	}
@@ -878,7 +889,13 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	public IncrementalSimilarityComputation.Result computeAllSimilaritiesIncremental(
 			double approximateThreshold) {
-		List<WaveDetails> all = new ArrayList<>(getAllDetails());
+		// Use getOrLoad (not passthrough) so that similarity writes by
+		// IncrementalSimilarityComputation persist in the cache, consistent
+		// with computeSimilarities().
+		List<WaveDetails> all = new ArrayList<>(allIdentifiers).stream()
+				.map(this::getOrLoad)
+				.filter(Objects::nonNull)
+				.collect(Collectors.toList());
 		IncrementalSimilarityComputation computation =
 				new IncrementalSimilarityComputation(factory, all, approximateThreshold);
 		IncrementalSimilarityComputation.Result result = computation.compute();

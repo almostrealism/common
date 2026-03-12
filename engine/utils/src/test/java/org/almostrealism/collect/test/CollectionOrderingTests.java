@@ -20,13 +20,14 @@ import io.almostrealism.collect.RepeatTraversalOrdering;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 public class CollectionOrderingTests extends TestSuiteBase {
 	@Test(timeout = 10000)
+	@TestProperties(knownIssue = true)
 	public void repeatOrdering() {
-		if (skipKnownIssues) return;
 
 		PackedCollection root = pack(2.0, 3.0, 1.0);
 		PackedCollection repeated = new PackedCollection(shape(4, 3), 1,
@@ -61,8 +62,8 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 10000)
+	@TestProperties(knownIssue = true)
 	public void compactOrdering() {
-		if (skipKnownIssues) return;
 
 		PackedCollection values = pack(2.0, 3.0);
 
@@ -78,8 +79,8 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 10000)
+	@TestProperties(knownIssue = true)
 	public void maskOrdering() {
-		if (skipKnownIssues) return;
 
 		PackedCollection values = pack(2.0, 3.0);
 		PackedCollection indices = pack(0, 3);

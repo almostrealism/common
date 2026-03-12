@@ -35,6 +35,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.GradientTestFeatures;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -151,8 +152,8 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 	}
 
 	@Test(timeout = 60000)
+	@TestProperties(knownIssue = true)
 	public void normComputationDeltaMedium() {
-		if (skipKnownIssues) return;
 
 		int c = 28;
 		int v = 28 * 28;
@@ -483,8 +484,8 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 
 	@Test(timeout = 60000)
 	@TestDepth(3)
+	@TestProperties(knownIssue = true)
 	public void backwardsTrainableProgressive() throws IOException {
-		if (skipKnownIssues) return;
 
 		int c = 200;
 		int groups = 4;
@@ -506,8 +507,8 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 
 	@Test(timeout = 10 * 60000)
 	@TestDepth(3)
+	@TestProperties(knownIssue = true)
 	public void backwardsTrainableVeryLarge2() throws IOException {
-		if (skipKnownIssues) return;
 
 		int c = 3456;
 		int groups = 4;
@@ -516,9 +517,8 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 
 	@Test(timeout = 60000)
 	@TestDepth(3)
+	@TestProperties(knownIssue = true, longRunning = true)
 	public void backwardsTrainableVeryLarge3() throws IOException {
-		if (skipKnownIssues) return;
-		if (skipLongTests) return;
 
 		int c = 21952;
 		int groups = 4;

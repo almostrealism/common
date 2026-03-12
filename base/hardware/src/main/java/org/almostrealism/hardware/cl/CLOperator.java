@@ -19,7 +19,6 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.concurrent.Semaphore;
-import java.lang.ref.Reference;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
@@ -32,6 +31,7 @@ import org.jocl.Sizeof;
 import org.jocl.cl_event;
 import org.jocl.cl_kernel;
 
+import java.lang.ref.Reference;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;

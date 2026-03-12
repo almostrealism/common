@@ -30,6 +30,7 @@ import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -132,8 +133,8 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 	}
 
 	@Test(timeout = 30000)
+	@TestProperties(knownIssue = true)
 	public void dense() {
-		if (skipKnownIssues) return;
 
 		int size = 1800;
 		int nodes = 10;

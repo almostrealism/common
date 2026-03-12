@@ -34,6 +34,7 @@ import org.almostrealism.audio.tone.KeyboardTuned;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
 import org.junit.Test;
@@ -45,8 +46,8 @@ public class AudioSynthesizerTests extends TestSuiteBase {
 	private final LibraryDestination library = new LibraryDestination("model");
 
 	@Test(timeout = 120_000)
+	@TestProperties(knownIssue = true)
 	public void generate() {
-		if (skipKnownIssues) return;
 		double lfo1 = 0.5;
 		double lfo2 = 1.1;
 		PackedCollection levelData = new PackedCollection(shape(2, 10 * OutputLine.sampleRate));

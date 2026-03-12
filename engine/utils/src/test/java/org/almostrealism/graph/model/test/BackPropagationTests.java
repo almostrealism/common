@@ -25,6 +25,7 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -36,8 +37,8 @@ import java.util.stream.IntStream;
 public class BackPropagationTests extends TestSuiteBase {
 
 	@Test(timeout = 120000)
+	@TestProperties(knownIssue = true)
 	public void denseBackwards() {
-		if (skipKnownIssues) return;
 
 		int size = 12;
 		int nodes = 5;
