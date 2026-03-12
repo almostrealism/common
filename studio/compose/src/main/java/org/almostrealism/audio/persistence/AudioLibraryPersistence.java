@@ -77,10 +77,10 @@ import java.util.function.Supplier;
  * AudioLibraryPersistence.loadLibrary(library, "/path/to/library");
  *
  * // Now library.find(identifier) can resolve file paths
- * for (WaveDetails d : library.getAllDetails()) {
+ * library.allDetails().forEach(d -> {
  *     WaveDataProvider provider = library.find(d.getIdentifier());
  *     String filePath = provider != null ? provider.getKey() : "unknown";
- * }
+ * });
  *
  * // Option 2: Load with file tree in one call
  * AudioLibrary library = AudioLibraryPersistence.loadLibrary(
@@ -260,7 +260,7 @@ public class AudioLibraryPersistence {
 	 *
 	 * <p>This is the preferred entry point for loading a library. Without the
 	 * automatic loader wiring, evicted entries become unreachable and operations
-	 * like {@link AudioLibrary#getAllDetails()} or {@link #saveLibrary(AudioLibrary, String)}
+	 * like {@link AudioLibrary#allDetails()} or {@link #saveLibrary(AudioLibrary, String)}
 	 * silently operate on a subset, potentially destroying data on disk.</p>
 	 *
 	 * @param library    the library to populate

@@ -117,7 +117,7 @@ import java.util.stream.Stream;
  * // Start background analysis
  * library.refresh().thenRun(() -> {
  *     // Analysis complete
- *     library.getAllDetails().forEach(d -> {
+ *     library.allDetails().forEach(d -> {
  *         // Get the file path for this sample
  *         WaveDataProvider provider = library.find(d.getIdentifier());
  *         String filePath = provider != null ? provider.getKey() : "unknown";
@@ -367,7 +367,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 *
 	 * <h3>Example (ensuring similarities are computed first)</h3>
 	 * <pre>{@code
-	 * library.getAllDetails().forEach(library::computeSimilarities);
+	 * library.allDetails().forEach(library::computeSimilarities);
 	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
 	 * }</pre>
 	 *
@@ -766,7 +766,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * <h3>Typical usage before prototype discovery</h3>
 	 * <pre>{@code
 	 * // Ensure all pairwise similarities exist before graph construction
-	 * library.getAllDetails().forEach(library::computeSimilarities);
+	 * library.allDetails().forEach(library::computeSimilarities);
 	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
 	 * }</pre>
 	 *
