@@ -106,13 +106,8 @@ public class ScpDownloader implements UserInfo {
 		
 		ScpDownloader.this.streamOpen = true;
 		
-		i: for (int i = 0; i < ScpDownloader.this.retry; i++) {
-			if (i > 0) System.out.println("ScpDownloader: Retrying...");
-
-			// ScpFromMessage dependency is not available; SCP transfer is non-functional
-			System.out.println("ScpDownloader: SCP transfer is not supported (ScpFromMessage unavailable)");
-			break;
-		}
+		// ScpFromMessage dependency is not available; SCP transfer is non-functional
+		System.out.println("ScpDownloader: SCP transfer is not supported (ScpFromMessage unavailable)");
 		
 		ScpDownloader.this.streamOpen = false;
 		this.notify();

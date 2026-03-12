@@ -121,7 +121,6 @@ public abstract class HealthComputationAdapter implements AudioHealthComputation
 		out.reset();
 		if (stems != null) stems.forEach(WaveOutput::reset);
 		measures.values().forEach(AudioMeter::reset);
-		out.reset();
 	}
 
 	@Override
