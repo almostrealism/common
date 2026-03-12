@@ -24,6 +24,7 @@ import org.almostrealism.audio.persistence.AudioLibraryPersistence;
 import org.almostrealism.audio.persistence.LibraryDestination;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
+import org.almostrealism.audio.similarity.SimilarityNode;
 import org.almostrealism.graph.algorithm.GraphFeatures;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -211,10 +212,10 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 					.orElse(-1);
 
 			if (prototypeIdx >= 0) {
-				WaveDetails details = graph.nodeAt(prototypeIdx);
+				SimilarityNode node = graph.nodeAt(prototypeIdx);
 				prototypes.add(new Prototype(
 						communityId,
-						details,
+						node,
 						ranks[prototypeIdx],
 						members.size()
 				));
@@ -228,7 +229,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		int displayCount = Math.min(prototypes.size(), maxClusters);
 		for (int i = 0; i < displayCount; i++) {
 			Prototype p = prototypes.get(i);
-			String id = p.details.getIdentifier();
+			String id = p.node.getIdentifier();
 			String filePath = resolveFilePath(id);
 			String displayName = filePath != null ? getDisplayName(filePath) : id;
 
@@ -339,7 +340,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		}
 	}
 
-	record Prototype(int communityId, WaveDetails details, double centrality, int communitySize) {}
+	record Prototype(int communityId, SimilarityNode node, double centrality, int communitySize) {}
 
 	// ── Reusable API for in-process callers ──────────────────────────────
 
@@ -454,17 +455,17 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 			if (prototypeIdx < 0) continue;
 
-			WaveDetails details = graph.nodeAt(prototypeIdx);
-			if (details == null || details.getIdentifier() == null) continue;
+			SimilarityNode node = graph.nodeAt(prototypeIdx);
+			if (node == null || node.getIdentifier() == null) continue;
 
 			List<String> memberIds = members.stream()
 					.map(graph::nodeAt)
-					.filter(d -> d != null && d.getIdentifier() != null)
-					.map(WaveDetails::getIdentifier)
+					.filter(n -> n != null && n.getIdentifier() != null)
+					.map(SimilarityNode::getIdentifier)
 					.toList();
 
 			prototypes.add(new PrototypeResult(
-					details.getIdentifier(),
+					node.getIdentifier(),
 					ranks[prototypeIdx],
 					memberIds.size(),
 					memberIds));

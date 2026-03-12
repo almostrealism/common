@@ -146,7 +146,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	public static double HIGH_PRIORITY = 1.0;
 
 	/** Default maximum number of {@link WaveDetails} held in the in-memory cache. */
-	public static int DEFAULT_DETAIL_CACHE_CAPACITY = 10000;
+	public static int DEFAULT_DETAIL_CACHE_CAPACITY = 1000;
 
 	/** The file tree providing access to audio files in the library directory. */
 	private final FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root;
@@ -376,7 +376,18 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @see #computeSimilarities(WaveDetails)
 	 */
 	public AudioSimilarityGraph toSimilarityGraph() {
-		return new AudioSimilarityGraph(allDetails().toList());
+		List<WaveDetails> batch = new ArrayList<>();
+
+		for (String id : completeIdentifiers) {
+			WaveDetails details = resolveDetails(id);
+			if (details != null) {
+				batch.add(details);
+			}
+		}
+
+		AudioSimilarityGraph graph = new AudioSimilarityGraph(batch);
+		batch.clear();
+		return graph;
 	}
 
 	/**
@@ -767,25 +778,40 @@ public class AudioLibrary implements ConsoleFeatures {
 		if (details == null) return null;
 
 		try {
-			List<WaveDetails> targets = allDetails()
-					.filter(d -> !Objects.equals(d.getIdentifier(), details.getIdentifier()))
-					.filter(d -> !details.getSimilarities().containsKey(d.getIdentifier()))
-					.collect(Collectors.toList());
+			List<String> targetIds = new ArrayList<>(completeIdentifiers);
+			targetIds.remove(details.getIdentifier());
 
-			double[] similarities = factory.batchSimilarity(details, targets);
+			int batchSize = WaveDetailsFactory.SIMILARITY_BATCH_SIZE;
 
-			for (int i = 0; i < targets.size(); i++) {
-				WaveDetails target = targets.get(i);
-				double similarity = similarities[i];
+			for (int start = 0; start < targetIds.size(); start += batchSize) {
+				int end = Math.min(start + batchSize, targetIds.size());
 
-				if (Math.abs(similarity - 1.0) < 1e-5) {
-					warn("Identical features for distinct files");
+				List<WaveDetails> batch = new ArrayList<>(end - start);
+				for (int i = start; i < end; i++) {
+					String id = targetIds.get(i);
+					if (details.getSimilarities().containsKey(id)) continue;
+
+					WaveDetails target = resolveDetails(id);
+					if (target != null) batch.add(target);
 				}
 
-				details.getSimilarities().put(target.getIdentifier(), similarity);
+				if (batch.isEmpty()) continue;
 
-				if (details.getIdentifier() != null)
-					target.getSimilarities().put(details.getIdentifier(), similarity);
+				double[] similarities = factory.batchSimilarity(details, batch);
+
+				for (int i = 0; i < batch.size(); i++) {
+					WaveDetails target = batch.get(i);
+					double similarity = similarities[i];
+
+					if (Math.abs(similarity - 1.0) < 1e-5) {
+						warn("Identical features for distinct files");
+					}
+
+					details.getSimilarities().put(target.getIdentifier(), similarity);
+
+					if (details.getIdentifier() != null)
+						target.getSimilarities().put(details.getIdentifier(), similarity);
+				}
 			}
 		} catch (Exception e) {
 			log("Failed to load similarities for " + details.getIdentifier() +
