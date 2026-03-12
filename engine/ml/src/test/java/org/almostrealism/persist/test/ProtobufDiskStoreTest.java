@@ -53,7 +53,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	}
 
 	/** Insert a record, retrieve it, verify equality. */
-	@Test
+	@Test(timeout = 30000)
 	public void putGetRoundTrip() {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
@@ -72,7 +72,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	}
 
 	/** Insert, delete, verify get returns null. */
-	@Test
+	@Test(timeout = 30000)
 	public void deleteRemovesRecord() {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
@@ -90,7 +90,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	 * Write records, close the store, create a fresh instance,
 	 * verify all records are loadable.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void persistenceAcrossRestart() {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
@@ -112,7 +112,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	 * Insert records exceeding the memory budget and verify the
 	 * FrequencyCache size stays within the configured capacity.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void memoryCap() {
 		int batchSize = 1024;
 		long maxMemory = 4096;
@@ -153,7 +153,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	 * Insert N records, pairwise scan, verify exactly N*(N-1)/2
 	 * pairs visited.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void pairwiseScanVisitsAllPairs() {
 		int batchSize = 256;
 		long maxMemory = 4096;
@@ -185,7 +185,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	 * Verify that pairwise scan does not load the same batch an
 	 * excessive number of times.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void pairwiseScanDiskIO() {
 		int batchSize = 128;
 		long maxMemory = 4096;
@@ -220,7 +220,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	}
 
 	/** Insert N records, scan, verify all N visited. */
-	@Test
+	@Test(timeout = 30000)
 	public void scanVisitsAllRecords() {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
@@ -246,7 +246,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	 * Insert enough records to span multiple batch files,
 	 * verify all are retrievable.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void multipleRecordsAcrossBatches() {
 		int batchSize = 128;
 
