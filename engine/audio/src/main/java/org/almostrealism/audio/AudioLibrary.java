@@ -889,7 +889,13 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	public IncrementalSimilarityComputation.Result computeAllSimilaritiesIncremental(
 			double approximateThreshold) {
-		List<WaveDetails> all = new ArrayList<>(getAllDetails());
+		// Use getOrLoad (not passthrough) so that similarity writes by
+		// IncrementalSimilarityComputation persist in the cache, consistent
+		// with computeSimilarities().
+		List<WaveDetails> all = new ArrayList<>(allIdentifiers).stream()
+				.map(this::getOrLoad)
+				.filter(Objects::nonNull)
+				.collect(Collectors.toList());
 		IncrementalSimilarityComputation computation =
 				new IncrementalSimilarityComputation(factory, all, approximateThreshold);
 		IncrementalSimilarityComputation.Result result = computation.compute();
