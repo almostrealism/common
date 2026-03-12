@@ -153,10 +153,10 @@ public class AudioLibraryPersistence {
 	 */
 	public static void saveLibrary(AudioLibrary library, String dataPrefix) {
 		int identifierCount = library.getAllIdentifiers().size();
-		Collection<WaveDetails> loadable = library.getAllDetails();
-		if (loadable.size() < identifierCount) {
+		long loadableCount = library.allDetails().count();
+		if (loadableCount < identifierCount) {
 			throw new IllegalStateException(
-					"Refusing to save: only " + loadable.size() + " of " +
+					"Refusing to save: only " + loadableCount + " of " +
 					identifierCount + " entries are loadable. " +
 					"Configure a details loader via setDetailsLoader() before saving " +
 					"to prevent data loss.");
@@ -175,7 +175,7 @@ public class AudioLibraryPersistence {
 
 	public static void saveLibrary(AudioLibrary library, boolean includeAudio, Supplier<OutputStream> out) throws IOException {
 		Audio.AudioLibraryData.Builder data = Audio.AudioLibraryData.newBuilder();
-		List<WaveDetails> details = new ArrayList<>(library.getAllDetails());
+		List<WaveDetails> details = new ArrayList<>(library.allDetails().toList());
 
 		int byteCount = 0;
 
@@ -441,7 +441,12 @@ public class AudioLibraryPersistence {
 	 */
 	public static WaveDetails loadSingleDetail(String dataPrefix, String identifier) {
 		try {
-			return loadSingleDetail(new LibraryDestination(dataPrefix).in(), identifier);
+			long start = System.currentTimeMillis();
+			WaveDetails result = loadSingleDetail(new LibraryDestination(dataPrefix).in(), identifier);
+			long elapsed = System.currentTimeMillis() - start;
+			Console.root().features(AudioLibraryPersistence.class)
+					.log("loadSingleDetail(" + identifier + ") took " + elapsed + "ms");
+			return result;
 		} catch (IOException e) {
 			Console.root().features(AudioLibraryPersistence.class)
 					.warn("Failed to load WaveDetails for " + identifier + ": " + e.getMessage());

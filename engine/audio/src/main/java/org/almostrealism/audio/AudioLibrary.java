@@ -86,17 +86,8 @@ import java.util.stream.Stream;
  * <h2>Internal Data Structures</h2>
  * <ul>
  *   <li><b>identifiers</b> map: key (file path) to identifier (MD5 hash)</li>
- *   <li><b>detailsCache</b>: frequency-biased cache of identifier to {@link WaveDetails},
- *       capped at {@link #DEFAULT_DETAIL_CACHE_CAPACITY} entries</li>
- *   <li><b>allIdentifiers</b>: complete set of all known identifiers (including evicted)</li>
+ *   <li><b>info</b> map: identifier to {@link WaveDetails}</li>
  * </ul>
- *
- * <h2>Memory Management</h2>
- * <p>To avoid excessive memory usage with large libraries, only a bounded number of
- * {@link WaveDetails} entries are held in memory at any time. Evicted entries can be
- * reloaded from protobuf storage on disk via the {@link #setDetailsLoader(Function)}
- * callback. The eviction policy uses {@link FrequencyCache} to retain the most
- * frequently and recently accessed entries.</p>
  *
  * <h2>Resolving Identifier to File Path</h2>
  * <p>To get the file path for a given identifier:</p>
@@ -154,12 +145,8 @@ public class AudioLibrary implements ConsoleFeatures {
 	public static double DEFAULT_PRIORITY = 0.5;
 	public static double HIGH_PRIORITY = 1.0;
 
-	/**
-	 * Default maximum number of {@link WaveDetails} entries held in memory.
-	 * Entries beyond this limit are evicted from the in-memory cache and
-	 * reloaded from protobuf on disk when needed.
-	 */
-	public static int DEFAULT_DETAIL_CACHE_CAPACITY = 500;
+	/** Default maximum number of {@link WaveDetails} held in the in-memory cache. */
+	public static int DEFAULT_DETAIL_CACHE_CAPACITY = 10000;
 
 	/** The file tree providing access to audio files in the library directory. */
 	private final FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root;
@@ -176,45 +163,33 @@ public class AudioLibrary implements ConsoleFeatures {
 
 	/**
 	 * Frequency-biased cache of {@link WaveDetails} keyed by content identifier.
-	 * <p>This cache holds up to {@link #DEFAULT_DETAIL_CACHE_CAPACITY} entries
-	 * in memory. Evicted entries can be reloaded from protobuf on disk via
-	 * the {@link #detailsLoader}. The eviction policy blends access frequency
-	 * (40%) and recency (60%) to keep the most useful entries resident.</p>
+	 * Only a bounded number of entries are held in memory; evicted entries can
+	 * be reloaded from protobuf via the {@link #detailsLoader}.
 	 */
 	private final FrequencyCache<String, WaveDetails> detailsCache;
 
 	/**
-	 * Complete set of all known content identifiers, including entries that
-	 * have been evicted from the {@link #detailsCache}. This allows the library
-	 * to know about all entries even when only a subset is in memory.
+	 * Set of content identifiers whose {@link WaveDetails} are known to have
+	 * both freqData and featureData populated. This set is the authoritative
+	 * record of completeness and is checked by {@link #refresh()} to avoid
+	 * loading evicted entries from disk just to check their status.
 	 */
-	private final Set<String> allIdentifiers;
-
-	/**
-	 * Optional loader for restoring evicted {@link WaveDetails} from disk.
-	 * <p>When a requested identifier is in {@link #allIdentifiers} but not in
-	 * the {@link #detailsCache}, this function is called to reload the entry
-	 * from protobuf storage. Callers should set this via
-	 * {@link #setDetailsLoader(Function)} after loading the library.</p>
-	 */
-	private Function<String, WaveDetails> detailsLoader;
+	private final Set<String> completeIdentifiers;
 
 	private final WaveDetailsFactory factory;
 	private final PriorityBlockingQueue<WaveDetailsJob> queue;
 	private int totalJobs;
 
+	/**
+	 * Optional loader for restoring evicted {@link WaveDetails} from disk.
+	 * When a requested identifier is not in the cache, this function is
+	 * called to reload it from protobuf storage.
+	 */
+	private Function<String, WaveDetails> detailsLoader;
+
 	private DoubleConsumer progressListener;
 	private Consumer<Exception> errorListener;
 	private SuspendableThreadPoolExecutor executor;
-
-	/**
-	 * Monotonically increasing version counter for similarity data changes.
-	 * <p>Incremented whenever similarity scores are computed or reset through
-	 * this library's methods. External systems (e.g., auto-save) can compare
-	 * this value against a previously observed version to detect whether
-	 * similarity data has changed and needs to be persisted.</p>
-	 */
-	private volatile long similaritiesVersion;
 
 	/**
 	 * The most recent {@link CompletableFuture} returned by {@link #refresh()}.
@@ -237,7 +212,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		this.sampleRate = sampleRate;
 		this.identifiers = new HashMap<>();
 		this.detailsCache = new FrequencyCache<>(DEFAULT_DETAIL_CACHE_CAPACITY, 0.4);
-		this.allIdentifiers = new HashSet<>();
+		this.completeIdentifiers = new HashSet<>();
 		this.factory = new WaveDetailsFactory(sampleRate);
 		this.queue = new PriorityBlockingQueue<>(100,
 				Comparator.comparing(WaveDetailsJob::getPriority).reversed());
@@ -321,144 +296,51 @@ public class AudioLibrary implements ConsoleFeatures {
 	public WaveDetailsFactory getWaveDetailsFactory() { return factory; }
 
 	/**
-	 * Sets the loader function used to restore evicted {@link WaveDetails} from
-	 * protobuf storage on disk. The function accepts a content identifier and
-	 * returns the corresponding {@link WaveDetails}, or null if not found.
+	 * Sets the loader function used to restore evicted {@link WaveDetails}
+	 * from protobuf storage on disk.
 	 *
-	 * <p>This should be set after loading the library from protobuf, e.g.:</p>
-	 * <pre>{@code
-	 * AudioLibraryPersistence.loadLibrary(library, dataPrefix);
-	 * library.setDetailsLoader(id ->
-	 *     AudioLibraryPersistence.loadSingleDetail(dataPrefix, id));
-	 * }</pre>
-	 *
-	 * @param detailsLoader function to load a WaveDetails by identifier, or null to disable
+	 * @param detailsLoader function that loads a WaveDetails by identifier, or null to disable
 	 */
 	public void setDetailsLoader(Function<String, WaveDetails> detailsLoader) {
 		this.detailsLoader = detailsLoader;
 	}
 
 	/**
-	 * Returns the current similarity data version counter. This counter is
-	 * incremented whenever similarity scores are computed, reset, or otherwise
-	 * modified through this library's methods. External systems (e.g., auto-save)
-	 * can compare this value against a previously observed version to detect
-	 * changes that need to be persisted.
+	 * Returns the set of all known content identifiers that have complete data.
 	 *
-	 * @return the current similarities version counter
+	 * @return an unmodifiable view of all complete identifiers
 	 */
-	public long getSimilaritiesVersion() {
-		return similaritiesVersion;
+	public Set<String> getAllIdentifiers() {
+		return Collections.unmodifiableSet(completeIdentifiers);
+	}
+
+	public int getTotalJobs() { return totalJobs; }
+	public int getPendingJobs() { return queue.size(); }
+
+	public Stream<WaveDetails> allDetails() {
+		return new ArrayList<>(completeIdentifiers).stream()
+				.map(this::resolveDetails)
+				.filter(Objects::nonNull);
 	}
 
 	/**
-	 * Manually marks similarity data as changed, incrementing the version counter.
-	 * Use this when similarity maps are modified directly outside of the library's
-	 * own methods (e.g., via {@link WaveDetails#getSimilarities()}).
+	 * Retrieves a {@link WaveDetails} by identifier, checking the in-memory
+	 * cache first and falling back to the {@link #detailsLoader} if set.
+	 * Loaded entries are inserted into the cache.
 	 */
-	public void markSimilaritiesChanged() {
-		similaritiesVersion++;
-	}
-
-	/**
-	 * Retrieves a {@link WaveDetails} by identifier, first checking the in-memory
-	 * cache and falling back to the {@link #detailsLoader} if set. Loaded entries
-	 * are inserted into the cache.
-	 *
-	 * @param identifier the content identifier to look up
-	 * @return the WaveDetails, or null if not found in cache or on disk
-	 */
-	private WaveDetails getOrLoad(String identifier) {
-		return resolveDetails(identifier, true);
-	}
-
-	/**
-	 * Retrieves a {@link WaveDetails} by identifier without inserting loaded
-	 * entries into the cache. This avoids cache thrashing during bulk iteration
-	 * (e.g., saving or building similarity graphs over the entire library).
-	 *
-	 * <p>Entries already in the cache are returned directly (and their access
-	 * stats updated). Entries not in the cache are loaded from disk via the
-	 * {@link #detailsLoader} but not cached, so they do not evict other
-	 * entries.</p>
-	 *
-	 * @param identifier the content identifier to look up
-	 * @return the WaveDetails, or null if not found
-	 */
-	private WaveDetails getOrLoadPassthrough(String identifier) {
-		return resolveDetails(identifier, false);
-	}
-
-	/**
-	 * Shared implementation for retrieving a {@link WaveDetails} by identifier.
-	 * Checks the in-memory cache first, then falls back to the
-	 * {@link #detailsLoader} if available.
-	 *
-	 * @param identifier   the content identifier to look up
-	 * @param cacheOnLoad  if true, loaded entries are inserted into the cache;
-	 *                     if false, they are returned without caching (passthrough)
-	 * @return the WaveDetails, or null if not found
-	 */
-	private WaveDetails resolveDetails(String identifier, boolean cacheOnLoad) {
+	private WaveDetails resolveDetails(String identifier) {
 		WaveDetails cached = detailsCache.get(identifier);
 		if (cached != null) return cached;
 
 		if (detailsLoader != null) {
 			WaveDetails loaded = detailsLoader.apply(identifier);
 			if (loaded != null) {
-				if (cacheOnLoad) {
-					detailsCache.put(identifier, loaded);
-				}
+				detailsCache.put(identifier, loaded);
 				return loaded;
 			}
 		}
 
 		return null;
-	}
-
-	public int getTotalJobs() { return totalJobs; }
-	public int getPendingJobs() { return queue.size(); }
-
-	/**
-	 * Returns a stream of all {@link WaveDetails} in this library, including
-	 * entries that have been evicted from the in-memory cache.
-	 *
-	 * <p>This method uses passthrough loading to avoid cache thrashing: entries
-	 * not currently in the cache are loaded from disk via the details loader
-	 * but are not inserted into the cache. This prevents a full iteration from
-	 * evicting all cached entries.</p>
-	 *
-	 * @return a stream of all WaveDetails (entries that cannot be loaded are excluded)
-	 */
-	public Stream<WaveDetails> allDetails() {
-		return new ArrayList<>(allIdentifiers).stream()
-				.map(this::getOrLoadPassthrough)
-				.filter(Objects::nonNull);
-	}
-
-	/**
-	 * Returns all {@link WaveDetails} in this library as a collection, including
-	 * entries that have been evicted from the in-memory cache.
-	 *
-	 * <p>This is a convenience method that collects the results of {@link #allDetails()}
-	 * into an unmodifiable list. Like {@code allDetails()}, it uses passthrough loading
-	 * to avoid cache thrashing.</p>
-	 *
-	 * @return a collection of all WaveDetails (entries that cannot be loaded are excluded)
-	 * @see #allDetails()
-	 */
-	public Collection<WaveDetails> getAllDetails() {
-		return allDetails().toList();
-	}
-
-	/**
-	 * Returns the set of all known content identifiers, including entries
-	 * that have been evicted from the in-memory cache.
-	 *
-	 * @return an unmodifiable view of all known identifiers
-	 */
-	public Set<String> getAllIdentifiers() {
-		return Collections.unmodifiableSet(allIdentifiers);
 	}
 
 	/**
@@ -494,7 +376,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @see #computeSimilarities(WaveDetails)
 	 */
 	public AudioSimilarityGraph toSimilarityGraph() {
-		return new AudioSimilarityGraph(getAllDetails());
+		return new AudioSimilarityGraph(allDetails().toList());
 	}
 
 	/**
@@ -509,8 +391,8 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @see #find(String)
 	 */
 	public WaveDetails get(String identifier) {
-		if (!allIdentifiers.contains(identifier)) return null;
-		return getOrLoad(identifier);
+		if (!completeIdentifiers.contains(identifier)) return null;
+		return resolveDetails(identifier);
 	}
 
 	/**
@@ -567,8 +449,10 @@ public class AudioLibrary implements ConsoleFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		allIdentifiers.add(details.getIdentifier());
 		detailsCache.put(details.getIdentifier(), details);
+		if (isComplete(details)) {
+			completeIdentifiers.add(details.getIdentifier());
+		}
 	}
 
 	public Optional<WaveDetails> getDetailsNow(String key) {
@@ -639,14 +523,19 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @return  {@link CompletableFuture} with the {@link WaveDetails} for the given provider.
 	 */
 	protected CompletableFuture<WaveDetails> getDetails(WaveDataProvider provider, boolean persistent, double priority) {
-		WaveDetails existing = getOrLoad(provider.getIdentifier());
+		String id = provider.getIdentifier();
 
-		if (!isComplete(existing)) {
+		if (!completeIdentifiers.contains(id)) {
 			return submitJob(provider, persistent, priority).getFuture();
-		} else {
+		}
+
+		WaveDetails existing = resolveDetails(id);
+		if (existing != null) {
 			existing.setPersistent(persistent || existing.isPersistent());
 			return CompletableFuture.completedFuture(existing);
 		}
+
+		return submitJob(provider, persistent, priority).getFuture();
 	}
 
 	/**
@@ -662,24 +551,19 @@ public class AudioLibrary implements ConsoleFeatures {
 		try {
 			String id = provider.getIdentifier();
 
-			WaveDetails details = getOrLoad(id);
+			WaveDetails details = detailsCache.get(id);
 			if (details == null) {
 				details = computeDetails(provider, null, persistent);
-				if (details != null) {
-					detailsCache.put(id, details);
-				}
+				detailsCache.put(id, details);
 			}
 
-			if (details == null) {
-				return null;
-			}
-
-			allIdentifiers.add(id);
-
-			if (getWaveDetailsFactory().getFeatureProvider() != null
-					&& details.getFeatureData() == null) {
+			if (getWaveDetailsFactory().getFeatureProvider() != null && details.getFeatureData() == null) {
 				details = computeDetails(provider, details, persistent);
 				detailsCache.put(id, details);
+			}
+
+			if (isComplete(details)) {
+				completeIdentifiers.add(id);
 			}
 
 			details.setPersistent(persistent || details.isPersistent());
@@ -718,19 +602,8 @@ public class AudioLibrary implements ConsoleFeatures {
 		return computeSimilarities(getDetailsAwait(provider, false)).getSimilarities();
 	}
 
-	/**
-	 * Clears similarity scores for all entries currently held in the in-memory
-	 * cache and increments the version counter.
-	 *
-	 * <p>Only entries resident in the {@link #detailsCache} are cleared. Entries
-	 * evicted to disk retain their similarity data until reloaded and
-	 * recomputed. This avoids loading all entries from disk (which would thrash
-	 * the cache) and is safe because similarity recomputation overwrites any
-	 * stale values when entries are loaded on demand.</p>
-	 */
 	public void resetSimilarities() {
 		detailsCache.forEach((key, d) -> d.getSimilarities().clear());
-		similaritiesVersion++;
 	}
 
 	protected WaveDetails processJob(WaveDetailsJob job) {
@@ -834,11 +707,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		if (details == null) return null;
 
 		try {
-			// Use getOrLoad (not passthrough) so that targets are cached and
-			// the bidirectional similarity writes persist across calls.
-			List<WaveDetails> targets = new ArrayList<>(allIdentifiers).stream()
-					.map(this::getOrLoad)
-					.filter(Objects::nonNull)
+			List<WaveDetails> targets = allDetails()
 					.filter(d -> !Objects.equals(d.getIdentifier(), details.getIdentifier()))
 					.filter(d -> !details.getSimilarities().containsKey(d.getIdentifier()))
 					.collect(Collectors.toList());
@@ -857,10 +726,6 @@ public class AudioLibrary implements ConsoleFeatures {
 
 				if (details.getIdentifier() != null)
 					target.getSimilarities().put(details.getIdentifier(), similarity);
-			}
-
-			if (!targets.isEmpty()) {
-				similaritiesVersion++;
 			}
 		} catch (Exception e) {
 			log("Failed to load similarities for " + details.getIdentifier() +
@@ -889,18 +754,10 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	public IncrementalSimilarityComputation.Result computeAllSimilaritiesIncremental(
 			double approximateThreshold) {
-		// Use getOrLoad (not passthrough) so that similarity writes by
-		// IncrementalSimilarityComputation persist in the cache, consistent
-		// with computeSimilarities().
-		List<WaveDetails> all = new ArrayList<>(allIdentifiers).stream()
-				.map(this::getOrLoad)
-				.filter(Objects::nonNull)
-				.collect(Collectors.toList());
+		List<WaveDetails> all = allDetails().toList();
 		IncrementalSimilarityComputation computation =
 				new IncrementalSimilarityComputation(factory, all, approximateThreshold);
-		IncrementalSimilarityComputation.Result result = computation.compute();
-		similaritiesVersion++;
-		return result;
+		return computation.compute();
 	}
 
 	public CompletableFuture<Void> refresh() {
@@ -914,11 +771,8 @@ public class AudioLibrary implements ConsoleFeatures {
 				boolean skipped = true;
 
 				try {
-					if (provider == null) return;
-
-					String id = provider.getIdentifier();
-					WaveDetails existing = getOrLoad(id);
-					if (existing != null && isComplete(existing)) return;
+					if (provider == null || completeIdentifiers.contains(provider.getIdentifier()))
+						return;
 
 					// Similarities may no longer be valid if the library is being updated
 					skipped = false;
@@ -948,19 +802,21 @@ public class AudioLibrary implements ConsoleFeatures {
 				.map(WaveDataProvider::getIdentifier).filter(Objects::nonNull)
 				.collect(Collectors.toSet());
 
-		// Collect cached entries that are non-persistent, non-active, and not preserved
-		List<String> toRemove = new ArrayList<>();
-		detailsCache.forEach((key, details) -> {
-			if (!details.isPersistent() && !activeIds.contains(key)
-					&& (preserve == null || !preserve.test(key))) {
-				toRemove.add(key);
-			}
-		});
+		// Exclude persistent entries and those associated with active files
+		// or otherwise explicitly preserved
+		List<String> toRemove = new ArrayList<>(completeIdentifiers).stream()
+				.filter(id -> {
+					WaveDetails d = detailsCache.get(id);
+					return d == null || !d.isPersistent();
+				})
+				.filter(id -> !activeIds.contains(id))
+				.filter(id -> preserve == null || !preserve.test(id))
+				.toList();
 
-		// Remove from both cache and identifier set
-		toRemove.forEach(key -> {
-			detailsCache.evict(key);
-			allIdentifiers.remove(key);
+		// Remove everything else
+		toRemove.forEach(id -> {
+			completeIdentifiers.remove(id);
+			detailsCache.evict(id);
 		});
 	}
 
@@ -984,7 +840,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			return true;
 		}
 
-		Set<String> currentIds = allIdentifiers;
+		Set<String> currentIds = completeIdentifiers;
 		int totalIndexed = 0;
 		int missingMembers = 0;
 
@@ -1008,7 +864,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 
 		// More than 5% new samples added beyond what's indexed
-		int currentSize = allIdentifiers.size();
+		int currentSize = completeIdentifiers.size();
 		if (totalIndexed > 0 && currentSize > totalIndexed * 1.05) {
 			return true;
 		}

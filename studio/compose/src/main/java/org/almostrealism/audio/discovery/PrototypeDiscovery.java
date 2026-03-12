@@ -23,16 +23,22 @@ import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.persistence.AudioLibraryPersistence;
 import org.almostrealism.audio.persistence.LibraryDestination;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
+import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.graph.algorithm.GraphFeatures;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 
 /**
  * Headless console application for discovering prototypical audio samples
@@ -117,7 +123,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		if (library != null) {
 			// Load into the AudioLibrary so we can use find() to resolve paths
 			AudioLibraryPersistence.loadLibrary(library, dataPrefix);
-			library.getAllDetails().stream()
+			library.allDetails()
 					.filter(this::hasFeatures)
 					.forEach(allDetails::add);
 		} else {
@@ -336,6 +342,210 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	}
 
 	record Prototype(int communityId, WaveDetails details, double centrality, int communitySize) {}
+
+	// ── Reusable API for in-process callers ──────────────────────────────
+
+	/**
+	 * Result of prototype discovery for a single community.
+	 *
+	 * @param identifier        content identifier (MD5) of the prototype sample
+	 * @param centrality        PageRank centrality score
+	 * @param communitySize     number of samples in the community
+	 * @param memberIdentifiers content identifiers of all community members
+	 */
+	public record PrototypeResult(String identifier, double centrality,
+								  int communitySize, List<String> memberIdentifiers) {}
+
+	/** Maximum time to wait for library refresh to complete. */
+	private static final int REFRESH_TIMEOUT_MINUTES = 10;
+
+	/**
+	 * Discovers up to {@code maxPrototypes} representative samples from
+	 * the given library by building a similarity graph, detecting
+	 * communities via Louvain, and picking the highest-centrality node
+	 * in each community.
+	 *
+	 * <p>This method blocks until the library's most recent refresh has
+	 * completed (with a timeout), then computes any missing similarity
+	 * data before running the graph algorithms. Progress is reported
+	 * via the optional {@code statusCallback}.</p>
+	 *
+	 * @param library        the audio library to analyze
+	 * @param maxPrototypes  maximum number of prototypes to return
+	 * @param statusCallback optional callback for progress messages (may be null)
+	 * @return prototypes sorted by community size (largest first)
+	 * @throws PrototypeDiscoveryException if the process fails or times out
+	 */
+	public static List<PrototypeResult> discoverPrototypes(AudioLibrary library,
+														   int maxPrototypes,
+														   Consumer<String> statusCallback)
+			throws PrototypeDiscoveryException {
+		PrototypeDiscovery instance = new PrototypeDiscovery(null, null, maxPrototypes, false);
+		return instance.doDiscoverPrototypes(library, maxPrototypes, statusCallback);
+	}
+
+	private List<PrototypeResult> doDiscoverPrototypes(AudioLibrary library,
+													   int maxPrototypes,
+													   Consumer<String> statusCallback)
+			throws PrototypeDiscoveryException {
+		report(statusCallback, "Waiting for library refresh...");
+		log("[Prototypes] Waiting for library refresh to complete...");
+		log("[Prototypes] Library has " + library.getPendingJobs() + " pending jobs, "
+				+ "progress=" + String.format("%.1f%%", library.getProgress() * 100));
+
+		try {
+			waitForRefresh(library, statusCallback);
+		} catch (TimeoutException e) {
+			String msg = "Library refresh did not complete within "
+					+ REFRESH_TIMEOUT_MINUTES + " minutes ("
+					+ library.getPendingJobs() + " jobs still pending)";
+			log("[Prototypes] TIMEOUT: " + msg);
+			throw new PrototypeDiscoveryException(msg, e);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new PrototypeDiscoveryException("Interrupted waiting for refresh", e);
+		}
+
+		log("[Prototypes] Library refresh complete");
+
+		int totalDetails = library.getAllIdentifiers().size();
+		log("[Prototypes] Computing similarities for " + totalDetails + " samples...");
+
+		if (totalDetails == 0) {
+			log("[Prototypes] No samples in library");
+			throw new PrototypeDiscoveryException("No samples in library");
+		}
+
+		int processed = 0;
+		Iterator<WaveDetails> detailsIterator = library.allDetails().iterator();
+		while (detailsIterator.hasNext()) {
+			library.computeSimilarities(detailsIterator.next());
+			processed++;
+			if (processed % 50 == 0 || processed == totalDetails) {
+				report(statusCallback, "Computing similarities... "
+						+ processed + "/" + totalDetails);
+				log("[Prototypes] Similarity progress: " + processed + "/" + totalDetails);
+			}
+		}
+
+		report(statusCallback, "Building similarity graph...");
+		log("[Prototypes] Building similarity graph...");
+		AudioSimilarityGraph graph = library.toSimilarityGraph();
+
+		int nodeCount = graph.countNodes();
+		if (nodeCount == 0) {
+			log("[Prototypes] No samples with similarity data");
+			throw new PrototypeDiscoveryException(
+					"Similarity graph is empty (no samples with feature data)");
+		}
+
+		log("[Prototypes] Graph has " + nodeCount + " nodes");
+
+		report(statusCallback, "Detecting communities...");
+		log("[Prototypes] Running Louvain community detection...");
+		int[] communities = louvain(graph, 1.0);
+
+		log("[Prototypes] Computing PageRank centrality...");
+		double[] ranks = pageRank(graph, 0.85, 50);
+
+		Map<Integer, List<Integer>> communityMembers = getCommunityMembers(communities);
+		log("[Prototypes] Found " + communityMembers.size() + " communities");
+
+		report(statusCallback, "Resolving prototypes...");
+		List<PrototypeResult> prototypes = new ArrayList<>();
+
+		for (Map.Entry<Integer, List<Integer>> entry : communityMembers.entrySet()) {
+			List<Integer> members = entry.getValue();
+
+			int prototypeIdx = members.stream()
+					.max(Comparator.comparingDouble(i -> ranks[i]))
+					.orElse(-1);
+
+			if (prototypeIdx < 0) continue;
+
+			WaveDetails details = graph.nodeAt(prototypeIdx);
+			if (details == null || details.getIdentifier() == null) continue;
+
+			List<String> memberIds = members.stream()
+					.map(graph::nodeAt)
+					.filter(d -> d != null && d.getIdentifier() != null)
+					.map(WaveDetails::getIdentifier)
+					.toList();
+
+			prototypes.add(new PrototypeResult(
+					details.getIdentifier(),
+					ranks[prototypeIdx],
+					memberIds.size(),
+					memberIds));
+		}
+
+		prototypes.sort(Comparator.comparingInt(
+				(PrototypeResult p) -> p.communitySize()).reversed());
+
+		int count = Math.min(prototypes.size(), maxPrototypes);
+		log("[Prototypes] Returning " + count + " prototypes");
+		return prototypes.subList(0, count);
+	}
+
+	/**
+	 * Builds a {@link PrototypeIndexData} from discovered prototypes for
+	 * persistence in the protobuf library file.
+	 *
+	 * @param prototypes the discovered prototypes
+	 * @return a persistable index
+	 */
+	public static PrototypeIndexData buildIndex(List<PrototypeResult> prototypes) {
+		List<PrototypeIndexData.Community> communities = prototypes.stream()
+				.map(p -> new PrototypeIndexData.Community(
+						p.identifier(), p.centrality(), p.memberIdentifiers()))
+				.toList();
+		return new PrototypeIndexData(System.currentTimeMillis(), communities);
+	}
+
+	private void waitForRefresh(AudioLibrary library, Consumer<String> statusCallback)
+			throws TimeoutException, InterruptedException {
+		CompletableFuture<Void> refresh = library.awaitRefresh();
+
+		if (refresh.isDone()) return;
+
+		long deadline = System.currentTimeMillis()
+				+ TimeUnit.MINUTES.toMillis(REFRESH_TIMEOUT_MINUTES);
+
+		while (!refresh.isDone()) {
+			if (System.currentTimeMillis() > deadline) {
+				throw new TimeoutException("Refresh timeout after "
+						+ REFRESH_TIMEOUT_MINUTES + " minutes");
+			}
+
+			int pending = library.getPendingJobs();
+			double progress = library.getProgress();
+			String msg = String.format("Processing library... %.0f%% (%d jobs remaining)",
+					progress * 100, pending);
+			report(statusCallback, msg);
+
+			Thread.sleep(500);
+		}
+	}
+
+	private static void report(Consumer<String> callback, String message) {
+		if (callback != null) callback.accept(message);
+	}
+
+	/**
+	 * Thrown when prototype discovery fails due to timeout, missing data,
+	 * or other unrecoverable conditions.
+	 */
+	public static class PrototypeDiscoveryException extends Exception {
+		public PrototypeDiscoveryException(String message) {
+			super(message);
+		}
+
+		public PrototypeDiscoveryException(String message, Throwable cause) {
+			super(message, cause);
+		}
+	}
+
+	// ── CLI entry point ──────────────────────────────────────────────────
 
 	public static void main(String[] args) throws Exception {
 		// Parse arguments
