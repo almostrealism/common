@@ -35,7 +35,11 @@ import java.util.Map;
  * 
  * @author  Michael Murray
  */
-// TODO  Should extend io.almostrealism.query.Query
+/**
+ * Legacy database query implementation. This class predates and does not
+ * extend {@link io.almostrealism.query.Query}, which defines the modern
+ * query interface.
+ */
 public class Query implements Externalizable {
 	public static boolean verbose = false;
 	

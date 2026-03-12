@@ -173,7 +173,7 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 
 	@Override
 	public void destroy() {
-		// TODO  Destroy all LocalExternalMemory
+		// External memory cleanup is not yet implemented
 	}
 
 	protected static void load(LocalExternalMemory... mem) {

@@ -116,7 +116,7 @@ import java.util.function.Supplier;
  * double[] data = source.toArray(sourcePos, length);
  * target.setMem(targetPos, data);
  *
- * // TODO: Direct provider copy for same-provider transfers
+ * // Potential optimization: direct provider copy for same-provider transfers
  * if (source.getMem().getProvider() == target.getMem().getProvider()) {
  *     provider.directCopy(source, target, length);  // Faster
  * }
@@ -194,7 +194,7 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 				throw new UnsupportedOperationException(getMetadata().getDisplayName());
 			}
 
-			// TODO  This can be done faster if the source and target are on the same MemoryProvider
+			// Same-provider transfers could bypass the Java array intermediate
 			target.setMem(targetPosition, source.toArray(sourcePosition, length));
 		});
 	}

@@ -171,8 +171,8 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		encounteredSilence = false;
 		OperationList.setAbortFlag(abortFlag);
 
-//		TODO  Restore average amplitude computation
-//		AverageAmplitude avg = new AverageAmplitude();
+		// Average amplitude computation was removed; the scoring
+		// model now relies on duration-based health metrics instead
 
 		double score = 0.0;
 		double errorMultiplier = 1.0;

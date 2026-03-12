@@ -72,7 +72,7 @@ public class LocalResource implements Resource {
 
 	@Override
 	public void load(byte[] bytes, long l, int i) {
-		// TODO
+		throw new UnsupportedOperationException();
 	}
 
 	public void loadFromURI() throws IOException {

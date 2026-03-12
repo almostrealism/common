@@ -38,6 +38,28 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+/**
+ * A {@link VirtualFileSystem} implementation backed by a {@link Graph} of
+ * {@link Resource} nodes. Maps NFS operations to graph queries, resource
+ * creation, and directory management.
+ *
+ * <p><b>Known limitations:</b></p>
+ * <ul>
+ *   <li>Permission checks are not enforced on any operation. The mode bits
+ *       are stored and returned but never validated against the requesting
+ *       {@link Subject}.</li>
+ *   <li>Only {@link Type#DIRECTORY} and {@link Type#REGULAR} file types are
+ *       supported. Symlinks, sockets, block/character devices, and named pipes
+ *       are not implemented.</li>
+ *   <li>The {@link #list}, {@link #commit}, {@link #getattr}, {@link #setattr},
+ *       {@link #setAcl}, and {@link #move} operations are not implemented.</li>
+ *   <li>The {@link #read} operation is stubbed and always returns zero bytes.</li>
+ *   <li>The {@link #write} operation delegates to {@link ResourceInode#load}
+ *       but does not return a meaningful {@link WriteResult}.</li>
+ * </ul>
+ *
+ * @param <T> the resource type managed by this file system
+ */
 public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 	public static final long KB = 1024;
 	public static final long MB = 1024 * KB;
@@ -51,7 +73,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 	private final SearchEngine search;
 	private final DirectoryNotifier dir;
 	private final DeletionNotifier del;
-	
+
 	public GraphFileSystem(Graph<Resource> graph, Factory<T> factory, SearchEngine e,
 						   DirectoryNotifier dir, DeletionNotifier del) {
 		this.graph = graph;
@@ -60,7 +82,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 		this.dir = dir;
 		this.del = del;
 	}
-	
+
 	@Override
 	public int access(Subject subject, Inode inode, int mode) throws IOException {
 		System.out.println("GraphFileSystem: Access " + inode);
@@ -70,27 +92,18 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 	@Override
 	public Inode create(Inode parent, Type type, String path, Subject subject, int mode) throws IOException {
 		if (type == Type.DIRECTORY) {
-			// TODO  Check if this user has permission to create this Inode
 			dir.newDirectory(path);
 			return new Inode(new FileHandle.FileHandleBuilder().build(path.getBytes()));
 		} else if (type == Type.REGULAR) {
-			// TODO  Check if this user has permission to create this Inode
 			T r = factory.construct();
 			r.setURI(path);
 
-			// TODO  Check if this user has permission to set permissions in this way
 			Permissions p = getPermissionsForMode(mode);
 			p = new Permissions(subject.getPrincipals().iterator().next().getName(),
 						p.getUserSetting(), p.getGroupSetting(), p.getOthersSetting());
 			r.getPermissions().update(p);
 			return new ResourceInode(r);
 		} else {
-			// TODO  Add support for other types
-			// TODO  A symlink should add an edge to the resource graph
-			// TODO  A unix socket should create a message queue
-			// TODO  A block device should create an SQL blob or some such thing
-			// TODO  A character device should create a neural network or something
-			// TODO  A named pipe should create a flume channel
 			throw new IOException(type + " is not yet supported by GraphPersist");
 		}
 	}
@@ -108,42 +121,29 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 
 	@Override
 	public Inode lookup(Inode parent, String path) throws IOException {
-		// TODO  Check permissions
 		String p = path(parent) + "/" + path;
 		Resource r = search.search(p).iterator().next();
 		if (r == null) {
 			// Resources that don't exist are directories
 			return new Inode(new FileHandle.FileHandleBuilder().build(p.getBytes()));
 		}
-		
+
 		return new ResourceInode(r);
 	}
 
 	@Override
 	public Inode link(Inode parent, Inode link, String path, Subject subject) throws IOException {
-		// TODO  Check permissions
 		return create(parent, Type.SYMLINK, path, subject,
 				getModeForPermissions(search.search(path).iterator().next().getPermissions()));
 	}
 
 	@Override
 	public DirectoryStream list(Inode inode, byte[] b, long ll) throws IOException {
-		// TODO  Check permissions
-		List<DirectoryEntry> l = new ArrayList<>();
-
-		for (Resource r : search.search(path(inode) + "/*")) {
-			Stat s = new Stat();
-			s.setMode(getModeForPermissions(r.getPermissions()));
-			// TODO l.add(new DirectoryEntry(nameForUri(r.getURI()), new ResourceInode(r), s));
-		}
-
-		// TODO return l;
 		throw new UnsupportedOperationException();
 	}
 
 	@Override
 	public Inode mkdir(Inode parent, String path, Subject subject, int mode) throws IOException {
-		// TODO  Check permissions
 		String p = path(parent) + path;
 		if (dir.newDirectory(p)) {
 			return new Inode(new FileHandle.FileHandleBuilder().build(p.getBytes()));
@@ -154,8 +154,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 
 	@Override
 	public boolean move(Inode src, String oldName, Inode dest, String newName) throws IOException {
-		// TODO  Implement as a copy followed by a delete
-		return false;
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
@@ -176,56 +175,48 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 
 	@Override
 	public int read(Inode inode, byte[] data, long offset, int count) throws IOException {
-		// TODO  Check permissions
-//		return ((ResourceInode) inode).read(data, offset, count);
-		return 0;
+		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Reads the link target for the given inode. Currently returns the
+	 * string representation of the resource data without format conversion.
+	 */
 	@Override
 	public String readlink(Inode inode) throws IOException {
-		// TODO  Use decoder to convert data based on request format
-		//       IE, a user that saved a file with the .csv extension
-		//       might request the same file with the .json extension,
-		//       in which case it would be returned as json instead
 		return ((ResourceInode) inode).getData().toString();
 	}
 
 	@Override
 	public void remove(Inode parent, String path) throws IOException {
-		// TODO  Check permissions
 		del.delete(path(parent) + "/" + path);
 	}
 
 	@Override
 	public Inode symlink(Inode parent, String path, String link, Subject subject, int mode) throws IOException {
-		// TODO  Check permissions
 		return create(parent, Type.SYMLINK, path, subject, mode);
 	}
 
 	@Override
 	public WriteResult write(Inode inode, byte[] data, long offset, int count, StabilityLevel stabilityLevel)
 			throws IOException {
-		// TODO
 		((ResourceInode) inode).load(data, offset, count);
 		return null;
 	}
 
 	@Override
 	public void commit(Inode inode, long offset, int count) throws IOException {
-		// TODO Auto-generated method stub
-
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
 	public Stat getattr(Inode inode) throws IOException {
-		// TODO Auto-generated method stub
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
 	public void setattr(Inode inode, Stat stat) throws IOException {
-		// TODO Auto-generated method stub
-
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
@@ -236,8 +227,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 
 	@Override
 	public void setAcl(Inode inode, nfsace4[] acl) throws IOException {
-		// TODO Auto-generated method stub
-
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
@@ -251,7 +241,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 		return new AclCheckable() {
 			@Override
 			public Access checkAcl(Subject subject, Inode inode, int accessMask) throws IOException {
-				throw new RuntimeException("Not implemented"); // TODO
+				throw new UnsupportedOperationException();
 			}
 		};
 	}

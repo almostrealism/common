@@ -40,7 +40,6 @@ import org.almostrealism.io.ConsoleFeatures;
  *
  * @see BufferedAudioPlayer
  */
-// TODO  This class is poorly named
 public class StreamingAudioPlayer implements ConsoleFeatures {
 
 	/**

@@ -40,7 +40,7 @@ public class NetworkFileSystemServer {
 
 		nfs = new OncRpcSvcBuilder().withPort(port).withTCP().withAutoPublish().withWorkerThreadIoStrategy().build();
 
-		ExportFile exportFile = null; // TODO specify file with export entries
+		ExportFile exportFile = null;
 
 		NFSServerV41 nfs4 = new NFSServerV41(new MDSOperationExecutor(), null /*new DeviceManager()*/, vfs, exportFile);
 		NfsServerV3 nfs3 = new NfsServerV3(exportFile, vfs);

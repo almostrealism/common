@@ -226,11 +226,12 @@ import java.util.stream.Stream;
  * @see MemoryReplacementManager
  */
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable, ConsoleFeatures {
-	// TODO  Should be switched and removed
+	/** Controls whether argument kernel sizes are computed. */
 	public static boolean enableArgumentKernelSize = true;
+	/** Controls whether argument reference kernel sizes are computed. */
 	public static boolean enableArgumentReferenceKernelSize = true;
 
-	// TODO  Should be removed?
+	/** Controls whether output count tracking is enabled. */
 	public static boolean enableOutputCount = true;
 
 	public static boolean enableConstantCache =

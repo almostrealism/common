@@ -332,7 +332,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 		if (length < 0)
 			throw new IllegalArgumentException();
 		if (!(srcRam instanceof MetalMemory)) {
-			// TODO  Native code can be used here, for some types of srcRam
+			// Non-Metal memory requires array conversion; native copy could optimize this
 			setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
 			return;
 		}

@@ -31,7 +31,7 @@ import java.util.Map;
 public interface Query<D, K, V> {
 	/**
 	 * This method may be called by multiple threads simultaneously.
-	 * @param cascades TODO
+	 * @param cascades the cascading queries to apply for related entities
 	 * 
 	 * @throws InvocationTargetException 
 	 * @throws IllegalAccessException

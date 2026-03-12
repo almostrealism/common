@@ -81,7 +81,11 @@ import java.util.function.IntFunction;
  * @see Evaluable
  * @see Multiple
  */
-// TODO  Should implement StreamingEvaluable
+/**
+ * An {@link Evaluable} that provides pre-allocated memory destinations.
+ * A future enhancement could implement StreamingEvaluable for streaming
+ * evaluation pipelines.
+ */
 public class MemoryDataDestination<T extends MemoryData> implements Evaluable<T> {
 	private final IntFunction<Multiple<T>> provider;
 

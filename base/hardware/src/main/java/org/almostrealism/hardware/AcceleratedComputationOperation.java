@@ -561,7 +561,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 				// The Scope creation was either previously unsuccessful,
 				// or later destroyed and the argumentMap should have
 				// been destroyed as well
-				// TODO  a temporary solution is to destroy the argumentMap now instead
+				// Defensive cleanup: argumentMap should have been destroyed with the scope
 				warn("Operation was not destroyed proactively");
 				argumentMap.destroy();
 				argumentMap = null;

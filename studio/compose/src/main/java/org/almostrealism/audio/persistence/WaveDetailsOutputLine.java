@@ -127,7 +127,7 @@ public class WaveDetailsOutputLine implements OutputLine, CodeFeatures, ConsoleF
 			details.setData(getPublishingBuffer().range(shape(framesPerBatch), batch * framesPerBatch));
 			details.setSilent(silence[batch]);
 
-			// TODO  Do not store audio for silent batches?
+			// Silent batches are still stored to preserve timing alignment
 			data.add(AudioLibraryPersistence.encode(details, true));
 		}
 

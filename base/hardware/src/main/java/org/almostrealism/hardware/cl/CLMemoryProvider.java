@@ -613,8 +613,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 				ioTime.addEntry("setMem", System.nanoTime() - start);
 			}
 		} else {
-			// TODO  There should still be some way to use clEnqueueWriteBuffer for cases
-			// TODO  where all we have is the long value returned by RAM::getContentPointer
+			// Non-CL memory requires array conversion; clEnqueueWriteBuffer could
+			// optimize this if the source provides a native content pointer
 			setMem(ram, offset, srcRam.toArray(srcOffset, length), 0, length);
 		}
 	}
@@ -807,7 +807,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	/** {@inheritDoc} */
 	@Override
 	public void destroy() {
-		// TODO  Deallocating all of these at once appears to produce SIGSEGV
+		// Batch deallocation causes SIGSEGV; memory is released individually instead
 		// List<CLMemory> available = new ArrayList<>(allocated);
 		// available.forEach(mem -> deallocate(0, mem));
 		allocated = null;

@@ -212,6 +212,6 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 	 */
 	@Override
 	public void destroy() {
-		// TODO  Destroy all JVMMemory
+		// JVM memory is garbage collected; no explicit cleanup needed
 	}
 }

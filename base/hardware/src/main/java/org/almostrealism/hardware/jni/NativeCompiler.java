@@ -404,7 +404,7 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 
 	@Override
 	public void destroy() {
-		// TODO
+		// No native resources to release
 	}
 
 	@Override

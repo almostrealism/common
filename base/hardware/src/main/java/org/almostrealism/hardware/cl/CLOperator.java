@@ -256,7 +256,7 @@ public class CLOperator extends HardwareOperator {
 					argCache[i] = data[i];
 				}
 			} catch (CLException e) {
-				// TODO  This should use the exception processor also, but theres no way to pass the message details
+				// Exception processor cannot be used here without message details
 				throw new HardwareException(e.getMessage() + " for function " + name +
 						" (index = " + index + " argCount = " + argCount + ")", e);
 			}
@@ -283,11 +283,10 @@ public class CLOperator extends HardwareOperator {
 
 				if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel end");
 
-				// TODO  This should return a semaphore
-				// return new CLSemaphore(context, event, profile);
+				// Returning CLSemaphore(context, event, profile) would enable
+				// async pipeline composition instead of synchronous execution
 			} catch (CLException e) {
-				// TODO  This should use the exception processor also,
-				// TODO  but theres no way to pass the message details
+				// Exception processor cannot be used here without message details
 				throw new HardwareException(e.getMessage() + " for function " + name +
 						" (total bytes = " + totalSize + ")", e);
 			}

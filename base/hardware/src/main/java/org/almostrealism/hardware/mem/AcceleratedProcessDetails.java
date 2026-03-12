@@ -339,8 +339,8 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 
 		originalArguments[index] = result;
 
-		// TODO  This check should not block the
-		// TODO  return of the results method
+		// Note: checkReady() may block; ideally it would be async
+		// to avoid blocking the return of the results method
 		checkReady();
 	}
 
