@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package almostrealism;
+
+option java_package = "org.almostrealism.protobuf";
+
+message DiskStoreRecord {
+  string id = 1;
+  bytes payload = 2;
+}
+
+message DiskStoreBatch {
+  int32 batch_id = 1;
+  repeated DiskStoreRecord records = 2;
+}
+
+message DiskStoreRecordLocation {
+  int32 batch_id = 1;
+}
+
+message DiskStoreIndex {
+  map<string, DiskStoreRecordLocation> locations = 1;
+  int32 next_batch_id = 2;
+}
