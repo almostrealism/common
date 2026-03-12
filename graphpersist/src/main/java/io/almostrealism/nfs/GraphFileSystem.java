@@ -53,7 +53,8 @@ import java.util.List;
  *       are not implemented.</li>
  *   <li>The {@link #list}, {@link #commit}, {@link #getattr}, {@link #setattr},
  *       {@link #setAcl}, and {@link #move} operations are not implemented.</li>
- *   <li>The {@link #read} operation is stubbed and always returns zero bytes.</li>
+ *   <li>The {@link #read} operation is not implemented and throws
+ *       {@link UnsupportedOperationException}.</li>
  *   <li>The {@link #write} operation delegates to {@link ResourceInode#load}
  *       but does not return a meaningful {@link WriteResult}.</li>
  * </ul>

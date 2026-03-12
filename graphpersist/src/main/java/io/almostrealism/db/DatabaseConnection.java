@@ -415,9 +415,6 @@ public class DatabaseConnection {
 	/**
 	 * Queries the output table and notifies all output handlers of the output
 	 * that is stored in these rows.
-	 */
-	/**
-	 * Queries all stored output and dispatches to registered handlers.
 	 *
 	 * @deprecated This approach does not scale for large result sets.
 	 */
