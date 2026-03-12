@@ -16,9 +16,7 @@
 
 package org.almostrealism.persist.test;
 
-import org.almostrealism.persist.DiskStore;
 import org.almostrealism.persist.ProtobufDiskStore;
-import org.almostrealism.persist.RecordCodec;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;
@@ -26,7 +24,6 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -37,28 +34,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Tests for {@link ProtobufDiskStore} verifying round-trip persistence,
  * memory cap enforcement, pairwise scan correctness, and disk I/O behavior.
+ *
+ * <p>Uses {@link TestRecordProto.TestRecord} as a concrete protobuf message
+ * type — no wrapper messages or double serialization.</p>
  */
 public class ProtobufDiskStoreTest extends TestSuiteBase {
 
 	private File tempDir;
-
-	/** Simple codec that stores strings as UTF-8 bytes. */
-	private static final RecordCodec<String> STRING_CODEC = new RecordCodec<String>() {
-		@Override
-		public byte[] encode(String record) {
-			return record.getBytes(StandardCharsets.UTF_8);
-		}
-
-		@Override
-		public String decode(byte[] data) {
-			return new String(data, StandardCharsets.UTF_8);
-		}
-
-		@Override
-		public int estimateSize(String record) {
-			return record.length() * 2;
-		}
-	};
 
 	@Before
 	public void setUp() throws Exception {
@@ -73,20 +55,28 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	/** Insert a record, retrieve it, verify equality. */
 	@Test
 	public void putGetRoundTrip() {
-		try (ProtobufDiskStore<String> store =
-					 new ProtobufDiskStore<>(tempDir, STRING_CODEC)) {
-			store.put("key1", "hello world");
-			String result = store.get("key1");
-			Assert.assertEquals("hello world", result);
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			TestRecordProto.TestRecord record = TestRecordProto.TestRecord.newBuilder()
+					.setId("key1")
+					.setContent("hello world")
+					.setValue(42)
+					.build();
+			store.put("key1", record);
+
+			TestRecordProto.TestRecord result = store.get("key1");
+			Assert.assertNotNull(result);
+			Assert.assertEquals("hello world", result.getContent());
+			Assert.assertEquals(42, result.getValue());
 		}
 	}
 
 	/** Insert, delete, verify get returns null. */
 	@Test
 	public void deleteRemovesRecord() {
-		try (ProtobufDiskStore<String> store =
-					 new ProtobufDiskStore<>(tempDir, STRING_CODEC)) {
-			store.put("key1", "value1");
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("key1", makeRecord("key1", "value1", 1));
 			store.flush();
 			Assert.assertNotNull(store.get("key1"));
 
@@ -102,19 +92,19 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	 */
 	@Test
 	public void persistenceAcrossRestart() {
-		try (ProtobufDiskStore<String> store =
-					 new ProtobufDiskStore<>(tempDir, STRING_CODEC)) {
-			store.put("a", "alpha");
-			store.put("b", "bravo");
-			store.put("c", "charlie");
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("a", makeRecord("a", "alpha", 1));
+			store.put("b", makeRecord("b", "bravo", 2));
+			store.put("c", makeRecord("c", "charlie", 3));
 		}
 
-		try (ProtobufDiskStore<String> store2 =
-					 new ProtobufDiskStore<>(tempDir, STRING_CODEC)) {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store2 =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
 			Assert.assertEquals(3, store2.size());
-			Assert.assertEquals("alpha", store2.get("a"));
-			Assert.assertEquals("bravo", store2.get("b"));
-			Assert.assertEquals("charlie", store2.get("c"));
+			Assert.assertEquals("alpha", store2.get("a").getContent());
+			Assert.assertEquals("bravo", store2.get("b").getContent());
+			Assert.assertEquals("charlie", store2.get("c").getContent());
 		}
 	}
 
@@ -128,18 +118,18 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		long maxMemory = 4096;
 		int maxBatches = (int) (maxMemory / batchSize);
 
-		try (ProtobufDiskStore<String> store = new ProtobufDiskStore<>(
-				tempDir, STRING_CODEC, maxMemory, batchSize)) {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
 
 			StringBuilder sb = new StringBuilder();
 			for (int i = 0; i < batchSize; i++) {
 				sb.append('X');
 			}
-			String largeValue = sb.toString();
+			String largeContent = sb.toString();
 
 			int totalRecords = maxBatches * 4;
 			for (int i = 0; i < totalRecords; i++) {
-				store.put("rec-" + i, largeValue + "-" + i);
+				store.put("rec-" + i, makeRecord("rec-" + i, largeContent + "-" + i, i));
 			}
 
 			store.flush();
@@ -152,9 +142,9 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 			Assert.assertEquals(totalRecords, store.size());
 
 			for (int i = 0; i < totalRecords; i++) {
-				String value = store.get("rec-" + i);
+				TestRecordProto.TestRecord value = store.get("rec-" + i);
 				Assert.assertNotNull("Record rec-" + i + " should exist", value);
-				Assert.assertTrue(value.startsWith(largeValue));
+				Assert.assertTrue(value.getContent().startsWith(largeContent));
 			}
 		}
 	}
@@ -168,17 +158,19 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		int batchSize = 256;
 		long maxMemory = 4096;
 
-		try (ProtobufDiskStore<String> store = new ProtobufDiskStore<>(
-				tempDir, STRING_CODEC, maxMemory, batchSize)) {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
 
 			int n = 10;
 			for (int i = 0; i < n; i++) {
-				store.put("item-" + i, "value-" + i);
+				store.put("item-" + i, makeRecord("item-" + i, "value-" + i, i));
 			}
 
 			Set<String> pairs = new HashSet<>();
 			store.pairwiseScan((a, b) -> {
-				String key = a.compareTo(b) < 0 ? a + "|" + b : b + "|" + a;
+				String keyA = a.getId();
+				String keyB = b.getId();
+				String key = keyA.compareTo(keyB) < 0 ? keyA + "|" + keyB : keyB + "|" + keyA;
 				pairs.add(key);
 			});
 
@@ -198,8 +190,8 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		int batchSize = 128;
 		long maxMemory = 4096;
 
-		try (ProtobufDiskStore<String> store = new ProtobufDiskStore<>(
-				tempDir, STRING_CODEC, maxMemory, batchSize)) {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
 
 			StringBuilder sb = new StringBuilder();
 			for (int i = 0; i < 100; i++) {
@@ -208,12 +200,12 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 			String payload = sb.toString();
 
 			for (int i = 0; i < 30; i++) {
-				store.put("r-" + i, payload + "-" + i);
+				store.put("r-" + i, makeRecord("r-" + i, payload + "-" + i, i));
 			}
 			store.flush();
 
 			AtomicInteger loadCount = new AtomicInteger(0);
-			store.setLoadListener((batchId, batch) -> loadCount.incrementAndGet());
+			store.setLoadListener(batchId -> loadCount.incrementAndGet());
 
 			store.pairwiseScan((a, b) -> { });
 
@@ -230,18 +222,18 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	/** Insert N records, scan, verify all N visited. */
 	@Test
 	public void scanVisitsAllRecords() {
-		try (ProtobufDiskStore<String> store =
-					 new ProtobufDiskStore<>(tempDir, STRING_CODEC)) {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
 			int n = 20;
 			Set<String> expected = new HashSet<>();
 			for (int i = 0; i < n; i++) {
-				String val = "scan-val-" + i;
-				store.put("scan-" + i, val);
-				expected.add(val);
+				String content = "scan-val-" + i;
+				store.put("scan-" + i, makeRecord("scan-" + i, content, i));
+				expected.add(content);
 			}
 
 			List<String> visited = new ArrayList<>();
-			store.scan(visited::add);
+			store.scan(record -> visited.add(record.getContent()));
 
 			Assert.assertEquals(n, visited.size());
 			Assert.assertTrue(
@@ -258,8 +250,8 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 	public void multipleRecordsAcrossBatches() {
 		int batchSize = 128;
 
-		try (ProtobufDiskStore<String> store = new ProtobufDiskStore<>(
-				tempDir, STRING_CODEC, DEFAULT_MEM, batchSize)) {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), DEFAULT_MEM, batchSize)) {
 
 			StringBuilder sb = new StringBuilder();
 			for (int i = 0; i < 80; i++) {
@@ -269,7 +261,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 
 			int n = 50;
 			for (int i = 0; i < n; i++) {
-				store.put("multi-" + i, payload + "-" + i);
+				store.put("multi-" + i, makeRecord("multi-" + i, payload + "-" + i, i));
 			}
 			store.flush();
 
@@ -281,12 +273,20 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 					batchFiles.length > 1);
 
 			for (int i = 0; i < n; i++) {
-				String value = store.get("multi-" + i);
+				TestRecordProto.TestRecord value = store.get("multi-" + i);
 				Assert.assertNotNull(
 						"Record multi-" + i + " should exist", value);
-				Assert.assertTrue(value.startsWith(payload));
+				Assert.assertTrue(value.getContent().startsWith(payload));
 			}
 		}
+	}
+
+	private static TestRecordProto.TestRecord makeRecord(String id, String content, int value) {
+		return TestRecordProto.TestRecord.newBuilder()
+				.setId(id)
+				.setContent(content)
+				.setValue(value)
+				.build();
 	}
 
 	private static final long DEFAULT_MEM = ProtobufDiskStore.DEFAULT_MAX_MEMORY_BYTES;

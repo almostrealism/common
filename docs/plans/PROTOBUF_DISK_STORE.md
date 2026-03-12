@@ -2,9 +2,14 @@
 
 ## Overview
 
-A general-purpose key-value store that persists records on disk as protobuf,
-with automatic memory management via `FrequencyCache`. Designed for datasets
-up to 10 GB with at most 500 MB in memory at any time.
+A general-purpose key-value store that persists **native protobuf messages**
+on disk, with automatic memory management via `FrequencyCache`. Designed for
+datasets up to 10 GB with at most 500 MB in memory at any time.
+
+The store is generic over `T extends com.google.protobuf.Message`. Users
+provide their own protobuf `Parser<T>` at construction time. Records are
+written directly in protobuf wire format — **no wrapper messages, no double
+serialization**.
 
 ## Module Placement
 
@@ -14,7 +19,8 @@ dependency, and the `org.almostrealism.persistence` package with `CollectionEnco
 **Package**: `org.almostrealism.persist` (new package, separate from the existing
 `org.almostrealism.persistence` which handles asset management).
 
-**Proto file**: `engine/ml/src/main/proto/diskstore.proto`
+**Proto file**: `engine/ml/src/main/proto/diskstore.proto` — contains only the
+index messages (no record wrapper).
 
 ---
 
@@ -22,8 +28,8 @@ dependency, and the `org.almostrealism.persistence` package with `CollectionEnco
 
 ```
 <store-root>/
-├── index.bin          # Protobuf: DiskStoreIndex — maps record ID → batch + offset
-├── batch_0000.bin     # Protobuf: DiskStoreBatch — contains N serialized records
+├── index.bin          # Protobuf: DiskStoreIndex — maps record ID → (batch, offset)
+├── batch_0000.bin     # Sequential length-delimited records of type T
 ├── batch_0001.bin
 ├── ...
 └── batch_NNNN.bin
@@ -31,26 +37,29 @@ dependency, and the `org.almostrealism.persistence` package with `CollectionEnco
 
 ### Batch File Structure
 
-Each batch file is a single `DiskStoreBatch` protobuf message containing:
-- A list of `DiskStoreRecord` entries, each with `id` (string) and `payload` (bytes)
-- A `batch_id` for identification
+Each batch file contains **sequential length-delimited protobuf records** of
+the user's own message type `T`. Records are written using `writeDelimitedTo`
+(standard protobuf streaming format: varint length prefix + serialized bytes).
+
+There is **no wrapper message**. The batch file is simply a concatenation of
+length-delimited `T` records.
 
 **Batch sizing**: Default target ~4 MB per batch file. This balances:
 - Seek efficiency (fewer files to open for sequential scans)
 - Memory footprint (loading one batch doesn't blow the memory budget)
-- Write amplification (deletes mark records as tombstoned; compaction rewrites batches)
+- Write amplification (deletes remove from index only; compaction not yet implemented)
 
 ### Index File
 
-The `DiskStoreIndex` message maps each record ID to its `RecordLocation`
-(batch_id + offset within the batch's record list). The index is loaded
-fully into memory on startup. For 10 GB of data with ~1 KB average records,
-that's ~10M entries × ~40 bytes each = ~400 MB of index, which is significant.
-To keep index memory low, the index stores only the batch_id per record —
-individual record lookup within a batch is a linear scan of the batch's
-records list (typically <1000 records per batch, so fast).
+The `DiskStoreIndex` protobuf message maps each record ID to its
+`RecordLocation` (batch_id + byte_offset within the batch file). The index
+is loaded fully into memory on startup.
 
-Simplified index: `Map<String, Integer>` — record ID → batch_id.
+For random access: seek to byte_offset in the batch file, call
+`parser.parseDelimitedFrom(stream)` to read exactly one record.
+
+For sequential scan: open batch file, repeatedly call
+`parser.parseDelimitedFrom(stream)` until EOF (returns null).
 
 ---
 
@@ -59,20 +68,20 @@ Simplified index: `Map<String, Integer>` — record ID → batch_id.
 ### FrequencyCache Configuration
 
 - **Cache key**: batch_id (Integer)
-- **Cache value**: parsed `DiskStoreBatch` (the full batch of records)
+- **Cache value**: `ParsedBatch<T>` — a map of record ID to deserialized `T`
 - **Capacity**: `maxMemoryBytes / targetBatchSize` — e.g., 500 MB / 4 MB = 125 batches
 - **Frequency bias**: 0.3 (favor recency slightly over frequency for scan workloads)
 - **Eviction listener**: no-op (batches are read-only snapshots from disk)
 
 ### Why cache batches, not individual records?
 
-1. Disk I/O granularity — reading one record requires reading the batch file anyway
+1. Disk I/O granularity — reading one record still benefits from having nearby records cached
 2. Locality — records stored together are often accessed together
-3. Simpler eviction — one cache entry = one file = one I/O operation
+3. Simpler eviction — one cache entry = one batch file = one I/O operation
 
 ### Record-level access
 
-`get(id)` → look up batch_id in index → `cache.computeIfAbsent(batchId, loadBatch)` → find record in batch by ID.
+`get(id)` → look up (batch_id, byte_offset) in index → `cache.computeIfAbsent(batchId, loadBatch)` → find record in batch by ID.
 
 ---
 
@@ -91,23 +100,36 @@ public interface DiskStore<T> extends Closeable {
 }
 ```
 
-### RecordCodec
-
-```java
-public interface RecordCodec<T> {
-    byte[] encode(T record);
-    T decode(byte[] data);
-    int estimateSize(T record);
-}
-```
-
 ### Key Classes
 
 | Class | Responsibility |
 |-------|---------------|
 | `DiskStore<T>` | Public interface |
-| `RecordCodec<T>` | Serialization strategy (caller provides) |
-| `ProtobufDiskStore<T>` | Main implementation with FrequencyCache |
+| `ProtobufDiskStore<T extends Message>` | Main implementation with FrequencyCache, uses `Parser<T>` |
+
+The `Parser<T>` is the standard protobuf-generated parser — e.g.,
+`MyRecord.parser()`. The store uses it to deserialize records from disk
+without knowing anything about the schema.
+
+### Construction
+
+```java
+public ProtobufDiskStore(File rootDir, Parser<T> parser, long maxMemoryBytes) { ... }
+```
+
+---
+
+## Serialization — No Double Serialization
+
+The prior design wrapped records in a `DiskStoreRecord { id, payload bytes }`
+protobuf envelope. This caused double serialization when the user's record was
+already a protobuf message.
+
+The corrected design:
+- **Write**: `record.writeDelimitedTo(outputStream)` — raw protobuf wire format
+- **Read**: `parser.parseDelimitedFrom(inputStream)` — directly deserializes `T`
+- **No wrapper message** — batch files contain only the user's message type
+- **ID mapping** — the index file maps record IDs to (batch_id, byte_offset)
 
 ---
 
@@ -122,16 +144,18 @@ unordered pair `(A, B)` exactly once, where A ≠ B.
 batches = listAllBatchIds()  // sorted
 for i = 0 to batches.size - 1:
     batchA = loadBatch(batches[i])
+    recordsA = liveRecords(batchA)
     // Intra-batch pairs
-    for a = 0 to batchA.records.size - 2:
-        for b = a+1 to batchA.records.size - 1:
-            pairVisitor.accept(decode(batchA[a]), decode(batchA[b]))
+    for a = 0 to recordsA.size - 2:
+        for b = a+1 to recordsA.size - 1:
+            pairVisitor.accept(recordsA[a], recordsA[b])
     // Inter-batch pairs
     for j = i+1 to batches.size - 1:
         batchB = loadBatch(batches[j])
-        for each record rA in batchA:
-            for each record rB in batchB:
-                pairVisitor.accept(decode(rA), decode(rB))
+        recordsB = liveRecords(batchB)
+        for each record rA in recordsA:
+            for each record rB in recordsB:
+                pairVisitor.accept(rA, rB)
 ```
 
 ### Why this works
@@ -148,6 +172,9 @@ for i = 0 to batches.size - 1:
 ## Test Plan
 
 All tests in `org.almostrealism.persist.test.ProtobufDiskStoreTest`, extending `TestSuiteBase`.
+
+Tests use a real protobuf message type (`TestRecord` defined in
+`engine/ml/src/test/proto/test_record.proto`).
 
 | Test | What it verifies |
 |------|-----------------|

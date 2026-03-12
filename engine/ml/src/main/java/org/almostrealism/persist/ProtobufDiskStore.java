@@ -16,14 +16,17 @@
 
 package org.almostrealism.persist;
 
-import com.google.protobuf.ByteString;
+import com.google.protobuf.Message;
+import com.google.protobuf.Parser;
 import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.protobuf.Diskstore;
 
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,18 +38,22 @@ import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 /**
- * A general-purpose key-value store that persists records on disk as
- * protobuf batch files, with automatic in-memory caching via
- * {@link FrequencyCache}.
+ * A general-purpose key-value store that persists native protobuf messages
+ * on disk as length-delimited batch files, with automatic in-memory caching
+ * via {@link FrequencyCache}.
  *
- * <p>Records are grouped into batch files of configurable size. An
- * in-memory index maps each record ID to its batch ID. The
- * {@link FrequencyCache} holds parsed batches keyed by batch ID,
- * evicting least-valuable batches when the memory budget is exceeded.</p>
+ * <p>Records of type {@code T} are written directly using
+ * {@link Message#writeDelimitedTo} and read back using
+ * {@link Parser#parseDelimitedFrom} — no wrapper messages, no double
+ * serialization. Batch files contain sequential length-delimited records
+ * of the user's own message type.</p>
  *
- * @param <T> the record type
+ * <p>A separate protobuf index file maps each record ID to its batch file
+ * and byte offset within that file.</p>
+ *
+ * @param <T> the protobuf message type
  */
-public class ProtobufDiskStore<T> implements DiskStore<T> {
+public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	private static final Logger log = Logger.getLogger(ProtobufDiskStore.class.getName());
 
 	/** Default maximum bytes of data to hold in memory. */
@@ -56,41 +63,41 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 	public static final int DEFAULT_TARGET_BATCH_SIZE = 4 * 1024 * 1024;
 
 	private final File rootDir;
-	private final RecordCodec<T> codec;
+	private final Parser<T> parser;
 	private final long maxMemoryBytes;
 	private final int targetBatchSize;
 
-	private final Map<String, Integer> index;
+	private final Map<String, RecordPointer> index;
 	private final FrequencyCache<Integer, ParsedBatch<T>> batchCache;
 	private final AtomicInteger nextBatchId;
 	private int pendingBatchId;
-	private int pendingBatchBytes;
-	private final List<Diskstore.DiskStoreRecord> pendingRecords;
+	private long pendingBatchBytes;
+	private final List<PendingRecord<T>> pendingRecords;
 
-	private BiConsumer<Integer, Diskstore.DiskStoreBatch> loadListener;
+	private Consumer<Integer> loadListener;
 
 	/**
 	 * Open or create a disk store at the given directory.
 	 *
-	 * @param rootDir   directory for batch files and index
-	 * @param codec     serialization strategy for records
+	 * @param rootDir directory for batch files and index
+	 * @param parser  protobuf parser for deserializing records (e.g. {@code MyRecord.parser()})
 	 */
-	public ProtobufDiskStore(File rootDir, RecordCodec<T> codec) {
-		this(rootDir, codec, DEFAULT_MAX_MEMORY_BYTES, DEFAULT_TARGET_BATCH_SIZE);
+	public ProtobufDiskStore(File rootDir, Parser<T> parser) {
+		this(rootDir, parser, DEFAULT_MAX_MEMORY_BYTES, DEFAULT_TARGET_BATCH_SIZE);
 	}
 
 	/**
 	 * Open or create a disk store with custom memory and batch settings.
 	 *
 	 * @param rootDir         directory for batch files and index
-	 * @param codec           serialization strategy for records
+	 * @param parser          protobuf parser for deserializing records
 	 * @param maxMemoryBytes  maximum bytes of record data to hold in memory
 	 * @param targetBatchSize target byte size per batch file
 	 */
-	public ProtobufDiskStore(File rootDir, RecordCodec<T> codec,
+	public ProtobufDiskStore(File rootDir, Parser<T> parser,
 							 long maxMemoryBytes, int targetBatchSize) {
 		this.rootDir = rootDir;
-		this.codec = codec;
+		this.parser = parser;
 		this.maxMemoryBytes = maxMemoryBytes;
 		this.targetBatchSize = targetBatchSize;
 		this.index = new HashMap<>();
@@ -105,12 +112,14 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 		int cacheCapacity = Math.max(2, (int) (maxMemoryBytes / targetBatchSize));
 		this.batchCache = new FrequencyCache<>(cacheCapacity, 0.3);
 
-		Diskstore.DiskStoreIndex savedIndex = loadIndex();
+		Diskstore.DiskStoreIndex savedIndex = loadIndexFromDisk();
 		if (savedIndex != null) {
 			this.nextBatchId = new AtomicInteger(savedIndex.getNextBatchId());
 			for (Map.Entry<String, Diskstore.DiskStoreRecordLocation> entry
 					: savedIndex.getLocationsMap().entrySet()) {
-				this.index.put(entry.getKey(), entry.getValue().getBatchId());
+				this.index.put(entry.getKey(),
+						new RecordPointer(entry.getValue().getBatchId(),
+								entry.getValue().getByteOffset()));
 			}
 		} else {
 			this.nextBatchId = new AtomicInteger(0);
@@ -123,29 +132,23 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 	 * Set a listener that is notified each time a batch is loaded from
 	 * disk. Useful for instrumentation in tests.
 	 *
-	 * @param listener callback receiving (batchId, batch)
+	 * @param listener callback receiving the batch ID
 	 */
-	public void setLoadListener(BiConsumer<Integer, Diskstore.DiskStoreBatch> listener) {
+	public void setLoadListener(Consumer<Integer> listener) {
 		this.loadListener = listener;
 	}
 
 	@Override
 	public void put(String id, T record) {
-		byte[] payload = codec.encode(record);
-
-		Integer existingBatch = index.get(id);
+		Integer existingBatch = index.containsKey(id)
+				? index.get(id).batchId : null;
 		if (existingBatch != null) {
-			removeFromBatch(id, existingBatch);
+			index.remove(id);
 		}
 
-		Diskstore.DiskStoreRecord proto = Diskstore.DiskStoreRecord.newBuilder()
-				.setId(id)
-				.setPayload(ByteString.copyFrom(payload))
-				.build();
-
-		pendingRecords.add(proto);
-		pendingBatchBytes += proto.getSerializedSize();
-		index.put(id, pendingBatchId);
+		pendingRecords.add(new PendingRecord<>(id, record));
+		pendingBatchBytes += record.getSerializedSize() + computeVarintSize(record.getSerializedSize());
+		index.put(id, new RecordPointer(pendingBatchId, -1));
 
 		if (pendingBatchBytes >= targetBatchSize) {
 			flushPendingBatch();
@@ -154,21 +157,21 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 
 	@Override
 	public T get(String id) {
-		Integer batchId = index.get(id);
-		if (batchId == null) {
+		RecordPointer pointer = index.get(id);
+		if (pointer == null) {
 			return null;
 		}
 
-		if (batchId == pendingBatchId) {
-			for (Diskstore.DiskStoreRecord record : pendingRecords) {
-				if (record.getId().equals(id)) {
-					return codec.decode(record.getPayload().toByteArray());
+		if (pointer.batchId == pendingBatchId && pointer.byteOffset == -1) {
+			for (PendingRecord<T> pending : pendingRecords) {
+				if (pending.id.equals(id)) {
+					return pending.record;
 				}
 			}
 			return null;
 		}
 
-		ParsedBatch<T> batch = loadBatch(batchId);
+		ParsedBatch<T> batch = loadBatch(pointer.batchId);
 		if (batch == null) {
 			return null;
 		}
@@ -178,15 +181,13 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 
 	@Override
 	public void delete(String id) {
-		Integer batchId = index.remove(id);
-		if (batchId == null) {
+		RecordPointer pointer = index.remove(id);
+		if (pointer == null) {
 			return;
 		}
 
-		if (batchId == pendingBatchId) {
-			pendingRecords.removeIf(r -> r.getId().equals(id));
-		} else {
-			removeFromBatch(id, batchId);
+		if (pointer.batchId == pendingBatchId && pointer.byteOffset == -1) {
+			pendingRecords.removeIf(r -> r.id.equals(id));
 		}
 	}
 
@@ -217,14 +218,12 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 
 			List<T> recordsA = liveRecords(batchA);
 
-			// Intra-batch pairs
 			for (int a = 0; a < recordsA.size() - 1; a++) {
 				for (int b = a + 1; b < recordsA.size(); b++) {
 					pairVisitor.accept(recordsA.get(a), recordsA.get(b));
 				}
 			}
 
-			// Inter-batch pairs
 			for (int j = i + 1; j < batchIds.size(); j++) {
 				ParsedBatch<T> batchB = loadBatch(batchIds.get(j));
 				if (batchB == null) continue;
@@ -291,14 +290,25 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 			return;
 		}
 
-		Diskstore.DiskStoreBatch batch = Diskstore.DiskStoreBatch.newBuilder()
-				.setBatchId(pendingBatchId)
-				.addAllRecords(pendingRecords)
-				.build();
+		Map<String, T> parsedRecords = new HashMap<>();
+		File file = batchFile(pendingBatchId);
 
-		writeBatchFile(pendingBatchId, batch);
+		try (FileOutputStream fos = new FileOutputStream(file)) {
+			long offset = 0;
+			for (PendingRecord<T> pending : pendingRecords) {
+				index.put(pending.id, new RecordPointer(pendingBatchId, offset));
+				pending.record.writeDelimitedTo(fos);
+				long written = computeVarintSize(pending.record.getSerializedSize())
+						+ pending.record.getSerializedSize();
+				offset += written;
+				parsedRecords.put(pending.id, pending.record);
+			}
+		} catch (IOException e) {
+			throw new UncheckedIOException(
+					"Failed to write batch file " + file, e);
+		}
 
-		ParsedBatch<T> parsed = parseBatch(batch);
+		ParsedBatch<T> parsed = new ParsedBatch<>(pendingBatchId, parsedRecords);
 		batchCache.put(pendingBatchId, parsed);
 
 		pendingRecords.clear();
@@ -315,68 +325,71 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 				return null;
 			}
 
-			try (FileInputStream fis = new FileInputStream(file)) {
-				Diskstore.DiskStoreBatch protoBatch =
-						Diskstore.DiskStoreBatch.parseFrom(fis);
+			if (loadListener != null) {
+				loadListener.accept(id);
+			}
 
-				if (loadListener != null) {
-					loadListener.accept(id, protoBatch);
+			Map<String, T> records = new HashMap<>();
+			Map<String, Long> offsets = buildOffsetMap(id);
+
+			try (InputStream is = new BufferedInputStream(new FileInputStream(file))) {
+				long position = 0;
+				T message = parser.parseDelimitedFrom(is);
+				while (message != null) {
+					String recordId = findIdForOffset(offsets, position);
+					if (recordId != null) {
+						records.put(recordId, message);
+					}
+					long messageSize = computeVarintSize(message.getSerializedSize())
+							+ message.getSerializedSize();
+					position += messageSize;
+					message = parser.parseDelimitedFrom(is);
 				}
-
-				return parseBatch(protoBatch);
 			} catch (IOException e) {
 				throw new UncheckedIOException(
 						"Failed to load batch " + id, e);
 			}
+
+			return new ParsedBatch<>(id, records);
 		});
 	}
 
-	private ParsedBatch<T> parseBatch(Diskstore.DiskStoreBatch protoBatch) {
-		Map<String, T> records = new HashMap<>();
-		for (Diskstore.DiskStoreRecord record : protoBatch.getRecordsList()) {
-			records.put(record.getId(),
-					codec.decode(record.getPayload().toByteArray()));
-		}
-		return new ParsedBatch<>(protoBatch.getBatchId(), records);
-	}
-
-	private void removeFromBatch(String id, int batchId) {
-		File file = batchFile(batchId);
-		if (!file.exists()) {
-			return;
-		}
-
-		try (FileInputStream fis = new FileInputStream(file)) {
-			Diskstore.DiskStoreBatch existing =
-					Diskstore.DiskStoreBatch.parseFrom(fis);
-
-			Diskstore.DiskStoreBatch.Builder builder =
-					Diskstore.DiskStoreBatch.newBuilder()
-							.setBatchId(batchId);
-
-			for (Diskstore.DiskStoreRecord record : existing.getRecordsList()) {
-				if (!record.getId().equals(id)) {
-					builder.addRecords(record);
-				}
+	/**
+	 * Build a reverse map from byte offset to record ID for a given batch.
+	 */
+	private Map<String, Long> buildOffsetMap(int batchId) {
+		Map<String, Long> offsets = new HashMap<>();
+		for (Map.Entry<String, RecordPointer> entry : index.entrySet()) {
+			if (entry.getValue().batchId == batchId) {
+				offsets.put(entry.getKey(), entry.getValue().byteOffset);
 			}
-
-			Diskstore.DiskStoreBatch updated = builder.build();
-			writeBatchFile(batchId, updated);
-
-			batchCache.evict(batchId);
-		} catch (IOException e) {
-			throw new UncheckedIOException(
-					"Failed to update batch " + batchId, e);
 		}
+		return offsets;
 	}
 
-	private void writeBatchFile(int batchId, Diskstore.DiskStoreBatch batch) {
-		File file = batchFile(batchId);
-		try (FileOutputStream fos = new FileOutputStream(file)) {
-			batch.writeTo(fos);
-		} catch (IOException e) {
-			throw new UncheckedIOException(
-					"Failed to write batch file " + file, e);
+	/**
+	 * Find the record ID for a given byte offset within a batch.
+	 */
+	private static String findIdForOffset(Map<String, Long> offsets, long position) {
+		for (Map.Entry<String, Long> entry : offsets.entrySet()) {
+			if (entry.getValue() == position) {
+				return entry.getKey();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Compute the number of bytes needed to encode a varint.
+	 */
+	private static int computeVarintSize(int value) {
+		int size = 0;
+		while (true) {
+			if ((value & ~0x7F) == 0) {
+				return size + 1;
+			}
+			size++;
+			value >>>= 7;
 		}
 	}
 
@@ -413,10 +426,11 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 				Diskstore.DiskStoreIndex.newBuilder()
 						.setNextBatchId(nextBatchId.get());
 
-		for (Map.Entry<String, Integer> entry : index.entrySet()) {
+		for (Map.Entry<String, RecordPointer> entry : index.entrySet()) {
 			builder.putLocations(entry.getKey(),
 					Diskstore.DiskStoreRecordLocation.newBuilder()
-							.setBatchId(entry.getValue())
+							.setBatchId(entry.getValue().batchId)
+							.setByteOffset(entry.getValue().byteOffset)
 							.build());
 		}
 
@@ -428,7 +442,7 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 		}
 	}
 
-	private Diskstore.DiskStoreIndex loadIndex() {
+	private Diskstore.DiskStoreIndex loadIndexFromDisk() {
 		File file = indexFile();
 		if (!file.exists()) {
 			return null;
@@ -443,9 +457,38 @@ public class ProtobufDiskStore<T> implements DiskStore<T> {
 	}
 
 	/**
+	 * Points to a record's location on disk: which batch file and
+	 * the byte offset within that file.
+	 */
+	static class RecordPointer {
+		final int batchId;
+		final long byteOffset;
+
+		RecordPointer(int batchId, long byteOffset) {
+			this.batchId = batchId;
+			this.byteOffset = byteOffset;
+		}
+	}
+
+	/**
+	 * A record buffered in memory before being flushed to a batch file.
+	 *
+	 * @param <T> the protobuf message type
+	 */
+	static class PendingRecord<T extends Message> {
+		final String id;
+		final T record;
+
+		PendingRecord(String id, T record) {
+			this.id = id;
+			this.record = record;
+		}
+	}
+
+	/**
 	 * A parsed batch holding deserialized records keyed by ID.
 	 *
-	 * @param <T> the record type
+	 * @param <T> the protobuf message type
 	 */
 	static class ParsedBatch<T> {
 		final int batchId;
