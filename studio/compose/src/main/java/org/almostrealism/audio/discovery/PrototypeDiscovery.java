@@ -31,10 +31,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -416,17 +414,10 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 			throw new PrototypeDiscoveryException("No samples in library");
 		}
 
-		int processed = 0;
-		Iterator<WaveDetails> detailsIterator = library.allDetails().iterator();
-		while (detailsIterator.hasNext()) {
-			library.computeSimilarities(detailsIterator.next());
-			processed++;
-			if (processed % 50 == 0 || processed == totalDetails) {
-				report(statusCallback, "Computing similarities... "
-						+ processed + "/" + totalDetails);
-				log("[Prototypes] Similarity progress: " + processed + "/" + totalDetails);
-			}
-		}
+		report(statusCallback, "Computing similarities...");
+		CompletableFuture<Void> similarityFuture =
+				library.submitSimilarityJobs(statusCallback);
+		similarityFuture.join();
 
 		report(statusCallback, "Building similarity graph...");
 		log("[Prototypes] Building similarity graph...");

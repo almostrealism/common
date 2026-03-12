@@ -616,6 +616,66 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Populates similarity scores for the given {@link WaveDetails},
+	 * reporting progress afterward.
+	 *
+	 * @param details the details whose similarity map should be populated
+	 * @return the updated WaveDetails
+	 */
+	protected WaveDetails populateSimilarities(WaveDetails details) {
+		try {
+			return computeSimilarities(details);
+		} finally {
+			reportProgress();
+		}
+	}
+
+	/**
+	 * Submits similarity computation jobs for all complete entries in
+	 * this library. Each entry becomes a {@link WaveDetailsJob} whose
+	 * runner closure captures the {@link WaveDetails} to process and
+	 * calls {@link #populateSimilarities(WaveDetails)}.
+	 *
+	 * <p>Progress is reported via the optional {@code statusCallback}
+	 * and the library's progress listener. The returned future completes
+	 * when all similarity jobs have finished.</p>
+	 *
+	 * @param statusCallback optional callback for progress messages (may be null)
+	 * @return a future that completes when all similarity jobs are done
+	 */
+	public CompletableFuture<Void> submitSimilarityJobs(Consumer<String> statusCallback) {
+		List<String> ids = new ArrayList<>(completeIdentifiers);
+		int total = ids.size();
+
+		for (int i = 0; i < ids.size(); i++) {
+			WaveDetails details = resolveDetails(ids.get(i));
+			if (details == null) continue;
+
+			int index = i;
+			executor.execute(() -> {
+				try {
+					populateSimilarities(details);
+					if ((index + 1) % 50 == 0 || index + 1 == total) {
+						String msg = "Computing similarities... " + (index + 1) + "/" + total;
+						if (statusCallback != null) statusCallback.accept(msg);
+					}
+				} catch (Exception e) {
+					log("Failed to compute similarities for " + details.getIdentifier());
+				}
+			});
+			totalJobs++;
+		}
+
+		CompletableFuture<Void> future = new CompletableFuture<>();
+		WaveDetailsJob sentinel = new WaveDetailsJob(
+				j -> null, null, false, -1.0);
+		sentinel.getFuture().thenRun(() -> future.complete(null));
+		submitJob(sentinel);
+
+		return future;
+	}
+
 	protected WaveDetailsJob submitJob(WaveDataProvider provider, boolean persistent, double priority) {
 		return submitJob(new WaveDetailsJob(this::processJob, provider, persistent, priority));
 	}
