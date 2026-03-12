@@ -94,7 +94,7 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 		health.setMaxDuration(8);
 		health.setOutputFile(() -> "results/layered-organ-pop-health-test" + index.incrementAndGet() + ".wav");
 
-		AudioScenePopulation pop = population(pattern(1, 1), health.getOutput());
+		AudioScenePopulation pop = population(pattern(1, 1), health.getOutput()); // TODO
 
 		IntStream.range(0, 4).forEach(i -> {
 			health.setTarget(pop.enableGenome(i));
