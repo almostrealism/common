@@ -141,9 +141,18 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	@Override
 	public void put(String id, T record) {
-		Integer existingBatch = index.containsKey(id)
-				? index.get(id).batchId : null;
-		if (existingBatch != null) {
+		RecordPointer existing = index.get(id);
+		if (existing != null) {
+			if (existing.batchId == pendingBatchId && existing.byteOffset == -1) {
+				for (int i = 0; i < pendingRecords.size(); i++) {
+					if (pendingRecords.get(i).id.equals(id)) {
+						PendingRecord<T> old = pendingRecords.remove(i);
+						pendingBatchBytes -= old.record.getSerializedSize()
+								+ computeVarintSize(old.record.getSerializedSize());
+						break;
+					}
+				}
+			}
 			index.remove(id);
 		}
 
@@ -188,7 +197,14 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 
 		if (pointer.batchId == pendingBatchId && pointer.byteOffset == -1) {
-			pendingRecords.removeIf(r -> r.id.equals(id));
+			for (int i = 0; i < pendingRecords.size(); i++) {
+				if (pendingRecords.get(i).id.equals(id)) {
+					PendingRecord<T> old = pendingRecords.remove(i);
+					pendingBatchBytes -= old.record.getSerializedSize()
+							+ computeVarintSize(old.record.getSerializedSize());
+					break;
+				}
+			}
 		}
 	}
 
@@ -200,7 +216,8 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			ParsedBatch<T> batch = loadBatch(batchId);
 			if (batch != null) {
 				for (Map.Entry<String, T> entry : batch.records.entrySet()) {
-					if (index.containsKey(entry.getKey())) {
+					RecordPointer ptr = index.get(entry.getKey());
+					if (ptr != null && ptr.batchId == batchId) {
 						visitor.accept(entry.getValue());
 					}
 				}
@@ -291,7 +308,8 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	private List<T> liveRecords(ParsedBatch<T> batch) {
 		List<T> result = new ArrayList<>();
 		for (Map.Entry<String, T> entry : batch.records.entrySet()) {
-			if (index.containsKey(entry.getKey())) {
+			RecordPointer ptr = index.get(entry.getKey());
+			if (ptr != null && ptr.batchId == batch.batchId) {
 				result.add(entry.getValue());
 			}
 		}
@@ -347,13 +365,13 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 
 		Map<String, T> records = new HashMap<>();
-		Map<String, Long> offsets = buildOffsetMap(batchId);
+		Map<Long, String> offsets = buildOffsetMap(batchId);
 
 		try (InputStream is = new BufferedInputStream(new FileInputStream(file))) {
 			long position = 0;
 			T message = parser.parseDelimitedFrom(is);
 			while (message != null) {
-				String recordId = findIdForOffset(offsets, position);
+				String recordId = offsets.get(position);
 				if (recordId != null) {
 					records.put(recordId, message);
 				}
@@ -373,28 +391,17 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	/**
-	 * Build a reverse map from byte offset to record ID for a given batch.
+	 * Build a map from byte offset to record ID for a given batch,
+	 * enabling O(1) lookup of which record starts at each position.
 	 */
-	private Map<String, Long> buildOffsetMap(int batchId) {
-		Map<String, Long> offsets = new HashMap<>();
+	private Map<Long, String> buildOffsetMap(int batchId) {
+		Map<Long, String> offsets = new HashMap<>();
 		for (Map.Entry<String, RecordPointer> entry : index.entrySet()) {
 			if (entry.getValue().batchId == batchId) {
-				offsets.put(entry.getKey(), entry.getValue().byteOffset);
+				offsets.put(entry.getValue().byteOffset, entry.getKey());
 			}
 		}
 		return offsets;
-	}
-
-	/**
-	 * Find the record ID for a given byte offset within a batch.
-	 */
-	private static String findIdForOffset(Map<String, Long> offsets, long position) {
-		for (Map.Entry<String, Long> entry : offsets.entrySet()) {
-			if (entry.getValue() == position) {
-				return entry.getKey();
-			}
-		}
-		return null;
 	}
 
 	/**

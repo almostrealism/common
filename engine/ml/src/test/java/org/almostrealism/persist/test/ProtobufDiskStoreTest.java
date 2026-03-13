@@ -281,6 +281,113 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verify that getting a non-existent key returns null. */
+	@Test(timeout = 30000)
+	public void getNonExistentKeyReturnsNull() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			Assert.assertNull(store.get("does-not-exist"));
+		}
+	}
+
+	/** Verify that deleting a non-existent key is a no-op. */
+	@Test(timeout = 30000)
+	public void deleteNonExistentKeyIsNoOp() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("key1", makeRecord("key1", "value1", 1));
+			store.delete("does-not-exist");
+			Assert.assertEquals(1, store.size());
+			Assert.assertNotNull(store.get("key1"));
+		}
+	}
+
+	/** Verify that replacing an existing pending record returns the new value. */
+	@Test(timeout = 30000)
+	public void putReplacesPendingRecord() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("key1", makeRecord("key1", "original", 1));
+			store.put("key1", makeRecord("key1", "replaced", 2));
+
+			Assert.assertEquals(1, store.size());
+			TestRecordProto.TestRecord result = store.get("key1");
+			Assert.assertNotNull(result);
+			Assert.assertEquals("replaced", result.getContent());
+			Assert.assertEquals(2, result.getValue());
+		}
+	}
+
+	/** Verify that replacing a flushed record returns the new value. */
+	@Test(timeout = 30000)
+	public void putReplacesFlushedRecord() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("key1", makeRecord("key1", "original", 1));
+			store.flush();
+			store.put("key1", makeRecord("key1", "replaced", 2));
+
+			Assert.assertEquals(1, store.size());
+			TestRecordProto.TestRecord result = store.get("key1");
+			Assert.assertNotNull(result);
+			Assert.assertEquals("replaced", result.getContent());
+			Assert.assertEquals(2, result.getValue());
+		}
+	}
+
+	/** Verify that scan visits the replaced record only once with the new value. */
+	@Test(timeout = 30000)
+	public void scanAfterReplaceVisitsNewValueOnce() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("key1", makeRecord("key1", "original", 1));
+			store.flush();
+			store.put("key1", makeRecord("key1", "replaced", 2));
+
+			List<String> visited = new ArrayList<>();
+			store.scan(record -> visited.add(record.getContent()));
+
+			Assert.assertEquals(1, visited.size());
+			Assert.assertEquals("replaced", visited.get(0));
+		}
+	}
+
+	/** Verify empty store operations. */
+	@Test(timeout = 30000)
+	public void emptyStoreOperations() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			Assert.assertEquals(0, store.size());
+			Assert.assertNull(store.get("anything"));
+
+			List<TestRecordProto.TestRecord> scanned = new ArrayList<>();
+			store.scan(scanned::add);
+			Assert.assertTrue(scanned.isEmpty());
+
+			AtomicInteger pairCount = new AtomicInteger(0);
+			store.pairwiseScan((a, b) -> pairCount.incrementAndGet());
+			Assert.assertEquals(0, pairCount.get());
+		}
+	}
+
+	/** Verify that a deleted key can be re-inserted. */
+	@Test(timeout = 30000)
+	public void reinsertAfterDelete() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("key1", makeRecord("key1", "first", 1));
+			store.flush();
+			store.delete("key1");
+			Assert.assertNull(store.get("key1"));
+
+			store.put("key1", makeRecord("key1", "second", 2));
+			TestRecordProto.TestRecord result = store.get("key1");
+			Assert.assertNotNull(result);
+			Assert.assertEquals("second", result.getContent());
+			Assert.assertEquals(1, store.size());
+		}
+	}
+
 	private static TestRecordProto.TestRecord makeRecord(String id, String content, int value) {
 		return TestRecordProto.TestRecord.newBuilder()
 				.setId(id)
