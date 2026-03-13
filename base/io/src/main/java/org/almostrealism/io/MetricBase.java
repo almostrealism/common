@@ -53,8 +53,8 @@ import java.util.function.BiConsumer;
  * }</pre>
  *
  * <h2>Thread Safety</h2>
- * <p>All internal maps are synchronized for thread-safe access. However, compound
- * operations (read-modify-write) should be externally synchronized if needed.</p>
+ * <p>All internal maps use {@link ConcurrentHashMap} for thread-safe access. However,
+ * compound operations (read-modify-write) should be externally synchronized if needed.</p>
  *
  * @see DistributionMetric
  * @see TimingMetric
