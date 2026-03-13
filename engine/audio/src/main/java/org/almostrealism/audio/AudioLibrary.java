@@ -86,7 +86,8 @@ import java.util.stream.Stream;
  * <h2>Internal Data Structures</h2>
  * <ul>
  *   <li><b>identifiers</b> map: key (file path) to identifier (MD5 hash)</li>
- *   <li><b>info</b> map: identifier to {@link WaveDetails}</li>
+ *   <li><b>detailsCache</b>: frequency-biased cache of identifier to {@link WaveDetails}</li>
+ *   <li><b>completeIdentifiers</b>: set of identifiers known to have complete data</li>
  * </ul>
  *
  * <h2>Resolving Identifier to File Path</h2>
@@ -618,7 +619,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	protected WaveDetails processJob(WaveDetailsJob job) {
-		if (job == null) return null;
+		if (job == null || job.getTarget() == null) return null;
 
 		try {
 			return computeDetails(job.getTarget(), job.isPersistent());
@@ -664,18 +665,15 @@ public class AudioLibrary implements ConsoleFeatures {
 			if (details == null) continue;
 
 			int index = i;
-			executor.execute(() -> {
-				try {
-					populateSimilarities(details);
-					if ((index + 1) % 50 == 0 || index + 1 == total) {
-						String msg = "Computing similarities... " + (index + 1) + "/" + total;
-						if (statusCallback != null) statusCallback.accept(msg);
-					}
-				} catch (Exception e) {
-					log("Failed to compute similarities for " + details.getIdentifier());
+			WaveDetailsJob job = new WaveDetailsJob(j -> {
+				populateSimilarities(details);
+				if ((index + 1) % 50 == 0 || index + 1 == total) {
+					String msg = "Computing similarities... " + (index + 1) + "/" + total;
+					if (statusCallback != null) statusCallback.accept(msg);
 				}
-			});
-			totalJobs++;
+				return details;
+			}, null, false, DEFAULT_PRIORITY);
+			submitJob(job);
 		}
 
 		CompletableFuture<Void> future = new CompletableFuture<>();

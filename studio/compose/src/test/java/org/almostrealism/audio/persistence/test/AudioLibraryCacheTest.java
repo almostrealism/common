@@ -27,6 +27,8 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import org.almostrealism.audio.persistence.AudioLibraryPersistence;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -236,6 +238,92 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 
 		Assert.assertFalse("Incomplete details should not be in completeIdentifiers",
 				library.getAllIdentifiers().contains("incomplete-id"));
+	}
+
+	/**
+	 * Verifies that {@link AudioLibraryPersistence#saveLibrary(AudioLibrary, String)}
+	 * succeeds when all entries are loadable, and the saved file can be read back.
+	 */
+	@Test(timeout = 15000)
+	public void saveAndLoadLibrary() {
+		library.include(createCompleteDetails("save-1"));
+		library.include(createCompleteDetails("save-2"));
+
+		String prefix = tempDir.getAbsolutePath() + "/save-load-test";
+		AudioLibraryPersistence.saveLibrary(library, prefix);
+
+		File saved = new File(prefix + "_0.bin");
+		Assert.assertTrue("Saved file should exist", saved.exists());
+		Assert.assertTrue("Saved file should not be empty", saved.length() > 0);
+
+		// Load into a fresh library and verify entries are present
+		AudioLibrary library2 = new AudioLibrary(tempDir, 44100);
+		try {
+			AudioLibraryPersistence.loadLibrary(library2, prefix);
+			Assert.assertTrue("Loaded library should contain save-1",
+					library2.getAllIdentifiers().contains("save-1"));
+			Assert.assertTrue("Loaded library should contain save-2",
+					library2.getAllIdentifiers().contains("save-2"));
+		} finally {
+			library2.stop();
+			saved.delete();
+		}
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#submitSimilarityJobs(java.util.function.Consumer)}
+	 * submits work as {@link org.almostrealism.audio.data.WaveDetailsJob} instances
+	 * (not plain Runnables) and completes its returned future.
+	 *
+	 * <p>Prior to the fix, this method submitted plain lambdas to the executor,
+	 * whose priority function casts to {@code WaveDetailsJob}. That caused a
+	 * {@code ClassCastException} at runtime.</p>
+	 */
+	@Test(timeout = 30000)
+	public void submitSimilarityJobsCompletes() {
+		WaveDetails d1 = createCompleteDetails("sim-job-1");
+		WaveDetails d2 = createCompleteDetails("sim-job-2");
+
+		d1.getSimilarities().put("sim-job-2", 0.7);
+		d2.getSimilarities().put("sim-job-1", 0.7);
+
+		library.include(d1);
+		library.include(d2);
+
+		// This should not throw ClassCastException
+		java.util.concurrent.CompletableFuture<Void> future =
+				library.submitSimilarityJobs(null);
+		future.join();
+
+		// Verify the future completed successfully
+		Assert.assertTrue("Future should be done", future.isDone());
+		Assert.assertFalse("Future should not be exceptional",
+				future.isCompletedExceptionally());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#submitSimilarityJobs(java.util.function.Consumer)}
+	 * invokes the status callback with progress messages.
+	 */
+	@Test(timeout = 30000)
+	public void submitSimilarityJobsReportsProgress() {
+		// Add enough entries to trigger the modular progress reporting
+		for (int i = 0; i < 3; i++) {
+			WaveDetails d = createCompleteDetails("prog-" + i);
+			library.include(d);
+		}
+
+		java.util.List<String> messages = java.util.Collections.synchronizedList(
+				new java.util.ArrayList<>());
+
+		java.util.concurrent.CompletableFuture<Void> future =
+				library.submitSimilarityJobs(messages::add);
+		future.join();
+
+		// The future completed; verify at least one message was sent
+		// (3 entries triggers the "index + 1 == total" path on the last entry)
+		Assert.assertFalse("Should have received at least one progress message",
+				messages.isEmpty());
 	}
 
 	// ── Test helpers ─────────────────────────────────────────────────────
