@@ -73,6 +73,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	private int pendingBatchId;
 	private long pendingBatchBytes;
 	private final List<PendingRecord<T>> pendingRecords;
+	private boolean closed;
 
 	private Consumer<Integer> loadListener;
 
@@ -245,8 +246,20 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	@Override
 	public void close() {
+		if (closed) {
+			return;
+		}
+		closed = true;
+
 		flushPendingBatch();
 		saveIndex();
+
+		List<Integer> cachedIds = new ArrayList<>();
+		batchCache.forEach((k, v) -> cachedIds.add(k));
+		for (Integer id : cachedIds) {
+			batchCache.evict(id);
+		}
+		index.clear();
 	}
 
 	/**
@@ -319,39 +332,44 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	private ParsedBatch<T> loadBatch(int batchId) {
-		return batchCache.computeIfAbsent(batchId, id -> {
-			File file = batchFile(id);
-			if (!file.exists()) {
-				return null;
-			}
+		ParsedBatch<T> cached = batchCache.get(batchId);
+		if (cached != null) {
+			return cached;
+		}
 
-			if (loadListener != null) {
-				loadListener.accept(id);
-			}
+		File file = batchFile(batchId);
+		if (!file.exists()) {
+			return null;
+		}
 
-			Map<String, T> records = new HashMap<>();
-			Map<String, Long> offsets = buildOffsetMap(id);
+		if (loadListener != null) {
+			loadListener.accept(batchId);
+		}
 
-			try (InputStream is = new BufferedInputStream(new FileInputStream(file))) {
-				long position = 0;
-				T message = parser.parseDelimitedFrom(is);
-				while (message != null) {
-					String recordId = findIdForOffset(offsets, position);
-					if (recordId != null) {
-						records.put(recordId, message);
-					}
-					long messageSize = computeVarintSize(message.getSerializedSize())
-							+ message.getSerializedSize();
-					position += messageSize;
-					message = parser.parseDelimitedFrom(is);
+		Map<String, T> records = new HashMap<>();
+		Map<String, Long> offsets = buildOffsetMap(batchId);
+
+		try (InputStream is = new BufferedInputStream(new FileInputStream(file))) {
+			long position = 0;
+			T message = parser.parseDelimitedFrom(is);
+			while (message != null) {
+				String recordId = findIdForOffset(offsets, position);
+				if (recordId != null) {
+					records.put(recordId, message);
 				}
-			} catch (IOException e) {
-				throw new UncheckedIOException(
-						"Failed to load batch " + id, e);
+				long messageSize = computeVarintSize(message.getSerializedSize())
+						+ message.getSerializedSize();
+				position += messageSize;
+				message = parser.parseDelimitedFrom(is);
 			}
+		} catch (IOException e) {
+			throw new UncheckedIOException(
+					"Failed to load batch " + batchId, e);
+		}
 
-			return new ParsedBatch<>(id, records);
-		});
+		ParsedBatch<T> parsed = new ParsedBatch<>(batchId, records);
+		batchCache.put(batchId, parsed);
+		return parsed;
 	}
 
 	/**
