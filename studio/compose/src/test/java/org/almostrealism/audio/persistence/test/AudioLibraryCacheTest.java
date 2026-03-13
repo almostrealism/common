@@ -326,6 +326,115 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 				messages.isEmpty());
 	}
 
+	/**
+	 * Verifies that {@link AudioLibraryPersistence#saveLibrary(AudioLibrary, String)}
+	 * throws {@link IllegalStateException} when some entries cannot be loaded
+	 * (e.g., evicted from cache with no details loader configured).
+	 */
+	@Test(timeout = 15000, expected = IllegalStateException.class)
+	public void saveLibraryGuardRejectsUnloadableEntries() {
+		int originalCapacity = AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY;
+		AudioLibrary smallLib = null;
+
+		try {
+			AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY = 2;
+			smallLib = new AudioLibrary(tempDir, 44100);
+
+			// Add 5 entries; the cache can only hold 2, so 3 will be evicted
+			for (int i = 0; i < 5; i++) {
+				smallLib.include(createCompleteDetails("guard-" + i));
+			}
+
+			// All 5 identifiers are tracked, but only 2 are in cache
+			Assert.assertEquals("All identifiers should be tracked",
+					5, smallLib.getAllIdentifiers().size());
+
+			String prefix = tempDir.getAbsolutePath() + "/guard-test";
+
+			// Without a details loader, evicted entries cannot be loaded.
+			// saveLibrary should throw to prevent data loss.
+			AudioLibraryPersistence.saveLibrary(smallLib, prefix);
+		} finally {
+			AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY = originalCapacity;
+			if (smallLib != null) smallLib.stop();
+		}
+	}
+
+	/**
+	 * Verifies that {@link AudioLibraryPersistence#loadSingleDetail(String, String)}
+	 * can retrieve a specific entry from protobuf files by identifier.
+	 */
+	@Test(timeout = 15000)
+	public void loadSingleDetailFindsEntry() {
+		library.include(createCompleteDetails("single-1"));
+		library.include(createCompleteDetails("single-2"));
+		library.include(createCompleteDetails("single-3"));
+
+		String prefix = tempDir.getAbsolutePath() + "/single-detail-test";
+		AudioLibraryPersistence.saveLibrary(library, prefix);
+
+		WaveDetails loaded = AudioLibraryPersistence.loadSingleDetail(prefix, "single-2");
+		Assert.assertNotNull("loadSingleDetail should find the entry", loaded);
+		Assert.assertEquals("single-2", loaded.getIdentifier());
+		Assert.assertNotNull("Loaded entry should have freqData", loaded.getFreqData());
+		Assert.assertNotNull("Loaded entry should have featureData", loaded.getFeatureData());
+
+		// Verify that a missing identifier returns null
+		WaveDetails missing = AudioLibraryPersistence.loadSingleDetail(prefix, "nonexistent");
+		Assert.assertNull("loadSingleDetail should return null for missing id", missing);
+
+		new File(prefix + "_0.bin").delete();
+	}
+
+	/**
+	 * Verifies that {@link AudioLibraryPersistence#createDetailsLoader(String)}
+	 * produces a loader that can restore evicted cache entries from disk,
+	 * making all entries resolvable via {@link AudioLibrary#get(String)}.
+	 */
+	@Test(timeout = 15000)
+	public void createDetailsLoaderResolvesEvictedEntries() {
+		// Save 5 entries to disk
+		for (int i = 0; i < 5; i++) {
+			library.include(createCompleteDetails("loader-" + i));
+		}
+
+		String prefix = tempDir.getAbsolutePath() + "/loader-test";
+		AudioLibraryPersistence.saveLibrary(library, prefix);
+
+		int originalCapacity = AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY;
+		AudioLibrary smallLib = null;
+
+		try {
+			// Create a library with a small cache (capacity 2)
+			AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY = 2;
+			smallLib = new AudioLibrary(tempDir, 44100);
+
+			// Load from disk — this auto-wires the details loader
+			AudioLibraryPersistence.loadLibrary(smallLib, prefix);
+
+			// All 5 identifiers should be tracked
+			Assert.assertEquals("All identifiers should be tracked",
+					5, smallLib.getAllIdentifiers().size());
+
+			// Even with a small cache, all entries should be resolvable
+			// via the auto-wired details loader
+			for (int i = 0; i < 5; i++) {
+				WaveDetails resolved = smallLib.get("loader-" + i);
+				Assert.assertNotNull("Entry loader-" + i + " should be resolvable", resolved);
+				Assert.assertEquals("loader-" + i, resolved.getIdentifier());
+			}
+
+			// allDetails() should return all 5 entries via the loader
+			long count = smallLib.allDetails().count();
+			Assert.assertEquals("allDetails() should return all entries via loader",
+					5, count);
+		} finally {
+			AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY = originalCapacity;
+			if (smallLib != null) smallLib.stop();
+			new File(prefix + "_0.bin").delete();
+		}
+	}
+
 	// ── Test helpers ─────────────────────────────────────────────────────
 
 	/**
