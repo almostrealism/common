@@ -583,6 +583,75 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verify that put() on a closed store throws IllegalStateException. */
+	@Test(timeout = 30000, expected = IllegalStateException.class)
+	public void putOnClosedStoreThrows() {
+		ProtobufDiskStore<TestRecordProto.TestRecord> store =
+				new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser());
+		store.put("key1", makeRecord("key1", "value1", 1));
+		store.close();
+		store.put("key2", makeRecord("key2", "value2", 2));
+	}
+
+	/** Verify that flush() on a closed store does not corrupt the persisted index. */
+	@Test(timeout = 30000)
+	public void flushAfterCloseDoesNotCorruptIndex() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("a", makeRecord("a", "alpha", 1));
+			store.put("b", makeRecord("b", "bravo", 2));
+		}
+
+		ProtobufDiskStore<TestRecordProto.TestRecord> reopened =
+				new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser());
+		reopened.close();
+		reopened.flush();
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> verify =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			Assert.assertEquals("Index should still have 2 records after flush-after-close",
+					2, verify.size());
+			Assert.assertEquals("alpha", verify.get("a").getContent());
+			Assert.assertEquals("bravo", verify.get("b").getContent());
+		}
+	}
+
+	/** Verify that put() automatically flushes when pending data exceeds batch size. */
+	@Test(timeout = 30000)
+	public void putAutoFlushesWhenBatchSizeExceeded() {
+		int batchSize = 64;
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), DEFAULT_MEM, batchSize)) {
+
+			String payload = makePayload('A', batchSize);
+			store.put("r1", makeRecord("r1", payload, 1));
+
+			File[] batchFiles = tempDir.listFiles(
+					(dir, name) -> name.startsWith("batch_"));
+			Assert.assertNotNull(batchFiles);
+			Assert.assertTrue(
+					"Auto-flush should create at least one batch file",
+					batchFiles.length >= 1);
+
+			Assert.assertEquals("r1", store.get("r1").getId());
+		}
+	}
+
+	/** Verify that the constructor creates the root directory if it does not exist. */
+	@Test(timeout = 30000)
+	public void constructorCreatesDirectory() {
+		File subDir = new File(tempDir, "nested/store");
+		Assert.assertFalse(subDir.exists());
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(subDir, TestRecordProto.TestRecord.parser())) {
+			Assert.assertTrue("Root directory should be created", subDir.exists());
+			store.put("key1", makeRecord("key1", "value1", 1));
+			Assert.assertEquals("value1", store.get("key1").getContent());
+		}
+	}
+
 	private static TestRecordProto.TestRecord makeRecord(String id, String content, int value) {
 		return TestRecordProto.TestRecord.newBuilder()
 				.setId(id)

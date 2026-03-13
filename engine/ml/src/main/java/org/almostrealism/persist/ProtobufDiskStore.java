@@ -141,6 +141,10 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	@Override
 	public void put(String id, T record) {
+		if (closed) {
+			throw new IllegalStateException("Cannot put into a closed store");
+		}
+
 		RecordPointer existing = index.get(id);
 		if (existing != null) {
 			if (existing.batchId == pendingBatchId && existing.byteOffset == -1) {
@@ -252,13 +256,9 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		if (closed) {
 			return;
 		}
-		closed = true;
 
-		if (!pendingRecords.isEmpty()) {
-			flushPendingBatch();
-		} else {
-			saveIndex();
-		}
+		flushOrSaveIndex();
+		closed = true;
 
 		List<Integer> cachedIds = new ArrayList<>();
 		batchCache.forEach((k, v) -> cachedIds.add(k));
@@ -273,8 +273,22 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * If there are pending records, they are written to a new batch
 	 * file and the index is saved once. If there are no pending records,
 	 * only the index is saved (to persist any deletions since the last flush).
+	 *
+	 * <p>Has no effect if the store has been {@linkplain #close() closed}.</p>
 	 */
 	public void flush() {
+		if (closed) {
+			return;
+		}
+
+		flushOrSaveIndex();
+	}
+
+	/**
+	 * Persist all in-memory state to disk. Flushes pending records
+	 * if any exist, otherwise saves just the index.
+	 */
+	private void flushOrSaveIndex() {
 		if (!pendingRecords.isEmpty()) {
 			flushPendingBatch();
 		} else {
