@@ -122,11 +122,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
 				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
 
-			StringBuilder sb = new StringBuilder();
-			for (int i = 0; i < batchSize; i++) {
-				sb.append('X');
-			}
-			String largeContent = sb.toString();
+			String largeContent = makePayload('X', batchSize);
 
 			int totalRecords = maxBatches * 4;
 			for (int i = 0; i < totalRecords; i++) {
@@ -194,11 +190,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
 				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
 
-			StringBuilder sb = new StringBuilder();
-			for (int i = 0; i < 100; i++) {
-				sb.append('Y');
-			}
-			String payload = sb.toString();
+			String payload = makePayload('Y', 100);
 
 			for (int i = 0; i < 30; i++) {
 				store.put("r-" + i, makeRecord("r-" + i, payload + "-" + i, i));
@@ -256,11 +248,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
 				tempDir, TestRecordProto.TestRecord.parser(), DEFAULT_MEM, batchSize)) {
 
-			StringBuilder sb = new StringBuilder();
-			for (int i = 0; i < 80; i++) {
-				sb.append('Z');
-			}
-			String payload = sb.toString();
+			String payload = makePayload('Z', 80);
 
 			int n = 50;
 			for (int i = 0; i < n; i++) {
@@ -542,12 +530,73 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verify that scan correctly skips deleted records without restart. */
+	@Test(timeout = 30000)
+	public void scanAfterDeleteSkipsDeletedRecords() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("a", makeRecord("a", "alpha", 1));
+			store.put("b", makeRecord("b", "bravo", 2));
+			store.put("c", makeRecord("c", "charlie", 3));
+			store.flush();
+
+			store.delete("b");
+
+			List<String> visited = new ArrayList<>();
+			store.scan(record -> visited.add(record.getId()));
+
+			Assert.assertEquals(2, visited.size());
+			Assert.assertTrue(visited.contains("a"));
+			Assert.assertTrue(visited.contains("c"));
+			Assert.assertFalse(visited.contains("b"));
+		}
+	}
+
+	/** Verify that pairwiseScan uses the replacement value, not the original. */
+	@Test(timeout = 30000)
+	public void pairwiseScanAfterReplaceUsesNewValue() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("a", makeRecord("a", "original-a", 1));
+			store.put("b", makeRecord("b", "value-b", 2));
+			store.put("c", makeRecord("c", "value-c", 3));
+			store.flush();
+
+			store.put("a", makeRecord("a", "replaced-a", 10));
+
+			Set<String> pairKeys = new HashSet<>();
+			List<String> allContents = new ArrayList<>();
+			store.pairwiseScan((x, y) -> {
+				String kx = x.getId();
+				String ky = y.getId();
+				String key = kx.compareTo(ky) < 0 ? kx + "|" + ky : ky + "|" + kx;
+				pairKeys.add(key);
+				allContents.add(x.getContent());
+				allContents.add(y.getContent());
+			});
+
+			Assert.assertEquals("Expected 3 unique pairs", 3, pairKeys.size());
+			Assert.assertTrue(allContents.contains("replaced-a"));
+			Assert.assertFalse(
+					"Original value should not appear in pairwise scan",
+					allContents.contains("original-a"));
+		}
+	}
+
 	private static TestRecordProto.TestRecord makeRecord(String id, String content, int value) {
 		return TestRecordProto.TestRecord.newBuilder()
 				.setId(id)
 				.setContent(content)
 				.setValue(value)
 				.build();
+	}
+
+	private static String makePayload(char c, int length) {
+		StringBuilder sb = new StringBuilder(length);
+		for (int i = 0; i < length; i++) {
+			sb.append(c);
+		}
+		return sb.toString();
 	}
 
 	private static final long DEFAULT_MEM = ProtobufDiskStore.DEFAULT_MAX_MEMORY_BYTES;

@@ -144,14 +144,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		RecordPointer existing = index.get(id);
 		if (existing != null) {
 			if (existing.batchId == pendingBatchId && existing.byteOffset == -1) {
-				for (int i = 0; i < pendingRecords.size(); i++) {
-					if (pendingRecords.get(i).id.equals(id)) {
-						PendingRecord<T> old = pendingRecords.remove(i);
-						pendingBatchBytes -= old.record.getSerializedSize()
-								+ computeVarintSize(old.record.getSerializedSize());
-						break;
-					}
-				}
+				removePendingRecord(id);
 			}
 			index.remove(id);
 		}
@@ -197,14 +190,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 
 		if (pointer.batchId == pendingBatchId && pointer.byteOffset == -1) {
-			for (int i = 0; i < pendingRecords.size(); i++) {
-				if (pendingRecords.get(i).id.equals(id)) {
-					PendingRecord<T> old = pendingRecords.remove(i);
-					pendingBatchBytes -= old.record.getSerializedSize()
-							+ computeVarintSize(old.record.getSerializedSize());
-					break;
-				}
-			}
+			removePendingRecord(id);
 		}
 	}
 
@@ -312,6 +298,21 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 */
 	public int getCacheCapacity() {
 		return Math.max(2, (int) (maxMemoryBytes / targetBatchSize));
+	}
+
+	/**
+	 * Remove a pending record by ID and adjust {@link #pendingBatchBytes}.
+	 * No-op if the record is not found among pending records.
+	 */
+	private void removePendingRecord(String id) {
+		for (int i = 0; i < pendingRecords.size(); i++) {
+			if (pendingRecords.get(i).id.equals(id)) {
+				PendingRecord<T> old = pendingRecords.remove(i);
+				pendingBatchBytes -= old.record.getSerializedSize()
+						+ computeVarintSize(old.record.getSerializedSize());
+				return;
+			}
+		}
 	}
 
 	private List<T> liveRecords(ParsedBatch<T> batch) {
