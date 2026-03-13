@@ -51,8 +51,10 @@ public interface DiskStore<T> extends Closeable {
 	T get(String id);
 
 	/**
-	 * Delete a record by ID. Removes it from both the in-memory cache
-	 * and the on-disk batch file.
+	 * Delete a record by ID. Removes it from the index so that it
+	 * is no longer returned by {@link #get}, {@link #scan}, or
+	 * {@link #pairwiseScan}. The underlying bytes remain in the
+	 * batch file until compaction (not yet implemented).
 	 *
 	 * @param id the record identifier
 	 */

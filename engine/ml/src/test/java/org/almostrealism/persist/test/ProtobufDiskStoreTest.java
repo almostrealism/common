@@ -209,7 +209,9 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 
 			store.pairwiseScan((a, b) -> { });
 
-			int numBatches = store.size();
+			File[] batchFiles = tempDir.listFiles(
+					(dir, name) -> name.startsWith("batch_"));
+			int numBatches = batchFiles == null ? 0 : batchFiles.length;
 			int maxExpectedLoads = numBatches * numBatches;
 			Assert.assertTrue(
 					"Batch loads (" + loadCount.get()
@@ -385,6 +387,64 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 			Assert.assertNotNull(result);
 			Assert.assertEquals("second", result.getContent());
 			Assert.assertEquals(1, store.size());
+		}
+	}
+
+	/** Verify that closing a store twice does not throw. */
+	@Test(timeout = 30000)
+	public void closeTwiceIsIdempotent() {
+		ProtobufDiskStore<TestRecordProto.TestRecord> store =
+				new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser());
+		store.put("key1", makeRecord("key1", "value1", 1));
+		store.close();
+		store.close();
+	}
+
+	/** Verify that a deleted record stays deleted after reopening the store. */
+	@Test(timeout = 30000)
+	public void deletePersistsAcrossRestart() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("a", makeRecord("a", "alpha", 1));
+			store.put("b", makeRecord("b", "bravo", 2));
+			store.flush();
+			store.delete("a");
+		}
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store2 =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			Assert.assertEquals(1, store2.size());
+			Assert.assertNull(store2.get("a"));
+			Assert.assertEquals("bravo", store2.get("b").getContent());
+		}
+	}
+
+	/** Verify that pairwise scan on a single record produces zero pairs. */
+	@Test(timeout = 30000)
+	public void singleRecordPairwiseScanProducesZeroPairs() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("only", makeRecord("only", "alone", 1));
+
+			AtomicInteger pairCount = new AtomicInteger(0);
+			store.pairwiseScan((a, b) -> pairCount.incrementAndGet());
+			Assert.assertEquals(0, pairCount.get());
+		}
+	}
+
+	/** Verify that calling flush on an empty store is a no-op. */
+	@Test(timeout = 30000)
+	public void flushEmptyStoreIsNoOp() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.flush();
+			Assert.assertEquals(0, store.size());
+
+			File[] batchFiles = tempDir.listFiles(
+					(dir, name) -> name.startsWith("batch_"));
+			Assert.assertTrue(
+					"No batch files should be created for empty flush",
+					batchFiles == null || batchFiles.length == 0);
 		}
 	}
 

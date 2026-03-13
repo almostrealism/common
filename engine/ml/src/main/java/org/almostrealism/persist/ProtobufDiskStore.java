@@ -268,8 +268,11 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 		closed = true;
 
-		flushPendingBatch();
-		saveIndex();
+		if (!pendingRecords.isEmpty()) {
+			flushPendingBatch();
+		} else {
+			saveIndex();
+		}
 
 		List<Integer> cachedIds = new ArrayList<>();
 		batchCache.forEach((k, v) -> cachedIds.add(k));
