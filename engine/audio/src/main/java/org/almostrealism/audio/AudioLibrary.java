@@ -891,7 +891,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		List<String> toRemove = new ArrayList<>(completeIdentifiers).stream()
 				.filter(id -> {
 					WaveDetails d = resolveDetails(id);
-					return d != null && !d.isPersistent();
+					return d == null || !d.isPersistent();
 				})
 				.filter(id -> !activeIds.contains(id))
 				.filter(id -> preserve == null || !preserve.test(id))

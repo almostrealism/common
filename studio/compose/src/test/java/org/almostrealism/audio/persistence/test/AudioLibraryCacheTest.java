@@ -435,6 +435,46 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that cleanup removes entries from completeIdentifiers when
+	 * the entry is evicted from the cache and no details loader is configured.
+	 *
+	 * <p>Prior to the fix, if {@code resolveDetails(id)} returned null for an
+	 * evicted entry, the filter {@code d != null && !d.isPersistent()} evaluated
+	 * to false, leaving the entry in completeIdentifiers as a zombie. The fix
+	 * changed the condition to {@code d == null || !d.isPersistent()} so that
+	 * unresolvable entries are eligible for removal.</p>
+	 */
+	@Test(timeout = 15000)
+	public void cleanupRemovesEvictedEntriesWithoutLoader() {
+		int originalCapacity = AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY;
+		AudioLibrary smallLib = null;
+
+		try {
+			AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY = 2;
+			smallLib = new AudioLibrary(tempDir, 44100);
+
+			// Add 5 entries; the cache can only hold 2, so 3 will be evicted
+			for (int i = 0; i < 5; i++) {
+				smallLib.include(createCompleteDetails("zombie-" + i));
+			}
+
+			Assert.assertEquals("All 5 identifiers should be tracked before cleanup",
+					5, smallLib.getAllIdentifiers().size());
+
+			// No details loader is configured, so evicted entries cannot be loaded.
+			// cleanup() should still remove them (they are non-persistent, non-active).
+			smallLib.cleanup(null);
+
+			// Only entries still in cache should remain; evicted ones should be gone
+			Assert.assertTrue("After cleanup, zombie entries should be removed",
+					smallLib.getAllIdentifiers().size() < 5);
+		} finally {
+			AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY = originalCapacity;
+			if (smallLib != null) smallLib.stop();
+		}
+	}
+
 	// ── Test helpers ─────────────────────────────────────────────────────
 
 	/**
