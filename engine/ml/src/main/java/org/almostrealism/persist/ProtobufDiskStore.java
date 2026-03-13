@@ -284,10 +284,16 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	/**
 	 * Flush any pending records to disk and save the index.
+	 * If there are pending records, they are written to a new batch
+	 * file and the index is saved once. If there are no pending records,
+	 * only the index is saved (to persist any deletions since the last flush).
 	 */
 	public void flush() {
-		flushPendingBatch();
-		saveIndex();
+		if (!pendingRecords.isEmpty()) {
+			flushPendingBatch();
+		} else {
+			saveIndex();
+		}
 	}
 
 	/**

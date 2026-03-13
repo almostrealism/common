@@ -83,4 +83,12 @@ public interface DiskStore<T> extends Closeable {
 	 * @return record count
 	 */
 	int size();
+
+	/**
+	 * Close this store, flushing any pending records and releasing
+	 * resources. Does not throw checked exceptions — I/O failures
+	 * are wrapped in {@link java.io.UncheckedIOException}.
+	 */
+	@Override
+	void close();
 }

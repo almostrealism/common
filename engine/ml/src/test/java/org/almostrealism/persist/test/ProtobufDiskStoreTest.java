@@ -24,6 +24,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -445,6 +446,99 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 			Assert.assertTrue(
 					"No batch files should be created for empty flush",
 					batchFiles == null || batchFiles.length == 0);
+		}
+	}
+
+	/** Verify getCacheCapacity returns the correct computed value. */
+	@Test(timeout = 30000)
+	public void cacheCapacityMatchesConfiguration() {
+		int batchSize = 512;
+		long maxMemory = 4096;
+		int expectedCapacity = (int) (maxMemory / batchSize);
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
+			Assert.assertEquals(expectedCapacity, store.getCacheCapacity());
+		}
+	}
+
+	/** Verify getCacheCapacity has a minimum of 2. */
+	@Test(timeout = 30000)
+	public void cacheCapacityMinimumIsTwo() {
+		long maxMemory = 1;
+		int batchSize = 4096;
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store = new ProtobufDiskStore<>(
+				tempDir, TestRecordProto.TestRecord.parser(), maxMemory, batchSize)) {
+			Assert.assertEquals(2, store.getCacheCapacity());
+		}
+	}
+
+	/** Verify that a corrupted index file is handled gracefully and the store starts fresh. */
+	@Test(timeout = 30000)
+	public void corruptedIndexFileStartsFresh() throws Exception {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("key1", makeRecord("key1", "value1", 1));
+		}
+
+		File indexFile = new File(tempDir, "index.bin");
+		Assert.assertTrue("Index file should exist", indexFile.exists());
+
+		try (FileOutputStream fos = new FileOutputStream(indexFile)) {
+			fos.write(new byte[]{0x7F, 0x7F, 0x7F, 0x7F, 0x7F});
+		}
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store2 =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			Assert.assertEquals(
+					"Store should start fresh with corrupted index",
+					0, store2.size());
+		}
+	}
+
+	/** Verify that malformed batch file names in the directory are ignored. */
+	@Test(timeout = 30000)
+	public void malformedBatchFileNamesAreIgnored() throws Exception {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("key1", makeRecord("key1", "value1", 1));
+			store.flush();
+		}
+
+		File malformedFile = new File(tempDir, "batch_notanumber.bin");
+		Assert.assertTrue(malformedFile.createNewFile());
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store2 =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			Assert.assertEquals(1, store2.size());
+			Assert.assertEquals("value1", store2.get("key1").getContent());
+
+			List<String> scanned = new ArrayList<>();
+			store2.scan(record -> scanned.add(record.getContent()));
+			Assert.assertEquals(1, scanned.size());
+			Assert.assertEquals("value1", scanned.get(0));
+		}
+	}
+
+	/** Verify that flush persists deletions without requiring close/reopen. */
+	@Test(timeout = 30000)
+	public void flushPersistsDeletions() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("a", makeRecord("a", "alpha", 1));
+			store.put("b", makeRecord("b", "bravo", 2));
+			store.flush();
+
+			store.delete("a");
+			store.flush();
+		}
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store2 =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			Assert.assertEquals(1, store2.size());
+			Assert.assertNull(store2.get("a"));
+			Assert.assertEquals("bravo", store2.get("b").getContent());
 		}
 	}
 
