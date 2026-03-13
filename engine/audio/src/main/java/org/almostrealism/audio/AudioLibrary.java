@@ -612,6 +612,13 @@ public class AudioLibrary implements ConsoleFeatures {
 		return computeSimilarities(getDetailsAwait(provider, false)).getSimilarities();
 	}
 
+	/**
+	 * Clears all computed similarity data from cached {@link WaveDetails} entries.
+	 *
+	 * <p>Only entries currently in the in-memory cache are affected. Entries
+	 * that have been evicted to disk retain their similarity data until they
+	 * are reloaded and explicitly cleared.</p>
+	 */
 	public void resetSimilarities() {
 		detailsCache.forEach((key, d) -> d.getSimilarities().clear());
 	}
@@ -877,6 +884,20 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Removes non-persistent entries that are no longer associated with active
+	 * audio files in the library directory.
+	 *
+	 * <p>An entry is removed if all of the following are true:</p>
+	 * <ul>
+	 *   <li>It is not persistent (or has been evicted and cannot be resolved)</li>
+	 *   <li>Its identifier does not match any current file in the library tree</li>
+	 *   <li>The optional {@code preserve} predicate does not protect it</li>
+	 * </ul>
+	 *
+	 * @param preserve optional predicate that returns {@code true} for identifiers
+	 *                 that should be kept regardless of file association; may be null
+	 */
 	public void cleanup(Predicate<String> preserve) {
 		// Identify current library files
 		Set<String> activeIds = root.children()

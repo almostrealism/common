@@ -77,4 +77,57 @@ public class SimilarityNodeTest extends TestSuiteBase {
 		SimilarityNode node = new SimilarityNode("id", new HashMap<>());
 		Assert.assertTrue(node.getSimilarities().isEmpty());
 	}
+
+	/**
+	 * Verifies that two nodes with the same identifier are equal
+	 * regardless of their similarity maps.
+	 */
+	@Test(timeout = 5000)
+	public void equalsByIdentifier() {
+		Map<String, Double> map1 = new HashMap<>();
+		map1.put("peer", 0.5);
+		Map<String, Double> map2 = new HashMap<>();
+		map2.put("other", 0.9);
+
+		SimilarityNode a = new SimilarityNode("same-id", map1);
+		SimilarityNode b = new SimilarityNode("same-id", map2);
+
+		Assert.assertEquals("Nodes with same identifier should be equal", a, b);
+		Assert.assertEquals("Hash codes should match", a.hashCode(), b.hashCode());
+	}
+
+	/**
+	 * Verifies that two nodes with different identifiers are not equal.
+	 */
+	@Test(timeout = 5000)
+	public void notEqualsDifferentIdentifier() {
+		Map<String, Double> map = new HashMap<>();
+		SimilarityNode a = new SimilarityNode("id-1", map);
+		SimilarityNode b = new SimilarityNode("id-2", map);
+
+		Assert.assertNotEquals("Nodes with different identifiers should not be equal", a, b);
+	}
+
+	/**
+	 * Verifies that two nodes with null identifiers are considered equal.
+	 */
+	@Test(timeout = 5000)
+	public void equalsWithNullIdentifiers() {
+		SimilarityNode a = new SimilarityNode(null, new HashMap<>());
+		SimilarityNode b = new SimilarityNode(null, new HashMap<>());
+
+		Assert.assertEquals("Nodes with null identifiers should be equal", a, b);
+		Assert.assertEquals("Hash codes should match", a.hashCode(), b.hashCode());
+	}
+
+	/**
+	 * Verifies that a node is not equal to null or a different type.
+	 */
+	@Test(timeout = 5000)
+	public void notEqualsNullOrDifferentType() {
+		SimilarityNode node = new SimilarityNode("id", new HashMap<>());
+
+		Assert.assertNotEquals("Node should not equal null", node, null);
+		Assert.assertNotEquals("Node should not equal String", node, "id");
+	}
 }

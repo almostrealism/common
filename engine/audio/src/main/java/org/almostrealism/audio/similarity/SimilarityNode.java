@@ -19,6 +19,7 @@ package org.almostrealism.audio.similarity;
 import io.almostrealism.relation.Node;
 
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Lightweight graph node that holds only the data needed by
@@ -39,6 +40,9 @@ public class SimilarityNode implements Node {
 	/**
 	 * Creates a similarity node from the given identifier and precomputed scores.
 	 *
+	 * <p>The similarities map is stored by reference, not copied. Modifications
+	 * to the map after construction will be visible through {@link #getSimilarities()}.</p>
+	 *
 	 * @param identifier   content identifier (MD5 hash)
 	 * @param similarities map of peer identifier to similarity score
 	 */
@@ -52,4 +56,17 @@ public class SimilarityNode implements Node {
 
 	/** Returns the precomputed similarity scores keyed by peer identifier. */
 	public Map<String, Double> getSimilarities() { return similarities; }
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		SimilarityNode that = (SimilarityNode) o;
+		return Objects.equals(identifier, that.identifier);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hashCode(identifier);
+	}
 }
