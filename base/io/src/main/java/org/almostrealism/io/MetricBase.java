@@ -22,10 +22,10 @@ import org.almostrealism.lifecycle.ThreadLocalSuppliedValue;
 import java.text.DecimalFormat;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
 /**
@@ -106,10 +106,10 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	 */
 	public MetricBase(String name) {
 		this.name = name;
-		this.entries = Collections.synchronizedMap(new HashMap<>());
-		this.counts = Collections.synchronizedMap(new HashMap<>());
-		this.intervalTotals = Collections.synchronizedMap(new HashMap<>());
-		this.intervalCounts = Collections.synchronizedMap(new HashMap<>());
+		this.entries = new ConcurrentHashMap<>();
+		this.counts = new ConcurrentHashMap<>();
+		this.intervalTotals = new ConcurrentHashMap<>();
+		this.intervalCounts = new ConcurrentHashMap<>();
 
 		this.intervalListeners = new ArrayList<>();
 		this.lastReportedInterval = -1;
