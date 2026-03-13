@@ -17,21 +17,26 @@
 package org.almostrealism.audio.discovery.test;
 
 import org.almostrealism.audio.discovery.PrototypeDiscovery;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 
 /**
- * Runs {@link PrototypeDiscovery} against real data to diagnose
- * cache miss / loadSingleDetail behavior.
+ * Manual diagnostic test for running {@link PrototypeDiscovery} against
+ * real data to diagnose cache miss / loadSingleDetail behavior.
+ *
+ * <p>This test requires local data files that are not available in CI.
+ * It is marked {@link TestDepth @TestDepth(10)} to prevent automatic
+ * execution. To run manually, set {@code AR_TEST_DEPTH=10} or higher.</p>
  */
 public class PrototypeDiscoveryTest extends TestSuiteBase {
 
 	private static final String PROTOBUF_PREFIX = "/Users/michael/Projects/AlmostRealism/library";
 	private static final String SAMPLES_ROOT = "/Users/michael/Music/Samples";
 
-	@Test
+	@Test @TestDepth(10)
 	public void runDiscovery() throws Exception {
 		File protobufFile = new File(PROTOBUF_PREFIX + "_0.bin");
 		if (!protobufFile.exists()) {

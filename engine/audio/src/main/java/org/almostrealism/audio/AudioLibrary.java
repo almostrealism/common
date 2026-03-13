@@ -386,9 +386,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			}
 		}
 
-		AudioSimilarityGraph graph = new AudioSimilarityGraph(batch);
-		batch.clear();
-		return graph;
+		return new AudioSimilarityGraph(batch);
 	}
 
 	/**

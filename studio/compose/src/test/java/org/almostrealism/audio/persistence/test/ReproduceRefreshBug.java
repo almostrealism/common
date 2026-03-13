@@ -18,6 +18,7 @@ package org.almostrealism.audio.persistence.test;
 
 import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.persistence.AudioLibraryPersistence;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -25,9 +26,13 @@ import java.io.File;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Reproduces the bug where {@link AudioLibrary#refresh()} recomputes
- * features for every entry despite the protobuf already containing
- * complete feature data.
+ * Manual diagnostic test that reproduces the bug where
+ * {@link AudioLibrary#refresh()} recomputes features for every entry
+ * despite the protobuf already containing complete feature data.
+ *
+ * <p>This test requires local data files that are not available in CI.
+ * It is marked {@link TestDepth @TestDepth(10)} to prevent automatic
+ * execution. To run manually, set {@code AR_TEST_DEPTH=10} or higher.</p>
  *
  * <p>The root cause is that {@code refresh()} calls
  * {@code getOrLoad(id)} which requires the full {@link org.almostrealism.audio.data.WaveDetails}
@@ -41,7 +46,7 @@ public class ReproduceRefreshBug extends TestSuiteBase {
 	private static final String SAMPLES_ROOT = "/Users/michael/Music/Samples";
 	private static final int SAMPLE_RATE = 44100;
 
-	@Test
+	@Test @TestDepth(10)
 	public void refreshDoesNotRecomputeCompleteEntries() throws Exception {
 		File samplesDir = new File(SAMPLES_ROOT);
 		if (!samplesDir.isDirectory()) {
