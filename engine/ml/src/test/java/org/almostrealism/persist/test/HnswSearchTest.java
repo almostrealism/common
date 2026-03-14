@@ -46,7 +46,7 @@ import static org.almostrealism.persist.test.DiskStoreTestSupport.vec;
  * <p>Covers HNSW standalone operations, store integration,
  * persistence across restart, deletion behavior, and performance.</p>
  */
-public class VectorSearchTest extends TestSuiteBase {
+public class HnswSearchTest extends TestSuiteBase {
 
 	private File tempDir;
 

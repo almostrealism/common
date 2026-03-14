@@ -23,7 +23,7 @@ import java.io.File;
 /**
  * Shared utility methods for disk store tests. Consolidates helpers
  * that are used by both {@link ProtobufDiskStoreTest} and
- * {@link VectorSearchTest}.
+ * {@link HnswSearchTest}.
  */
 final class DiskStoreTestSupport {
 

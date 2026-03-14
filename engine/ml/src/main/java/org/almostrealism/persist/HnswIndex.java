@@ -158,18 +158,17 @@ public class HnswIndex {
 					"Expected dimension " + dimension + " but got " + vector.getMemLength());
 		}
 
-		PackedCollection normalized = metric.normalize(vector);
+		double[] normalizedData = metric.normalizeToArray(vector);
 
 		Node existing = nodes.get(id);
 		if (existing != null) {
-			existing.vector = normalized;
-			existing.cachedData = SimilarityMetric.toDoubleArray(normalized);
+			existing.cachedData = normalizedData;
 			existing.deleted = false;
 			return;
 		}
 
 		int level = randomLevel();
-		Node newNode = new Node(id, normalized, level);
+		Node newNode = new Node(id, normalizedData, level);
 		nodes.put(id, newNode);
 
 		if (entryPointId == null) {
@@ -237,8 +236,7 @@ public class HnswIndex {
 					"Expected dimension " + dimension + " but got " + queryVector.getMemLength());
 		}
 
-		PackedCollection normalized = metric.normalize(queryVector);
-		double[] queryData = SimilarityMetric.toDoubleArray(normalized);
+		double[] queryData = metric.normalizeToArray(queryVector);
 
 		String currentId = entryPointId;
 
@@ -312,8 +310,12 @@ public class HnswIndex {
 				Diskstore.HnswNodeData.Builder nodeBuilder =
 						Diskstore.HnswNodeData.newBuilder();
 				nodeBuilder.setId(node.id);
+				PackedCollection tempVec =
+						new PackedCollection(node.cachedData.length)
+								.fill(node.cachedData);
 				nodeBuilder.setVector(
-						CollectionEncoder.encode(node.vector, Precision.FP32));
+						CollectionEncoder.encode(tempVec, Precision.FP32));
+				tempVec.destroy();
 				nodeBuilder.setLevel(node.level);
 				nodeBuilder.setDeleted(node.deleted);
 
@@ -358,7 +360,9 @@ public class HnswIndex {
 			for (Diskstore.HnswNodeData nodeData : data.getNodesList()) {
 				PackedCollection vector =
 						CollectionEncoder.decode(nodeData.getVector());
-				Node node = new Node(nodeData.getId(), vector,
+				double[] vectorData = SimilarityMetric.toDoubleArray(vector);
+				vector.destroy();
+				Node node = new Node(nodeData.getId(), vectorData,
 						nodeData.getLevel());
 				node.deleted = nodeData.getDeleted();
 
@@ -529,22 +533,20 @@ public class HnswIndex {
 
 	/**
 	 * Internal node representation in the HNSW graph. Stores the vector
-	 * as both a {@link PackedCollection} (for serialization) and a cached
-	 * {@code double[]} (for fast similarity computation without repeated
-	 * JNI native memory reads).
+	 * as a {@code double[]} for fast similarity computation. No
+	 * {@link PackedCollection} is retained, avoiding native memory leaks
+	 * when the finalizer is disabled.
 	 */
 	private static class Node {
 		final String id;
-		PackedCollection vector;
 		double[] cachedData;
 		final int level;
 		boolean deleted;
 		private final List<List<String>> neighborsByLayer;
 
-		Node(String id, PackedCollection vector, int level) {
+		Node(String id, double[] data, int level) {
 			this.id = id;
-			this.vector = vector;
-			this.cachedData = SimilarityMetric.toDoubleArray(vector);
+			this.cachedData = data;
 			this.level = level;
 			this.deleted = false;
 			this.neighborsByLayer = new ArrayList<>(level + 1);

@@ -67,6 +67,24 @@ public interface SimilarityMetric {
 	PackedCollection normalize(PackedCollection vector);
 
 	/**
+	 * Normalize a vector and return the result as a {@code double[]}
+	 * without retaining a {@link PackedCollection}. This avoids native
+	 * memory allocation in hot paths where only the raw data is needed.
+	 *
+	 * <p>The default implementation delegates to {@link #normalize} and
+	 * immediately destroys the temporary collection.</p>
+	 *
+	 * @param vector the vector to normalize
+	 * @return the normalized data as a double array
+	 */
+	default double[] normalizeToArray(PackedCollection vector) {
+		PackedCollection normalized = normalize(vector);
+		double[] data = toDoubleArray(normalized);
+		normalized.destroy();
+		return data;
+	}
+
+	/**
 	 * Cosine similarity metric. Vectors are L2-normalized on insert,
 	 * so similarity reduces to a dot product.
 	 */
@@ -87,6 +105,12 @@ public interface SimilarityMetric {
 
 		@Override
 		public PackedCollection normalize(PackedCollection vector) {
+			double[] data = normalizeToArray(vector);
+			return new PackedCollection(data.length).fill(data);
+		}
+
+		@Override
+		public double[] normalizeToArray(PackedCollection vector) {
 			double[] data = toDoubleArray(vector);
 			double norm = 0.0;
 			for (double v : data) {
@@ -99,7 +123,7 @@ public interface SimilarityMetric {
 					data[i] /= norm;
 				}
 			}
-			return new PackedCollection(data.length).fill(data);
+			return data;
 		}
 	};
 
