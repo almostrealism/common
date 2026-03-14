@@ -28,7 +28,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +69,8 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	private final long maxMemoryBytes;
 	private final int targetBatchSize;
 
+	private static final String HNSW_FILE_NAME = "hnsw.bin";
+
 	private final Map<String, RecordPointer> index;
 	private final FrequencyCache<Integer, ParsedBatch<T>> batchCache;
 	private final AtomicInteger nextBatchId;
@@ -74,6 +78,9 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	private long pendingBatchBytes;
 	private final List<PendingRecord<T>> pendingRecords;
 	private boolean closed;
+
+	private HnswIndex hnswIndex;
+	private int vectorDimension;
 
 	private Consumer<Integer> loadListener;
 
@@ -127,6 +134,13 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 
 		this.pendingBatchId = this.nextBatchId.getAndIncrement();
+
+		Path hnswFile = new File(rootDir, HNSW_FILE_NAME).toPath();
+		HnswIndex loaded = HnswIndex.load(hnswFile, SimilarityMetric.COSINE);
+		if (loaded != null) {
+			this.hnswIndex = loaded;
+			this.vectorDimension = -1;
+		}
 	}
 
 	/**
@@ -163,6 +177,34 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	@Override
+	public void put(String id, T record, float[] vector) {
+		put(id, record);
+		ensureHnswIndex(vector.length);
+		hnswIndex.insert(id, vector);
+	}
+
+	@Override
+	public List<SearchResult<T>> search(float[] queryVector, int topK) {
+		if (hnswIndex == null || hnswIndex.size() == 0) {
+			return new ArrayList<>();
+		}
+
+		List<HnswIndex.IdScore> candidates = hnswIndex.search(queryVector, topK);
+		List<SearchResult<T>> results = new ArrayList<>(candidates.size());
+
+		for (HnswIndex.IdScore candidate : candidates) {
+			T record = get(candidate.id);
+			if (record != null) {
+				results.add(new SearchResult<>(candidate.id, record, candidate.score));
+			}
+		}
+
+		results.sort(Comparator.comparingDouble(
+				(SearchResult<T> r) -> r.getSimilarity()).reversed());
+		return results;
+	}
+
+	@Override
 	public T get(String id) {
 		RecordPointer pointer = index.get(id);
 		if (pointer == null) {
@@ -195,6 +237,10 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 		if (pointer.batchId == pendingBatchId && pointer.byteOffset == -1) {
 			removePendingRecord(id);
+		}
+
+		if (hnswIndex != null) {
+			hnswIndex.remove(id);
 		}
 	}
 
@@ -286,13 +332,36 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	/**
 	 * Persist all in-memory state to disk. Flushes pending records
-	 * if any exist, otherwise saves just the index.
+	 * if any exist, otherwise saves just the index. Also persists the
+	 * HNSW vector index if one has been created.
 	 */
 	private void flushOrSaveIndex() {
 		if (!pendingRecords.isEmpty()) {
 			flushPendingBatch();
 		} else {
 			saveIndex();
+		}
+		saveHnswIndex();
+	}
+
+	/**
+	 * Lazily initialize the HNSW index on first vector insertion.
+	 *
+	 * @param dimension the vector dimensionality
+	 */
+	private void ensureHnswIndex(int dimension) {
+		if (hnswIndex == null) {
+			hnswIndex = new HnswIndex(dimension);
+			vectorDimension = dimension;
+		}
+	}
+
+	/**
+	 * Save the HNSW index to disk if it exists.
+	 */
+	private void saveHnswIndex() {
+		if (hnswIndex != null) {
+			hnswIndex.save(new File(rootDir, HNSW_FILE_NAME).toPath());
 		}
 	}
 

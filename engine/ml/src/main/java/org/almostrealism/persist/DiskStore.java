@@ -17,6 +17,7 @@
 package org.almostrealism.persist;
 
 import java.io.Closeable;
+import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -76,6 +77,28 @@ public interface DiskStore<T> extends Closeable {
 	 * @param pairVisitor the callback for each pair
 	 */
 	void pairwiseScan(BiConsumer<T, T> pairVisitor);
+
+	/**
+	 * Store a record along with its embedding vector. Records stored
+	 * with a vector are searchable via {@link #search}. The vector is
+	 * normalized by the configured {@link SimilarityMetric} at insertion time.
+	 *
+	 * @param id     unique identifier for the record
+	 * @param record the record to store
+	 * @param vector the embedding vector for similarity search
+	 */
+	void put(String id, T record, float[] vector);
+
+	/**
+	 * Search for the top-K most similar records to the given query vector.
+	 * Only records that were stored with a vector are included in the results.
+	 *
+	 * @param queryVector the query embedding vector
+	 * @param topK        maximum number of results to return
+	 * @return results ordered by descending similarity, or an empty list
+	 *         if no vectors are stored
+	 */
+	List<SearchResult<T>> search(float[] queryVector, int topK);
 
 	/**
 	 * Return the total number of records in the store.

@@ -186,3 +186,148 @@ Tests use a real protobuf message type (`TestRecord` defined in
 | `pairwiseScanDiskIO` | Insert records across multiple batches, instrument batch loads, verify no batch is loaded excessively |
 | `scanVisitsAllRecords` | Insert N records, scan, verify all N visited |
 | `multipleRecordsAcrossBatches` | Insert enough records to span multiple batch files, verify all retrievable |
+
+---
+
+## Vector Similarity Search
+
+### Overview
+
+Each record in the store may optionally have a float vector (embedding)
+associated with it. The store supports approximate nearest neighbor (ANN)
+search via an in-memory HNSW (Hierarchical Navigable Small World) graph.
+
+Records stored without a vector (via the original `put(id, record)`)
+continue to work exactly as before — they simply do not appear in vector
+search results.
+
+### API Extensions
+
+```java
+// DiskStore interface additions
+void put(String id, T record, float[] vector);
+List<SearchResult<T>> search(float[] queryVector, int topK);
+
+// New types
+record SearchResult<T>(String id, T record, float similarity) {}
+
+interface SimilarityMetric {
+    float similarity(float[] a, float[] b);
+    void normalize(float[] vector);
+}
+```
+
+### HNSW Index Design
+
+The `HnswIndex` is a standalone class implementing the HNSW algorithm
+for approximate nearest neighbor search.
+
+**Structure**:
+- Multi-layer navigable small-world graph
+- Each node stores an ID (String) and a float[] vector
+- Layer 0 contains all nodes; higher layers contain a geometrically
+  decreasing subset
+- Each node has up to `M` connections per layer (2*M for layer 0)
+- Entry point is the node on the highest layer
+
+**Parameters**:
+- `M` (default 16): Maximum connections per node per layer. Higher M
+  gives better recall but uses more memory.
+- `efConstruction` (default 200): Size of the dynamic candidate list
+  during insertion. Higher values give better graph quality.
+- `efSearch` (default 50): Size of the dynamic candidate list during
+  search. Can be tuned at query time.
+
+**Operations**:
+- `insert(String id, float[] vector)` — O(log N) expected, inserts a
+  node into the graph at a randomly chosen level
+- `search(float[] queryVector, int topK)` — O(log N) expected, returns
+  the top-K nearest neighbors by similarity
+- `remove(String id)` — marks a node as deleted (lazy deletion); deleted
+  nodes are skipped during search
+- `save(Path file)` / `load(Path file)` — binary persistence using
+  `DataOutputStream` / `DataInputStream`
+
+**Similarity Metric**:
+- Default: cosine similarity (vectors normalized on insert)
+- Pluggable via `SimilarityMetric` interface
+- Normalization happens once at insertion time, not at query time
+
+### Persistence Format
+
+The HNSW index is persisted as `hnsw.bin` in the store's root directory:
+
+```
+<store-root>/
+├── index.bin         # Record index (existing)
+├── hnsw.bin          # HNSW graph (new)
+├── batch_0000.bin    # Record batches (existing)
+└── ...
+```
+
+Binary format (`hnsw.bin`):
+```
+[int32]  dimension
+[int32]  M
+[int32]  efConstruction
+[int32]  nodeCount
+[int32]  maxLevel
+[string] entryPointId  (UTF-8, length-prefixed)
+for each node:
+  [string]  id
+  [float[]] vector (dimension floats)
+  [int32]   level
+  [boolean] deleted
+  for each layer 0..level:
+    [int32]   neighborCount
+    [string[]] neighborIds
+```
+
+The index is saved during `close()` and `flush()`, and reloaded in
+the constructor. If the file is missing or corrupted, the store starts
+with an empty HNSW index (existing records without vectors are
+unaffected).
+
+### Memory Tradeoffs
+
+Each HNSW node stores:
+- ID string reference (~40 bytes average)
+- float[] vector (dimension × 4 bytes)
+- Neighbor lists (~M × 8 bytes per layer on average)
+
+For 768-dimensional vectors with M=16:
+- Per node: ~40 + 3072 + 128 ≈ 3.2 KB
+- 1M records: ~3.2 GB
+- 10M records: ~32 GB (exceeds typical JVM heaps)
+
+### Sharding Strategy
+
+For datasets that exceed available memory, the HNSW index supports a
+configurable maximum node count (`maxIndexSize`). When the index is
+full:
+
+1. New vectors are still stored with their records but not added to the
+   HNSW graph.
+2. The `search()` method first queries the HNSW index for candidates,
+   then — if fewer than `topK` results are found — falls back to a
+   brute-force scan of un-indexed vectors.
+3. A future enhancement could implement shard-based HNSW with multiple
+   sub-indices, each covering a partition of the vector space.
+
+This ensures correctness at all dataset sizes while keeping the common
+case (index fits in memory) fast.
+
+### Integration with ProtobufDiskStore
+
+- `ProtobufDiskStore` holds an `HnswIndex` instance
+- `put(id, record, vector)` calls both the existing `put(id, record)`
+  and `hnswIndex.insert(id, vector)`
+- `delete(id)` calls both the existing `delete(id)` and
+  `hnswIndex.remove(id)`
+- `search(queryVector, topK)` queries the HNSW index for candidate IDs,
+  then fetches full records via `get(id)` (which handles disk/cache
+  transparently)
+- `flush()` and `close()` persist the HNSW index alongside the record
+  index
+- The `FrequencyCache` is unaffected — it continues to manage full
+  record data
