@@ -21,9 +21,6 @@ package org.almostrealism.persist;
  * record ID, the full record, and the similarity score.
  *
  * @param <T> the record type
- * @param id         the record identifier
- * @param record     the full record retrieved from the store
- * @param similarity the similarity score between the query vector and this record's vector
  */
 public class SearchResult<T> {
 	private final String id;

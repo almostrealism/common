@@ -426,6 +426,49 @@ public class HnswSearchTest extends TestSuiteBase {
 		Assert.assertEquals(1.0f, sim, 0.001f);
 	}
 
+	/**
+	 * Replacing a vectored record through the store API should update
+	 * both the record data and the HNSW vector so that search returns
+	 * the new result.
+	 */
+	@Test(timeout = 30000)
+	public void replaceVectoredRecordUpdatesSearch() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+
+			store.put("a", makeRecord("a", "original", 1),
+					vec(1.0, 0.0, 0.0));
+			store.put("b", makeRecord("b", "other", 2),
+					vec(0.0, 1.0, 0.0));
+
+			// Replace "a" with a new vector pointing toward (0,0,1)
+			store.put("a", makeRecord("a", "replaced", 10),
+					vec(0.0, 0.0, 1.0));
+
+			// Search toward the new direction — "a" should be closest
+			List<SearchResult<TestRecordProto.TestRecord>> results =
+					store.search(vec(0.0, 0.0, 1.0), 1);
+
+			Assert.assertEquals(1, results.size());
+			Assert.assertEquals("a", results.get(0).getId());
+			Assert.assertEquals("replaced", results.get(0).getRecord().getContent());
+			Assert.assertEquals(10, results.get(0).getRecord().getValue());
+
+			// The old direction should no longer find "a" as top-1
+			List<SearchResult<TestRecordProto.TestRecord>> oldResults =
+					store.search(vec(1.0, 0.0, 0.0), 2);
+			Assert.assertEquals(2, oldResults.size());
+			// "b" is at (0,1,0), "a" is now at (0,0,1); query is (1,0,0)
+			// Both are orthogonal to query; ordering may vary but neither
+			// should have high similarity
+			for (SearchResult<TestRecordProto.TestRecord> r : oldResults) {
+				Assert.assertTrue(
+						"Similarity to old direction should be low",
+						r.getSimilarity() < 0.5f);
+			}
+		}
+	}
+
 	private static PackedCollection randomVector(int dimension, Random random) {
 		double[] values = new double[dimension];
 		for (int i = 0; i < dimension; i++) {

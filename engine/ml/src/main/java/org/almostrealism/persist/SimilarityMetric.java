@@ -51,9 +51,14 @@ public interface SimilarityMetric {
 	 * @return similarity score
 	 */
 	default float similarityCached(double[] a, double[] b) {
-		return similarity(
-				new PackedCollection(a.length).fill(a),
-				new PackedCollection(b.length).fill(b));
+		PackedCollection pcA = new PackedCollection(a.length).fill(a);
+		PackedCollection pcB = new PackedCollection(b.length).fill(b);
+		try {
+			return similarity(pcA, pcB);
+		} finally {
+			pcA.destroy();
+			pcB.destroy();
+		}
 	}
 
 	/**
