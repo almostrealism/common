@@ -622,9 +622,6 @@ public class Heap {
 	 * @see Bytes
 	 */
 	public class HeapStage implements Destroyable {
-		/** Timeout in milliseconds for waiting on pending kernel semaphores during destroy. */
-		private static final long PENDING_KERNEL_TIMEOUT_MS = 30_000;
-
 		/**
 		 * List of all {@link Bytes} instances allocated from this stage, in allocation order.
 		 *

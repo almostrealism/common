@@ -202,7 +202,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		log("");
 
 		List<Prototype> prototypes = new ArrayList<>();
-		for (var entry : communityMembers.entrySet()) {
+		for (Map.Entry<Integer, List<Integer>> entry : communityMembers.entrySet()) {
 			int communityId = entry.getKey();
 			List<Integer> members = entry.getValue();
 
@@ -213,12 +213,14 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 			if (prototypeIdx >= 0) {
 				SimilarityNode node = graph.nodeAt(prototypeIdx);
-				prototypes.add(new Prototype(
-						communityId,
-						node,
-						ranks[prototypeIdx],
-						members.size()
-				));
+				if (node != null && node.getIdentifier() != null) {
+					prototypes.add(new Prototype(
+							communityId,
+							node,
+							ranks[prototypeIdx],
+							members.size()
+					));
+				}
 			}
 		}
 
@@ -476,7 +478,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 		int count = Math.min(prototypes.size(), maxPrototypes);
 		log("[Prototypes] Returning " + count + " prototypes");
-		return prototypes.subList(0, count);
+		return List.copyOf(prototypes.subList(0, count));
 	}
 
 	/**

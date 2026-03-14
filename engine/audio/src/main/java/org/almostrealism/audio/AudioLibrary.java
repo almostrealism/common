@@ -34,7 +34,6 @@ import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -318,6 +317,14 @@ public class AudioLibrary implements ConsoleFeatures {
 	public int getTotalJobs() { return totalJobs; }
 	public int getPendingJobs() { return queue.size(); }
 
+	/**
+	 * Returns a stream of all {@link WaveDetails} whose identifiers are known
+	 * to be complete. Entries evicted from the cache are reloaded via the
+	 * {@link #detailsLoader} if one is configured; unresolvable entries are
+	 * silently skipped.
+	 *
+	 * @return a stream of all complete WaveDetails in this library
+	 */
 	public Stream<WaveDetails> allDetails() {
 		return new ArrayList<>(completeIdentifiers).stream()
 				.map(this::resolveDetails)
@@ -377,16 +384,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @see #computeSimilarities(WaveDetails)
 	 */
 	public AudioSimilarityGraph toSimilarityGraph() {
-		List<WaveDetails> batch = new ArrayList<>();
-
-		for (String id : completeIdentifiers) {
-			WaveDetails details = resolveDetails(id);
-			if (details != null) {
-				batch.add(details);
-			}
-		}
-
-		return new AudioSimilarityGraph(batch);
+		return new AudioSimilarityGraph(allDetails().toList());
 	}
 
 	/**
