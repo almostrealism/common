@@ -35,6 +35,10 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 
+import static org.almostrealism.persist.test.DiskStoreTestSupport.deleteRecursively;
+import static org.almostrealism.persist.test.DiskStoreTestSupport.makeRecord;
+import static org.almostrealism.persist.test.DiskStoreTestSupport.vec;
+
 /**
  * Tests for HNSW vector similarity search integrated into
  * {@link ProtobufDiskStore}.
@@ -345,6 +349,74 @@ public class VectorSearchTest extends TestSuiteBase {
 				1.0f, (float) Math.sqrt(norm), 0.001f);
 	}
 
+	/** Insert with wrong dimension throws IllegalArgumentException. */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void hnswInsertWrongDimensionThrows() {
+		HnswIndex index = new HnswIndex(3);
+		index.insert("a", vec(1.0, 0.0, 0.0, 0.0));
+	}
+
+	/** Search with wrong dimension throws IllegalArgumentException. */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void hnswSearchWrongDimensionThrows() {
+		HnswIndex index = new HnswIndex(3);
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.search(vec(1.0, 0.0), 1);
+	}
+
+	/** Verify totalSize() counts deleted nodes. */
+	@Test(timeout = 30000)
+	public void hnswTotalSizeIncludesDeletedNodes() {
+		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
+		index.remove("a");
+
+		Assert.assertEquals(1, index.size());
+		Assert.assertEquals(2, index.totalSize());
+	}
+
+	/** Verify setEfSearch affects recall for borderline queries. */
+	@Test(timeout = 30000)
+	public void hnswSetEfSearchAffectsRecall() {
+		int dimension = 8;
+		Random random = new Random(42);
+		HnswIndex index = new HnswIndex(dimension, 4, 50, SimilarityMetric.COSINE);
+
+		for (int i = 0; i < 100; i++) {
+			double[] values = new double[dimension];
+			for (int j = 0; j < dimension; j++) {
+				values[j] = random.nextGaussian();
+			}
+			index.insert("n-" + i, new PackedCollection(dimension).fill(values));
+		}
+
+		index.setEfSearch(1);
+		List<HnswIndex.IdScore> lowEf = index.search(
+				randomVector(dimension, random), 10);
+
+		index.setEfSearch(200);
+		List<HnswIndex.IdScore> highEf = index.search(
+				randomVector(dimension, random), 10);
+
+		Assert.assertEquals(10, lowEf.size());
+		Assert.assertEquals(10, highEf.size());
+	}
+
+	/** Verify normalizing a zero vector does not produce NaN. */
+	@Test(timeout = 30000)
+	public void cosineNormalizeZeroVectorDoesNotProduceNaN() {
+		PackedCollection zeroVec = vec(0.0, 0.0, 0.0);
+		PackedCollection normalized = SimilarityMetric.COSINE.normalize(zeroVec);
+
+		for (int i = 0; i < normalized.getMemLength(); i++) {
+			double v = normalized.toDouble(i);
+			Assert.assertFalse("Normalized zero vector should not contain NaN",
+					Double.isNaN(v));
+			Assert.assertEquals(0.0, v, 0.0);
+		}
+	}
+
 	/** Cosine similarity of identical normalized vectors is 1.0. */
 	@Test(timeout = 30000)
 	public void cosineIdenticalVectorsHaveSimilarityOne() {
@@ -352,24 +424,6 @@ public class VectorSearchTest extends TestSuiteBase {
 		PackedCollection normalized = SimilarityMetric.COSINE.normalize(a);
 		float sim = SimilarityMetric.COSINE.similarity(normalized, normalized);
 		Assert.assertEquals(1.0f, sim, 0.001f);
-	}
-
-	private static TestRecordProto.TestRecord makeRecord(String id, String content, int value) {
-		return TestRecordProto.TestRecord.newBuilder()
-				.setId(id)
-				.setContent(content)
-				.setValue(value)
-				.build();
-	}
-
-	/**
-	 * Create a {@link PackedCollection} from the given values.
-	 *
-	 * @param values the vector components
-	 * @return a new PackedCollection containing the values
-	 */
-	private static PackedCollection vec(double... values) {
-		return new PackedCollection(values.length).fill(values);
 	}
 
 	private static PackedCollection randomVector(int dimension, Random random) {
@@ -380,16 +434,4 @@ public class VectorSearchTest extends TestSuiteBase {
 		return new PackedCollection(dimension).fill(values);
 	}
 
-	private static void deleteRecursively(File file) {
-		if (file == null || !file.exists()) return;
-		if (file.isDirectory()) {
-			File[] children = file.listFiles();
-			if (children != null) {
-				for (File child : children) {
-					deleteRecursively(child);
-				}
-			}
-		}
-		file.delete();
-	}
 }

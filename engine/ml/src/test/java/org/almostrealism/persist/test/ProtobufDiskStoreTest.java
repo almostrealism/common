@@ -32,6 +32,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.almostrealism.persist.test.DiskStoreTestSupport.deleteRecursively;
+import static org.almostrealism.persist.test.DiskStoreTestSupport.makeRecord;
+
 /**
  * Tests for {@link ProtobufDiskStore} verifying round-trip persistence,
  * memory cap enforcement, pairwise scan correctness, and disk I/O behavior.
@@ -652,14 +655,6 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		}
 	}
 
-	private static TestRecordProto.TestRecord makeRecord(String id, String content, int value) {
-		return TestRecordProto.TestRecord.newBuilder()
-				.setId(id)
-				.setContent(content)
-				.setValue(value)
-				.build();
-	}
-
 	private static String makePayload(char c, int length) {
 		StringBuilder sb = new StringBuilder(length);
 		for (int i = 0; i < length; i++) {
@@ -670,16 +665,4 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 
 	private static final long DEFAULT_MEM = ProtobufDiskStore.DEFAULT_MAX_MEMORY_BYTES;
 
-	private static void deleteRecursively(File file) {
-		if (file == null || !file.exists()) return;
-		if (file.isDirectory()) {
-			File[] children = file.listFiles();
-			if (children != null) {
-				for (File child : children) {
-					deleteRecursively(child);
-				}
-			}
-		}
-		file.delete();
-	}
 }

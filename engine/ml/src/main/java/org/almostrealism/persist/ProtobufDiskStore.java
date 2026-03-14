@@ -81,7 +81,6 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	private boolean closed;
 
 	private HnswIndex hnswIndex;
-	private int vectorDimension;
 
 	private Consumer<Integer> loadListener;
 
@@ -140,7 +139,6 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		HnswIndex loaded = HnswIndex.load(hnswFile, SimilarityMetric.COSINE);
 		if (loaded != null) {
 			this.hnswIndex = loaded;
-			this.vectorDimension = -1;
 		}
 	}
 
@@ -353,7 +351,6 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	private void ensureHnswIndex(int dimension) {
 		if (hnswIndex == null) {
 			hnswIndex = new HnswIndex(dimension);
-			vectorDimension = dimension;
 		}
 	}
 
@@ -399,6 +396,11 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 	}
 
+	/**
+	 * Return the list of live (non-deleted, non-replaced) records in the
+	 * given batch. A record is live if its current index pointer still
+	 * references this batch.
+	 */
 	private List<T> liveRecords(ParsedBatch<T> batch) {
 		List<T> result = new ArrayList<>();
 		for (Map.Entry<String, T> entry : batch.records.entrySet()) {
@@ -410,6 +412,11 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		return result;
 	}
 
+	/**
+	 * Write all pending records to a new batch file, update the index
+	 * pointers with real byte offsets, cache the parsed batch, and
+	 * prepare a new pending batch ID. No-op if there are no pending records.
+	 */
 	private void flushPendingBatch() {
 		if (pendingRecords.isEmpty()) {
 			return;
@@ -443,6 +450,10 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		saveIndex();
 	}
 
+	/**
+	 * Load a batch from the cache or disk. Returns {@code null} if the
+	 * batch file does not exist.
+	 */
 	private ParsedBatch<T> loadBatch(int batchId) {
 		ParsedBatch<T> cached = batchCache.get(batchId);
 		if (cached != null) {
@@ -512,14 +523,17 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 	}
 
+	/** Return the file path for the given batch ID. */
 	private File batchFile(int batchId) {
 		return new File(rootDir, String.format("batch_%04d.bin", batchId));
 	}
 
+	/** Return the file path for the index file. */
 	private File indexFile() {
 		return new File(rootDir, "index.bin");
 	}
 
+	/** List all batch IDs by scanning the root directory, sorted ascending. */
 	private List<Integer> listBatchIds() {
 		List<Integer> batchIds = new ArrayList<>();
 		File[] files = rootDir.listFiles(
@@ -540,6 +554,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		return batchIds;
 	}
 
+	/** Persist the in-memory index to the index file on disk. */
 	private void saveIndex() {
 		Diskstore.DiskStoreIndex.Builder builder =
 				Diskstore.DiskStoreIndex.newBuilder()
@@ -561,6 +576,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 	}
 
+	/** Load the index from disk, returning {@code null} if absent or corrupted. */
 	private Diskstore.DiskStoreIndex loadIndexFromDisk() {
 		File file = indexFile();
 		if (!file.exists()) {
