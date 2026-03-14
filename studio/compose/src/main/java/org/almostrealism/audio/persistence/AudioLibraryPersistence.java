@@ -33,7 +33,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -175,7 +174,7 @@ public class AudioLibraryPersistence {
 
 	public static void saveLibrary(AudioLibrary library, boolean includeAudio, Supplier<OutputStream> out) throws IOException {
 		Audio.AudioLibraryData.Builder data = Audio.AudioLibraryData.newBuilder();
-		List<WaveDetails> details = new ArrayList<>(library.allDetails().toList());
+		List<WaveDetails> details = library.allDetails().toList();
 
 		int byteCount = 0;
 
