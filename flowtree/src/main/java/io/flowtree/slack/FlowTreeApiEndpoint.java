@@ -573,6 +573,27 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         String workstreamId = resolvedWorkstreamId;
 
+        // Timestamp guard: skip submission if a newer job already exists
+        // on this workstream. This prevents stale auto-resolve jobs from
+        // CI pipelines that ran hours ago from colliding with explicitly
+        // submitted work.
+        String startedAfterStr = extractJsonField(body, "startedAfter");
+        if (startedAfterStr != null && !startedAfterStr.isEmpty()) {
+            try {
+                long startedAfter = Long.parseLong(startedAfterStr);
+                if (notifier.hasJobStartedAfter(workstreamId, startedAfter)) {
+                    log("Skipping job submission — newer job exists on workstream "
+                        + workstreamId + " (startedAfter=" + startedAfter + ")");
+                    String json = "{\"ok\":true,\"skipped\":true,"
+                        + "\"reason\":\"Newer job exists on this workstream\"}";
+                    return newFixedLengthResponse(Response.Status.OK,
+                            "application/json", json);
+                }
+            } catch (NumberFormatException e) {
+                log("Invalid startedAfter value: " + startedAfterStr);
+            }
+        }
+
         if (server == null) {
             return errorResponse("No FlowTree server configured");
         }

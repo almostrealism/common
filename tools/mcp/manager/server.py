@@ -832,6 +832,7 @@ def workstream_submit_task(
     max_budget_usd: float = 0.0,
     protect_test_files: bool = False,
     enforce_changes: bool = False,
+    started_after: str = "",
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -856,6 +857,10 @@ def workstream_submit_task(
         max_budget_usd: Maximum cost in USD (0 = use workstream default).
         protect_test_files: If true, prevent the agent from modifying test files.
         enforce_changes: If true, require the agent to produce code changes.
+        started_after: Epoch milliseconds timestamp. If a newer job already
+            exists on the workstream, the submission is skipped and the
+            response includes ``skipped: true``. Used by CI pipelines to
+            avoid stale auto-resolve jobs colliding with explicit submissions.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -866,7 +871,7 @@ def workstream_submit_task(
         return err
     err = _check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
-        description=description,
+        description=description, started_after=started_after,
     )
     if err:
         return err
@@ -888,6 +893,8 @@ def workstream_submit_task(
         payload["protectTestFiles"] = True
     if enforce_changes:
         payload["enforceChanges"] = True
+    if started_after:
+        payload["startedAfter"] = started_after
 
     result = _controller_post("/api/submit", payload)
 

@@ -27,7 +27,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code_changed: ${{ steps.filter.outputs.code }}
+      started_at: ${{ steps.timing.outputs.started_at }}
     steps:
+      - name: Record pipeline start time
+        id: timing
+        run: echo "started_at=$(date +%s000)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -995,6 +1000,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve build failure"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1185,6 +1191,7 @@ jobs:
           PROTECT_TEST_FILES: "true"
           FAILING_TEST_CLASSES: ${{ steps.test-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1223,6 +1230,7 @@ jobs:
           PROTECT_TEST_FILES: "true"
           FAILING_TEST_CLASSES: ${{ steps.crash-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve JVM crash in test execution"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1249,6 +1257,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1279,6 +1288,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1328,6 +1338,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1354,6 +1365,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Verify docs changes"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1379,6 +1391,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Review branch changes"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"

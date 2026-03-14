@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -56,6 +57,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private final Map<String, SlackWorkstream> workstreams;
     private final Map<String, String> jobThreadTs;
     private final Map<String, Map<String, JobCompletionEvent>> jobHistory;
+    private final Map<String, Long> lastJobStartTime;
     private Consumer<String> messageCallback;
     private JobStatsStore statsStore;
     private String channelOwnerUserId;
@@ -70,6 +72,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         this.workstreams = new HashMap<>();
         this.jobThreadTs = new HashMap<>();
         this.jobHistory = new HashMap<>();
+        this.lastJobStartTime = new ConcurrentHashMap<>();
 
         if (botToken != null && !botToken.isEmpty()) {
             this.client = Slack.getInstance().methods(botToken);
@@ -287,6 +290,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         trackJob(workstreamId, event);
+        lastJobStartTime.put(workstreamId, System.currentTimeMillis());
 
         String message = formatSubmittedMessage(event, workstream);
         String ts;
@@ -500,6 +504,23 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         Map<String, JobCompletionEvent> jobs = jobHistory.get(workstreamId);
         if (jobs == null) return Collections.emptyMap();
         return Collections.unmodifiableMap(jobs);
+    }
+
+    /**
+     * Checks whether any job on the given workstream was started after the
+     * specified epoch timestamp. Used by the submission endpoint to skip
+     * stale auto-resolve jobs from CI pipelines that ran hours ago.
+     *
+     * <p>The tracking map is in-memory and reset on controller restart,
+     * which is safe: a restart means no false positives, only missed guards.</p>
+     *
+     * @param workstreamId the workstream identifier
+     * @param epochMillis  the epoch milliseconds threshold
+     * @return {@code true} if a more recent job exists
+     */
+    public boolean hasJobStartedAfter(String workstreamId, long epochMillis) {
+        Long last = lastJobStartTime.get(workstreamId);
+        return last != null && last > epochMillis;
     }
 
     /**
