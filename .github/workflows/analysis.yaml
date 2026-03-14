@@ -47,6 +47,13 @@ jobs:
             BASE="${{ github.event.before }}"
           fi
 
+          # If BASE is all zeros (initial push / new branch), run full pipeline
+          if echo "$BASE" | grep -qE '^0+$'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Initial push detected — running full pipeline"
+            exit 0
+          fi
+
           # Look for non-doc code files (java, xml, yaml, yml, sh, py, groovy, properties)
           CODE_FILES=$(git diff --name-only "$BASE" HEAD -- \
             '*.java' '*.xml' '*.yaml' '*.yml' '*.sh' '*.py' '*.groovy' '*.properties' \

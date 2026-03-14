@@ -1701,11 +1701,15 @@ def memory_branch_context(
     namespace: str = "default",
     limit: int = 20,
     include_messages: bool = True,
+    include_commits: bool = True,
+    commit_limit: int = 30,
 ) -> dict:
-    """Get all memories for a specific branch.
+    """Get all memories and optionally the commit history for a branch.
 
     Returns memories ordered by creation time (newest first). Can resolve
-    repo_url/branch from workstream_id if provided.
+    repo_url/branch from workstream_id if provided. When ``include_commits``
+    is True, fetches the branch's commit list via the GitHub Compare API
+    relative to the base branch (default ``master``).
 
     Args:
         workstream_id: Workstream to resolve repo/branch from.
@@ -1715,9 +1719,12 @@ def memory_branch_context(
         limit: Maximum number of entries.
         include_messages: If true (default), also include memories from the
             "messages" namespace. Set to false to exclude Slack messages.
+        include_commits: If true (default), include the list of commits on
+            the branch relative to its base branch.
+        commit_limit: Maximum number of commits to include (default 30).
 
     Returns:
-        Dictionary with branch memories.
+        Dictionary with branch memories and optionally commits.
     """
     _require_scope("memory")
     err = _check_short_strings(
@@ -1773,7 +1780,36 @@ def memory_branch_context(
         except ConnectionError:
             pass  # Non-critical: proceed without messages
 
-    return {
+    # Fetch commit history from GitHub Compare API if requested
+    commits = None
+    if include_commits and effective_repo:
+        owner_repo = _extract_owner_repo(effective_repo)
+        if owner_repo:
+            owner, repo = owner_repo
+            # Determine the base branch from the workstream if available
+            ws = _find_workstream(workstream_id) if workstream_id else None
+            base = ws.get("baseBranch", "master") if ws else "master"
+            try:
+                compare = _github_request(
+                    "GET",
+                    f"/repos/{owner}/{repo}/compare/{base}...{effective_branch}",
+                )
+                if compare.get("ok") is not False and "commits" in compare:
+                    commits = []
+                    for c in compare.get("commits", [])[:commit_limit]:
+                        commit_obj = c.get("commit", {})
+                        author_obj = commit_obj.get("author", {})
+                        commits.append({
+                            "sha": c.get("sha", "")[:10],
+                            "author": author_obj.get("name", ""),
+                            "date": author_obj.get("date", ""),
+                            "message": commit_obj.get("message", "").split("\n")[0],
+                        })
+            except Exception as exc:
+                logger.warning("Failed to fetch commits for %s...%s: %s",
+                               base, effective_branch, exc)
+
+    result = {
         "ok": True,
         "repo_url": effective_repo,
         "branch": effective_branch,
@@ -1785,6 +1821,11 @@ def memory_branch_context(
             "Use memory_store to add a new memory for this branch",
         ],
     }
+    if commits is not None:
+        result["commits"] = commits
+        result["commit_count"] = len(commits)
+
+    return result
 
 
 @mcp.tool()
