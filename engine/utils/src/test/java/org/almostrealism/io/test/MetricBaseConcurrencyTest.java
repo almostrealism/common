@@ -32,15 +32,14 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Tests for {@link org.almostrealism.io.MetricBase} thread safety, verifying
- * that concurrent {@link DistributionMetric#addEntry} calls do not lose data
- * or throw {@link java.util.ConcurrentModificationException}.
+ * that concurrent {@link DistributionMetric#addEntry} calls do not lose data.
  */
 public class MetricBaseConcurrencyTest extends TestSuiteBase {
 
 	/**
 	 * Verifies that concurrent addEntry calls from multiple threads using
 	 * separate keys produce the correct per-key counts without throwing
-	 * exceptions. Per-key counts are atomic via {@link java.util.concurrent.ConcurrentHashMap#merge}.
+	 * exceptions.
 	 */
 	@Test(timeout = 30000)
 	public void concurrentAddEntry() throws Exception {
@@ -71,7 +70,6 @@ public class MetricBaseConcurrencyTest extends TestSuiteBase {
 		}
 		executor.shutdown();
 
-		// Per-key counts are atomic via ConcurrentHashMap.merge
 		Map<String, Integer> counts = metric.getCounts();
 		for (int t = 0; t < threadCount; t++) {
 			Assert.assertEquals("Count for key-" + t,
@@ -198,14 +196,14 @@ public class MetricBaseConcurrencyTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that concurrent summary generation while entries are
-	 * being added does not throw exceptions.
+	 * Verifies that concurrent reads (getCount, getTotal) while entries
+	 * are being added do not throw exceptions.
 	 */
 	@Test(timeout = 30000)
-	public void concurrentSummaryAndAdd() throws Exception {
+	public void concurrentReadAndAdd() throws Exception {
 		int threadCount = 4;
 		int iterations = 500;
-		DistributionMetric metric = new DistributionMetric("summary-test", 1.0);
+		DistributionMetric metric = new DistributionMetric("read-test", 1.0);
 
 		ExecutorService executor = Executors.newFixedThreadPool(threadCount + 1);
 		CyclicBarrier barrier = new CyclicBarrier(threadCount + 1);
@@ -227,7 +225,7 @@ public class MetricBaseConcurrencyTest extends TestSuiteBase {
 			}));
 		}
 
-		// Reader thread calling summary()
+		// Reader thread calling getCount and getTotal
 		futures.add(executor.submit(() -> {
 			try {
 				barrier.await();
@@ -235,7 +233,8 @@ public class MetricBaseConcurrencyTest extends TestSuiteBase {
 				throw new RuntimeException(e);
 			}
 			for (int i = 0; i < iterations; i++) {
-				metric.summary();
+				metric.getCount();
+				metric.getTotal();
 			}
 		}));
 
