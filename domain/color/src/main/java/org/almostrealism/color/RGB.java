@@ -112,6 +112,12 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	
   public static final long byteMask = 15;
   public static int defaultDepth = 192;
+
+  /** Threshold below which two color channel values are considered equal. */
+  private static final double EPSILON = 1.0 / 1024.0;
+
+  /** Bucket size for hashCode rounding, must be larger than EPSILON. */
+  private static final double HASH_BUCKET = 1.0 / 64.0;
   
   private int colorDepth = RGB.defaultDepth;
   private double gamma = 0.75;
@@ -490,22 +496,26 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	
 	/**
 	 * Returns true if the color represented by this RGB object is the same as the color
-	 * represented by the specified RGB object, false otherwise.
+	 * represented by the specified RGB object, false otherwise. An epsilon threshold is
+	 * used to account for the fact that floating point values are often not identical
+	 * but may produce indistinguishable colors.
 	 */
 	public boolean equals(RGB rgb) {
-		// TODO  An error threshold should be used to account for the
-		//       fact that floating point values are often not identical
-		//       but may produce indistinguishable colors
-		if (this.getRed() != rgb.getRed()) return false;
-		if (this.getGreen() != rgb.getGreen()) return false;
-		if (this.getBlue() != rgb.getBlue()) return false;
+		if (Math.abs(this.getRed() - rgb.getRed()) > EPSILON) return false;
+		if (Math.abs(this.getGreen() - rgb.getGreen()) > EPSILON) return false;
+		if (Math.abs(this.getBlue() - rgb.getBlue()) > EPSILON) return false;
 		return true;
 	}
-	
-	/** Returns an integer hash code for this RGB object. */
+
+	/**
+	 * Returns an integer hash code for this RGB object. Uses coarse bucketing
+	 * to maintain consistency with the epsilon-based {@link #equals(RGB)} method.
+	 */
 	public int hashCode() {
-		double d = this.data.sum() * 1000;
-		return (int)d;
+		int r = (int) Math.floor(this.getRed() / HASH_BUCKET);
+		int g = (int) Math.floor(this.getGreen() / HASH_BUCKET);
+		int b = (int) Math.floor(this.getBlue() / HASH_BUCKET);
+		return 31 * (31 * r + g) + b;
 	}
 	
 	/**
