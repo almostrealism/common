@@ -180,67 +180,31 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 			return;
 		}
 
-		// Run community detection (Louvain algorithm)
+		// Run community detection and find prototypes
 		log("");
 		log("Detecting communities (Louvain algorithm)...");
-		int[] communities = louvain(graph, 1.0);
-		int numCommunities = countCommunities(communities);
-		log("  Found " + numCommunities + " communities");
+		List<PrototypeResult> prototypes = findPrototypesFromGraph(graph, maxClusters);
+		log("  Found " + prototypes.size() + " prototype communities");
 
-		// Compute PageRank centrality
-		log("Computing centrality (PageRank)...");
-		double[] ranks = pageRank(graph, 0.85, 50);
-
-		// Get community members
-		Map<Integer, List<Integer>> communityMembers = getCommunityMembers(communities);
-
-		// Find prototypes (highest-centrality node in each community)
+		// Display top prototypes
 		log("");
 		log("========================================");
 		log("           DISCOVERED PROTOTYPES       ");
 		log("========================================");
 		log("");
 
-		List<Prototype> prototypes = new ArrayList<>();
-		for (Map.Entry<Integer, List<Integer>> entry : communityMembers.entrySet()) {
-			int communityId = entry.getKey();
-			List<Integer> members = entry.getValue();
-
-			// Find most central member in this community
-			int prototypeIdx = members.stream()
-					.max(Comparator.comparingDouble(i -> ranks[i]))
-					.orElse(-1);
-
-			if (prototypeIdx >= 0) {
-				SimilarityNode node = graph.nodeAt(prototypeIdx);
-				if (node != null && node.getIdentifier() != null) {
-					prototypes.add(new Prototype(
-							communityId,
-							node,
-							ranks[prototypeIdx],
-							members.size()
-					));
-				}
-			}
-		}
-
-		// Sort by community size (largest clusters first)
-		prototypes.sort(Comparator.comparingInt((Prototype p) -> p.communitySize).reversed());
-
-		// Display top prototypes
-		int displayCount = Math.min(prototypes.size(), maxClusters);
-		for (int i = 0; i < displayCount; i++) {
-			Prototype p = prototypes.get(i);
-			String id = p.node.getIdentifier();
+		for (int i = 0; i < prototypes.size(); i++) {
+			PrototypeResult p = prototypes.get(i);
+			String id = p.identifier();
 			String filePath = resolveFilePath(id);
 			String displayName = filePath != null ? getDisplayName(filePath) : id;
 
-			log(String.format("Cluster %d (%d samples):", i + 1, p.communitySize));
+			log(String.format("Cluster %d (%d samples):", i + 1, p.communitySize()));
 			log(String.format("  Prototype: %s", displayName));
 			if (filePath != null) {
 				log(String.format("  Path: %s", filePath));
 			}
-			log(String.format("  Centrality: %.6f", p.centrality));
+			log(String.format("  Centrality: %.6f", p.centrality()));
 			log(String.format("  Identifier: %s", id));
 			log("");
 
@@ -252,14 +216,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 			}
 		}
 
-		// Show modularity score
-		double mod = modularity(graph, communities);
 		log("----------------------------------------");
-		log(String.format("Modularity score: %.3f", mod));
-		log("  (Values > 0.3 indicate significant community structure)");
-		log("  (Higher values = better-defined clusters)");
-
-		log("");
 		log("Done.");
 
 		// Cleanup
@@ -325,24 +282,26 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 				return;
 			}
 
+			ProcessBuilder pb;
 			String os = System.getProperty("os.name").toLowerCase();
 			if (os.contains("mac")) {
-				Runtime.getRuntime().exec(new String[]{"open", "-R", path});
+				pb = new ProcessBuilder("open", "-R", path);
 			} else if (os.contains("win")) {
-				Runtime.getRuntime().exec(new String[]{"explorer", "/select,", path});
+				pb = new ProcessBuilder("explorer", "/select,", path);
 			} else {
 				// Linux - open parent directory
 				File parent = f.getParentFile();
-				if (parent != null) {
-					Runtime.getRuntime().exec(new String[]{"xdg-open", parent.getAbsolutePath()});
-				}
+				if (parent == null) return;
+				pb = new ProcessBuilder("xdg-open", parent.getAbsolutePath());
 			}
+
+			Process process = pb.start();
+			process.getInputStream().close();
+			process.getErrorStream().close();
 		} catch (IOException e) {
 			warn("Could not reveal file: " + e.getMessage());
 		}
 	}
-
-	record Prototype(int communityId, SimilarityNode node, double centrality, int communitySize) {}
 
 	// ── Reusable API for in-process callers ──────────────────────────────
 
@@ -437,17 +396,42 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 		report(statusCallback, "Detecting communities...");
 		log("[Prototypes] Running Louvain community detection...");
+
+		List<PrototypeResult> prototypes = findPrototypesFromGraph(graph, maxPrototypes);
+		log("[Prototypes] Returning " + prototypes.size() + " prototypes");
+		return prototypes;
+	}
+
+	/**
+	 * Builds a {@link PrototypeIndexData} from discovered prototypes for
+	 * persistence in the protobuf library file.
+	 *
+	 * @param prototypes the discovered prototypes
+	 * @return a persistable index
+	 */
+	public static PrototypeIndexData buildIndex(List<PrototypeResult> prototypes) {
+		List<PrototypeIndexData.Community> communities = prototypes.stream()
+				.map(p -> new PrototypeIndexData.Community(
+						p.identifier(), p.centrality(), p.memberIdentifiers()))
+				.toList();
+		return new PrototypeIndexData(System.currentTimeMillis(), communities);
+	}
+
+	/**
+	 * Runs Louvain community detection and PageRank centrality on the given
+	 * graph and returns the highest-centrality node in each community.
+	 *
+	 * @param graph          the similarity graph to analyze
+	 * @param maxPrototypes  maximum number of prototypes to return
+	 * @return prototypes sorted by community size (largest first)
+	 */
+	private List<PrototypeResult> findPrototypesFromGraph(AudioSimilarityGraph graph,
+														   int maxPrototypes) {
 		int[] communities = louvain(graph, 1.0);
-
-		log("[Prototypes] Computing PageRank centrality...");
 		double[] ranks = pageRank(graph, 0.85, 50);
-
 		Map<Integer, List<Integer>> communityMembers = getCommunityMembers(communities);
-		log("[Prototypes] Found " + communityMembers.size() + " communities");
 
-		report(statusCallback, "Resolving prototypes...");
 		List<PrototypeResult> prototypes = new ArrayList<>();
-
 		for (Map.Entry<Integer, List<Integer>> entry : communityMembers.entrySet()) {
 			List<Integer> members = entry.getValue();
 
@@ -477,23 +461,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 				(PrototypeResult p) -> p.communitySize()).reversed());
 
 		int count = Math.min(prototypes.size(), maxPrototypes);
-		log("[Prototypes] Returning " + count + " prototypes");
 		return List.copyOf(prototypes.subList(0, count));
-	}
-
-	/**
-	 * Builds a {@link PrototypeIndexData} from discovered prototypes for
-	 * persistence in the protobuf library file.
-	 *
-	 * @param prototypes the discovered prototypes
-	 * @return a persistable index
-	 */
-	public static PrototypeIndexData buildIndex(List<PrototypeResult> prototypes) {
-		List<PrototypeIndexData.Community> communities = prototypes.stream()
-				.map(p -> new PrototypeIndexData.Community(
-						p.identifier(), p.centrality(), p.memberIdentifiers()))
-				.toList();
-		return new PrototypeIndexData(System.currentTimeMillis(), communities);
 	}
 
 	private void waitForRefresh(AudioLibrary library, Consumer<String> statusCallback)
