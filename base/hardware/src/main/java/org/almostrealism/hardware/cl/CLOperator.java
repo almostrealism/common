@@ -31,7 +31,6 @@ import org.jocl.Sizeof;
 import org.jocl.cl_event;
 import org.jocl.cl_kernel;
 
-import java.lang.ref.Reference;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -293,11 +292,6 @@ public class CLOperator extends HardwareOperator {
 						" (total bytes = " + totalSize + ")", e);
 			}
 		});
-
-		// Prevent the JIT from allowing GC to collect data[] or args
-		// before kernel execution completes
-		Reference.reachabilityFence(data);
-		Reference.reachabilityFence(args);
 
 		return null;
 	}
