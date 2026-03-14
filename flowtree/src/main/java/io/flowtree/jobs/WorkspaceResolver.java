@@ -26,7 +26,7 @@ import java.io.File;
  * It centralizes three concerns that were previously embedded in
  * {@code GitManagedJob}:</p>
  * <ul>
- *   <li>Workspace path resolution with a two-level priority scheme</li>
+ *   <li>Workspace path resolution with a three-level priority scheme</li>
  *   <li>Extraction of a filesystem-safe repository name from a git URL</li>
  *   <li>Replacement of the {@code 0.0.0.0} placeholder in workstream URLs
  *       with the value of the {@code FLOWTREE_ROOT_HOST} environment variable</li>
@@ -45,7 +45,7 @@ public class WorkspaceResolver {
 
     /**
      * Resolves the workspace path for a repository checkout using a
-     * two-level priority scheme.
+     * three-level priority scheme.
      *
      * <p>The resolved path is always a repo-specific subdirectory.
      * The parent directory is chosen from:</p>
