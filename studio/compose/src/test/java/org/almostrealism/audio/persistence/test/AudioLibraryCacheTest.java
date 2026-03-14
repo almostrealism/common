@@ -19,6 +19,7 @@ package org.almostrealism.audio.persistence.test;
 import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
+import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.audio.similarity.SimilarityNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
@@ -33,6 +34,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -473,6 +475,130 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 			AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY = originalCapacity;
 			if (smallLib != null) smallLib.stop();
 		}
+	}
+
+	// ── isPrototypeIndexStale tests ──────────────────────────────────────
+
+	/**
+	 * Verifies that {@link AudioLibrary#isPrototypeIndexStale()} returns
+	 * {@code true} when no prototype index has been set.
+	 */
+	@Test(timeout = 5000)
+	public void staleWhenNoIndexPresent() {
+		library.include(createCompleteDetails("stale-1"));
+		Assert.assertTrue("Should be stale when no index is set",
+				library.isPrototypeIndexStale());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#isPrototypeIndexStale()} returns
+	 * {@code false} when the index exactly matches the current library contents.
+	 */
+	@Test(timeout = 5000)
+	public void notStaleWhenIndexMatchesLibrary() {
+		library.include(createCompleteDetails("idx-1"));
+		library.include(createCompleteDetails("idx-2"));
+
+		PrototypeIndexData index = new PrototypeIndexData(
+				System.currentTimeMillis(),
+				List.of(new PrototypeIndexData.Community(
+						"idx-1", 0.5, List.of("idx-1", "idx-2"))));
+		library.setPrototypeIndex(index);
+
+		Assert.assertFalse("Should not be stale when index matches library",
+				library.isPrototypeIndexStale());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#isPrototypeIndexStale()} returns
+	 * {@code true} when a prototype identifier has been removed from the
+	 * library (no longer in completeIdentifiers).
+	 */
+	@Test(timeout = 5000)
+	public void staleWhenPrototypeDeleted() {
+		library.include(createCompleteDetails("proto-1"));
+		library.include(createCompleteDetails("proto-2"));
+
+		PrototypeIndexData index = new PrototypeIndexData(
+				System.currentTimeMillis(),
+				List.of(
+						new PrototypeIndexData.Community(
+								"proto-1", 0.5, List.of("proto-1")),
+						new PrototypeIndexData.Community(
+								"deleted-proto", 0.3, List.of("deleted-proto"))));
+		library.setPrototypeIndex(index);
+
+		Assert.assertTrue("Should be stale when a prototype is not in library",
+				library.isPrototypeIndexStale());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#isPrototypeIndexStale()} returns
+	 * {@code true} when more than 5% of indexed members are missing.
+	 */
+	@Test(timeout = 5000)
+	public void staleWhenManyMembersMissing() {
+		// Add 10 entries but index references 20, so 10 are missing (50%)
+		for (int i = 0; i < 10; i++) {
+			library.include(createCompleteDetails("member-" + i));
+		}
+
+		List<String> allMembers = new java.util.ArrayList<>();
+		for (int i = 0; i < 20; i++) {
+			allMembers.add("member-" + i);
+		}
+
+		PrototypeIndexData index = new PrototypeIndexData(
+				System.currentTimeMillis(),
+				List.of(new PrototypeIndexData.Community(
+						"member-0", 0.5, allMembers)));
+		library.setPrototypeIndex(index);
+
+		Assert.assertTrue("Should be stale when >5% members missing",
+				library.isPrototypeIndexStale());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#isPrototypeIndexStale()} returns
+	 * {@code true} when significantly more samples exist than are indexed
+	 * (more than 5% growth).
+	 */
+	@Test(timeout = 5000)
+	public void staleWhenLibraryGrowsSignificantly() {
+		// Add 12 entries but index only references 10
+		for (int i = 0; i < 12; i++) {
+			library.include(createCompleteDetails("grow-" + i));
+		}
+
+		List<String> indexedMembers = new java.util.ArrayList<>();
+		for (int i = 0; i < 10; i++) {
+			indexedMembers.add("grow-" + i);
+		}
+
+		PrototypeIndexData index = new PrototypeIndexData(
+				System.currentTimeMillis(),
+				List.of(new PrototypeIndexData.Community(
+						"grow-0", 0.5, indexedMembers)));
+		library.setPrototypeIndex(index);
+
+		Assert.assertTrue("Should be stale when library grows >5% beyond index",
+				library.isPrototypeIndexStale());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#isPrototypeIndexStale()} returns
+	 * {@code true} when the index is empty (no communities).
+	 */
+	@Test(timeout = 5000)
+	public void staleWhenIndexHasNoCommunities() {
+		library.include(createCompleteDetails("empty-idx-1"));
+
+		PrototypeIndexData index = new PrototypeIndexData(
+				System.currentTimeMillis(), List.of());
+		library.setPrototypeIndex(index);
+
+		Assert.assertTrue("Should be stale when index has no communities",
+				library.isPrototypeIndexStale());
 	}
 
 	// ── Test helpers ─────────────────────────────────────────────────────

@@ -467,10 +467,14 @@ public class AudioLibraryPersistence {
 		InputStream input = in.get();
 
 		while (input != null) {
-			Audio.AudioLibraryData data = Audio.AudioLibraryData.newBuilder().mergeFrom(input).build();
-			Audio.WaveDetailData d = data.getInfoMap().get(identifier);
-			if (d != null) {
-				return decode(d);
+			try {
+				Audio.AudioLibraryData data = Audio.AudioLibraryData.newBuilder().mergeFrom(input).build();
+				Audio.WaveDetailData d = data.getInfoMap().get(identifier);
+				if (d != null) {
+					return decode(d);
+				}
+			} finally {
+				input.close();
 			}
 
 			input = in.get();
