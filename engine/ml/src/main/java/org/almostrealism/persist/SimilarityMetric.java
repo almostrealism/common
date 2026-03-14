@@ -16,9 +16,12 @@
 
 package org.almostrealism.persist;
 
+import org.almostrealism.collect.PackedCollection;
+
 /**
- * Strategy interface for computing similarity between two float vectors.
- * Implementations must be symmetric: {@code similarity(a, b) == similarity(b, a)}.
+ * Strategy interface for computing similarity between two {@link PackedCollection}
+ * vectors. Implementations must be symmetric:
+ * {@code similarity(a, b) == similarity(b, a)}.
  *
  * <p>Higher values indicate greater similarity. The default implementation
  * uses cosine similarity on pre-normalized vectors (i.e., dot product).</p>
@@ -32,16 +35,36 @@ public interface SimilarityMetric {
 	 * @param b second vector
 	 * @return similarity score (higher is more similar)
 	 */
-	float similarity(float[] a, float[] b);
+	float similarity(PackedCollection a, PackedCollection b);
 
 	/**
-	 * Normalize a vector in place so that similarity computations are
-	 * correct. For cosine similarity, this means L2 normalization.
-	 * Called once at insertion time.
+	 * Compute the similarity between two vectors given their cached
+	 * double-array representations. Used by {@link HnswIndex} internally
+	 * to avoid repeated native memory reads during graph traversal.
 	 *
-	 * @param vector the vector to normalize in place
+	 * <p>The default implementation delegates to
+	 * {@link #similarity(PackedCollection, PackedCollection)} by wrapping
+	 * the arrays. Implementations should override for performance.</p>
+	 *
+	 * @param a first vector data
+	 * @param b second vector data
+	 * @return similarity score
 	 */
-	void normalize(float[] vector);
+	default float similarityCached(double[] a, double[] b) {
+		return similarity(
+				new PackedCollection(a.length).fill(a),
+				new PackedCollection(b.length).fill(b));
+	}
+
+	/**
+	 * Normalize a vector so that similarity computations are correct.
+	 * For cosine similarity, this means L2 normalization. Called once
+	 * at insertion time.
+	 *
+	 * @param vector the vector to normalize
+	 * @return a normalized copy of the vector
+	 */
+	PackedCollection normalize(PackedCollection vector);
 
 	/**
 	 * Cosine similarity metric. Vectors are L2-normalized on insert,
@@ -49,26 +72,46 @@ public interface SimilarityMetric {
 	 */
 	SimilarityMetric COSINE = new SimilarityMetric() {
 		@Override
-		public float similarity(float[] a, float[] b) {
-			float dot = 0.0f;
-			for (int i = 0; i < a.length; i++) {
-				dot += a[i] * b[i];
-			}
-			return dot;
+		public float similarity(PackedCollection a, PackedCollection b) {
+			return similarityCached(toDoubleArray(a), toDoubleArray(b));
 		}
 
 		@Override
-		public void normalize(float[] vector) {
-			float norm = 0.0f;
-			for (float v : vector) {
+		public float similarityCached(double[] a, double[] b) {
+			double dot = 0.0;
+			for (int i = 0; i < a.length; i++) {
+				dot += a[i] * b[i];
+			}
+			return (float) dot;
+		}
+
+		@Override
+		public PackedCollection normalize(PackedCollection vector) {
+			double[] data = toDoubleArray(vector);
+			double norm = 0.0;
+			for (double v : data) {
 				norm += v * v;
 			}
-			norm = (float) Math.sqrt(norm);
-			if (norm > 0.0f) {
-				for (int i = 0; i < vector.length; i++) {
-					vector[i] /= norm;
+			norm = Math.sqrt(norm);
+
+			if (norm > 0.0) {
+				for (int i = 0; i < data.length; i++) {
+					data[i] /= norm;
 				}
 			}
+			return new PackedCollection(data.length).fill(data);
 		}
 	};
+
+	/**
+	 * Extract the raw data from a {@link PackedCollection} as a double array.
+	 * Provides a single bulk read from native memory, avoiding per-element
+	 * JNI overhead in hot computation paths.
+	 *
+	 * @param collection the collection to read
+	 * @return the data as a double array
+	 */
+	static double[] toDoubleArray(PackedCollection collection) {
+		return collection.doubleStream().toArray();
+	}
 }

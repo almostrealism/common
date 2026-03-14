@@ -19,6 +19,7 @@ package org.almostrealism.persist;
 import com.google.protobuf.Message;
 import com.google.protobuf.Parser;
 import io.almostrealism.util.FrequencyCache;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.protobuf.Diskstore;
 
 import java.io.BufferedInputStream;
@@ -177,14 +178,14 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	@Override
-	public void put(String id, T record, float[] vector) {
+	public void put(String id, T record, PackedCollection vector) {
 		put(id, record);
-		ensureHnswIndex(vector.length);
+		ensureHnswIndex(vector.getMemLength());
 		hnswIndex.insert(id, vector);
 	}
 
 	@Override
-	public List<SearchResult<T>> search(float[] queryVector, int topK) {
+	public List<SearchResult<T>> search(PackedCollection queryVector, int topK) {
 		if (hnswIndex == null || hnswIndex.size() == 0) {
 			return new ArrayList<>();
 		}

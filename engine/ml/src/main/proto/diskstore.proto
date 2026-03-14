@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package almostrealism;
 
+import "collections.proto";
+
 option java_package = "org.almostrealism.protobuf";
 
 message DiskStoreRecordLocation {
@@ -12,4 +14,25 @@ message DiskStoreRecordLocation {
 message DiskStoreIndex {
   map<string, DiskStoreRecordLocation> locations = 1;
   int32 next_batch_id = 2;
+}
+
+message HnswLayerNeighbors {
+  repeated string neighbor_ids = 1;
+}
+
+message HnswNodeData {
+  string id = 1;
+  CollectionData vector = 2;
+  int32 level = 3;
+  bool deleted = 4;
+  repeated HnswLayerNeighbors layers = 5;
+}
+
+message HnswIndexData {
+  int32 dimension = 1;
+  int32 m = 2;
+  int32 ef_construction = 3;
+  int32 max_level = 4;
+  string entry_point_id = 5;
+  repeated HnswNodeData nodes = 6;
 }

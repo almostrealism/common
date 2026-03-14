@@ -16,14 +16,18 @@
 
 package org.almostrealism.persist;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
+import io.almostrealism.code.Precision;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.persistence.CollectionEncoder;
+import org.almostrealism.protobuf.Diskstore;
+
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,14 +40,15 @@ import java.util.logging.Logger;
 
 /**
  * In-memory Hierarchical Navigable Small World (HNSW) index for
- * approximate nearest neighbor search over float vectors.
+ * approximate nearest neighbor search over {@link PackedCollection} vectors.
  *
  * <p>The index stores only IDs and vectors — not full records. When a
  * search returns top-K candidate IDs, the caller fetches full records
  * from the backing store.</p>
  *
- * <p>The graph is persisted to a binary file and reloaded on startup
- * so it survives JVM restarts.</p>
+ * <p>The graph is persisted to a binary file using protobuf
+ * {@link CollectionEncoder} for vector serialization and reloaded on
+ * startup so it survives JVM restarts.</p>
  *
  * @see SimilarityMetric
  */
@@ -144,21 +149,21 @@ public class HnswIndex {
 	 * <p>If a node with the same ID already exists, it is replaced.</p>
 	 *
 	 * @param id     unique identifier
-	 * @param vector float vector of the configured dimension
+	 * @param vector {@link PackedCollection} vector of the configured dimension
 	 * @throws IllegalArgumentException if vector dimension does not match
 	 */
-	public void insert(String id, float[] vector) {
-		if (vector.length != dimension) {
+	public void insert(String id, PackedCollection vector) {
+		if (vector.getMemLength() != dimension) {
 			throw new IllegalArgumentException(
-					"Expected dimension " + dimension + " but got " + vector.length);
+					"Expected dimension " + dimension + " but got " + vector.getMemLength());
 		}
 
-		float[] normalized = Arrays.copyOf(vector, vector.length);
-		metric.normalize(normalized);
+		PackedCollection normalized = metric.normalize(vector);
 
 		Node existing = nodes.get(id);
 		if (existing != null) {
 			existing.vector = normalized;
+			existing.cachedData = SimilarityMetric.toDoubleArray(normalized);
 			existing.deleted = false;
 			return;
 		}
@@ -174,17 +179,18 @@ public class HnswIndex {
 		}
 
 		String currentId = entryPointId;
+		double[] cachedNorm = newNode.cachedData;
 
 		for (int lc = maxLevel; lc > level; lc--) {
-			currentId = greedyClosest(currentId, normalized, lc);
+			currentId = greedyClosest(currentId, cachedNorm, lc);
 		}
 
 		for (int lc = Math.min(level, maxLevel); lc >= 0; lc--) {
-			List<String> candidates = searchLayer(currentId, normalized,
+			List<String> candidates = searchLayer(currentId, cachedNorm,
 					efConstruction, lc);
 
 			int maxConnections = (lc == 0) ? maxM0 : m;
-			List<String> neighbors = selectNeighbors(candidates, normalized,
+			List<String> neighbors = selectNeighbors(candidates, cachedNorm,
 					maxConnections);
 
 			newNode.setNeighbors(lc, neighbors);
@@ -197,8 +203,8 @@ public class HnswIndex {
 				nNeighbors.add(id);
 
 				if (nNeighbors.size() > maxConnections) {
-					nNeighbors = selectNeighbors(nNeighbors, neighbor.vector,
-							maxConnections);
+					nNeighbors = selectNeighbors(nNeighbors,
+							neighbor.cachedData, maxConnections);
 				}
 				neighbor.setNeighbors(lc, nNeighbors);
 			}
@@ -221,33 +227,33 @@ public class HnswIndex {
 	 * @param topK        number of results to return
 	 * @return list of (id, similarity) pairs ordered by descending similarity
 	 */
-	public List<IdScore> search(float[] queryVector, int topK) {
+	public List<IdScore> search(PackedCollection queryVector, int topK) {
 		if (entryPointId == null || size() == 0) {
 			return new ArrayList<>();
 		}
 
-		if (queryVector.length != dimension) {
+		if (queryVector.getMemLength() != dimension) {
 			throw new IllegalArgumentException(
-					"Expected dimension " + dimension + " but got " + queryVector.length);
+					"Expected dimension " + dimension + " but got " + queryVector.getMemLength());
 		}
 
-		float[] normalized = Arrays.copyOf(queryVector, queryVector.length);
-		metric.normalize(normalized);
+		PackedCollection normalized = metric.normalize(queryVector);
+		double[] queryData = SimilarityMetric.toDoubleArray(normalized);
 
 		String currentId = entryPointId;
 
 		for (int lc = maxLevel; lc > 0; lc--) {
-			currentId = greedyClosest(currentId, normalized, lc);
+			currentId = greedyClosest(currentId, queryData, lc);
 		}
 
 		int ef = Math.max(efSearch, topK);
-		List<String> candidates = searchLayer(currentId, normalized, ef, 0);
+		List<String> candidates = searchLayer(currentId, queryData, ef, 0);
 
 		List<IdScore> results = new ArrayList<>();
 		for (String candidateId : candidates) {
 			Node node = nodes.get(candidateId);
 			if (node != null && !node.deleted) {
-				float sim = metric.similarity(normalized, node.vector);
+				float sim = metric.similarityCached(queryData, node.cachedData);
 				results.add(new IdScore(candidateId, sim));
 			}
 		}
@@ -286,37 +292,42 @@ public class HnswIndex {
 	}
 
 	/**
-	 * Save the HNSW index to a binary file.
+	 * Save the HNSW index to a binary file. Vectors are serialized
+	 * using {@link CollectionEncoder} in FP32 precision.
 	 *
 	 * @param file path to write
 	 */
 	public void save(Path file) {
-		try (DataOutputStream out = new DataOutputStream(
-				Files.newOutputStream(file))) {
-			out.writeInt(dimension);
-			out.writeInt(m);
-			out.writeInt(efConstruction);
-			out.writeInt(nodes.size());
-			out.writeInt(maxLevel);
-			out.writeUTF(entryPointId != null ? entryPointId : "");
+		try (OutputStream os = Files.newOutputStream(file)) {
+			Diskstore.HnswIndexData.Builder builder =
+					Diskstore.HnswIndexData.newBuilder();
+			builder.setDimension(dimension);
+			builder.setM(m);
+			builder.setEfConstruction(efConstruction);
+			builder.setMaxLevel(maxLevel);
+			builder.setEntryPointId(entryPointId != null ? entryPointId : "");
 
 			for (Map.Entry<String, Node> entry : nodes.entrySet()) {
 				Node node = entry.getValue();
-				out.writeUTF(node.id);
-				for (float v : node.vector) {
-					out.writeFloat(v);
-				}
-				out.writeInt(node.level);
-				out.writeBoolean(node.deleted);
+				Diskstore.HnswNodeData.Builder nodeBuilder =
+						Diskstore.HnswNodeData.newBuilder();
+				nodeBuilder.setId(node.id);
+				nodeBuilder.setVector(
+						CollectionEncoder.encode(node.vector, Precision.FP32));
+				nodeBuilder.setLevel(node.level);
+				nodeBuilder.setDeleted(node.deleted);
 
 				for (int lc = 0; lc <= node.level; lc++) {
-					List<String> neighbors = node.getNeighbors(lc);
-					out.writeInt(neighbors.size());
-					for (String neighborId : neighbors) {
-						out.writeUTF(neighborId);
-					}
+					Diskstore.HnswLayerNeighbors.Builder layerBuilder =
+							Diskstore.HnswLayerNeighbors.newBuilder();
+					layerBuilder.addAllNeighborIds(node.getNeighbors(lc));
+					nodeBuilder.addLayers(layerBuilder);
 				}
+
+				builder.addNodes(nodeBuilder);
 			}
+
+			builder.build().writeTo(os);
 		} catch (IOException e) {
 			throw new UncheckedIOException("Failed to save HNSW index", e);
 		}
@@ -334,41 +345,31 @@ public class HnswIndex {
 			return null;
 		}
 
-		try (DataInputStream in = new DataInputStream(
-				Files.newInputStream(file))) {
-			int dimension = in.readInt();
-			int m = in.readInt();
-			int efConstruction = in.readInt();
-			int nodeCount = in.readInt();
-			int maxLevel = in.readInt();
-			String entryPointId = in.readUTF();
+		try (InputStream is = Files.newInputStream(file)) {
+			Diskstore.HnswIndexData data =
+					Diskstore.HnswIndexData.parseFrom(is);
 
-			HnswIndex index = new HnswIndex(dimension, m, efConstruction, metric);
-			index.maxLevel = maxLevel;
-			index.entryPointId = entryPointId.isEmpty() ? null : entryPointId;
+			HnswIndex index = new HnswIndex(data.getDimension(), data.getM(),
+					data.getEfConstruction(), metric);
+			index.maxLevel = data.getMaxLevel();
+			index.entryPointId = data.getEntryPointId().isEmpty()
+					? null : data.getEntryPointId();
 
-			for (int i = 0; i < nodeCount; i++) {
-				String id = in.readUTF();
-				float[] vector = new float[dimension];
-				for (int d = 0; d < dimension; d++) {
-					vector[d] = in.readFloat();
-				}
-				int level = in.readInt();
-				boolean deleted = in.readBoolean();
+			for (Diskstore.HnswNodeData nodeData : data.getNodesList()) {
+				PackedCollection vector =
+						CollectionEncoder.decode(nodeData.getVector());
+				Node node = new Node(nodeData.getId(), vector,
+						nodeData.getLevel());
+				node.deleted = nodeData.getDeleted();
 
-				Node node = new Node(id, vector, level);
-				node.deleted = deleted;
-
-				for (int lc = 0; lc <= level; lc++) {
-					int neighborCount = in.readInt();
-					List<String> neighbors = new ArrayList<>(neighborCount);
-					for (int n = 0; n < neighborCount; n++) {
-						neighbors.add(in.readUTF());
-					}
-					node.setNeighbors(lc, neighbors);
+				for (int lc = 0; lc < nodeData.getLayersCount(); lc++) {
+					Diskstore.HnswLayerNeighbors layerNeighbors =
+							nodeData.getLayers(lc);
+					node.setNeighbors(lc,
+							new ArrayList<>(layerNeighbors.getNeighborIdsList()));
 				}
 
-				index.nodes.put(id, node);
+				index.nodes.put(nodeData.getId(), node);
 			}
 
 			return index;
@@ -382,9 +383,9 @@ public class HnswIndex {
 	 * Greedy search on a single layer to find the closest non-deleted node
 	 * to the query vector, starting from the given entry point.
 	 */
-	private String greedyClosest(String entryId, float[] query, int layer) {
+	private String greedyClosest(String entryId, double[] queryData, int layer) {
 		String currentId = entryId;
-		float currentSim = similarityTo(currentId, query);
+		float currentSim = similarityTo(currentId, queryData);
 
 		boolean improved = true;
 		while (improved) {
@@ -396,7 +397,8 @@ public class HnswIndex {
 				Node neighbor = nodes.get(neighborId);
 				if (neighbor == null || neighbor.deleted) continue;
 
-				float neighborSim = metric.similarity(query, neighbor.vector);
+				float neighborSim = metric.similarityCached(queryData,
+						neighbor.cachedData);
 				if (neighborSim > currentSim) {
 					currentId = neighborId;
 					currentSim = neighborSim;
@@ -412,7 +414,7 @@ public class HnswIndex {
 	 * Search a single layer starting from the entry point, returning
 	 * up to {@code ef} closest candidates.
 	 */
-	private List<String> searchLayer(String entryId, float[] query,
+	private List<String> searchLayer(String entryId, double[] queryData,
 									 int ef, int layer) {
 		Set<String> visited = new HashSet<>();
 		PriorityQueue<IdScore> candidates = new PriorityQueue<>(
@@ -420,7 +422,7 @@ public class HnswIndex {
 		PriorityQueue<IdScore> results = new PriorityQueue<>(
 				Comparator.comparingDouble((IdScore s) -> s.score));
 
-		float entrySim = similarityTo(entryId, query);
+		float entrySim = similarityTo(entryId, queryData);
 		candidates.add(new IdScore(entryId, entrySim));
 		results.add(new IdScore(entryId, entrySim));
 		visited.add(entryId);
@@ -444,7 +446,8 @@ public class HnswIndex {
 				Node neighbor = nodes.get(neighborId);
 				if (neighbor == null) continue;
 
-				float neighborSim = metric.similarity(query, neighbor.vector);
+				float neighborSim = metric.similarityCached(queryData,
+						neighbor.cachedData);
 
 				farthestResult = results.peek();
 				if (results.size() < ef ||
@@ -472,12 +475,12 @@ public class HnswIndex {
 	 * Uses the simple heuristic of keeping the most similar candidates.
 	 */
 	private List<String> selectNeighbors(List<String> candidates,
-										 float[] nodeVector, int maxConnections) {
+										 double[] nodeData, int maxConnections) {
 		List<IdScore> scored = new ArrayList<>(candidates.size());
 		for (String candidateId : candidates) {
 			Node candidate = nodes.get(candidateId);
 			if (candidate == null || candidate.deleted) continue;
-			float sim = metric.similarity(nodeVector, candidate.vector);
+			float sim = metric.similarityCached(nodeData, candidate.cachedData);
 			scored.add(new IdScore(candidateId, sim));
 		}
 
@@ -491,10 +494,10 @@ public class HnswIndex {
 		return result;
 	}
 
-	private float similarityTo(String nodeId, float[] query) {
+	private float similarityTo(String nodeId, double[] queryData) {
 		Node node = nodes.get(nodeId);
 		if (node == null) return Float.NEGATIVE_INFINITY;
-		return metric.similarity(query, node.vector);
+		return metric.similarityCached(queryData, node.cachedData);
 	}
 
 	private int randomLevel() {
@@ -525,18 +528,23 @@ public class HnswIndex {
 	}
 
 	/**
-	 * Internal node representation in the HNSW graph.
+	 * Internal node representation in the HNSW graph. Stores the vector
+	 * as both a {@link PackedCollection} (for serialization) and a cached
+	 * {@code double[]} (for fast similarity computation without repeated
+	 * JNI native memory reads).
 	 */
 	private static class Node {
 		final String id;
-		float[] vector;
+		PackedCollection vector;
+		double[] cachedData;
 		final int level;
 		boolean deleted;
 		private final List<List<String>> neighborsByLayer;
 
-		Node(String id, float[] vector, int level) {
+		Node(String id, PackedCollection vector, int level) {
 			this.id = id;
 			this.vector = vector;
+			this.cachedData = SimilarityMetric.toDoubleArray(vector);
 			this.level = level;
 			this.deleted = false;
 			this.neighborsByLayer = new ArrayList<>(level + 1);

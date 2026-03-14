@@ -16,6 +16,7 @@
 
 package org.almostrealism.persist.test;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persist.HnswIndex;
 import org.almostrealism.persist.ProtobufDiskStore;
 import org.almostrealism.persist.SearchResult;
@@ -61,13 +62,13 @@ public class VectorSearchTest extends TestSuiteBase {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
 
-			float[] target = {1.0f, 0.0f, 0.0f};
+			PackedCollection target = vec(1.0, 0.0, 0.0);
 			store.put("close", makeRecord("close", "close-to-target", 1),
-					new float[]{0.9f, 0.1f, 0.0f});
+					vec(0.9, 0.1, 0.0));
 			store.put("far", makeRecord("far", "far-from-target", 2),
-					new float[]{0.0f, 0.0f, 1.0f});
+					vec(0.0, 0.0, 1.0));
 			store.put("medium", makeRecord("medium", "medium-distance", 3),
-					new float[]{0.5f, 0.5f, 0.0f});
+					vec(0.5, 0.5, 0.0));
 
 			List<SearchResult<TestRecordProto.TestRecord>> results =
 					store.search(target, 2);
@@ -89,15 +90,15 @@ public class VectorSearchTest extends TestSuiteBase {
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
 
 			store.put("exact", makeRecord("exact", "exact-match", 1),
-					new float[]{1.0f, 0.0f, 0.0f, 0.0f});
+					vec(1.0, 0.0, 0.0, 0.0));
 			store.put("close", makeRecord("close", "close-match", 2),
-					new float[]{0.9f, 0.1f, 0.0f, 0.0f});
+					vec(0.9, 0.1, 0.0, 0.0));
 			store.put("orthogonal", makeRecord("orthogonal", "orthogonal", 3),
-					new float[]{0.0f, 1.0f, 0.0f, 0.0f});
+					vec(0.0, 1.0, 0.0, 0.0));
 			store.put("opposite", makeRecord("opposite", "opposite", 4),
-					new float[]{-1.0f, 0.0f, 0.0f, 0.0f});
+					vec(-1.0, 0.0, 0.0, 0.0));
 
-			float[] query = {1.0f, 0.0f, 0.0f, 0.0f};
+			PackedCollection query = vec(1.0, 0.0, 0.0, 0.0);
 			List<SearchResult<TestRecordProto.TestRecord>> results =
 					store.search(query, 4);
 
@@ -119,17 +120,17 @@ public class VectorSearchTest extends TestSuiteBase {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
 			store.put("a", makeRecord("a", "alpha", 1),
-					new float[]{1.0f, 0.0f, 0.0f});
+					vec(1.0, 0.0, 0.0));
 			store.put("b", makeRecord("b", "bravo", 2),
-					new float[]{0.0f, 1.0f, 0.0f});
+					vec(0.0, 1.0, 0.0));
 			store.put("c", makeRecord("c", "charlie", 3),
-					new float[]{0.0f, 0.0f, 1.0f});
+					vec(0.0, 0.0, 1.0));
 		}
 
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store2 =
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
 			List<SearchResult<TestRecordProto.TestRecord>> results =
-					store2.search(new float[]{1.0f, 0.0f, 0.0f}, 1);
+					store2.search(vec(1.0, 0.0, 0.0), 1);
 
 			Assert.assertEquals(1, results.size());
 			Assert.assertEquals("a", results.get(0).getId());
@@ -144,14 +145,14 @@ public class VectorSearchTest extends TestSuiteBase {
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
 
 			store.put("keep", makeRecord("keep", "keeper", 1),
-					new float[]{1.0f, 0.0f});
+					vec(1.0, 0.0));
 			store.put("remove", makeRecord("remove", "goner", 2),
-					new float[]{0.9f, 0.1f});
+					vec(0.9, 0.1));
 
 			store.delete("remove");
 
 			List<SearchResult<TestRecordProto.TestRecord>> results =
-					store.search(new float[]{1.0f, 0.0f}, 10);
+					store.search(vec(1.0, 0.0), 10);
 
 			Assert.assertEquals(1, results.size());
 			Assert.assertEquals("keep", results.get(0).getId());
@@ -166,7 +167,7 @@ public class VectorSearchTest extends TestSuiteBase {
 			store.put("noVector", makeRecord("noVector", "plain-record", 1));
 
 			List<SearchResult<TestRecordProto.TestRecord>> results =
-					store.search(new float[]{1.0f, 0.0f, 0.0f}, 5);
+					store.search(vec(1.0, 0.0, 0.0), 5);
 
 			Assert.assertNotNull(results);
 			Assert.assertTrue(results.isEmpty());
@@ -184,13 +185,13 @@ public class VectorSearchTest extends TestSuiteBase {
 				tempDir, TestRecordProto.TestRecord.parser())) {
 
 			for (int i = 0; i < numRecords; i++) {
-				float[] vector = randomVector(dimension, random);
+				PackedCollection vec = randomVector(dimension, random);
 				store.put("rec-" + i,
 						makeRecord("rec-" + i, "content-" + i, i),
-						vector);
+						vec);
 			}
 
-			float[] queryVector = randomVector(dimension, random);
+			PackedCollection queryVector = randomVector(dimension, random);
 
 			long start = System.nanoTime();
 			List<SearchResult<TestRecordProto.TestRecord>> results =
@@ -217,9 +218,9 @@ public class VectorSearchTest extends TestSuiteBase {
 		int dimension = 4;
 
 		HnswIndex index = new HnswIndex(dimension, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", new float[]{1.0f, 0.0f, 0.0f, 0.0f});
-		index.insert("b", new float[]{0.0f, 1.0f, 0.0f, 0.0f});
-		index.insert("c", new float[]{0.0f, 0.0f, 1.0f, 0.0f});
+		index.insert("a", vec(1.0, 0.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0, 0.0));
+		index.insert("c", vec(0.0, 0.0, 1.0, 0.0));
 		index.save(hnswFile);
 
 		HnswIndex loaded = HnswIndex.load(hnswFile, SimilarityMetric.COSINE);
@@ -227,7 +228,7 @@ public class VectorSearchTest extends TestSuiteBase {
 		Assert.assertEquals(3, loaded.size());
 
 		List<HnswIndex.IdScore> results =
-				loaded.search(new float[]{1.0f, 0.0f, 0.0f, 0.0f}, 1);
+				loaded.search(vec(1.0, 0.0, 0.0, 0.0), 1);
 		Assert.assertEquals(1, results.size());
 		Assert.assertEquals("a", results.get(0).id);
 	}
@@ -236,8 +237,8 @@ public class VectorSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void hnswRemoveExcludesFromSearch() {
 		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", new float[]{1.0f, 0.0f, 0.0f});
-		index.insert("b", new float[]{0.0f, 1.0f, 0.0f});
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
 
 		Assert.assertEquals(2, index.size());
 		index.remove("a");
@@ -246,7 +247,7 @@ public class VectorSearchTest extends TestSuiteBase {
 		Assert.assertTrue(index.contains("b"));
 
 		List<HnswIndex.IdScore> results =
-				index.search(new float[]{1.0f, 0.0f, 0.0f}, 10);
+				index.search(vec(1.0, 0.0, 0.0), 10);
 		Assert.assertEquals(1, results.size());
 		Assert.assertEquals("b", results.get(0).id);
 	}
@@ -256,7 +257,7 @@ public class VectorSearchTest extends TestSuiteBase {
 	public void hnswSearchEmptyIndexReturnsEmpty() {
 		HnswIndex index = new HnswIndex(3);
 		List<HnswIndex.IdScore> results =
-				index.search(new float[]{1.0f, 0.0f, 0.0f}, 5);
+				index.search(vec(1.0, 0.0, 0.0), 5);
 		Assert.assertTrue(results.isEmpty());
 	}
 
@@ -267,7 +268,7 @@ public class VectorSearchTest extends TestSuiteBase {
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
 
 			store.put("withVec", makeRecord("withVec", "has-vector", 1),
-					new float[]{1.0f, 0.0f, 0.0f});
+					vec(1.0, 0.0, 0.0));
 			store.put("noVec", makeRecord("noVec", "no-vector", 2));
 
 			Assert.assertEquals(2, store.size());
@@ -275,7 +276,7 @@ public class VectorSearchTest extends TestSuiteBase {
 			Assert.assertNotNull(store.get("withVec"));
 
 			List<SearchResult<TestRecordProto.TestRecord>> results =
-					store.search(new float[]{1.0f, 0.0f, 0.0f}, 10);
+					store.search(vec(1.0, 0.0, 0.0), 10);
 
 			Assert.assertEquals(1, results.size());
 			Assert.assertEquals("withVec", results.get(0).getId());
@@ -288,9 +289,9 @@ public class VectorSearchTest extends TestSuiteBase {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
 			store.put("a", makeRecord("a", "alpha", 1),
-					new float[]{1.0f, 0.0f, 0.0f});
+					vec(1.0, 0.0, 0.0));
 			store.put("b", makeRecord("b", "bravo", 2),
-					new float[]{0.0f, 1.0f, 0.0f});
+					vec(0.0, 1.0, 0.0));
 			store.flush();
 			store.delete("a");
 		}
@@ -298,7 +299,7 @@ public class VectorSearchTest extends TestSuiteBase {
 		try (ProtobufDiskStore<TestRecordProto.TestRecord> store2 =
 					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
 			List<SearchResult<TestRecordProto.TestRecord>> results =
-					store2.search(new float[]{1.0f, 0.0f, 0.0f}, 10);
+					store2.search(vec(1.0, 0.0, 0.0), 10);
 
 			Assert.assertEquals(1, results.size());
 			Assert.assertEquals("b", results.get(0).getId());
@@ -309,13 +310,13 @@ public class VectorSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void hnswReinsertUpdatesVector() {
 		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", new float[]{1.0f, 0.0f, 0.0f});
-		index.insert("a", new float[]{0.0f, 1.0f, 0.0f});
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("a", vec(0.0, 1.0, 0.0));
 
 		Assert.assertEquals(1, index.size());
 
 		List<HnswIndex.IdScore> results =
-				index.search(new float[]{0.0f, 1.0f, 0.0f}, 1);
+				index.search(vec(0.0, 1.0, 0.0), 1);
 		Assert.assertEquals("a", results.get(0).id);
 		Assert.assertTrue("Should be highly similar after update",
 				results.get(0).score > 0.9f);
@@ -332,11 +333,12 @@ public class VectorSearchTest extends TestSuiteBase {
 	/** Cosine similarity metric normalizes correctly. */
 	@Test(timeout = 30000)
 	public void cosineMetricNormalizesCorrectly() {
-		float[] vector = {3.0f, 4.0f};
-		SimilarityMetric.COSINE.normalize(vector);
+		PackedCollection vec = vec(3.0, 4.0);
+		PackedCollection normalized = SimilarityMetric.COSINE.normalize(vec);
 
-		float norm = 0.0f;
-		for (float v : vector) {
+		double norm = 0.0;
+		for (int i = 0; i < normalized.getMemLength(); i++) {
+			double v = normalized.toDouble(i);
 			norm += v * v;
 		}
 		Assert.assertEquals("Normalized vector should have unit norm",
@@ -346,9 +348,9 @@ public class VectorSearchTest extends TestSuiteBase {
 	/** Cosine similarity of identical normalized vectors is 1.0. */
 	@Test(timeout = 30000)
 	public void cosineIdenticalVectorsHaveSimilarityOne() {
-		float[] a = {1.0f, 0.0f, 0.0f};
-		SimilarityMetric.COSINE.normalize(a);
-		float sim = SimilarityMetric.COSINE.similarity(a, a);
+		PackedCollection a = vec(1.0, 0.0, 0.0);
+		PackedCollection normalized = SimilarityMetric.COSINE.normalize(a);
+		float sim = SimilarityMetric.COSINE.similarity(normalized, normalized);
 		Assert.assertEquals(1.0f, sim, 0.001f);
 	}
 
@@ -360,12 +362,22 @@ public class VectorSearchTest extends TestSuiteBase {
 				.build();
 	}
 
-	private static float[] randomVector(int dimension, Random random) {
-		float[] vector = new float[dimension];
+	/**
+	 * Create a {@link PackedCollection} from the given values.
+	 *
+	 * @param values the vector components
+	 * @return a new PackedCollection containing the values
+	 */
+	private static PackedCollection vec(double... values) {
+		return new PackedCollection(values.length).fill(values);
+	}
+
+	private static PackedCollection randomVector(int dimension, Random random) {
+		double[] values = new double[dimension];
 		for (int i = 0; i < dimension; i++) {
-			vector[i] = random.nextFloat() * 2.0f - 1.0f;
+			values[i] = random.nextFloat() * 2.0 - 1.0;
 		}
-		return vector;
+		return new PackedCollection(dimension).fill(values);
 	}
 
 	private static void deleteRecursively(File file) {
