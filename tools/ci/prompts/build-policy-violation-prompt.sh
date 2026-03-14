@@ -11,7 +11,6 @@
 # Required environment variables:
 #   BRANCH          - branch name where violations occurred
 #   COMMIT_SHA      - commit SHA where violations occurred
-#   RUN_URL         - URL to the GitHub Actions run
 #
 # Exit codes:
 #   0 - prompt written successfully
@@ -26,7 +25,7 @@ if [ -z "$OUTPUT_FILE" ]; then
     exit 1
 fi
 
-for var in BRANCH COMMIT_SHA RUN_URL; do
+for var in BRANCH COMMIT_SHA; do
     if [ -z "${!var:-}" ]; then
         echo "ERROR: ${var} is not set." >&2
         exit 1
@@ -129,7 +128,6 @@ cat >> "$OUTPUT_FILE" <<EOF
 
 Branch: ${BRANCH}
 Commit: ${COMMIT_SHA}
-CI run: ${RUN_URL}
 
 Start by examining what this branch changed:
     git diff --stat origin/master...HEAD

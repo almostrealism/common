@@ -133,7 +133,8 @@ Maximum 50 runs are retained; oldest runs are cleaned up automatically.
 
 The server sets these for test execution:
 - `AR_HARDWARE_LIBS=/tmp/ar_libs/`
-- `AR_HARDWARE_DRIVER=native`
+
+`AR_HARDWARE_DRIVER` is **not** set by the test runner — leave it unset to inherit the best available backend for the system.
 
 ## Troubleshooting
 

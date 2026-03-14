@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import java.io.File;
 
 /**
  * Utility class for resolving workspace paths and URLs used by
@@ -46,27 +47,39 @@ public class WorkspaceResolver {
      * Resolves the workspace path for a repository checkout using a
      * two-level priority scheme.
      *
+     * <p>The resolved path is always a repo-specific subdirectory.
+     * The parent directory is chosen from:</p>
      * <ol>
      *   <li>{@code configuredPath} if it is non-null and non-empty</li>
-     *   <li>{@code /tmp/flowtree-workspaces/<repoName>} as a fallback,
-     *       where {@code repoName} is derived from {@code repoUrl} via
-     *       {@link #extractRepoName(String)}</li>
+     *   <li>{@code /workspace/project} if that directory exists on disk</li>
+     *   <li>{@code /tmp/flowtree-workspaces} as a fallback</li>
      * </ol>
      *
-     * @param configuredPath the explicitly configured workspace path,
+     * <p>In all cases, the repository name (derived from {@code repoUrl}
+     * via {@link #extractRepoName(String)}) is appended to form the final
+     * path, e.g. {@code /workspace/project/owner-repo}.</p>
+     *
+     * @param configuredPath the explicitly configured workspace parent path,
      *                       or {@code null} / empty to use automatic resolution
-     * @param repoUrl        the git remote URL used to derive a fallback
-     *                       directory name
+     * @param repoUrl        the git remote URL used to derive the
+     *                       subdirectory name
      * @return the resolved absolute path for the workspace
      */
     public static String resolve(String configuredPath, String repoUrl) {
-        // 1. Use explicitly configured path
+        String repoName = extractRepoName(repoUrl);
+
+        // 1. Use explicitly configured path as parent
         if (configuredPath != null && !configuredPath.isEmpty()) {
-            return configuredPath;
+            return configuredPath + "/" + repoName;
         }
 
-        // 2. Fall back to /tmp with a repo-derived name
-        String repoName = extractRepoName(repoUrl);
+        // 2. Check if /workspace/project exists as parent
+        File defaultDir = new File("/workspace/project");
+        if (defaultDir.exists() && defaultDir.isDirectory()) {
+            return "/workspace/project/" + repoName;
+        }
+
+        // 3. Fall back to /tmp with a repo-derived name
         return FALLBACK_WORKSPACE_DIR + "/" + repoName;
     }
 

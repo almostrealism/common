@@ -1315,6 +1315,25 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("enforceChanges", String.valueOf(enforceChanges));
         }
 
+        /**
+         * Returns whether a pull request should be automatically created
+         * upon successful job completion.
+         */
+        public boolean isAutoCreatePr() {
+            return "true".equals(get("autoCreatePr"));
+        }
+
+        /**
+         * Sets whether to automatically create a GitHub pull request when
+         * the job completes successfully. The controller will create the PR
+         * using the GitHub token associated with the workstream's organization.
+         *
+         * @param autoCreatePr true to auto-create a PR on success
+         */
+        public void setAutoCreatePr(boolean autoCreatePr) {
+            set("autoCreatePr", String.valueOf(autoCreatePr));
+        }
+
         @Override
         public Job nextJob() {
             List<String> p = getPrompts();

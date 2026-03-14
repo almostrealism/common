@@ -457,10 +457,10 @@ delegates path resolution to `WorkspaceResolver`:
 ```
 WorkspaceResolver.resolve(configuredPath, repoUrl)
     |
-    +-- If configuredPath is non-null/non-empty -> use it
-    +-- If /workspace/project exists on disk   -> use it
+    +-- repoName = extractRepoName(repoUrl)
+    +-- If configuredPath is non-null/non-empty -> configuredPath/<repoName>
+    +-- If /workspace/project exists on disk   -> /workspace/project/<repoName>
     +-- Otherwise -> /tmp/flowtree-workspaces/<repoName>
-                     where repoName = extractRepoName(repoUrl)
 ```
 
 The `extractRepoName()` method handles both SSH and HTTPS URL formats:

@@ -18,6 +18,7 @@
 #   MAX_TURNS         - agent turn budget             (omitted → workstream default)
 #   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
 #   ENFORCE_CHANGES   - require code changes or retry (default: false)
+#   AUTO_CREATE_PR    - auto-create a GitHub PR on success (default: false)
 #   DESCRIPTION       - short label for Slack notifications (e.g., "Resolve test failures")
 #
 # Exit codes:
@@ -75,12 +76,14 @@ PAYLOAD=$(jq -n \
     --arg base "$BASE_BRANCH" \
     --argjson protect "${PROTECT_TEST_FILES:-false}" \
     --argjson enforce "${ENFORCE_CHANGES:-false}" \
+    --argjson autopr "${AUTO_CREATE_PR:-false}" \
     '{
         prompt: $prompt,
         targetBranch: $branch,
         baseBranch: $base,
         protectTestFiles: $protect,
-        enforceChanges: $enforce
+        enforceChanges: $enforce,
+        autoCreatePr: $autopr
     }')
 
 if [ -n "${DESCRIPTION:-}" ]; then

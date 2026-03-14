@@ -15,11 +15,6 @@
       "args": ["tools/mcp/profile-analyzer/server.py"],
       "description": "Performance profile analysis server"
     },
-    "ar-memory": {
-      "command": "python3",
-      "args": ["tools/mcp/memory/server.py"],
-      "description": "Semantic memory storage and retrieval server"
-    },
     "ar-consultant": {
       "command": "python3",
       "args": ["tools/mcp/consultant/server.py"],
@@ -39,6 +34,11 @@
       "command": "python3",
       "args": ["tools/mcp/github/server.py"],
       "description": "Read and respond to GitHub PR review comments"
+    },
+    "ar-manager": {
+      "command": "python3",
+      "args": ["tools/mcp/manager/server.py"],
+      "description": "Internet-facing endpoint for managing workstreams and triggering project workflows"
     }
   }
 }

@@ -1,0 +1,296 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package io.almostrealism.scope;
+
+import io.almostrealism.compute.ParallelismTargetOptimization;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.NoOpKernelStructureContext;
+import io.almostrealism.profile.ScopeTimingListener;
+import org.almostrealism.io.SystemUtils;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.IntStream;
+
+public class ScopeSettings {
+	public static final boolean enableReplacements = true;
+
+	public static boolean enableInstructionSetReuse =
+			SystemUtils.isEnabled("AR_INSTRUCTION_SET_REUSE").orElse(true);
+
+	public static boolean enableInstanceReferenceMasking = false;
+
+	public static boolean enableKernelSeqCache = false;
+	public static boolean enableBatchEvaluation = false;
+	public static boolean enableArithmeticSequence = true;
+	public static boolean enableSequenceValidation = false;
+	public static int maxCacheItemSize = 16;
+	public static int maxCacheItems = 128;
+
+	/**
+	 * The maximum depth of any {@link Expression} as
+	 * measured by {@link Expression#treeDepth()}.
+	 */
+	public static int maxDepth = 512;
+
+	/**
+	 * The maximum total number of nodes allowed in any
+	 * {@link Expression} as measured by
+	 * {@link Expression#countNodes()}.
+	 */
+	public static int maxNodeCount = 1 << 23;
+
+	/**
+	 * The maximum number of possible options to consider
+	 * for the value of any {@link Index} when evaluating
+	 * complexity in {@link Expression#getIndexOptions(Index)}.
+	 */
+	public static int indexOptionLimit = 1 << 15;
+
+	/**
+	 * Maximum number of statements allow in a {@link Scope}.
+	 * {@link io.almostrealism.code.Computation} which exceed
+	 * this limit may produce an error rather than be compiled.
+	 *
+	 * @see Scope#getStatements()
+	 */
+	public static int maxStatements = 1 << 16;
+
+	/**
+	 * The preferred limit for statements in a {@link Scope}.
+	 * {@link io.almostrealism.code.Computation}s can exceed
+	 * this limit, but should make a best effort to avoid it.
+	 *
+	 * @see Scope#getStatements()
+	 */
+	public static int preferredStatements = 1 << 8;
+
+	/**
+	 * Maximum number of nested conditions for any {@link Expression}
+	 * in a {@link Scope}.
+	 */
+	public static int maxConditionSize = 32;
+
+	public static boolean enableExpressionWarnings =
+			SystemUtils.isEnabled("AR_EXPRESSION_WARNINGS").orElse(true);
+
+	public static boolean enableExpressionReview =
+			SystemUtils.isEnabled("AR_EXPRESSION_REVIEW").orElse(false);
+
+	public static long simplificationCount = 0;
+	public static long unsimplifiedChildren = 0;
+	public static long cacheCount = 0;
+
+	public static int maxKernelSeriesCount = ParallelismTargetOptimization.maxCount << 2;
+	public static int sequenceComputationLimit = maxKernelSeriesCount;
+
+	public static ScopeTimingListener timing;
+
+	private static SimplificationSettings simplification;
+	private static CachingSettings caching;
+
+	static {
+		String defaultSimplify = "1.0";
+		String simplify = SystemUtils.getProperty("AR_SCOPE_SIMPLIFICATION", "enabled");
+		simplify = "enabled".equalsIgnoreCase(simplify) ? defaultSimplify : simplify;
+
+		if (simplify.equalsIgnoreCase("disabled")) {
+			simplification = SimplificationSettings.none();
+		} else if (simplify.equalsIgnoreCase("tiered")) {
+			simplification = new TieredSimplificationSettings();
+		} else {
+			if (!Objects.equals(defaultSimplify, simplify))
+				System.out.println("SpectrumSimplification[" + simplify + "]");
+
+			simplification = new SpectrumSimplification(Double.parseDouble(simplify));
+		}
+
+		String cd = "0.2:0.2";
+		String cache = SystemUtils.getProperty("AR_SCOPE_CACHING", cd);
+
+		if (cache.equalsIgnoreCase("explicit")) {
+			caching = new ExplicitDepthCaching();
+		} else {
+			if (!Objects.equals(cd, cache))
+				System.out.println("SpectrumCaching[" + cache + "]");
+
+			String c[] = cache.split(":");
+			caching = new SpectrumCaching(Double.parseDouble(c[0]), Double.parseDouble(c[1]));
+		}
+	}
+
+	public static void reviewChildren(List<Expression<?>> children) {
+		if (!enableExpressionReview) return;
+
+		KernelStructureContext ctx = children.stream()
+				.map(Expression::getStructureContext)
+				.filter(Objects::nonNull)
+				.findFirst().orElse(new NoOpKernelStructureContext());
+
+		boolean s = IntStream.range(0, children.size())
+				.filter(i -> !Objects.equals(children.get(i), children.get(i).simplify(ctx)))
+				.findFirst().orElse(-1) >= 0;
+		if (!s) return;
+
+		unsimplifiedChildren++;
+
+		if (unsimplifiedChildren % 100 == 0) {
+			Scope.console.features(ScopeSettings.class)
+					.log("Unsimplified Children = " + unsimplifiedChildren);
+		}
+	}
+
+	public static <T> Expression<T> reviewSimplification(Expression<?> expression, Expression<T> simplified) {
+		Index target = simplified.getIndices().stream().findFirst().orElse(null);
+		return reviewSimplification(target, expression, simplified);
+	}
+
+	public static <T> Expression<T> reviewSimplification(Index target, Expression<?> expression, Expression<T> simplified) {
+		if (!enableSequenceValidation || target == null) return simplified;
+
+		IndexValues v = new IndexValues();
+		v.put(target, 0);
+
+		if (target.getLimit().isPresent() &&
+				target.getLimit().orElse(0) < Integer.MAX_VALUE) {
+			return reviewSimplification(v, expression, simplified);
+		}
+
+		return simplified;
+	}
+
+	public static <T> Expression<T> reviewSimplification(IndexValues values, Expression<?> expression, Expression<T> simplified) {
+		if (!enableSequenceValidation || values == null) return simplified;
+
+		if (simplified.isValue(values)) {
+			IndexSequence orig = expression.sequence();
+			IndexSequence seq = simplified.sequence();
+
+			if (!orig.congruent(seq)) {
+				throw new UnsupportedOperationException();
+			}
+		}
+
+		return simplified;
+	}
+
+	public static boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
+		boolean s = simplification.isSeriesSimplificationTarget(expression, depth);
+		if (s) {
+			simplificationCount++;
+		}
+
+		return s;
+	}
+
+	public static boolean isDeepSimplification() {
+		return false;
+	}
+
+	public static int getExpressionCacheSize() { return 300; }
+
+	public static int getExpressionCacheFrequencyThreshold() { return 2; }
+
+	/**
+	 * Returns the minimum total compute cost for an expression to be unconditionally
+	 * eligible for caching, bypassing structural filters (depth sets, hash checks).
+	 *
+	 * <p>Expressions whose {@link io.almostrealism.expression.Expression#totalComputeCost()}
+	 * meets or exceeds this threshold are always considered cache targets, ensuring that
+	 * expensive operations like transcendentals are never filtered out by depth-based caching.</p>
+	 *
+	 * @return the compute cost threshold for unconditional caching eligibility
+	 */
+	public static int getComputeCostCacheThreshold() { return 15; }
+
+	/**
+	 * Returns the maximum base expression compute cost for which exponent
+	 * strength reduction (e.g. {@code pow(x,2) → x*x}) is applied.
+	 *
+	 * <p>When the base expression's {@link Expression#totalComputeCost()} is
+	 * at or above this threshold, the base is too expensive to duplicate in a
+	 * product and {@code pow()} is retained instead. This prevents expressions
+	 * like {@code pow(sin(x), 2)} from expanding into {@code sin(x)*sin(x)},
+	 * which would double the transcendental evaluations.</p>
+	 *
+	 * @return the compute cost threshold for exponent strength reduction
+	 */
+	public static int getStrengthReductionCostThreshold() { return 100; }
+
+	/**
+	 * Determines whether the given expression should be cached (extracted into a
+	 * named declaration for reuse).
+	 *
+	 * <p>An expression is eligible for caching if either:</p>
+	 * <ul>
+	 *   <li>Its {@link Expression#totalComputeCost()} meets or exceeds the
+	 *       {@linkplain #getComputeCostCacheThreshold() compute cost threshold},
+	 *       ensuring expensive operations (transcendentals, etc.) are always cached
+	 *       regardless of the active caching strategy; or</li>
+	 *   <li>The active {@link CachingSettings} implementation accepts it based on
+	 *       structural criteria (tree depth, hash, etc.).</li>
+	 * </ul>
+	 *
+	 * @param expression the expression to evaluate for caching eligibility
+	 * @return true if the expression should be cached
+	 */
+	public static boolean isExpressionCacheTarget(Expression<?> expression) {
+		if (expression.totalComputeCost() >= getComputeCostCacheThreshold()) {
+			cacheCount++;
+			return true;
+		}
+
+		boolean c = caching.isExpressionCacheTarget(expression);
+		if (c) {
+			cacheCount++;
+		}
+		return c;
+	}
+
+	/**
+	 * Returns the maximum number of common sub-expression replacements per scope
+	 * during the CSE pass in {@link Scope#simplify}. Each replacement extracts a
+	 * frequently-occurring sub-expression into a named declaration variable.
+	 *
+	 * <p>This limit was previously raised to 48 to accommodate genome-only
+	 * sub-expression extraction for LICM, but that caused an 11x code blowup
+	 * in the AudioScene loop body (from 251 to 2,783 lines). The CSE pass does
+	 * not prioritize loop-invariant sub-expressions, so raising the limit causes
+	 * it to extract loop-variant sub-expressions that inflate the code without
+	 * enabling more hoisting. Reverted to 12 per regression analysis.</p>
+	 *
+	 * @return the maximum number of CSE replacements per scope
+	 * @see Repeated
+	 */
+	public static int getMaximumReplacements() {
+		return 12;
+	}
+
+	public static void printStats() {
+		Scope.console.features(ScopeSettings.class)
+				.log("Simplification Count = " + simplificationCount +
+						" | Cache Count = " + cacheCount);
+	}
+
+	public static String shortDesc() {
+		return caching.shortDesc() + "_" + simplification.shortDesc();
+	}
+}

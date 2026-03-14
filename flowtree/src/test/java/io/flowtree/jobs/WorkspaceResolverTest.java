@@ -31,7 +31,7 @@ public class WorkspaceResolverTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void usesConfiguredPathFirst() {
 		String result = WorkspaceResolver.resolve("/my/path", "https://github.com/owner/repo.git");
-		assertEquals("/my/path", result);
+		assertEquals("/my/path/owner-repo", result);
 	}
 
 	@Test(timeout = 30000)

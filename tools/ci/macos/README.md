@@ -89,8 +89,9 @@ The runner script exports AR environment variables automatically:
 
 ```
 AR_HARDWARE_LIBS=/tmp/ar_libs/
-AR_HARDWARE_DRIVER=native
 ```
+
+`AR_HARDWARE_DRIVER` is intentionally left unset to auto-detect the best available backend.
 
 JDK and Maven must already be installed on the system. The
 `actions/setup-java` step in the workflow ensures correct PATH
@@ -210,7 +211,8 @@ gh api repos/almostrealism/common/actions/runners \
   SIP may strip it. The `-DAR_HARDWARE_LIBS=Extensions` flag is the
   primary mechanism and should work regardless.
 - If you see `NoClassDefFoundError: PackedCollection`, verify
-  `AR_HARDWARE_DRIVER=native` is set.
+  `AR_HARDWARE_LIBS` is set. `AR_HARDWARE_DRIVER` should be left unset to
+  auto-detect the best available backend.
 
 ### JDK not found after setup
 

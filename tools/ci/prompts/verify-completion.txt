@@ -14,7 +14,7 @@ Extract every goal, requirement, and deliverable.
 
 ### Step 2: Assess Current State
 
-Use `git log ${BASE_BRANCH}..HEAD` and `git diff ${BASE_BRANCH}...HEAD` to understand
+Use `git log origin/${BASE_BRANCH}..HEAD` and `git diff origin/${BASE_BRANCH}...HEAD` to understand
 the full scope of changes already made on this branch. For each goal in the plan,
 determine whether the implementation is complete, partial, or missing entirely.
 

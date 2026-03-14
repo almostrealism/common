@@ -1,0 +1,157 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package io.almostrealism.expression;
+
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ScopeSettings;
+
+import java.util.List;
+import java.util.OptionalDouble;
+import java.util.OptionalLong;
+
+public class Exponent extends Expression<Double> {
+
+	protected Exponent(Expression<Double> base, Expression<Double> exponent) {
+		super(Double.class, base, exponent);
+	}
+
+	/** {@inheritDoc} Returns 20, reflecting the cost of the {@code pow()} library call. */
+	@Override
+	public int getComputeCost() { return 20; }
+
+	@Override
+	public String getExpression(LanguageOperations lang) {
+		return lang.pow(
+				getChildren().get(0).getExpression(lang),
+				getChildren().get(1).getExpression(lang));
+	}
+
+	@Override
+	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
+
+	@Override
+	public OptionalLong upperBound(KernelStructureContext context) {
+		OptionalLong l = getChildren().get(0).upperBound(context);
+		OptionalLong r = getChildren().get(1).upperBound(context);
+		if (l.isPresent() && r.isPresent()) {
+			return OptionalLong.of((long) Math.pow(l.getAsLong(), r.getAsLong()));
+		}
+
+		return OptionalLong.empty();
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.pow(children[0].doubleValue(), children[1].doubleValue());
+	}
+
+	@Override
+	public Expression<Double> recreate(List<Expression<?>> children) {
+		if (children.size() != 2) {
+			throw new UnsupportedOperationException();
+		}
+
+		return Exponent.of((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
+	}
+
+	@Override
+	public CollectionExpression delta(CollectionExpression target) {
+		Expression base = getChildren().get(0);
+		Expression exp = getChildren().get(1);
+
+		TraversalPolicy ts = target.getShape();
+
+		CollectionExpression baseDelta = base.delta(target);
+		CollectionExpression expDelta = exp.delta(target);
+
+		CollectionExpression self = new ConstantCollectionExpression(target.getShape(), this);
+		CollectionExpression logBase = new ConstantCollectionExpression(target.getShape(), base.log());
+		CollectionExpression ratio = new ConstantCollectionExpression(target.getShape(), exp.divide(base));
+
+		CollectionExpression term1 = product(ts, baseDelta, ratio);
+		CollectionExpression term2 = product(ts, expDelta, logBase);
+		return product(ts, self, sum(ts, term1, term2));
+	}
+
+	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
+		return Expression.process(create(base, exponent));
+	}
+
+	/**
+	 * Creates an exponent expression with algebraic strength reduction.
+	 *
+	 * <p>When the exponent is a small integer constant and the base is cheap
+	 * to evaluate (below {@link ScopeSettings#getStrengthReductionCostThreshold()}),
+	 * the expensive {@code pow()}
+	 * library call is replaced with equivalent multiply operations. When the base
+	 * is expensive (e.g. contains transcendental functions like {@code sin}),
+	 * the expansion is suppressed to avoid duplicating the expensive computation.</p>
+	 *
+	 * <p>The {@code pow(x, -1.0) &rarr; 1.0 / x} case is always applied since
+	 * it does not duplicate the base expression.</p>
+	 *
+	 * @param base     the base expression
+	 * @param exponent the exponent expression
+	 * @return an optimized expression equivalent to {@code pow(base, exponent)}
+	 */
+	public static Expression<Double> create(Expression<Double> base, Expression<Double> exponent) {
+		OptionalDouble exponentValue = exponent.doubleValue();
+		OptionalDouble baseValue = base.doubleValue();
+
+		if (exponentValue.isPresent()) {
+			double exp = exponentValue.getAsDouble();
+
+			if (exp == 0.0) {
+				return new DoubleConstant(1.0);
+			} else if (exp == 1.0) {
+				return base;
+			} else if (baseValue.isPresent()) {
+				return new DoubleConstant(Math.pow(baseValue.getAsDouble(), exp));
+			}
+
+			// Strength reduction: replace pow() with multiply/divide for small integer exponents.
+			// Only expand when the base is cheap to duplicate — if the base contains an
+			// expensive operation (e.g. sin, cos, pow), duplicating it in a product is
+			// worse than a single pow() call that evaluates the base once.
+			if (exp == -1.0) {
+				return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), base);
+			} else if (base.totalComputeCost() < ScopeSettings.getStrengthReductionCostThreshold()) {
+				if (exp == 2.0) {
+					return (Expression<Double>) Product.of(base, base);
+				} else if (exp == 3.0) {
+					return (Expression<Double>) Product.of(Product.of(base, base), base);
+				} else if (exp == -2.0) {
+					return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), Product.of(base, base));
+				} else if (exp == -3.0) {
+					return (Expression<Double>) Quotient.of(new DoubleConstant(1.0), Product.of(Product.of(base, base), base));
+				}
+			}
+		} else if (baseValue.isPresent()) {
+			if (baseValue.getAsDouble() == 0.0) {
+				return new DoubleConstant(0.0);
+			} else if (baseValue.getAsDouble() == 1.0) {
+				return new DoubleConstant(1.0);
+			}
+		}
+
+		return new Exponent(base, exponent);
+	}
+}

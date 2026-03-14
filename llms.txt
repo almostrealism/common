@@ -12,44 +12,42 @@
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
 ```
 
 ## Core Modules
 
-### Foundation & Infrastructure
-- [uml](uml/README.md): Core annotations (@Function, @ModelEntity), lifecycle interfaces, metadata patterns | [Details](docs/modules/uml.html)
-- [io](io/README.md): Console logging, metrics, alerts, file output utilities | [Details](docs/modules/io.html)
-- [relation](relation/README.md): Producer/Evaluable abstraction, deferred execution foundation | [Details](docs/modules/relation.html)
+### base/ — Foundation
+- [uml](base/uml/README.md): Core annotations (@Function, @ModelEntity), lifecycle interfaces, metadata patterns | [Details](docs/modules/uml.html)
+- [io](base/io/README.md): Console logging, metrics, alerts, file output utilities | [Details](docs/modules/io.html)
+- [relation](base/relation/README.md): Producer/Evaluable abstraction, deferred execution foundation | [Details](docs/modules/relation.html)
+- [code](base/code/README.md): Expression trees, Scope management, code generation infrastructure | [Details](docs/modules/code.html)
+- [collect](base/collect/README.md): PackedCollection - memory-efficient multi-dimensional arrays, TraversalPolicy
+- [hardware](base/hardware/README.md): Hardware acceleration backends (JNI, OpenCL, Metal) | [Details](docs/modules/hardware.html)
 
-### Data & Computation
-- [code](code/README.md): Expression trees, Scope management, code generation infrastructure | [Details](docs/modules/code.html)
-- [collect](collect/README.md): PackedCollection - memory-efficient multi-dimensional arrays, TraversalPolicy
-- [hardware](hardware/README.md): Hardware acceleration backends (JNI, OpenCL, Metal) | [Details](docs/modules/hardware.html)
+### compute/ — Mathematical Domains
+- [algebra](compute/algebra/README.md): Vector, Matrix, Scalar, Pair types with 40+ CollectionProducer operations | [Details](docs/modules/algebra.html)
+- [geometry](compute/geometry/README.md): Ray, TransformMatrix, intersection testing, camera systems | [Details](docs/modules/geometry.html)
+- [time](compute/time/README.md): Temporal operations, FFT/IFFT, FIR filtering, CursorPair | [Details](docs/modules/time.html)
+- [stats](compute/stats/README.md): Probability distributions, statistical sampling
 
-### Mathematics
-- [algebra](algebra/README.md): Vector, Matrix, Scalar, Pair types with 40+ CollectionProducer operations | [Details](docs/modules/algebra.html)
-- [geometry](geometry/README.md): Ray, TransformMatrix, intersection testing, camera systems | [Details](docs/modules/geometry.html)
-- [time](time/README.md): Temporal operations, FFT/IFFT, FIR filtering, CursorPair | [Details](docs/modules/time.html)
-- [stats](stats/README.md): Probability distributions, statistical sampling
+### domain/ — Domain Models
+- [graph](domain/graph/README.md): Cell-Receptor-Transmitter pattern, neural network layers, Model/Block composition | [Details](docs/modules/graph.html)
+- [color](domain/color/README.md): RGB/RGBA, lighting, shaders, textures | [Details](docs/modules/color.html)
+- [physics](domain/physics/README.md): Quantum mechanics, photon fields, atomic structure | [Details](docs/modules/physics.html)
+- [space](domain/space/README.md): Scene management, meshes, spatial acceleration | [Details](docs/modules/space.html)
+- [heredity](domain/heredity/README.md): Genetic algorithms, Gene/Chromosome/Genome hierarchy | [Details](docs/modules/heredity.html)
+- [chemistry](domain/chemistry/README.md): Periodic table, elements, molecular structures | [Details](docs/modules/chemistry.html)
+- [llvm](domain/llvm/README.md): LLVM/C interoperability for native code
 
-### Domain Modules
-- [graph](graph/README.md): Cell-Receptor-Transmitter pattern, neural network layers, Model/Block composition | [Details](docs/modules/graph.html)
-- [color](color/README.md): RGB/RGBA, lighting, shaders, textures | [Details](docs/modules/color.html)
-- [physics](physics/README.md): Quantum mechanics, photon fields, atomic structure | [Details](docs/modules/physics.html)
-- [space](space/README.md): Scene management, meshes, spatial acceleration | [Details](docs/modules/space.html)
-- [heredity](heredity/README.md): Genetic algorithms, Gene/Chromosome/Genome hierarchy | [Details](docs/modules/heredity.html)
-- [chemistry](chemistry/README.md): Periodic table, elements, molecular structures | [Details](docs/modules/chemistry.html)
+### engine/ — Applications & Training
+- [ml](engine/ml/README.md): Transformer models (Qwen3), StateDictionary, attention mechanisms | [Details](docs/modules/ml.html)
+- [optimize](engine/optimize/README.md): Loss functions, Adam optimizer, PopulationOptimizer | [Details](docs/modules/optimize.html)
+- [render](engine/render/README.md): Ray tracing engine, RenderParameters, lighting | [Details](docs/modules/render.html)
+- [audio](engine/audio/README.md): Audio synthesis, signal processing, filters
+- [utils](engine/utils/README.md): Testing framework, TestFeatures, model validation | [Details](docs/modules/utils.html)
 
-### Application Layer
-- [ml](ml/README.md): Transformer models (Qwen3), StateDictionary, attention mechanisms | [Details](docs/modules/ml.html)
-- [optimize](optimize/README.md): Loss functions, Adam optimizer, PopulationOptimizer | [Details](docs/modules/optimize.html)
-- [render](render/README.md): Ray tracing engine, RenderParameters, lighting | [Details](docs/modules/render.html)
-- [utils](utils/README.md): Testing framework, TestFeatures, model validation | [Details](docs/modules/utils.html)
-
-### Utilities
+### Standalone
 - [tools](tools/README.md): JavaFX/Swing UI for operation profiling
-- [llvm](llvm/README.md): LLVM/C interoperability for native code
 - [Profiling Guide](docs/internals/profiling.md): Operation profiling infrastructure and timing analysis
 
 ## Tutorials

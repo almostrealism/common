@@ -124,15 +124,15 @@ public class SlackIntegrationTest extends TestSuiteBase {
         workstream.setDefaultBranch("feature/test");
         notifier.registerWorkstream(workstream);
 
-        // Test started notification
+        // Test submitted notification
         JobCompletionEvent startEvent = JobCompletionEvent.started(
             "job-123", "Fix authentication bug"
         );
-        notifier.onJobStarted(workstream.getWorkstreamId(), startEvent);
+        notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent);
 
         assertTrue(messages.size() > 0);
         String startMsg = messages.get(0);
-        assertTrue(startMsg.contains("Starting work"));
+        assertTrue(startMsg.contains("Job submitted"));
         assertTrue(startMsg.contains("Fix authentication bug"));
 
         messages.clear();

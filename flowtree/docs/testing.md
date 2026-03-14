@@ -455,7 +455,7 @@ If you need to run tests via Maven directly (e.g., for CI pipeline debugging), s
 
 ```bash
 export AR_HARDWARE_LIBS=/tmp/ar_libs/
-export AR_HARDWARE_DRIVER=native
+# AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 ```
 
 Then run from the **project root** (`common/`), never from the module directory:
