@@ -35,7 +35,8 @@ public class PlanarLight extends LightBulb implements SurfaceLight, Locatable, V
 	private Vector up, across;
 	private boolean lightProp = false;
 	private final double align = 0.0;
-	
+	private RGB color;
+
 	private Vector location;
 	
 	/**
@@ -127,10 +128,10 @@ public class PlanarLight extends LightBulb implements SurfaceLight, Locatable, V
 	public double getIntensity() { return 1.0; }
 
 	@Override
-	public void setColor(RGB color) { } // TODO
+	public void setColor(RGB color) { this.color = color; }
 
 	@Override
-	public RGB getColor() { return null; }  // TODO
+	public RGB getColor() { return this.color; }
 
 	@Override
 	public void setLocation(Vector l) { this.location = l; }
@@ -145,7 +146,8 @@ public class PlanarLight extends LightBulb implements SurfaceLight, Locatable, V
 			double[] x = this.getSpatialCoords(new double[] {Math.random(), Math.random()});
 			Vector p = new Vector(x[0], x[1], x[2]);
 			p.addTo(this.location);
-			l[i] = new PointLight(p, in, new RGB(1.0, 1.0, 1.0));
+			RGB sampleColor = this.color != null ? this.color : new RGB(1.0, 1.0, 1.0);
+			l[i] = new PointLight(p, in, sampleColor);
 		}
 		
 		return l;
