@@ -464,6 +464,16 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		return List.copyOf(prototypes.subList(0, count));
 	}
 
+	/**
+	 * Blocks until the library's most recent refresh completes or the
+	 * {@link #REFRESH_TIMEOUT_MINUTES} deadline is reached, polling every
+	 * 500 ms and forwarding progress to the optional status callback.
+	 *
+	 * @param library        the library whose refresh to await
+	 * @param statusCallback optional callback for progress messages (may be null)
+	 * @throws TimeoutException    if the refresh does not complete in time
+	 * @throws InterruptedException if the waiting thread is interrupted
+	 */
 	private void waitForRefresh(AudioLibrary library, Consumer<String> statusCallback)
 			throws TimeoutException, InterruptedException {
 		CompletableFuture<Void> refresh = library.awaitRefresh();
@@ -489,6 +499,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		}
 	}
 
+	/** Forwards {@code message} to the callback if it is non-null. */
 	private static void report(Consumer<String> callback, String message) {
 		if (callback != null) callback.accept(message);
 	}
