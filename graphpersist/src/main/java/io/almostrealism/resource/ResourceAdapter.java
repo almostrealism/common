@@ -48,10 +48,7 @@ public abstract class ResourceAdapter<T extends Object> implements Resource<T> {
 		return new ByteArrayInputStream((byte[]) getData());
 	}
 	
-	/**
-	 * Sends this resource's data to the given output stream, one byte at a time.
-	 * A buffered write strategy would improve throughput for large resources.
-	 */
+	// TODO  This could be made faster by writing a range of bytes at a time
 	public synchronized void send(IOStreams io) throws IOException {
 		byte[] data = (byte[]) getData();
 		if (data == null) return;

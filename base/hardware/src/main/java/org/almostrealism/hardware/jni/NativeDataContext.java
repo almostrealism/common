@@ -282,7 +282,7 @@ public class NativeDataContext extends HardwareDataContext {
 
 	@Override
 	public void destroy() {
-		// Compute context cleanup is delegated to subclass implementations
+		// TODO  Destroy all compute contexts
 		if (!providedRam) ram.destroy();
 	}
 }

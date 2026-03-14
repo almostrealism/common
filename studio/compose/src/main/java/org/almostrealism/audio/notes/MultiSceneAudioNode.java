@@ -18,11 +18,7 @@ package org.almostrealism.audio.notes;
 
 import java.util.List;
 
-/**
- * A {@link NoteAudioNode} that delegates to multiple child nodes,
- * one per scene. Despite the name, this operates on notes rather
- * than scenes directly.
- */
+// TODO  Rename to MultiNoteAudioNode
 public class MultiSceneAudioNode implements NoteAudioNode {
 	private final NoteAudioNode[] children;
 

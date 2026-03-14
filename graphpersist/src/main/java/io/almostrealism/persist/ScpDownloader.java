@@ -106,8 +106,33 @@ public class ScpDownloader implements UserInfo {
 		
 		ScpDownloader.this.streamOpen = true;
 		
-		// ScpFromMessage dependency is not available; SCP transfer is non-functional
-		System.out.println("ScpDownloader: SCP transfer is not supported (ScpFromMessage unavailable)");
+		i: for (int i = 0; i < ScpDownloader.this.retry; i++) {
+			if (i > 0) System.out.println("ScpDownloader: Retrying...");
+			
+			boolean done = false;
+			
+			try {
+//				TODO  This class is missing
+//				ScpFromMessage scp = new ScpFromMessage(this.session, orig, fout, true);
+//				scp.execute();
+				
+				done = true;
+				System.out.println("ScpDownloader: Done");
+				fout.flush();
+				break;
+			} catch (IOException e) {
+				System.out.println("ScpDownloader: " + e.getMessage());
+				if (done) break;
+//			} catch (JSchException jsch) {
+//				System.out.println("ScpDownloader: " + jsch.getMessage());
+			}
+			
+			ScpDownloader.this.dispose();
+			
+			try {
+				ScpDownloader.this.init();
+			} catch (IOException e) { }
+		}
 		
 		ScpDownloader.this.streamOpen = false;
 		this.notify();

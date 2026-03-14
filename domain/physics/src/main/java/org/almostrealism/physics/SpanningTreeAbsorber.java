@@ -30,12 +30,7 @@ import java.util.Iterator;
  * a minimum spanning tree data structure to store the child absorbers. Each
  * child is linked to a small number of closest neighbors so that absorption
  * calculations can be done more quickly by traversing the tree.
- *
- * <p><b>Note:</b> This class is incomplete. All interface methods currently throw
- * {@link UnsupportedOperationException}. It exists as a structural placeholder
- * for the spanning tree absorption algorithm and is extended by
- * {@link org.almostrealism.chem.ElectronDensityAbsorber}.</p>
- *
+ * 
  * @author  Michael Murray
  */
 public class SpanningTreeAbsorber implements AbsorberSet {
@@ -43,140 +38,166 @@ public class SpanningTreeAbsorber implements AbsorberSet {
 
 	@Override
 	public int addAbsorber(Absorber a, Producer x) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return 0;
 	}
 
 	@Override
 	public int removeAbsorbers(double[] x, double radius) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return 0;
 	}
 
 	@Override
 	public int removeAbsorber(Absorber a) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return 0;
 	}
 
 	@Override
 	public void setPotentialMap(PotentialMap m) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+
 	}
 
 	@Override
 	public PotentialMap getPotentialMap() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return null;
 	}
 
 	@Override
 	public void setMaxProximity(double radius) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+
 	}
 
 	@Override
 	public double getMaxProximity() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return 0;
 	}
 
 	@Override
 	public boolean absorb(Vector x, Vector p, double energy) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return false;
 	}
 
 	@Override
 	public Producer<PackedCollection> emit() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return null;
 	}
 
 	@Override
 	public double getEmitEnergy() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return 0;
 	}
 
 	@Override
 	public double getNextEmit() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return 0;
 	}
 
 	@Override
 	public void setClock(Clock c) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+
 	}
 
 	@Override
 	public Clock getClock() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return null;
 	}
 
 	@Override
 	public int size() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return 0;
 	}
 
 	@Override
 	public boolean isEmpty() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return false;
 	}
 
 	@Override
 	public boolean contains(Object arg0) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return false;
 	}
 
 	@Override
 	public Iterator iterator() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return null;
 	}
 
 	@Override
 	public Object[] toArray() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return null;
 	}
 
 	@Override
 	public Object[] toArray(Object[] arg0) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return null;
 	}
 
 	@Override
 	public boolean add(Object arg0) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return false;
 	}
 
 	@Override
 	public boolean remove(Object arg0) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return false;
 	}
 
 	@Override
 	public boolean containsAll(Collection arg0) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return false;
 	}
 
 	@Override
 	public boolean addAll(Collection arg0) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return false;
 	}
 
 	@Override
 	public boolean retainAll(Collection arg0) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return false;
 	}
 
 	@Override
 	public boolean removeAll(Collection arg0) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return false;
 	}
 
 	@Override
 	public void clear() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+
 	}
 
 	@Override
 	public Producer<PackedCollection> getEmitPosition() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return null;
 	}
 
-	/** Sets the spatial bound for this absorber set. */
 	public void setBound(double bound) { this.bound = bound; }
 
 	@Override
@@ -184,11 +205,13 @@ public class SpanningTreeAbsorber implements AbsorberSet {
 
 	@Override
 	public Iterator absorberIterator() {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return null;
 	}
 
 	@Override
 	public double getDistance(Vector p, Vector d) {
-		throw new UnsupportedOperationException();
+		// TODO Auto-generated method stub
+		return 0;
 	}
 }

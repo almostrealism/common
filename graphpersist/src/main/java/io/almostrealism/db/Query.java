@@ -32,12 +32,10 @@ import java.util.Map;
  * (the key column in the returned {@link Hashtable}), {@link DatabaseConnection#dataColumn}
  * for column two (the value column in the returned {@link Hashtable}, and "true" for
  * condition.
- *
- * <p>This is a legacy implementation that predates and does not extend
- * {@link io.almostrealism.query.Query}, which defines the modern query interface.</p>
- *
+ * 
  * @author  Michael Murray
  */
+// TODO  Should extend io.almostrealism.query.Query
 public class Query implements Externalizable {
 	public static boolean verbose = false;
 	

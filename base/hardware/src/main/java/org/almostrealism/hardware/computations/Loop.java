@@ -144,6 +144,7 @@ import java.util.stream.IntStream;
  * @see io.almostrealism.scope.Repeated
  * @see ExpressionFeatures
  */
+// TODO  Should extend Repeated
 public class Loop extends OperationComputationAdapter<Void> implements ExpressionFeatures {
 	private final Computation atom;
 	private final int iterations;

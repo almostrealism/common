@@ -77,13 +77,11 @@ import java.util.function.IntFunction;
  * }
  * }</pre>
  *
- * <p>A future enhancement could implement StreamingEvaluable for streaming
- * evaluation pipelines.</p>
- *
  * @param <T> MemoryData type for destinations
  * @see Evaluable
  * @see Multiple
  */
+// TODO  Should implement StreamingEvaluable
 public class MemoryDataDestination<T extends MemoryData> implements Evaluable<T> {
 	private final IntFunction<Multiple<T>> provider;
 

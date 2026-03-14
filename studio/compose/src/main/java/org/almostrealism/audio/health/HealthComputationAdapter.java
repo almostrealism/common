@@ -118,9 +118,10 @@ public abstract class HealthComputationAdapter implements AudioHealthComputation
 	@Override
 	public void reset() {
 		AudioHealthComputation.super.reset();
-		out.reset();
+		out.reset(); // TODO  Why is this called twice?
 		if (stems != null) stems.forEach(WaveOutput::reset);
 		measures.values().forEach(AudioMeter::reset);
+		out.reset();
 	}
 
 	@Override

@@ -603,11 +603,6 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * method defined in the computation. If post-processing is needed, use
 	 * {@link io.almostrealism.relation.Producer#get()} instead.</p>
 	 *
-	 * <p><b>Known limitation:</b> If the Computation has a postProcessOutput method,
-	 * it will not be called when creating an Evaluable through this path.
-	 * The post-processing should ideally be recognized and applied after
-	 * evaluation to ensure the correct type is returned.</p>
-	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
 	 * Computation<PackedCollection> multiply = ...;
@@ -619,6 +614,10 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * @param <T> The result type
 	 * @return Evaluable that produces values
 	 */
+	// TODO  The Computation may have a postProcessOutput method that will not be called
+	// TODO  when using this method of creating an Evaluable from it. Ideally, that feature
+	// TODO  of the Computation would be recognized, and applied after evaluation, so that
+	// TODO  the correct type is returned.
 	@Override
 	public <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
 		return new AcceleratedComputationEvaluable<>(getContext(c), c);

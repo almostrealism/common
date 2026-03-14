@@ -600,9 +600,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// Postprocessing
 			if (processing) {
 				if (nextSemaphore != null) {
-					// Post-processing currently waits synchronously; ideally
-					// it would chain onto the operator's semaphore to run
-					// asynchronously when the kernel completes
+					// TODO  This should actually result in a new Semaphore
+					// TODO  that performs the post processing whenever the
+					// TODO  original semaphore is finished
 					// warn("Postprocessing will wait for semaphore");
 					nextSemaphore.waitFor();
 				}

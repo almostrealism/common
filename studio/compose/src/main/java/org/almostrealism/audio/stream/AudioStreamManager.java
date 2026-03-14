@@ -59,15 +59,14 @@ import java.util.Map;
  * player.play();
  * }</pre>
  *
- * <p>The multi-channel support is legacy; a single channel is sufficient
- * for normal playback.</p>
- *
  * @see BufferedAudioPlayer for the player implementation
  * @see BufferedOutputScheduler for the scheduling mechanism
  * @see AudioServer for the streaming server
  * @see DelegatedAudioLine for streaming/DAW integration output
  * @see SourceDataOutputLine for direct hardware playback output
  */
+// TODO  AudioStreamManager really no longer needs to support separate named channels
+// TODO  since one will surely be sufficient for all normal playback
 public class AudioStreamManager implements ConsoleFeatures {
 	public static final int PORT = 7799;
 

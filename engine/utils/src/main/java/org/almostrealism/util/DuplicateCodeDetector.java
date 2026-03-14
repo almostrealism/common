@@ -146,6 +146,10 @@ public class DuplicateCodeDetector {
 			new String[]{"SawtoothWaveCell.java", "SquareWaveCell.java"},
 			new String[]{"SawtoothWaveCell.java", "TriangleWaveCell.java"},
 			new String[]{"SquareWaveCell.java", "TriangleWaveCell.java"},
+			// Physics spanning tree implementations with shared grid traversal
+			new String[]{"SpanningTreeAbsorber.java", "SpanningTreePotentialMap.java"},
+			new String[]{"AtomicProtonCloud.java", "SpanningTreeAbsorber.java"},
+			new String[]{"PotentialMapHashSet.java", "SpanningTreePotentialMap.java"},
 			// Audio output line implementations with shared buffer management
 			new String[]{"BufferOutputLine.java", "MockOutputLine.java"},
 			// Expression nodes with shared simplification logic

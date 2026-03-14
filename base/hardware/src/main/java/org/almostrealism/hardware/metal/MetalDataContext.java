@@ -336,7 +336,7 @@ public class MetalDataContext extends HardwareDataContext {
 	 */
 	@Override
 	public void destroy() {
-		// Thread-local compute context is the only one tracked
+		// TODO  Destroy any other compute contexts
 		if (computeContext.get() != null) {
 			computeContext.get().destroy();
 			computeContext.remove();

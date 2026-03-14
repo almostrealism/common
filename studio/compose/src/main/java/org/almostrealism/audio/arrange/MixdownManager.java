@@ -572,8 +572,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			}));
 		}
 
-		// Riser bypasses the effects chain; routing it through active effects
-		// would improve integration but requires effect-chain refactoring
+		// TODO  Riser should actually feed into effects, if they are active
 		if (enableRiser) {
 			main = cells(main, riser).sum();
 		}

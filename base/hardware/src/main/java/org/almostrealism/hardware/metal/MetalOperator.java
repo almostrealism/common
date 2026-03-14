@@ -269,8 +269,8 @@ public class MetalOperator extends HardwareOperator {
 		});
 
 		try {
-			// Blocks synchronously; returning a Semaphore would enable
-			// async pipeline composition
+			// TODO  This should actually return a Semaphore rather than
+			// TODO  blocking until the process is over
 			run.get();
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();

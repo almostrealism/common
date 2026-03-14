@@ -402,22 +402,20 @@ public class DatabaseConnection {
 		return true;
 	}
 	
-	/**
-	 * Creates the user table in the database. Not yet implemented.
-	 *
-	 * @return always returns false
-	 * @throws SQLException if a database access error occurs
-	 */
 	public boolean createUserTable() throws SQLException {
+		// TODO  Add createUserTable
+		
+//		Statement s = this.db.createStatement();
+//		s.executeUpdate("CREATE TABLE " + this.userTable +
+//						" (" + DatabaseConnection.
 		return false;
 	}
 	
 	/**
 	 * Queries the output table and notifies all output handlers of the output
 	 * that is stored in these rows.
-	 *
-	 * @deprecated This approach does not scale for large result sets.
 	 */
+	// TODO It is unclear if this method is a viable way to do anything at scale
 	@Deprecated
 	public void storeOutput() {
 		try {
@@ -439,11 +437,7 @@ public class DatabaseConnection {
 		}
 	}
 
-	/**
-	 * Stores output entries from the given table, keyed by timestamp.
-	 *
-	 * @deprecated Legacy method with unclear purpose.
-	 */
+	// TODO  It is unclear what this is for
 	@Deprecated
 	public void storeOutput(Hashtable h) {
 		Iterator itr = h.entrySet().iterator();

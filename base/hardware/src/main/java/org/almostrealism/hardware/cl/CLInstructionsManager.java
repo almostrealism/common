@@ -90,8 +90,7 @@ public class CLInstructionsManager extends AbstractInstructionSetManager<Default
 	 */
 	@Override
 	public Execution getOperator(DefaultExecutionKey key) {
-		// Operator lookup is keyed by function name only; name collisions across
-		// different source classes could return the wrong operator
+		// TODO  This needs to be by class in addition to function, as function names may collide
 		synchronized (CLInstructionsManager.class) {
 			if (operators.get(key.getFunctionName()) == null) {
 				operators.put(key.getFunctionName(), new ThreadLocal<>());

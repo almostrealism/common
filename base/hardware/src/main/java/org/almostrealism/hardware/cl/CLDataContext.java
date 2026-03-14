@@ -678,7 +678,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 */
 	@Override
 	public void destroy() {
-		// Thread-local compute contexts are the only ones tracked
+		// TODO  Destroy any other compute contexts
 		if (computeContexts.get() != null) {
 			computeContexts.get().forEach(cc -> cc.destroy());
 			computeContexts.remove();
