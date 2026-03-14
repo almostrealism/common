@@ -45,30 +45,25 @@ The input copy is eliminated entirely. The entry cell becomes a simple pass-thro
 The tracking decision is made at compilation time in `CompiledModel.compile()`:
 
 1. **Training** (`backprop=true`): Input tracking remains enabled (the default from `init()`). The `BackPropagationCell` reads from the input buffer during the backward pass.
-2. **Inference** (`backprop=false`): `CompiledModel` calls `setInputTracking(false)` on every `DefaultCellularLayer` before building and optimizing the forward chain. This structurally rebuilds the entry cell as a pass-through.
+2. **Inference** (`backprop=false`): `CompiledModel` calls `setInputTracking(false)` on every `DefaultCellularLayer` before building and optimizing the forward chain. This sets the input buffer to null, so the entry cell's runtime check takes the pass-through path.
 
-### Why Construction-Time, Not Runtime
+### How It Works
 
-The entry cell must be structurally different between training and inference modes — not a runtime branch. This matters because:
+The entry cell uses a runtime check on `this.input` to decide its behavior:
 
-- The computation graph optimizer sees a clean structure with no dead branches
-- Expression tree optimization can fully inline the pass-through path
-- No mutable state is read during graph evaluation
-- The compiled operation is smaller and faster
+- When `this.input != null` (training): copies input into the tracking buffer, then forwards
+- When `this.input == null` (inference): passes input directly to the forward cell
 
-A runtime `if (trackingEnabled)` branch inside the entry cell would prevent the optimizer from eliminating the tracking code path, even when it's never taken.
+Because the optimizer evaluates the lambda at optimization time, it only sees the result of the branch that was actually taken. When `this.input` is null, the optimizer receives the simple pass-through operation and can fully optimize the forward chain without tracking overhead.
 
 ## `setInputTracking(boolean)`
 
-`DefaultCellularLayer.setInputTracking(boolean)` performs a structural rebuild:
+`DefaultCellularLayer.setInputTracking(boolean)` updates the tracking state:
 
 1. Updates the `inputTrackingEnabled` flag
 2. Allocates or destroys the input buffer as needed
-3. Clears the cached `fw` (composite forward cell)
-4. Rebuilds the entry cell — either as a tracking cell or a pass-through
-5. Re-wires the entry cell's receptor to the forward cell
 
-This must be called **before** the computation graph is optimized. `CompiledModel.compile()` ensures this by calling `configureTracking()` before `forward.flatten().optimize()`.
+The entry cell's lambda checks `this.input` at evaluation time, so no cell rebuild is needed. This must be called **before** the computation graph is optimized. `CompiledModel.compile()` ensures this by calling `configureTracking()` before `forward.flatten().optimize()`.
 
 ## Performance Impact
 

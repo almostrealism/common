@@ -50,10 +50,10 @@ import java.util.function.Supplier;
  *
  * <h2>Training vs Inference</h2>
  * <p>Input tracking is only required during training. For inference-only execution,
- * {@link #setInputTracking(boolean)} can disable it, structurally rebuilding the entry cell
- * as a simple pass-through. This eliminates the input copy overhead (~18% of forward pass
- * time in profiled models). The rebuild happens before graph optimization, so the optimizer
- * sees a clean structure with no dead branches.</p>
+ * {@link #setInputTracking(boolean)} can disable it by nulling the input buffer. The entry
+ * cell checks {@code this.input} at runtime, so when the input buffer is null it passes
+ * input directly through without copying. This eliminates the input copy overhead (~18% of
+ * forward pass time in profiled models).</p>
  *
  * <h2>Comparison with DefaultBlock</h2>
  * <p>{@link org.almostrealism.model.DefaultBlock} is a lightweight alternative with no
@@ -161,13 +161,27 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		}
 
 		this.inputTrackingEnabled = inputTracking;
-		this.output = new PackedCollection(outputShape);
+		this.input = inputTracking ? new PackedCollection(inputShape) : null;
+		this.output = outputTracking ? new PackedCollection(outputShape) : null;
 
-		if (inputTracking) {
-			this.input = new PackedCollection(inputShape);
-		}
+		this.entry = Cell.of((in, next) -> {
+			if (this.input == null) {
+				return next.push(in);
+			} else {
+				OperationList op = new OperationList(getName() + " layer (Entry)");
+				op.add(into(getName() + " layer (Input Record)", in, p(input),
+						enableMemoryDataCopy, getComputeRequirements()));
+				if (HardwareFeatures.outputMonitoring) {
+					op.add(new MonitorReceptor(getName() + " layer (Input Monitor)",
+							getInputShape(), getOutputShape())
+							.push(p(input)));
+				}
 
-		buildEntryCell();
+				op.add(next.push(p(input)));
+				return op;
+			}
+		});
+		this.entry.setReceptor(forward);
 
 		this.exit = Cell.of((in, next) -> output(in, p(output)));
 		this.forward.setReceptor(exit);
@@ -180,11 +194,10 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	 * input. When {@code false}, the entry cell passes input through without copying,
 	 * eliminating overhead for inference-only execution.
 	 *
-	 * <p>This method performs a <strong>structural rebuild</strong> of the entry cell.
-	 * The cached composite forward cell ({@code fw}) is intentionally preserved because
-	 * its lambda reads {@code this.entry} at runtime, so it automatically picks up the
-	 * rebuilt entry cell. Invalidating {@code fw} would destroy the inter-block receptor
-	 * chain wired during {@link org.almostrealism.model.SequentialBlock#add}.</p>
+	 * <p>The entry cell uses a runtime check on {@code this.input} to decide whether to
+	 * copy or pass through. This method updates the {@code input} field so the existing
+	 * entry cell automatically uses the correct path on the next forward pass. No cell
+	 * rebuild is needed.</p>
 	 *
 	 * <p>Must be called before the computation graph is optimized (i.e., before
 	 * {@code Process.optimize()} or {@code OperationList.flatten().optimize()}).
@@ -210,30 +223,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			this.input.destroy();
 			this.input = null;
 		}
-
-		buildEntryCell();
-	}
-
-	private void buildEntryCell() {
-		if (inputTrackingEnabled) {
-			this.entry = Cell.of((in, next) -> {
-				OperationList op = new OperationList(getName() + " layer (Entry)");
-				op.add(into(getName() + " layer (Input Record)", in, p(input),
-						enableMemoryDataCopy, getComputeRequirements()));
-				if (HardwareFeatures.outputMonitoring) {
-					op.add(new MonitorReceptor(getName() + " layer (Input Monitor)",
-							getInputShape(), getOutputShape())
-							.push(p(input)));
-				}
-
-				op.add(next.push(p(input)));
-				return op;
-			});
-		} else {
-			this.entry = Cell.of((in, next) -> next.push(in));
-		}
-
-		this.entry.setReceptor(forward);
 	}
 
 	private Supplier<Runnable> output(Producer<PackedCollection> in, Producer<PackedCollection> out) {
