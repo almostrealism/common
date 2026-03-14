@@ -23,6 +23,7 @@ import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 
+import java.lang.ref.Reference;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -277,6 +278,11 @@ public class MetalOperator extends HardwareOperator {
 		} catch (ExecutionException  e) {
 			throw new RuntimeException(e);
 		}
+
+		// Prevent the JIT from allowing GC to collect data[] or args
+		// before kernel execution completes
+		Reference.reachabilityFence(data);
+		Reference.reachabilityFence(args);
 
 		return null;
 	}
