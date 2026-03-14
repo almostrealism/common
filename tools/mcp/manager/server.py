@@ -1060,7 +1060,8 @@ def workstream_update_config(
 
 @mcp.tool()
 def project_create_branch(
-    workstream_id: str,
+    workstream_id: str = "",
+    repo_url: str = "",
     plan_title: str = "",
     plan_content: str = "",
 ) -> dict:
@@ -1076,8 +1077,14 @@ def project_create_branch(
     date and plan title), so it cannot be returned immediately. Use
     workstream_list after the workflow completes to see the new workstream.
 
+    The repository is resolved in priority order:
+    1. If ``repo_url`` is provided, use it directly.
+    2. If ``workstream_id`` is provided, resolve from the workstream config.
+    3. If neither is provided, default to ``almostrealism/common`` on master.
+
     Args:
-        workstream_id: Source workstream with repo_url (from workstream_list).
+        workstream_id: Optional source workstream (from workstream_list).
+        repo_url: Optional repository URL (HTTPS or SSH). Overrides workstream.
         plan_title: Short title for the plan branch (used in branch name).
         plan_content: Optional markdown content for the initial plan document.
 
@@ -1086,7 +1093,7 @@ def project_create_branch(
     """
     _require_scope("pipeline")
     err = _check_short_strings(
-        workstream_id=workstream_id, plan_title=plan_title,
+        workstream_id=workstream_id, repo_url=repo_url, plan_title=plan_title,
     )
     if err:
         return err
@@ -1094,28 +1101,36 @@ def project_create_branch(
         err = _check_length(plan_content, "plan_content", MAX_CONTENT_LEN)
         if err:
             return err
-    _audit("project_create_branch", workstream_id=workstream_id, plan_title=plan_title)
+    _audit("project_create_branch", workstream_id=workstream_id,
+           repo_url=repo_url, plan_title=plan_title)
 
-    ws = _find_workstream(workstream_id)
-    if ws is None:
-        return {
-            "ok": False,
-            "error": f"Workstream '{workstream_id}' not found",
-            "next_steps": ["Use workstream_list to find valid workstream IDs"],
-        }
+    # Resolve repository URL and base branch
+    effective_repo = None
+    effective_base = "master"
 
-    _set_github_org(ws)
+    if repo_url:
+        effective_repo = repo_url
+    elif workstream_id:
+        ws = _find_workstream(workstream_id)
+        if ws is None:
+            return {
+                "ok": False,
+                "error": f"Workstream '{workstream_id}' not found",
+                "next_steps": ["Use workstream_list to find valid workstream IDs"],
+            }
+        _set_github_org(ws)
+        effective_repo = ws.get("repoUrl")
+        effective_base = ws.get("baseBranch", "master")
 
-    repo_url = ws.get("repoUrl")
-    if not repo_url:
-        return _pipeline_error(workstream_id, "repo_url is not configured")
+    if not effective_repo:
+        effective_repo = "https://github.com/almostrealism/common"
 
-    owner_repo = _extract_owner_repo(repo_url)
+    owner_repo = _extract_owner_repo(effective_repo)
     if not owner_repo:
         return {
             "ok": False,
-            "error": f"Cannot parse owner/repo from: {repo_url}",
-            "next_steps": ["Use workstream_update_config to fix repo_url"],
+            "error": f"Cannot parse owner/repo from: {effective_repo}",
+            "next_steps": ["Provide a valid repo_url (HTTPS or SSH format)"],
         }
 
     owner, repo = owner_repo
@@ -1128,7 +1143,7 @@ def project_create_branch(
     result = _github_request(
         "POST",
         f"/repos/{owner}/{repo}/actions/workflows/project-manager.yaml/dispatches",
-        {"ref": ws.get("baseBranch", "master"), "inputs": inputs},
+        {"ref": effective_base, "inputs": inputs},
     )
 
     if result.get("ok") or result.get("status") == 204:
