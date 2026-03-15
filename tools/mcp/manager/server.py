@@ -832,6 +832,7 @@ def workstream_submit_task(
     max_budget_usd: float = 0.0,
     protect_test_files: bool = False,
     enforce_changes: bool = False,
+    started_after: str = "",
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -856,6 +857,10 @@ def workstream_submit_task(
         max_budget_usd: Maximum cost in USD (0 = use workstream default).
         protect_test_files: If true, prevent the agent from modifying test files.
         enforce_changes: If true, require the agent to produce code changes.
+        started_after: Epoch milliseconds timestamp. If a newer job already
+            exists on the workstream, the submission is skipped and the
+            response includes ``skipped: true``. Used by CI pipelines to
+            avoid stale auto-resolve jobs colliding with explicit submissions.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -866,7 +871,7 @@ def workstream_submit_task(
         return err
     err = _check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
-        description=description,
+        description=description, started_after=started_after,
     )
     if err:
         return err
@@ -888,6 +893,8 @@ def workstream_submit_task(
         payload["protectTestFiles"] = True
     if enforce_changes:
         payload["enforceChanges"] = True
+    if started_after:
+        payload["startedAfter"] = started_after
 
     result = _controller_post("/api/submit", payload)
 
@@ -1060,7 +1067,8 @@ def workstream_update_config(
 
 @mcp.tool()
 def project_create_branch(
-    workstream_id: str,
+    workstream_id: str = "",
+    repo_url: str = "",
     plan_title: str = "",
     plan_content: str = "",
 ) -> dict:
@@ -1076,8 +1084,14 @@ def project_create_branch(
     date and plan title), so it cannot be returned immediately. Use
     workstream_list after the workflow completes to see the new workstream.
 
+    The repository is resolved in priority order:
+    1. If ``repo_url`` is provided, use it directly.
+    2. If ``workstream_id`` is provided, resolve from the workstream config.
+    3. If neither is provided, default to ``almostrealism/common`` on master.
+
     Args:
-        workstream_id: Source workstream with repo_url (from workstream_list).
+        workstream_id: Optional source workstream (from workstream_list).
+        repo_url: Optional repository URL (HTTPS or SSH). Overrides workstream.
         plan_title: Short title for the plan branch (used in branch name).
         plan_content: Optional markdown content for the initial plan document.
 
@@ -1086,7 +1100,7 @@ def project_create_branch(
     """
     _require_scope("pipeline")
     err = _check_short_strings(
-        workstream_id=workstream_id, plan_title=plan_title,
+        workstream_id=workstream_id, repo_url=repo_url, plan_title=plan_title,
     )
     if err:
         return err
@@ -1094,28 +1108,36 @@ def project_create_branch(
         err = _check_length(plan_content, "plan_content", MAX_CONTENT_LEN)
         if err:
             return err
-    _audit("project_create_branch", workstream_id=workstream_id, plan_title=plan_title)
+    _audit("project_create_branch", workstream_id=workstream_id,
+           repo_url=repo_url, plan_title=plan_title)
 
-    ws = _find_workstream(workstream_id)
-    if ws is None:
-        return {
-            "ok": False,
-            "error": f"Workstream '{workstream_id}' not found",
-            "next_steps": ["Use workstream_list to find valid workstream IDs"],
-        }
+    # Resolve repository URL and base branch
+    effective_repo = None
+    effective_base = "master"
 
-    _set_github_org(ws)
+    if repo_url:
+        effective_repo = repo_url
+    elif workstream_id:
+        ws = _find_workstream(workstream_id)
+        if ws is None:
+            return {
+                "ok": False,
+                "error": f"Workstream '{workstream_id}' not found",
+                "next_steps": ["Use workstream_list to find valid workstream IDs"],
+            }
+        _set_github_org(ws)
+        effective_repo = ws.get("repoUrl")
+        effective_base = ws.get("baseBranch", "master")
 
-    repo_url = ws.get("repoUrl")
-    if not repo_url:
-        return _pipeline_error(workstream_id, "repo_url is not configured")
+    if not effective_repo:
+        effective_repo = "https://github.com/almostrealism/common"
 
-    owner_repo = _extract_owner_repo(repo_url)
+    owner_repo = _extract_owner_repo(effective_repo)
     if not owner_repo:
         return {
             "ok": False,
-            "error": f"Cannot parse owner/repo from: {repo_url}",
-            "next_steps": ["Use workstream_update_config to fix repo_url"],
+            "error": f"Cannot parse owner/repo from: {effective_repo}",
+            "next_steps": ["Provide a valid repo_url (HTTPS or SSH format)"],
         }
 
     owner, repo = owner_repo
@@ -1128,7 +1150,7 @@ def project_create_branch(
     result = _github_request(
         "POST",
         f"/repos/{owner}/{repo}/actions/workflows/project-manager.yaml/dispatches",
-        {"ref": ws.get("baseBranch", "master"), "inputs": inputs},
+        {"ref": effective_base, "inputs": inputs},
     )
 
     if result.get("ok") or result.get("status") == 204:
@@ -1686,11 +1708,15 @@ def memory_branch_context(
     namespace: str = "default",
     limit: int = 20,
     include_messages: bool = True,
+    include_commits: bool = True,
+    commit_limit: int = 30,
 ) -> dict:
-    """Get all memories for a specific branch.
+    """Get all memories and optionally the commit history for a branch.
 
     Returns memories ordered by creation time (newest first). Can resolve
-    repo_url/branch from workstream_id if provided.
+    repo_url/branch from workstream_id if provided. When ``include_commits``
+    is True, fetches the branch's commit list via the GitHub Compare API
+    relative to the base branch (default ``master``).
 
     Args:
         workstream_id: Workstream to resolve repo/branch from.
@@ -1700,9 +1726,12 @@ def memory_branch_context(
         limit: Maximum number of entries.
         include_messages: If true (default), also include memories from the
             "messages" namespace. Set to false to exclude Slack messages.
+        include_commits: If true (default), include the list of commits on
+            the branch relative to its base branch.
+        commit_limit: Maximum number of commits to include (default 30).
 
     Returns:
-        Dictionary with branch memories.
+        Dictionary with branch memories and optionally commits.
     """
     _require_scope("memory")
     err = _check_short_strings(
@@ -1758,7 +1787,36 @@ def memory_branch_context(
         except ConnectionError:
             pass  # Non-critical: proceed without messages
 
-    return {
+    # Fetch commit history from GitHub Compare API if requested
+    commits = None
+    if include_commits and effective_repo:
+        owner_repo = _extract_owner_repo(effective_repo)
+        if owner_repo:
+            owner, repo = owner_repo
+            # Determine the base branch from the workstream if available
+            ws = _find_workstream(workstream_id) if workstream_id else None
+            base = ws.get("baseBranch", "master") if ws else "master"
+            try:
+                compare = _github_request(
+                    "GET",
+                    f"/repos/{owner}/{repo}/compare/{base}...{effective_branch}",
+                )
+                if compare.get("ok") is not False and "commits" in compare:
+                    commits = []
+                    for c in compare.get("commits", [])[:commit_limit]:
+                        commit_obj = c.get("commit", {})
+                        author_obj = commit_obj.get("author", {})
+                        commits.append({
+                            "sha": c.get("sha", "")[:10],
+                            "author": author_obj.get("name", ""),
+                            "date": author_obj.get("date", ""),
+                            "message": commit_obj.get("message", "").split("\n")[0],
+                        })
+            except Exception as exc:
+                logger.warning("Failed to fetch commits for %s...%s: %s",
+                               base, effective_branch, exc)
+
+    result = {
         "ok": True,
         "repo_url": effective_repo,
         "branch": effective_branch,
@@ -1770,6 +1828,11 @@ def memory_branch_context(
             "Use memory_store to add a new memory for this branch",
         ],
     }
+    if commits is not None:
+        result["commits"] = commits
+        result["commit_count"] = len(commits)
+
+    return result
 
 
 @mcp.tool()
