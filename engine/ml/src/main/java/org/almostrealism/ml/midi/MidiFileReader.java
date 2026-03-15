@@ -17,7 +17,6 @@
 package org.almostrealism.ml.midi;
 
 import javax.sound.midi.InvalidMidiDataException;
-import javax.sound.midi.MetaMessage;
 import javax.sound.midi.MidiEvent;
 import javax.sound.midi.MidiMessage;
 import javax.sound.midi.MidiSystem;
@@ -129,7 +128,11 @@ public class MidiFileReader {
 	 * Write a list of note events to a standard MIDI file.
 	 *
 	 * <p>Events are written at {@link MidiTokenizer#TIME_RESOLUTION} ticks
-	 * per beat (assuming 120 BPM, so ticks map directly to centiseconds).</p>
+	 * per beat (assuming 120 BPM, so ticks map directly to centiseconds).
+	 * Each distinct non-drum instrument is assigned its own MIDI channel
+	 * (0-8, 10-15), with drum events always on channel 9. Up to 15
+	 * non-drum instruments are supported; overflow instruments fall back
+	 * to channel 0.</p>
 	 *
 	 * @param events the note events to write
 	 * @param output the output MIDI file
@@ -141,16 +144,32 @@ public class MidiFileReader {
 		Sequence sequence = new Sequence(Sequence.PPQ, MidiTokenizer.TIME_RESOLUTION);
 		Track track = sequence.createTrack();
 
-		Map<Integer, Integer> programsSent = new HashMap<>();
+		Map<Integer, Integer> instrumentToChannel = new HashMap<>();
+		int nextChannel = 0;
 
 		for (MidiNoteEvent event : events) {
-			int channel = event.getInstrument() == DRUM_INSTRUMENT ? DRUM_CHANNEL : 0;
-			int program = event.getInstrument() == DRUM_INSTRUMENT ? 0 : event.getInstrument();
+			int instrument = event.getInstrument();
+			int channel;
 
-			if (channel != DRUM_CHANNEL && !programsSent.containsKey(channel)) {
-				ShortMessage pc = new ShortMessage(PROGRAM_CHANGE, channel, program, 0);
-				track.add(new MidiEvent(pc, 0));
-				programsSent.put(channel, program);
+			if (instrument == DRUM_INSTRUMENT) {
+				channel = DRUM_CHANNEL;
+			} else {
+				Integer mapped = instrumentToChannel.get(instrument);
+				if (mapped != null) {
+					channel = mapped;
+				} else {
+					while (nextChannel == DRUM_CHANNEL) nextChannel++;
+					if (nextChannel <= 15) {
+						channel = nextChannel;
+						nextChannel++;
+					} else {
+						channel = 0;
+					}
+					instrumentToChannel.put(instrument, channel);
+					ShortMessage pc = new ShortMessage(
+							PROGRAM_CHANGE, channel, instrument, 0);
+					track.add(new MidiEvent(pc, 0));
+				}
 			}
 
 			ShortMessage noteOn = new ShortMessage(

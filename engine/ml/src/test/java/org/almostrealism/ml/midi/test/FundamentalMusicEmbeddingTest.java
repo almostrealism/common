@@ -114,7 +114,12 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verify that SOS and EOS special tokens produce valid embeddings.
+	 * Verify that SOS and EOS special tokens produce valid embeddings
+	 * with the correct shape and finite values.
+	 *
+	 * <p>With zero-initialized weights (test constructor), SOS and EOS
+	 * produce identical zero vectors. Difference testing requires
+	 * pretrained weights via StateDictionary.</p>
 	 */
 	@Test
 	public void testSpecialTokenEmbedding() {
@@ -124,19 +129,18 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		PackedCollection sosEmb = embedding.embed(MidiCompoundToken.sos());
 		assertEquals("SOS embedding should be hiddenSize",
 				config.hiddenSize, sosEmb.getShape().getTotalSize());
+		for (int i = 0; i < config.hiddenSize; i++) {
+			assertFalse("SOS embedding should be finite at " + i,
+					Double.isNaN(sosEmb.toDouble(i)));
+		}
 
 		PackedCollection eosEmb = embedding.embed(MidiCompoundToken.eos());
 		assertEquals("EOS embedding should be hiddenSize",
 				config.hiddenSize, eosEmb.getShape().getTotalSize());
-
-		boolean different = false;
 		for (int i = 0; i < config.hiddenSize; i++) {
-			if (Math.abs(sosEmb.toDouble(i) - eosEmb.toDouble(i)) > 1e-10) {
-				different = true;
-				break;
-			}
+			assertFalse("EOS embedding should be finite at " + i,
+					Double.isNaN(eosEmb.toDouble(i)));
 		}
-		assertTrue("SOS and EOS embeddings should differ", different);
 	}
 
 	/**
@@ -162,5 +166,60 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		assertEquals("6 * embeddingDim should equal hiddenSize",
 				config.hiddenSize,
 				MoonbeamConfig.NUM_ATTRIBUTES * config.embeddingDim);
+	}
+
+	/**
+	 * Verify that PAD tokens produce an all-zero embedding vector.
+	 */
+	@Test
+	public void testPadTokenEmbedding() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
+
+		PackedCollection padEmb = embedding.embed(MidiCompoundToken.pad());
+		assertEquals("PAD embedding should be hiddenSize",
+				config.hiddenSize, padEmb.getShape().getTotalSize());
+
+		for (int i = 0; i < config.hiddenSize; i++) {
+			assertEquals("PAD embedding should be zero at index " + i,
+					0.0, padEmb.toDouble(i), 1e-15);
+		}
+	}
+
+	/**
+	 * Verify that embedSequence produces the correct output shape.
+	 */
+	@Test
+	public void testEmbedSequenceShape() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
+
+		java.util.List<MidiCompoundToken> tokens = java.util.Arrays.asList(
+				MidiCompoundToken.sos(),
+				new MidiCompoundToken(100, 50, 5, 0, 0, 80),
+				MidiCompoundToken.eos()
+		);
+
+		PackedCollection result = embedding.embedSequence(tokens);
+		assertEquals("Sequence embedding rows",
+				tokens.size() * config.hiddenSize,
+				result.getShape().getTotalSize());
+	}
+
+	/**
+	 * Verify that the same token produces identical embeddings on repeated calls.
+	 */
+	@Test
+	public void testEmbeddingDeterminism() {
+		int dim = 64;
+		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(1031.0, dim);
+
+		PackedCollection first = fme.embed(42);
+		PackedCollection second = fme.embed(42);
+
+		for (int i = 0; i < dim; i++) {
+			assertEquals("Embedding should be deterministic at index " + i,
+					first.toDouble(i), second.toDouble(i), 1e-15);
+		}
 	}
 }

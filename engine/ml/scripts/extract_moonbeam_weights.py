@@ -231,7 +231,11 @@ def extract_weights(model, output_dir):
 
     # Extract embedding weights
     extract_weight_group(state_dict, output_dir, "embeddings",
-                         lambda k: is_embedding_key(k) or is_final_norm_key(k))
+                         is_embedding_key)
+
+    # Extract final layer norm
+    extract_weight_group(state_dict, output_dir, "final_norm",
+                         is_final_norm_key)
 
     # Extract decoder weights
     extract_weight_group(state_dict, output_dir, "decoder",

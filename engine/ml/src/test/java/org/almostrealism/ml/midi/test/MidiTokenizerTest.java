@@ -203,4 +203,110 @@ public class MidiTokenizerTest extends TestSuiteBase {
 		assertEquals("Onset delta should be clamped",
 				MidiTokenizer.MAX_TIME_VALUE, second.getOnset());
 	}
+
+	/**
+	 * Verify that MidiCompoundToken.fromArray rejects arrays
+	 * with the wrong number of elements.
+	 */
+	@Test(expected = IllegalArgumentException.class)
+	public void testFromArrayInvalidLength() {
+		MidiCompoundToken.fromArray(new int[]{1, 2, 3});
+	}
+
+	/**
+	 * Verify that MidiNoteEvent sorts by onset first, then by pitch.
+	 */
+	@Test
+	public void testNoteEventOrdering() {
+		MidiNoteEvent early = new MidiNoteEvent(72, 0, 50, 80, 0);
+		MidiNoteEvent late = new MidiNoteEvent(60, 100, 50, 80, 0);
+		MidiNoteEvent sameOnsetLowPitch = new MidiNoteEvent(48, 0, 50, 80, 0);
+
+		assertTrue("Earlier onset should sort before later onset",
+				early.compareTo(late) < 0);
+		assertTrue("Same onset: lower pitch should sort first",
+				sameOnsetLowPitch.compareTo(early) < 0);
+		assertEquals("Same event should compare equal", 0,
+				early.compareTo(new MidiNoteEvent(72, 0, 50, 80, 0)));
+	}
+
+	/**
+	 * Verify MidiNoteEvent equals and hashCode contract.
+	 */
+	@Test
+	public void testNoteEventEquality() {
+		MidiNoteEvent a = new MidiNoteEvent(60, 100, 50, 80, 0);
+		MidiNoteEvent b = new MidiNoteEvent(60, 100, 50, 80, 0);
+		MidiNoteEvent c = new MidiNoteEvent(61, 100, 50, 80, 0);
+
+		org.junit.Assert.assertEquals("Equal events", a, b);
+		assertEquals("Equal events same hashCode", a.hashCode(), b.hashCode());
+		assertFalse("Different pitch should not be equal", a.equals(c));
+		assertFalse("Should not equal null", a.equals(null));
+		assertFalse("Should not equal other type", a.equals("not a note"));
+	}
+
+	/**
+	 * Verify MidiNoteEvent octave and pitch class derivation.
+	 */
+	@Test
+	public void testNoteEventOctaveAndPitchClass() {
+		MidiNoteEvent middleC = new MidiNoteEvent(60, 0, 50, 80, 0);
+		assertEquals("C4 octave", 5, middleC.getOctave());
+		assertEquals("C4 pitch class", 0, middleC.getPitchClass());
+
+		MidiNoteEvent a4 = new MidiNoteEvent(69, 0, 50, 80, 0);
+		assertEquals("A4 octave", 5, a4.getOctave());
+		assertEquals("A4 pitch class", 9, a4.getPitchClass());
+
+		MidiNoteEvent highest = new MidiNoteEvent(127, 0, 50, 80, 0);
+		assertEquals("G9 octave", 10, highest.getOctave());
+		assertEquals("G9 pitch class", 7, highest.getPitchClass());
+	}
+
+	/**
+	 * Verify MoonbeamConfig.validate rejects invalid head configuration.
+	 */
+	@Test(expected = IllegalStateException.class)
+	public void testConfigInvalidHeads() {
+		new MoonbeamConfig(
+				48, 144, 2, 7, 6, 8,
+				32, 2, 8487, 128, 1e-5,
+				new double[]{199999, 1031, 19, 20, 199999, 131},
+				new int[]{1, 1, 1, 1, 1, 1},
+				new int[]{4099, 4099, 13, 14, 131, 130},
+				new double[]{199999, 1031, 19, 20, 199999, 131},
+				2
+		).validate();
+	}
+
+	/**
+	 * Verify MoonbeamConfig.validate rejects mismatched headsPerGroup sum.
+	 */
+	@Test(expected = IllegalStateException.class)
+	public void testConfigInvalidHeadsPerGroup() {
+		new MoonbeamConfig(
+				48, 144, 2, 6, 6, 8,
+				32, 2, 8487, 128, 1e-5,
+				new double[]{199999, 1031, 19, 20, 199999, 131},
+				new int[]{2, 2, 2, 2, 2, 2},
+				new int[]{4099, 4099, 13, 14, 131, 130},
+				new double[]{199999, 1031, 19, 20, 199999, 131},
+				2
+		).validate();
+	}
+
+	/**
+	 * Verify MidiCompoundToken equality and hashCode contract.
+	 */
+	@Test
+	public void testCompoundTokenEquality() {
+		MidiCompoundToken a = new MidiCompoundToken(100, 50, 5, 0, 0, 80);
+		MidiCompoundToken b = new MidiCompoundToken(100, 50, 5, 0, 0, 80);
+		MidiCompoundToken c = new MidiCompoundToken(200, 50, 5, 0, 0, 80);
+
+		org.junit.Assert.assertEquals("Equal tokens", a, b);
+		assertEquals("Equal tokens same hashCode", a.hashCode(), b.hashCode());
+		assertFalse("Different tokens", a.equals(c));
+	}
 }
