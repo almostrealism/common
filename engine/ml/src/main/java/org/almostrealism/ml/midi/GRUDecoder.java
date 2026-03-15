@@ -1,0 +1,275 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.ml.midi;
+
+import org.almostrealism.collect.PackedCollection;
+
+/**
+ * GRU-based output decoder for compound MIDI token generation.
+ *
+ * <p>Moonbeam does not use a standard lm_head linear projection. Instead, it uses
+ * a multi-layer GRU that autoregressively generates 7 output tokens per position
+ * from the transformer hidden state.</p>
+ *
+ * <h2>Decode Flow</h2>
+ * <ol>
+ *   <li>Summary projection: hidden_state (hiddenSize) -&gt; (decoderHiddenSize)</li>
+ *   <li>Initialize all GRU layer hidden states to the projected summary</li>
+ *   <li>For each of 7 output tokens:
+ *     <ol type="a">
+ *       <li>Forward through all GRU layers</li>
+ *       <li>lm_head: last layer output -&gt; (decodeVocabSize) logits</li>
+ *       <li>Argmax to select token</li>
+ *       <li>Embed selected token as input for next step</li>
+ *     </ol>
+ *   </li>
+ * </ol>
+ *
+ * <h2>Output Token Order</h2>
+ * <p>The 7 output tokens per position are: [sos_out, timeshift, duration, octave,
+ * pitch_class, instrument, velocity]. The decode vocabulary is flat (8487 tokens),
+ * with attribute vocabs concatenated at known offsets.</p>
+ *
+ * <h2>Vocabulary Offset Mapping</h2>
+ * <table>
+ * <caption>Decode Vocabulary Layout</caption>
+ *   <tr><th>Output Index</th><th>Attribute</th><th>Offset</th><th>Vocab Size</th></tr>
+ *   <tr><td>0</td><td>sos_out</td><td>0</td><td>1</td></tr>
+ *   <tr><td>1</td><td>onset</td><td>1</td><td>4099</td></tr>
+ *   <tr><td>2</td><td>duration</td><td>4100</td><td>4099</td></tr>
+ *   <tr><td>3</td><td>octave</td><td>8199</td><td>13</td></tr>
+ *   <tr><td>4</td><td>pitch class</td><td>8212</td><td>14</td></tr>
+ *   <tr><td>5</td><td>instrument</td><td>8226</td><td>131</td></tr>
+ *   <tr><td>6</td><td>velocity</td><td>8357</td><td>130</td></tr>
+ * </table>
+ *
+ * @see GRUCell
+ * @see MoonbeamConfig
+ */
+public class GRUDecoder {
+	/** Number of output tokens generated per position. */
+	public static final int TOKENS_PER_NOTE = 7;
+
+	private final MoonbeamConfig config;
+	private final GRUCell[] layers;
+	private final PackedCollection summaryWeight;
+	private final PackedCollection summaryBias;
+	private final PackedCollection lmHeadWeight;
+	private final PackedCollection lmHeadBias;
+	private final PackedCollection decoderEmbedding;
+	private final int[] vocabOffsets;
+
+	/**
+	 * Create a GRU decoder with explicit weights.
+	 *
+	 * @param config model configuration
+	 * @param layers array of GRU cells (one per layer)
+	 * @param summaryWeight summary projection weights (decoderHiddenSize, hiddenSize)
+	 * @param summaryBias summary projection bias (decoderHiddenSize)
+	 * @param lmHeadWeight output projection weights (decodeVocabSize, decoderHiddenSize)
+	 * @param lmHeadBias output projection bias (decodeVocabSize)
+	 * @param decoderEmbedding output token embedding (decodeVocabSize, decoderHiddenSize)
+	 */
+	public GRUDecoder(MoonbeamConfig config, GRUCell[] layers,
+					  PackedCollection summaryWeight, PackedCollection summaryBias,
+					  PackedCollection lmHeadWeight, PackedCollection lmHeadBias,
+					  PackedCollection decoderEmbedding) {
+		this.config = config;
+		this.layers = layers;
+		this.summaryWeight = summaryWeight;
+		this.summaryBias = summaryBias;
+		this.lmHeadWeight = lmHeadWeight;
+		this.lmHeadBias = lmHeadBias;
+		this.decoderEmbedding = decoderEmbedding;
+		this.vocabOffsets = computeVocabOffsets(config);
+	}
+
+	/**
+	 * Decode output tokens from a transformer hidden state.
+	 *
+	 * <p>Autoregressively generates {@link #TOKENS_PER_NOTE} tokens using the
+	 * multi-layer GRU. The first token is always conditioned on the SOS output
+	 * embedding (token 0 in the decode vocabulary).</p>
+	 *
+	 * @param transformerHidden the transformer output hidden state of size (hiddenSize)
+	 * @return array of 7 output token indices in the flat decode vocabulary
+	 */
+	public int[] decode(PackedCollection transformerHidden) {
+		int decoderHidden = config.decoderHiddenSize;
+
+		// Summary projection: hidden_size -> decoder_hidden_size
+		PackedCollection initialHidden = linearForward(
+				transformerHidden, config.hiddenSize,
+				summaryWeight, decoderHidden, summaryBias);
+
+		// Initialize hidden state for each GRU layer
+		PackedCollection[] h = new PackedCollection[layers.length];
+		for (int l = 0; l < layers.length; l++) {
+			h[l] = copyCollection(initialHidden, decoderHidden);
+		}
+
+		// Start with SOS output embedding (token 0)
+		PackedCollection x = getEmbedding(0);
+		int[] outputTokens = new int[TOKENS_PER_NOTE];
+
+		for (int step = 0; step < TOKENS_PER_NOTE; step++) {
+			// Forward through all GRU layers
+			PackedCollection layerInput = x;
+			for (int l = 0; l < layers.length; l++) {
+				h[l] = layers[l].forward(layerInput, h[l]);
+				layerInput = h[l];
+			}
+
+			// lm_head: project last layer output to decode vocabulary logits
+			PackedCollection logits = linearForward(
+					h[layers.length - 1], decoderHidden,
+					lmHeadWeight, config.decodeVocabSize, lmHeadBias);
+
+			// Argmax to select token
+			int token = argmax(logits, config.decodeVocabSize);
+			outputTokens[step] = token;
+
+			// Embed selected token as input for next step
+			x = getEmbedding(token);
+		}
+
+		return outputTokens;
+	}
+
+	/**
+	 * Convert flat decode vocabulary indices to per-attribute values.
+	 *
+	 * <p>The decode vocabulary is a concatenation of all attribute vocabs.
+	 * This method maps each output token back to its attribute-local index
+	 * by subtracting the appropriate offset.</p>
+	 *
+	 * @param decodeTokens array of 7 tokens in flat decode vocabulary
+	 * @return per-attribute values: [sos, onset, duration, octave, pitchClass, instrument, velocity]
+	 */
+	public int[] toAttributeValues(int[] decodeTokens) {
+		int[] attributeValues = new int[TOKENS_PER_NOTE];
+		for (int i = 0; i < TOKENS_PER_NOTE; i++) {
+			attributeValues[i] = decodeTokens[i] - vocabOffsets[i];
+		}
+		return attributeValues;
+	}
+
+	/**
+	 * Returns the vocabulary offset for each output token position.
+	 */
+	public int[] getVocabOffsets() {
+		return vocabOffsets.clone();
+	}
+
+	/**
+	 * Returns the number of GRU layers.
+	 */
+	public int getNumLayers() {
+		return layers.length;
+	}
+
+	/**
+	 * Returns the decoder hidden size.
+	 */
+	public int getDecoderHiddenSize() {
+		return config.decoderHiddenSize;
+	}
+
+	/**
+	 * Compute vocabulary offsets for the flat decode vocabulary.
+	 * Layout: [sos_out(1), onset(4099), duration(4099), octave(13),
+	 *          pitchClass(14), instrument(131), velocity(130)] = 8487
+	 */
+	static int[] computeVocabOffsets(MoonbeamConfig config) {
+		int[] offsets = new int[TOKENS_PER_NOTE];
+		offsets[0] = 0; // SOS output token
+		int cumulative = 1; // SOS takes 1 slot
+		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
+			offsets[i + 1] = cumulative;
+			cumulative += config.vocabSizes[i];
+		}
+		return offsets;
+	}
+
+	/**
+	 * Look up a token embedding from the decoder embedding table.
+	 *
+	 * @param tokenIndex index in the flat decode vocabulary
+	 * @return embedding vector of size (decoderHiddenSize)
+	 */
+	private PackedCollection getEmbedding(int tokenIndex) {
+		int decoderHidden = config.decoderHiddenSize;
+		PackedCollection embedding = new PackedCollection(decoderHidden);
+		int baseOffset = tokenIndex * decoderHidden;
+		for (int i = 0; i < decoderHidden; i++) {
+			embedding.setMem(i, decoderEmbedding.toDouble(baseOffset + i));
+		}
+		return embedding;
+	}
+
+	/**
+	 * Compute matrix-vector product plus bias: result = weight @ input + bias.
+	 *
+	 * @param input input vector
+	 * @param inputSize dimension of input
+	 * @param weight weight matrix, row-major (outputSize, inputSize)
+	 * @param outputSize number of output dimensions
+	 * @param bias bias vector of size (outputSize)
+	 * @return result as PackedCollection of size (outputSize)
+	 */
+	private static PackedCollection linearForward(PackedCollection input, int inputSize,
+												  PackedCollection weight, int outputSize,
+												  PackedCollection bias) {
+		PackedCollection result = new PackedCollection(outputSize);
+		for (int i = 0; i < outputSize; i++) {
+			double sum = bias.toDouble(i);
+			int rowOffset = i * inputSize;
+			for (int j = 0; j < inputSize; j++) {
+				sum += weight.toDouble(rowOffset + j) * input.toDouble(j);
+			}
+			result.setMem(i, sum);
+		}
+		return result;
+	}
+
+	/**
+	 * Find the index of the maximum value in a collection.
+	 */
+	private static int argmax(PackedCollection collection, int size) {
+		int maxIdx = 0;
+		double maxVal = collection.toDouble(0);
+		for (int i = 1; i < size; i++) {
+			double val = collection.toDouble(i);
+			if (val > maxVal) {
+				maxVal = val;
+				maxIdx = i;
+			}
+		}
+		return maxIdx;
+	}
+
+	/**
+	 * Create a copy of a PackedCollection.
+	 */
+	private static PackedCollection copyCollection(PackedCollection source, int size) {
+		PackedCollection copy = new PackedCollection(size);
+		for (int i = 0; i < size; i++) {
+			copy.setMem(i, source.toDouble(i));
+		}
+		return copy;
+	}
+}
