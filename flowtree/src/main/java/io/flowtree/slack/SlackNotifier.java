@@ -61,6 +61,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private Consumer<String> messageCallback;
     private JobStatsStore statsStore;
     private String channelOwnerUserId;
+    private String defaultChannelId;
 
     /**
      * Creates a new notifier with the specified bot token.
@@ -206,6 +207,26 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     public void setChannelOwnerUserId(String userId) {
         this.channelOwnerUserId = userId;
+    }
+
+    /**
+     * Sets the default Slack channel ID used as a fallback when a
+     * workstream has no channel configured or when publishing to
+     * the configured channel fails.
+     *
+     * @param channelId the fallback Slack channel ID (e.g., "C0123456789")
+     */
+    public void setDefaultChannelId(String channelId) {
+        this.defaultChannelId = channelId;
+    }
+
+    /**
+     * Returns the default Slack channel ID used as a fallback.
+     *
+     * @return the fallback channel ID, or null if not configured
+     */
+    public String getDefaultChannelId() {
+        return defaultChannelId;
     }
 
     /**
@@ -378,26 +399,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @return the message timestamp (for threading), or null on failure
      */
     public String postMessage(String channelId, String text) {
-        if (channelId == null || channelId.isEmpty()) {
-            log("No channel ID - skipping message post");
+        String effectiveChannel = resolveChannel(channelId);
+        if (effectiveChannel == null) {
+            log("No channel ID and no default channel - skipping message post");
             return null;
         }
 
         // Notify callback for testing
         if (messageCallback != null) {
-            messageCallback.accept("{\"channel\":\"" + channelId + "\",\"text\":\"" +
+            messageCallback.accept("{\"channel\":\"" + effectiveChannel + "\",\"text\":\"" +
                                    escapeJson(text) + "\"}");
         }
 
         if (client == null) {
-            log("No bot token - message would be posted to " + channelId + ":");
+            log("No bot token - message would be posted to " + effectiveChannel + ":");
             log(text);
             return null;
         }
 
         try {
             ChatPostMessageResponse response = client.chatPostMessage(req -> req
-                .channel(channelId)
+                .channel(effectiveChannel)
                 .text(text)
                 .unfurlLinks(false)
                 .unfurlMedia(false)
@@ -406,13 +428,13 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             if (response.isOk()) {
                 return response.getTs();
             } else {
-                warn("Failed to post message: " + response.getError());
+                warn("Failed to post message to " + effectiveChannel + ": " + response.getError());
+                return postToFallbackChannel(effectiveChannel, text, null);
             }
         } catch (IOException | SlackApiException e) {
-            warn("Error posting message: " + e.getMessage());
+            warn("Error posting message to " + effectiveChannel + ": " + e.getMessage());
+            return postToFallbackChannel(effectiveChannel, text, null);
         }
-
-        return null;
     }
 
     /**
@@ -424,19 +446,20 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @return the reply message timestamp, or null on failure
      */
     public String postMessageInThread(String channelId, String text, String threadTs) {
-        if (channelId == null || channelId.isEmpty()) {
-            log("No channel ID - skipping thread reply");
+        String effectiveChannel = resolveChannel(channelId);
+        if (effectiveChannel == null) {
+            log("No channel ID and no default channel - skipping thread reply");
             return null;
         }
 
         if (messageCallback != null) {
-            messageCallback.accept("{\"channel\":\"" + channelId +
+            messageCallback.accept("{\"channel\":\"" + effectiveChannel +
                                    "\",\"thread_ts\":\"" + escapeJson(threadTs) +
                                    "\",\"text\":\"" + escapeJson(text) + "\"}");
         }
 
         if (client == null) {
-            log("No bot token - thread reply would be posted to " + channelId +
+            log("No bot token - thread reply would be posted to " + effectiveChannel +
                 " (thread " + threadTs + "):");
             log(text);
             return null;
@@ -444,7 +467,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         try {
             ChatPostMessageResponse response = client.chatPostMessage(req -> req
-                .channel(channelId)
+                .channel(effectiveChannel)
                 .text(text)
                 .threadTs(threadTs)
                 .unfurlLinks(false)
@@ -454,10 +477,73 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             if (response.isOk()) {
                 return response.getTs();
             } else {
-                warn("Failed to post thread reply: " + response.getError());
+                warn("Failed to post thread reply to " + effectiveChannel + ": " + response.getError());
+                return postToFallbackChannel(effectiveChannel, text, null);
             }
         } catch (IOException | SlackApiException e) {
-            warn("Error posting thread reply: " + e.getMessage());
+            warn("Error posting thread reply to " + effectiveChannel + ": " + e.getMessage());
+            return postToFallbackChannel(effectiveChannel, text, null);
+        }
+    }
+
+    /**
+     * Resolves the effective channel ID for posting. If the provided channel
+     * is null or empty, falls back to the configured default channel.
+     *
+     * @param channelId the primary channel ID (may be null)
+     * @return the resolved channel ID, or null if no channel is available
+     */
+    private String resolveChannel(String channelId) {
+        if (channelId != null && !channelId.isEmpty()) {
+            return channelId;
+        }
+        return defaultChannelId;
+    }
+
+    /**
+     * Attempts to post a message to the default fallback channel after a
+     * failure on the primary channel. No-op if the default channel is not
+     * configured or is the same as the failed channel.
+     *
+     * @param failedChannel the channel that failed
+     * @param text          the message text
+     * @param threadTs      the thread timestamp (may be null for top-level messages)
+     * @return the message timestamp from the fallback post, or null
+     */
+    private String postToFallbackChannel(String failedChannel, String text, String threadTs) {
+        if (defaultChannelId == null || defaultChannelId.isEmpty()
+                || defaultChannelId.equals(failedChannel)) {
+            return null;
+        }
+
+        log("Falling back to default channel " + defaultChannelId);
+
+        try {
+            ChatPostMessageResponse response;
+            if (threadTs != null) {
+                response = client.chatPostMessage(req -> req
+                    .channel(defaultChannelId)
+                    .text(text)
+                    .threadTs(threadTs)
+                    .unfurlLinks(false)
+                    .unfurlMedia(false)
+                );
+            } else {
+                response = client.chatPostMessage(req -> req
+                    .channel(defaultChannelId)
+                    .text(text)
+                    .unfurlLinks(false)
+                    .unfurlMedia(false)
+                );
+            }
+
+            if (response.isOk()) {
+                return response.getTs();
+            } else {
+                warn("Failed to post to fallback channel: " + response.getError());
+            }
+        } catch (IOException | SlackApiException e) {
+            warn("Error posting to fallback channel: " + e.getMessage());
         }
 
         return null;

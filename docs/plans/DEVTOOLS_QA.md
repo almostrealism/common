@@ -506,6 +506,72 @@ change that should be implemented and tested independently.
 
 ---
 
+## 6. Default Slack Channel Fallback
+
+### Current Behavior
+
+When the controller publishes a Slack message for a workstream, it uses the
+workstream's configured `channelId`. If the workstream has no channel
+configured (e.g., it was registered via the API without a channel), or the
+channel no longer exists, the message is silently dropped.
+
+### Implementation
+
+Add a global `defaultChannel` field to the YAML configuration
+(`WorkstreamConfig`). When a message cannot be delivered to the workstream's
+configured channel (because it is null, empty, or the Slack API returns an
+error), the `SlackNotifier` falls back to this default channel.
+
+### Files Modified
+
+- `flowtree/.../WorkstreamConfig.java` — Added `defaultChannel` field
+- `flowtree/.../SlackNotifier.java` — Added `defaultChannelId` field,
+  `resolveChannel()` and `postToFallbackChannel()` helper methods,
+  fallback logic in `postMessage()` and `postMessageInThread()`
+- `flowtree/.../FlowTreeController.java` — Wired `defaultChannel` from
+  config to notifier during `loadConfig()`
+- `flowtree/src/main/resources/workstreams-example.yaml` — Documented
+  the new `defaultChannel` config option
+
+### Behavior
+
+1. If `channelId` is null/empty, use `defaultChannelId` instead
+2. If posting to `channelId` fails (Slack API error), retry on
+   `defaultChannelId` (if different from the failed channel)
+3. If `defaultChannelId` is also not configured, messages are dropped
+   (same as before — purely additive)
+
+---
+
+## 7. Shorten Auto-Generated Slack Channel Names
+
+### Current Behavior
+
+When `register-workstream.sh` generates a Slack channel name from a branch
+name, it converts the full branch name:
+- `feature/xyz` → `w-feature-xyz`
+- `project/plan-20260308` → `w-project-plan-20260308`
+
+This produces unnecessarily long channel names since the prefix before the
+slash (e.g., `feature/`, `project/`) is redundant — it's a git convention,
+not meaningful context for a Slack channel.
+
+### Implementation
+
+Updated `register-workstream.sh` to strip the prefix before the first
+slash, so only the meaningful suffix is used:
+- `feature/xyz` → `w-xyz`
+- `project/plan-20260308` → `w-plan-20260308`
+- `some-branch` (no slash) → `w-some-branch` (unchanged)
+
+Added explicit enforcement of the Slack 80-character channel name limit.
+
+### Files Modified
+
+- `tools/ci/register-workstream.sh` — Updated channel name derivation logic
+
+---
+
 ## Summary of Changes by File
 
 | File | Items |
@@ -514,4 +580,8 @@ change that should be implemented and tested independently.
 | `tools/mcp/manager/server.py` | 2, 4, 5 |
 | `tools/ci/submit-agent-job.sh` | 5 |
 | `flowtree/.../FlowTreeApiEndpoint.java` | 5 |
-| `flowtree/.../SlackNotifier.java` | 5 |
+| `flowtree/.../SlackNotifier.java` | 5, 6 |
+| `flowtree/.../WorkstreamConfig.java` | 6 |
+| `flowtree/.../FlowTreeController.java` | 6 |
+| `flowtree/src/main/resources/workstreams-example.yaml` | 6 |
+| `tools/ci/register-workstream.sh` | 7 |
