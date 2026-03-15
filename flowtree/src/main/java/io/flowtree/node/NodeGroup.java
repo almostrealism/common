@@ -1264,16 +1264,17 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 			addJobs(defaultFactory);
 
-			i: for (int i = 0; itr.hasNext() && i < this.maxTasks; i++) {
+			List<JobFactory> completed = new ArrayList<>();
+			for (int i = 0; itr.hasNext() && i < this.maxTasks; i++) {
 				JobFactory f = (JobFactory) itr.next();
-				
-				if (f.isComplete()) {
-					this.tasks.remove(i);
-					continue i;
-				}
 
-				addJobs(f);
+				if (f.isComplete()) {
+					completed.add(f);
+				} else {
+					addJobs(f);
+				}
 			}
+			this.tasks.removeAll(completed);
 		}
 	}
 

@@ -857,9 +857,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * Detects an open pull request URL for the target branch.
      *
      * <p>Only attempts detection if the origin remote points to GitHub.
-     * Uses the GitHub REST API directly (via {@link HttpURLConnection})
-     * to query for an open PR, authenticated with a {@code GITHUB_TOKEN}
-     * or {@code GH_TOKEN} environment variable.</p>
+     * Uses the controller's GitHub proxy endpoint, which authenticates
+     * with per-org tokens from workstreams.yaml.</p>
      *
      * @return the PR URL, or null if no PR was found
      */
