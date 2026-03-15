@@ -216,8 +216,54 @@ public class FlowTreeController implements ConsoleFeatures {
         // Pass config and file reference to listener for /flowtree setup persistence
         listener.setWorkstreamConfig(config, configFile);
 
+        // Validate GitHub tokens before proceeding
+        validateGitHubTokens(config);
+
         // Start centralized MCP servers if configured
         startCentralizedMcpServers(config, configFile.getParentFile());
+    }
+
+    /**
+     * Validates all GitHub tokens referenced by the configuration.
+     *
+     * <p>Checks that each token is valid, can access its target repositories,
+     * and has the required permissions for PR operations. If any token fails
+     * validation, the controller exits with an error to prevent agents from
+     * running with broken credentials.</p>
+     *
+     * @param config the loaded workstream configuration
+     */
+    private void validateGitHubTokens(WorkstreamConfig config) {
+        GitHubTokenValidator validator = new GitHubTokenValidator();
+        List<GitHubTokenValidator.TokenValidationResult> results =
+                validator.validateAll(config);
+
+        if (results.isEmpty()) {
+            log("No GitHub tokens configured — skipping validation");
+            return;
+        }
+
+        log("Validating " + results.size() + " GitHub token(s)...");
+
+        boolean anyFailed = false;
+        for (GitHubTokenValidator.TokenValidationResult result : results) {
+            if (result.isValid()) {
+                log("  [OK] " + result.getLabel());
+            } else {
+                anyFailed = true;
+                warn("  [FAIL] " + result.getLabel());
+                for (String error : result.getErrors()) {
+                    warn("    - " + error);
+                }
+            }
+        }
+
+        if (anyFailed) {
+            warn("GitHub token validation failed — fix the tokens above and restart");
+            System.exit(1);
+        }
+
+        log("All GitHub tokens validated successfully");
     }
 
     /**
