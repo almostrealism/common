@@ -213,6 +213,11 @@ public class FlowTreeController implements ConsoleFeatures {
             notifier.setChannelOwnerUserId(config.getChannelOwnerUserId());
         }
 
+        // Pass default channel to notifier for fallback message delivery
+        if (config.getDefaultChannel() != null) {
+            notifier.setDefaultChannelId(config.getDefaultChannel());
+        }
+
         // Pass config and file reference to listener for /flowtree setup persistence
         listener.setWorkstreamConfig(config, configFile);
 
