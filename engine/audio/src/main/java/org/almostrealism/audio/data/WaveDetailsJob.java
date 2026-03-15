@@ -64,8 +64,9 @@ public class WaveDetailsJob implements Runnable, ConsoleFeatures {
 		try {
 			if (getTarget() != null) {
 				log("Processing " + getTarget().getKey());
-				details = runner.apply(this);
 			}
+
+			details = runner.apply(this);
 		} catch (Exception e) {
 			warn("Failed to process " + this, e);
 		} finally {

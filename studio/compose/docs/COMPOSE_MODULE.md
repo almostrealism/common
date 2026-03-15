@@ -8,26 +8,39 @@ This module provides audio persistence, discovery, and composition tools.
 |-------|---------|
 | `AudioLibraryPersistence` | Save/load AudioLibrary data to/from Protocol Buffer format |
 | `LibraryDestination` | Manages batched protobuf file paths (PREFIX_0.bin, PREFIX_1.bin, etc.) |
-| `PrototypeDiscovery` | Console app for finding representative samples using graph algorithms |
+| `PrototypeDiscovery` | Console app and reusable API for finding representative samples using graph algorithms |
 
 ## PrototypeDiscovery
 
-A headless console application that discovers prototypical audio samples from pre-computed library data using graph algorithms (community detection and centrality).
+A headless console application and reusable API for discovering prototypical audio samples from pre-computed library data using graph algorithms (community detection and centrality).
 
-### Usage
+### CLI Usage
 
 ```bash
 java -cp ... org.almostrealism.audio.discovery.PrototypeDiscovery \
   --data ~/.almostrealism/library --clusters 5
 ```
 
+### Programmatic API
+
+```java
+// In-process usage (e.g., from a UI controller)
+List<PrototypeDiscovery.PrototypeResult> results =
+        PrototypeDiscovery.discoverPrototypes(library, 12, statusCallback);
+
+// Each result has: identifier, centrality, communitySize, memberIdentifiers
+PrototypeIndexData index = PrototypeDiscovery.buildIndex(results);
+library.setPrototypeIndex(index);
+```
+
 ### How It Works
 
-1. Loads pre-computed features from protobuf files
-2. Builds a similarity graph from pre-computed similarity scores
-3. Runs Louvain community detection to find clusters
-4. Computes PageRank centrality to find the most representative sample in each cluster
-5. Outputs the prototype for each cluster
+1. Loads pre-computed features from protobuf files (CLI) or uses an existing AudioLibrary (API)
+2. Submits similarity computation jobs via `library.submitSimilarityJobs()`
+3. Builds a similarity graph using lightweight `SimilarityNode` instances (identifier + similarities only)
+4. Runs Louvain community detection to find clusters
+5. Computes PageRank centrality to find the most representative sample in each cluster
+6. Outputs the prototype for each cluster
 
 ### Resolving Identifiers to File Paths
 
@@ -46,7 +59,7 @@ AudioLibrary library = new AudioLibrary(samplesDir, 44100);
 AudioLibraryPersistence.loadLibrary(library, dataPrefix);
 
 // 3. For each WaveDetails, resolve identifier to file path
-for (WaveDetails details : library.getAllDetails()) {
+library.allDetails().forEach(details -> {
     String identifier = details.getIdentifier();  // MD5 hash
 
     // Find the provider in the file tree
@@ -56,7 +69,7 @@ for (WaveDetails details : library.getAllDetails()) {
         String filePath = provider.getKey();  // Actual file path!
         System.out.println("File: " + filePath);
     }
-}
+});
 ```
 
 ### Key-Identifier Architecture

@@ -42,6 +42,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -75,10 +76,10 @@ import java.util.function.Supplier;
  * AudioLibraryPersistence.loadLibrary(library, "/path/to/library");
  *
  * // Now library.find(identifier) can resolve file paths
- * for (WaveDetails d : library.getAllDetails()) {
+ * library.allDetails().forEach(d -> {
  *     WaveDataProvider provider = library.find(d.getIdentifier());
  *     String filePath = provider != null ? provider.getKey() : "unknown";
- * }
+ * });
  *
  * // Option 2: Load with file tree in one call
  * AudioLibrary library = AudioLibraryPersistence.loadLibrary(
@@ -135,7 +136,31 @@ public class AudioLibraryPersistence {
 		return decode(Audio.WaveDetailData.newBuilder().mergeFrom(new FileInputStream(source)).build());
 	}
 
+	/**
+	 * Saves the library to protobuf files at the given prefix.
+	 *
+	 * <p>Before writing, this method verifies that all known identifiers can be
+	 * loaded (either from cache or via the details loader). If loadable entries
+	 * are fewer than the total known identifiers, saving would destroy the
+	 * unloadable entries on disk, so an {@link IllegalStateException} is thrown
+	 * instead.</p>
+	 *
+	 * @param library    the library to save
+	 * @param dataPrefix path prefix for protobuf output files
+	 * @throws IllegalStateException if saving would lose data because some
+	 *         entries cannot be loaded from cache or disk
+	 */
 	public static void saveLibrary(AudioLibrary library, String dataPrefix) {
+		int identifierCount = library.getAllIdentifiers().size();
+		long loadableCount = library.allDetails().count();
+		if (loadableCount < identifierCount) {
+			throw new IllegalStateException(
+					"Refusing to save: only " + loadableCount + " of " +
+					identifierCount + " entries are loadable. " +
+					"Configure a details loader via setDetailsLoader() before saving " +
+					"to prevent data loss.");
+		}
+
 		try (LibraryDestination.Writer out = new LibraryDestination(dataPrefix).out()) {
 			saveLibrary(library, out);
 		} catch (IOException e) {
@@ -149,7 +174,7 @@ public class AudioLibraryPersistence {
 
 	public static void saveLibrary(AudioLibrary library, boolean includeAudio, Supplier<OutputStream> out) throws IOException {
 		Audio.AudioLibraryData.Builder data = Audio.AudioLibraryData.newBuilder();
-		List<WaveDetails> details = new ArrayList<>(library.getAllDetails());
+		List<WaveDetails> details = library.allDetails().toList();
 
 		int byteCount = 0;
 
@@ -205,17 +230,45 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/**
+	 * Creates a new {@link AudioLibrary} from a samples directory and loads
+	 * pre-computed data from protobuf files at the given prefix.
+	 *
+	 * <p>Automatically configures the details loader so evicted cache entries
+	 * can be reloaded from disk on demand.</p>
+	 *
+	 * @param root       directory containing audio sample files
+	 * @param sampleRate target sample rate for analysis
+	 * @param dataPrefix path prefix for protobuf files
+	 * @return the populated AudioLibrary
+	 */
 	public static AudioLibrary loadLibrary(File root, int sampleRate, String dataPrefix) {
 		try {
-			return loadLibrary(root, sampleRate, new LibraryDestination(dataPrefix).in());
+			AudioLibrary library = loadLibrary(root, sampleRate, new LibraryDestination(dataPrefix).in());
+			library.setDetailsLoader(createDetailsLoader(dataPrefix));
+			return library;
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
 	}
 
+	/**
+	 * Loads library data from protobuf files at the given prefix and automatically
+	 * configures the {@link AudioLibrary#setDetailsLoader(Function) detailsLoader}
+	 * so that entries evicted from the in-memory cache can be reloaded on demand.
+	 *
+	 * <p>This is the preferred entry point for loading a library. Without the
+	 * automatic loader wiring, evicted entries become unreachable and operations
+	 * like {@link AudioLibrary#allDetails()} or {@link #saveLibrary(AudioLibrary, String)}
+	 * silently operate on a subset, potentially destroying data on disk.</p>
+	 *
+	 * @param library    the library to populate
+	 * @param dataPrefix path prefix for protobuf files (e.g. {@code /path/to/library})
+	 */
 	public static void loadLibrary(AudioLibrary library, String dataPrefix) {
 		try {
 			loadLibrary(library, new LibraryDestination(dataPrefix).in());
+			library.setDetailsLoader(createDetailsLoader(dataPrefix));
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
@@ -371,6 +424,77 @@ public class AudioLibraryPersistence {
 		}
 
 		return recordings;
+	}
+
+	/**
+	 * Loads a single {@link WaveDetails} entry by content identifier from
+	 * protobuf library files at the given data prefix.
+	 *
+	 * <p>This method scans through all batch files (PREFIX_0.bin, PREFIX_1.bin, ...)
+	 * and returns the first matching entry. It is intended for on-demand loading
+	 * of entries that have been evicted from the in-memory cache.</p>
+	 *
+	 * @param dataPrefix the path prefix for library protobuf files
+	 * @param identifier the content identifier (MD5 hash) to look up
+	 * @return the decoded WaveDetails, or null if not found
+	 */
+	public static WaveDetails loadSingleDetail(String dataPrefix, String identifier) {
+		try {
+			long start = System.currentTimeMillis();
+			WaveDetails result = loadSingleDetail(new LibraryDestination(dataPrefix).in(), identifier);
+			long elapsed = System.currentTimeMillis() - start;
+			Console.root().features(AudioLibraryPersistence.class)
+					.log("loadSingleDetail(" + identifier + ") took " + elapsed + "ms");
+			return result;
+		} catch (IOException e) {
+			Console.root().features(AudioLibraryPersistence.class)
+					.warn("Failed to load WaveDetails for " + identifier + ": " + e.getMessage());
+			return null;
+		}
+	}
+
+	/**
+	 * Loads a single {@link WaveDetails} entry by content identifier from
+	 * the given input stream supplier (which yields successive batch files).
+	 *
+	 * @param in supplier of input streams for each batch file (returns null when exhausted)
+	 * @param identifier the content identifier (MD5 hash) to look up
+	 * @return the decoded WaveDetails, or null if not found
+	 * @throws IOException if reading from the input stream fails
+	 */
+	public static WaveDetails loadSingleDetail(Supplier<InputStream> in, String identifier) throws IOException {
+		InputStream input = in.get();
+
+		while (input != null) {
+			try {
+				Audio.AudioLibraryData data = Audio.AudioLibraryData.newBuilder().mergeFrom(input).build();
+				Audio.WaveDetailData d = data.getInfoMap().get(identifier);
+				if (d != null) {
+					return decode(d);
+				}
+			} finally {
+				input.close();
+			}
+
+			input = in.get();
+		}
+
+		return null;
+	}
+
+	/**
+	 * Creates a loader function suitable for use with
+	 * {@link AudioLibrary#setDetailsLoader(Function)}.
+	 *
+	 * <p>The returned function loads a single {@link WaveDetails} from the protobuf
+	 * files at the given data prefix, scanning all batch files for the requested
+	 * identifier.</p>
+	 *
+	 * @param dataPrefix the path prefix for library protobuf files
+	 * @return a function that loads a WaveDetails by identifier from disk
+	 */
+	public static Function<String, WaveDetails> createDetailsLoader(String dataPrefix) {
+		return identifier -> loadSingleDetail(dataPrefix, identifier);
 	}
 
 	public static Audio.WaveDetailData encode(WaveDetails details, boolean includeAudio) {

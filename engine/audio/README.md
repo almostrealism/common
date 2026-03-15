@@ -480,7 +480,7 @@ AudioLibrary library = new AudioLibrary(new File("/path/to/samples"), 44100);
 AudioLibraryPersistence.loadLibrary(library, "/path/to/library");
 
 // 3. Resolve identifier to file path
-for (WaveDetails details : library.getAllDetails()) {
+library.allDetails().forEach(details -> {
     String identifier = details.getIdentifier();  // MD5 hash
 
     WaveDataProvider provider = library.find(identifier);
@@ -488,13 +488,14 @@ for (WaveDetails details : library.getAllDetails()) {
         String filePath = provider.getKey();  // Actual file path!
         System.out.println("File: " + filePath);
     }
-}
+});
 ```
 
 ### Internal Data Structures
 
 - `identifiers` map: key (file path) -> identifier (MD5 hash)
-- `info` map: identifier -> WaveDetails
+- `detailsCache`: a bounded `FrequencyCache<String, WaveDetails>` keyed by identifier
+- `completeIdentifiers`: a `Set<String>` tracking identifiers with complete data
 
 For detailed documentation, see [Audio Library Documentation](docs/AUDIO_LIBRARY.md).
 
