@@ -43,20 +43,10 @@ CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
 
 ENDPOINT="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/workstreams"
 
-# Derive channel name from branch. If the branch contains a slash, use only
-# the part after the first slash to keep names short:
-#   feature/xyz            -> w-xyz
-#   project/plan-20260308  -> w-plan-20260308
-#   some-branch            -> w-some-branch
+# Derive channel name from branch: project/plan-20260223-foo -> w-project-plan-20260223-foo
 # Slack channel names: lowercase, max 80 chars, no spaces or periods
-BRANCH_SUFFIX="${BRANCH#*/}"
-if [ "$BRANCH_SUFFIX" = "$BRANCH" ]; then
-    BRANCH_SUFFIX="$BRANCH"
-fi
-CHANNEL_NAME=$(echo "$BRANCH_SUFFIX" | sed 's|/|-|g' | tr '[:upper:]' '[:lower:]' | tr -d ' .')
+CHANNEL_NAME=$(echo "$BRANCH" | sed 's|/|-|g' | tr '[:upper:]' '[:lower:]' | tr -d ' .')
 CHANNEL_NAME="w-${CHANNEL_NAME#w-}"
-# Enforce Slack 80-char channel name limit
-CHANNEL_NAME="${CHANNEL_NAME:0:80}"
 
 PAYLOAD=$(jq -n \
     --arg branch "$BRANCH" \
