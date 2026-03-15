@@ -88,12 +88,24 @@ public class Llama2 implements AttentionFeatures {
 	}
 
 	/**
-	 * Loads a Llama2 model from a binary checkpoint.
+	 * Loads a Llama2 model from a binary checkpoint, looking for
+	 * {@code tokenizer.bin} in the current working directory.
 	 *
 	 * @param checkpoint path to the checkpoint file
-	 * @throws IOException if the file cannot be read
+	 * @throws IOException if the checkpoint or tokenizer cannot be read
 	 */
 	public Llama2(String checkpoint) throws IOException {
+		this(checkpoint, "tokenizer.bin");
+	}
+
+	/**
+	 * Loads a Llama2 model from a binary checkpoint and tokenizer.
+	 *
+	 * @param checkpoint path to the checkpoint file
+	 * @param tokenizer  path to the tokenizer binary file
+	 * @throws IOException if the checkpoint or tokenizer cannot be read
+	 */
+	public Llama2(String checkpoint, String tokenizer) throws IOException {
 		long start = System.currentTimeMillis();
 
 		try (FileChannel fileChannel = FileChannel.open(Paths.get(checkpoint), StandardOpenOption.READ)) {
@@ -109,7 +121,7 @@ public class Llama2 implements AttentionFeatures {
 		vocab = new String[config.vocabSize];
 		vocabScores = new float[config.vocabSize];
 
-		try (FileChannel channel = FileChannel.open(Paths.get("tokenizer.bin"), StandardOpenOption.READ)) {
+		try (FileChannel channel = FileChannel.open(Paths.get(tokenizer), StandardOpenOption.READ)) {
 			ByteBuffer bb = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
 			bb.order(ByteOrder.LITTLE_ENDIAN);
 
@@ -149,7 +161,7 @@ public class Llama2 implements AttentionFeatures {
 	 * @return the compiled autoregressive model
 	 */
 	protected AutoregressiveModel model(OperationProfile profile, ComputeRequirement... requirements) {
-		Model transformer = new Model(shape(config.dim));
+		Model transformer = new Model(shape(1, config.dim));
 
 		PackedCollection position = new PackedCollection(1);
 
@@ -170,7 +182,7 @@ public class Llama2 implements AttentionFeatures {
 					p(position), requirements));
 		}
 
-		transformer.add(rmsnorm(weights.rmsFinalWeight));
+		transformer.add(rmsnorm(shape(1, dim), weights.rmsFinalWeight));
 		transformer.add(dense(weights.wcls));
 
 		return AutoregressiveModel.of(transformer.compile(false, profile),
@@ -191,29 +203,41 @@ public class Llama2 implements AttentionFeatures {
 			steps = config.seqLen;
 		}
 
-		int[] promptTokens = null;
-		int promptTokenCount = 0;
+		// Build prompt with BOS as the first token so that the model
+		// always processes BOS at position 0 (matching llama2.c behavior
+		// and the AutoregressiveModel contract used by Qwen3).
+		int[] allTokens = new int[config.seqLen];
+		allTokens[0] = 1; // BOS
+		int tokenCount = 1;
 		if (prompt != null) {
-			promptTokens = new int[config.seqLen];
-			promptTokenCount = BPE.encode(prompt, vocab, vocabScores, config.vocabSize, promptTokens);
+			int[] textTokens = new int[config.seqLen];
+			int textCount = BPE.encode(prompt, vocab, vocabScores, config.vocabSize, textTokens);
+			System.arraycopy(textTokens, 0, allTokens, 1, textCount);
+			tokenCount += textCount;
 		}
 
 		long start = 0;
 		int next;
 		int token = 1;
 
+		model.setCurrentStep(0);
 		model.setCurrentToken(1);
-		model.setPrompt(promptTokens, promptTokenCount);
+		model.setPrompt(allTokens, tokenCount);
 
 		output.accept("<s>\n");
 		while (model.getCurrentStep() < steps) {
 			next = model.next();
 
-			String tokenStr = (token == 1 && vocab[next].charAt(0) == ' ') ? vocab[next].substring(1) : vocab[next];
-			output.accept(tokenStr);
+			// Only output tokens generated after the prompt phase
+			if (model.getCurrentStep() > tokenCount) {
+				String tokenStr = (token == 1 && vocab[next].charAt(0) == ' ')
+						? vocab[next].substring(1) : vocab[next];
+				output.accept(tokenStr);
+			}
+
 			token = next;
 
-			if (start == 0) {
+			if (start == 0 && model.getCurrentStep() > tokenCount) {
 				start = System.currentTimeMillis();
 			}
 		}
