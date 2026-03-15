@@ -110,7 +110,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private final SlackNotifier notifier;
     private final Map<String, Path> toolFiles = new HashMap<>();
     private JobStatsStore statsStore;
-    private String githubToken;
     private Map<String, String> githubOrgTokens = new HashMap<>();
 
     /** Tracks which jobs should have a PR auto-created on success. */
@@ -146,17 +145,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setListener(SlackListener listener) {
         this.listener = listener;
-    }
-
-    /**
-     * Sets the GitHub API token used by the GitHub proxy endpoint.
-     * This takes precedence over the {@code GITHUB_TOKEN} environment
-     * variable.
-     *
-     * @param token the GitHub personal access token
-     */
-    public void setGithubToken(String token) {
-        this.githubToken = token;
     }
 
     /**
@@ -1041,11 +1029,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /**
      * Handles requests to {@code /api/github/proxy} by forwarding them to the
-     * GitHub API using the controller's {@code GITHUB_TOKEN}.
+     * GitHub API using per-organization tokens from workstreams.yaml.
      *
      * <p>This endpoint allows agents to make GitHub API calls without needing
-     * their own token. The controller acts as an authenticated proxy, so the
-     * token only needs to be configured in one place.</p>
+     * their own token. The controller acts as an authenticated proxy using
+     * per-org tokens configured in the {@code githubOrgs} section of
+     * workstreams.yaml.</p>
      *
      * <p>The HTTP method of the incoming request determines the method used
      * for the GitHub API call (GET or POST).</p>
@@ -1068,11 +1057,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return JSON response wrapping the GitHub API response
      */
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
-        // Resolve token: org-specific > instance-level > env var
+        // Resolve token from per-org tokens in workstreams.yaml
         String org = session.getParms().get("org");
         String token = resolveGithubToken(org);
         if (token == null) {
-            return errorResponse("GITHUB_TOKEN not configured on controller");
+            String detail = (org != null && !org.isEmpty())
+                    ? "No GitHub token configured for org '" + org + "'"
+                    : "No GitHub org token available (pass ?org= or configure githubOrgs in workstreams.yaml)";
+            return errorResponse(detail);
         }
 
         String urlOrPath = session.getParms().get("url");
@@ -1291,24 +1283,26 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Resolves the GitHub API token for the given organization.
      *
-     * <p>Checks the org-specific token map first, then falls back to the
-     * instance-level token and finally the {@code GITHUB_TOKEN} env var.</p>
+     * <p>Looks up the token from the per-org token map populated from
+     * the {@code githubOrgs} section of workstreams.yaml. If the org
+     * is not specified but only one org token is configured, that token
+     * is used as the default.</p>
      *
      * @param org the GitHub organization name (may be null)
      * @return the resolved token, or null if no token is available
      */
     private String resolveGithubToken(String org) {
-        String token = null;
         if (org != null && !org.isEmpty() && githubOrgTokens.containsKey(org)) {
-            token = githubOrgTokens.get(org);
+            return githubOrgTokens.get(org);
         }
-        if (token == null || token.trim().isEmpty()) {
-            token = this.githubToken;
+
+        // When no org is specified but there is exactly one configured,
+        // use it as the default to avoid requiring callers to always pass org
+        if ((org == null || org.isEmpty()) && githubOrgTokens.size() == 1) {
+            return githubOrgTokens.values().iterator().next();
         }
-        if (token == null || token.trim().isEmpty()) {
-            token = System.getenv("GITHUB_TOKEN");
-        }
-        return (token != null && !token.trim().isEmpty()) ? token : null;
+
+        return null;
     }
 
     /**

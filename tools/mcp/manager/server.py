@@ -1789,6 +1789,7 @@ def memory_branch_context(
 
     # Fetch commit history from GitHub Compare API if requested
     commits = None
+    commit_error = None
     if include_commits and effective_repo:
         owner_repo = _extract_owner_repo(effective_repo)
         if owner_repo:
@@ -1796,12 +1797,23 @@ def memory_branch_context(
             # Determine the base branch from the workstream if available
             ws = _find_workstream(workstream_id) if workstream_id else None
             base = ws.get("baseBranch", "master") if ws else "master"
+
+            # Set GitHub org context so the proxy uses the correct per-org token
+            if ws:
+                _set_github_org(ws)
+            elif owner:
+                _current_github_org.set(owner)
+
             try:
                 compare = _github_request(
                     "GET",
                     f"/repos/{owner}/{repo}/compare/{base}...{effective_branch}",
                 )
-                if compare.get("ok") is not False and "commits" in compare:
+                if compare.get("ok") is False:
+                    commit_error = compare.get("error", "GitHub API returned an error")
+                    logger.warning("Failed to fetch commits for %s...%s: %s",
+                                   base, effective_branch, commit_error)
+                elif "commits" in compare:
                     commits = []
                     for c in compare.get("commits", [])[:commit_limit]:
                         commit_obj = c.get("commit", {})
@@ -1812,9 +1824,14 @@ def memory_branch_context(
                             "date": author_obj.get("date", ""),
                             "message": commit_obj.get("message", "").split("\n")[0],
                         })
+                else:
+                    commit_error = "GitHub Compare API returned no commits field"
             except Exception as exc:
+                commit_error = str(exc)
                 logger.warning("Failed to fetch commits for %s...%s: %s",
                                base, effective_branch, exc)
+        else:
+            commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
 
     result = {
         "ok": True,
@@ -1831,6 +1848,8 @@ def memory_branch_context(
     if commits is not None:
         result["commits"] = commits
         result["commit_count"] = len(commits)
+    if commit_error is not None:
+        result["commit_error"] = commit_error
 
     return result
 
