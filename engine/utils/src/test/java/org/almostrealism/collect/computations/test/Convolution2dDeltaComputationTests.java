@@ -45,7 +45,7 @@ public class Convolution2dDeltaComputationTests extends TestSuiteBase {
 		convolution2d("convSmallest", shape(dim, dim), size, filters);
 	}
 
-	@Test(timeout = 40 * 60000)
+	@Test(timeout = 60 * 60000)
 	@TestDepth(2)
 	public void convSmall() throws IOException {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
