@@ -70,10 +70,10 @@ jobs:
       - name: Code Policy Enforcement
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl tools \
            -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -131,15 +131,15 @@ jobs:
 
           if [ -n "$TAMPERED" ]; then
             echo "::error::Enforcement infrastructure was modified — this is not allowed on PR branches"
-            echo -e "## Enforcement Infrastructure Tampering Detected\n" > /tmp/enforcement-report.txt
-            echo -e "The following protected files were modified on this branch:\n" >> /tmp/enforcement-report.txt
-            echo -e "$TAMPERED" >> /tmp/enforcement-report.txt
-            echo -e "\nThese files enforce code policies and test integrity. They CANNOT be" >> /tmp/enforcement-report.txt
-            echo -e "modified on PR branches. The only way to pass the build is to fix the" >> /tmp/enforcement-report.txt
-            echo -e "production code that violates the policies — not to weaken the policies.\n" >> /tmp/enforcement-report.txt
-            echo -e "If you believe a policy needs to change, open a separate PR with a" >> /tmp/enforcement-report.txt
-            echo -e "justification for human review." >> /tmp/enforcement-report.txt
-            cat /tmp/enforcement-report.txt
+            echo -e "## Enforcement Infrastructure Tampering Detected\n" > ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "The following protected files were modified on this branch:\n" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "$TAMPERED" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "\nThese files enforce code policies and test integrity. They CANNOT be" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "modified on PR branches. The only way to pass the build is to fix the" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "production code that violates the policies — not to weaken the policies.\n" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "If you believe a policy needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "justification for human review." >> ${RUNNER_TEMP}/enforcement-report.txt
+            cat ${RUNNER_TEMP}/enforcement-report.txt
             exit 1
           fi
 
@@ -150,7 +150,7 @@ jobs:
         if: github.ref != 'refs/heads/master'
         run: |
           chmod +x ./tools/ci/agent-protection/detect-test-hiding.sh
-          ./tools/ci/agent-protection/detect-test-hiding.sh origin/master /tmp/test-integrity-report.txt || {
+          ./tools/ci/agent-protection/detect-test-hiding.sh origin/master ${RUNNER_TEMP}/test-integrity-report.txt || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::error::Test integrity violations detected — existing tests were modified to hide failures"
@@ -170,9 +170,9 @@ jobs:
             echo "The code policy enforcement files are protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
             echo "Fix the policy violations in your production code instead." >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f /tmp/enforcement-report.txt ]; then
+            if [ -f ${RUNNER_TEMP}/enforcement-report.txt ]; then
               echo '```' >> "$GITHUB_STEP_SUMMARY"
-              cat /tmp/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
+              cat ${RUNNER_TEMP}/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
               echo '```' >> "$GITHUB_STEP_SUMMARY"
             fi
           elif [ "${{ steps.check.outcome }}" != "success" ]; then
@@ -181,9 +181,9 @@ jobs:
             echo "Tests that exist on the base branch are the specification. If the branch breaks" >> "$GITHUB_STEP_SUMMARY"
             echo "them, the production code must be fixed — not the tests." >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f /tmp/test-integrity-report.txt ]; then
+            if [ -f ${RUNNER_TEMP}/test-integrity-report.txt ]; then
               echo '```' >> "$GITHUB_STEP_SUMMARY"
-              cat /tmp/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+              cat ${RUNNER_TEMP}/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
               echo '```' >> "$GITHUB_STEP_SUMMARY"
             fi
           else
@@ -217,7 +217,7 @@ jobs:
         id: audit
         run: |
           chmod +x ./tools/ci/agent-protection/deception-audit.sh
-          ./tools/ci/agent-protection/deception-audit.sh origin/master /tmp/deception-audit-report.txt || {
+          ./tools/ci/agent-protection/deception-audit.sh origin/master ${RUNNER_TEMP}/deception-audit-report.txt || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::warning::Deception patterns detected on this branch"
@@ -234,8 +234,8 @@ jobs:
           if [ "${{ steps.audit.outputs.has_findings }}" = "true" ]; then
             echo "**WARNING: ${{ steps.audit.outputs.finding_count }} deception pattern(s) detected.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f /tmp/deception-audit-report.txt ]; then
-              cat /tmp/deception-audit-report.txt >> "$GITHUB_STEP_SUMMARY"
+            if [ -f ${RUNNER_TEMP}/deception-audit-report.txt ]; then
+              cat ${RUNNER_TEMP}/deception-audit-report.txt >> "$GITHUB_STEP_SUMMARY"
             fi
           else
             echo "No deception patterns detected." >> "$GITHUB_STEP_SUMMARY"
@@ -357,10 +357,10 @@ jobs:
       - name: Check Test Timeouts
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts \
            -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -400,10 +400,10 @@ jobs:
       - name: Check Duplicate Code
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode \
            -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -443,13 +443,13 @@ jobs:
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl engine/utils \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=7 \
-           2>&1 | tee /tmp/mvn-utils-test.log
+           2>&1 | tee "${{ runner.temp }}/mvn-utils-test.log"
 
       - name: Upload Surefire Reports
         if: always()
@@ -463,14 +463,14 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl engine/ml \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=7 \
-           2>&1 | tee /tmp/mvn-ml-test.log
+           2>&1 | tee "${{ runner.temp }}/mvn-ml-test.log"
 
       - name: Upload ML Surefire Reports
         if: always()
@@ -484,15 +484,17 @@ jobs:
 
       - name: Extract crash reports
         if: always()
+        env:
+          CRASH_REPORT_DIR: ${{ runner.temp }}/crash-reports
         run: |
-          ./tools/ci/extract-crash-reports.sh /tmp/mvn-*.log
+          ./tools/ci/extract-crash-reports.sh "${{ runner.temp }}"/mvn-*.log
 
       - name: Upload Crash Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: crash-reports-group-${{ matrix.group }}
-          path: /tmp/crash-reports/
+          path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -532,30 +534,30 @@ jobs:
 
       - name: Run Audio Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl engine/audio \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           2>&1 | tee /tmp/mvn-audio-test.log
+           2>&1 | tee "${{ runner.temp }}/mvn-audio-test.log"
 
       - name: Run Music Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl studio/music \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/music \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           2>&1 | tee /tmp/mvn-music-test.log
+           2>&1 | tee "${{ runner.temp }}/mvn-music-test.log"
 
       - name: Run Compose Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl studio/compose \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           2>&1 | tee /tmp/mvn-compose-test.log
+           2>&1 | tee "${{ runner.temp }}/mvn-compose-test.log"
 
       - name: Upload Surefire Reports
         if: always()
@@ -569,15 +571,17 @@ jobs:
 
       - name: Extract crash reports
         if: always()
+        env:
+          CRASH_REPORT_DIR: ${{ runner.temp }}/crash-reports
         run: |
-          ./tools/ci/extract-crash-reports.sh /tmp/mvn-*.log
+          ./tools/ci/extract-crash-reports.sh "${{ runner.temp }}"/mvn-*.log
 
       - name: Upload Crash Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: crash-reports-media
-          path: /tmp/crash-reports/
+          path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -626,19 +630,19 @@ jobs:
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/utils \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/utils \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=3
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/ml \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/ml \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=3
@@ -665,24 +669,24 @@ jobs:
 
       - name: Run Audio Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/audio \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/audio \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Music Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl studio/music \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/music \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Compose Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl studio/compose \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
@@ -877,7 +881,7 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (build failure)
         if: steps.build-check.outputs.build_failed == 'true' && inputs.auto_resolve != 'false'
@@ -888,7 +892,7 @@ jobs:
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           DESCRIPTION: "Resolve build failure"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Test failure path ───────────────────────────────────────
       # When the build succeeded, download and parse Surefire reports.
@@ -946,7 +950,7 @@ jobs:
         if: steps.build-check.outputs.build_failed != 'true'
         id: failures
         run: |
-          eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports /tmp/test-failures.txt)"
+          eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports "${{ runner.temp }}/test-failures.txt")"
           echo "failure_count=$failure_count" >> "$GITHUB_OUTPUT"
           echo "has_failures=$has_failures" >> "$GITHUB_OUTPUT"
           if [ "$has_failures" = "true" ]; then
@@ -1045,7 +1049,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-failure-summary
-          path: /tmp/test-failures.txt
+          path: ${{ runner.temp }}/test-failures.txt
           retention-days: 7
 
       - name: Build prompt (test failures)
@@ -1056,14 +1060,14 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-resolve-prompt.sh "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Extract failing test class names
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
         id: test-classes
         run: |
           # Extract test class names from the failure summary for the escalation tracker
-          CLASSES=$(grep -oP '[\w.]+Test\w*' /tmp/test-failures.txt 2>/dev/null | sort -u | tr '\n' ' ' || true)
+          CLASSES=$(grep -oP '[\w.]+Test\w*' "${{ runner.temp }}/test-failures.txt" 2>/dev/null | sort -u | tr '\n' ' ' || true)
           echo "failing_classes=$CLASSES" >> "$GITHUB_OUTPUT"
 
       - name: Submit agent job (test failures)
@@ -1078,7 +1082,7 @@ jobs:
           ENFORCE_CHANGES: "true"
           DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Test job failure without surefire XML ──────────────────────
       # When a test job had result "failure" but no surefire failures
@@ -1092,7 +1096,7 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Extract crashed test class names
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
@@ -1116,7 +1120,7 @@ jobs:
           ENFORCE_CHANGES: "true"
           DESCRIPTION: "Resolve JVM crash in test execution"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Incomplete test execution path ─────────────────────────────
       # When test jobs were cancelled or skipped without any upstream
@@ -1131,7 +1135,7 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (incomplete tests)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true' && inputs.auto_resolve != 'false'
@@ -1142,7 +1146,7 @@ jobs:
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Quality gate fallback ──────────────────────────────────────
       # When no test failures exist, check quality gates and submit
@@ -1161,7 +1165,7 @@ jobs:
 
         run: |
           chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
-          ./tools/ci/prompts/build-policy-violation-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (code policy violations)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed != 'true' && inputs.auto_resolve != 'false'
@@ -1172,7 +1176,7 @@ jobs:
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Other quality gate fallback ──────────────────────────────
       # When no test failures or policy violations exist, check
@@ -1191,14 +1195,14 @@ jobs:
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
         run: |
-          ./tools/ci/agent-protection/check-quality-gates.sh /tmp/quality-gate-failures.txt
+          ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
 
       - name: Upload quality gate summary
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: quality-gate-summary
-          path: /tmp/quality-gate-failures.txt
+          path: ${{ runner.temp }}/quality-gate-failures.txt
           retention-days: 7
 
       - name: Build prompt (quality gates)
@@ -1209,7 +1213,7 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (quality gates)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true' && inputs.auto_resolve != 'false'
@@ -1220,7 +1224,7 @@ jobs:
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Docs-only verify path ──────────────────────────────────
       # When all changes are under docs/, skip the general review
@@ -1235,7 +1239,7 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
         run: |
           chmod +x ./tools/ci/prompts/build-verify-prompt.sh
-          ./tools/ci/prompts/build-verify-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (docs-only verify)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true' && inputs.auto_resolve != 'false'
@@ -1246,7 +1250,7 @@ jobs:
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           DESCRIPTION: "Verify docs changes"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── General review fallback ─────────────────────────────────
       # When all tests and quality gates pass, submit a general
@@ -1260,7 +1264,7 @@ jobs:
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
         run: |
-          ./tools/ci/prompts/build-review-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (general review)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true' && inputs.auto_resolve != 'false'
@@ -1271,7 +1275,7 @@ jobs:
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           DESCRIPTION: "Review branch changes"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -1287,7 +1291,7 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Failing tests" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat /tmp/test-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
+            cat "${{ runner.temp }}/test-failures.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.test-completeness.outputs.build_failed_in_tests }}" = "true" ]; then
             echo "**Test job failed** without producing surefire results (JVM crash, OOM, or build error within test step)." >> "$GITHUB_STEP_SUMMARY"
@@ -1304,7 +1308,7 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Failing quality gates" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat /tmp/quality-gate-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
+            cat "${{ runner.temp }}/quality-gate-failures.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.docs-check.outputs.docs_only }}" = "true" ]; then
             echo "All changes are under \`docs/\` — docs-only PR detected." >> "$GITHUB_STEP_SUMMARY"
