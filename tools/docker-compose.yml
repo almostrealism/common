@@ -49,8 +49,8 @@ services:
 
   controller:
     build:
-      context: ../flowtree
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: flowtree/Dockerfile
     ports:
       - "7780:7780"
       - "7766:7766"
