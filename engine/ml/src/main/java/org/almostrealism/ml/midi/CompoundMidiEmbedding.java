@@ -230,44 +230,22 @@ public class CompoundMidiEmbedding {
 	private PackedCollection embedSupplementary(int tokenIndex) {
 		int hidden = config.hiddenSize;
 
-		double[] lookup = new double[hidden];
+		PackedCollection lookup = new PackedCollection(new TraversalPolicy(hidden));
 		int offset = tokenIndex * hidden;
 		for (int i = 0; i < hidden; i++) {
-			lookup[i] = supplementaryEmbedding.toDouble(offset + i);
+			lookup.setMem(i, supplementaryEmbedding.toDouble(offset + i));
 		}
 
-		double[] mlp0Out = linearForward(lookup, supplementaryMlp0Weight,
-				supplementaryMlp0Bias, hidden, hidden);
+		PackedCollection mlp0Out = GRUDecoder.linearForward(
+				lookup, hidden, supplementaryMlp0Weight, hidden, supplementaryMlp0Bias);
 
-		double[] geluOut = new double[hidden];
+		PackedCollection geluOut = new PackedCollection(new TraversalPolicy(hidden));
 		for (int i = 0; i < hidden; i++) {
-			geluOut[i] = gelu(mlp0Out[i]);
+			geluOut.setMem(i, gelu(mlp0Out.toDouble(i)));
 		}
 
-		double[] mlp2Out = linearForward(geluOut, supplementaryMlp2Weight,
-				supplementaryMlp2Bias, hidden, hidden);
-
-		PackedCollection result = new PackedCollection(new TraversalPolicy(hidden));
-		for (int i = 0; i < hidden; i++) {
-			result.setMem(i, mlp2Out[i]);
-		}
-		return result;
-	}
-
-	/**
-	 * Compute a linear transformation: output = weight @ input + bias.
-	 */
-	private static double[] linearForward(double[] input, PackedCollection weight,
-										  PackedCollection bias, int outDim, int inDim) {
-		double[] output = new double[outDim];
-		for (int row = 0; row < outDim; row++) {
-			double sum = 0.0;
-			for (int col = 0; col < inDim; col++) {
-				sum += weight.toDouble(row * inDim + col) * input[col];
-			}
-			output[row] = sum + bias.toDouble(row);
-		}
-		return output;
+		return GRUDecoder.linearForward(
+				geluOut, hidden, supplementaryMlp2Weight, hidden, supplementaryMlp2Bias);
 	}
 
 	/**

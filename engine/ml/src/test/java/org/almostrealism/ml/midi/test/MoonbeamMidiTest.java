@@ -196,6 +196,63 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verify that unconditional generation (no prompt) works correctly.
+	 * This exercises the lastHidden == null branch in
+	 * {@link MidiAutoregressiveModel#next()}.
+	 */
+	@Test
+	public void testUnconditionalGeneration() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		StateDictionary stateDict = createSyntheticWeights(config);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
+		GRUDecoder decoder = createSyntheticDecoder(config);
+
+		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
+		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+
+		// Do NOT call setPrompt -- exercise the no-prompt path
+		MidiCompoundToken generated = autoregressive.next();
+		Assert.assertNotNull("Should generate a token without prompt", generated);
+		Assert.assertEquals("Step should be 2 after internal SOS forward + decode",
+				2, autoregressive.getCurrentStep());
+
+		// Generate a second token to confirm continued operation
+		MidiCompoundToken second = autoregressive.next();
+		Assert.assertNotNull("Should generate a second token", second);
+		Assert.assertEquals("Step should be 3", 3, autoregressive.getCurrentStep());
+	}
+
+	/**
+	 * Verify that the generate() convenience method processes prompt tokens
+	 * before generating new ones, and that the returned list contains
+	 * only the generated (non-prompt) tokens.
+	 */
+	@Test
+	public void testGenerateMethodSkipsPrompt() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		StateDictionary stateDict = createSyntheticWeights(config);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
+		GRUDecoder decoder = createSyntheticDecoder(config);
+
+		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
+		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+
+		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
+				MidiCompoundToken.sos(),
+				new MidiCompoundToken(100, 50, 5, 7, 0, 80)
+		};
+		autoregressive.setPrompt(prompt);
+
+		List<MidiCompoundToken> generated = autoregressive.generate(2);
+		Assert.assertFalse("Should generate tokens", generated.isEmpty());
+		Assert.assertTrue("Should generate at most 2 tokens", generated.size() <= 2);
+
+		// Total steps = prompt(2) + generated tokens
+		Assert.assertTrue("Step should account for prompt + generated",
+				autoregressive.getCurrentStep() >= prompt.length + 1);
+	}
+
+	/**
 	 * Verify that temperature and top-p settings are applied.
 	 */
 	@Test

@@ -207,6 +207,37 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verify that embedSequence content matches sequential embed() calls.
+	 * This ensures embedSequence correctly concatenates individual token embeddings.
+	 */
+	@Test
+	public void testEmbedSequenceContentMatchesIndividualEmbeds() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
+
+		MidiCompoundToken token0 = MidiCompoundToken.sos();
+		MidiCompoundToken token1 = new MidiCompoundToken(100, 50, 5, 0, 0, 80);
+		MidiCompoundToken token2 = MidiCompoundToken.pad();
+
+		java.util.List<MidiCompoundToken> tokens = java.util.Arrays.asList(token0, token1, token2);
+		PackedCollection sequenceResult = embedding.embedSequence(tokens);
+
+		PackedCollection emb0 = embedding.embed(token0);
+		PackedCollection emb1 = embedding.embed(token1);
+		PackedCollection emb2 = embedding.embed(token2);
+
+		int hidden = config.hiddenSize;
+		for (int i = 0; i < hidden; i++) {
+			assertEquals("Token 0 embedding mismatch at index " + i,
+					emb0.toDouble(i), sequenceResult.toDouble(i), 1e-15);
+			assertEquals("Token 1 embedding mismatch at index " + i,
+					emb1.toDouble(i), sequenceResult.toDouble(hidden + i), 1e-15);
+			assertEquals("Token 2 embedding mismatch at index " + i,
+					emb2.toDouble(i), sequenceResult.toDouble(2 * hidden + i), 1e-15);
+		}
+	}
+
+	/**
 	 * Verify that the same token produces identical embeddings on repeated calls.
 	 */
 	@Test

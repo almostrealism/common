@@ -224,6 +224,10 @@ public class GRUDecoder {
 	/**
 	 * Compute matrix-vector product plus bias: result = weight @ input + bias.
 	 *
+	 * <p>This is the canonical reference implementation of linear projection
+	 * used across the MIDI package (embedding, decoder, etc.). It uses
+	 * element-wise access as a stepping-stone reference implementation.</p>
+	 *
 	 * @param input input vector
 	 * @param inputSize dimension of input
 	 * @param weight weight matrix, row-major (outputSize, inputSize)
@@ -231,9 +235,9 @@ public class GRUDecoder {
 	 * @param bias bias vector of size (outputSize)
 	 * @return result as PackedCollection of size (outputSize)
 	 */
-	private static PackedCollection linearForward(PackedCollection input, int inputSize,
-												  PackedCollection weight, int outputSize,
-												  PackedCollection bias) {
+	static PackedCollection linearForward(PackedCollection input, int inputSize,
+										  PackedCollection weight, int outputSize,
+										  PackedCollection bias) {
 		PackedCollection result = new PackedCollection(outputSize);
 		for (int i = 0; i < outputSize; i++) {
 			double sum = bias.toDouble(i);
