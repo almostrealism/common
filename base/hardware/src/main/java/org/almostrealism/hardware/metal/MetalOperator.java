@@ -20,8 +20,10 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
 import java.lang.ref.Reference;
 import java.util.Arrays;
@@ -214,6 +216,18 @@ public class MetalOperator extends HardwareOperator {
 			throw new UnsupportedOperationException();
 		}
 
+		KernelMemoryGuard guard = null;
+		try {
+			Hardware hw = Hardware.getLocalHardware();
+			if (hw != null) {
+				guard = hw.getKernelMemoryGuard();
+				if (guard != null) guard.acquire(data);
+			}
+		} catch (Exception e) {
+			// Guard failures must not prevent kernel execution
+		}
+
+		try {
 		Future<?> run = context.getCommandRunner().submit((offset, size, queue) -> {
 			recordDuration(null, () -> {
 				int index = 0;
@@ -277,6 +291,14 @@ public class MetalOperator extends HardwareOperator {
 			Thread.currentThread().interrupt();
 		} catch (ExecutionException  e) {
 			throw new RuntimeException(e);
+		}
+
+		} finally {
+			try {
+				if (guard != null) guard.release(data);
+			} catch (Exception e) {
+				// Guard failures must not prevent returning
+			}
 		}
 
 		// Prevent the JIT from allowing GC to collect data[] or args
