@@ -687,8 +687,12 @@ public class FlowTreeController implements ConsoleFeatures {
      * and for programmatic job submission.
      */
     private void startApiEndpoint() {
-        // Initialize stats store
-        String dataDir = System.getProperty("user.home") + "/.flowtree";
+        // Initialize stats store — prefer the config directory (which is
+        // typically a persistent volume mount) over user.home so that stats
+        // survive container rebuilds.
+        String dataDir = configFile != null
+                ? configFile.getParentFile().getAbsolutePath()
+                : System.getProperty("user.home") + "/.flowtree";
         new File(dataDir).mkdirs();
         statsStore = new JobStatsStore(dataDir + "/stats");
         statsStore.initialize();
