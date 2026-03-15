@@ -71,10 +71,29 @@ public class MidiAutoregressiveModel {
 	private MidiCompoundToken[] prompt;
 	private int promptLength;
 
-	/** Temperature for sampling (0 = greedy). */
+	/**
+	 * Cached hidden state from the most recent transformer forward pass.
+	 * Used to carry the hidden state from the last prompt token forward
+	 * to the first generation step without re-forwarding.
+	 */
+	private PackedCollection lastHidden;
+
+	/**
+	 * Temperature for sampling (0 = greedy).
+	 *
+	 * <p><strong>Note:</strong> Sampling is not yet implemented (planned for
+	 * Milestone 8). The decoder currently always uses greedy argmax regardless
+	 * of this setting.</p>
+	 */
 	private double temperature;
 
-	/** Top-p (nucleus) sampling threshold. */
+	/**
+	 * Top-p (nucleus) sampling threshold.
+	 *
+	 * <p><strong>Note:</strong> Sampling is not yet implemented (planned for
+	 * Milestone 8). The decoder currently always uses greedy argmax regardless
+	 * of this setting.</p>
+	 */
 	private double topP;
 
 	/**
@@ -107,15 +126,21 @@ public class MidiAutoregressiveModel {
 		this.promptLength = promptTokens != null ? promptTokens.length : 0;
 		this.currentStep = 0;
 		this.currentToken = MidiCompoundToken.sos();
+		this.lastHidden = null;
 	}
 
 	/**
 	 * Generate and return the next compound token in the sequence.
 	 *
-	 * <p>During the prompt phase, this method processes each prompt token
-	 * through the transformer to build the KV cache. After the prompt,
-	 * it generates new tokens by decoding the transformer hidden state
-	 * with the GRU decoder.</p>
+	 * <p>During the prompt phase, each prompt token is forwarded through
+	 * the transformer to populate the KV cache. The hidden state from
+	 * the last prompt token is saved and used to decode the first
+	 * generated token on the next call.</p>
+	 *
+	 * <p>During generation, the previously saved hidden state is decoded
+	 * via the GRU decoder, the resulting token is forwarded through the
+	 * transformer to extend the KV cache, and its hidden state is saved
+	 * for the next call.</p>
 	 *
 	 * @return the next compound token (may be EOS to signal end)
 	 */
@@ -123,18 +148,25 @@ public class MidiAutoregressiveModel {
 		if (currentStep < promptLength) {
 			MidiCompoundToken inputToken = prompt[currentStep];
 			processToken(inputToken);
+			lastHidden = model.forward(embedToken(inputToken));
 			currentToken = inputToken;
 			currentStep++;
 			return currentToken;
 		}
 
-		processToken(currentToken);
-		PackedCollection hidden = model.forward(
-				embedToken(currentToken));
+		if (lastHidden == null) {
+			// No prompt was set; forward the initial SOS token
+			processToken(currentToken);
+			lastHidden = model.forward(embedToken(currentToken));
+			currentStep++;
+		}
 
-		PackedCollection hiddenVec = extractHiddenVector(hidden);
+		PackedCollection hiddenVec = extractHiddenVector(lastHidden);
 		int[] decodeTokens = decoder.decode(hiddenVec);
 		MidiCompoundToken generated = decodeToCompoundToken(decodeTokens);
+
+		processToken(generated);
+		lastHidden = model.forward(embedToken(generated));
 
 		currentToken = generated;
 		currentStep++;
@@ -166,6 +198,10 @@ public class MidiAutoregressiveModel {
 	/**
 	 * Set the sampling temperature.
 	 *
+	 * <p><strong>Note:</strong> Sampling is not yet implemented (planned for
+	 * Milestone 8). The decoder currently always uses greedy argmax regardless
+	 * of this setting.</p>
+	 *
 	 * @param temperature 0.0 for greedy, higher for more randomness
 	 */
 	public void setTemperature(double temperature) {
@@ -174,6 +210,10 @@ public class MidiAutoregressiveModel {
 
 	/**
 	 * Set the top-p (nucleus) sampling threshold.
+	 *
+	 * <p><strong>Note:</strong> Sampling is not yet implemented (planned for
+	 * Milestone 8). The decoder currently always uses greedy argmax regardless
+	 * of this setting.</p>
 	 *
 	 * @param topP cumulative probability threshold (0.0 to 1.0)
 	 */

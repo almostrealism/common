@@ -279,6 +279,148 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verify that GRUCell produces the correct output for known weights and inputs.
+	 *
+	 * <p>Uses identity-like weights to verify the GRU equations:
+	 * r = sigmoid(W_ir@x + b_ir + W_hr@h + b_hr),
+	 * z = sigmoid(W_iz@x + b_iz + W_hz@h + b_hz),
+	 * n = tanh(W_in@x + b_in + r * (W_hn@h + b_hn)),
+	 * h' = (1 - z) * n + z * h</p>
+	 */
+	@Test
+	public void testGruCellComputation() {
+		int inputSize = 2;
+		int hiddenSize = 2;
+
+		// W_ih = [W_ir; W_iz; W_in], shape (3*hiddenSize, inputSize) = (6, 2)
+		PackedCollection weightIh = new PackedCollection(new TraversalPolicy(6, 2));
+		// Set W_ir (rows 0-1) to identity
+		weightIh.setMem(0, 1.0); weightIh.setMem(1, 0.0);
+		weightIh.setMem(2, 0.0); weightIh.setMem(3, 1.0);
+		// W_iz (rows 2-3) and W_in (rows 4-5) left as zero
+
+		// W_hh = [W_hr; W_hz; W_hn], shape (6, 2)
+		PackedCollection weightHh = new PackedCollection(new TraversalPolicy(6, 2));
+
+		// Biases all zero
+		PackedCollection biasIh = new PackedCollection(new TraversalPolicy(6));
+		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(6));
+
+		GRUCell cell = new GRUCell(inputSize, hiddenSize, weightIh, weightHh, biasIh, biasHh);
+
+		PackedCollection x = new PackedCollection(2);
+		x.setMem(0, 1.0);
+		x.setMem(1, 2.0);
+
+		PackedCollection h = new PackedCollection(2);
+		h.setMem(0, 0.5);
+		h.setMem(1, -0.5);
+
+		PackedCollection hNew = cell.forward(x, h);
+
+		Assert.assertEquals("Output size", 2, hNew.getShape().getTotalSize());
+
+		// Manual computation:
+		// W_ir@x + b_ir = [1,0;0,1]@[1,2] + [0,0] = [1, 2]
+		// W_hr@h + b_hr = [0,0;0,0]@[0.5,-0.5] + [0,0] = [0, 0]
+		// r = sigmoid([1, 2] + [0, 0]) = sigmoid([1, 2])
+		double r0 = 1.0 / (1.0 + Math.exp(-1.0));
+		double r1 = 1.0 / (1.0 + Math.exp(-2.0));
+
+		// W_iz@x + b_iz = [0,0;0,0]@[1,2] + [0,0] = [0, 0]
+		// W_hz@h + b_hz = [0,0;0,0]@[0.5,-0.5] + [0,0] = [0, 0]
+		// z = sigmoid([0, 0]) = [0.5, 0.5]
+		double z = 0.5;
+
+		// W_in@x + b_in = [0,0;0,0]@[1,2] + [0,0] = [0, 0]
+		// W_hn@h + b_hn = [0,0;0,0]@[0.5,-0.5] + [0,0] = [0, 0]
+		// n = tanh([0, 0] + r * [0, 0]) = tanh([0, 0]) = [0, 0]
+		double n = 0.0;
+
+		// h' = (1 - z) * n + z * h = 0.5 * 0 + 0.5 * h
+		double expectedH0 = (1.0 - z) * n + z * 0.5;
+		double expectedH1 = (1.0 - z) * n + z * (-0.5);
+
+		Assert.assertEquals("h'[0]", expectedH0, hNew.toDouble(0), 1e-10);
+		Assert.assertEquals("h'[1]", expectedH1, hNew.toDouble(1), 1e-10);
+	}
+
+	/**
+	 * Verify that GRUCell correctly applies reset and update gates
+	 * when biases shift the gate activations away from 0.5.
+	 */
+	@Test
+	public void testGruCellWithBias() {
+		int size = 1;
+
+		PackedCollection weightIh = new PackedCollection(new TraversalPolicy(3, 1));
+		PackedCollection weightHh = new PackedCollection(new TraversalPolicy(3, 1));
+
+		// Set large positive bias on update gate (z -> 1) so h' ≈ h
+		PackedCollection biasIh = new PackedCollection(new TraversalPolicy(3));
+		biasIh.setMem(1, 10.0); // bias for z (update gate)
+		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(3));
+
+		GRUCell cell = new GRUCell(size, size, weightIh, weightHh, biasIh, biasHh);
+
+		PackedCollection x = new PackedCollection(1);
+		x.setMem(0, 5.0);
+		PackedCollection h = new PackedCollection(1);
+		h.setMem(0, 3.0);
+
+		PackedCollection hNew = cell.forward(x, h);
+
+		// With z ≈ sigmoid(10) ≈ 1.0, h' ≈ z * h ≈ h
+		Assert.assertEquals("With high update gate, h' should be close to h",
+				3.0, hNew.toDouble(0), 0.01);
+	}
+
+	/**
+	 * Verify that GRUDecoder.toAttributeValues correctly maps flat decode
+	 * vocabulary indices to per-attribute values by subtracting offsets.
+	 */
+	@Test
+	public void testDecoderToAttributeValues() {
+		MoonbeamConfig config = MoonbeamConfig.defaultConfig();
+		int[] offsets = GRUDecoder.computeVocabOffsets(config);
+
+		// Create a decoder with minimal weights just to test toAttributeValues
+		GRUDecoder decoder = createSyntheticDecoder(config);
+
+		// Construct decode tokens where each is at its offset + a known attribute value
+		int[] decodeTokens = new int[GRUDecoder.TOKENS_PER_NOTE];
+		int[] expectedValues = {0, 100, 50, 5, 7, 3, 80};
+		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
+			decodeTokens[i] = offsets[i] + expectedValues[i];
+		}
+
+		int[] attributeValues = decoder.toAttributeValues(decodeTokens);
+
+		Assert.assertEquals("Should have 7 values", GRUDecoder.TOKENS_PER_NOTE,
+				attributeValues.length);
+		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
+			Assert.assertEquals("Attribute value at " + i,
+					expectedValues[i], attributeValues[i]);
+		}
+	}
+
+	/**
+	 * Verify that vocab offsets cover the full decode vocabulary.
+	 * The last offset plus the last attribute's vocab size should equal decodeVocabSize.
+	 */
+	@Test
+	public void testVocabOffsetsFullCoverage() {
+		MoonbeamConfig config = MoonbeamConfig.defaultConfig();
+		int[] offsets = GRUDecoder.computeVocabOffsets(config);
+
+		// Last offset is for velocity, offset[6]
+		int lastOffset = offsets[6];
+		int lastVocab = config.vocabSizes[5]; // velocity vocab
+		Assert.assertEquals("Last offset + last vocab = decodeVocabSize",
+				config.decodeVocabSize, lastOffset + lastVocab);
+	}
+
+	/**
 	 * Create a PackedCollection of the given size filled with ones.
 	 * Used for RMSNorm weights so the norm doesn't zero out activations.
 	 */

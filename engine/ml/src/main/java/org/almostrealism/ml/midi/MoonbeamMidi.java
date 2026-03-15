@@ -276,9 +276,8 @@ public class MoonbeamMidi implements AttentionFeatures {
 	private static GRUDecoder buildDecoder(StateDictionary stateDict, MoonbeamConfig config) {
 		GRUCell[] layers = new GRUCell[config.decoderLayers];
 		for (int l = 0; l < config.decoderLayers; l++) {
-			int inputSize = (l == 0) ? config.decoderHiddenSize : config.decoderHiddenSize;
 			layers[l] = new GRUCell(
-					inputSize, config.decoderHiddenSize,
+					config.decoderHiddenSize, config.decoderHiddenSize,
 					stateDict.get(String.format("decoder.weight_ih_l%d", l)),
 					stateDict.get(String.format("decoder.weight_hh_l%d", l)),
 					stateDict.get(String.format("decoder.bias_ih_l%d", l)),
