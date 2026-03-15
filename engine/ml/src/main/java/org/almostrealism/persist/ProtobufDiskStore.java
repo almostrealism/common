@@ -170,6 +170,10 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		pendingBatchBytes += record.getSerializedSize() + computeVarintSize(record.getSerializedSize());
 		index.put(id, new RecordPointer(pendingBatchId, -1));
 
+		if (hnswIndex != null && hnswIndex.contains(id)) {
+			hnswIndex.remove(id);
+		}
+
 		if (pendingBatchBytes >= targetBatchSize) {
 			flushPendingBatch();
 		}

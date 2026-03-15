@@ -469,6 +469,70 @@ public class HnswSearchTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Replacing a vectored record via the plain {@code put(id, record)}
+	 * (without a vector) should remove the stale HNSW entry so the
+	 * record no longer appears in vector search results.
+	 */
+	@Test(timeout = 30000)
+	public void replaceVectoredRecordWithoutVectorRemovesFromSearch() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+
+			store.put("a", makeRecord("a", "with-vector", 1),
+					vec(1.0, 0.0, 0.0));
+			store.put("b", makeRecord("b", "also-vectored", 2),
+					vec(0.0, 1.0, 0.0));
+
+			// Replace "a" without a vector
+			store.put("a", makeRecord("a", "no-vector-now", 10));
+
+			// "a" should still be retrievable by key
+			Assert.assertNotNull(store.get("a"));
+			Assert.assertEquals("no-vector-now", store.get("a").getContent());
+
+			// But "a" must NOT appear in vector search results
+			List<SearchResult<TestRecordProto.TestRecord>> results =
+					store.search(vec(1.0, 0.0, 0.0), 10);
+
+			Assert.assertEquals(1, results.size());
+			Assert.assertEquals("b", results.get(0).getId());
+		}
+	}
+
+	/**
+	 * Verify that HNSW state persists across {@link ProtobufDiskStore#flush()}
+	 * without requiring {@link ProtobufDiskStore#close()}.
+	 */
+	@Test(timeout = 30000)
+	public void hnswPersistsAcrossFlush() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("a", makeRecord("a", "alpha", 1),
+					vec(1.0, 0.0, 0.0));
+			store.put("b", makeRecord("b", "bravo", 2),
+					vec(0.0, 1.0, 0.0));
+			store.flush();
+
+			// Verify hnsw.bin was written
+			File hnswFile = new File(tempDir, "hnsw.bin");
+			Assert.assertTrue("hnsw.bin should exist after flush",
+					hnswFile.exists());
+			Assert.assertTrue("hnsw.bin should not be empty",
+					hnswFile.length() > 0);
+		}
+
+		// Reopen and verify search still works
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store2 =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			List<SearchResult<TestRecordProto.TestRecord>> results =
+					store2.search(vec(1.0, 0.0, 0.0), 1);
+
+			Assert.assertEquals(1, results.size());
+			Assert.assertEquals("a", results.get(0).getId());
+		}
+	}
+
 	private static PackedCollection randomVector(int dimension, Random random) {
 		double[] values = new double[dimension];
 		for (int i = 0; i < dimension; i++) {
