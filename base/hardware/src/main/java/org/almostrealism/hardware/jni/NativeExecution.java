@@ -25,9 +25,11 @@ import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.TimingMetric;
 
+import java.lang.ref.Reference;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -223,8 +225,20 @@ public class NativeExecution extends HardwareOperator {
 
 		int p = getGlobalWorkSize() < inst.getParallelism() ? (int) getGlobalWorkSize() : inst.getParallelism();
 
+		KernelMemoryGuard guard = null;
+		try {
+			Hardware hw = Hardware.getLocalHardware();
+			if (hw != null) {
+				guard = hw.getKernelMemoryGuard();
+				if (guard != null) guard.acquire(data);
+			}
+		} catch (Exception e) {
+			// Guard failures must not prevent kernel execution
+		}
+
 		DefaultLatchSemaphore latch = new DefaultLatchSemaphore(dependsOn, p);
 
+		try {
 		if (enableExecutor) {
 			recordDuration(latch, () -> {
 				for (int i = 0; i < p; i++) {
@@ -254,6 +268,18 @@ public class NativeExecution extends HardwareOperator {
 				}
 			});
 		}
+		} finally {
+			try {
+				if (guard != null) guard.release(data);
+			} catch (Exception e) {
+				// Guard failures must not prevent returning
+			}
+		}
+
+		// Prevent the JIT from allowing GC to collect data[] or args
+		// before kernel execution completes on the thread pool
+		Reference.reachabilityFence(data);
+		Reference.reachabilityFence(args);
 
 		return latch;
 	}
