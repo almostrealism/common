@@ -533,6 +533,89 @@ public class HnswSearchTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verify that HNSW save/load preserves deleted node state correctly. */
+	@Test(timeout = 30000)
+	public void hnswSaveLoadPreservesDeletedNodes() throws Exception {
+		Path hnswFile = tempDir.toPath().resolve("deleted-hnsw.bin");
+		int dimension = 3;
+
+		HnswIndex index = new HnswIndex(dimension, 8, 50, SimilarityMetric.COSINE);
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
+		index.insert("c", vec(0.0, 0.0, 1.0));
+		index.remove("b");
+
+		Assert.assertEquals(2, index.size());
+		Assert.assertEquals(3, index.totalSize());
+		index.save(hnswFile);
+
+		HnswIndex loaded = HnswIndex.load(hnswFile, SimilarityMetric.COSINE);
+		Assert.assertNotNull(loaded);
+		Assert.assertEquals(2, loaded.size());
+		Assert.assertEquals(3, loaded.totalSize());
+		Assert.assertTrue(loaded.contains("a"));
+		Assert.assertFalse(loaded.contains("b"));
+		Assert.assertTrue(loaded.contains("c"));
+
+		List<HnswIndex.IdScore> results =
+				loaded.search(vec(0.0, 1.0, 0.0), 10);
+		for (HnswIndex.IdScore result : results) {
+			Assert.assertNotEquals("Deleted node 'b' should not appear in search",
+					"b", result.id);
+		}
+	}
+
+	/** Verify search returns empty when all nodes have been removed. */
+	@Test(timeout = 30000)
+	public void hnswSearchAllDeletedReturnsEmpty() {
+		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
+		index.remove("a");
+		index.remove("b");
+
+		Assert.assertEquals(0, index.size());
+		List<HnswIndex.IdScore> results =
+				index.search(vec(1.0, 0.0, 0.0), 5);
+		Assert.assertTrue("Search with all deleted nodes should return empty",
+				results.isEmpty());
+	}
+
+	/** Verify that removing an already-removed node is idempotent. */
+	@Test(timeout = 30000)
+	public void hnswRemoveTwiceIsIdempotent() {
+		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
+
+		index.remove("a");
+		Assert.assertEquals(1, index.size());
+		index.remove("a");
+		Assert.assertEquals(1, index.size());
+		Assert.assertEquals(2, index.totalSize());
+	}
+
+	/** Verify that re-inserting a deleted node restores it to search results. */
+	@Test(timeout = 30000)
+	public void hnswReinsertDeletedNodeRestoresIt() {
+		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
+
+		index.remove("a");
+		Assert.assertEquals(1, index.size());
+		Assert.assertFalse(index.contains("a"));
+
+		index.insert("a", vec(0.0, 0.0, 1.0));
+		Assert.assertEquals(2, index.size());
+		Assert.assertTrue(index.contains("a"));
+
+		List<HnswIndex.IdScore> results =
+				index.search(vec(0.0, 0.0, 1.0), 1);
+		Assert.assertEquals(1, results.size());
+		Assert.assertEquals("a", results.get(0).id);
+	}
+
 	private static PackedCollection randomVector(int dimension, Random random) {
 		double[] values = new double[dimension];
 		for (int i = 0; i < dimension; i++) {

@@ -74,6 +74,7 @@ public class HnswIndex {
 	private final Random random;
 
 	private final Map<String, Node> nodes;
+	private int activeCount;
 	private String entryPointId;
 	private int maxLevel;
 
@@ -95,6 +96,7 @@ public class HnswIndex {
 		this.levelMultiplier = 1.0 / Math.log(m);
 		this.random = new Random();
 		this.nodes = new HashMap<>();
+		this.activeCount = 0;
 		this.entryPointId = null;
 		this.maxLevel = -1;
 	}
@@ -124,13 +126,7 @@ public class HnswIndex {
 	 * @return active node count
 	 */
 	public int size() {
-		int count = 0;
-		for (Node node : nodes.values()) {
-			if (!node.deleted) {
-				count++;
-			}
-		}
-		return count;
+		return activeCount;
 	}
 
 	/**
@@ -162,6 +158,9 @@ public class HnswIndex {
 
 		Node existing = nodes.get(id);
 		if (existing != null) {
+			if (existing.deleted) {
+				activeCount++;
+			}
 			existing.cachedData = normalizedData;
 			existing.deleted = false;
 			return;
@@ -170,6 +169,7 @@ public class HnswIndex {
 		int level = randomLevel();
 		Node newNode = new Node(id, normalizedData, level);
 		nodes.put(id, newNode);
+		activeCount++;
 
 		if (entryPointId == null) {
 			entryPointId = id;
@@ -273,8 +273,9 @@ public class HnswIndex {
 	 */
 	public void remove(String id) {
 		Node node = nodes.get(id);
-		if (node != null) {
+		if (node != null && !node.deleted) {
 			node.deleted = true;
+			activeCount--;
 		}
 	}
 
@@ -374,6 +375,9 @@ public class HnswIndex {
 				}
 
 				index.nodes.put(nodeData.getId(), node);
+				if (!node.deleted) {
+					index.activeCount++;
+				}
 			}
 
 			return index;
