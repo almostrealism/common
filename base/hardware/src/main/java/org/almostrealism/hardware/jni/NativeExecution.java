@@ -225,59 +225,44 @@ public class NativeExecution extends HardwareOperator {
 
 		int p = getGlobalWorkSize() < inst.getParallelism() ? (int) getGlobalWorkSize() : inst.getParallelism();
 
-		KernelMemoryGuard guard = null;
-		try {
-			Hardware hw = Hardware.getLocalHardware();
-			if (hw != null) {
-				guard = hw.getKernelMemoryGuard();
-				if (guard != null) guard.acquire(data);
-			}
-		} catch (Exception e) {
-			// Guard failures must not prevent kernel execution
-		}
+		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
 
 		DefaultLatchSemaphore latch = new DefaultLatchSemaphore(dependsOn, p);
 
 		try {
-		if (enableExecutor) {
-			recordDuration(latch, () -> {
-				for (int i = 0; i < p; i++) {
-					int id = i;
+			if (enableExecutor) {
+				recordDuration(latch, () -> {
+					for (int i = 0; i < p; i++) {
+						int id = i;
 
-					executor.submit(() -> {
-						try {
-							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
-						} catch (Exception e) {
-							warn("Operation " + id + " of " +
-									getGlobalWorkSize() + " failed", e);
-						} finally {
-							latch.countDown();
-						}
-					});
-				}
+						executor.submit(() -> {
+							try {
+								inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
+							} catch (Exception e) {
+								warn("Operation " + id + " of " +
+										getGlobalWorkSize() + " failed", e);
+							} finally {
+								latch.countDown();
+							}
+						});
+					}
 
-				// TODO  The user of the semaphore should decide when to wait
-				// TODO  rather than it happening proactively here
-				latch.waitFor();
-			});
-		} else {
-			recordDuration(latch, () -> {
-				for (int i = 0; i < inst.getParallelism(); i++) {
-					inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), data);
-					latch.countDown();
-				}
-			});
-		}
-		} finally {
-			try {
-				if (guard != null) guard.release(data);
-			} catch (Exception e) {
-				// Guard failures must not prevent returning
+					// TODO  The user of the semaphore should decide when to wait
+					// TODO  rather than it happening proactively here
+					latch.waitFor();
+				});
+			} else {
+				recordDuration(latch, () -> {
+					for (int i = 0; i < inst.getParallelism(); i++) {
+						inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), data);
+						latch.countDown();
+					}
+				});
 			}
+		} finally {
+			KernelMemoryGuard.releaseFor(guard, data);
 		}
 
-		// Prevent the JIT from allowing GC to collect data[] or args
-		// before kernel execution completes on the thread pool
 		Reference.reachabilityFence(data);
 		Reference.reachabilityFence(args);
 

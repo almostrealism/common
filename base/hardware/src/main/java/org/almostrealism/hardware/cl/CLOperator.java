@@ -20,7 +20,6 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -222,19 +221,10 @@ public class CLOperator extends HardwareOperator {
 		if (dependsOn != null) dependsOn.waitFor();
 		MemoryData data[] = prepareArguments(argCount, args);
 
-		KernelMemoryGuard guard = null;
-		try {
-			Hardware hw = Hardware.getLocalHardware();
-			if (hw != null) {
-				guard = hw.getKernelMemoryGuard();
-				if (guard != null) guard.acquire(data);
-			}
-		} catch (Exception e) {
-			// Guard failures must not prevent kernel execution
-		}
+		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
 
 		try {
-		recordDuration(null, () -> {
+			recordDuration(null, () -> {
 			int index = 0;
 			long totalSize = 0;
 
@@ -309,15 +299,9 @@ public class CLOperator extends HardwareOperator {
 		});
 
 		} finally {
-			try {
-				if (guard != null) guard.release(data);
-			} catch (Exception e) {
-				// Guard failures must not prevent returning
-			}
+			KernelMemoryGuard.releaseFor(guard, data);
 		}
 
-		// Prevent the JIT from allowing GC to collect data[] or args
-		// before kernel execution completes
 		Reference.reachabilityFence(data);
 		Reference.reachabilityFence(args);
 
