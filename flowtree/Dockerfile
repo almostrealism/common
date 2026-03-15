@@ -8,8 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 # Copy pre-built JARs from host build
 # Requires: mvn package -pl flowtree -am -DskipTests
 #           mvn dependency:copy-dependencies -pl flowtree -DoutputDirectory=target/dependency
-COPY target/ar-flowtree-*.jar /app/lib/
-COPY target/dependency/*.jar /app/lib/
+COPY flowtree/target/ar-flowtree-*.jar /app/lib/
+COPY flowtree/target/dependency/*.jar /app/lib/
+
+# Copy MCP tool source files for pushed tool discovery
+# McpToolDiscovery parses these at startup to register tool names
+COPY tools/mcp/slack/server.py /app/tools/mcp/slack/server.py
+COPY tools/mcp/github/server.py /app/tools/mcp/github/server.py
 
 # Working directory for config files (workstreams.yaml, slack-tokens.json)
 # Mount /Users/Shared/flowtree/controller here at runtime

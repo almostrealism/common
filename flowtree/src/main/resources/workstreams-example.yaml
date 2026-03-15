@@ -25,6 +25,13 @@
 #
 # channelOwnerUserId: U0123456789
 
+# Default channel (optional, global).
+# Slack channel ID to use as a fallback when a workstream has no channel
+# configured, or when publishing to the configured channel fails. This
+# prevents messages from being silently dropped.
+#
+# defaultChannel: C0123456789
+
 # Centralized MCP servers (optional).
 # When present, these servers are started as HTTP processes by the controller
 # and agents connect over HTTP instead of stdio. This enables cross-project

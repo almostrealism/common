@@ -58,6 +58,7 @@ public class WorkstreamConfig {
 
     private String defaultWorkspacePath;
     private String channelOwnerUserId;
+    private String defaultChannel;
     private Map<String, McpServerEntry> mcpServers = new LinkedHashMap<>();
     private Map<String, PushedToolEntry> pushedTools = new LinkedHashMap<>();
     private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
@@ -274,6 +275,18 @@ public class WorkstreamConfig {
      */
     public String getChannelOwnerUserId() { return channelOwnerUserId; }
     public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
+
+    /**
+     * Returns the default Slack channel ID to use as a fallback when a
+     * workstream has no channel configured or when publishing to the
+     * configured channel fails.
+     *
+     * <p>This is a global setting. When set in the YAML configuration,
+     * all workstreams without a valid channel will fall back to this
+     * channel instead of silently dropping messages.</p>
+     */
+    public String getDefaultChannel() { return defaultChannel; }
+    public void setDefaultChannel(String defaultChannel) { this.defaultChannel = defaultChannel; }
 
     /** Returns the centralized MCP server configurations. */
     public Map<String, McpServerEntry> getMcpServers() { return mcpServers; }
