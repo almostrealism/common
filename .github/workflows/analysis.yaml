@@ -443,6 +443,7 @@ jobs:
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -463,6 +464,7 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -534,6 +536,7 @@ jobs:
 
       - name: Run Audio Tests
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -543,6 +546,7 @@ jobs:
 
       - name: Run Music Tests
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/music \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -552,6 +556,7 @@ jobs:
 
       - name: Run Compose Tests
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
