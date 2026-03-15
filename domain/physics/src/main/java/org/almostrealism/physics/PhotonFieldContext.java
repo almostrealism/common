@@ -131,5 +131,29 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	 */
 	public F getFilm() { return film; }
 
-	// TODO  Implement clone
+	/**
+	 * Creates a shallow clone of this {@link PhotonFieldContext}, copying all inherited
+	 * {@link ShaderContext} state (surface, light, intersection, fog parameters,
+	 * reflection/entrance/exit counts) as well as this context's photon field and film references.
+	 *
+	 * @return a new {@link PhotonFieldContext} with the same state as this one
+	 */
+	@Override
+	public PhotonFieldContext<T, F> clone() {
+		PhotonFieldContext<T, F> c = new PhotonFieldContext<>(getSurface(), getLight(), field, film);
+		c.setLightDirection(getLightDirection());
+		c.setOtherLights(getOtherLights());
+		c.setIntersection(getIntersection());
+		if (getOtherSurfaces() != null) {
+			c.setOtherSurfaces(getOtherSurfaces());
+		}
+		c.fogColor = fogColor;
+		c.fogRatio = fogRatio;
+		c.fogDensity = fogDensity;
+		int pureReflections = getReflectionCount() - getEnteranceCount() - getExitCount();
+		for (int i = 0; i < pureReflections; i++) c.addReflection();
+		for (int i = 0; i < getEnteranceCount(); i++) c.addEntrance();
+		for (int i = 0; i < getExitCount(); i++) c.addExit();
+		return c;
+	}
 }

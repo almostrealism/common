@@ -118,10 +118,29 @@ public class KernelSeries implements Series {
 		return new KernelSeries(OptionalInt.of(1), OptionalInt.of(1));
 	}
 
+	/**
+	 * Constructs a {@link KernelSeries} whose period is the least common multiple
+	 * of the given periods.
+	 */
 	public static KernelSeries periodic(List<Integer> periods) {
-		// TODO  This is actually too large, the period should be the LCM of the periods
-		int period = periods.stream().distinct().reduce(1, (a, b) -> a * b);
+		int period = periods.stream().distinct().reduce(1, KernelSeries::lcm);
 		return new KernelSeries(OptionalInt.of(period), OptionalInt.of(period));
+	}
+
+	private static int gcd(int a, int b) {
+		a = Math.abs(a);
+		b = Math.abs(b);
+		while (b != 0) {
+			int temp = b;
+			b = a % b;
+			a = temp;
+		}
+		return a;
+	}
+
+	private static int lcm(int a, int b) {
+		if (a == 0 || b == 0) return 0;
+		return Math.abs(a / gcd(a, b) * b);
 	}
 
 	public static KernelSeries product(List<KernelSeries> series) {

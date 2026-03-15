@@ -51,12 +51,21 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 	public Expression<?> getNumerator() { return getChildren().get(0); }
 
+	/**
+	 * Returns the effective denominator of this quotient. For a two-operand
+	 * quotient {@code a / b}, returns {@code b}. For multi-operand quotients
+	 * {@code a / b / c / ...}, returns the product {@code b * c * ...}.
+	 */
 	public Expression<?> getDenominator() {
-		// TODO  This should be supported
-		if (getChildren().size() > 2)
-			throw new UnsupportedOperationException();
+		if (getChildren().size() == 2) {
+			return getChildren().get(1);
+		}
 
-		return getChildren().get(1);
+		Expression<?> result = getChildren().get(1);
+		for (int i = 2; i < getChildren().size(); i++) {
+			result = Product.of(result, getChildren().get(i));
+		}
+		return result;
 	}
 
 	@Override

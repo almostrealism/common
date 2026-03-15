@@ -84,11 +84,10 @@ public class SetIntervalScale<T extends KeyPosition<T>> implements Scale<T> {
 	public T valueAt(int position) {
 		if (position == 0) {
 			return root;
-		} else if (position > intervals.length) {
-			throw new UnsupportedOperationException(); // TODO
 		} else {
 			T note = valueAt(position - 1);
-			for (int i = 0; i < intervals[position - 1]; i++) {
+			int intervalIndex = (position - 1) % intervals.length;
+			for (int i = 0; i < intervals[intervalIndex]; i++) {
 				note = note.next();
 			}
 

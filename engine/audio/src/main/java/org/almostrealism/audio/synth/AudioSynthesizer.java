@@ -89,6 +89,7 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	private AudioSynthesisModel model;
 	private ADSREnvelope ampEnvelope;
 	private double velocity;
+	private Frequency baseFrequency;
 
 	public AudioSynthesizer() {
 		this((AudioSynthesisModel) null);
@@ -358,6 +359,27 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 * @param f the fundamental frequency
 	 */
 	public void setFrequency(Frequency f) {
+		this.baseFrequency = f;
+		applyFrequency(f);
+	}
+
+	/**
+	 * Applies pitch bend by shifting the current base frequency by the
+	 * specified number of semitones. Fractional semitones are supported.
+	 *
+	 * @param semitones pitch bend amount in semitones (e.g., 2.0 = up two semitones)
+	 */
+	public void setPitchBend(double semitones) {
+		if (baseFrequency == null) return;
+		double bentHz = baseFrequency.asHertz() * Math.pow(2.0, semitones / 12.0);
+		applyFrequency(new Frequency(bentHz));
+	}
+
+	/**
+	 * Updates all oscillators to match the given frequency according to the
+	 * {@link RelativeFrequencySet}.
+	 */
+	private void applyFrequency(Frequency f) {
 		Iterator<CollectionTemporalCellAdapter> itr = cells.iterator();
 		for (Frequency r : tones.getFrequencies(f)) {
 			if (itr.hasNext()) {
