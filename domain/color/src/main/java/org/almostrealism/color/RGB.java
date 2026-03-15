@@ -510,6 +510,12 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	/**
 	 * Returns an integer hash code for this RGB object. Uses coarse bucketing
 	 * to maintain consistency with the epsilon-based {@link #equals(RGB)} method.
+	 *
+	 * <p><b>Note:</b> Two colors within {@link #EPSILON} of a bucket boundary may
+	 * receive different hash codes despite being {@linkplain #equals(RGB) equal}.
+	 * This is an inherent limitation of combining epsilon-based equality with
+	 * hash bucketing and is acceptable for typical rendering use cases where
+	 * exact hash contract compliance is not required.</p>
 	 */
 	public int hashCode() {
 		int r = (int) Math.floor(this.getRed() / HASH_BUCKET);

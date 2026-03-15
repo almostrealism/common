@@ -360,12 +360,7 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 */
 	public void setFrequency(Frequency f) {
 		this.baseFrequency = f;
-		Iterator<CollectionTemporalCellAdapter> itr = cells.iterator();
-		for (Frequency r : tones.getFrequencies(f)) {
-			if (itr.hasNext()) {
-				setOscillatorFreq(itr.next(), r.asHertz());
-			}
-		}
+		applyFrequency(f);
 	}
 
 	/**
@@ -377,9 +372,16 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	public void setPitchBend(double semitones) {
 		if (baseFrequency == null) return;
 		double bentHz = baseFrequency.asHertz() * Math.pow(2.0, semitones / 12.0);
-		Frequency bent = new Frequency(bentHz);
+		applyFrequency(new Frequency(bentHz));
+	}
+
+	/**
+	 * Updates all oscillators to match the given frequency according to the
+	 * {@link RelativeFrequencySet}.
+	 */
+	private void applyFrequency(Frequency f) {
 		Iterator<CollectionTemporalCellAdapter> itr = cells.iterator();
-		for (Frequency r : tones.getFrequencies(bent)) {
+		for (Frequency r : tones.getFrequencies(f)) {
 			if (itr.hasNext()) {
 				setOscillatorFreq(itr.next(), r.asHertz());
 			}
