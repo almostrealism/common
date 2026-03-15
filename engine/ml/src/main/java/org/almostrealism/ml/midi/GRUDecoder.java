@@ -194,7 +194,7 @@ public class GRUDecoder {
 	 * Layout: [sos_out(1), onset(4099), duration(4099), octave(13),
 	 *          pitchClass(14), instrument(131), velocity(130)] = 8487
 	 */
-	static int[] computeVocabOffsets(MoonbeamConfig config) {
+	public static int[] computeVocabOffsets(MoonbeamConfig config) {
 		int[] offsets = new int[TOKENS_PER_NOTE];
 		offsets[0] = 0; // SOS output token
 		int cumulative = 1; // SOS takes 1 slot

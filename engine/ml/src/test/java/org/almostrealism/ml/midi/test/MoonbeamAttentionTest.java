@@ -123,7 +123,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
 			PackedCollection posVal = new PackedCollection(1);
 			posVal.setMem(0, i);
-			positions[i] = () -> posVal;
+			positions[i] = () -> args -> posVal;
 		}
 
 		HeadGroupConfig[] groups = HeadGroupConfig.fromConfig(config, positions);
@@ -152,7 +152,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 		io.almostrealism.relation.Producer<PackedCollection>[] positions =
 				createPositionProducers(MoonbeamConfig.NUM_ATTRIBUTES);
 		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
-			positions[i] = () -> posVal;
+			positions[i] = () -> args -> posVal;
 		}
 
 		HeadGroupConfig[] groups = HeadGroupConfig.fromConfig(config, positions);
@@ -193,10 +193,9 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Helper to create a Producer array without unchecked warnings at the call site.
-	 * Java does not support generic array creation directly, so this isolates the cast.
+	 * Helper to create a Producer array, isolating the unavoidable unchecked
+	 * cast required by Java's lack of generic array creation.
 	 */
-	@SuppressWarnings("unchecked")
 	private static io.almostrealism.relation.Producer<PackedCollection>[] createPositionProducers(int size) {
 		return new io.almostrealism.relation.Producer[size];
 	}
