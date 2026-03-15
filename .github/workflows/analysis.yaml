@@ -28,6 +28,12 @@ jobs:
     outputs:
       code_changed: ${{ steps.filter.outputs.code }}
       started_at: ${{ steps.timing.outputs.started_at }}
+      base_changed: ${{ steps.filter.outputs.base_changed }}
+      compute_changed: ${{ steps.filter.outputs.compute_changed }}
+      domain_changed: ${{ steps.filter.outputs.domain_changed }}
+      engine_changed: ${{ steps.filter.outputs.engine_changed }}
+      extern_changed: ${{ steps.filter.outputs.extern_changed }}
+      studio_changed: ${{ steps.filter.outputs.studio_changed }}
     steps:
       - name: Record pipeline start time
         id: timing
@@ -39,22 +45,38 @@ jobs:
           fetch-depth: 0
       - id: filter
         run: |
+          set_all_flags_true() {
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            for layer in base compute domain engine extern studio; do
+              echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
+            done
+          }
+
           # workflow_dispatch always runs the full pipeline
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+            set_all_flags_true
             exit 0
           fi
 
-          # Compare against base branch for PRs, parent for pushes
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-          else
-            BASE="${{ github.event.before }}"
+          # Push to master: ALL tests must run unconditionally.
+          # Layer-based skipping and docs-only skipping apply only to PRs,
+          # where we are evaluating whether a feature branch warrants
+          # running specific test groups. On master, every push (whether a
+          # direct push or a merged PR) must execute the complete test
+          # suite to guarantee full coverage on the default branch.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            set_all_flags_true
+            echo "::notice::Push to master — running full pipeline (no layer skipping)"
+            exit 0
           fi
+
+          # ── Below here: pull_request events only ──
+
+          BASE="${{ github.event.pull_request.base.sha }}"
 
           # If BASE is all zeros (initial push / new branch), run full pipeline
           if echo "$BASE" | grep -qE '^0+$'; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+            set_all_flags_true
             echo "::notice::Initial push detected — running full pipeline"
             exit 0
           fi
@@ -69,6 +91,20 @@ jobs:
           else
             echo "code=true" >> "$GITHUB_OUTPUT"
           fi
+
+          # Layer change detection for selective test skipping (PR only).
+          # Each layer flag indicates whether files in that directory were
+          # modified. Test jobs use these flags to skip when their layer
+          # (and all layers below it) are unmodified.
+          for layer in base compute domain engine extern studio; do
+            LAYER_FILES=$(git diff --name-only "$BASE" HEAD -- "${layer}/" || true)
+            if [ -n "$LAYER_FILES" ]; then
+              echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::Layer '${layer}' has changes"
+            else
+              echo "${layer}_changed=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
 
   build:
     needs: changes
@@ -522,7 +558,18 @@ jobs:
           fi
 
   test:
-    needs: [build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # Layer gate: engine tests only run when engine-or-below layers are modified
+    if: >-
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
     strategy:
       fail-fast: true
@@ -619,7 +666,18 @@ jobs:
           retention-days: 1
 
   test-media:
-    needs: [test]
+    needs: [changes, build, test]
+    # Layer gate: studio tests run when any layer is modified.
+    # Must tolerate test being skipped (no engine-layer changes).
+    if: >-
+      needs.build.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.changes.outputs.studio_changed == 'true' ||
+       needs.changes.outputs.extern_changed == 'true' ||
+       needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
@@ -711,7 +769,16 @@ jobs:
   # ─── macOS Test Jobs ────────────────────────────────────────────────
 
   test-mac:
-    needs: [test-media]
+    needs: [changes, build, test-media]
+    # Layer gate: engine tests only run when engine-or-below layers are modified.
+    # Must tolerate test-media being skipped (no layer changes).
+    if: >-
+      needs.build.result == 'success' &&
+      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
       group: test-mac-${{ github.ref }}-${{ matrix.group }}
@@ -757,7 +824,18 @@ jobs:
            -DAR_TEST_GROUPS=3
 
   test-media-mac:
-    needs: [test-mac]
+    needs: [changes, build, test-mac]
+    # Layer gate: studio tests run when any layer is modified.
+    # Must tolerate test-mac being skipped (no engine-layer changes).
+    if: >-
+      needs.build.result == 'success' &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.changes.outputs.studio_changed == 'true' ||
+       needs.changes.outputs.extern_changed == 'true' ||
+       needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -1137,11 +1215,31 @@ jobs:
             VALIDATION_FAILED="true"
           fi
 
+          # Determine whether layer-based filtering explains a skipped test job.
+          # Engine tests (test, test-mac) only run when engine-or-below layers change.
+          ENGINE_LAYERS_CHANGED="false"
+          if [ "${{ needs.changes.outputs.engine_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.domain_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.compute_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.base_changed }}" = "true" ]; then
+            ENGINE_LAYERS_CHANGED="true"
+          fi
+
+          # Studio tests (test-media, test-media-mac) run when any layer changes.
+          ANY_LAYER_CHANGED="false"
+          if [ "$ENGINE_LAYERS_CHANGED" = "true" ] || \
+             [ "${{ needs.changes.outputs.extern_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.studio_changed }}" = "true" ]; then
+            ANY_LAYER_CHANGED="true"
+          fi
+
           # Only flag as incomplete if jobs were cancelled/skipped without
-          # an upstream failure to explain it
+          # an upstream failure or layer-based filtering to explain it
           if [ "$TEST_RESULT" = "cancelled" ] || [ "$TEST_RESULT" = "skipped" ]; then
             if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test job was ${TEST_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
+              echo "::notice::test job was ${TEST_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
             else
               echo "::warning::test job was ${TEST_RESULT} without an upstream failure"
               INCOMPLETE="true"
@@ -1152,6 +1250,8 @@ jobs:
             if [ "$TEST_RESULT" != "failure" ] && [ "$TEST_RESULT" != "skipped" ]; then
               if [ "$VALIDATION_FAILED" = "true" ]; then
                 echo "::notice::test-media job was ${MEDIA_RESULT} because an upstream validation check failed — not treating as incomplete"
+              elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
+                echo "::notice::test-media job was ${MEDIA_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
               else
                 echo "::warning::test-media job was ${MEDIA_RESULT} without test job failure"
                 INCOMPLETE="true"

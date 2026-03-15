@@ -54,30 +54,22 @@
 # git repo or per-job environment variables).
 #
 # GitHub token handling:
-#   ar-github supports two modes for authentication:
-#
-#   1. Controller proxy (recommended): Set GITHUB_TOKEN on the controller
-#      process itself. Agents proxy GitHub API calls through the controller's
-#      /api/github/proxy endpoint -- no token distribution needed.
-#
-#   2. Direct token: Pass GITHUB_TOKEN via the pushed tool env below.
-#      Each container gets its own copy of the token. Use this when
-#      different workstreams need different GitHub tokens.
+#   GitHub API authentication uses per-org tokens from the githubOrgs section
+#   below. Agents proxy GitHub API calls through the controller's
+#   /api/github/proxy endpoint — no token distribution needed.
 #
 # pushedTools:
 #   ar-slack:
 #     source: tools/mcp/slack/server.py
 #   ar-github:
 #     source: tools/mcp/github/server.py
-#     # env:                                    # Optional: only needed for
-#     #   GITHUB_TOKEN: ghp_your_token_here     # per-workstream token override
 
-# GitHub organization tokens (optional).
-# Maps organization names to GitHub personal access tokens. When a
-# workstream specifies a githubOrg, the controller proxy uses the
-# matching token for GitHub API calls. This allows different workstreams
-# to target different GitHub organizations without distributing tokens
-# to agent containers.
+# GitHub organization tokens (REQUIRED for GitHub API access).
+# Maps organization names to GitHub personal access tokens. The
+# controller validates every token at startup and refuses to start
+# if any token is invalid or lacks the required permissions.
+# Agents proxy GitHub API calls through the controller — no tokens
+# are distributed to agent containers.
 #
 # githubOrgs:
 #   my-org:
@@ -104,8 +96,7 @@ workstreams:
     # githubOrg: "my-org"             # Routes GitHub API calls through the org's token
 
   # Project Beta — uses explicit workingDirectory (legacy approach).
-  # Per-workstream env overrides the global pushed tool env.
-  # Useful when different workstreams target repos in different GitHub orgs.
+  # Uses githubOrg to route GitHub API calls through the correct org token.
   - channelId: "C9876543210"
     channelName: "#project-beta-agent"
     defaultBranch: "feature/beta"
@@ -114,5 +105,4 @@ workstreams:
     workingDirectory: "/workspace/project-beta"
     maxTurns: 100
     maxBudgetUsd: 25.0
-    env:
-      GITHUB_TOKEN: "ghp_beta_org_token"
+    githubOrg: "other-org"
