@@ -572,11 +572,66 @@ Added explicit enforcement of the Slack 80-character channel name limit.
 
 ---
 
+## 8. Layer-Based Test Skipping in CI
+
+### Current Behavior
+
+The CI pipeline runs all test jobs (`test`, `test-media`, `test-mac`,
+`test-media-mac`) on every PR regardless of which modules were modified.
+A PR that only touches `studio/` files still triggers all 7 engine test
+groups + 3 macOS engine test groups, even though engine tests cannot be
+affected by studio-only changes.
+
+### Implementation
+
+Added layer change detection to the existing `changes` job. The repo is
+organized into six layers ordered from lowest to highest:
+
+1. `base/` (lowest)
+2. `compute/`
+3. `domain/`
+4. `engine/`
+5. `extern/`
+6. `studio/` (highest)
+
+Each test job is gated on whether its layer or any layer below it was
+modified:
+
+- **`test` / `test-mac`** (engine/utils, engine/ml — engine layer):
+  only run if `base/`, `compute/`, `domain/`, or `engine/` changed
+- **`test-media` / `test-media-mac`** (engine/audio, studio/music,
+  studio/compose — studio layer): run if any layer changed
+
+The `changes` job outputs a flag per layer (`base_changed`,
+`compute_changed`, etc.) using `git diff` against the base branch.
+`workflow_dispatch` and initial-push cases set all flags to `true` so
+the full pipeline always runs for manual triggers.
+
+The auto-resolve job's test-completeness step was updated to recognize
+layer-based skipping as an expected state (not "incomplete execution").
+
+### Preserved Behavior
+
+- `workflow_dispatch` always runs all tests
+- Docs-only skip logic unchanged
+- Non-layer test jobs (flowtree in `build`, code-policy-check, etc.)
+  unchanged
+- `test-media` tolerates `test` being skipped (dependency satisfied
+  when skipped)
+
+### Files Modified
+
+- `.github/workflows/analysis.yaml` — layer outputs in `changes` job,
+  `if` conditions on `test`, `test-media`, `test-mac`, `test-media-mac`,
+  layer-aware incompleteness check in `auto-resolve`
+
+---
+
 ## Summary of Changes by File
 
 | File | Items |
 |------|-------|
-| `.github/workflows/analysis.yaml` | 1, 3, 5 |
+| `.github/workflows/analysis.yaml` | 1, 3, 5, 8 |
 | `tools/mcp/manager/server.py` | 2, 4, 5 |
 | `tools/ci/submit-agent-job.sh` | 5 |
 | `flowtree/.../FlowTreeApiEndpoint.java` | 5 |
