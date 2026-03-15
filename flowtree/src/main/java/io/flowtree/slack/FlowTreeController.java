@@ -31,6 +31,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.util.SignalWireDeliveryProvider;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -211,6 +212,11 @@ public class FlowTreeController implements ConsoleFeatures {
         // Pass channel owner user ID to notifier for auto-inviting to new channels
         if (config.getChannelOwnerUserId() != null) {
             notifier.setChannelOwnerUserId(config.getChannelOwnerUserId());
+        }
+
+        // Pass default channel to notifier for fallback message delivery
+        if (config.getDefaultChannel() != null) {
+            notifier.setDefaultChannelId(config.getDefaultChannel());
         }
 
         // Pass config and file reference to listener for /flowtree setup persistence
@@ -505,13 +511,9 @@ public class FlowTreeController implements ConsoleFeatures {
             String serverName = entry.getKey();
             WorkstreamConfig.McpServerEntry serverEntry = entry.getValue();
 
-            // Resolve source path relative to config file directory
-            Path sourcePath;
-            if (configDir != null) {
-                sourcePath = configDir.toPath().resolve(serverEntry.getSource());
-            } else {
-                sourcePath = Path.of(serverEntry.getSource());
-            }
+            // Resolve source path relative to config file directory,
+            // falling back to the app directory for container deployments
+            Path sourcePath = resolveToolSource(serverEntry.getSource(), configDir);
 
             // Discover tool names from the source file
             List<String> tools = McpToolDiscovery.discoverToolNames(sourcePath);
@@ -579,6 +581,35 @@ public class FlowTreeController implements ConsoleFeatures {
      * <p>Must be called after {@link #startApiEndpoint()} since it requires
      * the API endpoint reference and listening port.</p>
      */
+    /**
+     * Resolves a tool source path, trying the config directory first,
+     * then falling back to the application directory. This supports
+     * container deployments where {@code /config} is a volume mount
+     * that hides files bundled into the image at {@code /app}.
+     */
+    private static Path resolveToolSource(String source, File configDir) {
+        if (configDir != null) {
+            Path configRelative = configDir.toPath().resolve(source);
+            if (Files.exists(configRelative)) {
+                return configRelative;
+            }
+        }
+
+        // Fall back to app directory (set via FLOWTREE_APP_DIR, default /app)
+        String appDir = System.getenv("FLOWTREE_APP_DIR");
+        if (appDir == null) appDir = "/app";
+        Path appRelative = Path.of(appDir).resolve(source);
+        if (Files.exists(appRelative)) {
+            return appRelative;
+        }
+
+        // Neither exists — return the config-relative path for the error message
+        if (configDir != null) {
+            return configDir.toPath().resolve(source);
+        }
+        return Path.of(source);
+    }
+
     private void registerPushedTools() {
         if (loadedConfig == null || apiEndpoint == null) return;
 
@@ -597,13 +628,10 @@ public class FlowTreeController implements ConsoleFeatures {
             String serverName = entry.getKey();
             WorkstreamConfig.PushedToolEntry toolEntry = entry.getValue();
 
-            // Resolve source path relative to config file directory
-            Path sourcePath;
-            if (configDir != null) {
-                sourcePath = configDir.toPath().resolve(toolEntry.getSource());
-            } else {
-                sourcePath = Path.of(toolEntry.getSource());
-            }
+            // Resolve source path relative to config file directory,
+            // falling back to the app directory for container deployments
+            // where /config is a volume mount that hides bundled files
+            Path sourcePath = resolveToolSource(toolEntry.getSource(), configDir);
 
             // Discover tool names from the source file
             List<String> tools = McpToolDiscovery.discoverToolNames(sourcePath);
@@ -659,8 +687,12 @@ public class FlowTreeController implements ConsoleFeatures {
      * and for programmatic job submission.
      */
     private void startApiEndpoint() {
-        // Initialize stats store
-        String dataDir = System.getProperty("user.home") + "/.flowtree";
+        // Initialize stats store — prefer the config directory (which is
+        // typically a persistent volume mount) over user.home so that stats
+        // survive container rebuilds.
+        String dataDir = configFile != null
+                ? configFile.getParentFile().getAbsolutePath()
+                : System.getProperty("user.home") + "/.flowtree";
         new File(dataDir).mkdirs();
         statsStore = new JobStatsStore(dataDir + "/stats");
         statsStore.initialize();
