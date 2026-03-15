@@ -19,7 +19,60 @@ on:
       - master
 
 jobs:
+  # ─── Change Detection ─────────────────────────────────────────────
+  # Determines whether code files were changed. If only documentation
+  # files were modified, downstream test jobs are skipped to save CI
+  # compute. workflow_dispatch always runs the full pipeline.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code_changed: ${{ steps.filter.outputs.code }}
+      started_at: ${{ steps.timing.outputs.started_at }}
+    steps:
+      - name: Record pipeline start time
+        id: timing
+        run: echo "started_at=$(date +%s000)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - id: filter
+        run: |
+          # workflow_dispatch always runs the full pipeline
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Compare against base branch for PRs, parent for pushes
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+
+          # If BASE is all zeros (initial push / new branch), run full pipeline
+          if echo "$BASE" | grep -qE '^0+$'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Initial push detected — running full pipeline"
+            exit 0
+          fi
+
+          # Look for non-doc code files (java, xml, yaml, yml, sh, py, groovy, properties)
+          CODE_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            '*.java' '*.xml' '*.yaml' '*.yml' '*.sh' '*.py' '*.groovy' '*.properties' \
+            | grep -v '^docs/' | grep -v '\.md$' || true)
+          if [ -z "$CODE_FILES" ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Docs-only change detected — skipping test pipeline"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -415,6 +468,57 @@ jobs:
           else
             echo "Duplicate code blocks (10+ identical lines) detected across different files." >> "$GITHUB_STEP_SUMMARY"
             echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ─── Checkstyle Check ──────────────────────────────────────────────
+  # Runs the default checkstyle rules (no var, no @SuppressWarnings)
+  # as a dedicated job for clear violation reporting in the PR summary.
+  checkstyle:
+    needs: [changes, build]
+    if: needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run Checkstyle
+        id: check
+        continue-on-error: true
+        run: |
+          mvn checkstyle:check -B 2>&1 | tee /tmp/checkstyle-output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Checkstyle" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outcome }}" = "success" ]; then
+            echo "No checkstyle violations detected." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Checkstyle violations detected.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            grep -E '\[ERROR\]' /tmp/checkstyle-output.txt >> "$GITHUB_STEP_SUMMARY" || echo "(no ERROR lines captured)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn checkstyle:check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   test:
@@ -819,7 +923,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [build, test, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, analysis]
+    needs: [changes, build, test, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
@@ -839,11 +943,17 @@ jobs:
       - name: Check build result
         id: build-check
         run: |
-          if [ "${{ needs.build.result }}" != "success" ]; then
+          if [ "${{ needs.changes.outputs.code_changed }}" = "false" ]; then
+            echo "build_failed=false" >> "$GITHUB_OUTPUT"
+            echo "docs_only_skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Build skipped — docs-only change"
+          elif [ "${{ needs.build.result }}" != "success" ]; then
             echo "build_failed=true" >> "$GITHUB_OUTPUT"
+            echo "docs_only_skip=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Build failed — treating as total test failure"
           else
             echo "build_failed=false" >> "$GITHUB_OUTPUT"
+            echo "docs_only_skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine branch context
@@ -895,6 +1005,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve build failure"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1085,6 +1196,7 @@ jobs:
           PROTECT_TEST_FILES: "true"
           FAILING_TEST_CLASSES: ${{ steps.test-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1123,6 +1235,7 @@ jobs:
           PROTECT_TEST_FILES: "true"
           FAILING_TEST_CLASSES: ${{ steps.crash-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve JVM crash in test execution"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1149,6 +1262,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1179,6 +1293,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1199,6 +1314,7 @@ jobs:
           AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
+          CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
         run: |
           ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
 
@@ -1227,6 +1343,7 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1237,7 +1354,7 @@ jobs:
       # are typically plan documents for a workstream.
 
       - name: Build prompt (docs-only verify)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true'
+        if: (steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
@@ -1247,12 +1364,13 @@ jobs:
           ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (docs-only verify)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true' && inputs.auto_resolve != 'false'
+        if: ((steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')) && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Verify docs changes"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1263,7 +1381,7 @@ jobs:
       # documentation, and consistency with existing patterns.
 
       - name: Build prompt (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
+        if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
@@ -1272,12 +1390,13 @@ jobs:
           ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true' && inputs.auto_resolve != 'false'
+        if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Review branch changes"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -1287,7 +1406,10 @@ jobs:
         run: |
           echo "## Auto-Resolve" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.build-check.outputs.build_failed }}" = "true" ]; then
+          if [ "${{ steps.build-check.outputs.docs_only_skip }}" = "true" ]; then
+            echo "**Docs-only change** — test pipeline was skipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to verify docs changes." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.build-check.outputs.build_failed }}" = "true" ]; then
             echo "**Build failed** — no tests were able to run." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was submitted to fix the build." >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
