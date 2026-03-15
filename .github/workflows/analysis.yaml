@@ -45,28 +45,38 @@ jobs:
           fetch-depth: 0
       - id: filter
         run: |
-          # workflow_dispatch always runs the full pipeline
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          set_all_flags_true() {
             echo "code=true" >> "$GITHUB_OUTPUT"
             for layer in base compute domain engine extern studio; do
               echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
             done
+          }
+
+          # workflow_dispatch always runs the full pipeline
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            set_all_flags_true
             exit 0
           fi
 
-          # Compare against base branch for PRs, parent for pushes
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-          else
-            BASE="${{ github.event.before }}"
+          # Push to master: ALL tests must run unconditionally.
+          # Layer-based skipping and docs-only skipping apply only to PRs,
+          # where we are evaluating whether a feature branch warrants
+          # running specific test groups. On master, every push (whether a
+          # direct push or a merged PR) must execute the complete test
+          # suite to guarantee full coverage on the default branch.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            set_all_flags_true
+            echo "::notice::Push to master — running full pipeline (no layer skipping)"
+            exit 0
           fi
+
+          # ── Below here: pull_request events only ──
+
+          BASE="${{ github.event.pull_request.base.sha }}"
 
           # If BASE is all zeros (initial push / new branch), run full pipeline
           if echo "$BASE" | grep -qE '^0+$'; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            for layer in base compute domain engine extern studio; do
-              echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
-            done
+            set_all_flags_true
             echo "::notice::Initial push detected — running full pipeline"
             exit 0
           fi
@@ -82,7 +92,7 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"
           fi
 
-          # Layer change detection for selective test skipping.
+          # Layer change detection for selective test skipping (PR only).
           # Each layer flag indicates whether files in that directory were
           # modified. Test jobs use these flags to skip when their layer
           # (and all layers below it) are unmodified.
