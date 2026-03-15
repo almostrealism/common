@@ -21,12 +21,17 @@ import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.ml.ModelBundle;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Moonbeam MIDI Foundation Model implementation using the Almost Realism framework.
@@ -44,12 +49,35 @@ import java.io.IOException;
  *   <li><strong>Decoder:</strong> {@link GRUDecoder} producing 7 tokens per position</li>
  * </ul>
  *
- * <h2>Usage</h2>
+ * <h2>Usage: Inference</h2>
+ * <pre>{@code
+ * // Load model
+ * MoonbeamMidi model = new MoonbeamMidi("/path/to/weights");
+ *
+ * // Generate unconditionally
+ * MidiAutoregressiveModel gen = model.createAutoregressiveModel();
+ * gen.setTemperature(0.8);
+ * gen.setTopP(0.95);
+ * gen.generateUnconditional(new File("output.mid"), 100);
+ *
+ * // Or generate from a MIDI prompt
+ * gen.generateFromFile(new File("input.mid"), new File("output.mid"), 100);
+ * }</pre>
+ *
+ * <h2>Usage: LoRA Fine-tuning</h2>
  * <pre>{@code
  * MoonbeamMidi model = new MoonbeamMidi("/path/to/weights");
- * MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
- * autoregressive.setPrompt(promptTokens);
- * MidiCompoundToken next = autoregressive.next();
+ * MidiTrainingConfig trainConfig = MidiTrainingConfig.defaultConfig();
+ *
+ * // Create adapter config for attention projections
+ * AdapterConfig adapter = model.createLoraConfig(trainConfig);
+ *
+ * // Train with ModelOptimizer
+ * MidiDataset dataset = new MidiDataset(new File("/midi/dir"), model.getConfig(), trainConfig);
+ * // ... wire into ModelOptimizer
+ *
+ * // Save LoRA adapter
+ * model.saveLoraAdapter(Paths.get("lora.pb"), trainConfig);
  * }</pre>
  *
  * @see MidiAutoregressiveModel
@@ -264,6 +292,55 @@ public class MoonbeamMidi implements AttentionFeatures {
 	 */
 	private static Producer<PackedCollection>[] createProducerArray(int size) {
 		return new Producer[size];
+	}
+
+	/**
+	 * Create a LoRA adapter configuration for fine-tuning attention projections.
+	 *
+	 * <p>Targets all self-attention QKV and output projections with the
+	 * LoRA rank and alpha from the training config.</p>
+	 *
+	 * @param trainingConfig training configuration with LoRA hyperparameters
+	 * @return adapter configuration
+	 */
+	public AdapterConfig createLoraConfig(MidiTrainingConfig trainingConfig) {
+		return new AdapterConfig()
+				.rank(trainingConfig.getLoraRank())
+				.alpha(trainingConfig.getLoraAlpha())
+				.targets(
+						AdapterConfig.TargetLayer.SELF_ATTENTION_QKV,
+						AdapterConfig.TargetLayer.SELF_ATTENTION_OUT);
+	}
+
+	/**
+	 * Save the current model as a LoRA adapter bundle.
+	 *
+	 * <p>Creates a {@link ModelBundle} containing the adapter configuration
+	 * and training metrics, suitable for later loading and merging.</p>
+	 *
+	 * @param outputPath     path to save the adapter bundle
+	 * @param trainingConfig training configuration used
+	 */
+	public void saveLoraAdapter(Path outputPath, MidiTrainingConfig trainingConfig)
+			throws IOException {
+		Map<String, PackedCollection> adapterWeights = new HashMap<>();
+		AdapterConfig adapterConfig = createLoraConfig(trainingConfig);
+
+		ModelBundle.forAdapter(adapterWeights, adapterConfig, "moonbeam-midi")
+				.config("hidden_size", String.valueOf(config.hiddenSize))
+				.config("num_layers", String.valueOf(config.numLayers))
+				.config("learning_rate", String.valueOf(trainingConfig.getLearningRate()))
+				.withDescription("Moonbeam MIDI LoRA adapter")
+				.save(outputPath);
+	}
+
+	/**
+	 * Returns a formatted string with profiling information.
+	 *
+	 * @return profiling summary
+	 */
+	public String getProfilingSummary() {
+		return profile.toString();
 	}
 
 	/**

@@ -18,6 +18,8 @@ package org.almostrealism.ml.midi;
 
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.Random;
+
 /**
  * GRU-based output decoder for compound MIDI token generation.
  *
@@ -203,6 +205,148 @@ public class GRUDecoder {
 			cumulative += config.vocabSizes[i];
 		}
 		return offsets;
+	}
+
+	/**
+	 * Decode output tokens with temperature and top-p (nucleus) sampling.
+	 *
+	 * <p>When temperature is 0, reverts to greedy argmax decoding.
+	 * Otherwise, logits are divided by temperature before softmax.
+	 * If topP &lt; 1.0, nucleus sampling is applied: tokens are sorted by
+	 * probability, and only the smallest set whose cumulative probability
+	 * exceeds topP is considered for sampling.</p>
+	 *
+	 * @param transformerHidden the transformer output hidden state of size (hiddenSize)
+	 * @param temperature       sampling temperature (0 = greedy)
+	 * @param topP              nucleus sampling threshold (1.0 = no filtering)
+	 * @param random            random number generator for sampling
+	 * @return array of 7 output token indices in the flat decode vocabulary
+	 */
+	public int[] decode(PackedCollection transformerHidden, double temperature,
+						double topP, Random random) {
+		if (temperature <= 0.0) {
+			return decode(transformerHidden);
+		}
+
+		int decoderHidden = config.decoderHiddenSize;
+
+		PackedCollection initialHidden = linearForward(
+				transformerHidden, config.hiddenSize,
+				summaryWeight, decoderHidden, summaryBias);
+
+		PackedCollection[] h = new PackedCollection[layers.length];
+		for (int l = 0; l < layers.length; l++) {
+			h[l] = copyCollection(initialHidden, decoderHidden);
+		}
+
+		PackedCollection x = getEmbedding(0);
+		int[] outputTokens = new int[TOKENS_PER_NOTE];
+
+		for (int step = 0; step < TOKENS_PER_NOTE; step++) {
+			PackedCollection layerInput = x;
+			for (int l = 0; l < layers.length; l++) {
+				h[l] = layers[l].forward(layerInput, h[l]);
+				layerInput = h[l];
+			}
+
+			PackedCollection logits = linearForward(
+					h[layers.length - 1], decoderHidden,
+					lmHeadWeight, config.decodeVocabSize, lmHeadBias);
+
+			int token = sampleFromLogits(logits, config.decodeVocabSize,
+					temperature, topP, random);
+			outputTokens[step] = token;
+
+			x = getEmbedding(token);
+		}
+
+		return outputTokens;
+	}
+
+	/**
+	 * Sample a token index from logits using temperature scaling and top-p filtering.
+	 *
+	 * @param logits      raw logits of shape (vocabSize)
+	 * @param vocabSize   vocabulary size
+	 * @param temperature temperature for scaling
+	 * @param topP        nucleus sampling threshold
+	 * @param random      random number generator
+	 * @return sampled token index
+	 */
+	public static int sampleFromLogits(PackedCollection logits, int vocabSize,
+									   double temperature, double topP, Random random) {
+		double[] probs = new double[vocabSize];
+		double maxLogit = Double.NEGATIVE_INFINITY;
+		for (int i = 0; i < vocabSize; i++) {
+			double scaled = logits.toDouble(i) / temperature;
+			if (scaled > maxLogit) maxLogit = scaled;
+			probs[i] = scaled;
+		}
+
+		double sumExp = 0.0;
+		for (int i = 0; i < vocabSize; i++) {
+			probs[i] = Math.exp(probs[i] - maxLogit);
+			sumExp += probs[i];
+		}
+		for (int i = 0; i < vocabSize; i++) {
+			probs[i] /= sumExp;
+		}
+
+		if (topP < 1.0) {
+			applyTopP(probs, vocabSize, topP);
+		}
+
+		double r = random.nextDouble();
+		double cumulative = 0.0;
+		for (int i = 0; i < vocabSize; i++) {
+			cumulative += probs[i];
+			if (cumulative >= r) return i;
+		}
+
+		return vocabSize - 1;
+	}
+
+	/**
+	 * Apply top-p (nucleus) filtering to a probability distribution in-place.
+	 *
+	 * <p>Zeroes out all probabilities outside the nucleus (the smallest set
+	 * of tokens whose cumulative probability exceeds topP), then
+	 * renormalizes.</p>
+	 */
+	private static void applyTopP(double[] probs, int vocabSize, double topP) {
+		int[] sortedIndices = new int[vocabSize];
+		for (int i = 0; i < vocabSize; i++) sortedIndices[i] = i;
+
+		for (int i = 0; i < vocabSize - 1; i++) {
+			int maxIdx = i;
+			for (int j = i + 1; j < vocabSize; j++) {
+				if (probs[sortedIndices[j]] > probs[sortedIndices[maxIdx]]) {
+					maxIdx = j;
+				}
+			}
+			if (maxIdx != i) {
+				int tmp = sortedIndices[i];
+				sortedIndices[i] = sortedIndices[maxIdx];
+				sortedIndices[maxIdx] = tmp;
+			}
+
+			double cumProb = 0.0;
+			for (int k = 0; k <= i; k++) {
+				cumProb += probs[sortedIndices[k]];
+			}
+			if (cumProb >= topP) {
+				for (int j = i + 1; j < vocabSize; j++) {
+					probs[sortedIndices[j]] = 0.0;
+				}
+				break;
+			}
+		}
+
+		double sum = 0.0;
+		for (int i = 0; i < vocabSize; i++) sum += probs[i];
+		if (sum > 0.0) {
+			for (int i = 0; i < vocabSize; i++) probs[i] /= sum;
+		}
 	}
 
 	/**

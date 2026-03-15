@@ -19,8 +19,12 @@ package org.almostrealism.ml.midi;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
+import javax.sound.midi.InvalidMidiDataException;
 
 /**
  * Autoregressive generation model for compound MIDI tokens.
@@ -81,20 +85,22 @@ public class MidiAutoregressiveModel {
 	/**
 	 * Temperature for sampling (0 = greedy).
 	 *
-	 * <p><strong>Note:</strong> Sampling is not yet implemented (planned for
-	 * Milestone 8). The decoder currently always uses greedy argmax regardless
-	 * of this setting.</p>
+	 * <p>When set to 0, the decoder uses greedy argmax. Higher values
+	 * produce more random output. Typical values are 0.7-1.0.</p>
 	 */
 	private double temperature;
 
 	/**
 	 * Top-p (nucleus) sampling threshold.
 	 *
-	 * <p><strong>Note:</strong> Sampling is not yet implemented (planned for
-	 * Milestone 8). The decoder currently always uses greedy argmax regardless
-	 * of this setting.</p>
+	 * <p>When set to 1.0, no filtering is applied. Lower values restrict
+	 * sampling to the most probable tokens whose cumulative probability
+	 * exceeds topP. Typical values are 0.9-0.95.</p>
 	 */
 	private double topP;
+
+	/** Random number generator for sampling. */
+	private Random random;
 
 	/**
 	 * Create a MidiAutoregressiveModel from a MoonbeamMidi model.
@@ -111,6 +117,7 @@ public class MidiAutoregressiveModel {
 		this.currentToken = MidiCompoundToken.sos();
 		this.temperature = 0.0;
 		this.topP = 1.0;
+		this.random = new Random();
 	}
 
 	/**
@@ -162,7 +169,7 @@ public class MidiAutoregressiveModel {
 		}
 
 		PackedCollection hiddenVec = extractHiddenVector(lastHidden);
-		int[] decodeTokens = decoder.decode(hiddenVec);
+		int[] decodeTokens = decoder.decode(hiddenVec, temperature, topP, random);
 		MidiCompoundToken generated = decodeToCompoundToken(decodeTokens);
 
 		processToken(generated);
@@ -198,9 +205,9 @@ public class MidiAutoregressiveModel {
 	/**
 	 * Set the sampling temperature.
 	 *
-	 * <p><strong>Note:</strong> Sampling is not yet implemented (planned for
-	 * Milestone 8). The decoder currently always uses greedy argmax regardless
-	 * of this setting.</p>
+	 * <p>When temperature is 0, the decoder uses greedy argmax. Higher values
+	 * produce more diverse output. Typical values are 0.7-1.0 for creative
+	 * generation.</p>
 	 *
 	 * @param temperature 0.0 for greedy, higher for more randomness
 	 */
@@ -211,14 +218,24 @@ public class MidiAutoregressiveModel {
 	/**
 	 * Set the top-p (nucleus) sampling threshold.
 	 *
-	 * <p><strong>Note:</strong> Sampling is not yet implemented (planned for
-	 * Milestone 8). The decoder currently always uses greedy argmax regardless
-	 * of this setting.</p>
+	 * <p>When topP is 1.0, all tokens are eligible. Lower values restrict
+	 * sampling to the most probable tokens whose cumulative probability
+	 * exceeds topP. Common values are 0.9 for focused output or 0.95
+	 * for more variety.</p>
 	 *
 	 * @param topP cumulative probability threshold (0.0 to 1.0)
 	 */
 	public void setTopP(double topP) {
 		this.topP = topP;
+	}
+
+	/**
+	 * Set the random seed for reproducible sampling.
+	 *
+	 * @param seed the random seed
+	 */
+	public void setSeed(long seed) {
+		this.random = new Random(seed);
 	}
 
 	/** Returns the current step in the sequence. */
@@ -232,6 +249,56 @@ public class MidiAutoregressiveModel {
 
 	/** Returns the top-p setting. */
 	public double getTopP() { return topP; }
+
+	/**
+	 * Generate tokens from an input MIDI file and write the result.
+	 *
+	 * <p>Reads a MIDI file as prompt, generates additional tokens, and
+	 * writes the combined output to a new MIDI file.</p>
+	 *
+	 * @param inputFile  the input MIDI file (prompt)
+	 * @param outputFile the output MIDI file
+	 * @param maxTokens  maximum number of tokens to generate
+	 * @throws IOException              if files cannot be read or written
+	 * @throws InvalidMidiDataException if MIDI data is invalid
+	 */
+	public void generateFromFile(File inputFile, File outputFile, int maxTokens)
+			throws IOException, InvalidMidiDataException {
+		MidiFileReader reader = new MidiFileReader();
+		MidiTokenizer tokenizer = new MidiTokenizer();
+
+		List<MidiNoteEvent> inputEvents = reader.read(inputFile);
+		List<MidiCompoundToken> inputTokens = tokenizer.tokenize(inputEvents);
+
+		setPrompt(inputTokens.toArray(new MidiCompoundToken[0]));
+		List<MidiCompoundToken> generated = generate(maxTokens);
+
+		List<MidiCompoundToken> allTokens = new ArrayList<>();
+		allTokens.addAll(inputTokens);
+		allTokens.addAll(generated);
+
+		List<MidiNoteEvent> outputEvents = tokenizer.detokenize(allTokens);
+		reader.write(outputEvents, outputFile);
+	}
+
+	/**
+	 * Generate tokens unconditionally (from SOS token only) and write the result.
+	 *
+	 * @param outputFile the output MIDI file
+	 * @param maxTokens  maximum number of tokens to generate
+	 * @throws IOException              if the file cannot be written
+	 * @throws InvalidMidiDataException if MIDI data is invalid
+	 */
+	public void generateUnconditional(File outputFile, int maxTokens)
+			throws IOException, InvalidMidiDataException {
+		MidiFileReader reader = new MidiFileReader();
+		MidiTokenizer tokenizer = new MidiTokenizer();
+
+		List<MidiCompoundToken> generated = generate(maxTokens);
+
+		List<MidiNoteEvent> outputEvents = tokenizer.detokenize(generated);
+		reader.write(outputEvents, outputFile);
+	}
 
 	/**
 	 * Process a token through the model: update positions and prepare for forward pass.
