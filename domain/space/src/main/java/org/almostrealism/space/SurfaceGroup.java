@@ -145,9 +145,74 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		return color;
 	}
 	
-	/** Returns null. */
+	/**
+	 * Computes the surface normal at the given point by identifying which child
+	 * surface contains the point and delegating to that child's
+	 * {@link #getNormalAt(Producer)} method.
+	 *
+	 * <p>The correct child is identified by computing the geometric surface
+	 * distance from the point to each child. For {@link AbstractSurface}
+	 * children, this is {@code |distance_from_center - size|}; for other
+	 * children the Euclidean distance to the child's origin is used. The
+	 * child with the smallest surface distance is selected.</p>
+	 *
+	 * @param point a producer for the 3D point at which to compute the normal
+	 * @return a producer for the surface normal vector, or null if the group has no children
+	 */
 	@Override
-	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) { return null; } // TODO?
+	public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) {
+		if (surfaces.isEmpty()) return null;
+
+		TransformMatrix m = getTransform(true);
+		Producer<PackedCollection> p = point;
+		if (m != null) {
+			p = m.getInverse().transform(point, TransformMatrix.TRANSFORM_AS_LOCATION);
+		}
+
+		Producer<PackedCollection> fp = p;
+
+		return () -> args -> {
+			PackedCollection pointVal = fp.get().evaluate(args);
+			if (pointVal == null) return null;
+
+			double px = pointVal.toDouble(0);
+			double py = pointVal.toDouble(1);
+			double pz = pointVal.toDouble(2);
+
+			double bestDist = Double.MAX_VALUE;
+			PackedCollection bestNormal = null;
+
+			for (T child : surfaces) {
+				Producer<PackedCollection> childNormal = child.getNormalAt(fp);
+				if (childNormal == null) continue;
+
+				PackedCollection normalVal = childNormal.get().evaluate(args);
+				if (normalVal == null) continue;
+
+				double surfaceDist;
+
+				if (child instanceof AbstractSurface) {
+					AbstractSurface as = (AbstractSurface) child;
+					Vector loc = as.getLocation();
+					double size = as.getSize();
+					double dx = px - (loc != null ? loc.getX() : 0);
+					double dy = py - (loc != null ? loc.getY() : 0);
+					double dz = pz - (loc != null ? loc.getZ() : 0);
+					double distFromCenter = Math.sqrt(dx * dx + dy * dy + dz * dz);
+					surfaceDist = Math.abs(distFromCenter - size);
+				} else {
+					surfaceDist = Math.sqrt(px * px + py * py + pz * pz);
+				}
+
+				if (surfaceDist < bestDist) {
+					bestDist = surfaceDist;
+					bestNormal = normalVal;
+				}
+			}
+
+			return bestNormal;
+		};
+	}
 
 	@Override
 	public Mesh triangulate() {
