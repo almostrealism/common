@@ -81,7 +81,7 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	 *                          download URLs and tool names
 	 */
 	public void ensurePushedTools(String pushedToolsConfig) {
-		Map<String, List<String>> pushedTools = parsePushedServerNames(pushedToolsConfig);
+		Map<String, List<String>> pushedTools = parseAllServerNames(pushedToolsConfig);
 		if (pushedTools.isEmpty()) return;
 
 		String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
@@ -181,8 +181,43 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	}
 
 	/**
+	 * Parses the pushed tools config JSON to extract all server names,
+	 * including those with empty tool lists. Used by {@link #ensurePushedTools}
+	 * to ensure files are downloaded regardless of whether tool discovery
+	 * found tool names on the controller.
+	 *
+	 * @param pushedToolsConfig the pushed tools configuration JSON
+	 * @return map of server name to tool name list, empty if null or invalid
+	 */
+	private Map<String, List<String>> parseAllServerNames(String pushedToolsConfig) {
+		Map<String, List<String>> result = new LinkedHashMap<>();
+		if (pushedToolsConfig == null || pushedToolsConfig.isEmpty()) return result;
+
+		try {
+			JsonNode root = objectMapper.readTree(pushedToolsConfig);
+			Iterator<String> fieldNames = root.fieldNames();
+			while (fieldNames.hasNext()) {
+				String serverName = fieldNames.next();
+				JsonNode serverNode = root.get(serverName);
+				List<String> tools = new ArrayList<>();
+				JsonNode toolsNode = serverNode.get("tools");
+				if (toolsNode != null && toolsNode.isArray()) {
+					for (JsonNode toolNode : toolsNode) {
+						tools.add(toolNode.asText());
+					}
+				}
+				result.put(serverName, tools);
+			}
+		} catch (IOException e) {
+			warn("Failed to parse pushed tools config: " + e.getMessage());
+		}
+
+		return result;
+	}
+
+	/**
 	 * Parses the pushed tools config JSON to extract server names and
-	 * their tool lists using Jackson.
+	 * their tool lists using Jackson. Servers with empty tool lists are excluded.
 	 *
 	 * @param pushedToolsConfig the pushed tools configuration JSON
 	 * @return map of server name to tool name list, empty if null or invalid

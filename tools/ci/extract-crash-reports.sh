@@ -6,18 +6,22 @@
 # surefire-reports directories.
 #
 # Usage:
-#   extract-crash-reports.sh /tmp/mvn-utils-test.log /tmp/mvn-ml-test.log ...
+#   extract-crash-reports.sh <log-file> [log-file ...]
+#
+# Environment:
+#   CRASH_REPORT_DIR - output directory (default: /tmp/crash-reports)
 #
 # Output:
-#   /tmp/crash-reports/crash-summary.txt   - consolidated crash info
-#   /tmp/crash-reports/dumpstreams/         - collected .dumpstream files
+#   $CRASH_REPORT_DIR/crash-summary.txt   - consolidated crash info
+#   $CRASH_REPORT_DIR/dumpstreams/         - collected .dumpstream files
 #
 # Exit codes:
 #   0 - always succeeds (missing logs are skipped)
 
 set -euo pipefail
 
-OUTPUT_DIR="/tmp/crash-reports"
+# Output directory can be overridden via CRASH_REPORT_DIR env var
+OUTPUT_DIR="${CRASH_REPORT_DIR:-/tmp/crash-reports}"
 SUMMARY_FILE="${OUTPUT_DIR}/crash-summary.txt"
 DUMPSTREAM_DIR="${OUTPUT_DIR}/dumpstreams"
 
