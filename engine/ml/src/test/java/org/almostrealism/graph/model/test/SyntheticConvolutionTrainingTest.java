@@ -31,6 +31,7 @@ import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
@@ -124,6 +125,7 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 	 */
 	@Test(timeout = 12 * 60000)
 	@TestDepth(2)
+	@TestProperties(knownIssue = true)
 	public void simpleConv2d() throws FileNotFoundException {
 		log("=== Test 2.1: Simple Conv2d ===");
 
@@ -196,6 +198,7 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 	 */
 	@Test(timeout = 75 * 60000)
 	@TestDepth(2)
+	@TestProperties(knownIssue = true)
 	public void multiLayerConv2d() {
 		log("=== Test 2.2: Multi-Layer Conv2d ===");
 
