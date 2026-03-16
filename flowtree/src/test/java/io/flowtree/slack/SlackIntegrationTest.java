@@ -1571,4 +1571,87 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(2, reloaded.getWorkstreams().size());
     }
 
+    /**
+     * Verifies the full lifecycle of the accept-automated-jobs controller
+     * config: default is true, POST with {@code {"accept":false}} disables
+     * it, GET reflects the change, and POST with {@code {"accept":true}}
+     * re-enables it.
+     */
+    @Test(timeout = 10000)
+    public void testAcceptAutomatedJobsConfig() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String configUrl = "http://localhost:" + port
+                    + "/api/config/accept-automated-jobs";
+
+            // Default should be true
+            assertTrue("Default should accept automated jobs",
+                    endpoint.isAcceptAutomatedJobs());
+
+            // GET should reflect true
+            HttpURLConnection getConn = (HttpURLConnection)
+                    new URL(configUrl).openConnection();
+            getConn.setRequestMethod("GET");
+            assertEquals(200, getConn.getResponseCode());
+            String getResponse = new String(
+                    getConn.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue("GET should report true",
+                    getResponse.contains("\"acceptAutomatedJobs\":true"));
+
+            // POST false (unquoted boolean, as Python sends)
+            HttpURLConnection postConn = (HttpURLConnection)
+                    new URL(configUrl).openConnection();
+            postConn.setRequestMethod("POST");
+            postConn.setDoOutput(true);
+            postConn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = postConn.getOutputStream()) {
+                os.write("{\"accept\":false}".getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(200, postConn.getResponseCode());
+            String postResponse = new String(
+                    postConn.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue("POST response should confirm false",
+                    postResponse.contains("\"acceptAutomatedJobs\":false"));
+            assertFalse("Endpoint field should now be false",
+                    endpoint.isAcceptAutomatedJobs());
+
+            // GET should now reflect false
+            HttpURLConnection getConn2 = (HttpURLConnection)
+                    new URL(configUrl).openConnection();
+            getConn2.setRequestMethod("GET");
+            assertEquals(200, getConn2.getResponseCode());
+            String getResponse2 = new String(
+                    getConn2.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue("GET should report false after update",
+                    getResponse2.contains("\"acceptAutomatedJobs\":false"));
+
+            // POST true to re-enable
+            HttpURLConnection postConn2 = (HttpURLConnection)
+                    new URL(configUrl).openConnection();
+            postConn2.setRequestMethod("POST");
+            postConn2.setDoOutput(true);
+            postConn2.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = postConn2.getOutputStream()) {
+                os.write("{\"accept\":true}".getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(200, postConn2.getResponseCode());
+            String postResponse2 = new String(
+                    postConn2.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue("POST response should confirm true",
+                    postResponse2.contains("\"acceptAutomatedJobs\":true"));
+            assertTrue("Endpoint field should now be true",
+                    endpoint.isAcceptAutomatedJobs());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
 }
