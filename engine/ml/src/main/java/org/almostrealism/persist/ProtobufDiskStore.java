@@ -182,8 +182,9 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	@Override
 	public void put(String id, T record, PackedCollection vector) {
 		put(id, record);
-		ensureHnswIndex(vector.getMemLength());
-		hnswIndex.insert(id, vector);
+		double[] vectorData = SimilarityMetric.toDoubleArray(vector);
+		ensureHnswIndex(vectorData.length);
+		hnswIndex.insert(id, vectorData);
 	}
 
 	@Override
@@ -192,7 +193,8 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			return new ArrayList<>();
 		}
 
-		List<HnswIndex.IdScore> candidates = hnswIndex.search(queryVector, topK);
+		double[] queryData = SimilarityMetric.toDoubleArray(queryVector);
+		List<HnswIndex.IdScore> candidates = hnswIndex.search(queryData, topK);
 		List<SearchResult<T>> results = new ArrayList<>(candidates.size());
 
 		for (HnswIndex.IdScore candidate : candidates) {

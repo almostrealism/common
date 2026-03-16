@@ -145,16 +145,16 @@ public class HnswIndex {
 	 * <p>If a node with the same ID already exists, it is replaced.</p>
 	 *
 	 * @param id     unique identifier
-	 * @param vector {@link PackedCollection} vector of the configured dimension
+	 * @param vector vector data of the configured dimension
 	 * @throws IllegalArgumentException if vector dimension does not match
 	 */
-	public void insert(String id, PackedCollection vector) {
-		if (vector.getMemLength() != dimension) {
+	public void insert(String id, double[] vector) {
+		if (vector.length != dimension) {
 			throw new IllegalArgumentException(
-					"Expected dimension " + dimension + " but got " + vector.getMemLength());
+					"Expected dimension " + dimension + " but got " + vector.length);
 		}
 
-		double[] normalizedData = metric.normalizeToArray(vector);
+		double[] normalizedData = normalizeArray(vector);
 
 		Node existing = nodes.get(id);
 		if (existing != null) {
@@ -222,21 +222,21 @@ public class HnswIndex {
 	/**
 	 * Search the index for the top-K most similar vectors.
 	 *
-	 * @param queryVector query vector (must match configured dimension)
+	 * @param queryVector query vector data (must match configured dimension)
 	 * @param topK        number of results to return
 	 * @return list of (id, similarity) pairs ordered by descending similarity
 	 */
-	public List<IdScore> search(PackedCollection queryVector, int topK) {
+	public List<IdScore> search(double[] queryVector, int topK) {
 		if (entryPointId == null || size() == 0) {
 			return new ArrayList<>();
 		}
 
-		if (queryVector.getMemLength() != dimension) {
+		if (queryVector.length != dimension) {
 			throw new IllegalArgumentException(
-					"Expected dimension " + dimension + " but got " + queryVector.getMemLength());
+					"Expected dimension " + dimension + " but got " + queryVector.length);
 		}
 
-		double[] queryData = metric.normalizeToArray(queryVector);
+		double[] queryData = normalizeArray(queryVector);
 
 		String currentId = entryPointId;
 
@@ -385,6 +385,15 @@ public class HnswIndex {
 			log.warning("Failed to load HNSW index, starting fresh: " + e.getMessage());
 			return null;
 		}
+	}
+
+	/**
+	 * Normalize a raw vector using the configured similarity metric
+	 * without allocating any {@link PackedCollection}. Works entirely
+	 * in {@code double[]} space.
+	 */
+	private double[] normalizeArray(double[] vector) {
+		return metric.normalizeArrayOnly(vector);
 	}
 
 	/**
