@@ -75,13 +75,6 @@ import java.util.function.Consumer;
  * @author Michael Murray
  */
 public class Qwen3 implements AttentionFeatures {
-	static {
-		// Disable off-heap memory allocation for simplicity
-		System.setProperty("AR_HARDWARE_OFF_HEAP_SIZE", "0");
-		// Suppress warnings for cleaner output
-		System.setProperty("AR_EXPRESSION_WARNINGS", "disabled");
-		System.setProperty("AR_GRAPH_PROPAGATION_WARNINGS", "disabled");
-	}
 
 	private Qwen3Config config;
 	private StateDictionary stateDict;
@@ -144,6 +137,11 @@ public class Qwen3 implements AttentionFeatures {
 	 * @throws IOException If weight or tokenizer loading fails
 	 */
 	public Qwen3(String weightsDirectory, String tokenizerPath, Qwen3Config config) throws IOException {
+		// Configure hardware settings before any PackedCollection allocations
+		System.setProperty("AR_HARDWARE_OFF_HEAP_SIZE", "0");
+		System.setProperty("AR_EXPRESSION_WARNINGS", "disabled");
+		System.setProperty("AR_GRAPH_PROPAGATION_WARNINGS", "disabled");
+
 		long start = System.currentTimeMillis();
 
 		// Load state dictionary
