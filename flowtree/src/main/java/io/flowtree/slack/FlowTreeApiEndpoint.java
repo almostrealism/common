@@ -1062,8 +1062,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String token = resolveGithubToken(org);
         if (token == null) {
             String detail = (org != null && !org.isEmpty())
-                    ? "No GitHub token configured for org '" + org + "'"
-                    : "No GitHub org token available (pass ?org= or configure githubOrgs in workstreams.yaml)";
+                    ? "No GitHub token configured for org '" + org
+                      + "' (configured orgs: " + githubOrgTokens.keySet() + ")"
+                    : "No GitHub org token available (configured orgs: "
+                      + githubOrgTokens.keySet()
+                      + "; pass ?org= or configure githubOrgs in workstreams.yaml)";
+            warn("GitHub proxy token resolution failed: " + detail);
             return errorResponse(detail);
         }
 
@@ -1292,13 +1296,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return the resolved token, or null if no token is available
      */
     private String resolveGithubToken(String org) {
-        if (org != null && !org.isEmpty() && githubOrgTokens.containsKey(org)) {
-            return githubOrgTokens.get(org);
+        if (org != null && !org.isEmpty()) {
+            // Case-insensitive lookup — GitHub org names are case-insensitive
+            for (Map.Entry<String, String> entry : githubOrgTokens.entrySet()) {
+                if (entry.getKey().equalsIgnoreCase(org)) {
+                    return entry.getValue();
+                }
+            }
         }
 
-        // When no org is specified but there is exactly one configured,
-        // use it as the default to avoid requiring callers to always pass org
-        if ((org == null || org.isEmpty()) && githubOrgTokens.size() == 1) {
+        // When there is exactly one configured org, use it as the default
+        if (githubOrgTokens.size() == 1) {
             return githubOrgTokens.values().iterator().next();
         }
 

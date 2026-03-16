@@ -588,6 +588,17 @@ def _github_proxy_request(method: str, path: str, payload: dict = None,
             msg = gh_body.get("message", "")
             return {"ok": False, "error": f"GitHub returned HTTP {gh_status}: {msg}"}
         return {"ok": False, "error": f"GitHub returned HTTP {gh_status}"}
+    except HTTPError as e:
+        # The controller returned an error response (e.g., 400 Bad Request
+        # for missing org token) — read and report the error body
+        try:
+            err_body = e.read().decode("utf-8")
+            err_json = json.loads(err_body)
+            msg = err_json.get("error", f"Controller returned HTTP {e.code}")
+        except Exception:
+            msg = f"Controller returned HTTP {e.code}"
+        print(f"ar-manager: controller proxy error: {msg}", file=sys.stderr)
+        return {"ok": False, "error": msg}
     except (URLError, OSError, TimeoutError) as e:
         print(f"ar-manager: controller proxy unreachable: {e}", file=sys.stderr)
         return None
@@ -1811,8 +1822,9 @@ def memory_branch_context(
                 )
                 if compare.get("ok") is False:
                     commit_error = compare.get("error", "GitHub API returned an error")
-                    logger.warning("Failed to fetch commits for %s...%s: %s",
-                                   base, effective_branch, commit_error)
+                    logging.getLogger("ar-manager").warning(
+                        "Failed to fetch commits for %s...%s: %s",
+                        base, effective_branch, commit_error)
                 elif "commits" in compare:
                     commits = []
                     for c in compare.get("commits", [])[:commit_limit]:
@@ -1828,8 +1840,9 @@ def memory_branch_context(
                     commit_error = "GitHub Compare API returned no commits field"
             except Exception as exc:
                 commit_error = str(exc)
-                logger.warning("Failed to fetch commits for %s...%s: %s",
-                               base, effective_branch, exc)
+                logging.getLogger("ar-manager").warning(
+                    "Failed to fetch commits for %s...%s: %s",
+                    base, effective_branch, exc)
         else:
             commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
 
