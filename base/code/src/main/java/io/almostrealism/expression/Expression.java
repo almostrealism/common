@@ -794,6 +794,32 @@ public abstract class Expression<T> implements
 	}
 
 	/**
+	 * Returns {@link Long Long.class} if this expression is typed as {@link Integer}
+	 * but its bounds analysis indicates values that can exceed the 32-bit signed
+	 * integer range. Otherwise returns this expression's own type.
+	 *
+	 * <p>This is useful when hoisting expressions into local variable declarations —
+	 * an expression tree may type a kernel index product as {@link Integer}, but the
+	 * actual runtime value can overflow {@code jint} for large kernel sizes.</p>
+	 *
+	 * @return {@link Long Long.class} if promotion is needed, otherwise this
+	 *         expression's own type
+	 */
+	public Class<?> promoteIfOverflows() {
+		Class<?> type = getType();
+		if (type != Integer.class) return type;
+
+		OptionalLong upper = upperBound(null);
+		OptionalLong lower = lowerBound(null);
+
+		if (upper.isEmpty() || lower.isEmpty()) return Long.class;
+		if (upper.getAsLong() > Integer.MAX_VALUE) return Long.class;
+		if (lower.getAsLong() < Integer.MIN_VALUE) return Long.class;
+
+		return type;
+	}
+
+	/**
 	 * Checks if this expression's value is a multiple of another expression's value.
 	 *
 	 * <p>This method only works for compile-time constant integer expressions.
