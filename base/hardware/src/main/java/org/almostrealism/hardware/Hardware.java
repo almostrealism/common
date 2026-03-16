@@ -522,11 +522,6 @@ public final class Hardware {
 					requirements.add(ComputeRequirement.JNI);
 					if (aarch) requirements.add(ComputeRequirement.MTL);
 					requirements.add(ComputeRequirement.CL);
-				} else if (aarch) {
-					// JOCL does not ship aarch64 Linux native libraries;
-					// attempting to load it can cause SIGABRT with JFR.
-					// Users with OpenCL on aarch64 can set AR_HARDWARE_DRIVER=cl,native.
-					requirements.add(ComputeRequirement.JNI);
 				} else {
 					requirements.add(ComputeRequirement.CL);
 					requirements.add(ComputeRequirement.JNI);
@@ -648,7 +643,13 @@ public final class Hardware {
 			if (type == ComputeRequirement.CPU) {
 				type = SystemUtils.isAarch64() ? ComputeRequirement.JNI : ComputeRequirement.CL;
 			} else if (type == ComputeRequirement.GPU) {
-				type = SystemUtils.isMacOS() ? ComputeRequirement.MTL : ComputeRequirement.CL;
+				if (SystemUtils.isMacOS()) {
+					type = ComputeRequirement.MTL;
+				} else if (SystemUtils.isAarch64()) {
+					type = ComputeRequirement.JNI;
+				} else {
+					type = ComputeRequirement.CL;
+				}
 			}
 
 			if (done.contains(type)) continue r;
