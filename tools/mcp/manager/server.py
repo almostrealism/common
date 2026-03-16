@@ -762,6 +762,47 @@ def controller_health() -> dict:
 
 
 @mcp.tool()
+def workstream_update_config(
+    accept_automated_jobs: bool | None = None,
+) -> dict:
+    """Get or update the FlowTree controller's runtime configuration.
+
+    Currently supports toggling whether automated job submissions (e.g.,
+    from CI pipelines) are accepted. When automated jobs are disabled,
+    submissions with ``automated: true`` in the payload are rejected.
+    This prevents infinite loops where CI submits work to an agent which
+    then triggers CI again.
+
+    Call with no arguments to read the current setting. Provide
+    ``accept_automated_jobs`` to change it.
+
+    Args:
+        accept_automated_jobs: If provided, set whether the controller
+            accepts automated job submissions. ``true`` to accept (the
+            default), ``false`` to reject.
+
+    Returns:
+        Dictionary with the current ``acceptAutomatedJobs`` setting.
+    """
+    _require_scope("write")
+    _audit("workstream_update_config", accept_automated_jobs=accept_automated_jobs)
+
+    if accept_automated_jobs is not None:
+        result = _controller_post(
+            "/api/config/accept-automated-jobs",
+            {"accept": accept_automated_jobs},
+        )
+    else:
+        result = _controller_get("/api/config/accept-automated-jobs")
+
+    result.setdefault("next_steps", [
+        "Use workstream_submit_task to submit a coding task",
+        "Use controller_health to check controller status",
+    ])
+    return result
+
+
+@mcp.tool()
 def workstream_list() -> dict:
     """List all registered workstreams with their configuration and capabilities.
 

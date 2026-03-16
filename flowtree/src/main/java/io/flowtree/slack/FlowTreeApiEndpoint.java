@@ -89,6 +89,11 @@ import java.util.regex.Pattern;
  *       <td>Proxy a PUT request to the GitHub API</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td>
  *       <td>List all registered workstreams with capabilities</td></tr>
+ *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td>
+ *       <td>Check whether automated job submissions are accepted</td></tr>
+ *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td>
+ *       <td>{@code {"accept":true}}</td>
+ *       <td>Enable or disable automated job submissions</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td>
  *       <td>Health check</td></tr>
  * </table>
@@ -114,6 +119,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
+
+    /**
+     * Controls whether jobs that self-identify as automated (e.g., from CI
+     * pipelines) are accepted. When {@code false}, submissions with
+     * {@code "automated": true} in the request body are rejected.
+     *
+     * <p>Defaults to {@code true}. Toggle via
+     * {@code POST /api/config/accept-automated-jobs} or
+     * {@code GET /api/config/accept-automated-jobs}.</p>
+     */
+    private volatile boolean acceptAutomatedJobs = true;
 
     private Server server;
     private SlackListener listener;
@@ -180,6 +196,25 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         this.statsStore = statsStore;
     }
 
+    /**
+     * Returns whether automated job submissions are currently accepted.
+     *
+     * @return {@code true} if automated jobs are accepted, {@code false} otherwise
+     */
+    public boolean isAcceptAutomatedJobs() {
+        return acceptAutomatedJobs;
+    }
+
+    /**
+     * Sets whether automated job submissions are accepted.
+     *
+     * @param accept {@code true} to accept automated jobs, {@code false} to reject them
+     */
+    public void setAcceptAutomatedJobs(boolean accept) {
+        this.acceptAutomatedJobs = accept;
+        log("Automated job acceptance " + (accept ? "enabled" : "disabled"));
+    }
+
     @Override
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
@@ -196,6 +231,26 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
             return handleListWorkstreams();
+        }
+
+        if ("/api/config/accept-automated-jobs".equals(uri)) {
+            if (Method.GET.equals(method)) {
+                String json = "{\"acceptAutomatedJobs\":" + acceptAutomatedJobs + "}";
+                return newFixedLengthResponse(Response.Status.OK,
+                        "application/json", json);
+            }
+            if (Method.POST.equals(method)) {
+                String configBody = readBody(session);
+                if (configBody != null) {
+                    String acceptStr = extractJsonField(configBody, "accept");
+                    if (acceptStr != null) {
+                        setAcceptAutomatedJobs(Boolean.parseBoolean(acceptStr));
+                    }
+                }
+                String json = "{\"ok\":true,\"acceptAutomatedJobs\":" + acceptAutomatedJobs + "}";
+                return newFixedLengthResponse(Response.Status.OK,
+                        "application/json", json);
+            }
         }
 
         if ("/api/github/proxy".equals(uri)
@@ -508,6 +563,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String prompt = extractJsonField(body, "prompt");
         if (prompt == null || prompt.isEmpty()) {
             return errorResponse("Missing required field: prompt");
+        }
+
+        // Reject automated jobs when the gate is closed
+        boolean automated = extractJsonBooleanField(body, "automated");
+        if (automated && !acceptAutomatedJobs) {
+            log("Rejected automated job submission (automated jobs are currently disabled)");
+            String json = "{\"ok\":false,\"error\":\"Automated job submissions are currently disabled\","
+                + "\"automated\":true}";
+            return newFixedLengthResponse(Response.Status.OK,
+                    "application/json", json);
         }
 
         // Branch-to-workstream resolution:
