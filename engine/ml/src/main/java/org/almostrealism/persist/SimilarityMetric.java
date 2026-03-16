@@ -90,27 +90,6 @@ public interface SimilarityMetric {
 	}
 
 	/**
-	 * Normalize a raw vector entirely in {@code double[]} space without
-	 * allocating any {@link PackedCollection}. Used by {@link HnswIndex}
-	 * to avoid native memory allocation in its insert and search paths.
-	 *
-	 * <p>The default implementation delegates to
-	 * {@link #normalizeToArray(PackedCollection)} by wrapping the input.
-	 * Implementations should override for efficiency.</p>
-	 *
-	 * @param vector the raw vector data
-	 * @return a normalized copy of the vector
-	 */
-	default double[] normalizeArrayOnly(double[] vector) {
-		PackedCollection pc = new PackedCollection(vector.length).fill(vector);
-		try {
-			return normalizeToArray(pc);
-		} finally {
-			pc.destroy();
-		}
-	}
-
-	/**
 	 * Cosine similarity metric. Vectors are L2-normalized on insert,
 	 * so similarity reduces to a dot product.
 	 */
@@ -138,16 +117,6 @@ public interface SimilarityMetric {
 		@Override
 		public double[] normalizeToArray(PackedCollection vector) {
 			double[] data = toDoubleArray(vector);
-			return normalizeDoubleArray(data);
-		}
-
-		@Override
-		public double[] normalizeArrayOnly(double[] vector) {
-			double[] copy = java.util.Arrays.copyOf(vector, vector.length);
-			return normalizeDoubleArray(copy);
-		}
-
-		private double[] normalizeDoubleArray(double[] data) {
 			double norm = 0.0;
 			for (double v : data) {
 				norm += v * v;

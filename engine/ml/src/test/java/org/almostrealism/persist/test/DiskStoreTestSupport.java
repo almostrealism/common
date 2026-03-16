@@ -47,26 +47,12 @@ final class DiskStoreTestSupport {
 
 	/**
 	 * Create a {@link PackedCollection} from the given values.
-	 * Use for methods that require {@link PackedCollection} (e.g.,
-	 * {@link org.almostrealism.persist.DiskStore#put(String, Object, PackedCollection)}).
 	 *
 	 * @param values the vector components
 	 * @return a new PackedCollection containing the values
 	 */
 	static PackedCollection vec(double... values) {
 		return new PackedCollection(values.length).fill(values);
-	}
-
-	/**
-	 * Return a {@code double[]} vector from the given values.
-	 * Use for methods that accept raw arrays (e.g.,
-	 * {@link org.almostrealism.persist.HnswIndex#insert(String, double[])}).
-	 *
-	 * @param values the vector components
-	 * @return a double array containing the values
-	 */
-	static double[] dvec(double... values) {
-		return values;
 	}
 
 	/**

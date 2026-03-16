@@ -36,7 +36,6 @@ import java.util.Random;
 import java.util.Set;
 
 import static org.almostrealism.persist.test.DiskStoreTestSupport.deleteRecursively;
-import static org.almostrealism.persist.test.DiskStoreTestSupport.dvec;
 import static org.almostrealism.persist.test.DiskStoreTestSupport.makeRecord;
 import static org.almostrealism.persist.test.DiskStoreTestSupport.vec;
 
@@ -190,11 +189,10 @@ public class HnswSearchTest extends TestSuiteBase {
 				tempDir, TestRecordProto.TestRecord.parser())) {
 
 			for (int i = 0; i < numRecords; i++) {
-				PackedCollection v = randomVector(dimension, random);
+				PackedCollection vec = randomVector(dimension, random);
 				store.put("rec-" + i,
 						makeRecord("rec-" + i, "content-" + i, i),
-						v);
-				v.destroy();
+						vec);
 			}
 
 			PackedCollection queryVector = randomVector(dimension, random);
@@ -203,7 +201,6 @@ public class HnswSearchTest extends TestSuiteBase {
 			List<SearchResult<TestRecordProto.TestRecord>> results =
 					store.search(queryVector, 10);
 			long elapsed = (System.nanoTime() - start) / 1_000_000;
-			queryVector.destroy();
 
 			Assert.assertEquals(10, results.size());
 			Assert.assertTrue(
@@ -225,9 +222,9 @@ public class HnswSearchTest extends TestSuiteBase {
 		int dimension = 4;
 
 		HnswIndex index = new HnswIndex(dimension, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", dvec(1.0, 0.0, 0.0, 0.0));
-		index.insert("b", dvec(0.0, 1.0, 0.0, 0.0));
-		index.insert("c", dvec(0.0, 0.0, 1.0, 0.0));
+		index.insert("a", vec(1.0, 0.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0, 0.0));
+		index.insert("c", vec(0.0, 0.0, 1.0, 0.0));
 		index.save(hnswFile);
 
 		HnswIndex loaded = HnswIndex.load(hnswFile, SimilarityMetric.COSINE);
@@ -235,7 +232,7 @@ public class HnswSearchTest extends TestSuiteBase {
 		Assert.assertEquals(3, loaded.size());
 
 		List<HnswIndex.IdScore> results =
-				loaded.search(dvec(1.0, 0.0, 0.0, 0.0), 1);
+				loaded.search(vec(1.0, 0.0, 0.0, 0.0), 1);
 		Assert.assertEquals(1, results.size());
 		Assert.assertEquals("a", results.get(0).id);
 	}
@@ -244,8 +241,8 @@ public class HnswSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void hnswRemoveExcludesFromSearch() {
 		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", dvec(1.0, 0.0, 0.0));
-		index.insert("b", dvec(0.0, 1.0, 0.0));
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
 
 		Assert.assertEquals(2, index.size());
 		index.remove("a");
@@ -254,7 +251,7 @@ public class HnswSearchTest extends TestSuiteBase {
 		Assert.assertTrue(index.contains("b"));
 
 		List<HnswIndex.IdScore> results =
-				index.search(dvec(1.0, 0.0, 0.0), 10);
+				index.search(vec(1.0, 0.0, 0.0), 10);
 		Assert.assertEquals(1, results.size());
 		Assert.assertEquals("b", results.get(0).id);
 	}
@@ -264,7 +261,7 @@ public class HnswSearchTest extends TestSuiteBase {
 	public void hnswSearchEmptyIndexReturnsEmpty() {
 		HnswIndex index = new HnswIndex(3);
 		List<HnswIndex.IdScore> results =
-				index.search(dvec(1.0, 0.0, 0.0), 5);
+				index.search(vec(1.0, 0.0, 0.0), 5);
 		Assert.assertTrue(results.isEmpty());
 	}
 
@@ -317,13 +314,13 @@ public class HnswSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void hnswReinsertUpdatesVector() {
 		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", dvec(1.0, 0.0, 0.0));
-		index.insert("a", dvec(0.0, 1.0, 0.0));
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("a", vec(0.0, 1.0, 0.0));
 
 		Assert.assertEquals(1, index.size());
 
 		List<HnswIndex.IdScore> results =
-				index.search(dvec(0.0, 1.0, 0.0), 1);
+				index.search(vec(0.0, 1.0, 0.0), 1);
 		Assert.assertEquals("a", results.get(0).id);
 		Assert.assertTrue("Should be highly similar after update",
 				results.get(0).score > 0.9f);
@@ -356,23 +353,23 @@ public class HnswSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void hnswInsertWrongDimensionThrows() {
 		HnswIndex index = new HnswIndex(3);
-		index.insert("a", dvec(1.0, 0.0, 0.0, 0.0));
+		index.insert("a", vec(1.0, 0.0, 0.0, 0.0));
 	}
 
 	/** Search with wrong dimension throws IllegalArgumentException. */
 	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void hnswSearchWrongDimensionThrows() {
 		HnswIndex index = new HnswIndex(3);
-		index.insert("a", dvec(1.0, 0.0, 0.0));
-		index.search(dvec(1.0, 0.0), 1);
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.search(vec(1.0, 0.0), 1);
 	}
 
 	/** Verify totalSize() counts deleted nodes. */
 	@Test(timeout = 30000)
 	public void hnswTotalSizeIncludesDeletedNodes() {
 		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", dvec(1.0, 0.0, 0.0));
-		index.insert("b", dvec(0.0, 1.0, 0.0));
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
 		index.remove("a");
 
 		Assert.assertEquals(1, index.size());
@@ -391,16 +388,16 @@ public class HnswSearchTest extends TestSuiteBase {
 			for (int j = 0; j < dimension; j++) {
 				values[j] = random.nextGaussian();
 			}
-			index.insert("n-" + i, values);
+			index.insert("n-" + i, new PackedCollection(dimension).fill(values));
 		}
 
 		index.setEfSearch(1);
 		List<HnswIndex.IdScore> lowEf = index.search(
-				randomDoubleVector(dimension, random), 10);
+				randomVector(dimension, random), 10);
 
 		index.setEfSearch(200);
 		List<HnswIndex.IdScore> highEf = index.search(
-				randomDoubleVector(dimension, random), 10);
+				randomVector(dimension, random), 10);
 
 		Assert.assertEquals(10, lowEf.size());
 		Assert.assertEquals(10, highEf.size());
@@ -543,9 +540,9 @@ public class HnswSearchTest extends TestSuiteBase {
 		int dimension = 3;
 
 		HnswIndex index = new HnswIndex(dimension, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", dvec(1.0, 0.0, 0.0));
-		index.insert("b", dvec(0.0, 1.0, 0.0));
-		index.insert("c", dvec(0.0, 0.0, 1.0));
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
+		index.insert("c", vec(0.0, 0.0, 1.0));
 		index.remove("b");
 
 		Assert.assertEquals(2, index.size());
@@ -561,7 +558,7 @@ public class HnswSearchTest extends TestSuiteBase {
 		Assert.assertTrue(loaded.contains("c"));
 
 		List<HnswIndex.IdScore> results =
-				loaded.search(dvec(0.0, 1.0, 0.0), 10);
+				loaded.search(vec(0.0, 1.0, 0.0), 10);
 		for (HnswIndex.IdScore result : results) {
 			Assert.assertNotEquals("Deleted node 'b' should not appear in search",
 					"b", result.id);
@@ -572,14 +569,14 @@ public class HnswSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void hnswSearchAllDeletedReturnsEmpty() {
 		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", dvec(1.0, 0.0, 0.0));
-		index.insert("b", dvec(0.0, 1.0, 0.0));
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
 		index.remove("a");
 		index.remove("b");
 
 		Assert.assertEquals(0, index.size());
 		List<HnswIndex.IdScore> results =
-				index.search(dvec(1.0, 0.0, 0.0), 5);
+				index.search(vec(1.0, 0.0, 0.0), 5);
 		Assert.assertTrue("Search with all deleted nodes should return empty",
 				results.isEmpty());
 	}
@@ -588,8 +585,8 @@ public class HnswSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void hnswRemoveTwiceIsIdempotent() {
 		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", dvec(1.0, 0.0, 0.0));
-		index.insert("b", dvec(0.0, 1.0, 0.0));
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
 
 		index.remove("a");
 		Assert.assertEquals(1, index.size());
@@ -602,34 +599,29 @@ public class HnswSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void hnswReinsertDeletedNodeRestoresIt() {
 		HnswIndex index = new HnswIndex(3, 8, 50, SimilarityMetric.COSINE);
-		index.insert("a", dvec(1.0, 0.0, 0.0));
-		index.insert("b", dvec(0.0, 1.0, 0.0));
+		index.insert("a", vec(1.0, 0.0, 0.0));
+		index.insert("b", vec(0.0, 1.0, 0.0));
 
 		index.remove("a");
 		Assert.assertEquals(1, index.size());
 		Assert.assertFalse(index.contains("a"));
 
-		index.insert("a", dvec(0.0, 0.0, 1.0));
+		index.insert("a", vec(0.0, 0.0, 1.0));
 		Assert.assertEquals(2, index.size());
 		Assert.assertTrue(index.contains("a"));
 
 		List<HnswIndex.IdScore> results =
-				index.search(dvec(0.0, 0.0, 1.0), 1);
+				index.search(vec(0.0, 0.0, 1.0), 1);
 		Assert.assertEquals(1, results.size());
 		Assert.assertEquals("a", results.get(0).id);
 	}
 
 	private static PackedCollection randomVector(int dimension, Random random) {
-		double[] values = randomDoubleVector(dimension, random);
-		return new PackedCollection(dimension).fill(values);
-	}
-
-	private static double[] randomDoubleVector(int dimension, Random random) {
 		double[] values = new double[dimension];
 		for (int i = 0; i < dimension; i++) {
 			values[i] = random.nextFloat() * 2.0 - 1.0;
 		}
-		return values;
+		return new PackedCollection(dimension).fill(values);
 	}
 
 }
