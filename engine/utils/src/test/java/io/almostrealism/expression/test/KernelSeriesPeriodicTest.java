@@ -26,7 +26,7 @@ import java.util.Collections;
 
 /**
  * Tests that {@link KernelSeries#periodic} calculates the period as the
- * least common multiple (LCM) of the input periods.
+ * product of the distinct input periods.
  */
 public class KernelSeriesPeriodicTest extends TestSuiteBase {
 
@@ -38,27 +38,27 @@ public class KernelSeriesPeriodicTest extends TestSuiteBase {
 	}
 
 	@Test
-	public void coprimePeriodsUseLCMEqualToProduct() {
+	public void coprimePeriodsUseProduct() {
 		KernelSeries series = KernelSeries.periodic(Arrays.asList(3, 5));
 		Assert.assertEquals(15, series.getPeriod().getAsInt());
 	}
 
 	@Test
-	public void periodsWithCommonFactorUseLCM() {
+	public void periodsWithCommonFactorUseProduct() {
 		KernelSeries series = KernelSeries.periodic(Arrays.asList(4, 6));
-		Assert.assertEquals(12, series.getPeriod().getAsInt());
+		Assert.assertEquals(24, series.getPeriod().getAsInt());
 	}
 
 	@Test
-	public void threePeriodsUseLCM() {
+	public void threePeriodsUseProduct() {
 		KernelSeries series = KernelSeries.periodic(Arrays.asList(2, 3, 4));
-		Assert.assertEquals(12, series.getPeriod().getAsInt());
+		Assert.assertEquals(24, series.getPeriod().getAsInt());
 	}
 
 	@Test
 	public void duplicatePeriodsIgnored() {
 		KernelSeries series = KernelSeries.periodic(Arrays.asList(6, 6, 4));
-		Assert.assertEquals(12, series.getPeriod().getAsInt());
+		Assert.assertEquals(24, series.getPeriod().getAsInt());
 	}
 
 	@Test

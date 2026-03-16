@@ -24,8 +24,8 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Tests that {@link Quotient#getDenominator()} supports multi-operand quotients
- * by returning the product of all denominator terms.
+ * Tests basic {@link Quotient} operations including
+ * {@link Quotient#getDenominator()} and {@link Quotient#getNumerator()}.
  */
 public class QuotientMultiOperandTest extends TestSuiteBase {
 
