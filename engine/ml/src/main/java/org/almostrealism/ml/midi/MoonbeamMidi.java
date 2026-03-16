@@ -87,12 +87,6 @@ import java.util.Map;
  * @see AttentionFeatures
  */
 public class MoonbeamMidi implements AttentionFeatures {
-	static {
-		System.setProperty("AR_HARDWARE_OFF_HEAP_SIZE", "0");
-		System.setProperty("AR_EXPRESSION_WARNINGS", "disabled");
-		System.setProperty("AR_GRAPH_PROPAGATION_WARNINGS", "disabled");
-	}
-
 	private final MoonbeamConfig config;
 	private final CompoundMidiEmbedding embedding;
 	private final GRUDecoder decoder;
