@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /**
@@ -453,7 +454,8 @@ public class Repeated<T> extends Scope<T> {
 				if (isSubstantialForExtraction(child, minDepth)) {
 					StaticReference<?> ref = extracted.get(child);
 					if (ref == null) {
-						ref = new StaticReference<>(child.getType(),
+						Class<?> type = promoteIfOverflows(child);
+						ref = new StaticReference<>(type,
 								"f_licm_" + extractIdx[0]++);
 						extracted.put(child, ref);
 						declarations.add(new ExpressionAssignment(true, ref, child));
@@ -473,6 +475,33 @@ public class Repeated<T> extends Scope<T> {
 
 		if (!changed) return expr;
 		return expr.generate(newChildren);
+	}
+
+	/**
+	 * Returns {@link Long Long.class} if the expression is typed as {@link Integer}
+	 * but its bounds analysis indicates values that can exceed the 32-bit signed
+	 * integer range. This prevents overflow when LICM hoists expressions like
+	 * {@code global_id * 1024} into local variables — the kernel index is rendered
+	 * as {@code long long} in generated C code, but the expression tree types it as
+	 * {@link Integer}, so without promotion the hoisted variable would be declared
+	 * as {@code jint} and overflow for large kernel sizes.
+	 *
+	 * @param expr the expression to check
+	 * @return {@link Long Long.class} if promotion is needed, otherwise the
+	 *         expression's own type
+	 */
+	private static Class<?> promoteIfOverflows(Expression<?> expr) {
+		Class<?> type = expr.getType();
+		if (type != Integer.class) return type;
+
+		OptionalLong upper = expr.upperBound(null);
+		OptionalLong lower = expr.lowerBound(null);
+
+		if (upper.isEmpty() || lower.isEmpty()) return Long.class;
+		if (upper.getAsLong() > Integer.MAX_VALUE) return Long.class;
+		if (lower.getAsLong() < Integer.MIN_VALUE) return Long.class;
+
+		return type;
 	}
 
 	/**
