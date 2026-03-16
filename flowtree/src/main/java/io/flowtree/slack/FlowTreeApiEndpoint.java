@@ -235,17 +235,21 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if ("/api/config/accept-automated-jobs".equals(uri)) {
             if (Method.GET.equals(method)) {
+                log("Config query: acceptAutomatedJobs=" + acceptAutomatedJobs);
                 String json = "{\"acceptAutomatedJobs\":" + acceptAutomatedJobs + "}";
                 return newFixedLengthResponse(Response.Status.OK,
                         "application/json", json);
             }
             if (Method.POST.equals(method)) {
                 String configBody = readBody(session);
-                if (configBody != null) {
-                    String acceptStr = extractJsonField(configBody, "accept");
-                    if (acceptStr != null) {
-                        setAcceptAutomatedJobs(Boolean.parseBoolean(acceptStr));
-                    }
+                if (configBody != null && configBody.contains("\"accept\"")) {
+                    boolean accept = extractJsonBooleanField(configBody, "accept");
+                    log("Config update request: accept-automated-jobs="
+                            + accept + " (was " + acceptAutomatedJobs + ")");
+                    setAcceptAutomatedJobs(accept);
+                } else {
+                    log("Config update request for accept-automated-jobs"
+                            + " missing 'accept' field in body");
                 }
                 String json = "{\"ok\":true,\"acceptAutomatedJobs\":" + acceptAutomatedJobs + "}";
                 return newFixedLengthResponse(Response.Status.OK,

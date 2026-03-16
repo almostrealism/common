@@ -762,8 +762,8 @@ def controller_health() -> dict:
 
 
 @mcp.tool()
-def workstream_update_config(
-    accept_automated_jobs: bool | None = None,
+def controller_update_config(
+    accept_automated_jobs: str = "",
 ) -> dict:
     """Get or update the FlowTree controller's runtime configuration.
 
@@ -777,20 +777,21 @@ def workstream_update_config(
     ``accept_automated_jobs`` to change it.
 
     Args:
-        accept_automated_jobs: If provided, set whether the controller
-            accepts automated job submissions. ``true`` to accept (the
-            default), ``false`` to reject.
+        accept_automated_jobs: Set to ``true`` to accept automated job
+            submissions (the default) or ``false`` to reject them.
+            Leave empty to read the current setting.
 
     Returns:
         Dictionary with the current ``acceptAutomatedJobs`` setting.
     """
     _require_scope("write")
-    _audit("workstream_update_config", accept_automated_jobs=accept_automated_jobs)
+    _audit("controller_update_config", accept_automated_jobs=accept_automated_jobs)
 
-    if accept_automated_jobs is not None:
+    if accept_automated_jobs:
+        accept = accept_automated_jobs.lower() == "true"
         result = _controller_post(
             "/api/config/accept-automated-jobs",
-            {"accept": accept_automated_jobs},
+            {"accept": accept},
         )
     else:
         result = _controller_get("/api/config/accept-automated-jobs")
