@@ -46,6 +46,9 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
+	public Class getType() { return Long.class; }
+
+	@Override
 	public String getName() { return "kernel" + axis; }
 
 	@Override
