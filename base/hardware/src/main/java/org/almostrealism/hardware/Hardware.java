@@ -522,11 +522,6 @@ public final class Hardware {
 					requirements.add(ComputeRequirement.JNI);
 					if (aarch) requirements.add(ComputeRequirement.MTL);
 					requirements.add(ComputeRequirement.CL);
-				} else if (aarch) {
-					// JOCL does not ship aarch64 Linux native libraries;
-					// attempting to load it can cause SIGABRT with JFR.
-					// Users with OpenCL on aarch64 can set AR_HARDWARE_DRIVER=cl,native.
-					requirements.add(ComputeRequirement.JNI);
 				} else {
 					requirements.add(ComputeRequirement.CL);
 					requirements.add(ComputeRequirement.JNI);
