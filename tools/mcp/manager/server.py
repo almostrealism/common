@@ -588,6 +588,17 @@ def _github_proxy_request(method: str, path: str, payload: dict = None,
             msg = gh_body.get("message", "")
             return {"ok": False, "error": f"GitHub returned HTTP {gh_status}: {msg}"}
         return {"ok": False, "error": f"GitHub returned HTTP {gh_status}"}
+    except HTTPError as e:
+        # The controller returned an error response (e.g., 400 Bad Request
+        # for missing org token) — read and report the error body
+        try:
+            err_body = e.read().decode("utf-8")
+            err_json = json.loads(err_body)
+            msg = err_json.get("error", f"Controller returned HTTP {e.code}")
+        except Exception:
+            msg = f"Controller returned HTTP {e.code}"
+        print(f"ar-manager: controller proxy error: {msg}", file=sys.stderr)
+        return {"ok": False, "error": msg}
     except (URLError, OSError, TimeoutError) as e:
         print(f"ar-manager: controller proxy unreachable: {e}", file=sys.stderr)
         return None
@@ -747,6 +758,48 @@ def controller_health() -> dict:
     result["next_steps"] = [
         "Use workstream_list to see available workstreams",
     ]
+    return result
+
+
+@mcp.tool()
+def controller_update_config(
+    accept_automated_jobs: str = "",
+) -> dict:
+    """Get or update the FlowTree controller's runtime configuration.
+
+    Currently supports toggling whether automated job submissions (e.g.,
+    from CI pipelines) are accepted. When automated jobs are disabled,
+    submissions with ``automated: true`` in the payload are rejected.
+    This prevents infinite loops where CI submits work to an agent which
+    then triggers CI again.
+
+    Call with no arguments to read the current setting. Provide
+    ``accept_automated_jobs`` to change it.
+
+    Args:
+        accept_automated_jobs: Set to ``true`` to accept automated job
+            submissions (the default) or ``false`` to reject them.
+            Leave empty to read the current setting.
+
+    Returns:
+        Dictionary with the current ``acceptAutomatedJobs`` setting.
+    """
+    _require_scope("write")
+    _audit("controller_update_config", accept_automated_jobs=accept_automated_jobs)
+
+    if accept_automated_jobs:
+        accept = accept_automated_jobs.lower() == "true"
+        result = _controller_post(
+            "/api/config/accept-automated-jobs",
+            {"accept": accept},
+        )
+    else:
+        result = _controller_get("/api/config/accept-automated-jobs")
+
+    result.setdefault("next_steps", [
+        "Use workstream_submit_task to submit a coding task",
+        "Use controller_health to check controller status",
+    ])
     return result
 
 
@@ -1811,8 +1864,9 @@ def memory_branch_context(
                 )
                 if compare.get("ok") is False:
                     commit_error = compare.get("error", "GitHub API returned an error")
-                    logger.warning("Failed to fetch commits for %s...%s: %s",
-                                   base, effective_branch, commit_error)
+                    logging.getLogger("ar-manager").warning(
+                        "Failed to fetch commits for %s...%s: %s",
+                        base, effective_branch, commit_error)
                 elif "commits" in compare:
                     commits = []
                     for c in compare.get("commits", [])[:commit_limit]:
@@ -1828,8 +1882,9 @@ def memory_branch_context(
                     commit_error = "GitHub Compare API returned no commits field"
             except Exception as exc:
                 commit_error = str(exc)
-                logger.warning("Failed to fetch commits for %s...%s: %s",
-                               base, effective_branch, exc)
+                logging.getLogger("ar-manager").warning(
+                    "Failed to fetch commits for %s...%s: %s",
+                    base, effective_branch, exc)
         else:
             commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
 
