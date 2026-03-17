@@ -39,6 +39,12 @@
       "command": "python3",
       "args": ["tools/mcp/manager/server.py"],
       "description": "Internet-facing endpoint for managing workstreams and triggering project workflows"
+    },
+    "onyx": {
+      "command": "/Users/Shared/flowtree/OnyxMCP",
+      "env": {
+        "ONYX_MCP_PORT": "19432"
+      }
     }
   }
 }
