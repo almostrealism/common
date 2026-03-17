@@ -27,7 +27,8 @@ import org.junit.Test;
  */
 public class RGBEqualsTest extends TestSuiteBase {
 
-	@Test
+	/** Verifies that two RGB colors with identical channel values are equal and share the same hash code. */
+	@Test(timeout = 5000)
 	public void identicalColorsAreEqual() {
 		RGB a = new RGB(0.5, 0.6, 0.7);
 		RGB b = new RGB(0.5, 0.6, 0.7);
@@ -35,40 +36,46 @@ public class RGBEqualsTest extends TestSuiteBase {
 		Assert.assertEquals(a.hashCode(), b.hashCode());
 	}
 
-	@Test
+	/** Verifies that colors within epsilon tolerance are considered equal. */
+	@Test(timeout = 5000)
 	public void nearlyIdenticalColorsAreEqual() {
 		RGB a = new RGB(0.5, 0.6, 0.7);
 		RGB b = new RGB(0.5 + 1e-5, 0.6 - 1e-5, 0.7 + 1e-6);
 		Assert.assertTrue("Nearly identical colors should be equal", a.equals(b));
 	}
 
-	@Test
+	/** Verifies that colors with a channel difference exceeding epsilon are not equal. */
+	@Test(timeout = 5000)
 	public void distinctColorsAreNotEqual() {
 		RGB a = new RGB(0.5, 0.6, 0.7);
 		RGB b = new RGB(0.5, 0.6, 0.8);
 		Assert.assertFalse("Distinct colors should not be equal", a.equals(b));
 	}
 
-	@Test
+	/** Verifies that the equals relation is symmetric: {@code a.equals(b) == b.equals(a)}. */
+	@Test(timeout = 5000)
 	public void symmetry() {
 		RGB a = new RGB(0.1, 0.2, 0.3);
 		RGB b = new RGB(0.1 + 1e-5, 0.2, 0.3);
 		Assert.assertEquals(a.equals(b), b.equals(a));
 	}
 
-	@Test
+	/** Verifies that {@code equals(null)} returns false. */
+	@Test(timeout = 5000)
 	public void equalsWithNull() {
 		RGB a = new RGB(0.5, 0.5, 0.5);
 		Assert.assertFalse(a.equals(null));
 	}
 
-	@Test
+	/** Verifies that equals returns false for non-RGB objects. */
+	@Test(timeout = 5000)
 	public void equalsWithNonRGB() {
 		RGB a = new RGB(0.5, 0.5, 0.5);
 		Assert.assertFalse(a.equals("not an RGB"));
 	}
 
-	@Test
+	/** Verifies that identical colors produce the same hash code. */
+	@Test(timeout = 5000)
 	public void hashCodeConsistentForEqualColors() {
 		RGB a = new RGB(0.333, 0.444, 0.555);
 		RGB b = new RGB(0.333, 0.444, 0.555);

@@ -30,38 +30,44 @@ import java.util.Collections;
  */
 public class KernelSeriesPeriodicTest extends TestSuiteBase {
 
-	@Test
+	/** Verifies that a single period is returned unchanged. */
+	@Test(timeout = 5000)
 	public void singlePeriod() {
 		KernelSeries series = KernelSeries.periodic(Collections.singletonList(7));
 		Assert.assertTrue(series.getPeriod().isPresent());
 		Assert.assertEquals(7, series.getPeriod().getAsInt());
 	}
 
-	@Test
+	/** Verifies that coprime periods produce an LCM equal to their product. */
+	@Test(timeout = 5000)
 	public void coprimePeriodsUseLCMEqualToProduct() {
 		KernelSeries series = KernelSeries.periodic(Arrays.asList(3, 5));
 		Assert.assertEquals(15, series.getPeriod().getAsInt());
 	}
 
-	@Test
+	/** Verifies that periods sharing a common factor produce the correct LCM. */
+	@Test(timeout = 5000)
 	public void periodsWithCommonFactorUseLCM() {
 		KernelSeries series = KernelSeries.periodic(Arrays.asList(4, 6));
 		Assert.assertEquals(12, series.getPeriod().getAsInt());
 	}
 
-	@Test
+	/** Verifies LCM calculation across three periods. */
+	@Test(timeout = 5000)
 	public void threePeriodsUseLCM() {
 		KernelSeries series = KernelSeries.periodic(Arrays.asList(2, 3, 4));
 		Assert.assertEquals(12, series.getPeriod().getAsInt());
 	}
 
-	@Test
+	/** Verifies that duplicate periods are ignored in the LCM calculation. */
+	@Test(timeout = 5000)
 	public void duplicatePeriodsIgnored() {
 		KernelSeries series = KernelSeries.periodic(Arrays.asList(6, 6, 4));
 		Assert.assertEquals(12, series.getPeriod().getAsInt());
 	}
 
-	@Test
+	/** Verifies that identical periods return the same period. */
+	@Test(timeout = 5000)
 	public void identicalPeriodsReturnSamePeriod() {
 		KernelSeries series = KernelSeries.periodic(Arrays.asList(5, 5));
 		Assert.assertEquals(5, series.getPeriod().getAsInt());

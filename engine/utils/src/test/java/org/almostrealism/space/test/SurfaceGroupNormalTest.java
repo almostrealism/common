@@ -32,14 +32,16 @@ import org.junit.Test;
  */
 public class SurfaceGroupNormalTest extends TestSuiteBase {
 
-	@Test(timeout = 30000)
+	/** Verifies that an empty group returns null for any query point. */
+	@Test(timeout = 5000)
 	public void emptyGroupReturnsNull() {
 		SurfaceGroup<ShadableSurface> group = new SurfaceGroup<>();
 		Producer<PackedCollection> normal = group.getNormalAt(vector(1.0, 0.0, 0.0));
 		Assert.assertNull("Empty group should return null", normal);
 	}
 
-	@Test(timeout = 30000)
+	/** Verifies that a group with a single sphere returns the correct outward normal. */
+	@Test(timeout = 5000)
 	public void singleSphereNormal() {
 		Sphere sphere = new Sphere(new Vector(0.0, 0.0, 0.0), 1.0);
 		SurfaceGroup<ShadableSurface> group = new SurfaceGroup<>();
@@ -61,7 +63,8 @@ public class SurfaceGroupNormalTest extends TestSuiteBase {
 		Assert.assertEquals("Normal Z", 0.0, nz, 0.01);
 	}
 
-	@Test(timeout = 30000)
+	/** Verifies that the closest child sphere is selected when two spheres are present. */
+	@Test(timeout = 5000)
 	public void twoSpheresSelectsCorrectChild() {
 		Sphere sphereA = new Sphere(new Vector(5.0, 0.0, 0.0), 1.0);
 		Sphere sphereB = new Sphere(new Vector(-5.0, 0.0, 0.0), 1.0);
@@ -86,7 +89,8 @@ public class SurfaceGroupNormalTest extends TestSuiteBase {
 		Assert.assertEquals("Sphere B normal Z", 0.0, resultB.toDouble(2), 0.01);
 	}
 
-	@Test(timeout = 30000)
+	/** Verifies correct child selection along the Y axis. */
+	@Test(timeout = 5000)
 	public void twoSpheresYAxis() {
 		Sphere top = new Sphere(new Vector(0.0, 5.0, 0.0), 1.0);
 		Sphere bottom = new Sphere(new Vector(0.0, -5.0, 0.0), 1.0);
@@ -109,7 +113,8 @@ public class SurfaceGroupNormalTest extends TestSuiteBase {
 		Assert.assertEquals("Bottom normal Z", 0.0, resultBot.toDouble(2), 0.01);
 	}
 
-	@Test(timeout = 30000)
+	/** Verifies correct normal computation for a point at 45 degrees on a unit sphere. */
+	@Test(timeout = 5000)
 	public void diagonalSphereNormal() {
 		Sphere sphere = new Sphere(new Vector(0.0, 0.0, 0.0), 1.0);
 		SurfaceGroup<ShadableSurface> group = new SurfaceGroup<>();

@@ -140,7 +140,8 @@ public class KernelSeries implements Series {
 
 	private static int lcm(int a, int b) {
 		if (a == 0 || b == 0) return 0;
-		return Math.abs(a / gcd(a, b) * b);
+		long result = Math.abs((long) (a / gcd(a, b)) * b);
+		return (int) Math.min(result, Integer.MAX_VALUE);
 	}
 
 	public static KernelSeries product(List<KernelSeries> series) {

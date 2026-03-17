@@ -89,6 +89,7 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	private AudioSynthesisModel model;
 	private ADSREnvelope ampEnvelope;
 	private double velocity;
+	/** The unmodified fundamental frequency set by {@link #setFrequency(Frequency)}, used as the reference for pitch bend calculations. */
 	private Frequency baseFrequency;
 
 	public AudioSynthesizer() {

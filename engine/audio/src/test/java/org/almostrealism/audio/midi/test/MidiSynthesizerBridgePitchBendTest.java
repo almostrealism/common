@@ -29,97 +29,111 @@ import org.junit.Test;
 public class MidiSynthesizerBridgePitchBendTest extends TestSuiteBase {
 
 	/**
-	 * Verifies that pitch bend at center value (8192) does not throw
-	 * and represents zero semitones.
+	 * Verifies that pitch bend at center value (8192) processes through
+	 * the full production path (bridge -> synthesizer -> voice) without
+	 * throwing when a voice is active.
 	 */
 	@Test(timeout = 5000)
-	public void pitchBendCenterDoesNotThrow() {
+	public void pitchBendCenterWithActiveVoice() {
 		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(1);
 		MidiSynthesizerBridge bridge = new MidiSynthesizerBridge(synth);
+		bridge.noteOn(0, 60, 100);
 		bridge.pitchBend(0, 8192);
 	}
 
 	/**
-	 * Verifies that pitch bend at maximum value (16383) does not throw.
+	 * Verifies that pitch bend at maximum value (16383) processes without
+	 * throwing when a voice is active.
 	 */
 	@Test(timeout = 5000)
-	public void pitchBendMaxDoesNotThrow() {
+	public void pitchBendMaxWithActiveVoice() {
 		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(1);
 		MidiSynthesizerBridge bridge = new MidiSynthesizerBridge(synth);
+		bridge.noteOn(0, 60, 100);
 		bridge.pitchBend(0, 16383);
 	}
 
 	/**
-	 * Verifies that pitch bend at minimum value (0) does not throw.
+	 * Verifies that pitch bend at minimum value (0) processes without
+	 * throwing when a voice is active.
 	 */
 	@Test(timeout = 5000)
-	public void pitchBendMinDoesNotThrow() {
+	public void pitchBendMinWithActiveVoice() {
 		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(1);
 		MidiSynthesizerBridge bridge = new MidiSynthesizerBridge(synth);
+		bridge.noteOn(0, 60, 100);
 		bridge.pitchBend(0, 0);
 	}
 
 	/**
-	 * Verifies that pitch bend on a non-matching channel is ignored when
-	 * the bridge is set to a specific channel.
+	 * Verifies that pitch bend on a non-matching channel is ignored:
+	 * the bridge should not call through to the synthesizer.
 	 */
 	@Test(timeout = 5000)
 	public void pitchBendIgnoredOnWrongChannel() {
 		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(1);
 		MidiSynthesizerBridge bridge = new MidiSynthesizerBridge(synth);
 		bridge.setChannel(5);
+		bridge.noteOn(5, 60, 100);
 
 		// Should be silently ignored since channel 3 != 5
 		bridge.pitchBend(3, 16383);
 	}
 
 	/**
-	 * Verifies that pitch bend is processed on the correct channel.
+	 * Verifies that pitch bend is processed on the correct channel
+	 * when an active voice exists.
 	 */
 	@Test(timeout = 5000)
 	public void pitchBendProcessedOnCorrectChannel() {
 		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(1);
 		MidiSynthesizerBridge bridge = new MidiSynthesizerBridge(synth);
 		bridge.setChannel(5);
+		bridge.noteOn(5, 60, 100);
 
 		// Should be processed since channel matches
 		bridge.pitchBend(5, 16383);
 	}
 
 	/**
-	 * Verifies that pitch bend is processed in omni mode (channel = -1).
+	 * Verifies that pitch bend is processed in omni mode (channel = -1)
+	 * regardless of the MIDI channel in the message.
 	 */
 	@Test(timeout = 5000)
 	public void pitchBendProcessedInOmniMode() {
 		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(1);
 		MidiSynthesizerBridge bridge = new MidiSynthesizerBridge(synth);
 		// Default is omni mode (-1)
+		bridge.noteOn(7, 60, 100);
 
 		bridge.pitchBend(7, 0);
 		bridge.pitchBend(15, 16383);
 	}
 
 	/**
-	 * Verifies that setPitchBendRange updates the range correctly.
+	 * Verifies that {@link MidiSynthesizerBridge#setPitchBendRange(double)}
+	 * updates the range and subsequent pitch bend calls use the new range.
 	 */
 	@Test(timeout = 5000)
 	public void setPitchBendRange() {
 		PolyphonicSynthesizer synth = new PolyphonicSynthesizer(1);
 		MidiSynthesizerBridge bridge = new MidiSynthesizerBridge(synth);
+		bridge.noteOn(0, 60, 100);
 
-		// Set a wide range and send max bend - should not throw
+		// Set a wide range and send max bend
 		bridge.setPitchBendRange(12.0);
 		bridge.pitchBend(0, 16383);
 
-		// Set a narrow range and send max bend - should not throw
+		// Set a narrow range and send max bend
 		bridge.setPitchBendRange(0.5);
 		bridge.pitchBend(0, 0);
 	}
 
 	/**
-	 * Verifies the MIDI 14-bit to semitone conversion formula:
-	 * normalized = (value - 8192) / 8192.0
-	 * semitones = normalized * pitchBendRange
+	 * Verifies the MIDI 14-bit to semitone conversion formula independently:
+	 * {@code normalized = (value - 8192) / 8192.0},
+	 * {@code semitones = normalized * pitchBendRange}.
+	 * This validates the math used inside {@link MidiSynthesizerBridge#pitchBend(int, int)}.
 	 */
 	@Test(timeout = 5000)
 	public void conversionFormula() {
@@ -141,8 +155,9 @@ public class MidiSynthesizerBridgePitchBendTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies the semitone-to-Hz formula used in AudioSynthesizer.setPitchBend:
-	 * bentHz = baseHz * 2^(semitones/12)
+	 * Verifies the semitone-to-Hz formula used in
+	 * {@link org.almostrealism.audio.synth.AudioSynthesizer#setPitchBend(double)}:
+	 * {@code bentHz = baseHz * 2^(semitones/12)}.
 	 */
 	@Test(timeout = 5000)
 	public void semitoneToHzFormula() {

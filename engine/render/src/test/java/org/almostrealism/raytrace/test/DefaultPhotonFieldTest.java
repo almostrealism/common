@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.almostrealism.raytrace.test;
 
 import org.almostrealism.raytrace.DefaultPhotonField;
@@ -12,7 +28,8 @@ import static org.junit.Assert.*;
  */
 public class DefaultPhotonFieldTest extends TestSuiteBase {
 
-	@Test
+	/** Verifies that photons within the given radius are removed and the count is updated. */
+	@Test(timeout = 5000)
 	public void testRemovePhotonsWithinRadius() {
 		DefaultPhotonField field = new DefaultPhotonField();
 		field.addPhoton(new double[]{1.0, 0.0, 0.0}, new double[]{0.0, 0.0, 1.0}, 5.0);
@@ -25,7 +42,8 @@ public class DefaultPhotonFieldTest extends TestSuiteBase {
 		assertEquals(1, field.getSize());
 	}
 
-	@Test
+	/** Verifies that no photons are removed when none fall within the given radius. */
+	@Test(timeout = 5000)
 	public void testRemovePhotonsNoneInRange() {
 		DefaultPhotonField field = new DefaultPhotonField();
 		field.addPhoton(new double[]{10.0, 10.0, 10.0}, new double[]{0.0, 0.0, 1.0}, 5.0);
@@ -36,7 +54,8 @@ public class DefaultPhotonFieldTest extends TestSuiteBase {
 		assertEquals(2, field.getSize());
 	}
 
-	@Test
+	/** Verifies that all photons are removed when all fall within the given radius. */
+	@Test(timeout = 5000)
 	public void testRemovePhotonsAllInRange() {
 		DefaultPhotonField field = new DefaultPhotonField();
 		field.addPhoton(new double[]{0.1, 0.0, 0.0}, new double[]{1.0, 0.0, 0.0}, 1.0);
@@ -48,7 +67,8 @@ public class DefaultPhotonFieldTest extends TestSuiteBase {
 		assertEquals(0, field.getSize());
 	}
 
-	@Test
+	/** Verifies that removing from an empty field returns zero and does not throw. */
+	@Test(timeout = 5000)
 	public void testRemovePhotonsEmptyField() {
 		DefaultPhotonField field = new DefaultPhotonField();
 		int removed = field.removePhotons(new double[]{0.0, 0.0, 0.0}, 100.0);
@@ -56,7 +76,8 @@ public class DefaultPhotonFieldTest extends TestSuiteBase {
 		assertEquals(0, field.getSize());
 	}
 
-	@Test
+	/** Verifies that energy reflects only remaining photons after removal. */
+	@Test(timeout = 5000)
 	public void testRemovePhotonsEnergyReduced() {
 		DefaultPhotonField field = new DefaultPhotonField();
 		field.addPhoton(new double[]{1.0, 0.0, 0.0}, new double[]{0.0, 0.0, 1.0}, 5.0);

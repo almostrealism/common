@@ -17,6 +17,7 @@
 package org.almostrealism.io.test;
 
 import org.almostrealism.io.DistributionMetric;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -41,7 +42,7 @@ public class MetricBaseConcurrencyTest extends TestSuiteBase {
 	 * separate keys produce the correct per-key counts without throwing
 	 * exceptions.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 30000) @TestDepth(2)
 	public void concurrentAddEntry() throws Exception {
 		int threadCount = 8;
 		int entriesPerThread = 1000;
@@ -82,7 +83,7 @@ public class MetricBaseConcurrencyTest extends TestSuiteBase {
 	 * Verifies that concurrent addEntry calls to the same key
 	 * produce the correct per-key count.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 30000) @TestDepth(2)
 	public void concurrentAddEntrySharedKey() throws Exception {
 		int threadCount = 8;
 		int entriesPerThread = 500;
@@ -119,7 +120,7 @@ public class MetricBaseConcurrencyTest extends TestSuiteBase {
 	 * Verifies that concurrent addEntry and clear do not throw
 	 * {@link java.util.ConcurrentModificationException}.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 30000) @TestDepth(2)
 	public void concurrentAddAndClear() throws Exception {
 		int threadCount = 4;
 		int iterations = 500;
@@ -199,7 +200,7 @@ public class MetricBaseConcurrencyTest extends TestSuiteBase {
 	 * Verifies that concurrent reads (getCount, getTotal) while entries
 	 * are being added do not throw exceptions.
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 30000) @TestDepth(2)
 	public void concurrentReadAndAdd() throws Exception {
 		int threadCount = 4;
 		int iterations = 500;

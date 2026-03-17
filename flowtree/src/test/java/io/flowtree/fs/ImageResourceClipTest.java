@@ -46,7 +46,7 @@ public class ImageResourceClipTest extends TestSuiteBase {
 	/**
 	 * Verifies that clipping the full image returns an identical copy.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void clipFullImage() {
 		ImageResource img = createTestImage();
 		int[] result = img.clip(0, 0, 4, 3);
@@ -63,7 +63,7 @@ public class ImageResourceClipTest extends TestSuiteBase {
 	 * correct columns. This is the regression test for the bug where
 	 * {@code (i + cw)} was used instead of {@code (i + cx)}.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void clipSubRegionWithXOffset() {
 		ImageResource img = createTestImage();
 
@@ -86,7 +86,7 @@ public class ImageResourceClipTest extends TestSuiteBase {
 	/**
 	 * Verifies clipping with both x and y offsets.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void clipSubRegionWithXYOffset() {
 		ImageResource img = createTestImage();
 
@@ -104,7 +104,7 @@ public class ImageResourceClipTest extends TestSuiteBase {
 	/**
 	 * Verifies that clipping a single pixel works correctly.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void clipSinglePixel() {
 		ImageResource img = createTestImage();
 
@@ -118,7 +118,7 @@ public class ImageResourceClipTest extends TestSuiteBase {
 	/**
 	 * Verifies that the x/y image offset is subtracted from the clip coordinates.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void clipWithImageOffset() {
 		ImageResource img = createTestImage();
 		img.setX(10);
@@ -136,7 +136,7 @@ public class ImageResourceClipTest extends TestSuiteBase {
 	/**
 	 * Verifies that a full-row clip returns the correct pixels.
 	 */
-	@Test
+	@Test(timeout = 5000)
 	public void clipFullRow() {
 		ImageResource img = createTestImage();
 

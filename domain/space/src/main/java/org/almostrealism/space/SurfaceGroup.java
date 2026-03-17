@@ -153,8 +153,9 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	 * <p>The correct child is identified by computing the geometric surface
 	 * distance from the point to each child. For {@link AbstractSurface}
 	 * children, this is {@code |distance_from_center - size|}; for other
-	 * children the Euclidean distance to the child's origin is used. The
-	 * child with the smallest surface distance is selected.</p>
+	 * children, the first non-null normal is returned since no position
+	 * information is available. The child with the smallest surface distance
+	 * is selected.</p>
 	 *
 	 * @param point a producer for the 3D point at which to compute the normal
 	 * @return a producer for the surface normal vector, or null if the group has no children
@@ -201,7 +202,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 					double distFromCenter = Math.sqrt(dx * dx + dy * dy + dz * dz);
 					surfaceDist = Math.abs(distFromCenter - size);
 				} else {
-					surfaceDist = Math.sqrt(px * px + py * py + pz * pz);
+					surfaceDist = Double.MAX_VALUE;
 				}
 
 				if (surfaceDist < bestDist) {
