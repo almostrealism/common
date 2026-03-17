@@ -242,21 +242,21 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         // 1. Check for uncommitted changes (excluding ignored files)
         List<String> dirtyFiles = checkForUncommittedChanges();
         if (!dirtyFiles.isEmpty()) {
-            // Discard uncommitted changes left by a previous job so the
-            // working directory can be synced cleanly.  This is safe because
-            // agent workers should never have manual edits; any uncommitted
-            // changes are residue from a prior (likely failed) job run.
+            // Stash uncommitted changes left by a previous (likely interrupted)
+            // job so the working directory can be synced cleanly.  Using stash
+            // instead of checkout/clean preserves the changes for recovery.
             String fileList = dirtyFiles.size() <= 5
                 ? String.join(", ", dirtyFiles)
                 : String.join(", ", dirtyFiles.subList(0, 5)) + " (+" + (dirtyFiles.size() - 5) + " more)";
-            warn("Uncommitted changes found: " + fileList + " -- resetting to clean state");
-            if (executeGit("checkout", ".") != 0) {
+            String stashMessage = "flowtree: interrupted job residue before "
+                + taskId + " [" + fileList + "]";
+            warn("Uncommitted changes found: " + fileList + " -- stashing");
+            // --include-untracked captures new files as well as modifications
+            if (executeGit("stash", "push", "--include-untracked", "-m", stashMessage) != 0) {
                 throw new RuntimeException(
-                    "Failed to discard uncommitted changes: " + fileList);
+                    "Failed to stash uncommitted changes: " + fileList);
             }
-            // Also remove untracked files that are not in .gitignore
-            executeGit("clean", "-fd");
-            log("Working directory cleaned");
+            log("Working directory cleaned (changes stashed)");
         }
 
         // 2. Fetch latest from origin
