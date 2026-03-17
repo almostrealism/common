@@ -52,7 +52,7 @@ public class Llama2Weights implements CodeFeatures {
 	public final PackedCollection wo;
 
 	/** RMS norm weights for FFN layers (layer, dim). */
-	public PackedCollection rmsFfn;
+	public final PackedCollection rmsFfn;
 
 	/** FFN gate weights (layer, hidden_dim, dim). */
 	public final PackedCollection w1;
@@ -115,7 +115,9 @@ public class Llama2Weights implements CodeFeatures {
 				take(buffer, config.seqLen, config.headSize / 2),
 				shape(config.seqLen, config.headSize / 2, 2));
 
-		this.wcls = config.sharedWeights ? tokenEmbeddings : null;
+		this.wcls = config.sharedWeights ? tokenEmbeddings
+				: pack(take(buffer, config.vocabSize, config.dim))
+						.reshape(shape(config.vocabSize, config.dim));
 	}
 
 	static float[] take(FloatBuffer buffer, int... dims) {

@@ -242,6 +242,6 @@ public class Llama2 implements AttentionFeatures {
 			}
 		}
 
-		return System.currentTimeMillis() - start;
+		return start == 0 ? 0 : System.currentTimeMillis() - start;
 	}
 }
