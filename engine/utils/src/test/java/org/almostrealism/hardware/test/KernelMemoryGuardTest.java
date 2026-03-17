@@ -353,6 +353,43 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link MemoryData} whose memory reference can be cleared to simulate
+	 * {@link MemoryData#destroy()} between acquire and release.
+	 */
+	private static class MutableMemoryData implements MemoryData {
+		private Memory mem;
+
+		MutableMemoryData(Memory mem) { this.mem = mem; }
+
+		/** Clears the memory reference, simulating a destroyed MemoryData. */
+		void clearMem() { this.mem = null; }
+
+		@Override
+		public Memory getMem() { return mem; }
+
+		@Override
+		public void reassign(Memory mem) { }
+
+		@Override
+		public int getMemLength() { return 0; }
+
+		@Override
+		public void setDelegate(MemoryData m, int offset, TraversalOrdering order) { }
+
+		@Override
+		public MemoryData getDelegate() { return null; }
+
+		@Override
+		public int getDelegateOffset() { return 0; }
+
+		@Override
+		public TraversalOrdering getDelegateOrdering() { return null; }
+
+		@Override
+		public void destroy() { }
+	}
+
+	/**
 	 * {@link MemoryData} that throws on getMem(), used to test exception handling.
 	 */
 	private static class FailingMemoryData implements MemoryData {
