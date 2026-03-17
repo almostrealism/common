@@ -92,14 +92,15 @@ public class PullRequestDetector implements ConsoleFeatures {
                 return Optional.empty();
             }
 
+            String owner = ownerRepo.split("/")[0];
             String apiPath = "/repos/" + ownerRepo +
-                "/pulls?head=" + ownerRepo.split("/")[0] + ":" + targetBranch +
+                "/pulls?head=" + owner + ":" + targetBranch +
                 "&state=open&per_page=1";
 
             String responseBody = null;
 
             if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
-                responseBody = queryViaProxy(apiPath, workstreamUrl);
+                responseBody = queryViaProxy(apiPath, workstreamUrl, owner);
             } else {
                 log("No workstream URL available, cannot query GitHub API for PR");
                 return Optional.empty();
@@ -123,9 +124,11 @@ public class PullRequestDetector implements ConsoleFeatures {
      * @param apiPath       the GitHub API path to proxy
      * @param workstreamUrl the workstream URL used to resolve the
      *                      controller base
+     * @param org           the GitHub organization name for token
+     *                      resolution, or {@code null}
      * @return the unwrapped response body, or {@code null} on failure
      */
-    private String queryViaProxy(String apiPath, String workstreamUrl) {
+    private String queryViaProxy(String apiPath, String workstreamUrl, String org) {
         try {
             String resolvedUrl = WorkspaceResolver.resolveWorkstreamUrl(workstreamUrl);
 
@@ -138,6 +141,9 @@ public class PullRequestDetector implements ConsoleFeatures {
             String controllerBase = resolvedUrl.substring(0, wsIdx);
             String proxyUrl = controllerBase + "/api/github/proxy?url="
                 + URLEncoder.encode(apiPath, StandardCharsets.UTF_8);
+            if (org != null && !org.isEmpty()) {
+                proxyUrl += "&org=" + URLEncoder.encode(org, StandardCharsets.UTF_8);
+            }
 
             HttpURLConnection conn = (HttpURLConnection) new URL(proxyUrl).openConnection();
             conn.setRequestMethod("GET");
