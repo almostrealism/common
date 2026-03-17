@@ -109,6 +109,12 @@ import java.util.function.Supplier;
  * @see LibraryDestination
  * @see WaveDetails
  */
+/**
+ * @deprecated Use {@link ProtobufWaveDetailsStore} for new code.
+ *             This class is retained for reading legacy batch files
+ *             and for migration via {@link AudioLibraryMigration}.
+ */
+@Deprecated
 public class AudioLibraryPersistence {
 	/** Maximum bytes per batch file before starting a new file. */
 	public static int batchSize = Integer.MAX_VALUE / 2;

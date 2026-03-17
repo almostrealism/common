@@ -23,9 +23,11 @@ import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.audio.data.WaveDataProvider;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
+import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.audio.data.WaveDetailsJob;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.audio.similarity.IncrementalSimilarityComputation;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.concurrent.SuspendableThreadPoolExecutor;
 import org.almostrealism.io.ConsoleFeatures;
@@ -181,9 +183,18 @@ public class AudioLibrary implements ConsoleFeatures {
 	private int totalJobs;
 
 	/**
+	 * Optional external store for persisting and retrieving {@link WaveDetails}.
+	 * When set, this store replaces the in-memory {@link #detailsCache} and
+	 * {@link #detailsLoader} as the primary storage mechanism.
+	 */
+	private final WaveDetailsStore store;
+
+	/**
 	 * Optional loader for restoring evicted {@link WaveDetails} from disk.
 	 * When a requested identifier is not in the cache, this function is
 	 * called to reload it from protobuf storage.
+	 *
+	 * @deprecated Use {@link WaveDetailsStore} via the store-backed constructor instead.
 	 */
 	private Function<String, WaveDetails> detailsLoader;
 
@@ -208,14 +219,36 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	public AudioLibrary(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root, int sampleRate) {
+		this(root, sampleRate, null);
+	}
+
+	/**
+	 * Creates an {@link AudioLibrary} backed by a {@link WaveDetailsStore}.
+	 *
+	 * <p>When a store is provided, it replaces the in-memory
+	 * {@link FrequencyCache} and details loader as the primary storage
+	 * and retrieval mechanism. The store handles caching, persistence,
+	 * and optional HNSW-based nearest neighbor search.</p>
+	 *
+	 * @param root       the file tree for audio files
+	 * @param sampleRate target sample rate
+	 * @param store      optional backing store, or {@code null} for legacy in-memory mode
+	 */
+	public AudioLibrary(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root,
+						int sampleRate, WaveDetailsStore store) {
 		this.root = root;
 		this.sampleRate = sampleRate;
+		this.store = store;
 		this.identifiers = new HashMap<>();
 		this.detailsCache = new FrequencyCache<>(DEFAULT_DETAIL_CACHE_CAPACITY, 0.4);
 		this.completeIdentifiers = new HashSet<>();
 		this.factory = new WaveDetailsFactory(sampleRate);
 		this.queue = new PriorityBlockingQueue<>(100,
 				Comparator.comparing(WaveDetailsJob::getPriority).reversed());
+
+		if (store != null) {
+			completeIdentifiers.addAll(store.allIdentifiers());
+		}
 
 		start();
 	}
@@ -332,11 +365,16 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
-	 * Retrieves a {@link WaveDetails} by identifier, checking the in-memory
-	 * cache first and falling back to the {@link #detailsLoader} if set.
-	 * Loaded entries are inserted into the cache.
+	 * Retrieves a {@link WaveDetails} by identifier. When a
+	 * {@link WaveDetailsStore} is configured, it is the primary source.
+	 * Otherwise, checks the in-memory cache and falls back to the
+	 * {@link #detailsLoader} if set.
 	 */
 	private WaveDetails resolveDetails(String identifier) {
+		if (store != null) {
+			return store.get(identifier);
+		}
+
 		WaveDetails cached = detailsCache.get(identifier);
 		if (cached != null) return cached;
 
@@ -457,7 +495,12 @@ public class AudioLibrary implements ConsoleFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		detailsCache.put(details.getIdentifier(), details);
+		if (store != null) {
+			store.put(details.getIdentifier(), details);
+		} else {
+			detailsCache.put(details.getIdentifier(), details);
+		}
+
 		if (isComplete(details)) {
 			completeIdentifiers.add(details.getIdentifier());
 		}
@@ -559,15 +602,30 @@ public class AudioLibrary implements ConsoleFeatures {
 		try {
 			String id = provider.getIdentifier();
 
-			WaveDetails details = detailsCache.get(id);
+			WaveDetails details;
+
+			if (store != null) {
+				details = store.get(id);
+			} else {
+				details = detailsCache.get(id);
+			}
+
 			if (details == null) {
 				details = computeDetails(provider, null, persistent);
-				detailsCache.put(id, details);
+				if (store != null) {
+					storeWithEmbedding(id, details);
+				} else {
+					detailsCache.put(id, details);
+				}
 			}
 
 			if (getWaveDetailsFactory().getFeatureProvider() != null && details.getFeatureData() == null) {
 				details = computeDetails(provider, details, persistent);
-				detailsCache.put(id, details);
+				if (store != null) {
+					storeWithEmbedding(id, details);
+				} else {
+					detailsCache.put(id, details);
+				}
 			}
 
 			if (isComplete(details)) {
@@ -596,6 +654,66 @@ public class AudioLibrary implements ConsoleFeatures {
 		return details != null &&
 				details.getFreqData() != null &&
 				details.getFeatureData() != null;
+	}
+
+	/**
+	 * Returns the backing {@link WaveDetailsStore}, or {@code null} if this
+	 * library uses the legacy in-memory cache.
+	 *
+	 * @return the backing store, or {@code null}
+	 */
+	public WaveDetailsStore getStore() {
+		return store;
+	}
+
+	/**
+	 * Stores details with a mean-pooled embedding vector computed from
+	 * the feature data. The embedding enables HNSW-based nearest neighbor
+	 * search in the backing store.
+	 */
+	private void storeWithEmbedding(String id, WaveDetails details) {
+		PackedCollection embedding = computeEmbeddingVector(details);
+		if (embedding != null) {
+			store.put(id, details, embedding);
+		} else {
+			store.put(id, details);
+		}
+	}
+
+	/**
+	 * Computes a mean-pooled embedding vector from the feature data of
+	 * the given {@link WaveDetails}. Returns {@code null} if the details
+	 * have no feature data.
+	 *
+	 * @param details the details to compute an embedding for
+	 * @return the embedding vector, or {@code null}
+	 */
+	public static PackedCollection computeEmbeddingVector(WaveDetails details) {
+		if (details == null || details.getFeatureData() == null) return null;
+
+		PackedCollection featureData = details.getFeatureData();
+		int frames = featureData.getShape().length(0);
+		int bins = featureData.getShape().length(1);
+		if (frames == 0 || bins == 0) return null;
+
+		double[] raw = featureData.doubleStream().toArray();
+		double[] embedding = new double[bins];
+
+		for (int f = 0; f < frames; f++) {
+			for (int b = 0; b < bins; b++) {
+				int idx = f * bins + b;
+				if (idx < raw.length) {
+					embedding[b] += raw[idx];
+				}
+			}
+		}
+
+		double invFrames = 1.0 / frames;
+		PackedCollection result = new PackedCollection(bins);
+		for (int b = 0; b < bins; b++) {
+			result.setMem(b, embedding[b] * invFrames);
+		}
+		return result;
 	}
 
 	public Map<String, Double> getSimilarities(String key) {
@@ -739,6 +857,9 @@ public class AudioLibrary implements ConsoleFeatures {
 			Thread.currentThread().interrupt();
 		} finally {
 			executor = null;
+			if (store != null) {
+				store.flush();
+			}
 		}
 	}
 

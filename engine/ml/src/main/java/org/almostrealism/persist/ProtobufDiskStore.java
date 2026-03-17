@@ -296,6 +296,16 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	@Override
+	public boolean containsKey(String id) {
+		return index.containsKey(id);
+	}
+
+	@Override
+	public java.util.Set<String> allIds() {
+		return java.util.Collections.unmodifiableSet(new java.util.HashSet<>(index.keySet()));
+	}
+
+	@Override
 	public int size() {
 		return index.size();
 	}

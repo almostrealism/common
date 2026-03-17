@@ -20,11 +20,13 @@ import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.WaveDataProvider;
 import org.almostrealism.audio.data.WaveDetails;
+import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.audio.persistence.AudioLibraryPersistence;
 import org.almostrealism.audio.persistence.LibraryDestination;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.audio.similarity.SimilarityNode;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.algorithm.GraphFeatures;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -344,6 +346,9 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		return instance.doDiscoverPrototypes(library, maxPrototypes, statusCallback);
 	}
 
+	/** Default number of nearest neighbors for HNSW-based sparse graph. */
+	public static final int DEFAULT_K_NEIGHBORS = 20;
+
 	private List<PrototypeResult> doDiscoverPrototypes(AudioLibrary library,
 													   int maxPrototypes,
 													   Consumer<String> statusCallback)
@@ -369,21 +374,32 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		log("[Prototypes] Library refresh complete");
 
 		int totalDetails = library.getAllIdentifiers().size();
-		log("[Prototypes] Computing similarities for " + totalDetails + " samples...");
 
 		if (totalDetails == 0) {
 			log("[Prototypes] No samples in library");
 			throw new PrototypeDiscoveryException("No samples in library");
 		}
 
-		report(statusCallback, "Computing similarities...");
-		CompletableFuture<Void> similarityFuture =
-				library.submitSimilarityJobs(statusCallback);
-		similarityFuture.join();
+		AudioSimilarityGraph graph;
 
-		report(statusCallback, "Building similarity graph...");
-		log("[Prototypes] Building similarity graph...");
-		AudioSimilarityGraph graph = library.toSimilarityGraph();
+		WaveDetailsStore store = library.getStore();
+		if (store != null) {
+			report(statusCallback, "Building sparse K-NN graph via HNSW...");
+			log("[Prototypes] Building sparse K-NN graph (K=" + DEFAULT_K_NEIGHBORS
+					+ ") for " + totalDetails + " samples...");
+			graph = buildSparseGraph(library, store, DEFAULT_K_NEIGHBORS, statusCallback);
+		} else {
+			log("[Prototypes] Computing pairwise similarities for "
+					+ totalDetails + " samples...");
+			report(statusCallback, "Computing similarities...");
+			CompletableFuture<Void> similarityFuture =
+					library.submitSimilarityJobs(statusCallback);
+			similarityFuture.join();
+
+			report(statusCallback, "Building similarity graph...");
+			log("[Prototypes] Building similarity graph...");
+			graph = library.toSimilarityGraph();
+		}
 
 		int nodeCount = graph.countNodes();
 		if (nodeCount == 0) {
@@ -400,6 +416,55 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		List<PrototypeResult> prototypes = findPrototypesFromGraph(graph, maxPrototypes);
 		log("[Prototypes] Returning " + prototypes.size() + " prototypes");
 		return prototypes;
+	}
+
+	/**
+	 * Builds a sparse similarity graph using HNSW nearest neighbor search.
+	 *
+	 * <p>For each sample, its mean-pooled embedding vector is computed and
+	 * used to search for the top-K most similar samples via the HNSW index
+	 * in the backing store. The search results are stored as similarity
+	 * scores in each {@link WaveDetails}, producing a sparse graph with
+	 * O(N*K) edges instead of O(N^2).</p>
+	 *
+	 * @param library        the audio library
+	 * @param store          the backing store with HNSW index
+	 * @param k              number of nearest neighbors per sample
+	 * @param statusCallback optional progress callback
+	 * @return a sparse similarity graph
+	 */
+	private AudioSimilarityGraph buildSparseGraph(AudioLibrary library,
+												   WaveDetailsStore store,
+												   int k,
+												   Consumer<String> statusCallback) {
+		List<WaveDetails> allDetails = library.allDetails().toList();
+		int total = allDetails.size();
+		int processed = 0;
+
+		for (WaveDetails details : allDetails) {
+			PackedCollection embedding = AudioLibrary.computeEmbeddingVector(details);
+			if (embedding == null) continue;
+
+			List<WaveDetailsStore.NeighborResult> neighbors =
+					store.searchNeighbors(embedding, k);
+
+			details.getSimilarities().clear();
+			for (WaveDetailsStore.NeighborResult neighbor : neighbors) {
+				if (!neighbor.identifier().equals(details.getIdentifier())) {
+					details.getSimilarities().put(
+							neighbor.identifier(), (double) neighbor.similarity());
+				}
+			}
+
+			processed++;
+			if (processed % 100 == 0 || processed == total) {
+				String msg = "Building K-NN graph... " + processed + "/" + total;
+				report(statusCallback, msg);
+			}
+		}
+
+		log("[Prototypes] Sparse graph: " + total + " nodes, K=" + k);
+		return new AudioSimilarityGraph(allDetails);
 	}
 
 	/**
