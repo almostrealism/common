@@ -204,6 +204,33 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Documents a known limitation: if resolveRAM returns null during release
+	 * (e.g., MemoryData was explicitly destroyed between acquire and release),
+	 * the reference count is not decremented and the map entry leaks.
+	 *
+	 * <p>This test verifies the current behavior (leak) so that a future fix
+	 * can be validated by changing the assertion.</p>
+	 */
+	@Test(timeout = 10_000)
+	public void releaseWithNullResolveRAMLeaksEntry() {
+		KernelMemoryGuard guard = new KernelMemoryGuard();
+		MutableMemoryData data = new MutableMemoryData(new StubRAM(700L));
+
+		guard.acquire(data);
+		Assert.assertFalse("Should be guarded after acquire",
+				guard.canDeallocate(700L));
+
+		// Simulate MemoryData.destroy() clearing the memory reference
+		data.clearMem();
+
+		guard.release(data);
+		// Known limitation: the entry leaks because resolveRAM returns null
+		Assert.assertFalse("Entry leaks when resolveRAM returns null during release "
+				+ "(known limitation — see NATIVE_MEMORY_GC_LIFECYCLE_REVIEW.md Issue 1)",
+				guard.canDeallocate(700L));
+	}
+
+	/**
 	 * Verifies that the static {@link KernelMemoryGuard#acquireFor} returns
 	 * null when no Hardware is available, and that
 	 * {@link KernelMemoryGuard#releaseFor} handles null guard gracefully.
