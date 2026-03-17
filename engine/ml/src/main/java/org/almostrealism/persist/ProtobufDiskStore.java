@@ -31,10 +31,13 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -301,8 +304,8 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	@Override
-	public java.util.Set<String> allIds() {
-		return java.util.Collections.unmodifiableSet(new java.util.HashSet<>(index.keySet()));
+	public Set<String> allIds() {
+		return Collections.unmodifiableSet(new HashSet<>(index.keySet()));
 	}
 
 	@Override

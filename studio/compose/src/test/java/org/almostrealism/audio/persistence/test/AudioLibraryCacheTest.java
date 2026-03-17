@@ -17,7 +17,9 @@
 package org.almostrealism.audio.persistence.test;
 
 import org.almostrealism.audio.AudioLibrary;
+import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.WaveDetails;
+import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.audio.similarity.SimilarityNode;
@@ -29,6 +31,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import org.almostrealism.audio.persistence.AudioLibraryPersistence;
+import org.almostrealism.audio.persistence.ProtobufWaveDetailsStore;
 
 import java.io.File;
 import java.io.IOException;
@@ -601,6 +604,136 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 				library.isPrototypeIndexStale());
 	}
 
+	// ── Store-backed library tests ───────────────────────────────────────
+
+	/**
+	 * Verifies that a store-backed library's {@code include()} method
+	 * delegates to the store, and that entries are retrievable after
+	 * close and reopen.
+	 */
+	@Test(timeout = 15000)
+	public void storeBackedLibraryPersistsEntries() throws IOException {
+		File storeDir = new File(tempDir, "store-backed-test");
+
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir);
+		AudioLibrary storeLib = new AudioLibrary(
+				new FileWaveDataProviderNode(tempDir),
+				44100, store);
+
+		WaveDetails details = createDetailsWithFeatures("store-1", 4, 8);
+		storeLib.include(details);
+
+		Assert.assertTrue("Store should contain the entry",
+				store.containsKey("store-1"));
+		Assert.assertEquals("Library should track the identifier",
+				1, storeLib.getAllIdentifiers().size());
+
+		storeLib.stop();
+		store.close();
+
+		ProtobufWaveDetailsStore store2 = new ProtobufWaveDetailsStore(storeDir);
+		Assert.assertEquals("Reopened store should have 1 record", 1, store2.size());
+
+		WaveDetails reloaded = store2.get("store-1");
+		Assert.assertNotNull("Reloaded details should not be null", reloaded);
+		Assert.assertEquals("store-1", reloaded.getIdentifier());
+		Assert.assertNotNull("Feature data should survive persistence",
+				reloaded.getFeatureData());
+
+		store2.close();
+	}
+
+	/**
+	 * Verifies that {@link ProtobufWaveDetailsStore#put(String, WaveDetails, PackedCollection)}
+	 * stores the embedding vector and makes it searchable via
+	 * {@link ProtobufWaveDetailsStore#searchNeighbors(PackedCollection, int)}.
+	 */
+	@Test(timeout = 15000)
+	public void putWithEmbeddingEnablesSearch() throws IOException {
+		File storeDir = new File(tempDir, "embedding-search-test");
+
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir);
+
+		for (int i = 0; i < 5; i++) {
+			WaveDetails details = createDetailsWithFeatures("emb-" + i, 4, 8);
+			PackedCollection embedding = AudioLibrary.computeEmbeddingVector(details);
+			Assert.assertNotNull("Embedding should be computable", embedding);
+			store.put("emb-" + i, details, embedding);
+		}
+
+		WaveDetails query = store.get("emb-2");
+		Assert.assertNotNull(query);
+		PackedCollection queryEmbedding = AudioLibrary.computeEmbeddingVector(query);
+
+		List<WaveDetailsStore.NeighborResult> neighbors =
+				store.searchNeighbors(queryEmbedding, 3);
+		Assert.assertFalse("Search should return results", neighbors.isEmpty());
+		Assert.assertTrue("Should find at least 2 neighbors",
+				neighbors.size() >= 2);
+
+		Set<String> neighborIds = new java.util.HashSet<>();
+		for (WaveDetailsStore.NeighborResult n : neighbors) {
+			neighborIds.add(n.identifier());
+			Assert.assertTrue("Similarity should be between 0 and 1",
+					n.similarity() >= 0.0f && n.similarity() <= 1.001f);
+		}
+
+		store.close();
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#computeEmbeddingVector(WaveDetails)}
+	 * correctly mean-pools feature data across frames and returns a vector
+	 * with the expected number of bins.
+	 */
+	@Test(timeout = 5000)
+	public void computeEmbeddingVectorMeanPoolsFrames() {
+		int frames = 3;
+		int bins = 4;
+		WaveDetails details = new WaveDetails("embed-test", 44100);
+		PackedCollection featureData = new PackedCollection(frames, bins, 1);
+
+		// Frame 0: [1, 2, 3, 4]
+		// Frame 1: [5, 6, 7, 8]
+		// Frame 2: [3, 3, 3, 3]
+		// Mean:    [3, 3.667, 4.333, 5]
+		featureData.setMem(0, 1.0); featureData.setMem(1, 2.0);
+		featureData.setMem(2, 3.0); featureData.setMem(3, 4.0);
+		featureData.setMem(4, 5.0); featureData.setMem(5, 6.0);
+		featureData.setMem(6, 7.0); featureData.setMem(7, 8.0);
+		featureData.setMem(8, 3.0); featureData.setMem(9, 3.0);
+		featureData.setMem(10, 3.0); featureData.setMem(11, 3.0);
+		details.setFeatureData(featureData);
+
+		PackedCollection embedding = AudioLibrary.computeEmbeddingVector(details);
+		Assert.assertNotNull("Should produce an embedding", embedding);
+		Assert.assertEquals("Embedding should have bins dimensions",
+				bins, embedding.getMemLength());
+
+		Assert.assertEquals("Bin 0 mean should be 3.0",
+				3.0, embedding.toDouble(0), 1e-9);
+		Assert.assertEquals("Bin 1 mean should be ~3.667",
+				11.0 / 3.0, embedding.toDouble(1), 1e-9);
+		Assert.assertEquals("Bin 2 mean should be ~4.333",
+				13.0 / 3.0, embedding.toDouble(2), 1e-9);
+		Assert.assertEquals("Bin 3 mean should be 5.0",
+				5.0, embedding.toDouble(3), 1e-9);
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#computeEmbeddingVector(WaveDetails)}
+	 * returns null when details have no feature data.
+	 */
+	@Test(timeout = 5000)
+	public void computeEmbeddingVectorReturnsNullForNoFeatures() {
+		WaveDetails noFeatures = new WaveDetails("no-feat", 44100);
+		Assert.assertNull("Should return null for no feature data",
+				AudioLibrary.computeEmbeddingVector(noFeatures));
+
+		Assert.assertNull("Should return null for null details",
+				AudioLibrary.computeEmbeddingVector(null));
+	}
+
 	// ── Test helpers ─────────────────────────────────────────────────────
 
 	/**
@@ -612,6 +745,28 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 		WaveDetails details = new WaveDetails(identifier, 44100);
 		details.setFreqData(new PackedCollection(1));
 		details.setFeatureData(new PackedCollection(1));
+		details.setSimilarities(new HashMap<>());
+		return details;
+	}
+
+	/**
+	 * Creates a {@link WaveDetails} with multi-frame feature data.
+	 */
+	private WaveDetails createDetailsWithFeatures(String identifier,
+												  int frames, int bins) {
+		WaveDetails details = new WaveDetails(identifier, 44100);
+		details.setFreqData(new PackedCollection(bins));
+
+		PackedCollection featureData = new PackedCollection(frames, bins, 1);
+		for (int f = 0; f < frames; f++) {
+			for (int b = 0; b < bins; b++) {
+				featureData.setMem(f * bins + b,
+						(identifier.hashCode() + f * bins + b) * 0.001);
+			}
+		}
+		details.setFeatureData(featureData);
+		details.setFeatureSampleRate(16.0);
+		details.setFeatureChannelCount(1);
 		details.setSimilarities(new HashMap<>());
 		return details;
 	}

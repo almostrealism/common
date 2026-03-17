@@ -108,8 +108,7 @@ import java.util.function.Supplier;
  * @see AudioLibrary
  * @see LibraryDestination
  * @see WaveDetails
- */
-/**
+ *
  * @deprecated Use {@link ProtobufWaveDetailsStore} for new code.
  *             This class is retained for reading legacy batch files
  *             and for migration via {@link AudioLibraryMigration}.
