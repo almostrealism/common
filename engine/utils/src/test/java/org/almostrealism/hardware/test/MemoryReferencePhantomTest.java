@@ -130,10 +130,6 @@ public class MemoryReferencePhantomTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Minimal {@link RAM} implementation for testing {@link NativeRef} without
-	 * requiring native memory allocation.
-	 */
-	/**
 	 * {@link RAM} with allocation tracking enabled for stack trace tests.
 	 */
 	private static class TrackedRAM extends TestRAM {
@@ -142,6 +138,10 @@ public class MemoryReferencePhantomTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Minimal {@link RAM} implementation for testing {@link NativeRef} without
+	 * requiring native memory allocation.
+	 */
 	private static class TestRAM extends RAM {
 		private final long address;
 		private final long size;
