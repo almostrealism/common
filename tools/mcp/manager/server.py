@@ -1784,7 +1784,10 @@ def memory_branch_context(
         commit_limit: Maximum number of commits to include (default 30).
 
     Returns:
-        Dictionary with branch memories and optionally commits.
+        Dictionary with branch memories and optionally commits.  When
+        commits are included, the response also contains ``total_commits``
+        (the full number of commits on the branch) and ``initial_commit_sha``
+        (the first commit on the branch relative to the base).
     """
     _require_scope("memory")
     err = _check_short_strings(
@@ -1821,7 +1824,11 @@ def memory_branch_context(
     except ConnectionError as e:
         return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
 
-    # Merge results from the "messages" namespace if requested
+    # Merge results from the "messages" namespace if requested.
+    # Messages are appended AFTER the primary namespace results so that
+    # the caller always receives up to ``limit`` memories from the
+    # requested namespace.  Messages are capped at ``limit`` as well and
+    # interleaved by recency, but they never displace primary memories.
     if include_messages and namespace != "messages":
         try:
             msg_memories = client.search_by_branch(
@@ -1831,18 +1838,21 @@ def memory_branch_context(
                 limit=limit,
             )
             if msg_memories:
-                memories = memories + msg_memories
-                memories.sort(
+                primary = memories[:limit]
+                combined = primary + msg_memories
+                combined.sort(
                     key=lambda m: m.get("created_at", ""),
                     reverse=True,
                 )
-                memories = memories[:limit]
+                memories = combined
         except ConnectionError:
             pass  # Non-critical: proceed without messages
 
     # Fetch commit history from GitHub Compare API if requested
     commits = None
     commit_error = None
+    total_commits = 0
+    all_commits = []
     if include_commits and effective_repo:
         owner_repo = _extract_owner_repo(effective_repo)
         if owner_repo:
@@ -1868,8 +1878,13 @@ def memory_branch_context(
                         "Failed to fetch commits for %s...%s: %s",
                         base, effective_branch, commit_error)
                 elif "commits" in compare:
+                    all_commits = compare.get("commits", [])
+                    total_commits = len(all_commits)
+                    # Take the most recent commits (Compare API returns
+                    # oldest-first, so slice from the end).
+                    recent = all_commits[-commit_limit:] if len(all_commits) > commit_limit else all_commits
                     commits = []
-                    for c in compare.get("commits", [])[:commit_limit]:
+                    for c in recent:
                         commit_obj = c.get("commit", {})
                         author_obj = commit_obj.get("author", {})
                         commits.append({
@@ -1903,6 +1918,9 @@ def memory_branch_context(
     if commits is not None:
         result["commits"] = commits
         result["commit_count"] = len(commits)
+        result["total_commits"] = total_commits
+        if all_commits:
+            result["initial_commit_sha"] = all_commits[0].get("sha", "")[:10]
     if commit_error is not None:
         result["commit_error"] = commit_error
 
