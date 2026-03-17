@@ -592,6 +592,26 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
+      - name: Run Hardware Tests
+        if: matrix.group == 0
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl base/hardware \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           2>&1 | tee "${{ runner.temp }}/mvn-hardware-test.log"
+
+      - name: Upload Hardware Surefire Reports
+        if: always() && matrix.group == 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-hardware
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
           set -o pipefail
@@ -803,6 +823,14 @@ jobs:
 
       - name: Build (skip tests)
         run: mvn install -DskipTests
+
+      - name: Run Hardware Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl base/hardware \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
