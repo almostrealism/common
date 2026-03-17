@@ -279,7 +279,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		if (operands.size() == 1) return operands.get(0);
-		if (operands.size() > 2) return new Quotient(operands);
+		if (operands.size() > 2) {
+			Expression<?> denominator = Product.of(
+					operands.subList(1, operands.size()).toArray(new Expression[0]));
+			return create(operands.get(0), denominator);
+		}
 
 		if (values[0] instanceof ArithmeticGenerator) {
 			return ((ArithmeticGenerator) values[0]).divide(operands.get(1));
