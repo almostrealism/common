@@ -655,6 +655,26 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Run Render Tests
+        if: matrix.group == 0
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/render \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           2>&1 | tee "${{ runner.temp }}/mvn-render-test.log"
+
+      - name: Upload Render Surefire Reports
+        if: always() && matrix.group == 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-render
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Extract crash reports
         if: always()
         env:
@@ -850,6 +870,14 @@ jobs:
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=3
+
+      - name: Run Render Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/render \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
   test-media-mac:
     needs: [changes, build, test-mac]
