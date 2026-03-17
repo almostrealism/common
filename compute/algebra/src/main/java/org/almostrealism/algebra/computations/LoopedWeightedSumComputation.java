@@ -169,10 +169,10 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	/**
 	 * Computes the value at a given index when embedded in another computation.
 	 *
-	 * <p>This override ensures that even when the computation is embedded (e.g., via reshape),
-	 * the inner loop over kernelSize is unrolled but the outer loop over inputChannels
-	 * is ALSO unrolled (since we can't generate native loops in this context).
-	 * However, this still produces outerCount * innerCount operations.</p>
+	 * <p>This override unrolls both loops using the same incremental flattening
+	 * approach as the base class, delegating the inner sum to
+	 * {@link #computeInnerSum}. Each outer iteration's result is flattened
+	 * via {@code generate(flatten())} to keep the expression tree flat.</p>
 	 *
 	 * <p>For truly efficient computation with native loops, the computation must be
 	 * isolated so that getScope() is called instead.</p>
