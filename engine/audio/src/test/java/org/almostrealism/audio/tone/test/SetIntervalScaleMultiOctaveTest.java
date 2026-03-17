@@ -28,15 +28,14 @@ import java.util.List;
 
 /**
  * Tests for {@link org.almostrealism.audio.tone.SetIntervalScale} multi-octave
- * support, verifying the fix for the {@link UnsupportedOperationException} that
- * was previously thrown for positions beyond the interval array length.
+ * support, verifying correct values within the configured range and proper
+ * failure when positions exceed the range.
  */
 public class SetIntervalScaleMultiOctaveTest extends TestSuiteBase {
 
 	/**
-	 * Tests SetIntervalScale with 2 octaves (positions beyond intervals.length).
-	 * Verifies the fix for the UnsupportedOperationException that was previously
-	 * thrown for positions greater than intervals.length.
+	 * Tests SetIntervalScale with 2 octaves, verifying correct note values
+	 * for all positions within the configured range.
 	 */
 	@Test(timeout = 5000)
 	public void twoOctaveMajorScale() {
@@ -92,5 +91,36 @@ public class SetIntervalScaleMultiOctaveTest extends TestSuiteBase {
 		Assert.assertEquals("Should collect 14 notes", 14, collected.size());
 		Assert.assertEquals("First should be C4", WesternChromatic.C4, collected.get(0));
 		Assert.assertEquals("Last should be B5", WesternChromatic.B5, collected.get(13));
+	}
+
+	/**
+	 * Tests that accessing a position beyond the configured range throws
+	 * {@link IndexOutOfBoundsException} instead of silently wrapping.
+	 */
+	@Test(expected = IndexOutOfBoundsException.class, timeout = 5000)
+	public void exceedingRangeThrows() {
+		Scale<WesternChromatic> oneOctave = WesternScales.major(WesternChromatic.C4, 1);
+		Assert.assertEquals("Length should be 7", 7, oneOctave.length());
+		oneOctave.valueAt(7);
+	}
+
+	/**
+	 * Tests that accessing a position beyond a multi-octave range throws
+	 * {@link IndexOutOfBoundsException}.
+	 */
+	@Test(expected = IndexOutOfBoundsException.class, timeout = 5000)
+	public void exceedingMultiOctaveRangeThrows() {
+		Scale<WesternChromatic> twoOctaves = WesternScales.major(WesternChromatic.C4, 2);
+		Assert.assertEquals("Length should be 14", 14, twoOctaves.length());
+		twoOctaves.valueAt(14);
+	}
+
+	/**
+	 * Tests that negative positions throw {@link IndexOutOfBoundsException}.
+	 */
+	@Test(expected = IndexOutOfBoundsException.class, timeout = 5000)
+	public void negativePositionThrows() {
+		Scale<WesternChromatic> scale = WesternScales.major(WesternChromatic.C4, 1);
+		scale.valueAt(-1);
 	}
 }

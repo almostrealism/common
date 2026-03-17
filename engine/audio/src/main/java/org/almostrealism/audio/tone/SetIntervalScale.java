@@ -82,6 +82,11 @@ public class SetIntervalScale<T extends KeyPosition<T>> implements Scale<T> {
 
 	@Override
 	public T valueAt(int position) {
+		if (position < 0 || position >= length()) {
+			throw new IndexOutOfBoundsException(
+					"Position " + position + " is out of range for scale of length " + length());
+		}
+
 		if (position == 0) {
 			return root;
 		} else {
