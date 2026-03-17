@@ -9,15 +9,14 @@ new PRs. This enables agents to manage code review feedback and project
 branches autonomously.
 
 Authentication (first match wins):
-    1. GITHUB_TOKEN environment variable (direct GitHub API access)
-    2. ~/.config/ar/github-token file (direct GitHub API access)
-    3. AR_WORKSTREAM_URL controller proxy (no local token needed)
+    1. ~/.config/ar/github-token file (direct GitHub API access)
+    2. AR_WORKSTREAM_URL controller proxy (no local token needed)
 
-When a local token is available, the tool calls the GitHub API directly.
-When no local token is found but AR_WORKSTREAM_URL is set, requests are
-proxied through the FlowTree controller's /api/github/proxy endpoint.
-The controller authenticates with its own GITHUB_TOKEN, so the token
-only needs to be configured in one place.
+When a local token file is available, the tool calls the GitHub API
+directly. When no local token is found but AR_WORKSTREAM_URL is set,
+requests are proxied through the FlowTree controller's /api/github/proxy
+endpoint. The controller authenticates with per-org tokens from
+workstreams.yaml.
 
 Other configuration:
     AR_GITHUB_REPO  - Optional. Format: owner/repo. Auto-detected from
@@ -53,11 +52,11 @@ MAX_PAGES = 5
 _cached_token: Optional[str] = None
 
 # Log startup configuration to stderr for diagnostics
-print(f"ar-github: GITHUB_TOKEN={'<set>' if os.environ.get('GITHUB_TOKEN', '').strip() else '<not set>'}",
+print(f"ar-github: token_file={'<exists>' if os.path.isfile(TOKEN_FILE) else '<not found>'}",
       file=sys.stderr)
 print(f"ar-github: AR_WORKSTREAM_URL={'<not set>' if not WORKSTREAM_URL else WORKSTREAM_URL}",
       file=sys.stderr)
-if WORKSTREAM_URL and not os.environ.get("GITHUB_TOKEN", "").strip():
+if WORKSTREAM_URL and not os.path.isfile(TOKEN_FILE):
     print("ar-github: Will use controller proxy for GitHub API calls", file=sys.stderr)
 
 _mcp_instance = None
@@ -77,29 +76,22 @@ def _get_mcp():
 
 
 def _resolve_token() -> str:
-    """Resolve the GitHub token from environment or file.
+    """Resolve the GitHub token from the token file.
 
-    Resolution order:
-        1. GITHUB_TOKEN environment variable
-        2. ~/.config/ar/github-token file
+    Reads from ~/.config/ar/github-token. Environment variable
+    authentication is not supported — the controller uses per-org
+    tokens from workstreams.yaml via the proxy endpoint.
 
     Returns:
         The token string.
 
     Raises:
-        ValueError: If no token is found.
+        ValueError: If no token file is found.
     """
     global _cached_token
     if _cached_token:
         return _cached_token
 
-    # 1. Environment variable
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
-    if token:
-        _cached_token = token
-        return token
-
-    # 2. Token file
     if os.path.isfile(TOKEN_FILE):
         try:
             token = open(TOKEN_FILE).read().strip()
@@ -110,8 +102,8 @@ def _resolve_token() -> str:
             pass
 
     raise ValueError(
-        "GitHub token not found. Set GITHUB_TOKEN env var or write your "
-        f"token to {TOKEN_FILE}"
+        f"GitHub token not found. Write your token to {TOKEN_FILE} "
+        "or use the controller proxy via AR_WORKSTREAM_URL"
     )
 
 
@@ -288,7 +280,7 @@ def _detect_branch() -> Optional[str]:
 def _github_get(path: str) -> list | dict:
     """Make a GET request to the GitHub API with pagination support.
 
-    Uses the local GITHUB_TOKEN for direct access when available.
+    Uses a local token file for direct access when available.
     Falls back to proxying through the FlowTree controller when
     AR_WORKSTREAM_URL is set and no local token exists.
 
@@ -346,7 +338,7 @@ def _github_get(path: str) -> list | dict:
 def _github_post(path: str, payload: dict) -> dict:
     """Make a POST request to the GitHub API.
 
-    Uses the local GITHUB_TOKEN for direct access when available.
+    Uses a local token file for direct access when available.
     Falls back to proxying through the FlowTree controller when
     AR_WORKSTREAM_URL is set and no local token exists.
 

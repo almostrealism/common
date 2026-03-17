@@ -34,14 +34,10 @@ import java.util.Optional;
  * embedded in {@link GitManagedJob}, making it reusable across
  * different job types and contexts.</p>
  *
- * <p>Authentication is resolved in two ways:</p>
- * <ol>
- *   <li>A {@code GITHUB_TOKEN} or {@code GH_TOKEN} environment variable
- *       for direct GitHub API access</li>
- *   <li>A controller proxy endpoint derived from the workstream URL,
- *       which forwards requests through the controller's GitHub
- *       integration</li>
- * </ol>
+ * <p>Authentication is resolved via the controller proxy endpoint
+ * derived from the workstream URL. The controller uses per-org
+ * tokens from the {@code githubOrgs} section of workstreams.yaml
+ * to authenticate with the GitHub API.</p>
  *
  * <h2>Usage</h2>
  * <pre>{@code
@@ -74,10 +70,8 @@ public class PullRequestDetector implements ConsoleFeatures {
      * query the GitHub REST API for an open PR whose head matches
      * the target branch.</p>
      *
-     * <p>If a {@code GITHUB_TOKEN} or {@code GH_TOKEN} environment
-     * variable is available, the API is called directly. Otherwise,
-     * if a {@code workstreamUrl} is provided, the request is proxied
-     * through the controller's GitHub proxy endpoint.</p>
+     * <p>The request is proxied through the controller's GitHub proxy
+     * endpoint using per-org tokens from workstreams.yaml.</p>
      *
      * @param remoteUrl     the git remote URL (SSH or HTTPS format)
      * @param targetBranch  the branch name to search for an open PR
@@ -98,23 +92,16 @@ public class PullRequestDetector implements ConsoleFeatures {
                 return Optional.empty();
             }
 
-            String token = System.getenv("GITHUB_TOKEN");
-            if (token == null || token.isEmpty()) {
-                token = System.getenv("GH_TOKEN");
-            }
-
             String apiPath = "/repos/" + ownerRepo +
                 "/pulls?head=" + ownerRepo.split("/")[0] + ":" + targetBranch +
                 "&state=open&per_page=1";
 
             String responseBody = null;
 
-            if (token != null && !token.isEmpty()) {
-                responseBody = queryGitHubDirectly(apiPath, token);
-            } else if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
+            if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
                 responseBody = queryViaProxy(apiPath, workstreamUrl);
             } else {
-                log("No GITHUB_TOKEN and no workstream URL, cannot query GitHub API for PR");
+                log("No workstream URL available, cannot query GitHub API for PR");
                 return Optional.empty();
             }
 
@@ -122,36 +109,6 @@ public class PullRequestDetector implements ConsoleFeatures {
         } catch (Exception e) {
             log("Could not detect PR URL: " + e.getMessage());
             return Optional.empty();
-        }
-    }
-
-    /**
-     * Queries the GitHub API directly using a bearer token.
-     *
-     * @param apiPath the API path (e.g., {@code /repos/owner/repo/pulls?...})
-     * @param token   the GitHub API token
-     * @return the response body, or {@code null} on failure
-     */
-    private String queryGitHubDirectly(String apiPath, String token) {
-        try {
-            String apiUrl = "https://api.github.com" + apiPath;
-            HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Authorization", "Bearer " + token);
-            conn.setRequestProperty("Accept", "application/vnd.github+json");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(10000);
-
-            int responseCode = conn.getResponseCode();
-            if (responseCode != 200) {
-                log("GitHub API returned " + responseCode + " for PR query");
-                return null;
-            }
-
-            return new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            log("GitHub API request failed: " + e.getMessage());
-            return null;
         }
     }
 

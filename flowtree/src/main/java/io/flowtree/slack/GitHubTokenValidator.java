@@ -95,15 +95,9 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	/**
 	 * Validates all GitHub tokens referenced by the given configuration.
 	 *
-	 * <p>Collects tokens from three sources:</p>
-	 * <ul>
-	 *   <li>The controller-level {@code GITHUB_TOKEN} environment variable</li>
-	 *   <li>Per-organization tokens from the {@code githubOrgs} config section</li>
-	 *   <li>Per-workstream {@code env.GITHUB_TOKEN} values</li>
-	 * </ul>
-	 *
-	 * <p>Each unique token is validated once. Repositories are grouped by
-	 * the token that will be used to access them.</p>
+	 * <p>Collects per-organization tokens from the {@code githubOrgs}
+	 * config section and validates each one. Repositories are grouped
+	 * by the token that will be used to access them.</p>
 	 *
 	 * @param config the loaded workstream configuration
 	 * @return list of validation results, one per unique token
@@ -231,9 +225,10 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	 * Collects all unique tokens and maps them to the repositories they
 	 * need to access.
 	 *
-	 * <p>Token resolution follows the same precedence as the runtime proxy:
-	 * per-workstream {@code env.GITHUB_TOKEN} > per-org token (via
-	 * {@code githubOrg}) > controller-level {@code GITHUB_TOKEN} env var.</p>
+	 * <p>Token resolution uses only per-org tokens from the
+	 * {@code githubOrgs} section of workstreams.yaml. Each workstream's
+	 * repo is matched to an org token via the {@code githubOrg} field
+	 * or by extracting the owner from the repo URL.</p>
 	 *
 	 * @param config the workstream configuration
 	 * @return map of token string to its context (label and repos)
@@ -241,9 +236,7 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	private Map<String, TokenContext> collectTokenContexts(WorkstreamConfig config) {
 		Map<String, TokenContext> contexts = new LinkedHashMap<>();
 
-		String controllerToken = System.getenv("GITHUB_TOKEN");
-
-		// Per-org tokens
+		// Per-org tokens (the ONLY source of GitHub tokens)
 		Map<String, String> orgTokens = new LinkedHashMap<>();
 		if (config.getGithubOrgs() != null) {
 			for (Map.Entry<String, WorkstreamConfig.GitHubOrgEntry> entry
@@ -257,25 +250,18 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 			}
 		}
 
-		// Register controller token if present
-		if (controllerToken != null && !controllerToken.isEmpty()) {
-			contexts.computeIfAbsent(controllerToken,
-					k -> new TokenContext("controller (GITHUB_TOKEN)"));
-		}
-
 		// Scan workstreams to determine which token handles which repo
 		for (WorkstreamConfig.WorkstreamEntry ws : config.getWorkstreams()) {
 			String ownerRepo = extractOwnerRepo(ws.getRepoUrl());
 			if (ownerRepo == null) continue;
 
 			// Determine which token this workstream will use at runtime
-			String wsToken = resolveWorkstreamToken(ws, orgTokens, controllerToken);
+			String wsToken = resolveWorkstreamToken(ws, orgTokens);
 			if (wsToken == null) continue;
 
 			// Find or create the context for this token
 			TokenContext ctx = contexts.get(wsToken);
 			if (ctx == null) {
-				// Per-workstream token not yet registered
 				String label = "workstream:" + ws.getChannelName();
 				ctx = new TokenContext(label);
 				contexts.put(wsToken, ctx);
@@ -287,32 +273,36 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	}
 
 	/**
-	 * Resolves the token that a workstream will use at runtime, following
-	 * the same precedence as the proxy endpoint.
+	 * Resolves the token that a workstream will use at runtime.
 	 *
-	 * @param ws              the workstream entry
-	 * @param orgTokens       map of org name to token
-	 * @param controllerToken the controller-level GITHUB_TOKEN
+	 * <p>Uses only per-org tokens from workstreams.yaml. The org is
+	 * determined from the workstream's {@code githubOrg} field or by
+	 * extracting the owner from the repo URL.</p>
+	 *
+	 * @param ws        the workstream entry
+	 * @param orgTokens map of org name to token
 	 * @return the resolved token, or null if none available
 	 */
 	private String resolveWorkstreamToken(WorkstreamConfig.WorkstreamEntry ws,
-										  Map<String, String> orgTokens,
-										  String controllerToken) {
-		// Per-workstream env token takes precedence
-		if (ws.getEnv() != null) {
-			String wsEnvToken = ws.getEnv().get("GITHUB_TOKEN");
-			if (wsEnvToken != null && !wsEnvToken.isEmpty()) {
-				return wsEnvToken;
-			}
-		}
-
-		// Per-org token via githubOrg field
+										  Map<String, String> orgTokens) {
+		// Per-org token via explicit githubOrg field
 		if (ws.getGithubOrg() != null && orgTokens.containsKey(ws.getGithubOrg())) {
 			return orgTokens.get(ws.getGithubOrg());
 		}
 
-		// Fall back to controller token
-		return controllerToken;
+		// Infer org from repo URL owner
+		String ownerRepo = extractOwnerRepo(ws.getRepoUrl());
+		if (ownerRepo != null) {
+			int slash = ownerRepo.indexOf('/');
+			if (slash > 0) {
+				String owner = ownerRepo.substring(0, slash);
+				if (orgTokens.containsKey(owner)) {
+					return orgTokens.get(owner);
+				}
+			}
+		}
+
+		return null;
 	}
 
 	/**

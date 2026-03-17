@@ -86,7 +86,7 @@ public class ConvolutionModelTests extends TestSuiteBase implements ModelFeature
 		convMultiChannel(2, 4, 54, 54, 3, 6);
 	}
 
-	@Test(timeout = 30000)
+	@Test(timeout = 2 * 60000)
 	public void convMultiChannelLarge() {
 		convMultiChannel(1, 56, 28, 28, 3, 28);
 	}

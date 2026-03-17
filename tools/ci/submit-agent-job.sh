@@ -19,6 +19,7 @@
 #   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
 #   ENFORCE_CHANGES   - require code changes or retry (default: false)
 #   AUTO_CREATE_PR    - auto-create a GitHub PR on success (default: false)
+#   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
 #   DESCRIPTION       - short label for Slack notifications (e.g., "Resolve test failures")
 #
 # Exit codes:
@@ -77,13 +78,15 @@ PAYLOAD=$(jq -n \
     --argjson protect "${PROTECT_TEST_FILES:-false}" \
     --argjson enforce "${ENFORCE_CHANGES:-false}" \
     --argjson autopr "${AUTO_CREATE_PR:-false}" \
+    --argjson automated true \
     '{
         prompt: $prompt,
         targetBranch: $branch,
         baseBranch: $base,
         protectTestFiles: $protect,
         enforceChanges: $enforce,
-        autoCreatePr: $autopr
+        autoCreatePr: $autopr,
+        automated: $automated
     }')
 
 if [ -n "${DESCRIPTION:-}" ]; then
@@ -96,6 +99,10 @@ fi
 
 if [ -n "${MAX_BUDGET_USD:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson b "$MAX_BUDGET_USD" '. + {maxBudgetUsd: $b}')
+fi
+
+if [ -n "${STARTED_AFTER:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --arg t "$STARTED_AFTER" '. + {startedAfter: $t}')
 fi
 
 RESPONSE=$(curl -s -w "\n%{http_code}" \
@@ -117,6 +124,20 @@ echo "Response ($HTTP_CODE): $BODY"
 if [ "$HTTP_CODE" != "200" ]; then
     echo "::error::Agent job submission failed (HTTP $HTTP_CODE): $BODY"
     exit 1
+fi
+
+SKIPPED=$(echo "$BODY" | jq -r '.skipped // empty')
+if [ "$SKIPPED" = "true" ]; then
+    REASON=$(echo "$BODY" | jq -r '.reason // "unknown"')
+    echo "::notice::Agent job skipped: $REASON"
+    exit 0
+fi
+
+# Check if automated jobs are disabled
+AUTOMATED_REJECTED=$(echo "$BODY" | jq -r 'if .automated == true and .ok == false then "true" else "false" end')
+if [ "$AUTOMATED_REJECTED" = "true" ]; then
+    echo "::notice::Automated job submission rejected — automated jobs are currently disabled on the controller"
+    exit 0
 fi
 
 JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')

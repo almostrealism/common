@@ -89,6 +89,11 @@ import java.util.regex.Pattern;
  *       <td>Proxy a PUT request to the GitHub API</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td>
  *       <td>List all registered workstreams with capabilities</td></tr>
+ *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td>
+ *       <td>Check whether automated job submissions are accepted</td></tr>
+ *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td>
+ *       <td>{@code {"accept":true}}</td>
+ *       <td>Enable or disable automated job submissions</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td>
  *       <td>Health check</td></tr>
  * </table>
@@ -110,11 +115,21 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private final SlackNotifier notifier;
     private final Map<String, Path> toolFiles = new HashMap<>();
     private JobStatsStore statsStore;
-    private String githubToken;
     private Map<String, String> githubOrgTokens = new HashMap<>();
 
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
+
+    /**
+     * Controls whether jobs that self-identify as automated (e.g., from CI
+     * pipelines) are accepted. When {@code false}, submissions with
+     * {@code "automated": true} in the request body are rejected.
+     *
+     * <p>Defaults to {@code true}. Toggle via
+     * {@code POST /api/config/accept-automated-jobs} or
+     * {@code GET /api/config/accept-automated-jobs}.</p>
+     */
+    private volatile boolean acceptAutomatedJobs = true;
 
     private Server server;
     private SlackListener listener;
@@ -146,17 +161,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setListener(SlackListener listener) {
         this.listener = listener;
-    }
-
-    /**
-     * Sets the GitHub API token used by the GitHub proxy endpoint.
-     * This takes precedence over the {@code GITHUB_TOKEN} environment
-     * variable.
-     *
-     * @param token the GitHub personal access token
-     */
-    public void setGithubToken(String token) {
-        this.githubToken = token;
     }
 
     /**
@@ -192,6 +196,25 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         this.statsStore = statsStore;
     }
 
+    /**
+     * Returns whether automated job submissions are currently accepted.
+     *
+     * @return {@code true} if automated jobs are accepted, {@code false} otherwise
+     */
+    public boolean isAcceptAutomatedJobs() {
+        return acceptAutomatedJobs;
+    }
+
+    /**
+     * Sets whether automated job submissions are accepted.
+     *
+     * @param accept {@code true} to accept automated jobs, {@code false} to reject them
+     */
+    public void setAcceptAutomatedJobs(boolean accept) {
+        this.acceptAutomatedJobs = accept;
+        log("Automated job acceptance " + (accept ? "enabled" : "disabled"));
+    }
+
     @Override
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
@@ -208,6 +231,30 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
             return handleListWorkstreams();
+        }
+
+        if ("/api/config/accept-automated-jobs".equals(uri)) {
+            if (Method.GET.equals(method)) {
+                log("Config query: acceptAutomatedJobs=" + acceptAutomatedJobs);
+                String json = "{\"acceptAutomatedJobs\":" + acceptAutomatedJobs + "}";
+                return newFixedLengthResponse(Response.Status.OK,
+                        "application/json", json);
+            }
+            if (Method.POST.equals(method)) {
+                String configBody = readBody(session);
+                if (configBody != null && configBody.contains("\"accept\"")) {
+                    boolean accept = extractJsonBooleanField(configBody, "accept");
+                    log("Config update request: accept-automated-jobs="
+                            + accept + " (was " + acceptAutomatedJobs + ")");
+                    setAcceptAutomatedJobs(accept);
+                } else {
+                    log("Config update request for accept-automated-jobs"
+                            + " missing 'accept' field in body");
+                }
+                String json = "{\"ok\":true,\"acceptAutomatedJobs\":" + acceptAutomatedJobs + "}";
+                return newFixedLengthResponse(Response.Status.OK,
+                        "application/json", json);
+            }
         }
 
         if ("/api/github/proxy".equals(uri)
@@ -522,6 +569,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Missing required field: prompt");
         }
 
+        // Reject automated jobs when the gate is closed
+        boolean automated = extractJsonBooleanField(body, "automated");
+        if (automated && !acceptAutomatedJobs) {
+            log("Rejected automated job submission (automated jobs are currently disabled)");
+            String json = "{\"ok\":false,\"error\":\"Automated job submissions are currently disabled\","
+                + "\"automated\":true}";
+            return newFixedLengthResponse(Response.Status.OK,
+                    "application/json", json);
+        }
+
         // Branch-to-workstream resolution:
         // 1. Explicit workstreamId in request body takes priority
         // 2. Search for a workstream whose defaultBranch matches targetBranch
@@ -572,6 +629,27 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         String workstreamId = resolvedWorkstreamId;
+
+        // Timestamp guard: skip submission if a newer job already exists
+        // on this workstream. This prevents stale auto-resolve jobs from
+        // CI pipelines that ran hours ago from colliding with explicitly
+        // submitted work.
+        String startedAfterStr = extractJsonField(body, "startedAfter");
+        if (startedAfterStr != null && !startedAfterStr.isEmpty()) {
+            try {
+                long startedAfter = Long.parseLong(startedAfterStr);
+                if (notifier.hasJobStartedAfter(workstreamId, startedAfter)) {
+                    log("Skipping job submission — newer job exists on workstream "
+                        + workstreamId + " (startedAfter=" + startedAfter + ")");
+                    String json = "{\"ok\":true,\"skipped\":true,"
+                        + "\"reason\":\"Newer job exists on this workstream\"}";
+                    return newFixedLengthResponse(Response.Status.OK,
+                            "application/json", json);
+                }
+            } catch (NumberFormatException e) {
+                log("Invalid startedAfter value: " + startedAfterStr);
+            }
+        }
 
         if (server == null) {
             return errorResponse("No FlowTree server configured");
@@ -1020,11 +1098,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /**
      * Handles requests to {@code /api/github/proxy} by forwarding them to the
-     * GitHub API using the controller's {@code GITHUB_TOKEN}.
+     * GitHub API using per-organization tokens from workstreams.yaml.
      *
      * <p>This endpoint allows agents to make GitHub API calls without needing
-     * their own token. The controller acts as an authenticated proxy, so the
-     * token only needs to be configured in one place.</p>
+     * their own token. The controller acts as an authenticated proxy using
+     * per-org tokens configured in the {@code githubOrgs} section of
+     * workstreams.yaml.</p>
      *
      * <p>The HTTP method of the incoming request determines the method used
      * for the GitHub API call (GET or POST).</p>
@@ -1047,11 +1126,18 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return JSON response wrapping the GitHub API response
      */
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
-        // Resolve token: org-specific > instance-level > env var
+        // Resolve token from per-org tokens in workstreams.yaml
         String org = session.getParms().get("org");
         String token = resolveGithubToken(org);
         if (token == null) {
-            return errorResponse("GITHUB_TOKEN not configured on controller");
+            String detail = (org != null && !org.isEmpty())
+                    ? "No GitHub token configured for org '" + org
+                      + "' (configured orgs: " + githubOrgTokens.keySet() + ")"
+                    : "No GitHub org token available (configured orgs: "
+                      + githubOrgTokens.keySet()
+                      + "; pass ?org= or configure githubOrgs in workstreams.yaml)";
+            warn("GitHub proxy token resolution failed: " + detail);
+            return errorResponse(detail);
         }
 
         String urlOrPath = session.getParms().get("url");
@@ -1270,24 +1356,30 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Resolves the GitHub API token for the given organization.
      *
-     * <p>Checks the org-specific token map first, then falls back to the
-     * instance-level token and finally the {@code GITHUB_TOKEN} env var.</p>
+     * <p>Looks up the token from the per-org token map populated from
+     * the {@code githubOrgs} section of workstreams.yaml. If the org
+     * is not specified but only one org token is configured, that token
+     * is used as the default.</p>
      *
      * @param org the GitHub organization name (may be null)
      * @return the resolved token, or null if no token is available
      */
     private String resolveGithubToken(String org) {
-        String token = null;
-        if (org != null && !org.isEmpty() && githubOrgTokens.containsKey(org)) {
-            token = githubOrgTokens.get(org);
+        if (org != null && !org.isEmpty()) {
+            // Case-insensitive lookup — GitHub org names are case-insensitive
+            for (Map.Entry<String, String> entry : githubOrgTokens.entrySet()) {
+                if (entry.getKey().equalsIgnoreCase(org)) {
+                    return entry.getValue();
+                }
+            }
         }
-        if (token == null || token.trim().isEmpty()) {
-            token = this.githubToken;
+
+        // When there is exactly one configured org, use it as the default
+        if (githubOrgTokens.size() == 1) {
+            return githubOrgTokens.values().iterator().next();
         }
-        if (token == null || token.trim().isEmpty()) {
-            token = System.getenv("GITHUB_TOKEN");
-        }
-        return (token != null && !token.trim().isEmpty()) ? token : null;
+
+        return null;
     }
 
     /**
