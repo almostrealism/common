@@ -391,16 +391,19 @@ public class HnswSearchTest extends TestSuiteBase {
 			index.insert("n-" + i, new PackedCollection(dimension).fill(values));
 		}
 
+		PackedCollection queryVector = randomVector(dimension, random);
+
 		index.setEfSearch(1);
-		List<HnswIndex.IdScore> lowEf = index.search(
-				randomVector(dimension, random), 10);
+		List<HnswIndex.IdScore> lowEf = index.search(queryVector, 10);
 
 		index.setEfSearch(200);
-		List<HnswIndex.IdScore> highEf = index.search(
-				randomVector(dimension, random), 10);
+		List<HnswIndex.IdScore> highEf = index.search(queryVector, 10);
 
 		Assert.assertEquals(10, lowEf.size());
 		Assert.assertEquals(10, highEf.size());
+		Assert.assertTrue(
+				"Higher efSearch should find results at least as good as lower efSearch",
+				highEf.get(0).score >= lowEf.get(0).score);
 	}
 
 	/** Verify normalizing a zero vector does not produce NaN. */
@@ -614,6 +617,33 @@ public class HnswSearchTest extends TestSuiteBase {
 				index.search(vec(0.0, 0.0, 1.0), 1);
 		Assert.assertEquals(1, results.size());
 		Assert.assertEquals("a", results.get(0).id);
+	}
+
+	/**
+	 * Verify that store-level search returns empty after all vectored
+	 * records are deleted via the store API, exercising the
+	 * {@code hnswIndex != null && hnswIndex.size() == 0} path.
+	 */
+	@Test(timeout = 30000)
+	public void searchAfterAllVectoredRecordsDeletedViaStore() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+
+			store.put("a", makeRecord("a", "alpha", 1), vec(1.0, 0.0, 0.0));
+			store.put("b", makeRecord("b", "bravo", 2), vec(0.0, 1.0, 0.0));
+
+			store.delete("a");
+			store.delete("b");
+
+			Assert.assertEquals(0, store.size());
+
+			List<SearchResult<TestRecordProto.TestRecord>> results =
+					store.search(vec(1.0, 0.0, 0.0), 10);
+			Assert.assertNotNull(results);
+			Assert.assertTrue(
+					"Search should return empty when all vectored records are deleted",
+					results.isEmpty());
+		}
 	}
 
 	private static PackedCollection randomVector(int dimension, Random random) {
