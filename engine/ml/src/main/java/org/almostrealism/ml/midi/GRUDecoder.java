@@ -101,7 +101,7 @@ public class GRUDecoder {
 	}
 
 	/**
-	 * Decode output tokens from a transformer hidden state.
+	 * Decode output tokens from a transformer hidden state using greedy argmax.
 	 *
 	 * <p>Autoregressively generates {@link #TOKENS_PER_NOTE} tokens using the
 	 * multi-layer GRU. The first token is always conditioned on the SOS output
@@ -111,6 +111,23 @@ public class GRUDecoder {
 	 * @return array of 7 output token indices in the flat decode vocabulary
 	 */
 	public int[] decode(PackedCollection transformerHidden) {
+		return runGruLoop(transformerHidden,
+				logits -> argmax(logits, config.decodeVocabSize));
+	}
+
+	/**
+	 * Core GRU decode loop shared by greedy and sampling decode methods.
+	 *
+	 * <p>Performs the summary projection, initializes per-layer hidden states,
+	 * and autoregressively generates {@link #TOKENS_PER_NOTE} tokens. The
+	 * token selection strategy (argmax vs. sampling) is delegated to the
+	 * provided selector function.</p>
+	 *
+	 * @param transformerHidden the transformer output hidden state of size (hiddenSize)
+	 * @param selector function that selects a token index from logits
+	 * @return array of 7 output token indices in the flat decode vocabulary
+	 */
+	private int[] runGruLoop(PackedCollection transformerHidden, TokenSelector selector) {
 		int decoderHidden = config.decoderHiddenSize;
 
 		// Summary projection: hidden_size -> decoder_hidden_size
@@ -141,8 +158,8 @@ public class GRUDecoder {
 					h[layers.length - 1], decoderHidden,
 					lmHeadWeight, config.decodeVocabSize, lmHeadBias);
 
-			// Argmax to select token
-			int token = argmax(logits, config.decodeVocabSize);
+			// Select token via the provided strategy
+			int token = selector.select(logits);
 			outputTokens[step] = token;
 
 			// Embed selected token as input for next step
@@ -150,6 +167,23 @@ public class GRUDecoder {
 		}
 
 		return outputTokens;
+	}
+
+	/**
+	 * Functional interface for token selection from logits.
+	 *
+	 * <p>Used by {@link #runGruLoop} to abstract the token selection
+	 * strategy (greedy argmax vs. temperature/nucleus sampling).</p>
+	 */
+	@FunctionalInterface
+	interface TokenSelector {
+		/**
+		 * Select a token index from a logits vector.
+		 *
+		 * @param logits raw logits of shape (decodeVocabSize)
+		 * @return selected token index
+		 */
+		int select(PackedCollection logits);
 	}
 
 	/**
@@ -228,39 +262,9 @@ public class GRUDecoder {
 			return decode(transformerHidden);
 		}
 
-		int decoderHidden = config.decoderHiddenSize;
-
-		PackedCollection initialHidden = linearForward(
-				transformerHidden, config.hiddenSize,
-				summaryWeight, decoderHidden, summaryBias);
-
-		PackedCollection[] h = new PackedCollection[layers.length];
-		for (int l = 0; l < layers.length; l++) {
-			h[l] = copyCollection(initialHidden, decoderHidden);
-		}
-
-		PackedCollection x = getEmbedding(0);
-		int[] outputTokens = new int[TOKENS_PER_NOTE];
-
-		for (int step = 0; step < TOKENS_PER_NOTE; step++) {
-			PackedCollection layerInput = x;
-			for (int l = 0; l < layers.length; l++) {
-				h[l] = layers[l].forward(layerInput, h[l]);
-				layerInput = h[l];
-			}
-
-			PackedCollection logits = linearForward(
-					h[layers.length - 1], decoderHidden,
-					lmHeadWeight, config.decodeVocabSize, lmHeadBias);
-
-			int token = sampleFromLogits(logits, config.decodeVocabSize,
-					temperature, topP, random);
-			outputTokens[step] = token;
-
-			x = getEmbedding(token);
-		}
-
-		return outputTokens;
+		return runGruLoop(transformerHidden,
+				logits -> sampleFromLogits(logits, config.decodeVocabSize,
+						temperature, topP, random));
 	}
 
 	/**

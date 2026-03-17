@@ -33,6 +33,7 @@ import org.almostrealism.ml.midi.MidiTrainingConfig;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
 import org.almostrealism.optimize.ValueTarget;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -173,6 +174,61 @@ public class MidiTrainingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verify that sequence packing truncates sequences longer than maxSeqLen.
+	 * A single sequence exceeding maxSeqLen should be truncated to exactly
+	 * maxSeqLen tokens and placed in its own packed chunk.
+	 */
+	@Test
+	public void testSequencePackingTruncatesLongSequence() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		int maxSeqLen = 10;
+
+		MidiTokenizer tokenizer = new MidiTokenizer();
+		List<MidiNoteEvent> events = new ArrayList<>();
+		for (int n = 0; n < 20; n++) {
+			events.add(new MidiNoteEvent(60 + (n % 12), (long) n * 50, 25, 80, 0));
+		}
+		List<MidiCompoundToken> longSeq = tokenizer.tokenize(events);
+		Assert.assertTrue("Sequence should exceed maxSeqLen",
+				longSeq.size() > maxSeqLen);
+
+		List<List<MidiCompoundToken>> sequences = new ArrayList<>();
+		sequences.add(longSeq);
+
+		MidiDataset dataset = new MidiDataset(sequences, config, maxSeqLen);
+		List<List<MidiCompoundToken>> packed = dataset.packSequences();
+
+		Assert.assertEquals("Should produce exactly one packed sequence", 1, packed.size());
+		Assert.assertEquals("Truncated sequence should equal maxSeqLen",
+				maxSeqLen, packed.get(0).size());
+	}
+
+	/**
+	 * Verify that the dataset iterator produces ValueTarget pairs with correct
+	 * one-hot encoding dimensions for special tokens (SOS/EOS) which use
+	 * position 0 in the decode vocabulary.
+	 */
+	@Test
+	public void testOneHotEncodingSpecialTokens() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		MidiDataset dataset = MidiDataset.synthetic(1, 2, config);
+
+		Iterator<ValueTarget<PackedCollection>> iter = dataset.iterator();
+		Assert.assertTrue("Should have at least one training pair", iter.hasNext());
+
+		ValueTarget<PackedCollection> firstPair = iter.next();
+		PackedCollection input = firstPair.getInput();
+		int vocabSize = config.decodeVocabSize;
+
+		Assert.assertEquals("One-hot dimension should match decode vocab size",
+				vocabSize, input.getShape().getTotalSize());
+
+		// First pair's input should be the SOS token, encoded at position 0
+		Assert.assertEquals("SOS one-hot should set position 0",
+				1.0, input.toDouble(0), 1e-10);
+	}
+
+	/**
 	 * Verify MidiTrainingConfig default values match the reference Moonbeam spec.
 	 */
 	@Test
@@ -255,7 +311,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * End-to-end generation test: SOS -> generate N tokens -> detokenize -> write MIDI.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testEndToEndGeneration() throws IOException, InvalidMidiDataException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -286,7 +342,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * Prompt completion test: create a MIDI file, read it as prompt,
 	 * continue generation, write output.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testPromptCompletion() throws IOException, InvalidMidiDataException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -484,7 +540,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * Verify that the generateFromFile method can read a MIDI file, generate,
 	 * and write output in a single call.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testGenerateFromFile() throws IOException, InvalidMidiDataException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -515,7 +571,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify that unconditional generation writes a valid MIDI file.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testGenerateUnconditional() throws IOException, InvalidMidiDataException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -535,7 +591,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify that the MidiDataset can be created from a directory of MIDI files.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testDatasetFromDirectory() throws IOException, InvalidMidiDataException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiTrainingConfig trainConfig = MidiTrainingConfig.testConfig();

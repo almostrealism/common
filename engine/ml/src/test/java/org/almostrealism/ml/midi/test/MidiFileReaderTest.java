@@ -132,6 +132,69 @@ public class MidiFileReaderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verify that boundary MIDI values (pitch 0 and 127, velocity 1 and 127)
+	 * survive a write/read round-trip.
+	 */
+	@Test
+	public void testBoundaryMidiValues() throws Exception {
+		List<MidiNoteEvent> events = new ArrayList<>();
+		events.add(new MidiNoteEvent(0, 0, 1, 1, 0));
+		events.add(new MidiNoteEvent(127, 100, 50, 127, 0));
+
+		MidiFileReader reader = new MidiFileReader();
+		File tempFile = File.createTempFile("midi-boundary-", ".mid");
+		tempFile.deleteOnExit();
+
+		reader.write(events, tempFile);
+		List<MidiNoteEvent> readBack = reader.read(tempFile);
+
+		assertEquals("Event count", 2, readBack.size());
+		assertEquals("Min pitch", 0, readBack.get(0).getPitch());
+		assertEquals("Min velocity", 1, readBack.get(0).getVelocity());
+		assertEquals("Max pitch", 127, readBack.get(1).getPitch());
+		assertEquals("Max velocity", 127, readBack.get(1).getVelocity());
+	}
+
+	/**
+	 * Verify that more than 15 distinct non-drum instruments are handled
+	 * without error. Overflow instruments fall back to channel 0, which
+	 * means their PROGRAM_CHANGE overwrites channel 0's original program.
+	 * Instruments 1-14 (on dedicated channels 1-8, 10-15) should round-trip.
+	 * All notes should still be present regardless of instrument mapping.
+	 */
+	@Test
+	public void testChannelOverflow() throws Exception {
+		List<MidiNoteEvent> events = new ArrayList<>();
+		for (int inst = 0; inst < 20; inst++) {
+			events.add(new MidiNoteEvent(60, (long) inst * 100, 50, 80, inst));
+		}
+
+		MidiFileReader reader = new MidiFileReader();
+		File tempFile = File.createTempFile("midi-overflow-", ".mid");
+		tempFile.deleteOnExit();
+
+		reader.write(events, tempFile);
+		List<MidiNoteEvent> readBack = reader.read(tempFile);
+
+		assertEquals("All notes should survive channel overflow",
+				20, readBack.size());
+
+		// Instruments 1-14 are on dedicated channels and should round-trip.
+		// Instrument 0 shares channel 0 with overflow instruments (15-19),
+		// so its PROGRAM_CHANGE gets overwritten by the last overflow instrument.
+		for (int i = 1; i < 15; i++) {
+			assertEquals("Instrument " + i + " within channel limit should round-trip",
+					events.get(i).getInstrument(), readBack.get(i).getInstrument());
+		}
+
+		// All pitches and onsets should still be correct regardless
+		for (int i = 0; i < 20; i++) {
+			assertEquals("Pitch at " + i, events.get(i).getPitch(), readBack.get(i).getPitch());
+			assertEquals("Onset at " + i, events.get(i).getOnset(), readBack.get(i).getOnset());
+		}
+	}
+
+	/**
 	 * Verify that simultaneous notes (same onset time) are handled correctly.
 	 */
 	@Test

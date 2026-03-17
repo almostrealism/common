@@ -338,22 +338,31 @@ public class MidiAutoregressiveModel {
 	 *
 	 * <p>The decode tokens are in the flat decode vocabulary. The first token
 	 * (sos_out) is skipped. Tokens 1-6 are mapped to attribute values by
-	 * subtracting the vocabulary offset for each position.</p>
+	 * subtracting the vocabulary offset for each position. Values are clamped
+	 * to their valid ranges to prevent out-of-bounds embedding lookups when
+	 * the decoder selects tokens outside the expected attribute range.</p>
 	 *
 	 * @param decodeTokens 7 tokens from the GRU decoder
-	 * @return the compound token, or EOS if any attribute maps to an EOS value
+	 * @return the compound token
 	 */
 	private MidiCompoundToken decodeToCompoundToken(int[] decodeTokens) {
 		int[] attributeValues = decoder.toAttributeValues(decodeTokens);
 
-		int onset = attributeValues[1];
-		int duration = attributeValues[2];
-		int octave = attributeValues[3];
-		int pitchClass = attributeValues[4];
-		int instrument = attributeValues[5];
-		int velocity = attributeValues[6];
+		int onset = clamp(attributeValues[1], 0, MidiTokenizer.MAX_TIME_VALUE);
+		int duration = clamp(attributeValues[2], 0, MidiTokenizer.MAX_TIME_VALUE);
+		int octave = clamp(attributeValues[3], 0, MidiTokenizer.MAX_OCTAVE);
+		int pitchClass = clamp(attributeValues[4], 0, MidiTokenizer.MAX_PITCH_CLASS);
+		int instrument = clamp(attributeValues[5], 0, MidiTokenizer.MAX_INSTRUMENT);
+		int velocity = clamp(attributeValues[6], 0, MidiTokenizer.MAX_VELOCITY);
 
 		return new MidiCompoundToken(onset, duration, octave,
 				pitchClass, instrument, velocity);
+	}
+
+	/**
+	 * Clamp a value to the given range [min, max].
+	 */
+	private static int clamp(int value, int min, int max) {
+		return Math.max(min, Math.min(max, value));
 	}
 }

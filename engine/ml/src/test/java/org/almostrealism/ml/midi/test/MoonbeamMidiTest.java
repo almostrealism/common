@@ -29,6 +29,7 @@ import org.almostrealism.ml.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -57,7 +58,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * Verify that the model assembles with synthetic weights and the
 	 * compiled transformer can execute a forward pass.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testModelAssembly() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -77,7 +78,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * Verify that creating an autoregressive model and processing a single
 	 * prompt token exercises the compiled transformer forward pass.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testTransformerForwardPass() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -99,7 +100,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	/**
 	 * Verify that the autoregressive model produces compound tokens.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testAutoregressiveGeneration() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -129,7 +130,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	/**
 	 * Verify that the autoregressive loop can generate multiple tokens.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testMultipleTokenGeneration() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -200,7 +201,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * This exercises the lastHidden == null branch in
 	 * {@link MidiAutoregressiveModel#next()}.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testUnconditionalGeneration() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -227,7 +228,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * before generating new ones, and that the returned list contains
 	 * only the generated (non-prompt) tokens.
 	 */
-	@Test
+	@Test @TestDepth(2)
 	public void testGenerateMethodSkipsPrompt() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
