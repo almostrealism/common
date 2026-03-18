@@ -25,9 +25,11 @@ import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.TimingMetric;
 
+import java.lang.ref.Reference;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -223,37 +225,46 @@ public class NativeExecution extends HardwareOperator {
 
 		int p = getGlobalWorkSize() < inst.getParallelism() ? (int) getGlobalWorkSize() : inst.getParallelism();
 
+		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
+
 		DefaultLatchSemaphore latch = new DefaultLatchSemaphore(dependsOn, p);
 
-		if (enableExecutor) {
-			recordDuration(latch, () -> {
-				for (int i = 0; i < p; i++) {
-					int id = i;
+		try {
+			if (enableExecutor) {
+				recordDuration(latch, () -> {
+					for (int i = 0; i < p; i++) {
+						int id = i;
 
-					executor.submit(() -> {
-						try {
-							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
-						} catch (Exception e) {
-							warn("Operation " + id + " of " +
-									getGlobalWorkSize() + " failed", e);
-						} finally {
-							latch.countDown();
-						}
-					});
-				}
+						executor.submit(() -> {
+							try {
+								inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
+							} catch (Exception e) {
+								warn("Operation " + id + " of " +
+										getGlobalWorkSize() + " failed", e);
+							} finally {
+								latch.countDown();
+							}
+						});
+					}
 
-				// TODO  The user of the semaphore should decide when to wait
-				// TODO  rather than it happening proactively here
-				latch.waitFor();
-			});
-		} else {
-			recordDuration(latch, () -> {
-				for (int i = 0; i < inst.getParallelism(); i++) {
-					inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), data);
-					latch.countDown();
-				}
-			});
+					// TODO  The user of the semaphore should decide when to wait
+					// TODO  rather than it happening proactively here
+					latch.waitFor();
+				});
+			} else {
+				recordDuration(latch, () -> {
+					for (int i = 0; i < inst.getParallelism(); i++) {
+						inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), data);
+						latch.countDown();
+					}
+				});
+			}
+		} finally {
+			KernelMemoryGuard.releaseFor(guard, data);
 		}
+
+		Reference.reachabilityFence(data);
+		Reference.reachabilityFence(args);
 
 		return latch;
 	}

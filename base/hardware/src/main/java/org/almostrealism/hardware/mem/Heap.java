@@ -466,6 +466,7 @@ public class Heap {
 	 * <p>Removes the topmost stage and calls {@link HeapStage#destroy()} on it,
 	 * which:</p>
 	 * <ol>
+	 *   <li>Waits for all pending kernel semaphores to complete</li>
 	 *   <li>Clears the allocation entry list</li>
 	 *   <li>Resets the bump pointer to zero</li>
 	 *   <li>Destroys the backing {@link Bytes} memory block</li>
