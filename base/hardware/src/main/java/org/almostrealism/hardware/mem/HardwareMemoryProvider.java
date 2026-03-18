@@ -257,6 +257,19 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	private void deallocateNow(NativeRef<T> ref) {
+		try {
+			Hardware hw = Hardware.getLocalHardware();
+			if (hw != null) {
+				KernelMemoryGuard guard = hw.getKernelMemoryGuard();
+				if (guard != null && !guard.canDeallocate(ref.getAddress())) {
+					getDeallocationQueue().put(ref);
+					return;
+				}
+			}
+		} catch (Exception e) {
+			// Guard check must not prevent deallocation
+		}
+
 		deallocate(ref);
 
 		if (!destroying) {

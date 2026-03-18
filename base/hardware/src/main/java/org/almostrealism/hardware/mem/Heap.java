@@ -18,8 +18,10 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.io.Console;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -193,6 +195,9 @@ import java.util.stream.Stream;
  * @author Michael Murray
  */
 public class Heap {
+	/** Console for logging heap-related warnings and errors. */
+	private static final Console heapConsole = Console.root().child();
+
 	/**
 	 * Thread-local storage for the default heap.
 	 *
@@ -461,6 +466,7 @@ public class Heap {
 	 * <p>Removes the topmost stage and calls {@link HeapStage#destroy()} on it,
 	 * which:</p>
 	 * <ol>
+	 *   <li>Waits for all pending kernel semaphores to complete</li>
 	 *   <li>Clears the allocation entry list</li>
 	 *   <li>Resets the bump pointer to zero</li>
 	 *   <li>Destroys the backing {@link Bytes} memory block</li>
@@ -654,6 +660,20 @@ public class Heap {
 		HeapDependencies dependencies;
 
 		/**
+		 * Semaphores for kernels dispatched during this stage's lifetime.
+		 *
+		 * <p>When a kernel is dispatched while this stage is active, its completion
+		 * {@link Semaphore} is registered here via {@link #addPendingKernel(Semaphore)}.
+		 * Before destroying this stage's memory, {@link #destroy()} waits for all
+		 * pending kernel semaphores to complete, ensuring that no in-flight kernel
+		 * is still reading from or writing to memory owned by this stage.</p>
+		 *
+		 * <p>This list is only accessed from the thread that owns the heap stage
+		 * (heap stages are thread-local), so a plain {@link ArrayList} is sufficient.</p>
+		 */
+		private List<Semaphore> pendingKernels;
+
+		/**
 		 * Creates a new stage with the specified backing block size.
 		 *
 		 * <p>Allocates a {@link Bytes} block of the given size (using the heap's
@@ -666,6 +686,7 @@ public class Heap {
 			entries = new ArrayList<>();
 			data = memory == null ? new Bytes(size) : Bytes.of(memory.allocate(size), size);
 			dependencies = new HeapDependencies();
+			pendingKernels = new ArrayList<>();
 		}
 
 		/**
@@ -721,10 +742,31 @@ public class Heap {
 		public Stream<Bytes> stream() { return entries.stream(); }
 
 		/**
+		 * Registers a kernel completion semaphore with this stage.
+		 *
+		 * <p>When a kernel is dispatched while this stage is active, the kernel's
+		 * completion {@link Semaphore} should be registered here so that
+		 * {@link #destroy()} can wait for all in-flight kernels to complete
+		 * before freeing this stage's memory.</p>
+		 *
+		 * <p>If the semaphore is {@code null} (e.g., synchronous execution where
+		 * the kernel has already completed), this method is a no-op.</p>
+		 *
+		 * @param sem the kernel completion semaphore, or {@code null}
+		 */
+		public void addPendingKernel(Semaphore sem) {
+			if (sem != null) {
+				pendingKernels.add(sem);
+			}
+		}
+
+		/**
 		 * Destroys this stage, freeing all resources.
 		 *
 		 * <p>Performs the following cleanup in order:</p>
 		 * <ol>
+		 *   <li>Waits for all pending kernel semaphores to complete, ensuring
+		 *       no in-flight kernel is still using this stage's memory</li>
 		 *   <li>Clears the allocation entries list</li>
 		 *   <li>Resets the bump pointer ({@link #end}) to zero</li>
 		 *   <li>Destroys the backing {@link Bytes} block, deallocating its
@@ -743,6 +785,15 @@ public class Heap {
 		 */
 		@Override
 		public void destroy() {
+			for (Semaphore sem : pendingKernels) {
+				try {
+					sem.waitFor();
+				} catch (Exception e) {
+					heapConsole.warn("Pending kernel wait failed during HeapStage destroy", e);
+				}
+			}
+			pendingKernels.clear();
+
 			entries.clear();
 			end = 0;
 			data.destroy();
@@ -1044,5 +1095,25 @@ public class Heap {
 		}
 
 		return memory;
+	}
+
+	/**
+	 * Registers a kernel completion semaphore with the current heap stage.
+	 *
+	 * <p>If a default heap is active on the current thread, delegates to
+	 * {@link HeapStage#addPendingKernel(Semaphore)} on the active stage.
+	 * When the stage is later destroyed (via {@link #pop()}), it will wait
+	 * for all registered semaphores to complete before freeing memory.</p>
+	 *
+	 * <p>If no default heap is active ({@link #getDefault()} returns {@code null}),
+	 * or if the semaphore is {@code null}, this method is a no-op.</p>
+	 *
+	 * @param sem the kernel completion semaphore, or {@code null}
+	 */
+	public static void addPendingKernel(Semaphore sem) {
+		Heap heap = getDefault();
+		if (heap != null) {
+			heap.getStage().addPendingKernel(sem);
+		}
 	}
 }

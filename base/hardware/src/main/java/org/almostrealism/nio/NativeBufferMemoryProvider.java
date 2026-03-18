@@ -69,12 +69,21 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 	}
 
 	@Override
-	public synchronized void deallocate(NativeRef<NativeBuffer> ref) {
-		NativeBuffer mem = ref.get();
-		mem.destroy();
+	protected NativeRef<NativeBuffer> nativeRef(NativeBuffer ram) {
+		return new NativeBufferRef(ram, getReferenceQueue());
+	}
 
+	@Override
+	public synchronized void deallocate(NativeRef<NativeBuffer> ref) {
 		memoryUsed -= ref.getSize();
-		mem.getDeallocationListeners().forEach(l -> l.accept(mem));
+
+		if (ref instanceof NativeBufferRef bufferRef) {
+			if (bufferRef.getSharedLocation() != null && bufferRef.getRootBuffer() != null) {
+				NIO.unmapSharedMemory(bufferRef.getRootBuffer(), bufferRef.getRootBuffer().capacity());
+			}
+
+			bufferRef.getDeallocationListeners().forEach(l -> l.accept(null));
+		}
 	}
 
 	@Override

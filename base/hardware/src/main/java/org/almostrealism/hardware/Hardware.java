@@ -39,6 +39,7 @@ import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.instructions.ComputationScopeCompiler;
 import org.almostrealism.hardware.jni.NativeDataContext;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.Console;
@@ -561,6 +562,7 @@ public final class Hardware {
 
 	private final String name;
 	private final boolean memVolatile;
+	private final KernelMemoryGuard kernelMemoryGuard;
 	private long maxReservation;
 	private Location location;
 	private NativeBufferMemoryProvider nioMemory;
@@ -580,6 +582,7 @@ public final class Hardware {
 		this.maxReservation = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
 		this.location = location;
 		this.memVolatile = location == Location.HEAP;
+		this.kernelMemoryGuard = new KernelMemoryGuard();
 		this.contextListeners = Collections.synchronizedList(new ArrayList<>());
 		this.contexts = new ArrayList<>();
 
@@ -767,6 +770,14 @@ public final class Hardware {
 	 * @return The local hardware singleton
 	 */
 	public static Hardware getLocalHardware() { return local; }
+
+	/**
+	 * Returns the {@link KernelMemoryGuard} that tracks active kernel executions
+	 * and prevents native memory deallocation while kernels are in flight.
+	 *
+	 * @return The kernel memory guard instance
+	 */
+	public KernelMemoryGuard getKernelMemoryGuard() { return kernelMemoryGuard; }
 
 	/**
 	 * Returns the {@link DefaultComputer} managing compilation and execution.
