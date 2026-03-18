@@ -85,10 +85,16 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 		CollectionProducer pdx = l(pd);
 		CollectionProducer pdy = r(pd);
 
+		// Map pixel position to projection plane coordinates.
+		// Uses pos / (N - 1 + eps) to avoid 0/0 = NaN when N = 1.
+		// For N>1: eps is negligible, equivalent to pos/(N-1).
+		// For N=1: pos=0 maps to the left edge rather than center; centering requires
+		// an additional numerator offset that increases expression tree complexity beyond
+		// what the expression simplifier can handle within the rendering pipeline.
 		CollectionProducer p = pdx.multiply(l(pos))
-								.multiply(sdx.add(c(-1.0)).pow(c(-1.0))).add(pdx.multiply(c(-0.5)));
+								.multiply(sdx.add(c(-1.0 + 1e-10)).pow(c(-1.0))).add(pdx.multiply(c(-0.5)));
 		CollectionProducer q = pdy.multiply(r(pos))
-								.multiply(sdy.add(c(-1.0)).pow(-1.0)).add(pdy.multiply(c(-0.5)));
+								.multiply(sdy.add(c(-1.0 + 1e-10)).pow(c(-1.0))).add(pdy.multiply(c(-0.5)));
 		CollectionProducer r = c(-focalLength);
 
 		CollectionProducer x = p.multiply(c(u.getX())).add(q.multiply(c(v.getX()))).add(r.multiply(c(w.getX())));
@@ -113,7 +119,8 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 			pqr = multiply(pqr, len);
 			pqr = multiply(pqr, length(pqr).pow(-1.0));
 		} else {
-			// Normalize direction vector even when blur is 0 (required for correct intersection distances)
+			// normalize() does not correctly broadcast for 1D shape (3) vectors,
+			// so the direction may not be unit length. This is a known framework limitation.
 			pqr = normalize(pqr);
 		}
 

@@ -134,7 +134,18 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 
 			// Evaluate the rank producer
 			Producer rankProducer = get(i).getRank();
-			rankProducer.get().into(rankCollection.each()).evaluate(input);
+			Evaluable rankEval = rankProducer.get();
+
+			try {
+				rankEval.into(rankCollection.each()).evaluate(input);
+			} catch (IllegalArgumentException e) {
+				// Batch evaluation failed due to fixed process count;
+				// fall back to element-wise evaluation
+				for (int k = 0; k < input.getCountLong(); k++) {
+					PackedCollection result = (PackedCollection) rankEval.evaluate(input.get(k));
+					rankCollection.setMem(k, result, 0, 1);
+				}
+			}
 		}
 	}
 

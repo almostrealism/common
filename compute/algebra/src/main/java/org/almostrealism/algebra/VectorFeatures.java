@@ -347,8 +347,6 @@ public interface VectorFeatures extends ScalarFeatures {
 		// We need to repeat along the innermost axis to get (N, M) for proper broadcasting
 		if (valueShape.getDimensions() >= 2) {
 			int vectorDim = valueShape.length(valueShape.getDimensions() - 1);
-			// repeat adds a dimension: (N, 1) -> (N, 1, M)
-			// We need to reshape back to (N, M) to match the input shape
 			invLen = repeat(vectorDim, invLen).reshape(valueShape);
 		}
 

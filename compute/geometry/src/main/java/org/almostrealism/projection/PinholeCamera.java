@@ -173,8 +173,10 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 					double bu = getProjectionWidth() / 2;
 					double bv = getProjectionHeight() / 2;
 
-					Vector p = u.multiply((au + (bu - au) * (pos.getX() / (screenDim.getX() - 1))));
-					Vector q = v.multiply((av + (bv - av) * (pos.getY() / (screenDim.getY() - 1))));
+					double normX = screenDim.getX() > 1 ? pos.getX() / (screenDim.getX() - 1) : 0.5;
+					double normY = screenDim.getY() > 1 ? pos.getY() / (screenDim.getY() - 1) : 0.5;
+					Vector p = u.multiply((au + (bu - au) * normX));
+					Vector q = v.multiply((av + (bv - av) * normY));
 					Vector r = w.multiply(-focalLength);
 
 					Vector rayDirection = p;
@@ -182,6 +184,7 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 					rayDirection.addTo(r);
 
 					double l = rayDirection.length();
+					rayDirection.divideBy(l);
 
 					if (blur != 0.0) {
 						double a = blur * (-0.5 + Math.random());
