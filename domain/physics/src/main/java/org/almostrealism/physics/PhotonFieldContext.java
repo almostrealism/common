@@ -140,20 +140,6 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	 */
 	@Override
 	public PhotonFieldContext<T, F> clone() {
-		PhotonFieldContext<T, F> c = new PhotonFieldContext<>(getSurface(), getLight(), field, film);
-		c.setLightDirection(getLightDirection());
-		c.setOtherLights(getOtherLights());
-		c.setIntersection(getIntersection());
-		if (getOtherSurfaces() != null) {
-			c.setOtherSurfaces(getOtherSurfaces());
-		}
-		c.fogColor = fogColor;
-		c.fogRatio = fogRatio;
-		c.fogDensity = fogDensity;
-		int pureReflections = getReflectionCount() - getEnteranceCount() - getExitCount();
-		for (int i = 0; i < pureReflections; i++) c.addReflection();
-		for (int i = 0; i < getEnteranceCount(); i++) c.addEntrance();
-		for (int i = 0; i < getExitCount(); i++) c.addExit();
-		return c;
+		return (PhotonFieldContext<T, F>) super.clone();
 	}
 }

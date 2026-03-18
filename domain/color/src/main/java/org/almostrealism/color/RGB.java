@@ -501,11 +501,10 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 * but may produce indistinguishable colors.
 	 */
 	public boolean equals(RGB rgb) {
-		if (rgb == null) return false;
-		if (Math.abs(this.getRed() - rgb.getRed()) > EPSILON) return false;
-		if (Math.abs(this.getGreen() - rgb.getGreen()) > EPSILON) return false;
-		if (Math.abs(this.getBlue() - rgb.getBlue()) > EPSILON) return false;
-		return true;
+		return rgb != null
+			&& Math.abs(this.getRed() - rgb.getRed()) <= EPSILON
+			&& Math.abs(this.getGreen() - rgb.getGreen()) <= EPSILON
+			&& Math.abs(this.getBlue() - rgb.getBlue()) <= EPSILON;
 	}
 
 	/**

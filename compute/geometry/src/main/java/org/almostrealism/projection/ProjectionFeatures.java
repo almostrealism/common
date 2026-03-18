@@ -119,8 +119,7 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 			pqr = multiply(pqr, len);
 			pqr = multiply(pqr, length(pqr).pow(-1.0));
 		} else {
-			// normalize() does not correctly broadcast for 1D shape (3) vectors,
-			// so the direction may not be unit length. This is a known framework limitation.
+			// Normalize direction vector even when blur is 0 (required for correct intersection distances)
 			pqr = normalize(pqr);
 		}
 
