@@ -22,7 +22,9 @@ import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
+import java.lang.ref.Reference;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -213,70 +215,79 @@ public class MetalOperator extends HardwareOperator {
 			throw new UnsupportedOperationException();
 		}
 
-		Future<?> run = context.getCommandRunner().submit((offset, size, queue) -> {
-			recordDuration(null, () -> {
-				int index = 0;
-				long totalSize = 0;
-
-				MTLCommandBuffer cmdBuf = queue.commandBuffer();
-				MTLComputeCommandEncoder encoder = cmdBuf.encoder();
-
-				encoder.setComputePipelineState(kernel);
-
-				for (int i = 0; i < argCount; i++) {
-					MetalMemory mem = (MetalMemory) data[i].getMem();
-					totalSize += mem.getSize();
-					encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem()); // Buffer
-				}
-
-				int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
-				int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
-
-				offset.setContents(offsetValues);
-				size.setContents(sizeValues);
-
-				if (enableVerboseLog) {
-					log(prog.getMetadata().getDisplayName() + " (" + id + ")");
-					log("\tSizes = " + Arrays.toString(sizeValues));
-					log("\tOffsets = " + Arrays.toString(offsetValues));
-				}
-
-				encoder.setBuffer(index++, offset);
-				encoder.setBuffer(index++, size);
-
-				if (getGlobalWorkSize() > Integer.MAX_VALUE) {
-					throw new UnsupportedOperationException();
-				}
-
-				int groupDims[] = getWorkgroupDimensions();
-
-				if (enableDispatchThreadgroups) {
-					int groupSize = groupDims[0] * groupDims[1] * groupDims[2];
-					int gridDims[] = new int[]{(int) (getGlobalWorkSize() / groupSize), 1, 1};
-					encoder.dispatchThreadgroups(groupDims[0], groupDims[1], groupDims[2],
-							gridDims[0], gridDims[1], gridDims[2]);
-				} else {
-					int gridDims[] = new int[]{(int) (getGlobalWorkSize()), 1, 1};
-					encoder.dispatchThreads(groupDims[0], groupDims[1], groupDims[2],
-							gridDims[0], gridDims[1], gridDims[2]);
-				}
-
-				encoder.endEncoding();
-
-				cmdBuf.commit();
-				cmdBuf.waitUntilCompleted();
-			});
-		});
+		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
 
 		try {
-			// TODO  This should actually return a Semaphore rather than
-			// TODO  blocking until the process is over
-			run.get();
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		} catch (ExecutionException  e) {
-			throw new RuntimeException(e);
+			Future<?> run = context.getCommandRunner().submit((offset, size, queue) -> {
+				recordDuration(null, () -> {
+					int index = 0;
+					long totalSize = 0;
+
+					MTLCommandBuffer cmdBuf = queue.commandBuffer();
+					MTLComputeCommandEncoder encoder = cmdBuf.encoder();
+
+					encoder.setComputePipelineState(kernel);
+
+					for (int i = 0; i < argCount; i++) {
+						MetalMemory mem = (MetalMemory) data[i].getMem();
+						totalSize += mem.getSize();
+						encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem()); // Buffer
+					}
+
+					int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
+					int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
+
+					offset.setContents(offsetValues);
+					size.setContents(sizeValues);
+
+					if (enableVerboseLog) {
+						log(prog.getMetadata().getDisplayName() + " (" + id + ")");
+						log("\tSizes = " + Arrays.toString(sizeValues));
+						log("\tOffsets = " + Arrays.toString(offsetValues));
+					}
+
+					encoder.setBuffer(index++, offset);
+					encoder.setBuffer(index++, size);
+
+					if (getGlobalWorkSize() > Integer.MAX_VALUE) {
+						throw new UnsupportedOperationException();
+					}
+
+					int groupDims[] = getWorkgroupDimensions();
+
+					if (enableDispatchThreadgroups) {
+						int groupSize = groupDims[0] * groupDims[1] * groupDims[2];
+						int gridDims[] = new int[]{(int) (getGlobalWorkSize() / groupSize), 1, 1};
+						encoder.dispatchThreadgroups(groupDims[0], groupDims[1], groupDims[2],
+								gridDims[0], gridDims[1], gridDims[2]);
+					} else {
+						int gridDims[] = new int[]{(int) (getGlobalWorkSize()), 1, 1};
+						encoder.dispatchThreads(groupDims[0], groupDims[1], groupDims[2],
+								gridDims[0], gridDims[1], gridDims[2]);
+					}
+
+					encoder.endEncoding();
+
+					cmdBuf.commit();
+					cmdBuf.waitUntilCompleted();
+				});
+			});
+
+			try {
+				// TODO  This should actually return a Semaphore rather than
+				// TODO  blocking until the process is over
+				run.get();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			} catch (ExecutionException e) {
+				throw new RuntimeException(e);
+			}
+		} finally {
+			KernelMemoryGuard.releaseFor(guard, data);
 		}
+
+		Reference.reachabilityFence(data);
+		Reference.reachabilityFence(args);
 
 		return null;
 	}
