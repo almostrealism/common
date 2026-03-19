@@ -638,6 +638,11 @@ public class ClaudeCodeJob extends GitManagedJob {
                 getTaskId(), getTaskString(),
                 error.getMessage(), error
             );
+        } else if (exitCode != 0) {
+            return ClaudeCodeJobEvent.failed(
+                getTaskId(), getTaskString(),
+                "Claude Code exited with code " + exitCode, null
+            );
         } else {
             return ClaudeCodeJobEvent.success(getTaskId(), getTaskString());
         }
