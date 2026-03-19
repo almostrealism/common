@@ -16,17 +16,10 @@
 
 package org.almostrealism.projection;
 
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.ModelEntity;
-import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.geometry.Ray;
-
-import java.util.function.Function;
 
 /**
  * A PinholeCamera object represents a camera in 3D. A PinholeCamera object stores the
@@ -52,8 +45,6 @@ import java.util.function.Function;
  */
 @ModelEntity
 public class PinholeCamera extends OrthographicCamera implements ProjectionFeatures {
-	public static boolean enableHardwareAcceleration = true;
-
   	private double focalLength = 1.0;
   	private double blur = 0.0;
 
@@ -155,76 +146,16 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 	 * Although the pixels on the screen must be in integer coordinates, this method provides the ability to create
 	 * super high resolution images by allowing you to devote a single pixel to only a fraction of the theoretical
 	 * camera surface. This effect can be used to produce large images from small scenes while retaining accuracy.
+	 *
+	 * <p>Hardware acceleration must always be used for ray generation. Manual
+	 * manipulation of the underlying tensors is never permitted — all ray
+	 * computation must go through the {@link ProjectionFeatures} Producer
+	 * pipeline so it can be compiled to native kernels.</p>
 	 */
 	@Override
 	public CollectionProducer rayAt(Producer<?> posP, Producer<?> sdP) {
-//		if (Settings.produceOutput && Settings.produceCameraOutput) {
-//			Settings.cameraOut.println("CAMERA: U = " + this.u.toString() + ", V = " + this.v.toString() + ", W = " + this.w.toString());
-//		}
-
-		if (enableHardwareAcceleration) {
-			return rayAt(posP, sdP, getLocation(), getProjectionDimensions(),
-											blur, focalLength, u, v, w);
-		} else {
-			return new DynamicCollectionProducer(new TraversalPolicy(6), args -> {
-					Pair pos = new Pair((PackedCollection) posP.get().evaluate(args), 0);
-					Pair screenDim = new Pair((PackedCollection) sdP.get().evaluate(args), 0);
-
-					double au = -(getProjectionWidth() / 2);
-					double av = -(getProjectionHeight() / 2);
-					double bu = getProjectionWidth() / 2;
-					double bv = getProjectionHeight() / 2;
-
-					double normX = screenDim.getX() > 1 ? pos.getX() / (screenDim.getX() - 1) : 0.5;
-					double normY = screenDim.getY() > 1 ? pos.getY() / (screenDim.getY() - 1) : 0.5;
-					Vector p = u.multiply((au + (bu - au) * normX));
-					Vector q = v.multiply((av + (bv - av) * normY));
-					Vector r = w.multiply(-focalLength);
-
-					Vector rayDirection = p;
-					rayDirection.addTo(q);
-					rayDirection.addTo(r);
-
-					double l = rayDirection.length();
-					rayDirection.divideBy(l);
-
-					if (blur != 0.0) {
-						double a = blur * (-0.5 + Math.random());
-						double b = blur * (-0.5 + Math.random());
-
-						Vector u, v, w = rayDirection.clone();
-
-						Vector t = rayDirection.clone();
-
-						if (t.getX() < t.getY() && t.getY() < t.getZ()) {
-							t.setX(1.0);
-						} else if (t.getY() < t.getX() && t.getY() < t.getZ()) {
-							t.setY(1.0);
-						} else {
-							t.setZ(1.0);
-						}
-
-						w.divideBy(w.length());
-
-						u = t.crossProduct(w);
-						u.divideBy(u.length());
-
-						v = w.crossProduct(u);
-
-						rayDirection.addTo(u.multiply(a));
-						rayDirection.addTo(v.multiply(b));
-						rayDirection.multiplyBy(l / rayDirection.length());
-					}
-
-					Ray ray = new Ray(getLocation(), rayDirection);
-
-//					if (Settings.produceOutput && Settings.produceCameraOutput) {
-//						Settings.cameraOut.println("CAMERA (" + this.toString() + ") : Ray at (" + pos + ", " + screenDim + ") = " + ray.toString());
-//					}
-
-					return ray;
-				});
-		}
+		return rayAt(posP, sdP, getLocation(), getProjectionDimensions(),
+										blur, focalLength, u, v, w);
 	}
 	
 	public String toString() {

@@ -86,15 +86,15 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 		CollectionProducer pdy = r(pd);
 
 		// Map pixel position to projection plane coordinates.
-		// Uses pos / (N - 1 + eps) to avoid 0/0 = NaN when N = 1.
-		// For N>1: eps is negligible, equivalent to pos/(N-1).
-		// For N=1: pos=0 maps to the left edge rather than center.
-		// The rendering pipeline (RayTracedScene) uses the non-hardware camera path
-		// which correctly centers single-pixel rendering via normX = 0.5 when N = 1.
-		CollectionProducer p = pdx.multiply(l(pos))
-								.multiply(sdx.add(c(-1.0 + 1e-10)).pow(c(-1.0))).add(pdx.multiply(c(-0.5)));
-		CollectionProducer q = pdy.multiply(r(pos))
-								.multiply(sdy.add(c(-1.0 + 1e-10)).pow(c(-1.0))).add(pdy.multiply(c(-0.5)));
+		// normX = (pos + eps) / (N - 1 + 2*eps) maps:
+		//   N>1: approximately pos/(N-1) (eps is negligible)
+		//   N=1: eps/(2*eps) = 0.5, centering the single pixel on the projection plane
+		// This avoids both division by zero and runtime conditionals.
+		double eps = 1e-10;
+		CollectionProducer p = pdx.multiply(l(pos).add(c(eps))
+								.multiply(sdx.add(c(-1.0 + 2 * eps)).pow(c(-1.0))).add(c(-0.5)));
+		CollectionProducer q = pdy.multiply(r(pos).add(c(eps))
+								.multiply(sdy.add(c(-1.0 + 2 * eps)).pow(c(-1.0))).add(c(-0.5)));
 		CollectionProducer r = c(-focalLength);
 
 		CollectionProducer x = p.multiply(c(u.getX())).add(q.multiply(c(v.getX()))).add(r.multiply(c(w.getX())));

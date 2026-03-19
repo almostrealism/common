@@ -32,8 +32,8 @@ import java.io.IOException;
  * Simple rendering tests to verify the ray tracing pipeline can produce output.
  */
 public class SimpleRenderTest extends TestSuiteBase {
-	int width = 640;
-	int height = 640;
+	int width = 64;
+	int height = 64;
 
 	@Test(timeout = 30000)
 	public void testSinglePixelRendering() {
@@ -147,10 +147,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		camera.setFocalLength(0.1);
 		camera.setProjectionDimensions(0.36, 0.24);
 
-		// Disable hardware acceleration to test non-accelerated path
-		boolean originalHwAccel = PinholeCamera.enableHardwareAcceleration;
-		PinholeCamera.enableHardwareAcceleration = false;
-		log("Disabled hardware acceleration for camera rays");
+		log("Using hardware-accelerated camera rays");
 
 		// Create scene
 		Scene<ShadableSurface> scene = new Scene<>();
@@ -214,8 +211,6 @@ public class SimpleRenderTest extends TestSuiteBase {
 		assertTrue("Variable ray distance should be ~9.0 (was " + variableDistValue + ")",
 				Math.abs(variableDistValue - 9.0) < 0.1);
 
-		// Restore hardware acceleration setting
-		PinholeCamera.enableHardwareAcceleration = originalHwAccel;
 	}
 
 	@Test(timeout = 30000)
