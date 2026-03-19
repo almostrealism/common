@@ -23,8 +23,8 @@ STORE_DIR="${2:-/tmp/onnx-discovery-store}"
 MODELS_DIR="${3:-$HOME/Documents/AlmostRealism/models}"
 MAX_PROTOTYPES="${MAX_PROTOTYPES:-10}"
 
-# Required environment
-export AR_HARDWARE_LIBS="${AR_HARDWARE_LIBS:-/tmp/ar_libs/}"
+# Memory configuration
+export AR_HARDWARE_MEMORY_SCALE="${AR_HARDWARE_MEMORY_SCALE:-7}"
 
 # Verify paths
 echo "=== ONNX Prototype Discovery ==="

@@ -324,7 +324,6 @@ WaveData uses 1024-bin FFT for frequency analysis, defined in `WaveData.FFT_BINS
 Run the audio module tests:
 
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
 mvn test -pl audio
 ```
 

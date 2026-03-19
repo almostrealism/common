@@ -732,7 +732,7 @@ Block attention = sequenceAttention(
                 <div class="warning">
                     <strong>Required:</strong> Hardware acceleration requires environment variables to be set before running.
                 </div>
-                <pre><code class="language-bash">export AR_HARDWARE_LIBS=/tmp/ar_libs/
+                <pre><code class="language-bash"># AR_HARDWARE_LIBS is auto-detected — do not set manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend</code></pre>
             </section>
 
@@ -741,7 +741,7 @@ Block attention = sequenceAttention(
 
                 <div class="warning">
                     <strong>Issue:</strong> <code>NoClassDefFoundError: Could not initialize class PackedCollection</code><br>
-                    <strong>Solution:</strong> Set the AR_HARDWARE_LIBS environment variable before running.
+                    <strong>Solution:</strong> AR_HARDWARE_LIBS is auto-detected — do not set manually.
                 </div>
 
                 <div class="warning">

@@ -46,11 +46,11 @@
                 <p><strong>CRITICAL:</strong> Always set environment variables before running tests.</p>
 
                 <pre><code class="language-bash"># From command line
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually && \
 mvn test -pl algebra
 
 # Or in your IDE run configuration
-AR_HARDWARE_LIBS=/tmp/ar_libs/</code></pre>
+# AR_HARDWARE_LIBS is auto-detected</code></pre>
 
                 <h3>Test Class Template</h3>
                 <pre><code class="language-java">import org.almostrealism.util.TestFeatures;
@@ -641,7 +641,7 @@ public void debugComputationGraph() {
 
                 <p><strong>Best Practices Summary:</strong></p>
                 <ul>
-                    <li>Always set AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER before tests</li>
+                    <li>Verify the auto-detected library directory is writable before tests</li>
                     <li>Use appropriate tolerance for floating-point comparisons</li>
                     <li>Log test output to files for later review</li>
                     <li>Test edge cases (empty, large, special values)</li>

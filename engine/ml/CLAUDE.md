@@ -187,12 +187,12 @@ See [../claude.md](../claude.md) for AR_HARDWARE setup instructions. Note that t
 
 ### Memory Configuration for Large Models
 
-Large models (e.g., full Oobleck autoencoder, LLMs) require more memory than the default 8GB:
+Large models (e.g., full Oobleck autoencoder, LLMs) require more memory than the default ~4GB:
 
 ```bash
-# Increase memory for large ML models
-export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
-export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
+# Increase memory for large ML models (FP32)
+export AR_HARDWARE_MEMORY_SCALE=6   # ~16GB
+export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB
 ```
 
 **If you see `HardwareException: Memory max reached`**, increase `AR_HARDWARE_MEMORY_SCALE`.
@@ -221,8 +221,9 @@ mcp__ar-test-runner__start_test_run
 **Reference only** (what the MCP tool runs internally):
 ```bash
 # DO NOT RUN DIRECTLY - use MCP tool instead
-export AR_HARDWARE_MEMORY_SCALE=8 && \
-export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
+export AR_HARDWARE_MEMORY_SCALE=7 && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
+
 mvn test -pl ml -Dtest=<TestName> -DAR_TEST_PROFILE=pipeline
 ```
 

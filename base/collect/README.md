@@ -182,7 +182,7 @@ Memory (GPU/CPU buffers)
 
 **Required environment variable:**
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 ```
 
 `AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `opencl`, `metal`, or `external`.
@@ -281,12 +281,12 @@ PackedCollection large = new PackedCollection<>(shape(2000)); // 2000 >= 1024
 The hardware module controls memory limits:
 
 ```bash
-# Default: 8GB max (2^7 * 64MB = 8192MB)
-export AR_HARDWARE_MEMORY_SCALE=7
+# Default: ~4GB max with FP32 (4 * 2^4 * 64MB)
+export AR_HARDWARE_MEMORY_SCALE=4
 
-# Increase for large models:
-export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
-export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
+# Increase for large models (FP32):
+export AR_HARDWARE_MEMORY_SCALE=6   # ~16GB
+export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB
 ```
 
 ### Hardware Memory Provider
@@ -493,7 +493,7 @@ CollectionProducer traversed = cp(data).traverse(axis);
 ### Common Issues
 
 **NoClassDefFoundError: PackedCollection**
-- Missing environment variable: Set `AR_HARDWARE_LIBS`
+- Native library directory not writable. `AR_HARDWARE_LIBS` is auto-detected; check the default directory
 
 **Shape mismatch errors**
 - Check TraversalPolicy dimensions match data

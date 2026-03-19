@@ -203,10 +203,10 @@ Flowtree jobs rely on several environment variables for hardware acceleration, n
 
 ### AR_HARDWARE_LIBS
 
-The directory where hardware acceleration libraries (JNI `.so` files, OpenCL kernels, etc.) are generated and loaded from. Must be set before running any AR code that uses hardware acceleration.
+The directory where hardware acceleration libraries (JNI `.so` files, OpenCL kernels, etc.) are generated and loaded from. **Auto-detected — setting this manually is almost always a mistake.** The system uses `SystemUtils.getExtensionsPath()` by default.
 
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 ```
 
 ### AR_HARDWARE_DRIVER
@@ -230,14 +230,14 @@ export AR_HARDWARE_DRIVER=opencl  # Example: force OpenCL
 
 Controls the maximum memory available to the hardware backend. The value is a power of 2 exponent that determines the memory limit:
 
-| Value | Memory Limit |
-|-------|-------------|
-| `7` | 8 GB (default) |
-| `8` | 16 GB |
-| `9` | 32 GB |
+| Value | Memory Limit (FP32) |
+|-------|---------------------|
+| `4` | ~4 GB (default) |
+| `6` | ~16 GB |
+| `7` | ~32 GB |
 
 ```bash
-export AR_HARDWARE_MEMORY_SCALE=8  # 16 GB
+export AR_HARDWARE_MEMORY_SCALE=7  # ~32 GB (FP32)
 ```
 
 ### FLOWTREE_ROOT_HOST

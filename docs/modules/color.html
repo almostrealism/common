@@ -535,7 +535,7 @@ public class AcceleratedColors {
 
                 <div class="warning">
                     <strong>Issue:</strong> Hardware acceleration errors<br>
-                    <strong>Solution:</strong> Set environment variable: AR_HARDWARE_LIBS=/tmp/ar_libs/
+                    <strong>Solution:</strong> Set environment variable: # AR_HARDWARE_LIBS is auto-detected
                 </div>
             </section>
 
@@ -550,7 +550,7 @@ public class AcceleratedColors {
 
                 <h3>Environment Configuration</h3>
                 <div class="code-example">
-                    <pre><code class="language-bash">export AR_HARDWARE_LIBS=/tmp/ar_libs/
+                    <pre><code class="language-bash"># AR_HARDWARE_LIBS is auto-detected — do not set manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend</code></pre>
                 </div>
 

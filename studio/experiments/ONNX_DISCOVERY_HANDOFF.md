@@ -39,8 +39,7 @@ This crash occurs in the hardware acceleration layer during feature computation.
 ## How to Run
 
 ```bash
-# Set required environment variable
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 
 # Build (already done)
 mvn clean install -DskipTests
@@ -108,19 +107,50 @@ The test should print:
 2. **No OpenCL on ARM64 container** - falls back to JNI backend which is slow (~28s/sample)
 3. **Large sample count** (6000+) would take many hours on CPU-only backend
 
+## SIGSEGV Root Cause Analysis
+
+Investigation identified native memory exhaustion as the primary cause, with a thread-safety
+bug as a contributing factor. The crash occurs in `GeneratedOperation1.apply` (compiled JNI
+transpose kernel) after ~50-60 samples.
+
+### Fix Applied: HashMap Thread-Safety
+
+`HardwareMemoryProvider.allocated` was a plain `HashMap` accessed concurrently from the
+allocation thread and the deallocation daemon thread. Changed to `ConcurrentHashMap`.
+
+### Pending Fix: Intermediate PackedCollection Leak
+
+`AutoEncoderFeatureProvider.computeFeatures()` (`studio/compose/.../AutoEncoderFeatureProvider.java:35`)
+creates an intermediate PackedCollection from `autoencoder.encode()` that is never explicitly
+destroyed. This ~64KB allocation accumulates per sample. Fix: call `features.destroy()` after
+the transpose result is computed.
+
+### Pending Fix: FFT Intermediate Leak
+
+`WaveDetailsFactory.forExisting()` (`engine/audio/.../WaveDetailsFactory.java:151`) creates
+FFT PackedCollections (~4MB per channel) via `data.fft(c, true)` that are never explicitly
+destroyed. These intermediates rely on GC for cleanup, but GC doesn't trigger because the
+JVM has no visibility into native memory pressure.
+
+### Memory Configuration
+
+Formula: `maxBytes = precision.bytes() * 2^MEMORY_SCALE * 64MB` (FP32 = 4 bytes per element).
+Default MEMORY_SCALE=4 logs ~4GB. Set `AR_HARDWARE_MEMORY_SCALE=7` for ~32GB max.
+
 ## What GPU Agent Should Do
 
 1. Run the test in a GPU-enabled environment with proper OpenCL/Metal drivers
-2. Debug the SIGSEGV crash - likely a memory issue in the hardware acceleration layer
-3. Verify the full pipeline works end-to-end
-4. Confirm persistence speedup on second run
-5. Report prototype discovery results
+2. Verify the full pipeline works end-to-end with `AR_HARDWARE_MEMORY_SCALE=7`
+3. Confirm persistence speedup on second run
+4. Report prototype discovery results
+5. If SIGSEGV recurs, apply the pending fixes above
 
 ## Environment Requirements
 
 - Java 17+
 - Maven 3.6+
-- `AR_HARDWARE_LIBS=/tmp/ar_libs/` environment variable
+- `AR_HARDWARE_LIBS` is auto-detected (do not set manually)
+- `AR_HARDWARE_MEMORY_SCALE=7` (~32GB max native memory)
 - GPU with OpenCL or Metal support (for reasonable performance)
 - ONNX models: `encoder.onnx`, `decoder.onnx`
 - Audio samples directory with .wav files
