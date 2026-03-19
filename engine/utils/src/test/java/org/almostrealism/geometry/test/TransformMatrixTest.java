@@ -91,9 +91,6 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	public void testSphereIntersectionWithTransform() {
 		log("Testing sphere intersection WITH transforms enabled...");
 
-		// Ensure transforms are enabled
-		org.almostrealism.primitives.Sphere.enableTransform = true;
-
 		// Test 1: Sphere at origin (identity transform)
 		Sphere sphere1 = new Sphere();
 		sphere1.setLocation(new Vector(0.0, 0.0, 0.0));
@@ -263,8 +260,6 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing that scaled sphere intersection returns correct WORLD SPACE distance...");
 		log("Per Sphere.java documentation: directions don't need normalization, math compensates");
 
-		Sphere.enableTransform = true;
-
 		// Create sphere at origin with size 2.0 (radius 2)
 		Sphere sphere = new Sphere();
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
@@ -338,8 +333,6 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	public void testIntersectionWithTranslatedSphere() {
 		log("Testing intersection experiment: translated sphere requires inverse transform...");
 
-		Sphere.enableTransform = true;
-
 		// Create sphere at (0, 0, -5)
 		Sphere sphere = new Sphere();
 		sphere.setLocation(new Vector(0.0, 0.0, -5.0));
@@ -364,11 +357,13 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Intersection with translated sphere test passed!");
 	}
 
+	/**
+	 * Verifies that the inverse transform is applied correctly so that
+	 * a ray aimed at a translated sphere actually hits it.
+	 */
 	@Test(timeout = 10000)
-	public void testIntersectionMissWithIncorrectTransform() {
-		log("Testing that ray MUST be inverse-transformed for correct intersection...");
-
-		Sphere.enableTransform = false;  // Disable transform to see what happens
+	public void testIntersectionWithTranslatedSphereHit() {
+		log("Testing that inverse transform allows ray to hit translated sphere...");
 
 		// Create sphere at (3, 0, 0)
 		Sphere sphere = new Sphere();
@@ -376,31 +371,19 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		sphere.setSize(1.0);
 		sphere.calculateTransform();
 
-		// Ray from (3, 0, 5) pointing down -Z should hit if transforms work correctly
+		// Ray from (3, 0, 5) pointing down -Z should hit the translated sphere
 		Producer<Ray> r = (Producer) ray(3.0, 0.0, 5.0, 0.0, 0.0, -1.0);
 
-		// Get intersection with transforms DISABLED
 		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(r);
 		double dist = intersection.getDistance().get().evaluate().toDouble(0);
 
-		log("  Sphere at (3, 0, 0), transforms DISABLED");
-		log("  Ray from (3, 0, 5) towards -Z");
-		log("  Distance (transforms disabled): " + dist);
+		log("  Sphere at (3, 0, 0), ray from (3, 0, 5) towards -Z");
+		log("  Distance: " + dist);
 
-		// Should miss because sphere is actually at origin when transforms disabled
-		assertTrue("Should MISS when transforms disabled (dist < 0)", dist < 0);
+		assertTrue("Should HIT translated sphere (dist > 0)", dist > 0);
+		assertTrue("Distance should be ~4.0 (was " + dist + ")", Math.abs(dist - 4.0) < 0.1);
 
-		// Now enable transforms and try again
-		Sphere.enableTransform = true;
-		org.almostrealism.geometry.ShadableIntersection intersection2 = sphere.intersectAt(r);
-		double dist2 = intersection2.getDistance().get().evaluate().toDouble(0);
-
-		log("  Distance (transforms enabled): " + dist2);
-
-		// Should HIT when transforms enabled
-		assertTrue("Should HIT when transforms enabled (dist > 0)", dist2 > 0);
-
-		log("  Inverse transform requirement test passed!");
+		log("  Inverse transform hit test passed!");
 	}
 
 	@Test(timeout = 10000)

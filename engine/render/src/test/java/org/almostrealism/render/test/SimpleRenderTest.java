@@ -412,7 +412,6 @@ public class SimpleRenderTest extends TestSuiteBase {
 	public void renderSingleSphere() throws Exception {
 		log("Creating simple scene with one sphere...");
 
-		Sphere.enableTransform = false; // TODO  This should not be required
 
 		// Create scene
 		Scene<ShadableSurface> scene = new Scene<>();
