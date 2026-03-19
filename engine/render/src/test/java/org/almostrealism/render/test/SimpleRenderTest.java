@@ -579,6 +579,17 @@ public class SimpleRenderTest extends TestSuiteBase {
 		);
 
 		log("Starting render...");
+
+		// Test individual intersections before full render
+		log("Verifying sphere intersections...");
+		CollectionProducer testRay1 = ray(-1.5, 0.0, 3.0, 0.0, 0.0, -1.0);
+		double dist1 = sphere1.intersectAt(testRay1).getDistance().get().evaluate().toDouble(0);
+		log("Sphere1 at (-1.5,0,0): test ray distance = " + dist1);
+
+		CollectionProducer testRay2 = ray(1.5, 0.0, 3.0, 0.0, 0.0, -1.0);
+		double dist2 = sphere2.intersectAt(testRay2).getDistance().get().evaluate().toDouble(0);
+		log("Sphere2 at (1.5,0,0): test ray distance = " + dist2);
+
 		RealizableImage realizableImage = rayTracedScene.realize(params);
 
 		log("Evaluating image...");
@@ -615,5 +626,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		} catch (Exception e) {
 			log("Warning: Could not save image: " + e.getMessage());
 		}
+
+		assertTrue("Should have some non-black pixels for two spheres", nonBlackPixels > 0);
 	}
 }

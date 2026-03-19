@@ -220,63 +220,19 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 		TransformMatrix m = getTransform(true);
 
 		Producer<?> tr = r;
-		if (m != null && !m.isIdentity()) tr = m.getInverse().transform(tr);
+		if (m != null && !m.isIdentity()) {
+			// Hardware acceleration must be used — manual manipulation of the
+			// tensors should never be allowed. The inverse transform is applied
+			// to the ray via matmul, which handles batch kernel dispatch correctly
+			// through SubsetTraversalWeightedSumExpression position policies.
+			tr = m.getInverse().transform(tr);
+		}
 
 		final Producer<?> fr = tr;
 
-		if (enableHardwareAcceleration) {
-			// return new ShadableIntersection(this, r, new SphereIntersectAt(fr));
-//			Producer<Scalar> distance = scalar(_lessThan(discriminant(fr), scalar(0.0),
-//												scalar(-1.0), closest(t(fr))));
-			Producer distance = greaterThan(discriminant(fr), c(0.0),
-												closest(t(fr)), c(-1.0));
-			return new ShadableIntersection(this, r, distance);
-		} else {
-			Evaluable<PackedCollection> s = args -> {
-				Ray ray = new Ray((PackedCollection) fr.get().evaluate(args), 0);
-
-				double b = ray.oDotd().evaluate(args).toDouble();
-				double c = ray.oDoto().evaluate(args).toDouble();
-				double g = ray.dDotd().evaluate(args).toDouble();
-
-				double discriminant = (b * b) - (g) * (c - 1);
-
-				PackedCollection result = new PackedCollection(1);
-				if (discriminant < 0) {
-					result.setMem(0, -1.0);
-					return result;
-				}
-
-				double discriminantSqrt = Math.sqrt(discriminant);
-
-				double[] t = new double[2];
-
-				t[0] = (-b + discriminantSqrt) / (g);
-				t[1] = (-b - discriminantSqrt) / (g);
-
-				double st;
-
-				if (t[0] > 0 && t[1] > 0) {
-					if (t[0] < t[1]) {
-						st = t[0];
-					} else {
-						st = t[1];
-					}
-				} else if (t[0] > 0) {
-					st = t[0];
-				} else if (t[1] > 0) {
-					st = t[1];
-				} else {
-					result.setMem(0, -1.0);
-					return result;
-				}
-
-				result.setMem(0, st);
-				return result;
-			};
-
-			return new ShadableIntersection(this, r, () -> s);
-		}
+		Producer distance = greaterThan(discriminant(fr), c(0.0),
+											closest(t(fr)), c(-1.0));
+		return new ShadableIntersection(this, r, distance);
 	}
 
 	@Override

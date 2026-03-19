@@ -16,11 +16,7 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.collect.WeightedSumExpression;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -31,7 +27,6 @@ import org.almostrealism.collect.computations.DefaultTraversableExpressionComput
 import org.almostrealism.collect.computations.ReshapeProducer;
 
 import java.util.function.BiFunction;
-import java.util.function.Function;
 
 /**
  * A feature interface providing factory methods for creating and manipulating transformation matrices.
@@ -158,6 +153,11 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	/**
 	 * Transforms a vector by a matrix with control over translation inclusion.
 	 *
+	 * <p>Uses {@code weightedSum} with position policies via
+	 * {@code SubsetTraversalWeightedSumExpression} for correct batch mode handling.
+	 * This bypasses the {@code repeat+multiply+sum} path in {@code matmul} which
+	 * has kernel batch indexing issues for small output sizes.</p>
+	 *
 	 * @param matrix a producer for the transformation matrix
 	 * @param vector the vector to transform
 	 * @param includeTranslation if true, includes translation (for points); if false, excludes it (for directions)
@@ -165,24 +165,28 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 */
 	default CollectionProducerComputation transform(Producer<TransformMatrix> matrix,
 													Producer<PackedCollection> vector, boolean includeTranslation) {
-		TraversalPolicy shape = shape(3);
+		int n = includeTranslation ? 4 : 3;
+		int m = 3;
 
-		vector = concat(shape(4), vector, c(1.0));
+		Producer<PackedCollection> vec = includeTranslation
+				? concat(shape(n), vector, c(1.0))
+				: vector;
 
-		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation("transform", shape,
-				args ->
-						new WeightedSumExpression(shape, includeTranslation ? 4 : 3, args[1], args[2],
-								(groupIndex, operandIndex) -> outputIndex -> {
-									if (operandIndex == 0) {
-										return e(groupIndex);
-									} else if (operandIndex == 1) {
-										return (Expression) outputIndex.multiply(4).add(e(groupIndex));
-									} else {
-										throw new IllegalArgumentException();
-									}
-								}),
-				vector, (Producer) matrix);
-		return c;
+		Producer<PackedCollection> mat = reshape(shape(m, n), c(matrix));
+
+		TraversalPolicy matrixShape4D = shape(1, m, n, 1);
+		TraversalPolicy vectorShape4D = shape(1, 1, n, 1);
+		TraversalPolicy resultShape = shape(1, m, 1, 1);
+
+		TraversalPolicy matrixPositions = resultShape.withRate(0, 1, 1).withRate(3, n, 1);
+		TraversalPolicy vectorPositions = resultShape.withRate(1, 1, m);
+		TraversalPolicy groupShape = shape(1, 1, n, 1);
+
+		return (CollectionProducerComputation) weightedSum("transform",
+				matrixPositions, vectorPositions,
+				groupShape, groupShape,
+				reshape(vectorShape4D, vec),
+				reshape(matrixShape4D, mat)).reshape(shape(m).traverseEach());
 	}
 
 	/**

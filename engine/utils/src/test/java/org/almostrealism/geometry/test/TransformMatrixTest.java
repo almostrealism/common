@@ -2,8 +2,12 @@ package org.almostrealism.geometry.test;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.TransformMatrixFeatures;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.util.TestSuiteBase;
@@ -557,6 +561,374 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 		// This t value should be 8.0 for correct world-space distance
 		log("  Final t value (should be 8.0 for world space): " + t);
+	}
+
+	/**
+	 * Tests that transformAsLocation works correctly in batch mode.
+	 * This is the core of the rendering pipeline issue: when a constant
+	 * transform matrix is applied to a batch of varying vectors, do
+	 * we get correct results?
+	 */
+	@Test(timeout = 20000)
+	public void testBatchTransformAsLocation() {
+		log("Testing batch mode transform (transformAsLocation)...");
+
+		// Create a translation matrix: translate by (2, 0, 0)
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(2.0, 0.0, 0.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
+
+		double[] matData = mat.toArray(0, 16);
+		log("Translation matrix:");
+		for (int i = 0; i < 4; i++) {
+			log("  [" + String.format("%6.3f, %6.3f, %6.3f, %6.3f",
+					matData[i * 4], matData[i * 4 + 1], matData[i * 4 + 2], matData[i * 4 + 3]) + "]");
+		}
+
+		// Create a batch of 4 input vectors
+		PackedCollection inputBatch = new PackedCollection(shape(4, 3));
+		inputBatch.setMem(0, new double[]{1.0, 0.0, 0.0});
+		inputBatch.setMem(3, new double[]{0.0, 1.0, 0.0});
+		inputBatch.setMem(6, new double[]{0.0, 0.0, 1.0});
+		inputBatch.setMem(9, new double[]{3.0, 4.0, 5.0});
+
+		log("Input vectors:");
+		for (int i = 0; i < 4; i++) {
+			log("  [" + inputBatch.valueAt(i, 0) + ", " + inputBatch.valueAt(i, 1) + ", " + inputBatch.valueAt(i, 2) + "]");
+		}
+
+		// Create variable input producer for batch mode
+		Producer<PackedCollection> input = v(shape(-1, 3), 0);
+
+		// Transform as location (includes translation)
+		CollectionProducerComputation transform = transformAsLocation(mat, input);
+
+		// Evaluate in batch mode
+		PackedCollection output = new PackedCollection(shape(4, 3).traverse(1));
+		transform.get().into(output.each()).evaluate(inputBatch);
+
+		log("Output vectors (should have X += 2.0):");
+		for (int i = 0; i < 4; i++) {
+			log("  [" + output.valueAt(i, 0) + ", " + output.valueAt(i, 1) + ", " + output.valueAt(i, 2) + "]");
+		}
+
+		// Expected: each vector should have 2.0 added to X
+		// (1,0,0) -> (3,0,0)
+		assertTrue("Vector 0 X should be 3.0 (was " + output.valueAt(0, 0) + ")",
+				Math.abs(output.valueAt(0, 0) - 3.0) < 0.01);
+		assertTrue("Vector 0 Y should be 0.0 (was " + output.valueAt(0, 1) + ")",
+				Math.abs(output.valueAt(0, 1) - 0.0) < 0.01);
+		assertTrue("Vector 0 Z should be 0.0 (was " + output.valueAt(0, 2) + ")",
+				Math.abs(output.valueAt(0, 2) - 0.0) < 0.01);
+
+		// (0,1,0) -> (2,1,0)
+		assertTrue("Vector 1 X should be 2.0 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - 2.0) < 0.01);
+		assertTrue("Vector 1 Y should be 1.0 (was " + output.valueAt(1, 1) + ")",
+				Math.abs(output.valueAt(1, 1) - 1.0) < 0.01);
+
+		// (0,0,1) -> (2,0,1)
+		assertTrue("Vector 2 X should be 2.0 (was " + output.valueAt(2, 0) + ")",
+				Math.abs(output.valueAt(2, 0) - 2.0) < 0.01);
+		assertTrue("Vector 2 Z should be 1.0 (was " + output.valueAt(2, 2) + ")",
+				Math.abs(output.valueAt(2, 2) - 1.0) < 0.01);
+
+		// (3,4,5) -> (5,4,5)
+		assertTrue("Vector 3 X should be 5.0 (was " + output.valueAt(3, 0) + ")",
+				Math.abs(output.valueAt(3, 0) - 5.0) < 0.01);
+		assertTrue("Vector 3 Y should be 4.0 (was " + output.valueAt(3, 1) + ")",
+				Math.abs(output.valueAt(3, 1) - 4.0) < 0.01);
+		assertTrue("Vector 3 Z should be 5.0 (was " + output.valueAt(3, 2) + ")",
+				Math.abs(output.valueAt(3, 2) - 5.0) < 0.01);
+
+		log("Batch transform test passed!");
+	}
+
+	/**
+	 * Tests that the matmul-based TransformMatrixFeatures.transform()
+	 * produces correct results in batch mode.
+	 */
+	@Test(timeout = 20000)
+	public void testBatchMatmulTransformVector() {
+		log("Testing batch matmul transform on vectors...");
+
+		// Create translation matrix for (-2, 0, 0)
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(-2.0, 0.0, 0.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
+
+		double[] matData = mat.toArray(0, 16);
+		log("Matrix:");
+		for (int i = 0; i < 4; i++) {
+			log("  [" + matData[i * 4] + ", " + matData[i * 4 + 1] + ", " + matData[i * 4 + 2] + ", " + matData[i * 4 + 3] + "]");
+		}
+
+		// Create batch of 3 input vectors
+		PackedCollection inputBatch = new PackedCollection(shape(3, 3));
+		inputBatch.setMem(0, new double[]{1.0, 0.0, 0.0});
+		inputBatch.setMem(3, new double[]{4.0, 5.0, 6.0});
+		inputBatch.setMem(6, new double[]{7.0, 8.0, 9.0});
+
+		// Single eval first
+		log("Single evaluation:");
+		for (int i = 0; i < 3; i++) {
+			Producer<PackedCollection> staticVec = vector(inputBatch.toDouble(i * 3), inputBatch.toDouble(i * 3 + 1), inputBatch.toDouble(i * 3 + 2));
+			PackedCollection result = transformAsLocation(mat, staticVec).get().evaluate();
+			log("  Vec " + i + ": [" + result.toDouble(0) + ", " + result.toDouble(1) + ", " + result.toDouble(2) + "]");
+		}
+
+		// Batch eval
+		log("Batch evaluation:");
+		Producer<PackedCollection> input = v(shape(-1, 3), 0);
+		CollectionProducerComputation transform = transformAsLocation(mat, input);
+		PackedCollection output = new PackedCollection(shape(3, 3).traverse(1));
+		transform.get().into(output.each()).evaluate(inputBatch);
+
+		for (int i = 0; i < 3; i++) {
+			log("  Vec " + i + ": [" + output.valueAt(i, 0) + ", " + output.valueAt(i, 1) + ", " + output.valueAt(i, 2) + "]");
+		}
+
+		// Expected: X - 2
+		assertTrue("Vec 0 X should be -1.0 (was " + output.valueAt(0, 0) + ")",
+				Math.abs(output.valueAt(0, 0) - (-1.0)) < 0.01);
+		assertTrue("Vec 1 X should be 2.0 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - 2.0) < 0.01);
+		assertTrue("Vec 2 X should be 5.0 (was " + output.valueAt(2, 0) + ")",
+				Math.abs(output.valueAt(2, 0) - 5.0) < 0.01);
+		assertTrue("Vec 2 Y should be 8.0 (was " + output.valueAt(2, 1) + ")",
+				Math.abs(output.valueAt(2, 1) - 8.0) < 0.01);
+
+		log("Batch matmul transform test passed!");
+	}
+
+	/**
+	 * Tests batch mode ray transformation with a translation matrix.
+	 * This mirrors how LightingEngineAggregator.initRankCache() evaluates
+	 * the intersection distance for multiple pixels at once.
+	 */
+	@Test(timeout = 20000)
+	public void testBatchRayTransform() {
+		log("Testing batch mode ray transformation...");
+
+		// Create a translation matrix: translate by (-2, 0, 0) (like inverse of sphere at (2,0,0))
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(-2.0, 0.0, 0.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
+
+		// Create batch of 3 rays (each 6 elements: origin + direction)
+		PackedCollection inputBatch = new PackedCollection(shape(3, 6));
+		// Ray 0: from (2,0,10) towards (0,0,-1) - should hit sphere at (2,0,0)
+		inputBatch.setMem(0, new double[]{2.0, 0.0, 10.0, 0.0, 0.0, -1.0});
+		// Ray 1: from (5,0,10) towards (0,0,-1) - would miss sphere at (2,0,0)
+		inputBatch.setMem(6, new double[]{5.0, 0.0, 10.0, 0.0, 0.0, -1.0});
+		// Ray 2: from (2,3,10) towards (0,0,-1) - would miss sphere at (2,0,0)
+		inputBatch.setMem(12, new double[]{2.0, 3.0, 10.0, 0.0, 0.0, -1.0});
+
+		log("Input rays:");
+		for (int i = 0; i < 3; i++) {
+			log("  Ray " + i + ": origin=(" + inputBatch.valueAt(i, 0) + "," +
+					inputBatch.valueAt(i, 1) + "," + inputBatch.valueAt(i, 2) +
+					"), dir=(" + inputBatch.valueAt(i, 3) + "," +
+					inputBatch.valueAt(i, 4) + "," + inputBatch.valueAt(i, 5) + ")");
+		}
+
+		// Create variable ray producer
+		Producer<?> variableRay = v(shape(-1, 6), 0);
+
+		// Transform the ray using the matrix
+		Producer<?> transformedRay = mat.transform(variableRay);
+
+		// Evaluate in batch mode
+		PackedCollection output = new PackedCollection(shape(3, 6).traverse(1));
+		transformedRay.get().into(output.each()).evaluate(inputBatch);
+
+		log("Transformed rays (origin should have X -= 2.0, direction unchanged):");
+		for (int i = 0; i < 3; i++) {
+			log("  Ray " + i + ": origin=(" + output.valueAt(i, 0) + "," +
+					output.valueAt(i, 1) + "," + output.valueAt(i, 2) +
+					"), dir=(" + output.valueAt(i, 3) + "," +
+					output.valueAt(i, 4) + "," + output.valueAt(i, 5) + ")");
+		}
+
+		// Ray 0: origin should become (0, 0, 10)
+		assertTrue("Ray 0 origin X should be 0.0 (was " + output.valueAt(0, 0) + ")",
+				Math.abs(output.valueAt(0, 0) - 0.0) < 0.01);
+		assertTrue("Ray 0 origin Z should be 10.0 (was " + output.valueAt(0, 2) + ")",
+				Math.abs(output.valueAt(0, 2) - 10.0) < 0.01);
+		assertTrue("Ray 0 direction Z should be -1.0 (was " + output.valueAt(0, 5) + ")",
+				Math.abs(output.valueAt(0, 5) - (-1.0)) < 0.01);
+
+		// Ray 1: origin should become (3, 0, 10)
+		assertTrue("Ray 1 origin X should be 3.0 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - 3.0) < 0.01);
+
+		// Ray 2: origin should become (0, 3, 10)
+		assertTrue("Ray 2 origin X should be 0.0 (was " + output.valueAt(2, 0) + ")",
+				Math.abs(output.valueAt(2, 0) - 0.0) < 0.01);
+		assertTrue("Ray 2 origin Y should be 3.0 (was " + output.valueAt(2, 1) + ")",
+				Math.abs(output.valueAt(2, 1) - 3.0) < 0.01);
+
+		log("Batch ray transform test passed!");
+	}
+
+	/**
+	 * Tests that Sphere intersection works in batch mode with a translated sphere.
+	 * This mimics how LightingEngineAggregator.initRankCache() evaluates.
+	 */
+	@Test(timeout = 20000)
+	public void testBatchSphereIntersection() {
+		log("Testing batch sphere intersection with translated sphere...");
+
+		// Create sphere at (-1.5, 0, 0) with size 1.0
+		Sphere sphere = new Sphere();
+		sphere.setLocation(new Vector(-1.5, 0.0, 0.0));
+		sphere.setSize(1.0);
+		sphere.calculateTransform();
+
+		log("Sphere location: " + sphere.getLocation());
+		log("Sphere transform isIdentity: " + sphere.getTransform(true).isIdentity());
+
+		// Create a batch of rays as a variable input (like camera rays)
+		// Ray 0: from (-1.5, 0, 5) towards (0, 0, -1) — should HIT
+		// Ray 1: from (5, 0, 5) towards (0, 0, -1) — should MISS
+		// Ray 2: from (-1.5, 0.5, 5) towards (0, 0, -1) — should HIT (near edge)
+		PackedCollection rayBatch = new PackedCollection(shape(3, 6));
+		rayBatch.setMem(0, new double[]{-1.5, 0.0, 5.0, 0.0, 0.0, -1.0});
+		rayBatch.setMem(6, new double[]{5.0, 0.0, 5.0, 0.0, 0.0, -1.0});
+		rayBatch.setMem(12, new double[]{-1.5, 0.5, 5.0, 0.0, 0.0, -1.0});
+
+		// Test single evaluation first
+		log("\n=== Single evaluation ===");
+		for (int i = 0; i < 3; i++) {
+			PackedCollection singleRay = new PackedCollection(shape(6));
+			singleRay.setMem(0, rayBatch.toArray(i * 6, 6));
+
+			Producer<?> staticRay = ray(
+					singleRay.toDouble(0), singleRay.toDouble(1), singleRay.toDouble(2),
+					singleRay.toDouble(3), singleRay.toDouble(4), singleRay.toDouble(5));
+			org.almostrealism.geometry.ShadableIntersection si = sphere.intersectAt(staticRay);
+			double dist = si.getDistance().get().evaluate().toDouble(0);
+			log("Ray " + i + ": distance = " + dist + (dist > 0 ? " (HIT)" : " (MISS)"));
+		}
+
+		// Test batch evaluation (like initRankCache)
+		log("\n=== Batch evaluation ===");
+		Producer<?> variableRay = v(shape(-1, 6), 0);
+		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(variableRay);
+		Producer<?> distanceProducer = intersection.getDistance();
+
+		PackedCollection rankCollection = new PackedCollection(shape(3, 1).traverse(1));
+		distanceProducer.get().into(rankCollection.each()).evaluate(rayBatch);
+
+		for (int i = 0; i < 3; i++) {
+			double dist = rankCollection.valueAt(i, 0);
+			log("Ray " + i + ": distance = " + dist + (dist > 0 ? " (HIT)" : " (MISS)"));
+		}
+
+		// Ray 0 should hit (distance ~4.0)
+		double ray0dist = rankCollection.valueAt(0, 0);
+		assertTrue("Ray 0 should hit translated sphere (dist was " + ray0dist + ")", ray0dist > 0);
+		assertTrue("Ray 0 distance should be ~4.0 (was " + ray0dist + ")", Math.abs(ray0dist - 4.0) < 0.5);
+
+		// Ray 1 should miss
+		double ray1dist = rankCollection.valueAt(1, 0);
+		assertTrue("Ray 1 should miss (dist was " + ray1dist + ")", ray1dist < 0);
+
+		// Ray 2 should hit (near edge, distance ~4.13)
+		double ray2dist = rankCollection.valueAt(2, 0);
+		assertTrue("Ray 2 batch should hit translated sphere (dist was " + ray2dist + ")", ray2dist > 0);
+
+		log("Batch sphere intersection test passed!");
+	}
+
+	/**
+	 * Tests batch sphere intersection WITHOUT transform (identity, sphere at origin).
+	 * If this fails for item 2, the issue is in the intersection computation, not the transform.
+	 */
+	@Test(timeout = 20000)
+	public void testBatchSphereIntersectionNoTransform() {
+		log("Testing batch sphere intersection WITHOUT transform...");
+
+		Sphere sphere = new Sphere();
+		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
+		sphere.setSize(1.0);
+		sphere.calculateTransform();
+		log("Sphere at origin, isIdentity: " + sphere.getTransform(true).isIdentity());
+
+		// Create a batch of 3 rays aimed at the origin sphere
+		PackedCollection rayBatch = new PackedCollection(shape(3, 6));
+		rayBatch.setMem(0, new double[]{0.0, 0.0, 5.0, 0.0, 0.0, -1.0});   // straight on, should hit at ~4.0
+		rayBatch.setMem(6, new double[]{5.0, 0.0, 5.0, 0.0, 0.0, -1.0});   // far right, should miss
+		rayBatch.setMem(12, new double[]{0.0, 0.5, 5.0, 0.0, 0.0, -1.0});  // near edge, should hit at ~4.13
+
+		log("Single evaluation:");
+		for (int i = 0; i < 3; i++) {
+			Producer<?> staticRay = ray(
+					rayBatch.toDouble(i * 6), rayBatch.toDouble(i * 6 + 1), rayBatch.toDouble(i * 6 + 2),
+					rayBatch.toDouble(i * 6 + 3), rayBatch.toDouble(i * 6 + 4), rayBatch.toDouble(i * 6 + 5));
+			double dist = sphere.intersectAt(staticRay).getDistance().get().evaluate().toDouble(0);
+			log("  Ray " + i + ": " + dist + (dist > 0 ? " (HIT)" : " (MISS)"));
+		}
+
+		log("Batch evaluation:");
+		Producer<?> variableRay = v(shape(-1, 6), 0);
+		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(variableRay);
+		PackedCollection rankCollection = new PackedCollection(shape(3, 1).traverse(1));
+		intersection.getDistance().get().into(rankCollection.each()).evaluate(rayBatch);
+
+		for (int i = 0; i < 3; i++) {
+			double dist = rankCollection.valueAt(i, 0);
+			log("  Ray " + i + ": " + dist + (dist > 0 ? " (HIT)" : " (MISS)"));
+		}
+
+		double ray2dist = rankCollection.valueAt(2, 0);
+		assertTrue("Ray 2 batch should hit origin sphere (dist was " + ray2dist + ")", ray2dist > 0);
+		log("Test passed!");
+	}
+
+	/**
+	 * Tests element-wise subtract+divide in batch mode.
+	 * This isolates whether the Sphere element-wise transform works in batch.
+	 */
+	@Test(timeout = 20000)
+	public void testBatchElementWiseSubtractDivide() {
+		log("Testing batch element-wise subtract+divide...");
+
+		// Create a batch of 3 input vectors (3 elements each)
+		PackedCollection inputBatch = new PackedCollection(shape(3, 3));
+		inputBatch.setMem(0, new double[]{1.0, 2.0, 3.0});
+		inputBatch.setMem(3, new double[]{4.0, 5.0, 6.0});
+		inputBatch.setMem(6, new double[]{7.0, 8.0, 9.0});
+
+		// Variable input
+		Producer<PackedCollection> input = v(shape(-1, 3), 0);
+
+		// Subtract constant (1, 1, 1) and divide by 2
+		CollectionProducer result = c(input).subtract(vector(1.0, 1.0, 1.0)).divide(c(2.0));
+
+		// Evaluate in batch mode
+		PackedCollection output = new PackedCollection(shape(3, 3).traverse(1));
+		result.get().into(output.each()).evaluate(inputBatch);
+
+		log("Output:");
+		for (int i = 0; i < 3; i++) {
+			log("  [" + output.valueAt(i, 0) + ", " + output.valueAt(i, 1) + ", " + output.valueAt(i, 2) + "]");
+		}
+
+		// Expected: (input - (1,1,1)) / 2
+		// (1,2,3) -> (0,1,2) / 2 = (0, 0.5, 1.0)
+		assertTrue("Item 0 X should be 0.0 (was " + output.valueAt(0, 0) + ")",
+				Math.abs(output.valueAt(0, 0) - 0.0) < 0.01);
+		// (4,5,6) -> (3,4,5) / 2 = (1.5, 2.0, 2.5)
+		assertTrue("Item 1 X should be 1.5 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - 1.5) < 0.01);
+		// (7,8,9) -> (6,7,8) / 2 = (3.0, 3.5, 4.0)
+		assertTrue("Item 2 X should be 3.0 (was " + output.valueAt(2, 0) + ")",
+				Math.abs(output.valueAt(2, 0) - 3.0) < 0.01);
+		assertTrue("Item 2 Y should be 3.5 (was " + output.valueAt(2, 1) + ")",
+				Math.abs(output.valueAt(2, 1) - 3.5) < 0.01);
+
+		log("Batch element-wise test passed!");
 	}
 
 	@Test(timeout = 10000)
