@@ -60,7 +60,7 @@
 
                 <h3>Linux/macOS</h3>
                 <pre><code class="language-bash"># Set the library directory (any writable location)
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 
 # Verify library dir is set
@@ -109,11 +109,11 @@ echo %AR_HARDWARE_LIBS%</code></pre>
 
                 <h3>Bash (~/.bashrc or ~/.bash_profile)</h3>
                 <pre><code class="language-bash"># Add to ~/.bashrc
-export AR_HARDWARE_LIBS=/tmp/ar_libs/</code></pre>
+# AR_HARDWARE_LIBS is auto-detected — do not set manually</code></pre>
 
                 <h3>Zsh (~/.zshrc)</h3>
                 <pre><code class="language-bash"># Add to ~/.zshrc
-export AR_HARDWARE_LIBS=/tmp/ar_libs/</code></pre>
+# AR_HARDWARE_LIBS is auto-detected — do not set manually</code></pre>
 
                 <h3>Apply Changes</h3>
                 <pre><code class="language-bash"># Reload your shell configuration
@@ -127,22 +127,22 @@ source ~/.bashrc  # or ~/.zshrc
                 <p>When running tests or applications via Maven, always prefix with environment variables:</p>
 
                 <pre><code class="language-bash"># Run tests
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually && \
 mvn test -pl algebra
 
 # Run specific test
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually && \
 mvn test -pl ml -Dtest=TransformerTest
 
 # Run all module tests
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually && \
 mvn test</code></pre>
 
                 <h3>Alternative: Set in IDE</h3>
                 <p>In IntelliJ IDEA or Eclipse, add environment variables to run configurations:</p>
                 <ul>
                     <li>Run → Edit Configurations</li>
-                    <li>Environment variables: AR_HARDWARE_LIBS=/tmp/ar_libs/</li>
+                    <li>Environment variables: # AR_HARDWARE_LIBS is auto-detected</li>
                 </ul>
             </section>
 
@@ -239,7 +239,7 @@ First result: 3.2156...</code></pre>
                 <p><strong>Cause:</strong> Environment variables not set before JVM starts.</p>
                 <p><strong>Solution:</strong></p>
                 <pre><code class="language-bash"># Ensure AR_HARDWARE_LIBS is set BEFORE running Java
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 # THEN run your application
 java -jar myapp.jar</code></pre>
 

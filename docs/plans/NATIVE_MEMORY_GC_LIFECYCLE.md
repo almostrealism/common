@@ -484,7 +484,7 @@ the object is collected (PhantomReference.get() always returns null).
 
 1. Run with `-XX:+UseG1GC -XX:MaxGCPauseMillis=10` to increase GC frequency
 2. Run with `-XX:+UnlockExperimentalVMOptions -XX:+G1TraceReclaimDeadHumongousObjectsAtYoungGC` for visibility
-3. Use `AR_HARDWARE_MEMORY_SCALE=5` (2GB) to force more allocation pressure
+3. Use `AR_HARDWARE_MEMORY_SCALE=3` (~2GB with FP32) to force more allocation pressure
 
 ---
 

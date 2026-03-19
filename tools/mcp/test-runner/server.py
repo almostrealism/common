@@ -242,7 +242,7 @@ class TestRunner:
 
         # Single-invocation path (original behavior)
         env = os.environ.copy()
-        env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
+        env.pop("AR_HARDWARE_LIBS", None)  # Auto-detected by the system
 
         # Create metadata
         metadata = RunMetadata(
@@ -374,7 +374,7 @@ class TestRunner:
 
         # Start new process (append to output)
         env = os.environ.copy()
-        env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
+        env.pop("AR_HARDWARE_LIBS", None)  # Auto-detected by the system
         with open(output_file, "a") as f:
             new_process = subprocess.Popen(
                 cmd, stdout=f, stderr=subprocess.STDOUT,
@@ -569,7 +569,7 @@ class TestRunner:
     def _watch_repetitions(self, run_id: str, config: RunConfig, run_dir: Path):
         """Run the same test N times sequentially, collecting per-invocation results."""
         env = os.environ.copy()
-        env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
+        env.pop("AR_HARDWARE_LIBS", None)  # Auto-detected by the system
 
         cmd = self.build_maven_command(config, run_dir, run_id)
         output_file = run_dir / "output.txt"

@@ -169,7 +169,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 			}
 		}
 
-		if (featureProvider != null) {
+		if (featureProvider != null && existing.getFeatureData() == null) {
 			PackedCollection features = prepareFeatures(new DynamicWaveDataProvider(existing.getIdentifier(), data));
 			existing.setFeatureSampleRate(featureProvider.getFeatureSampleRate());
 			existing.setFeatureChannelCount(1);
