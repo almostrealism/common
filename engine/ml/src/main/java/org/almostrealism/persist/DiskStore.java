@@ -103,6 +103,21 @@ public interface DiskStore<T> extends Closeable {
 	List<SearchResult<T>> search(PackedCollection queryVector, int topK);
 
 	/**
+	 * Check whether a record with the given ID exists in the store.
+	 *
+	 * @param id the record identifier
+	 * @return {@code true} if the record exists
+	 */
+	boolean containsKey(String id);
+
+	/**
+	 * Return the set of all record IDs in the store.
+	 *
+	 * @return an unmodifiable set of all record identifiers
+	 */
+	java.util.Set<String> allIds();
+
+	/**
 	 * Return the total number of records in the store.
 	 *
 	 * @return record count

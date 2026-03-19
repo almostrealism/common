@@ -138,25 +138,20 @@ See [docs/internals/test-examples.md](docs/internals/test-examples.md).
 
 # SETUP
 
-**Required environment variable** before running Java code:
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-```
-
+**Do NOT set `AR_HARDWARE_LIBS`** — the system auto-detects a suitable directory. Setting it
+manually (especially to `/tmp/ar_libs/`) causes permission errors on shared or sandboxed systems.
 Leave `AR_HARDWARE_DRIVER` unset — the system auto-selects the best backend.
-
-Forgetting `AR_HARDWARE_LIBS` causes `NoClassDefFoundError: PackedCollection` and similar failures.
 
 **Memory configuration** for large models or `HardwareException: Memory max reached`:
 ```bash
-export AR_HARDWARE_MEMORY_SCALE=8   # 16GB (default is 7 = 8GB)
+export AR_HARDWARE_MEMORY_SCALE=6   # 16GB (default is 4 = ~4GB)
 ```
 
 See [hardware/README.md](base/hardware/README.md).
 
 **Build verification** — before declaring a task complete:
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && mvn clean install -DskipTests
+mvn clean install -DskipTests
 ```
 
 This must succeed. Do not rely on `mvn compile` alone.
