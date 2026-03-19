@@ -76,17 +76,20 @@ public class CompoundMidiEmbedding {
 	/** Supplementary embedding for special tokens (SOS, EOS), shape (vocabSize, hiddenSize). */
 	private final PackedCollection supplementaryEmbedding;
 
-	/** Supplementary MLP first layer weight, shape (hiddenSize, hiddenSize). */
+	/** Supplementary MLP first layer weight, shape (mlpIntermediateSize, hiddenSize). */
 	private final PackedCollection supplementaryMlp0Weight;
 
-	/** Supplementary MLP first layer bias, shape (hiddenSize,). */
+	/** Supplementary MLP first layer bias, shape (mlpIntermediateSize,). */
 	private final PackedCollection supplementaryMlp0Bias;
 
-	/** Supplementary MLP second layer weight, shape (hiddenSize, hiddenSize). */
+	/** Supplementary MLP second layer weight, shape (hiddenSize, mlpIntermediateSize). */
 	private final PackedCollection supplementaryMlp2Weight;
 
 	/** Supplementary MLP second layer bias, shape (hiddenSize,). */
 	private final PackedCollection supplementaryMlp2Bias;
+
+	/** Supplementary MLP intermediate size (may differ from hiddenSize). */
+	private final int supplementaryMlpIntermediateSize;
 
 	/**
 	 * Create a CompoundMidiEmbedding from a {@link StateDictionary}.
@@ -116,6 +119,7 @@ public class CompoundMidiEmbedding {
 		this.supplementaryMlp0Bias = stateDict.get("supplementary_mlp.0.bias");
 		this.supplementaryMlp2Weight = stateDict.get("supplementary_mlp.2.weight");
 		this.supplementaryMlp2Bias = stateDict.get("supplementary_mlp.2.bias");
+		this.supplementaryMlpIntermediateSize = supplementaryMlp0Bias.getMemLength();
 	}
 
 	/**
@@ -139,10 +143,12 @@ public class CompoundMidiEmbedding {
 
 		this.supplementaryEmbedding = new PackedCollection(
 				new TraversalPolicy(config.supplementaryVocabSize, hidden));
-		this.supplementaryMlp0Weight = new PackedCollection(new TraversalPolicy(hidden, hidden));
-		this.supplementaryMlp0Bias = new PackedCollection(new TraversalPolicy(hidden));
-		this.supplementaryMlp2Weight = new PackedCollection(new TraversalPolicy(hidden, hidden));
+		int mlpIntermediate = hidden / 2;
+		this.supplementaryMlp0Weight = new PackedCollection(new TraversalPolicy(mlpIntermediate, hidden));
+		this.supplementaryMlp0Bias = new PackedCollection(new TraversalPolicy(mlpIntermediate));
+		this.supplementaryMlp2Weight = new PackedCollection(new TraversalPolicy(hidden, mlpIntermediate));
 		this.supplementaryMlp2Bias = new PackedCollection(new TraversalPolicy(hidden));
+		this.supplementaryMlpIntermediateSize = mlpIntermediate;
 	}
 
 	/**
@@ -236,16 +242,18 @@ public class CompoundMidiEmbedding {
 			lookup.setMem(i, supplementaryEmbedding.toDouble(offset + i));
 		}
 
-		PackedCollection mlp0Out = GRUDecoder.linearForward(
-				lookup, hidden, supplementaryMlp0Weight, hidden, supplementaryMlp0Bias);
+		int intermediate = supplementaryMlpIntermediateSize;
 
-		PackedCollection geluOut = new PackedCollection(new TraversalPolicy(hidden));
-		for (int i = 0; i < hidden; i++) {
+		PackedCollection mlp0Out = GRUDecoder.linearForward(
+				lookup, hidden, supplementaryMlp0Weight, intermediate, supplementaryMlp0Bias);
+
+		PackedCollection geluOut = new PackedCollection(new TraversalPolicy(intermediate));
+		for (int i = 0; i < intermediate; i++) {
 			geluOut.setMem(i, gelu(mlp0Out.toDouble(i)));
 		}
 
 		return GRUDecoder.linearForward(
-				geluOut, hidden, supplementaryMlp2Weight, hidden, supplementaryMlp2Bias);
+				geluOut, intermediate, supplementaryMlp2Weight, hidden, supplementaryMlp2Bias);
 	}
 
 	/**

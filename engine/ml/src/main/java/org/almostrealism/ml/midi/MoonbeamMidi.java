@@ -358,6 +358,8 @@ public class MoonbeamMidi implements AttentionFeatures {
 		return new GRUDecoder(config, layers,
 				stateDict.get("summary_projection.weight"),
 				stateDict.get("summary_projection.bias"),
+				stateDict.get("decoder.fc_out.weight"),
+				stateDict.get("decoder.fc_out.bias"),
 				stateDict.get("lm_head.weight"),
 				stateDict.get("lm_head.bias"),
 				stateDict.get("decoder_embedding.weight"));

@@ -162,6 +162,34 @@ public class MoonbeamConfig {
 	}
 
 	/**
+	 * Factory method for the 309M parameter Moonbeam checkpoint
+	 * (moonbeam_309M.pt from guozixunnicolas/moonbeam-midi-foundation-model).
+	 *
+	 * <p>This configuration matches the actual pretrained checkpoint dimensions,
+	 * which differ from the paper's described architecture.</p>
+	 */
+	public static MoonbeamConfig checkpoint309M() {
+		return new MoonbeamConfig(
+				1536,                                       // hiddenSize (6 * 256)
+				5376,                                       // intermediateSize (3.5x)
+				9,                                          // numLayers
+				12,                                         // numHeads
+				6,                                          // numKvHeads
+				128,                                        // headDim (1536 / 12)
+				1024,                                       // decoderHiddenSize
+				2,                                          // decoderLayers
+				2341,                                       // decodeVocabSize
+				8192,                                       // maxSeqLen
+				1e-5,                                       // rmsNormEps
+				new double[]{199999, 1031, 19, 20, 199999, 131},  // ropeThetas
+				new int[]{2, 2, 2, 2, 2, 2},               // headsPerGroup (6 groups of 2)
+				new int[]{1026, 1026, 13, 14, 131, 130},    // vocabSizes
+				new double[]{199999, 1031, 19, 20, 199999, 131},  // fmeBases
+				2                                           // supplementaryVocabSize (SOS, EOS)
+		);
+	}
+
+	/**
 	 * Factory method for a small test configuration.
 	 * Uses reduced dimensions but maintains architectural proportions.
 	 */

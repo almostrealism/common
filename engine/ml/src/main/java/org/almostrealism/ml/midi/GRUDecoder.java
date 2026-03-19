@@ -70,6 +70,8 @@ public class GRUDecoder {
 	private final GRUCell[] layers;
 	private final PackedCollection summaryWeight;
 	private final PackedCollection summaryBias;
+	private final PackedCollection fcOutWeight;
+	private final PackedCollection fcOutBias;
 	private final PackedCollection lmHeadWeight;
 	private final PackedCollection lmHeadBias;
 	private final PackedCollection decoderEmbedding;
@@ -77,6 +79,36 @@ public class GRUDecoder {
 
 	/**
 	 * Create a GRU decoder with explicit weights.
+	 *
+	 * @param config model configuration
+	 * @param layers array of GRU cells (one per layer)
+	 * @param summaryWeight summary projection weights (decoderHiddenSize, hiddenSize)
+	 * @param summaryBias summary projection bias (decoderHiddenSize)
+	 * @param fcOutWeight fc_out projection weights (decoderHiddenSize, decoderHiddenSize), may be null
+	 * @param fcOutBias fc_out projection bias (decoderHiddenSize), may be null
+	 * @param lmHeadWeight output projection weights (decodeVocabSize, decoderHiddenSize)
+	 * @param lmHeadBias output projection bias (decodeVocabSize)
+	 * @param decoderEmbedding output token embedding (decodeVocabSize, decoderHiddenSize)
+	 */
+	public GRUDecoder(MoonbeamConfig config, GRUCell[] layers,
+					  PackedCollection summaryWeight, PackedCollection summaryBias,
+					  PackedCollection fcOutWeight, PackedCollection fcOutBias,
+					  PackedCollection lmHeadWeight, PackedCollection lmHeadBias,
+					  PackedCollection decoderEmbedding) {
+		this.config = config;
+		this.layers = layers;
+		this.summaryWeight = summaryWeight;
+		this.summaryBias = summaryBias;
+		this.fcOutWeight = fcOutWeight;
+		this.fcOutBias = fcOutBias;
+		this.lmHeadWeight = lmHeadWeight;
+		this.lmHeadBias = lmHeadBias;
+		this.decoderEmbedding = decoderEmbedding;
+		this.vocabOffsets = computeVocabOffsets(config);
+	}
+
+	/**
+	 * Create a GRU decoder without fc_out layer (backward compatibility).
 	 *
 	 * @param config model configuration
 	 * @param layers array of GRU cells (one per layer)
@@ -90,14 +122,8 @@ public class GRUDecoder {
 					  PackedCollection summaryWeight, PackedCollection summaryBias,
 					  PackedCollection lmHeadWeight, PackedCollection lmHeadBias,
 					  PackedCollection decoderEmbedding) {
-		this.config = config;
-		this.layers = layers;
-		this.summaryWeight = summaryWeight;
-		this.summaryBias = summaryBias;
-		this.lmHeadWeight = lmHeadWeight;
-		this.lmHeadBias = lmHeadBias;
-		this.decoderEmbedding = decoderEmbedding;
-		this.vocabOffsets = computeVocabOffsets(config);
+		this(config, layers, summaryWeight, summaryBias, null, null,
+				lmHeadWeight, lmHeadBias, decoderEmbedding);
 	}
 
 	/**
@@ -153,9 +179,16 @@ public class GRUDecoder {
 				layerInput = h[l];
 			}
 
-			// lm_head: project last layer output to decode vocabulary logits
+			// fc_out: optional intermediate projection after GRU
+			PackedCollection gruOutput = h[layers.length - 1];
+			if (fcOutWeight != null) {
+				gruOutput = linearForward(gruOutput, decoderHidden,
+						fcOutWeight, decoderHidden, fcOutBias);
+			}
+
+			// lm_head: project to decode vocabulary logits
 			PackedCollection logits = linearForward(
-					h[layers.length - 1], decoderHidden,
+					gruOutput, decoderHidden,
 					lmHeadWeight, config.decodeVocabSize, lmHeadBias);
 
 			// Select token via the provided strategy
