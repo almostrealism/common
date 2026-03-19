@@ -26,6 +26,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.geometry.Ray;
 
+import java.util.function.Function;
+
 /**
  * A PinholeCamera object represents a camera in 3D. A PinholeCamera object stores the
  * location, viewing direction, up direction, focal length, and projection dimensions

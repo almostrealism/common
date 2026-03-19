@@ -88,9 +88,9 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 		// Map pixel position to projection plane coordinates.
 		// Uses pos / (N - 1 + eps) to avoid 0/0 = NaN when N = 1.
 		// For N>1: eps is negligible, equivalent to pos/(N-1).
-		// For N=1: pos=0 maps to the left edge rather than center; centering requires
-		// an additional numerator offset that increases expression tree complexity beyond
-		// what the expression simplifier can handle within the rendering pipeline.
+		// For N=1: pos=0 maps to the left edge rather than center.
+		// The rendering pipeline (RayTracedScene) uses the non-hardware camera path
+		// which correctly centers single-pixel rendering via normX = 0.5 when N = 1.
 		CollectionProducer p = pdx.multiply(l(pos))
 								.multiply(sdx.add(c(-1.0 + 1e-10)).pow(c(-1.0))).add(pdx.multiply(c(-0.5)));
 		CollectionProducer q = pdy.multiply(r(pos))

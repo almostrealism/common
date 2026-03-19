@@ -99,7 +99,15 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 	public RenderParameters getRenderParameters() { return p; }
 
 	public Producer<PackedCollection> operate(Producer<Pair> uv, Producer<Pair> sd) {
+		// Disable hardware acceleration for camera ray generation to prevent
+		// the camera projection formula from being embedded in the intersection/lighting
+		// expression tree. The combined tree would be too complex for the native kernel
+		// compiler. Using a DynamicCollectionProducer for the camera ray breaks the
+		// expression chain, allowing intersection and lighting to compile as smaller kernels.
+		boolean savedHwAccel = org.almostrealism.projection.PinholeCamera.enableHardwareAcceleration;
+		org.almostrealism.projection.PinholeCamera.enableHardwareAcceleration = false;
 		Future<Producer<PackedCollection>> color = tracer.trace((Producer) camera.rayAt(uv, sd));
+		org.almostrealism.projection.PinholeCamera.enableHardwareAcceleration = savedHwAccel;
 
 		if (color == null) {
 			color = new Future<>() {
