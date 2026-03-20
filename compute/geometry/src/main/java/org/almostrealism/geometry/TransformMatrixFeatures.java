@@ -153,10 +153,9 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	/**
 	 * Transforms a vector by a matrix with control over translation inclusion.
 	 *
-	 * <p>Uses {@code weightedSum} with position policies via
-	 * {@code SubsetTraversalWeightedSumExpression} for correct batch mode handling.
-	 * This bypasses the {@code repeat+multiply+sum} path in {@code matmul} which
-	 * has kernel batch indexing issues for small output sizes.</p>
+	 * <p>Implements the matrix-vector multiply as per-row dot products using
+	 * standard {@code multiply().sum()} operations, which correctly handle
+	 * implicit batch mode (variable-size input tensors).</p>
 	 *
 	 * @param matrix a producer for the transformation matrix
 	 * @param vector the vector to transform
@@ -166,27 +165,21 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	default CollectionProducerComputation transform(Producer<TransformMatrix> matrix,
 													Producer<PackedCollection> vector, boolean includeTranslation) {
 		int n = includeTranslation ? 4 : 3;
-		int m = 3;
 
 		Producer<PackedCollection> vec = includeTranslation
 				? concat(shape(n), vector, c(1.0))
 				: vector;
 
-		Producer<PackedCollection> mat = reshape(shape(m, n), c(matrix));
+		CollectionProducer mat = c(matrix);
+		CollectionProducer row0 = subset(shape(n), mat, 0);
+		CollectionProducer row1 = subset(shape(n), mat, n);
+		CollectionProducer row2 = subset(shape(n), mat, n * 2);
 
-		TraversalPolicy matrixShape4D = shape(1, m, n, 1);
-		TraversalPolicy vectorShape4D = shape(1, 1, n, 1);
-		TraversalPolicy resultShape = shape(1, m, 1, 1);
+		CollectionProducer dot0 = multiply(row0, vec).sum();
+		CollectionProducer dot1 = multiply(row1, vec).sum();
+		CollectionProducer dot2 = multiply(row2, vec).sum();
 
-		TraversalPolicy matrixPositions = resultShape.withRate(0, 1, 1).withRate(3, n, 1);
-		TraversalPolicy vectorPositions = resultShape.withRate(1, 1, m);
-		TraversalPolicy groupShape = shape(1, 1, n, 1);
-
-		return (CollectionProducerComputation) weightedSum("transform",
-				matrixPositions, vectorPositions,
-				groupShape, groupShape,
-				reshape(vectorShape4D, vec),
-				reshape(matrixShape4D, mat)).reshape(shape(m).traverseEach());
+		return (CollectionProducerComputation) concat(shape(3), dot0, dot1, dot2);
 	}
 
 	/**
