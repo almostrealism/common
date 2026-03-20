@@ -41,12 +41,12 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 	public void buildsCentralizedHttpEntries() {
 		McpConfigBuilder builder = new McpConfigBuilder();
 		builder.setCentralizedMcpConfig(
-				"{\"ar-slack\":{\"url\":\"http://localhost:8080\",\"tools\":[\"slack_send_message\"]}}");
+				"{\"ar-messages\":{\"url\":\"http://localhost:8080\",\"tools\":[\"send_message\"]}}");
 
 		String config = builder.buildMcpConfig();
 		assertNotNull(config);
 		assertTrue("Config should contain http type", config.contains("\"type\":\"http\""));
-		assertTrue("Config should contain ar-slack", config.contains("ar-slack"));
+		assertTrue("Config should contain ar-messages", config.contains("ar-messages"));
 	}
 
 	@Test(timeout = 30000)
@@ -105,15 +105,15 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 	public void parseCentralizedConfigExtractsServerNames() {
 		McpConfigBuilder builder = new McpConfigBuilder();
 		builder.setCentralizedMcpConfig(
-				"{\"ar-slack\":{\"url\":\"http://localhost:8080\",\"tools\":[\"slack_send_message\"]}," +
+				"{\"ar-messages\":{\"url\":\"http://localhost:8080\",\"tools\":[\"send_message\"]}," +
 				"\"ar-memory\":{\"url\":\"http://localhost:8081\",\"tools\":[\"memory_store\",\"memory_search\"]}}");
 
 		Map<String, List<String>> parsed = builder.parseCentralizedConfig();
 		assertEquals(2, parsed.size());
-		assertTrue("Should contain ar-slack", parsed.containsKey("ar-slack"));
+		assertTrue("Should contain ar-messages", parsed.containsKey("ar-messages"));
 		assertTrue("Should contain ar-memory", parsed.containsKey("ar-memory"));
-		assertEquals(1, parsed.get("ar-slack").size());
-		assertEquals("slack_send_message", parsed.get("ar-slack").get(0));
+		assertEquals(1, parsed.get("ar-messages").size());
+		assertEquals("send_message", parsed.get("ar-messages").get(0));
 		assertEquals(2, parsed.get("ar-memory").size());
 	}
 
@@ -121,14 +121,14 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 	public void buildAllowedToolsIncludesAll() {
 		McpConfigBuilder builder = new McpConfigBuilder();
 		builder.setCentralizedMcpConfig(
-				"{\"ar-slack\":{\"url\":\"http://localhost:8080\",\"tools\":[\"slack_send_message\"]}}");
+				"{\"ar-messages\":{\"url\":\"http://localhost:8080\",\"tools\":[\"send_message\"]}}");
 		builder.setPushedToolsConfig(
 				"{\"ar-memory\":{\"url\":\"http://controller/download\",\"tools\":[\"memory_store\"]}}");
 
 		String allowed = builder.buildAllowedTools("Read,Edit");
 		assertNotNull(allowed);
 		assertTrue("Should start with base tools", allowed.startsWith("Read,Edit"));
-		assertTrue("Should include centralized tool", allowed.contains("mcp__ar-slack__slack_send_message"));
+		assertTrue("Should include centralized tool", allowed.contains("mcp__ar-messages__send_message"));
 		assertTrue("Should include pushed tool", allowed.contains("mcp__ar-memory__memory_store"));
 	}
 }

@@ -50,14 +50,14 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 30000)
-	public void excludesSlackSectionWhenNoUrl() {
+	public void excludesMessageSectionWhenNoUrl() {
 		String result = new InstructionPromptBuilder()
 			.setPrompt("test")
 			.build();
-		assertFalse("Expected no slack_send_message reference without workstream URL",
-			result.contains("slack_send_message"));
-		assertFalse("Expected no Slack Communication section without workstream URL",
-			result.contains("## Slack Communication"));
+		assertFalse("Expected no send_message reference without workstream URL",
+			result.contains("send_message"));
+		assertFalse("Expected no Communication section without workstream URL",
+			result.contains("## Communication"));
 	}
 
 	@Test(timeout = 30000)

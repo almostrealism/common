@@ -151,7 +151,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Returns a short display summary for this job suitable for Slack notifications.
+     * Returns a short display summary for this job suitable for notifications.
      *
      * <p>If a description is set, it is returned directly. Otherwise, short prompts
      * (80 characters or fewer) are returned as-is, and longer prompts are summarized
@@ -172,7 +172,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * character count.
      *
      * @param prompt the raw prompt text
-     * @return a concise summary suitable for Slack notifications
+     * @return a concise summary suitable for notifications
      */
     public static String summarizePrompt(String prompt) {
         if (prompt == null) {
@@ -202,7 +202,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Sets a short human-readable description for this job. When set, this
-     * description is used in Slack notifications instead of the prompt text.
+     * description is used in notifications instead of the prompt text.
      *
      * @param description a concise label (e.g., "Resolve test failures")
      */
@@ -393,7 +393,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * with operational context for autonomous execution.
      *
      * <p>Sections are conditionally included based on the job's configuration:
-     * Slack instructions appear only when a workstream URL is configured,
+     * Messaging instructions appear only when a workstream URL is configured,
      * GitHub instructions only when the MCP config includes ar-github,
      * commit.txt instructions only when git management is active, and
      * budget/turn/task/workstream context is included when available.</p>
@@ -517,7 +517,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         toolsDownloader.verifyMcpToolFiles(mcpWorkDir);
 
-        // MCP config (ar-github always; ar-slack when workstream URL is set)
+        // MCP config (ar-github always; ar-messages when workstream URL is set)
         command.add("--mcp-config");
         command.add(mcpConfigBuilder.buildMcpConfig());
 
@@ -529,7 +529,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 pb.directory(new File(workDir));
             }
 
-            // Set resolved workstream URL for MCP servers (ar-slack, ar-github).
+            // Set resolved workstream URL for MCP servers (ar-messages, ar-github).
             // resolveWorkstreamUrl() replaces the 0.0.0.0 placeholder with the
             // actual controller host from FLOWTREE_ROOT_HOST, which is required
             // when the agent runs in a Docker container.
@@ -1189,7 +1189,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         /**
          * Sets the workstream URL for jobs created by this factory.
-         * This single URL is used for both status reporting and Slack
+         * This single URL is used for both status reporting and
          * messaging (by appending {@code /messages}).
          *
          * @param workstreamUrl the controller URL for the workstream
@@ -1359,7 +1359,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             job.setMaxTurns(maxTurns);
             job.setMaxBudgetUsd(maxBudgetUsd);
 
-            // Description for Slack notifications
+            // Description for notifications
             String desc = getDescription();
             if (desc != null) {
                 job.setDescription(desc);
@@ -1388,7 +1388,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 job.setGitUserEmail(gitUserEmail);
             }
 
-            // Workstream URL (status reporting + Slack messaging)
+            // Workstream URL (status reporting + messaging)
             if (workstreamUrl != null) {
                 job.setWorkstreamUrl(workstreamUrl);
             }

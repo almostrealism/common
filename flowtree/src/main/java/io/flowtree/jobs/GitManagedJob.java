@@ -571,8 +571,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     /**
      * Fires the job completed event by POSTing to the workstream URL.
-     * The controller's {@code SlackNotifier} receives this event and
-     * formats an appropriate Slack message, so no separate Slack message
+     * The controller's notification system receives this event and
+     * formats an appropriate message, so no separate message
      * is sent from here.
      */
     protected void fireJobCompleted(Exception error) {
@@ -1354,7 +1354,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * Returns the workstream URL for this job.
      * This URL serves as a prefix for controller interactions:
      * POST to the URL itself sends status events, appending
-     * {@code /messages} sends Slack messages.
+     * {@code /messages} sends messages.
      */
     public String getWorkstreamUrl() {
         return workstreamUrl;
@@ -1365,7 +1365,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      *
      * <p>The URL follows the pattern
      * {@code http://controller/api/workstreams/{id}/jobs/{jobId}} for job-level
-     * communication (messages go to the job's Slack thread) or
+     * communication (messages go to the job's thread) or
      * {@code http://controller/api/workstreams/{id}} for workstream-level
      * communication (messages go to the channel).</p>
      *

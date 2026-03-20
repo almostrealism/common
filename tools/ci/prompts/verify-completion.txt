@@ -38,8 +38,8 @@ files have been committed), this is expected — implement the entire plan.
 ### Step 4: Verify and Report
 
 Once you have completed all implementation work, verify the branch is done and post
-your findings as a comment on the pull request (if one exists) or send a summary via
-Slack:
+your findings as a comment on the pull request (if one exists) or send a summary
+message:
 
 **Completion Status: [COMPLETE / INCOMPLETE]**
 
