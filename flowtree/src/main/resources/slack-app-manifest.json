@@ -29,7 +29,11 @@
         "commands",
         "im:history",
         "im:read",
-        "im:write"
+        "im:write",
+        "channels:manage",
+        "channels:write.invites",
+        "groups:write",
+        "groups:write.invites"
       ]
     }
   },
