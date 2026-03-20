@@ -17,6 +17,7 @@ Configuration via environment variables:
 import json
 import logging
 import os
+import subprocess
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
@@ -37,17 +38,16 @@ if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 
 _memory_client = None
-_memory_init_attempted = False
 
 
 def _get_memory_client():
-    """Lazy-initialize the memory client for storing sent messages."""
-    global _memory_client, _memory_init_attempted
+    """Get or initialize the memory client.
+
+    Retries on each call until a connection succeeds, then caches.
+    """
+    global _memory_client
     if _memory_client is not None:
         return _memory_client
-    if _memory_init_attempted:
-        return None
-    _memory_init_attempted = True
     try:
         from memory_http_client import MemoryHTTPClient
         client = MemoryHTTPClient()
@@ -55,13 +55,13 @@ def _get_memory_client():
             _memory_client = client
             print("ar-messages: memory client connected", file=sys.stderr)
             return client
-        print("ar-messages: memory server not available, message archiving disabled", file=sys.stderr)
+        print("ar-messages: memory server not available", file=sys.stderr)
     except Exception as e:
         print(f"ar-messages: memory client init failed: {e}", file=sys.stderr)
     return None
 
 
-def _derive_branch_context() -> tuple[str, str]:
+def _derive_branch_context_from_controller() -> tuple[str, str]:
     """Derive repo_url and branch from the workstream URL via the controller."""
     if not WORKSTREAM_URL:
         return "", ""
@@ -77,37 +77,86 @@ def _derive_branch_context() -> tuple[str, str]:
             workstreams = json.loads(resp.read().decode("utf-8"))
             for ws in workstreams:
                 if ws.get("workstreamId") == workstream_id:
-                    return ws.get("repoUrl", ""), ws.get("defaultBranch", "")
+                    repo_url = ws.get("repoUrl", "")
+                    branch = ws.get("defaultBranch", "")
+                    if repo_url and branch:
+                        return repo_url, branch
+                    print(f"ar-messages: workstream {workstream_id} found but "
+                          f"repoUrl={'set' if repo_url else 'MISSING'}, "
+                          f"defaultBranch={'set' if branch else 'MISSING'}",
+                          file=sys.stderr)
+                    return repo_url, branch
+        print(f"ar-messages: workstream {workstream_id} not found in "
+              f"{len(workstreams)} workstreams", file=sys.stderr)
         return "", ""
     except Exception as e:
-        print(f"ar-messages: failed to derive branch context: {e}", file=sys.stderr)
+        print(f"ar-messages: controller branch context failed: {e}", file=sys.stderr)
         return "", ""
+
+
+def _derive_branch_context_from_git() -> tuple[str, str]:
+    """Derive repo_url and branch from the local git repository."""
+    try:
+        repo_url = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            capture_output=True, text=True, timeout=5
+        ).stdout.strip()
+        branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=5
+        ).stdout.strip()
+        if repo_url and branch:
+            return repo_url, branch
+    except Exception as e:
+        print(f"ar-messages: git branch context failed: {e}", file=sys.stderr)
+    return "", ""
 
 
 _cached_branch_context = None
 
 
 def _get_branch_context() -> tuple[str, str]:
-    """Return cached (repo_url, branch) for the current workstream."""
+    """Return (repo_url, branch) for the current context.
+
+    Tries the controller first (when a workstream URL is set), then
+    falls back to the local git repo.  Caches on first success; retries
+    on every call until a non-empty result is obtained.
+    """
     global _cached_branch_context
-    if _cached_branch_context is None:
-        _cached_branch_context = _derive_branch_context()
-    return _cached_branch_context
+    if _cached_branch_context is not None:
+        return _cached_branch_context
+
+    # Try controller first, then git
+    repo_url, branch = _derive_branch_context_from_controller()
+    if not repo_url or not branch:
+        repo_url, branch = _derive_branch_context_from_git()
+
+    if repo_url and branch:
+        _cached_branch_context = (repo_url, branch)
+        print(f"ar-messages: branch context: {branch} @ {repo_url}", file=sys.stderr)
+    else:
+        # Don't cache failure — retry next time
+        print("ar-messages: WARNING: could not determine branch context", file=sys.stderr)
+
+    return repo_url, branch
 
 
-def _store_message(text: str) -> bool:
+def _store_message(text: str) -> tuple[bool, str]:
     """Store the message in the 'messages' namespace.
 
-    Returns True if the message was stored successfully.
+    Returns (True, "") on success, or (False, reason) on failure.
     """
     client = _get_memory_client()
     if client is None:
-        return False
+        msg = "memory server unavailable"
+        print(f"ar-messages: ERROR: cannot store message ({msg})", file=sys.stderr)
+        return False, msg
     try:
         repo_url, branch = _get_branch_context()
         if not repo_url or not branch:
-            print("ar-messages: skipping message archival (no branch context)", file=sys.stderr)
-            return False
+            msg = "could not determine branch context"
+            print(f"ar-messages: ERROR: cannot store message ({msg})", file=sys.stderr)
+            return False, msg
         client.store(
             content=text,
             repo_url=repo_url,
@@ -116,10 +165,11 @@ def _store_message(text: str) -> bool:
             tags=["message"],
             source="ar-messages",
         )
-        return True
+        return True, ""
     except Exception as e:
-        print(f"ar-messages: failed to archive message: {e}", file=sys.stderr)
-        return False
+        msg = str(e)
+        print(f"ar-messages: ERROR: failed to store message: {msg}", file=sys.stderr)
+        return False, msg
 
 # Log startup configuration to stderr for diagnostics
 print(f"ar-messages: AR_WORKSTREAM_URL={'<not set>' if not WORKSTREAM_URL else WORKSTREAM_URL}",
@@ -182,22 +232,21 @@ def send_message(text: str) -> dict:
     Returns:
         Dictionary with ok=true on success or ok=false with error details.
     """
-    # Primary: store in memory database
-    stored = _store_message(text)
+    # Primary: store in memory database -- this MUST succeed
+    stored, storage_error = _store_message(text)
 
     # Secondary: forward to notification channel (best-effort)
     notification_result = _notify_channel(text)
 
-    if stored:
-        return {"ok": True, "notified": notification_result.get("ok", False)}
-    elif notification_result.get("ok"):
-        return {"ok": True, "stored": False,
-                "warning": "Message delivered but not archived (memory unavailable)"}
-    else:
+    if not stored:
         return {"ok": False,
-                "error": "Message could not be stored or delivered",
-                "storage_error": "memory unavailable",
-                "notification_error": notification_result.get("error", "unknown")}
+                "error": f"Failed to store message: {storage_error}"}
+
+    result = {"ok": True}
+    if not notification_result.get("ok"):
+        result["notification_warning"] = notification_result.get(
+            "error", notification_result.get("warning", "notification skipped"))
+    return result
 
 
 @mcp.tool()

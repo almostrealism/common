@@ -350,16 +350,27 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         log("Message [" + workstreamId + (jobId != null ? "/" + jobId : "") + "]: " + truncate(text, 80));
 
-        // Route to job's thread if one exists, otherwise post to channel
+        // Route to job's thread if one exists, otherwise post to channel.
+        // Notification delivery is best-effort -- always return ok so the
+        // agent does not treat a missing channel as a hard failure.
         String threadTs = jobId != null ? notifier.getThreadTs(jobId) : null;
+        String resultTs;
         if (threadTs != null) {
-            notifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
+            resultTs = notifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
         } else {
-            notifier.postMessage(workstream.getChannelId(), text);
+            resultTs = notifier.postMessage(workstream.getChannelId(), text);
+        }
+
+        if (resultTs == null) {
+            log("Message received for workstream " + workstreamId
+                + " but no notification channel is configured");
         }
 
         return newFixedLengthResponse(Response.Status.OK,
-                "application/json", "{\"ok\":true}");
+                "application/json",
+                resultTs != null
+                    ? "{\"ok\":true}"
+                    : "{\"ok\":true,\"warning\":\"no notification channel configured\"}");
     }
 
     /**
