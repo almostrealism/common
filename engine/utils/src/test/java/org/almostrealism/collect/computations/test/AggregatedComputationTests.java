@@ -78,5 +78,39 @@ public class AggregatedComputationTests extends TestSuiteBase {
 		log(Arrays.toString(nanIndices));
 
 		assertEquals(0, out.count(Double::isNaN));
+
+		// Verify correctness of specific elements by matching the kernel's
+		// index arithmetic: for global_id g, the kernel reads
+		//   a[(g * d + k) % (h * d)]  and  b[(g * d + k) / (h * d) * d + k % d]
+		// which means a_row = g % h, b_row = g / h.
+		// The overflow boundary is at g >= h * (w-1) = 8192 * 256 = 2097152,
+		// i.e. the last b_row (b_row = 256 = w-1).
+		int[] checkGlobalIds = {
+			0,                    // a_row=0, b_row=0
+			h / 2,               // a_row=h/2, b_row=0
+			h - 1,               // a_row=h-1, b_row=0
+			h * (w / 2),         // a_row=0, b_row=w/2
+			h * (w / 2) + h / 2, // a_row=h/2, b_row=w/2
+			h * (w - 1),         // a_row=0, b_row=w-1  (overflow zone)
+			h * (w - 1) + h / 2, // a_row=h/2, b_row=w-1  (overflow zone)
+			h * w - 1,           // a_row=h-1, b_row=w-1  (overflow zone, last element)
+		};
+
+		for (int g : checkGlobalIds) {
+			int aRow = g % h;
+			int bRow = g / h;
+			double expected = 0.0;
+			for (int k = 0; k < d; k++) {
+				expected += a.toDouble(aRow * d + k) * b.toDouble(bRow * d + k);
+			}
+
+			double actual = data[g];
+			log("out[g=" + g + " a=" + aRow + " b=" + bRow + "] expected=" + expected + " actual=" + actual);
+			// Use relative tolerance — FP accumulation order differs between
+			// the Java reference loop and the generated kernel, but the overflow
+			// bug produces errors of ~10% or more, so 0.1% catches it reliably.
+			double tol = Math.max(1e-4, Math.abs(expected) * 1e-3);
+			assertEquals("out[g=" + g + " a=" + aRow + " b=" + bRow + "]", expected, actual, tol);
+		}
 	}
 }

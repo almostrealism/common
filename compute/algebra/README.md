@@ -549,13 +549,7 @@ CollectionProducer matrix = matmul(A, B);
 
 ## Hardware Acceleration Setup
 
-Before running any code that uses hardware acceleration:
-
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-```
-
-`AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `cl`, `mtl`, or another supported value.
+`AR_HARDWARE_LIBS` is auto-detected — do not set it manually. `AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `cl`, `mtl`, or another supported value.
 
 See [CLAUDE.md](../CLAUDE.md) for detailed setup instructions.
 

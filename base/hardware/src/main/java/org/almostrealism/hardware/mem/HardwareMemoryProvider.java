@@ -24,9 +24,9 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.lang.ref.ReferenceQueue;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
@@ -179,13 +179,13 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		memoryName = new ThreadLocal<>();
 	}
 
-	private HashMap<Long, NativeRef<T>> allocated;
+	private ConcurrentHashMap<Long, NativeRef<T>> allocated;
 	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
 	private ReferenceQueue<T> referenceQueue;
 	private volatile boolean destroying;
 
 	public HardwareMemoryProvider() {
-		this.allocated = new HashMap<>();
+		this.allocated = new ConcurrentHashMap<>();
 		this.deallocationQueue = new PriorityBlockingQueue<>(100, Comparator.comparing(NativeRef<T>::getSize).reversed());
 		this.referenceQueue = new ReferenceQueue<>();
 
@@ -257,6 +257,19 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	private void deallocateNow(NativeRef<T> ref) {
+		try {
+			Hardware hw = Hardware.getLocalHardware();
+			if (hw != null) {
+				KernelMemoryGuard guard = hw.getKernelMemoryGuard();
+				if (guard != null && !guard.canDeallocate(ref.getAddress())) {
+					getDeallocationQueue().put(ref);
+					return;
+				}
+			}
+		} catch (Exception e) {
+			// Guard check must not prevent deallocation
+		}
+
 		deallocate(ref);
 
 		if (!destroying) {

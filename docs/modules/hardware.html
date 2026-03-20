@@ -555,13 +555,13 @@ Runnable compiled = op.get();</pre>
 
                 <h3>Environment Setup</h3>
                 <pre><code class="language-bash"># Required: Set this before running any Almost Realism code
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 # Override options: native, cl, mtl, gpu, cpu, *
 
 # Optional: Precision and memory
 export AR_HARDWARE_PRECISION=FP32  # or FP64
-export AR_HARDWARE_MEMORY_SCALE=4  # 1GB (default)</code></pre>
+export AR_HARDWARE_MEMORY_SCALE=4  # ~4GB with FP32 (default)</code></pre>
 
                 <h3>Basic Hardware-Accelerated Computation</h3>
                 <pre><code class="language-java">import org.almostrealism.hardware.<a href="../apidocs/org/almostrealism/hardware/HardwareFeatures.html">HardwareFeatures</a>;
@@ -801,9 +801,9 @@ encoder.dispatchThreadgroups(
 
                 <div class="warning">
                     <strong>Error:</strong> <code>NoClassDefFoundError: Could not initialize class <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">org.almostrealism.collect.PackedCollection</a></code><br>
-                    <strong>Cause:</strong> Missing AR_HARDWARE_LIBS environment variable<br>
+                    <strong>Cause:</strong> AR_HARDWARE_LIBS directory not writable (auto-detected)<br>
                     <strong>Solution:</strong>
-                    <pre>export AR_HARDWARE_LIBS=/tmp/ar_libs/</pre>
+                    <pre># AR_HARDWARE_LIBS is auto-detected — do not set manually</pre>
                 </div>
 
                 <div class="warning">
@@ -823,7 +823,7 @@ encoder.dispatchThreadgroups(
                     <strong>Error:</strong> <code><a href="../apidocs/org/almostrealism/hardware/HardwareException.html">HardwareException</a>: Memory Max Reached</code><br>
                     <strong>Cause:</strong> Insufficient GPU memory allocation<br>
                     <strong>Solution:</strong>
-                    <pre>export AR_HARDWARE_MEMORY_SCALE=6  # 4GB
+                    <pre>export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB (FP32)
 # or use host memory
 export AR_HARDWARE_MEMORY_LOCATION=host</pre>
                 </div>

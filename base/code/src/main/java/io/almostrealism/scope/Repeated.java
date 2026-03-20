@@ -453,7 +453,8 @@ public class Repeated<T> extends Scope<T> {
 				if (isSubstantialForExtraction(child, minDepth)) {
 					StaticReference<?> ref = extracted.get(child);
 					if (ref == null) {
-						ref = new StaticReference<>(child.getType(),
+						Class<?> type = child.promoteIfOverflows();
+						ref = new StaticReference<>(type,
 								"f_licm_" + extractIdx[0]++);
 						extracted.put(child, ref);
 						declarations.add(new ExpressionAssignment(true, ref, child));

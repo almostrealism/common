@@ -182,9 +182,9 @@ The `AR_HARDWARE_DRIVER` environment variable controls which backends are loaded
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `AR_HARDWARE_LIBS` | Directory for compiled native libraries | **Required** |
+| `AR_HARDWARE_LIBS` | Directory for compiled native libraries | Auto-detected (do not set manually) |
 | `AR_HARDWARE_PRECISION` | `FP32` (float) or `FP64` (double) | `FP64` |
-| `AR_HARDWARE_MEMORY_SCALE` | Max memory: 2^scale × 64MB | 4 (1GB) |
+| `AR_HARDWARE_MEMORY_SCALE` | Max memory: precision.bytes() × 2^scale × 64MB | 4 (~4GB FP32) |
 | `AR_HARDWARE_MEMORY_LOCATION` | OpenCL memory strategy | device |
 | `AR_HARDWARE_NATIVE_COMPILER` | Path to C compiler | clang |
 
@@ -260,7 +260,7 @@ Scope
 ```
 
 **Configuration:**
-- `AR_HARDWARE_LIBS` — Output directory for compiled libraries (required)
+- `AR_HARDWARE_LIBS` — Output directory for compiled libraries (auto-detected; do not set manually)
 - `AR_HARDWARE_NATIVE_COMPILER` — Compiler path (default: clang)
 - `AR_HARDWARE_NATIVE_LINKER` — Linker path (Clang only)
 
@@ -416,12 +416,12 @@ Logs each kernel dispatch with timing information.
 
 ### Common Issues
 
-**`NoClassDefFoundError: PackedCollection`** — `AR_HARDWARE_LIBS` is not set. This
-environment variable is required for native library loading.
+**`NoClassDefFoundError: PackedCollection`** — The auto-detected native library directory
+is not writable. `AR_HARDWARE_LIBS` is auto-detected; do not set it manually.
 
 **Compilation timeout** — The C compiler (clang) is invoked as a subprocess. On systems
-with slow I/O, compilation can take longer than expected. Check that `AR_HARDWARE_LIBS`
-points to a fast filesystem.
+with slow I/O, compilation can take longer than expected. Check that the auto-detected
+library directory is on a fast filesystem.
 
 **`HardwareException: Memory max reached`** — The operation exceeds the configured
 memory limit. Increase `AR_HARDWARE_MEMORY_SCALE` or optimize the process tree to

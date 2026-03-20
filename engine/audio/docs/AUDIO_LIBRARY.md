@@ -50,7 +50,8 @@ String filePath = provider.getKey();
 
 **Internal data structures:**
 - `identifiers` map: key (file path) → identifier (MD5 hash)
-- `info` map: identifier → WaveDetails
+- `detailsCache`: a `FrequencyCache<String, WaveDetails>` keyed by identifier (bounded, LFU/LRU eviction)
+- `completeIdentifiers`: a `Set<String>` tracking which identifiers have complete data (freqData + featureData)
 
 ### WaveDataProvider
 
@@ -105,7 +106,7 @@ AudioLibrary library = new AudioLibrary(new File("/path/to/samples"), 44100);
 AudioLibraryPersistence.loadLibrary(library, "/path/to/data/library");
 
 // 3. Now you can resolve identifiers to file paths
-for (WaveDetails details : library.getAllDetails()) {
+library.allDetails().forEach(details -> {
     String identifier = details.getIdentifier();
 
     // Find the provider in the file tree
@@ -115,7 +116,7 @@ for (WaveDetails details : library.getAllDetails()) {
         String filePath = provider.getKey();
         System.out.println(filePath + ": " + details.getFrameCount() + " frames");
     }
-}
+});
 ```
 
 ### Computing Similarities
@@ -132,15 +133,20 @@ Map<String, Double> similarities = library.getSimilarities(details);
 ### Building a Similarity Graph
 
 ```java
-// Create graph from library
-AudioSimilarityGraph graph = AudioSimilarityGraph.fromLibrary(library);
+// Create graph from library (nodes are lightweight SimilarityNode instances,
+// not full WaveDetails — only identifier + similarity map are retained)
+AudioSimilarityGraph graph = library.toSimilarityGraph();
 
-// Or from a collection of WaveDetails (e.g., loaded from protobuf)
-AudioSimilarityGraph graph = AudioSimilarityGraph.fromDetails(detailsList);
+// Or from a collection of WaveDetails (constructor extracts lightweight nodes)
+AudioSimilarityGraph graph = new AudioSimilarityGraph(detailsList);
 
-// Use with graph algorithms
+// Use with graph algorithms (graph implements IndexedGraph<SimilarityNode>)
 int[] communities = CommunityDetection.louvain(graph, 1.0);
 double[] ranks = GraphCentrality.pageRank(graph, 0.85, 50);
+
+// Access node identifiers from the graph
+SimilarityNode node = graph.nodeAt(index);
+String identifier = node.getIdentifier();
 ```
 
 ## Protobuf Schema
@@ -177,7 +183,8 @@ audio/
 │   │   ├── WaveDetails.java           # Analyzed metadata
 │   │   └── WaveDetailsFactory.java    # Creates WaveDetails
 │   └── similarity/
-│       └── AudioSimilarityGraph.java  # Graph adapter
+│       ├── AudioSimilarityGraph.java  # Graph adapter (IndexedGraph<SimilarityNode>)
+│       └── SimilarityNode.java        # Lightweight node: identifier + similarities only
 
 compose/
 ├── src/main/proto/

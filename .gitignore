@@ -41,6 +41,7 @@ Extensions/**
 
 # Automated coding
 claude-output/**
+.claude/*.local.json
 commit.txt
 workstreams.yaml
 flowtree-controller.log

@@ -53,7 +53,7 @@ import java.util.Map;
  *
  * <h2>Usage</h2>
  * <pre>{@code
- * List<WaveDetails> allDetails = new ArrayList<>(library.getAllDetails());
+ * List<WaveDetails> allDetails = library.allDetails().toList();
  * IncrementalSimilarityComputation computation =
  *     new IncrementalSimilarityComputation(factory, allDetails, 0.3);
  * IncrementalSimilarityComputation.Result result = computation.compute();

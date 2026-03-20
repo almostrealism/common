@@ -40,7 +40,7 @@
                 <h2>Step 1: Environment Setup</h2>
                 <p>Before running ML models, ensure hardware acceleration is configured:</p>
 
-                <pre><code class="language-bash">export AR_HARDWARE_LIBS=/tmp/ar_libs/
+                <pre><code class="language-bash"># AR_HARDWARE_LIBS is auto-detected — do not set manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 
 # Verify setup
@@ -280,7 +280,7 @@ public class MLInferenceExample {
                 <h2>Best Practices</h2>
                 <ul>
                     <li><strong>Model Loading</strong> - Load models once and reuse for multiple inferences</li>
-                    <li><strong>Hardware Setup</strong> - Always verify AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER are set</li>
+                    <li><strong>Hardware Setup</strong> - Verify the auto-detected library directory is writable</li>
                     <li><strong>Temperature</strong> - Use lower values (0.1-0.5) for factual tasks, higher (0.7-1.0) for creative tasks</li>
                     <li><strong>Context Length</strong> - Stay within model's maximum sequence length</li>
                     <li><strong>Memory</strong> - Large models require significant memory; monitor usage</li>
@@ -293,7 +293,7 @@ public class MLInferenceExample {
 
                 <h3>NoClassDefFoundError: PackedCollection</h3>
                 <p><strong>Cause:</strong> Hardware environment not configured</p>
-                <p><strong>Solution:</strong> Set AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER before running</p>
+                <p><strong>Solution:</strong> Verify the auto-detected library directory is writable. AR_HARDWARE_DRIVER before running</p>
 
                 <h3>Out of Memory</h3>
                 <p><strong>Cause:</strong> Model too large for available memory</p>

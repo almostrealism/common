@@ -67,6 +67,7 @@
 		<module>studio/music</module>
 		<module>studio/spatial</module>
 		<module>studio/compose</module>
+		<module>studio/experiments</module>
 
 		<!-- Workflow Orchestration -->
 		<module>graphpersist</module>

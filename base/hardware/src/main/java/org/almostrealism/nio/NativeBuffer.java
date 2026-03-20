@@ -57,6 +57,26 @@ public class NativeBuffer extends RAM implements Destroyable {
 
 	public Buffer getBuffer() { return buffer; }
 
+	/**
+	 * Returns the root {@link ByteBuffer} backing this native buffer.
+	 *
+	 * <p>Used by {@link NativeBufferRef} to cache the buffer for post-GC
+	 * shared memory unmapping.</p>
+	 *
+	 * @return The root byte buffer
+	 */
+	public ByteBuffer getRootBuffer() { return rootBuffer; }
+
+	/**
+	 * Returns the shared memory location path, if this buffer is backed by shared memory.
+	 *
+	 * <p>Used by {@link NativeBufferRef} to cache the path for post-GC
+	 * shared memory unmapping.</p>
+	 *
+	 * @return The shared location path, or {@code null} if not shared
+	 */
+	public String getSharedLocation() { return sharedLocation; }
+
 	public void sync() {
 		if (sharedLocation != null) {
 			NIO.syncSharedMemory(rootBuffer, rootBuffer.capacity());

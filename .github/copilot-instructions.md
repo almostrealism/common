@@ -30,7 +30,7 @@ mvn package -pl utils -DskipTests          # Build specific module
 
 **Before declaring any task complete**, verify the full build succeeds:
 ```shell
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 mvn clean install -DskipTests
 ```
 
@@ -38,12 +38,12 @@ mvn clean install -DskipTests
 
 **Required** before running any Java code or tests:
 ```shell
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 ```
 
 `AR_HARDWARE_DRIVER` is best left unset to auto-detect the best available backend. Available overrides: `native` (JNI), `opencl` (CPU/GPU), `metal` (Apple Silicon), `external` (generated executable).
 
-For large models or memory-intensive tests: `export AR_HARDWARE_MEMORY_SCALE=8` (16GB) or `9` (32GB). Default is `7` (8GB).
+For large models or memory-intensive tests: `export AR_HARDWARE_MEMORY_SCALE=6` (~16GB) or `7` (~32GB). Default is `4` (~4GB). Formula: `precision.bytes() * 2^SCALE * 64MB`.
 
 ### Running Tests
 
