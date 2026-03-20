@@ -67,7 +67,8 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 	private static final String DEFAULT_SAMPLES_CONTAINER = "/samples";
 	private static final String DEFAULT_SAMPLES_LOCAL =
 			System.getProperty("user.home") + "/Music/Samples";
-	private static final String DEFAULT_STORE = "/tmp/ar-onnx-discovery-store";
+	private static final String DEFAULT_STORE =
+			System.getProperty("user.home") + "/.ar/onnx-discovery-store";
 	private static final String DEFAULT_MODELS_CONTAINER = "/models";
 	private static final String DEFAULT_MODELS_LOCAL = "../models";
 	private static final int DEFAULT_MAX_PROTOTYPES = 10;
