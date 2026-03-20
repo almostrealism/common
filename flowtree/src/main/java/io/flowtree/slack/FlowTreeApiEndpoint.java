@@ -125,11 +125,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * pipelines) are accepted. When {@code false}, submissions with
      * {@code "automated": true} in the request body are rejected.
      *
-     * <p>Defaults to {@code true}. Toggle via
+     * <p>Defaults to {@code false}. Toggle via
      * {@code POST /api/config/accept-automated-jobs} or
      * {@code GET /api/config/accept-automated-jobs}.</p>
      */
-    private volatile boolean acceptAutomatedJobs = true;
+    private volatile boolean acceptAutomatedJobs = false;
 
     private Server server;
     private SlackListener listener;
