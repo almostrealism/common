@@ -45,6 +45,7 @@ import java.util.Collections;
 
 /** A {@link Sphere} represents a primitive sphere in 3d space. */
 public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFeatures {
+	public static boolean enableTransform = true;
 	private static final boolean enableHardwareAcceleration = true;
 
 	/** Constructs a {@link Sphere} representing a unit sphere centered at the origin that is black. */
@@ -219,60 +220,64 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	public ShadableIntersection intersectAt(Producer<?> r) {
 		TransformMatrix m = getTransform(true);
 
-		final Producer<?> fr;
+		Producer<?> tr = r;
+		if (m != null && !m.isIdentity()) tr = m.getInverse().transform(tr);
 
-		if (m != null && !m.isIdentity()) {
-			// Compute the intersection directly from scalar transform components,
-			// avoiding any concat intermediate that would be used in subsequent
-			// operations. Each scalar component is a single dot product, and the
-			// intersection formula is expressed entirely in terms of these scalars.
-			TransformMatrix inv = m.getInverse();
-			CollectionProducer orig = origin(r);
-			CollectionProducer dir = direction(r);
+		final Producer<?> fr = tr;
 
-			// Compute individual transform components as scalars
-			// tOrig[i] = row_i of inverse matrix · (origin, 1.0)
-			// tDir[i] = row_i of inverse matrix · (direction, 0.0)
-			CollectionProducer matProducer = c((Producer) v(inv));
-			CollectionProducer vec4 = concat(shape(4), orig, c(1.0));
-
-			CollectionProducer mRow0 = subset(shape(4), matProducer, 0);
-			CollectionProducer mRow1 = subset(shape(4), matProducer, 4);
-			CollectionProducer mRow2 = subset(shape(4), matProducer, 8);
-
-			CollectionProducer tO0 = multiply(mRow0, vec4).sum();
-			CollectionProducer tO1 = multiply(mRow1, vec4).sum();
-			CollectionProducer tO2 = multiply(mRow2, vec4).sum();
-
-			CollectionProducer dRow0 = subset(shape(3), matProducer, 0);
-			CollectionProducer dRow1 = subset(shape(3), matProducer, 4);
-			CollectionProducer dRow2 = subset(shape(3), matProducer, 8);
-
-			CollectionProducer tD0 = multiply(dRow0, dir).sum();
-			CollectionProducer tD1 = multiply(dRow1, dir).sum();
-			CollectionProducer tD2 = multiply(dRow2, dir).sum();
-
-			// Intersection formula using scalar components directly
-			// b = tOrig · tDir, c = tOrig · tOrig, g = tDir · tDir
-			CollectionProducer b = add(add(tO0.multiply(tD0), tO1.multiply(tD1)), tO2.multiply(tD2));
-			CollectionProducer cVal = add(add(tO0.multiply(tO0), tO1.multiply(tO1)), tO2.multiply(tO2));
-			CollectionProducer g = add(add(tD0.multiply(tD0), tD1.multiply(tD1)), tD2.multiply(tD2));
-
-			CollectionProducer disc = b.pow(2.0).subtract(g.multiply(cVal.subtract(1.0)));
-			CollectionProducer dS = pow(disc, c(0.5));
-			CollectionProducer minusB = b.minus();
-			CollectionProducer gInv = g.pow(-1.0);
-			CollectionProducer tPair = pair(add(minusB, dS).multiply(gInv),
-					add(minusB, minus(dS)).multiply(gInv));
-			Producer distance = greaterThan(disc, c(0.0), closest(tPair), c(-1.0));
+		if (enableHardwareAcceleration) {
+			// return new ShadableIntersection(this, r, new SphereIntersectAt(fr));
+//			Producer<Scalar> distance = scalar(_lessThan(discriminant(fr), scalar(0.0),
+//												scalar(-1.0), closest(t(fr))));
+			Producer distance = greaterThan(discriminant(fr), c(0.0),
+												closest(t(fr)), c(-1.0));
 			return new ShadableIntersection(this, r, distance);
 		} else {
-			fr = r;
-		}
+			Evaluable<PackedCollection> s = args -> {
+				Ray ray = new Ray((PackedCollection) fr.get().evaluate(args), 0);
 
-		Producer distance = greaterThan(discriminant(fr), c(0.0),
-											closest(t(fr)), c(-1.0));
-		return new ShadableIntersection(this, r, distance);
+				double b = ray.oDotd().evaluate(args).toDouble();
+				double c = ray.oDoto().evaluate(args).toDouble();
+				double g = ray.dDotd().evaluate(args).toDouble();
+
+				double discriminant = (b * b) - (g) * (c - 1);
+
+				PackedCollection result = new PackedCollection(1);
+				if (discriminant < 0) {
+					result.setMem(0, -1.0);
+					return result;
+				}
+
+				double discriminantSqrt = Math.sqrt(discriminant);
+
+				double[] t = new double[2];
+
+				t[0] = (-b + discriminantSqrt) / (g);
+				t[1] = (-b - discriminantSqrt) / (g);
+
+				double st;
+
+				if (t[0] > 0 && t[1] > 0) {
+					if (t[0] < t[1]) {
+						st = t[0];
+					} else {
+						st = t[1];
+					}
+				} else if (t[0] > 0) {
+					st = t[0];
+				} else if (t[1] > 0) {
+					st = t[1];
+				} else {
+					result.setMem(0, -1.0);
+					return result;
+				}
+
+				result.setMem(0, st);
+				return result;
+			};
+
+			return new ShadableIntersection(this, r, () -> s);
+		}
 	}
 
 	@Override

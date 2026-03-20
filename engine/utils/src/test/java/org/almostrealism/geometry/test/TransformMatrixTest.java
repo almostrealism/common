@@ -992,9 +992,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 			log("Ray " + i + ": distance = " + dist + (dist > 0 ? " (HIT)" : " (MISS)"));
 		}
 
-		// Test batch evaluation with 1D shape (no batch dimension)
-		log("\n=== Batch evaluation (1D shape) ===");
-		Producer<?> explicitRay = v(shape(6), 0);
+		// Test batch evaluation
+		log("\n=== Batch evaluation ===");
+		Producer<?> explicitRay = v(shape(-1, 6), 0);
 		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(explicitRay);
 		Producer<?> distanceProducer = intersection.getDistance();
 

@@ -16,7 +16,11 @@
 
 package org.almostrealism.geometry;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.WeightedSumExpression;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -27,6 +31,7 @@ import org.almostrealism.collect.computations.DefaultTraversableExpressionComput
 import org.almostrealism.collect.computations.ReshapeProducer;
 
 import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * A feature interface providing factory methods for creating and manipulating transformation matrices.
@@ -153,10 +158,6 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	/**
 	 * Transforms a vector by a matrix with control over translation inclusion.
 	 *
-	 * <p>Implements the matrix-vector multiply as per-row dot products using
-	 * standard {@code multiply().sum()} operations, which correctly handle
-	 * implicit batch mode (variable-size input tensors).</p>
-	 *
 	 * @param matrix a producer for the transformation matrix
 	 * @param vector the vector to transform
 	 * @param includeTranslation if true, includes translation (for points); if false, excludes it (for directions)
@@ -164,22 +165,24 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	 */
 	default CollectionProducerComputation transform(Producer<TransformMatrix> matrix,
 													Producer<PackedCollection> vector, boolean includeTranslation) {
-		int n = includeTranslation ? 4 : 3;
+		TraversalPolicy shape = shape(3);
 
-		Producer<PackedCollection> vec = includeTranslation
-				? concat(shape(n), vector, c(1.0))
-				: vector;
+		vector = concat(shape(4), vector, c(1.0));
 
-		CollectionProducer mat = c(matrix);
-		CollectionProducer row0 = subset(shape(n), mat, 0);
-		CollectionProducer row1 = subset(shape(n), mat, n);
-		CollectionProducer row2 = subset(shape(n), mat, n * 2);
-
-		CollectionProducer dot0 = multiply(row0, vec).sum();
-		CollectionProducer dot1 = multiply(row1, vec).sum();
-		CollectionProducer dot2 = multiply(row2, vec).sum();
-
-		return (CollectionProducerComputation) concat(shape(3), dot0, dot1, dot2);
+		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation("transform", shape,
+				args ->
+						new WeightedSumExpression(shape, includeTranslation ? 4 : 3, args[1], args[2],
+								(groupIndex, operandIndex) -> outputIndex -> {
+									if (operandIndex == 0) {
+										return e(groupIndex);
+									} else if (operandIndex == 1) {
+										return (Expression) outputIndex.multiply(4).add(e(groupIndex));
+									} else {
+										throw new IllegalArgumentException();
+									}
+								}),
+				vector, (Producer) matrix);
+		return c;
 	}
 
 	/**
