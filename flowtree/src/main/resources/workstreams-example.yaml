@@ -60,7 +60,7 @@
 #
 # pushedTools:
 #   ar-messages:
-#     source: tools/mcp/slack/server.py
+#     source: tools/mcp/messages/server.py
 #   ar-github:
 #     source: tools/mcp/github/server.py
 

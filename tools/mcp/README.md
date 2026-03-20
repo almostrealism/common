@@ -13,7 +13,7 @@ Model Context Protocol (MCP) servers that provide specialized tooling for AI-ass
 | **ar-jmx** | [jmx/](jmx/) | JVM memory diagnostics via JDK tools (jcmd, jstat, JFR) |
 | **ar-profile-analyzer** | [profile-analyzer/](profile-analyzer/) | Profile XML analysis for performance investigation |
 | **ar-github** | [github/](github/) | GitHub PR review comments and conversation tools |
-| **ar-messages** | [slack/](slack/) | Message archival and notification for agent status updates |
+| **ar-messages** | [messages/](messages/) | Message archival and notification for agent status updates |
 
 ### Shared Libraries
 
