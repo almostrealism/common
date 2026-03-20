@@ -180,7 +180,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * Registers a pushed tool file that can be served via
      * {@code GET /api/tools/{name}}.
      *
-     * @param name     the tool server name (e.g., "ar-slack")
+     * @param name     the tool server name (e.g., "ar-messages")
      * @param filePath the path to the Python source file on disk
      */
     public void registerToolFile(String name, Path filePath) {

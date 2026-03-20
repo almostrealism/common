@@ -20,7 +20,7 @@
 #   ENFORCE_CHANGES   - require code changes or retry (default: false)
 #   AUTO_CREATE_PR    - auto-create a GitHub PR on success (default: false)
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
-#   DESCRIPTION       - short label for Slack notifications (e.g., "Resolve test failures")
+#   DESCRIPTION       - short label for notifications (e.g., "Resolve test failures")
 #
 # Exit codes:
 #   0 - submission succeeded

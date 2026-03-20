@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-AR Slack MCP Server
+AR Messages MCP Server
 
-Provides tools for Claude Code agents to send messages back to Slack
-via the controller's workstream API.
+Provides tools for Claude Code agents to send messages.  Messages are
+always stored in the memory database for archival and traceability.
+When a workstream URL is configured, the message is also forwarded to
+the controller for notification delivery (e.g., Slack).
 
 Configuration via environment variables:
     AR_WORKSTREAM_URL - The workstream URL provided by the controller.
@@ -51,11 +53,11 @@ def _get_memory_client():
         client = MemoryHTTPClient()
         if client.available:
             _memory_client = client
-            print("ar-slack: memory client connected", file=sys.stderr)
+            print("ar-messages: memory client connected", file=sys.stderr)
             return client
-        print("ar-slack: memory server not available, message archiving disabled", file=sys.stderr)
+        print("ar-messages: memory server not available, message archiving disabled", file=sys.stderr)
     except Exception as e:
-        print(f"ar-slack: memory client init failed: {e}", file=sys.stderr)
+        print(f"ar-messages: memory client init failed: {e}", file=sys.stderr)
     return None
 
 
@@ -78,7 +80,7 @@ def _derive_branch_context() -> tuple[str, str]:
                     return ws.get("repoUrl", ""), ws.get("defaultBranch", "")
         return "", ""
     except Exception as e:
-        print(f"ar-slack: failed to derive branch context: {e}", file=sys.stderr)
+        print(f"ar-messages: failed to derive branch context: {e}", file=sys.stderr)
         return "", ""
 
 
@@ -93,36 +95,45 @@ def _get_branch_context() -> tuple[str, str]:
     return _cached_branch_context
 
 
-def _store_message_as_memory(text: str) -> None:
-    """Store the sent message in the 'messages' namespace for archival."""
+def _store_message(text: str) -> bool:
+    """Store the message in the 'messages' namespace.
+
+    Returns True if the message was stored successfully.
+    """
     client = _get_memory_client()
     if client is None:
-        return
+        return False
     try:
         repo_url, branch = _get_branch_context()
         if not repo_url or not branch:
-            print("ar-slack: skipping message archival (no branch context)", file=sys.stderr)
-            return
+            print("ar-messages: skipping message archival (no branch context)", file=sys.stderr)
+            return False
         client.store(
             content=text,
             repo_url=repo_url,
             branch=branch,
             namespace="messages",
-            tags=["slack-message"],
-            source="ar-slack",
+            tags=["message"],
+            source="ar-messages",
         )
+        return True
     except Exception as e:
-        print(f"ar-slack: failed to archive message: {e}", file=sys.stderr)
+        print(f"ar-messages: failed to archive message: {e}", file=sys.stderr)
+        return False
 
 # Log startup configuration to stderr for diagnostics
-print(f"ar-slack: AR_WORKSTREAM_URL={'<not set>' if not WORKSTREAM_URL else WORKSTREAM_URL}",
+print(f"ar-messages: AR_WORKSTREAM_URL={'<not set>' if not WORKSTREAM_URL else WORKSTREAM_URL}",
       file=sys.stderr)
 
-mcp = FastMCP("ar-slack")
+mcp = FastMCP("ar-messages")
 
 
-def _post_message(text: str) -> dict:
-    """POST a message to the workstream's /messages endpoint."""
+def _notify_channel(text: str) -> dict:
+    """Forward a message to the controller for channel notification.
+
+    This is best-effort -- if the controller or notification channel is
+    unavailable, the failure is logged but does not affect the caller.
+    """
     if not WORKSTREAM_URL:
         return {"ok": False, "error": "AR_WORKSTREAM_URL not set"}
 
@@ -130,51 +141,67 @@ def _post_message(text: str) -> dict:
     data = json.dumps({"text": text}, ensure_ascii=False).encode("utf-8")
     req = Request(url, data=data, headers={"Content-Type": "application/json; charset=utf-8"})
 
-    print(f"ar-slack: POST {url}", file=sys.stderr)
+    print(f"ar-messages: POST {url}", file=sys.stderr)
 
     try:
         with urlopen(req, timeout=10) as resp:
             body = resp.read().decode("utf-8")
             result = json.loads(body) if body else {"ok": True}
-            print(f"ar-slack: response: {result}", file=sys.stderr)
+            print(f"ar-messages: notification response: {result}", file=sys.stderr)
             return result
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
-        print(f"ar-slack: HTTP error {e.code}: {body[:200]}", file=sys.stderr)
+        print(f"ar-messages: notification HTTP error {e.code}: {body[:200]}", file=sys.stderr)
         try:
             return json.loads(body)
         except json.JSONDecodeError:
             return {"ok": False, "error": f"HTTP {e.code}: {body[:200]}"}
     except URLError as e:
-        print(f"ar-slack: Connection failed to {url}: {e.reason}", file=sys.stderr)
+        print(f"ar-messages: notification failed to {url}: {e.reason}", file=sys.stderr)
         return {"ok": False, "error": f"Connection failed to {url}: {e.reason}"}
     except Exception as e:
-        print(f"ar-slack: Unexpected error: {e}", file=sys.stderr)
+        print(f"ar-messages: notification error: {e}", file=sys.stderr)
         return {"ok": False, "error": str(e)}
 
 
 @mcp.tool()
-def slack_send_message(text: str) -> dict:
+def send_message(text: str) -> dict:
     """
-    Send a message to a Slack channel.
+    Send a message.
+
+    The message is stored in the memory database for archival and
+    traceability.  If a notification channel is configured, the message
+    is also forwarded there.
 
     Use this tool to report status updates, results, or errors back to
-    the user who initiated this task via Slack.
+    the user who initiated this task.
 
     Args:
-        text: The message text to send (supports Slack mrkdwn formatting).
+        text: The message text to send.
 
     Returns:
         Dictionary with ok=true on success or ok=false with error details.
     """
-    result = _post_message(text)
-    if result.get("ok"):
-        _store_message_as_memory(text)
-    return result
+    # Primary: store in memory database
+    stored = _store_message(text)
+
+    # Secondary: forward to notification channel (best-effort)
+    notification_result = _notify_channel(text)
+
+    if stored:
+        return {"ok": True, "notified": notification_result.get("ok", False)}
+    elif notification_result.get("ok"):
+        return {"ok": True, "stored": False,
+                "warning": "Message delivered but not archived (memory unavailable)"}
+    else:
+        return {"ok": False,
+                "error": "Message could not be stored or delivered",
+                "storage_error": "memory unavailable",
+                "notification_error": notification_result.get("error", "unknown")}
 
 
 @mcp.tool()
-def slack_get_stats(period: str = "weekly", scope: str = "workstream") -> dict:
+def get_stats(period: str = "weekly", scope: str = "workstream") -> dict:
     """
     Get job timing statistics.
 
@@ -213,7 +240,7 @@ def slack_get_stats(period: str = "weekly", scope: str = "workstream") -> dict:
     url = f"{base_url}/api/stats?{query}"
     req = Request(url, headers={"Accept": "application/json"})
 
-    print(f"ar-slack: GET {url}", file=sys.stderr)
+    print(f"ar-messages: GET {url}", file=sys.stderr)
 
     try:
         with urlopen(req, timeout=10) as resp:

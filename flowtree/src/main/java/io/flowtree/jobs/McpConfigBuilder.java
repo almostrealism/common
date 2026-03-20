@@ -54,7 +54,7 @@ import java.util.Map;
  *   <li><b>Project servers:</b> discovered from {@code .mcp.json} and
  *       {@code .claude/settings.json}</li>
  *   <li><b>ar-github:</b> stdio fallback when not centralized or pushed</li>
- *   <li><b>ar-slack:</b> stdio fallback when not centralized, not pushed,
+ *   <li><b>ar-messages:</b> stdio fallback when not centralized, not pushed,
  *       and a workstream URL is configured</li>
  * </ul>
  *
@@ -71,8 +71,8 @@ public class McpConfigBuilder implements ConsoleFeatures {
         "mcp__ar-github__github_pr_conversation," +
         "mcp__ar-github__github_pr_reply";
 
-    /** Slack MCP tool, included only when a workstream URL is configured. */
-    private static final String SLACK_MCP_TOOL = "mcp__ar-slack__slack_send_message";
+    /** Messages MCP tool, included only when a workstream URL is configured. */
+    private static final String MESSAGES_MCP_TOOL = "mcp__ar-messages__send_message";
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -122,9 +122,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
     }
 
     /**
-     * Sets the workstream URL used for conditional ar-slack inclusion.
+     * Sets the workstream URL used for conditional ar-messages inclusion.
      *
-     * <p>When set, the ar-slack MCP server is included as a stdio
+     * <p>When set, the ar-messages MCP server is included as a stdio
      * fallback if it is not already centralized or pushed.</p>
      *
      * @param workstreamUrl the controller URL for the workstream
@@ -170,9 +170,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
      *   <li>Pushed tools as stdio entries pointing to
      *       {@code ~/.flowtree/tools/mcp/{name}/server.py}</li>
      *   <li>Project MCP servers from {@code .mcp.json} (skipping ar-github,
-     *       ar-slack, and any already centralized or pushed servers)</li>
+     *       ar-messages, and any already centralized or pushed servers)</li>
      *   <li>ar-github stdio fallback when not centralized and not pushed</li>
-     *   <li>ar-slack stdio fallback when not centralized, not pushed, and
+     *   <li>ar-messages stdio fallback when not centralized, not pushed, and
      *       a workstream URL is set</li>
      * </ul>
      *
@@ -224,7 +224,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
             if ("ar-github".equals(serverName) && githubOrg != null && !githubOrg.isEmpty()) {
                 mergedEnv.put("AR_GITHUB_ORG", githubOrg);
             }
-            if ("ar-slack".equals(serverName) && workstreamUrl != null && !workstreamUrl.isEmpty()) {
+            if ("ar-messages".equals(serverName) && workstreamUrl != null && !workstreamUrl.isEmpty()) {
                 String resolvedWsUrl = workstreamUrl;
                 if (rootHost != null && !rootHost.isEmpty()) {
                     resolvedWsUrl = resolvedWsUrl.replace("0.0.0.0", rootHost);
@@ -273,25 +273,25 @@ public class McpConfigBuilder implements ConsoleFeatures {
             }
         }
 
-        // ar-slack: stdio fallback only when not centralized, not pushed, and workstream URL is set
-        if (!centralizedServers.containsKey("ar-slack") && !pushedTools.containsKey("ar-slack")) {
+        // ar-messages: stdio fallback only when not centralized, not pushed, and workstream URL is set
+        if (!centralizedServers.containsKey("ar-messages") && !pushedTools.containsKey("ar-messages")) {
             if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
-                ObjectNode slackNode = mcpServers.putObject("ar-slack");
-                slackNode.put("command", "python3");
-                ArrayNode argsArray = slackNode.putArray("args");
+                ObjectNode messagesNode = mcpServers.putObject("ar-messages");
+                messagesNode.put("command", "python3");
+                ArrayNode argsArray = messagesNode.putArray("args");
                 argsArray.add("tools/mcp/slack/server.py");
 
-                Map<String, String> slackEnv = new LinkedHashMap<>();
+                Map<String, String> messagesEnv = new LinkedHashMap<>();
                 if (workstreamEnv != null) {
-                    slackEnv.putAll(workstreamEnv);
+                    messagesEnv.putAll(workstreamEnv);
                 }
                 String resolvedWsUrl = workstreamUrl;
                 if (rootHost != null && !rootHost.isEmpty()) {
                     resolvedWsUrl = resolvedWsUrl.replace("0.0.0.0", rootHost);
                 }
-                slackEnv.put("AR_WORKSTREAM_URL", resolvedWsUrl);
-                ObjectNode envNode = slackNode.putObject("env");
-                for (Map.Entry<String, String> entry : slackEnv.entrySet()) {
+                messagesEnv.put("AR_WORKSTREAM_URL", resolvedWsUrl);
+                ObjectNode envNode = messagesNode.putObject("env");
+                for (Map.Entry<String, String> entry : messagesEnv.entrySet()) {
                     envNode.put(entry.getKey(), entry.getValue());
                 }
             }
@@ -314,10 +314,10 @@ public class McpConfigBuilder implements ConsoleFeatures {
      *   <li>Tools from centralized servers: {@code mcp__{serverName}__{toolName}}</li>
      *   <li>Tools from pushed tools: {@code mcp__{serverName}__{toolName}}</li>
      *   <li>GitHub tools (unless ar-github is centralized or pushed)</li>
-     *   <li>Slack tool (unless ar-slack is centralized or pushed, and only when
+     *   <li>Messages tool (unless ar-messages is centralized or pushed, and only when
      *       a workstream URL is set)</li>
      *   <li>Tools from discovered project servers (skipping centralized, pushed,
-     *       ar-github, and ar-slack)</li>
+     *       ar-github, and ar-messages)</li>
      * </ul>
      *
      * @param baseTools the base comma-separated tools string (e.g., "Read,Edit,Bash")
@@ -352,10 +352,10 @@ public class McpConfigBuilder implements ConsoleFeatures {
             sb.append(",").append(GITHUB_MCP_TOOLS);
         }
 
-        // Add Slack tool unless centralized or pushed (only when workstream URL set)
-        if (!centralizedServers.containsKey("ar-slack") && !pushedTools.containsKey("ar-slack")) {
+        // Add messages tool unless centralized or pushed (only when workstream URL set)
+        if (!centralizedServers.containsKey("ar-messages") && !pushedTools.containsKey("ar-messages")) {
             if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
-                sb.append(",").append(SLACK_MCP_TOOL);
+                sb.append(",").append(MESSAGES_MCP_TOOL);
             }
         }
 
@@ -385,7 +385,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * and their tool lists using Jackson {@link ObjectMapper}.
      *
      * <p>Expected format:
-     * {@code {"ar-slack":{"url":"...","tools":["tool1","tool2"]}, ...}}</p>
+     * {@code {"ar-messages":{"url":"...","tools":["tool1","tool2"]}, ...}}</p>
      *
      * @return map of server name to list of tool names, empty if no config
      */
@@ -483,7 +483,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * and cross-references with {@code .claude/settings.json} to determine
      * which servers are enabled.
      *
-     * <p>Servers named {@code ar-github} and {@code ar-slack} are always
+     * <p>Servers named {@code ar-github} and {@code ar-messages} are always
      * excluded from this discovery since they are handled separately with
      * special conditional logic. Servers that are already centralized are
      * also excluded.</p>
@@ -507,7 +507,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
 
         for (Map.Entry<String, String> entry : allServers.entrySet()) {
             String name = entry.getKey();
-            if ("ar-github".equals(name) || "ar-slack".equals(name)) continue;
+            if ("ar-github".equals(name) || "ar-messages".equals(name)) continue;
             if (centralized.containsKey(name)) continue;
             if (pushed.containsKey(name)) continue;
             if (enabled.isEmpty() || enabled.contains(name)) {

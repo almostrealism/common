@@ -29,7 +29,7 @@ import java.util.List;
  * calling {@link #build()}.</p>
  *
  * <p>Sections are conditionally included based on the builder's
- * configuration: Slack instructions appear only when a workstream URL is
+ * configuration: messaging instructions appear only when a workstream URL is
  * configured, GitHub instructions only when the GitHub MCP is enabled,
  * commit instructions depend on whether a target branch is set, and
  * budget/turn/task/workstream context is included when available.</p>
@@ -67,7 +67,7 @@ public class InstructionPromptBuilder {
     }
 
     /**
-     * Sets the workstream URL for Slack communication sections.
+     * Sets the workstream URL for messaging communication sections.
      *
      * @param workstreamUrl the controller URL for the workstream
      * @return this builder for chaining
@@ -239,7 +239,7 @@ public class InstructionPromptBuilder {
      * <p>The sections are assembled in the following order:</p>
      * <ol>
      *   <li>Opening paragraph (autonomous agent context)</li>
-     *   <li>Slack Communication (when workstream URL is set)</li>
+     *   <li>Communication (when workstream URL is set)</li>
      *   <li>Permission Denials (when workstream URL is set)</li>
      *   <li>Non-Code Requests (when workstream URL is set)</li>
      *   <li>Justifying No Code Changes (when workstream URL is set)</li>
@@ -286,10 +286,10 @@ public class InstructionPromptBuilder {
         sb.append("There is no TTY and no interactive session --do not attempt to wait ");
         sb.append("for user input or interactive chat responses.\n\n");
 
-        // Slack instructions -only when a workstream URL is configured
+        // Messaging instructions - only when a workstream URL is configured
         if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
-            sb.append("## Slack Communication\n");
-            sb.append("You MUST use the Slack MCP tool (slack_send_message) to provide status ");
+            sb.append("## Communication\n");
+            sb.append("You MUST use the messages MCP tool (send_message) to provide status ");
             sb.append("updates to the user throughout your work. Specifically:\n");
             sb.append("- Send an update when you begin working on the task\n");
             sb.append("- Send updates when you reach significant milestones or make key decisions\n");
@@ -299,7 +299,7 @@ public class InstructionPromptBuilder {
 
             sb.append("## Permission Denials\n");
             sb.append("If any tool call is denied due to a permission issue, you MUST immediately ");
-            sb.append("send a Slack message describing:\n");
+            sb.append("send a message describing:\n");
             sb.append("- Which tool was denied (exact tool name)\n");
             sb.append("- What you were trying to do with it\n");
             sb.append("- The error message, if any\n");
@@ -320,19 +320,19 @@ public class InstructionPromptBuilder {
                 sb.append("## Non-Code Requests\n");
                 sb.append("If the user's request does not require code changes (e.g., a question about ");
                 sb.append("the codebase, a request to run a command, check status, or perform an action) ");
-                sb.append("it is perfectly fine to answer via Slack and exit without modifying any files. ");
+                sb.append("it is perfectly fine to answer via messaging and exit without modifying any files. ");
                 sb.append("Not every task requires code changes.\n\n");
 
                 sb.append("## Justifying No Code Changes\n");
                 sb.append("If you finish your work without making any changes to files in the git repository, ");
-                sb.append("you MUST send a Slack message explaining why no code changes were needed. ");
+                sb.append("you MUST send a message explaining why no code changes were needed. ");
                 sb.append("This justification should clearly explain either:\n");
                 sb.append("- Why the user's request was fulfilled without code changes ");
                 sb.append("(e.g., it was an informational question, a status check, or a run command)\n");
                 sb.append("- Why you were unable to make the requested changes ");
                 sb.append("(e.g., a blocker, missing context, or ambiguity that needs clarification)\n");
                 sb.append("This requirement does NOT apply if you have already fully addressed the user's ");
-                sb.append("request through earlier Slack messages (e.g., answering a question, reporting ");
+                sb.append("request through earlier messages (e.g., answering a question, reporting ");
                 sb.append("results). In that case, the earlier messages serve as sufficient justification.\n\n");
             }
         }
@@ -490,7 +490,7 @@ public class InstructionPromptBuilder {
             sb.append("Do NOT revert or undo work from prior sessions that supports the planning ");
             sb.append("document's goals, even if the current sub-task doesn't directly relate to it. ");
             sb.append("If the sub-task conflicts with the planning document, note the conflict in ");
-            sb.append("a Slack message and proceed with the sub-task unless the conflict is severe.\n\n");
+            sb.append("a message and proceed with the sub-task unless the conflict is severe.\n\n");
         }
 
         sb.append("--- BEGIN USER REQUEST ---\n");
