@@ -279,7 +279,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
                 ObjectNode messagesNode = mcpServers.putObject("ar-messages");
                 messagesNode.put("command", "python3");
                 ArrayNode argsArray = messagesNode.putArray("args");
-                argsArray.add("tools/mcp/slack/server.py");
+                argsArray.add("tools/mcp/messages/server.py");
 
                 Map<String, String> messagesEnv = new LinkedHashMap<>();
                 if (workstreamEnv != null) {

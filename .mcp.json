@@ -27,7 +27,7 @@
     },
     "ar-messages": {
       "command": "python3",
-      "args": ["tools/mcp/slack/server.py"],
+      "args": ["tools/mcp/messages/server.py"],
       "description": "Send and archive messages via the memory database with optional channel notification"
     },
     "ar-github": {
