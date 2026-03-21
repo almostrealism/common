@@ -25,23 +25,13 @@
       "args": ["tools/mcp/jmx/server.py"],
       "description": "JVM memory analysis and leak detection via JDK diagnostic tools"
     },
-    "ar-messages": {
-      "command": "python3",
-      "args": ["tools/mcp/messages/server.py"],
-      "description": "Send and archive messages via the memory database with optional channel notification"
-    },
-    "ar-github": {
-      "command": "python3",
-      "args": ["tools/mcp/github/server.py"],
-      "description": "Read and respond to GitHub PR review comments"
-    },
     "ar-manager": {
       "command": "python3",
       "args": ["tools/mcp/manager/server.py"],
       "description": "Internet-facing endpoint for managing workstreams and triggering project workflows"
     },
     "onyx": {
-      "command": "/Users/Shared/flowtree/OnyxMCP",
+      "command": "/Users/Shared/flowtree/tools/OnyxMCP",
       "env": {
         "ONYX_MCP_PORT": "19432"
       }

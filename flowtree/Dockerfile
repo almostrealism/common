@@ -11,10 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY flowtree/target/ar-flowtree-*.jar /app/lib/
 COPY flowtree/target/dependency/*.jar /app/lib/
 
-# Copy MCP tool source files for pushed tool discovery
-# McpToolDiscovery parses these at startup to register tool names
-COPY tools/mcp/messages/server.py /app/tools/mcp/messages/server.py
-COPY tools/mcp/github/server.py /app/tools/mcp/github/server.py
+# No MCP tool source files needed — ar-manager is the single
+# centralized tool, running as a separate Docker service.
 
 # Working directory for config files (workstreams.yaml, notification tokens, etc.)
 # Mount /Users/Shared/flowtree/controller here at runtime

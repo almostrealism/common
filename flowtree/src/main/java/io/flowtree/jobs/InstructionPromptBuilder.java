@@ -29,8 +29,8 @@ import java.util.List;
  * calling {@link #build()}.</p>
  *
  * <p>Sections are conditionally included based on the builder's
- * configuration: messaging instructions appear only when a workstream URL is
- * configured, GitHub instructions only when the GitHub MCP is enabled,
+ * configuration: messaging and tool instructions appear when ar-manager
+ * is available (indicated by workstream URL being set),
  * commit instructions depend on whether a target branch is set, and
  * budget/turn/task/workstream context is included when available.</p>
  *
@@ -41,6 +41,7 @@ public class InstructionPromptBuilder {
 
     private String prompt;
     private String workstreamUrl;
+    /** @deprecated GitHub tools are now always available via ar-manager. */
     private boolean gitHubMcpEnabled;
     private boolean protectTestFiles;
     private boolean enforceChanges;
@@ -337,10 +338,10 @@ public class InstructionPromptBuilder {
             }
         }
 
-        // GitHub instructions -only when ar-github is in the MCP config
-        if (gitHubMcpEnabled) {
-            sb.append("You can read and respond to GitHub PR review comments using the GitHub MCP tools ");
-            sb.append("(github_pr_find, github_pr_review_comments, github_pr_conversation, github_pr_reply). ");
+        // GitHub and memory tools — available via ar-manager
+        if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
+            sb.append("You can read and respond to GitHub PR review comments using ");
+            sb.append("github_pr_find, github_pr_review_comments, github_pr_conversation, and github_pr_reply. ");
             sb.append("Use these to check for code review feedback and address it.\n\n");
         }
 
@@ -417,22 +418,21 @@ public class InstructionPromptBuilder {
             sb.append("treat them as intentional progress, not as problems to undo.\n\n");
 
             sb.append("### Catching Up on Prior Work\n");
-            sb.append("Before making any changes, you MUST use the `branch_catchup` tool ");
+            sb.append("Before making any changes, you MUST use the memory_branch_context tool ");
             sb.append("to understand what has already been done on this branch:\n");
             sb.append("```\n");
-            sb.append("mcp__ar-consultant__branch_catchup repo_url:\"<from git remote ");
-            sb.append("get-url origin>\" branch:\"").append(targetBranch).append("\"\n");
+            sb.append("memory_branch_context branch:\"").append(targetBranch).append("\"\n");
             sb.append("```\n");
             sb.append("This will show you memories from prior agent sessions and the ");
-            sb.append("commit timeline, synthesized into a briefing.\n\n");
+            sb.append("commit timeline.\n\n");
 
             sb.append("### Recording Your Work\n");
             sb.append("When you make decisions, discover issues, or complete tasks, ");
             sb.append("store memories with the branch context so future sessions can ");
             sb.append("pick up where you left off:\n");
             sb.append("```\n");
-            sb.append("mcp__ar-consultant__remember content:\"<what you learned>\" ");
-            sb.append("repo_url:\"<repo url>\" branch:\"").append(targetBranch);
+            sb.append("memory_store content:\"<what you learned>\" ");
+            sb.append("branch:\"").append(targetBranch);
             sb.append("\" tags:[\"progress\"]\n");
             sb.append("```\n\n");
 
@@ -447,7 +447,7 @@ public class InstructionPromptBuilder {
             sb.append("This is NEVER the right approach. If CI fails after your changes:\n");
             sb.append("- **DO NOT** simply revert the changes. That undoes prior agent work.\n");
             sb.append("- **DO** investigate the actual failure and fix it properly.\n");
-            sb.append("- **DO** check `branch_catchup` to see if this same pattern ");
+            sb.append("- **DO** check `memory_branch_context` to see if this same pattern ");
             sb.append("has already occurred in prior sessions.\n");
             sb.append("- **DO** store a memory describing the CI failure and your ");
             sb.append("analysis so the next session doesn't repeat the same mistake.\n");

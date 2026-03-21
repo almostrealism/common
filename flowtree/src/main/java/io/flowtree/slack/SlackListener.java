@@ -89,8 +89,8 @@ public class SlackListener implements ConsoleFeatures {
     private Runnable configReloader;
     private int nextAgent = 0;
     private int apiPort;
-    private String centralizedMcpConfig;
-    private String pushedToolsConfig;
+    private String arManagerUrl;
+    private String arManagerSharedSecret;
     private String defaultWorkspacePath;
 
     private WorkstreamConfig workstreamConfig;
@@ -176,39 +176,37 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Returns the centralized MCP configuration JSON.
+     * Returns the ar-manager HTTP URL.
      */
-    public String getCentralizedMcpConfig() {
-        return centralizedMcpConfig;
+    public String getArManagerUrl() {
+        return arManagerUrl;
     }
 
     /**
-     * Sets the centralized MCP configuration JSON. When set, this config
-     * is passed to every {@link ClaudeCodeJob.Factory} so that agents
-     * connect to centralized servers over HTTP.
+     * Sets the ar-manager HTTP URL. When set, jobs are configured to
+     * access ar-manager over HTTP with temporary HMAC auth tokens.
      *
-     * @param centralizedMcpConfig JSON mapping server names to URLs and tool names
+     * @param arManagerUrl the ar-manager service URL
      */
-    public void setCentralizedMcpConfig(String centralizedMcpConfig) {
-        this.centralizedMcpConfig = centralizedMcpConfig;
+    public void setArManagerUrl(String arManagerUrl) {
+        this.arManagerUrl = arManagerUrl;
     }
 
     /**
-     * Returns the pushed MCP tools configuration JSON.
+     * Returns the shared secret for HMAC token generation.
      */
-    public String getPushedToolsConfig() {
-        return pushedToolsConfig;
+    public String getArManagerSharedSecret() {
+        return arManagerSharedSecret;
     }
 
     /**
-     * Sets the pushed MCP tools configuration JSON. When set, this config
-     * is passed to every {@link ClaudeCodeJob.Factory} so that agents
-     * download tool source files from the controller and run them locally.
+     * Sets the shared secret for generating temporary HMAC auth tokens
+     * that agents use to authenticate with ar-manager.
      *
-     * @param pushedToolsConfig JSON mapping server names to download URLs and tool names
+     * @param sharedSecret the shared secret string
      */
-    public void setPushedToolsConfig(String pushedToolsConfig) {
-        this.pushedToolsConfig = pushedToolsConfig;
+    public void setArManagerSharedSecret(String sharedSecret) {
+        this.arManagerSharedSecret = sharedSecret;
     }
 
     /**
@@ -400,19 +398,16 @@ public class SlackListener implements ConsoleFeatures {
             factory.setGitUserEmail(workstream.getGitUserEmail());
         }
 
-        // Centralized MCP server config
-        if (centralizedMcpConfig != null) {
-            factory.setCentralizedMcpConfig(centralizedMcpConfig);
-        }
-
-        // Pushed MCP tools config
-        if (pushedToolsConfig != null) {
-            factory.setPushedToolsConfig(pushedToolsConfig);
-        }
-
-        // Per-workstream env vars for pushed tools
-        if (workstream.getEnv() != null && !workstream.getEnv().isEmpty()) {
-            factory.setWorkstreamEnv(workstream.getEnv());
+        // ar-manager config: generate temporary HMAC token for this job
+        if (arManagerUrl != null && !arManagerUrl.isEmpty()
+                && arManagerSharedSecret != null && !arManagerSharedSecret.isEmpty()) {
+            String arToken = FlowTreeApiEndpoint.generateTemporaryToken(
+                workstream.getWorkstreamId(), factory.getTaskId(),
+                arManagerSharedSecret, 43200);
+            if (arToken != null) {
+                factory.setArManagerUrl(arManagerUrl);
+                factory.setArManagerToken(arToken);
+            }
         }
 
         // Planning document
@@ -420,10 +415,7 @@ public class SlackListener implements ConsoleFeatures {
             factory.setPlanningDocument(workstream.getPlanningDocument());
         }
 
-        // GitHub organization for token selection
-        if (workstream.getGithubOrg() != null) {
-            factory.setGithubOrg(workstream.getGithubOrg());
-        }
+        // GitHub organization is now handled via ar-manager's workstream resolution
 
         // Build workstream URL for status reporting and Slack messaging
         if (apiPort > 0) {
