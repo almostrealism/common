@@ -59,8 +59,8 @@
 #   /api/github/proxy endpoint — no token distribution needed.
 #
 # pushedTools:
-#   ar-slack:
-#     source: tools/mcp/slack/server.py
+#   ar-messages:
+#     source: tools/mcp/messages/server.py
 #   ar-github:
 #     source: tools/mcp/github/server.py
 

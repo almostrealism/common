@@ -125,11 +125,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * pipelines) are accepted. When {@code false}, submissions with
      * {@code "automated": true} in the request body are rejected.
      *
-     * <p>Defaults to {@code true}. Toggle via
+     * <p>Defaults to {@code false}. Toggle via
      * {@code POST /api/config/accept-automated-jobs} or
      * {@code GET /api/config/accept-automated-jobs}.</p>
      */
-    private volatile boolean acceptAutomatedJobs = true;
+    private volatile boolean acceptAutomatedJobs = false;
 
     private Server server;
     private SlackListener listener;
@@ -180,7 +180,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * Registers a pushed tool file that can be served via
      * {@code GET /api/tools/{name}}.
      *
-     * @param name     the tool server name (e.g., "ar-slack")
+     * @param name     the tool server name (e.g., "ar-messages")
      * @param filePath the path to the Python source file on disk
      */
     public void registerToolFile(String name, Path filePath) {
@@ -350,16 +350,27 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         log("Message [" + workstreamId + (jobId != null ? "/" + jobId : "") + "]: " + truncate(text, 80));
 
-        // Route to job's thread if one exists, otherwise post to channel
+        // Route to job's thread if one exists, otherwise post to channel.
+        // Notification delivery is best-effort -- always return ok so the
+        // agent does not treat a missing channel as a hard failure.
         String threadTs = jobId != null ? notifier.getThreadTs(jobId) : null;
+        String resultTs;
         if (threadTs != null) {
-            notifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
+            resultTs = notifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
         } else {
-            notifier.postMessage(workstream.getChannelId(), text);
+            resultTs = notifier.postMessage(workstream.getChannelId(), text);
+        }
+
+        if (resultTs == null) {
+            log("Message received for workstream " + workstreamId
+                + " but no notification channel is configured");
         }
 
         return newFixedLengthResponse(Response.Status.OK,
-                "application/json", "{\"ok\":true}");
+                "application/json",
+                resultTs != null
+                    ? "{\"ok\":true}"
+                    : "{\"ok\":true,\"warning\":\"no notification channel configured\"}");
     }
 
     /**

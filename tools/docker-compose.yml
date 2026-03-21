@@ -17,7 +17,7 @@
 #   mvn dependency:copy-dependencies -pl flowtree -DoutputDirectory=target/dependency
 #
 # Controller configuration:
-#   Place workstreams.yaml and slack-tokens.json in
+#   Place workstreams.yaml and notification token files in
 #   /Users/Shared/flowtree/controller/ on the host.
 #   GitHub org tokens go in the githubOrgs section of workstreams.yaml.
 #   See flowtree/src/main/resources/workstreams-example.yaml for reference.
