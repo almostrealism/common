@@ -60,7 +60,7 @@ services:
     environment:
       - FLOWTREE_PORT=7766
       - AR_MEMORY_URL=http://ar-memory:8020
-      - AR_MANAGER_URL=http://ar-manager:8010
+      - AR_MANAGER_URL=https://mac-studio.taild0f87.ts.net
       - AR_MANAGER_SHARED_SECRET_FILE=/secrets/shared-secret
     depends_on:
       ar-memory:

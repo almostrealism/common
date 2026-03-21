@@ -774,7 +774,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             String channelId = notifier.createChannel(name);
             if (channelId != null) {
                 workstream.setChannelId(channelId);
-                log("Channel created on retry for workstream " + workstreamId + ": " + channelId);
+                log("Channel resolved for workstream " + workstreamId + ": " + channelId);
+                // Persist to YAML so we don't retry on every submission
+                if (listener != null) {
+                    listener.persistConfig();
+                }
             }
         }
 

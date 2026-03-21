@@ -1015,7 +1015,7 @@ public class SlackListener implements ConsoleFeatures {
      * Persists the current workstream configuration to the YAML file.
      * If no config file was loaded, changes are runtime-only.
      */
-    private void persistConfig() {
+    void persistConfig() {
         if (workstreamConfig == null || configFile == null) {
             log("No config file loaded - changes are runtime-only");
             return;
