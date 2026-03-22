@@ -188,17 +188,6 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 			// TODO  Environment map should be a feature of the aggregator
 			Evaluable<PackedCollection> aggegator = new LightingEngineAggregator(reflectedRay, Arrays.asList(p.getOtherSurfaces()), allLights, p).getAccelerated();
 			Producer<PackedCollection> color = () -> aggegator;
-			/*
-			if (color == null || color.evaluate(args) == null) { // TODO  Avoid evaluation here
-				if (eMap == null) {
-					break f;
-				} else {
-					throw new RuntimeException("Not implemented");
-					// TODO  Use AdaptProducer
-					// color = eMap.getColorAt(null).evaluate(new Object[]{reflectedRay.evaluate(args).getDirection()});
-				}
-			}
-			 */
 
 			Producer<PackedCollection> c = scalar(1).subtract(dotProduct(minus(n), nor).divide(cp));
 			CollectionProducer reflective = add(c(reflectivity),

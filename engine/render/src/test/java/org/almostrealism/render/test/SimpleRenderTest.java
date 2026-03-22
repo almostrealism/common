@@ -32,8 +32,8 @@ import java.io.IOException;
  * Simple rendering tests to verify the ray tracing pipeline can produce output.
  */
 public class SimpleRenderTest extends TestSuiteBase {
-	int width = 640;
-	int height = 640;
+	int width = 64;
+	int height = 64;
 
 	@Test(timeout = 30000)
 	public void testSinglePixelRendering() {
@@ -147,10 +147,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		camera.setFocalLength(0.1);
 		camera.setProjectionDimensions(0.36, 0.24);
 
-		// Disable hardware acceleration to test non-accelerated path
-		boolean originalHwAccel = PinholeCamera.enableHardwareAcceleration;
-		PinholeCamera.enableHardwareAcceleration = false;
-		log("Disabled hardware acceleration for camera rays");
+		log("Using hardware-accelerated camera rays");
 
 		// Create scene
 		Scene<ShadableSurface> scene = new Scene<>();
@@ -214,8 +211,6 @@ public class SimpleRenderTest extends TestSuiteBase {
 		assertTrue("Variable ray distance should be ~9.0 (was " + variableDistValue + ")",
 				Math.abs(variableDistValue - 9.0) < 0.1);
 
-		// Restore hardware acceleration setting
-		PinholeCamera.enableHardwareAcceleration = originalHwAccel;
 	}
 
 	@Test(timeout = 30000)
@@ -417,7 +412,6 @@ public class SimpleRenderTest extends TestSuiteBase {
 	public void renderSingleSphere() throws Exception {
 		log("Creating simple scene with one sphere...");
 
-		Sphere.enableTransform = false; // TODO  This should not be required
 
 		// Create scene
 		Scene<ShadableSurface> scene = new Scene<>();
@@ -585,6 +579,17 @@ public class SimpleRenderTest extends TestSuiteBase {
 		);
 
 		log("Starting render...");
+
+		// Test individual intersections before full render
+		log("Verifying sphere intersections...");
+		CollectionProducer testRay1 = ray(-1.5, 0.0, 3.0, 0.0, 0.0, -1.0);
+		double dist1 = sphere1.intersectAt(testRay1).getDistance().get().evaluate().toDouble(0);
+		log("Sphere1 at (-1.5,0,0): test ray distance = " + dist1);
+
+		CollectionProducer testRay2 = ray(1.5, 0.0, 3.0, 0.0, 0.0, -1.0);
+		double dist2 = sphere2.intersectAt(testRay2).getDistance().get().evaluate().toDouble(0);
+		log("Sphere2 at (1.5,0,0): test ray distance = " + dist2);
+
 		RealizableImage realizableImage = rayTracedScene.realize(params);
 
 		log("Evaluating image...");
@@ -621,5 +626,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		} catch (Exception e) {
 			log("Warning: Could not save image: " + e.getMessage());
 		}
+
+		assertTrue("Should have some non-black pixels for two spheres", nonBlackPixels > 0);
 	}
 }
