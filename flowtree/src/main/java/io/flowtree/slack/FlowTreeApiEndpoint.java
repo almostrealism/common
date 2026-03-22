@@ -1309,16 +1309,32 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return JSON response wrapping the GitHub API response
      */
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
-        // Resolve token from per-org tokens in workstreams.yaml
+        // Resolve token: explicit ?org= param, then extract from the URL path,
+        // then fall back to single-org default
         String org = session.getParms().get("org");
+        if ((org == null || org.isEmpty())) {
+            // Extract org from the GitHub API path: /repos/{org}/{repo}/...
+            String urlOrPathParam = session.getParms().get("url");
+            if (urlOrPathParam != null) {
+                String path = urlOrPathParam.startsWith("https://")
+                    ? urlOrPathParam.replaceFirst("https://api\\.github\\.com", "")
+                    : urlOrPathParam;
+                if (path.startsWith("/repos/")) {
+                    String afterRepos = path.substring("/repos/".length());
+                    int slash = afterRepos.indexOf('/');
+                    if (slash > 0) {
+                        org = afterRepos.substring(0, slash);
+                    }
+                }
+            }
+        }
         String token = resolveGithubToken(org);
         if (token == null) {
             String detail = (org != null && !org.isEmpty())
                     ? "No GitHub token configured for org '" + org
                       + "' (configured orgs: " + githubOrgTokens.keySet() + ")"
                     : "No GitHub org token available (configured orgs: "
-                      + githubOrgTokens.keySet()
-                      + "; pass ?org= or configure githubOrgs in workstreams.yaml)";
+                      + githubOrgTokens.keySet() + ")";
             warn("GitHub proxy token resolution failed: " + detail);
             return errorResponse(detail);
         }
