@@ -688,8 +688,12 @@ def _github_proxy_request(method: str, path: str, payload: dict = None,
 
         if gh_status == 204 or gh_body is None:
             return {"ok": True, "status": gh_status}
-        if isinstance(gh_body, dict) and 200 <= gh_status < 300:
-            return gh_body
+        if 200 <= gh_status < 300:
+            # GitHub returns dicts for single resources and lists for
+            # collection endpoints (e.g., /pulls, /comments).  Both are
+            # valid success responses.
+            if isinstance(gh_body, (dict, list)):
+                return gh_body
         if isinstance(gh_body, dict):
             msg = gh_body.get("message", "")
             return {"ok": False, "error": f"GitHub returned HTTP {gh_status}: {msg}"}
