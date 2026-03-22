@@ -131,5 +131,15 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	 */
 	public F getFilm() { return film; }
 
-	// TODO  Implement clone
+	/**
+	 * Creates a shallow clone of this {@link PhotonFieldContext}, copying all inherited
+	 * {@link ShaderContext} state (surface, light, intersection, fog parameters,
+	 * reflection/entrance/exit counts) as well as this context's photon field and film references.
+	 *
+	 * @return a new {@link PhotonFieldContext} with the same state as this one
+	 */
+	@Override
+	public PhotonFieldContext<T, F> clone() {
+		return (PhotonFieldContext<T, F>) super.clone();
+	}
 }

@@ -74,6 +74,9 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		}
 	}
 
+	/** Returns true if this matrix is the identity matrix. */
+	public boolean isIdentity() { return this.isIdentity; }
+
 	private boolean isIdentityMatrix() {
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {

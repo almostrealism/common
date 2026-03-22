@@ -1386,10 +1386,10 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 					if (index > 0 && index < s[i].length() - 1) v = s[i].substring(index + JobFactory.ENTRY_SEPARATOR.length());
 					
 					try {
-						if (s[i].startsWith("jobtime:")) { // TODO Should ":" be ENTRY_SEPARATOR?
+						if (s[i].startsWith("jobtime" + JobFactory.ENTRY_SEPARATOR)) {
 							p.setJobTime(Double.parseDouble(v));
 							h = true;
-						} else if (s[i].startsWith("activity:")) { // TODO Should ":" be ENTRY_SEPARATOR?
+						} else if (s[i].startsWith("activity" + JobFactory.ENTRY_SEPARATOR)) {
 							p.setActivityRating(Double.parseDouble(v));
 							h = true;
 						} else {

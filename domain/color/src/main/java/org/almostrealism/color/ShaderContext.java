@@ -209,17 +209,10 @@ public class ShaderContext extends LightingContext {
 
 	@Override
 	public ShaderContext clone() {
-		ShaderContext c = new ShaderContext(surface, getLight());
-		c.setLightDirection(getLightDirection());
-		c.setOtherLights(getOtherLights());
-		c.setIntersection(getIntersection());
-		c.setOtherSurfaces(getOtherSurfaces());
-		c.fogColor = fogColor;
-		c.fogRatio = fogRatio;
-		c.fogDensity = fogDensity;
-		c.refCount = refCount;
-		c.exit = exit;
-		c.enter = enter;
+		ShaderContext c = (ShaderContext) super.clone();
+		if (otherSurfaces != null) {
+			c.otherSurfaces = otherSurfaces.clone();
+		}
 		return c;
 	}
 

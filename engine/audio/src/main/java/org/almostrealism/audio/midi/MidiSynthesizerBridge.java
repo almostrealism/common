@@ -56,6 +56,7 @@ public class MidiSynthesizerBridge implements MidiInputListener {
 	private boolean sustainEnabled;
 	private boolean sustainPedalDown;
 	private final Set<Integer> sustainedNotes;  // Notes held by sustain pedal
+	private double pitchBendRange;  // Maximum bend range in semitones (up and down)
 
 	/**
 	 * Creates a bridge to the specified synthesizer.
@@ -67,6 +68,7 @@ public class MidiSynthesizerBridge implements MidiInputListener {
 		this.channel = -1;  // Omni mode by default
 		this.velocityCurve = VelocityCurve.LINEAR;
 		this.velocityFloor = 0.0;
+		this.pitchBendRange = 2.0;  // Standard ±2 semitones
 		this.sustainEnabled = true;
 		this.sustainPedalDown = false;
 		this.sustainedNotes = new HashSet<>();
@@ -205,14 +207,30 @@ public class MidiSynthesizerBridge implements MidiInputListener {
 		}
 	}
 
+	/**
+	 * Handles MIDI pitch bend messages by converting the 14-bit MIDI value
+	 * to semitones and applying it to the synthesizer. The standard MIDI pitch
+	 * bend range is 0-16383 with 8192 as center (no bend). The bend amount
+	 * is scaled by {@link #pitchBendRange}.
+	 */
 	@Override
 	public void pitchBend(int midiChannel, int value) {
 		if (!shouldRespondToChannel(midiChannel)) {
 			return;
 		}
 
-		// TODO: Implement pitch bend
-		// Could modulate synthesizer frequency or connect to vibrato
+		double normalized = (value - 8192) / 8192.0;
+		double semitones = normalized * pitchBendRange;
+		synthesizer.setPitchBend(semitones);
+	}
+
+	/**
+	 * Sets the pitch bend range in semitones.
+	 *
+	 * @param semitones maximum bend distance (default is 2.0)
+	 */
+	public void setPitchBendRange(double semitones) {
+		this.pitchBendRange = semitones;
 	}
 
 	// ========== Internal Methods ==========

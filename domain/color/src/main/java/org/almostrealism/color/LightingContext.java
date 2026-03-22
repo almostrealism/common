@@ -56,7 +56,7 @@ import java.util.List;
  * @see Shader
  * @author Michael Murray
  */
-public class LightingContext {
+public class LightingContext implements Cloneable {
 	/** Direction vector pointing toward the light source. */
 	private Producer<PackedCollection> lightDirection;
 	/** The primary light being processed. */
@@ -104,5 +104,14 @@ public class LightingContext {
 		li.add(light);
 		for (Light l : otherLights) li.add(l);
 		return li;
+	}
+
+	@Override
+	public LightingContext clone() {
+		try {
+			return (LightingContext) super.clone();
+		} catch (CloneNotSupportedException e) {
+			throw new AssertionError(e);
+		}
 	}
 }
