@@ -364,9 +364,9 @@ Centralized servers run on (or near) the controller and are accessed over HTTP. 
 
 ```json
 {
-  "ar-slack": {
+  "ar-messages": {
     "url": "http://0.0.0.0:8080/mcp",
-    "tools": ["slack_send_message", "slack_get_stats"]
+    "tools": ["send_message", "get_stats"]
   },
   "ar-memory": {
     "url": "http://0.0.0.0:8081/mcp",
@@ -380,7 +380,7 @@ In the generated MCP config, these become HTTP entries:
 ```json
 {
   "mcpServers": {
-    "ar-slack": {
+    "ar-messages": {
       "type": "http",
       "url": "http://10.0.0.5:8080/mcp"
     }
@@ -457,17 +457,17 @@ The `.claude/settings.json` file optionally restricts which servers are enabled:
 }
 ```
 
-Project servers named `ar-github` or `ar-slack` are always excluded from this discovery (they have special handling). Servers that are already centralized or pushed are also excluded to avoid duplicates.
+Project servers named `ar-github` or `ar-messages` are always excluded from this discovery (they have special handling). Servers that are already centralized or pushed are also excluded to avoid duplicates.
 
 Tool names for project servers are automatically discovered by `McpToolDiscovery`, which parses the Python source files for `@mcp.tool()` decorators and `Tool(name="...")` entries in `@server.list_tools()` handlers.
 
-### Fallback Servers: ar-github and ar-slack
+### Fallback Servers: ar-github and ar-messages
 
 Two servers receive special conditional handling:
 
 **ar-github** is always included unless it is already centralized or pushed. When neither applies, it falls back to a local stdio entry pointing to `tools/mcp/github/server.py`. Its tools (`github_pr_find`, `github_pr_review_comments`, `github_pr_conversation`, `github_pr_reply`) are always added to the allowed tools list.
 
-**ar-slack** is included only when a workstream URL is configured (meaning Slack communication is relevant). Like ar-github, if it is not centralized or pushed, it falls back to a local stdio entry at `tools/mcp/slack/server.py`.
+**ar-messages** is included only when a workstream URL is configured (meaning message archival and notification is relevant). Like ar-github, if it is not centralized or pushed, it falls back to a local stdio entry at `tools/mcp/messages/server.py`.
 
 ### Allowed Tools Assembly
 
@@ -476,7 +476,7 @@ The `McpConfigBuilder.buildAllowedTools(String baseTools)` method constructs the
 1. Tools from centralized servers as `mcp__{serverName}__{toolName}`
 2. Tools from pushed tools as `mcp__{serverName}__{toolName}`
 3. GitHub tools (unless ar-github is centralized/pushed)
-4. Slack tool (unless ar-slack is centralized/pushed, and only when workstream URL is set)
+4. Messages tool (unless ar-messages is centralized/pushed, and only when workstream URL is set)
 5. Tools from discovered project servers (auto-discovered from Python source)
 
 ---

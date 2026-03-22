@@ -134,6 +134,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private Server server;
     private SlackListener listener;
 
+    /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */
+    private String memoryServerUrl;
+
+    /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
+    private String arManagerUrl;
+
     /**
      * Creates a new API endpoint on the specified port.
      *
@@ -174,6 +180,26 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setGithubOrgTokens(Map<String, String> githubOrgTokens) {
         this.githubOrgTokens = githubOrgTokens != null ? githubOrgTokens : new HashMap<>();
+    }
+
+    /**
+     * Sets the base URL of the ar-memory HTTP server used for
+     * storing messages as memories.
+     *
+     * @param url the memory server base URL (e.g., "http://localhost:8020")
+     */
+    public void setMemoryServerUrl(String url) {
+        this.memoryServerUrl = url;
+    }
+
+    /**
+     * Sets the base URL of the ar-manager HTTP server used for
+     * workstream management and token-based authentication.
+     *
+     * @param url the ar-manager base URL (e.g., "http://ar-manager:8010")
+     */
+    public void setArManagerUrl(String url) {
+        this.arManagerUrl = url;
     }
 
     /**
@@ -350,9 +376,22 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         log("Message [" + workstreamId + (jobId != null ? "/" + jobId : "") + "]: " + truncate(text, 80));
 
-        // Route to job's thread if one exists, otherwise post to channel.
-        // Notification delivery is best-effort -- always return ok so the
-        // agent does not treat a missing channel as a hard failure.
+        // Store as memory — hard error if memory server is configured but fails,
+        // warning if memory server is not configured at all (minimal deployment)
+        String repoUrl = workstream.getRepoUrl();
+        String branch = workstream.getDefaultBranch();
+        String storeError = storeMessageAsMemory(text, repoUrl, branch);
+        if (storeError != null) {
+            if (memoryServerUrl != null && !memoryServerUrl.isEmpty()) {
+                // Memory server is configured but storage failed — hard error
+                warn("Failed to store message as memory: " + storeError);
+                return errorResponse("Failed to store message: " + storeError);
+            }
+            // Memory server not configured — warn but continue
+            log("Message not archived (memory server not configured): " + storeError);
+        }
+
+        // Secondary: forward to notification channel (best-effort)
         String threadTs = jobId != null ? notifier.getThreadTs(jobId) : null;
         String resultTs;
         if (threadTs != null) {
@@ -371,6 +410,86 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 resultTs != null
                     ? "{\"ok\":true}"
                     : "{\"ok\":true,\"warning\":\"no notification channel configured\"}");
+    }
+
+    /**
+     * Stores a message in the ar-memory server's "messages" namespace.
+     *
+     * @param text    the message content
+     * @param repoUrl the repository URL for the memory entry
+     * @param branch  the branch name for the memory entry
+     * @return null on success, or an error description on failure
+     */
+    private String storeMessageAsMemory(String text, String repoUrl, String branch) {
+        if (memoryServerUrl == null || memoryServerUrl.isEmpty()) {
+            return "memory server URL not configured";
+        }
+        if (repoUrl == null || repoUrl.isEmpty() || branch == null || branch.isEmpty()) {
+            return "workstream missing repoUrl or defaultBranch";
+        }
+
+        String url = memoryServerUrl.replaceAll("/+$", "") + "/api/memory/store";
+        String payload = "{\"content\":" + escapeJsonValue(text)
+            + ",\"repo_url\":" + escapeJsonValue(repoUrl)
+            + ",\"branch\":" + escapeJsonValue(branch)
+            + ",\"namespace\":\"messages\""
+            + ",\"tags\":[\"message\"]"
+            + ",\"source\":\"ar-messages\"}";
+
+        try {
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(payload.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int status = conn.getResponseCode();
+            if (status >= 200 && status < 300) {
+                return null; // success
+            }
+
+            // Read error body
+            try (InputStream is = conn.getErrorStream()) {
+                if (is != null) {
+                    String errBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                    return "memory server returned " + status + ": " + truncate(errBody, 200);
+                }
+            }
+            return "memory server returned " + status;
+        } catch (IOException e) {
+            return "memory server unreachable: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Escapes a string as a JSON string value (with surrounding quotes).
+     */
+    private static String escapeJsonValue(String s) {
+        StringBuilder sb = new StringBuilder(s.length() + 16);
+        sb.append('"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        sb.append('"');
+        return sb.toString();
     }
 
     /**
@@ -641,6 +760,28 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         String workstreamId = resolvedWorkstreamId;
 
+        // Retry channel creation if the workstream has a channel name but
+        // no channel ID.  This handles the case where the initial channel
+        // creation at registration time failed (e.g., due to permissions)
+        // and has since been resolved.
+        if ((workstream.getChannelId() == null || workstream.getChannelId().isEmpty())
+                && workstream.getChannelName() != null && !workstream.getChannelName().isEmpty()) {
+            String name = workstream.getChannelName();
+            if (name.startsWith("#")) {
+                name = name.substring(1);
+            }
+            log("Workstream " + workstreamId + " has no channel ID; retrying channel creation for " + name);
+            String channelId = notifier.createChannel(name);
+            if (channelId != null) {
+                workstream.setChannelId(channelId);
+                log("Channel resolved for workstream " + workstreamId + ": " + channelId);
+                // Persist to YAML so we don't retry on every submission
+                if (listener != null) {
+                    listener.persistConfig();
+                }
+            }
+        }
+
         // Timestamp guard: skip submission if a newer job already exists
         // on this workstream. This prevents stale auto-resolve jobs from
         // CI pipelines that ran hours ago from colliding with explicitly
@@ -727,29 +868,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setGitUserEmail(workstream.getGitUserEmail());
         }
 
-        // MCP configs from listener
-        if (listener != null) {
-            if (listener.getCentralizedMcpConfig() != null) {
-                factory.setCentralizedMcpConfig(listener.getCentralizedMcpConfig());
-            }
-            if (listener.getPushedToolsConfig() != null) {
-                factory.setPushedToolsConfig(listener.getPushedToolsConfig());
-            }
-        }
-
-        // Per-workstream env vars
-        if (workstream.getEnv() != null && !workstream.getEnv().isEmpty()) {
-            factory.setWorkstreamEnv(workstream.getEnv());
-        }
+        // ar-manager config is set below after workstream URL
 
         // Planning document
         if (workstream.getPlanningDocument() != null) {
             factory.setPlanningDocument(workstream.getPlanningDocument());
-        }
-
-        // GitHub organization for token selection
-        if (workstream.getGithubOrg() != null) {
-            factory.setGithubOrg(workstream.getGithubOrg());
         }
 
         // Test file protection
@@ -777,6 +900,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 + "/api/workstreams/" + workstream.getWorkstreamId()
                 + "/jobs/" + factory.getTaskId();
             factory.setWorkstreamUrl(baseUrl);
+        }
+
+        // Generate temporary ar-manager auth token
+        String sharedSecret = FlowTreeController.loadSharedSecret();
+        if (sharedSecret != null && !sharedSecret.isEmpty() && arManagerUrl != null) {
+            String arToken = generateTemporaryToken(
+                workstreamId, factory.getTaskId(), sharedSecret, 43200); // 12 hours
+            if (arToken != null) {
+                factory.setArManagerUrl(arManagerUrl);
+                factory.setArManagerToken(arToken);
+            }
         }
 
         // Notify that the job has been submitted (not yet executing)
@@ -993,6 +1127,44 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         return io.flowtree.JsonFieldExtractor.extractStringArray(json, field);
     }
 
+    /**
+     * Generates an HMAC-based temporary token for ar-manager authentication.
+     *
+     * <p>The token format is {@code armt_tmp_{base64url(hmac)}:{base64url(payload)}}
+     * where the payload contains the workstream ID, job ID, and expiry timestamp
+     * separated by colons. The HMAC is computed using SHA-256 with the shared secret.</p>
+     *
+     * @param workstreamId the workstream identifier
+     * @param jobId        the job identifier
+     * @param sharedSecret the shared secret (from AR_MANAGER_SHARED_SECRET env var)
+     * @param ttlSeconds   token time-to-live in seconds
+     * @return the token string, or null if the shared secret is not configured
+     */
+    public static String generateTemporaryToken(String workstreamId, String jobId,
+                                                 String sharedSecret, long ttlSeconds) {
+        if (sharedSecret == null || sharedSecret.isEmpty()) return null;
+
+        long expiry = System.currentTimeMillis() / 1000 + ttlSeconds;
+        String payload = workstreamId + ":" + jobId + ":" + expiry;
+
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(
+                sharedSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] hmacBytes = mac.doFinal(
+                payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            String hmacB64 = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(hmacBytes);
+            String payloadB64 = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            return "armt_tmp_" + hmacB64 + ":" + payloadB64;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private static String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
@@ -1137,16 +1309,32 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return JSON response wrapping the GitHub API response
      */
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
-        // Resolve token from per-org tokens in workstreams.yaml
+        // Resolve token: explicit ?org= param, then extract from the URL path,
+        // then fall back to single-org default
         String org = session.getParms().get("org");
+        if ((org == null || org.isEmpty())) {
+            // Extract org from the GitHub API path: /repos/{org}/{repo}/...
+            String urlOrPathParam = session.getParms().get("url");
+            if (urlOrPathParam != null) {
+                String path = urlOrPathParam.startsWith("https://")
+                    ? urlOrPathParam.replaceFirst("https://api\\.github\\.com", "")
+                    : urlOrPathParam;
+                if (path.startsWith("/repos/")) {
+                    String afterRepos = path.substring("/repos/".length());
+                    int slash = afterRepos.indexOf('/');
+                    if (slash > 0) {
+                        org = afterRepos.substring(0, slash);
+                    }
+                }
+            }
+        }
         String token = resolveGithubToken(org);
         if (token == null) {
             String detail = (org != null && !org.isEmpty())
                     ? "No GitHub token configured for org '" + org
                       + "' (configured orgs: " + githubOrgTokens.keySet() + ")"
                     : "No GitHub org token available (configured orgs: "
-                      + githubOrgTokens.keySet()
-                      + "; pass ?org= or configure githubOrgs in workstreams.yaml)";
+                      + githubOrgTokens.keySet() + ")";
             warn("GitHub proxy token resolution failed: " + detail);
             return errorResponse(detail);
         }
