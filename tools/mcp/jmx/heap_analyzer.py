@@ -1,20 +1,25 @@
 """
 Offline HPROF heap dump analyzer.
 
-Invokes the ar-heap-analyzer Java CLI as a subprocess and parses the
-structured JSON output. Provides class histogram, dominator tree, and
-summary views for offline OOM diagnosis.
+Invokes the HeapAnalyzer Java class from the ar-tools module as a subprocess
+and parses the structured JSON output. Provides class histogram, dominator
+tree, and summary views for offline OOM diagnosis.
+
+The analyzer runs with generous heap settings (-Xmx8g) to handle large dumps.
 """
 
+import glob
 import json
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 
-# Path to the shaded jar, relative to this module
-_JAR_DIR = Path(__file__).resolve().parent.parent.parent.parent / "ar-heap-analyzer" / "target"
-_JAR_NAME = "ar-heap-analyzer.jar"
+# Root of the common repo, relative to this module (tools/mcp/jmx/)
+_COMMON_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+# ar-tools module jar and its Maven dependency cache
+_TOOLS_TARGET = _COMMON_ROOT / "tools" / "target"
+_MAIN_CLASS = "org.almostrealism.heap.HeapAnalyzer"
 
 
 class HeapAnalyzerError(Exception):
@@ -22,49 +27,72 @@ class HeapAnalyzerError(Exception):
     pass
 
 
-def _find_jar() -> Path:
-    """Locate the ar-heap-analyzer shaded jar.
+def _build_classpath() -> str:
+    """Build the Java classpath from the ar-tools module jar and its dependencies.
+
+    Locates the ar-tools jar in the target directory and resolves the NetBeans
+    Profiler and Jackson dependencies from the local Maven repository.
 
     Returns:
-        Path to the jar file.
+        Classpath string with all required jars separated by ':'.
 
     Raises:
-        HeapAnalyzerError: If the jar is not found.
+        HeapAnalyzerError: If required jars are not found.
     """
-    jar_path = _JAR_DIR / _JAR_NAME
-    if jar_path.exists():
-        return jar_path
+    # Find the ar-tools jar
+    tools_jars = list(_TOOLS_TARGET.glob("ar-tools-*.jar"))
+    tools_jars = [j for j in tools_jars if "sources" not in j.name and "javadoc" not in j.name]
+    if not tools_jars:
+        raise HeapAnalyzerError(
+            f"ar-tools jar not found in {_TOOLS_TARGET}. "
+            "Build with: mvn install -pl tools -am -DskipTests"
+        )
+    tools_jar = tools_jars[0]
 
-    raise HeapAnalyzerError(
-        f"ar-heap-analyzer.jar not found at {jar_path}. "
-        "Build with: mvn package -pl ar-heap-analyzer"
-    )
+    # Resolve dependencies from Maven local repo
+    m2 = Path.home() / ".m2" / "repository"
+    dep_patterns = [
+        "org/netbeans/modules/org-netbeans-lib-profiler/*/org-netbeans-lib-profiler-*.jar",
+        "com/fasterxml/jackson/core/jackson-databind/*/jackson-databind-*.jar",
+        "com/fasterxml/jackson/core/jackson-core/*/jackson-core-*.jar",
+        "com/fasterxml/jackson/core/jackson-annotations/*/jackson-annotations-*.jar",
+    ]
+
+    classpath_entries = [str(tools_jar)]
+    for pattern in dep_patterns:
+        matches = sorted(glob.glob(str(m2 / pattern)))
+        # Filter out sources/javadoc jars
+        matches = [m for m in matches if not any(s in m for s in ["-sources", "-javadoc"])]
+        if matches:
+            classpath_entries.append(matches[-1])  # Use latest version
+
+    return ":".join(classpath_entries)
 
 
 def analyze_heap_dump(hprof_path: str,
                       mode: str = "summary",
                       top: int = 30,
-                      timeout: int = 300) -> dict:
+                      timeout: int = 600) -> dict:
     """Analyze an HPROF heap dump file.
 
     Args:
         hprof_path: Absolute path to the .hprof file.
         mode: Analysis mode - "histogram", "dominators", or "summary".
         top: Maximum number of entries to return.
-        timeout: Subprocess timeout in seconds.
+        timeout: Subprocess timeout in seconds (default 600 for large dumps).
 
     Returns:
         Parsed JSON result from the analyzer.
 
     Raises:
-        HeapAnalyzerError: If the file is not found, the jar is missing,
+        HeapAnalyzerError: If the file is not found, dependencies are missing,
             Java is not available, or the analysis fails.
     """
     hprof = Path(hprof_path)
     if not hprof.exists():
         raise HeapAnalyzerError(f"HPROF file not found: {hprof_path}")
 
-    if not hprof.suffix == ".hprof":
+    if hprof.suffix != ".hprof":
         raise HeapAnalyzerError(
             f"Expected .hprof file, got: {hprof.name}"
         )
@@ -74,10 +102,13 @@ def analyze_heap_dump(hprof_path: str,
             f"Invalid mode '{mode}'. Use histogram, dominators, or summary."
         )
 
-    jar_path = _find_jar()
+    classpath = _build_classpath()
 
     cmd = [
-        "java", "-jar", str(jar_path),
+        "java",
+        "-Xmx8g",
+        "-cp", classpath,
+        _MAIN_CLASS,
         mode,
         "--top", str(top),
         str(hprof)
@@ -93,7 +124,8 @@ def analyze_heap_dump(hprof_path: str,
     except subprocess.TimeoutExpired:
         raise HeapAnalyzerError(
             f"Heap analysis timed out after {timeout}s. "
-            "The dump may be very large; try histogram mode first."
+            "The dump may be very large; try 'histogram' mode first "
+            "(it is single-pass and much faster than 'dominators')."
         )
     except FileNotFoundError:
         raise HeapAnalyzerError(
