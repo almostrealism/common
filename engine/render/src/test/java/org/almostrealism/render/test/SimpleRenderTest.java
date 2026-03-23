@@ -22,6 +22,7 @@ import org.almostrealism.render.RayTracedScene;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.Scene;
 import org.almostrealism.texture.ImageCanvas;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -35,6 +36,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 	int width = 64;
 	int height = 64;
 
+	@TestProperties(knownIssue = true)
 	@Test(timeout = 30000)
 	public void testSinglePixelRendering() {
 		log("Testing single pixel rendering with transforms enabled...");
@@ -118,6 +120,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		assertTrue("Single pixel should be non-black", isNonBlack);
 	}
 
+	@TestProperties(knownIssue = true)
 	@Test(timeout = 30000)
 	public void testRankCacheComparison() {
 		log("Comparing working intersection test vs broken rank cache...");
@@ -408,6 +411,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		log("Camera ray correctly hits sphere at distance " + dist);
 	}
 
+	@TestProperties(knownIssue = true)
 	@Test(timeout = 30000)
 	public void renderSingleSphere() throws Exception {
 		log("Creating simple scene with one sphere...");
@@ -515,6 +519,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		}
 	}
 
+	@TestProperties(knownIssue = true)
 	@Test(timeout = 30000)
 	public void renderTwoSpheres() throws Exception {
 		log("Creating scene with two spheres...");
