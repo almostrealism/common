@@ -18,6 +18,21 @@ See [../CLAUDE.md](../CLAUDE.md) for the full policy on why this is mandatory.
 
 ---
 
+## CRITICAL: NEVER CREATE NEW MAVEN MODULES
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** create new `pom.xml` files that define a new module
+- **NEVER** add new `<module>` entries to any parent `pom.xml`
+- **NEVER** create new directory structures that would constitute a Maven module
+- The Maven module structure is **externally controlled** by the project owner
+- If a task requires a new module, **STOP and abandon the task** rather than create one
+- Document the requirement in completion notes and explain why, but **MUST NOT** create the module
+
+See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
+
+---
+
 ## CRITICAL: DO NOT COMMIT CODE
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
