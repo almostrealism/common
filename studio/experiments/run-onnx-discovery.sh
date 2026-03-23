@@ -19,7 +19,7 @@ set -e
 
 # Configuration
 SAMPLES_DIR="${1:-$HOME/Music/Samples}"
-STORE_DIR="${2:-/tmp/onnx-discovery-store}"
+STORE_DIR="${2:-$HOME/.ar/onnx-discovery-store}"
 MODELS_DIR="${3:-$HOME/Documents/AlmostRealism/models}"
 MAX_PROTOTYPES="${MAX_PROTOTYPES:-10}"
 
