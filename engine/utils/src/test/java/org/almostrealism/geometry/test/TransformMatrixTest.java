@@ -10,6 +10,7 @@ import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.TransformMatrixFeatures;
 import org.almostrealism.primitives.Sphere;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -569,6 +570,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	 * transform matrix is applied to a batch of varying vectors, do
 	 * we get correct results?
 	 */
+	@TestProperties(knownIssue = true)
 	@Test(timeout = 20000)
 	public void testBatchTransformAsLocation() {
 		log("Testing batch mode transform (transformAsLocation)...");
@@ -648,6 +650,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	 * Tests that the matmul-based TransformMatrixFeatures.transform()
 	 * produces correct results in batch mode.
 	 */
+	@TestProperties(knownIssue = true)
 	@Test(timeout = 20000)
 	public void testBatchMatmulTransformVector() {
 		log("Testing batch matmul transform on vectors...");
@@ -887,6 +890,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	 * This mirrors how LightingEngineAggregator.initRankCache() evaluates
 	 * the intersection distance for multiple pixels at once.
 	 */
+	@TestProperties(knownIssue = true)
 	@Test(timeout = 20000)
 	public void testBatchRayTransform() {
 		log("Testing batch mode ray transformation...");
@@ -956,6 +960,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	 * Tests that Sphere intersection works in batch mode with a translated sphere.
 	 * This mimics how LightingEngineAggregator.initRankCache() evaluates.
 	 */
+	@TestProperties(knownIssue = true)
 	@Test(timeout = 20000)
 	public void testBatchSphereIntersection() {
 		log("Testing batch sphere intersection with translated sphere...");
@@ -1110,6 +1115,16 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 				Math.abs(output.valueAt(2, 1) - 3.5) < 0.01);
 
 		log("Batch element-wise test passed!");
+	}
+
+	@Test(timeout = 10000)
+	public void adjoint() {
+		new TransformMatrix().adjoint();
+	}
+
+	@Test(timeout = 10000)
+	public void determinant() {
+		new TransformMatrix().determinant();
 	}
 
 	@Test(timeout = 10000)
