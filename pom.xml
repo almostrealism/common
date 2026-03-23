@@ -77,7 +77,6 @@
 
 		<!-- Standalone -->
 		<module>tools</module>
-		<module>ar-heap-analyzer</module>
 	</modules>
 
 	<packaging>pom</packaging>
@@ -257,6 +256,11 @@
 				<groupId>com.fasterxml.jackson.core</groupId>
 				<artifactId>jackson-databind</artifactId>
 				<version>2.16.1</version>
+			</dependency>
+			<dependency>
+				<groupId>org.netbeans.modules</groupId>
+				<artifactId>org-netbeans-lib-profiler</artifactId>
+				<version>RELEASE220</version>
 			</dependency>
 			<dependency>
 				<groupId>com.fasterxml.jackson.dataformat</groupId>

@@ -1,7 +1,7 @@
 package org.almostrealism.heap;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import org.netbeans.lib.profiler.heap.Heap;
 import org.netbeans.lib.profiler.heap.HeapFactory;
 import org.netbeans.lib.profiler.heap.HeapSummary;
@@ -33,7 +33,8 @@ import java.util.Map;
  */
 public class HeapAnalyzer {
 
-	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+	private static final ObjectMapper MAPPER = new ObjectMapper()
+			.enable(SerializationFeature.INDENT_OUTPUT);
 	private static final int DEFAULT_TOP = 30;
 
 	/**
@@ -104,7 +105,7 @@ public class HeapAnalyzer {
 					return;
 			}
 
-			System.out.println(GSON.toJson(result));
+			System.out.println(MAPPER.writeValueAsString(result));
 		} catch (IOException e) {
 			printError("Failed to parse HPROF file: " + e.getMessage());
 		}
@@ -245,7 +246,11 @@ public class HeapAnalyzer {
 	private static void printError(String message) {
 		Map<String, String> error = new LinkedHashMap<>();
 		error.put("error", message);
-		System.out.println(GSON.toJson(error));
+		try {
+			System.out.println(MAPPER.writeValueAsString(error));
+		} catch (IOException e) {
+			System.out.println("{\"error\": \"" + message + "\"}");
+		}
 	}
 
 	private static void printUsageAndExit() {
