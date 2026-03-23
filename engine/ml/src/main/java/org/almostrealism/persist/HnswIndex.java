@@ -16,10 +16,13 @@
 
 package org.almostrealism.persist;
 
-import io.almostrealism.code.Precision;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persistence.CollectionEncoder;
+import org.almostrealism.protobuf.Collections;
 import org.almostrealism.protobuf.Diskstore;
+
+
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -311,12 +314,7 @@ public class HnswIndex {
 				Diskstore.HnswNodeData.Builder nodeBuilder =
 						Diskstore.HnswNodeData.newBuilder();
 				nodeBuilder.setId(node.id);
-				PackedCollection tempVec =
-						new PackedCollection(node.cachedData.length)
-								.fill(node.cachedData);
-				nodeBuilder.setVector(
-						CollectionEncoder.encode(tempVec, Precision.FP32));
-				tempVec.destroy();
+				nodeBuilder.setVector(encodeDoubleArray(node.cachedData));
 				nodeBuilder.setLevel(node.level);
 				nodeBuilder.setDeleted(node.deleted);
 
@@ -359,10 +357,7 @@ public class HnswIndex {
 					? null : data.getEntryPointId();
 
 			for (Diskstore.HnswNodeData nodeData : data.getNodesList()) {
-				PackedCollection vector =
-						CollectionEncoder.decode(nodeData.getVector());
-				double[] vectorData = SimilarityMetric.toDoubleArray(vector);
-				vector.destroy();
+				double[] vectorData = decodeDoubleArray(nodeData.getVector());
 				Node node = new Node(nodeData.getId(), vectorData,
 						nodeData.getLevel());
 				node.deleted = nodeData.getDeleted();
@@ -512,6 +507,44 @@ public class HnswIndex {
 		double r = random.nextDouble();
 		int level = (int) (-Math.log(r) * levelMultiplier);
 		return Math.max(0, level);
+	}
+
+	/**
+	 * Encode a {@code double[]} directly to a {@link Collections.CollectionData}
+	 * protobuf message in FP32 precision, without allocating native memory
+	 * via {@link PackedCollection}. This avoids native {@code malloc/free}
+	 * calls that can trigger detection of heap corruption from prior
+	 * operations.
+	 */
+	private static Collections.CollectionData encodeDoubleArray(double[] data) {
+		Collections.CollectionData.Builder builder =
+				Collections.CollectionData.newBuilder();
+		builder.setTraversalPolicy(CollectionEncoder.encode(
+				new TraversalPolicy(data.length)));
+		for (double d : data) {
+			builder.addData32((float) d);
+		}
+		return builder.build();
+	}
+
+	/**
+	 * Decode a {@link Collections.CollectionData} protobuf message directly
+	 * to a {@code double[]}, without allocating native memory via
+	 * {@link PackedCollection}. This avoids native {@code malloc/free}
+	 * calls that can trigger detection of heap corruption from prior
+	 * operations.
+	 */
+	private static double[] decodeDoubleArray(Collections.CollectionData data) {
+		if (!data.getData32List().isEmpty()) {
+			double[] result = new double[data.getData32Count()];
+			for (int i = 0; i < result.length; i++) {
+				result[i] = data.getData32(i);
+			}
+			return result;
+		} else {
+			return data.getDataList().stream()
+					.mapToDouble(Double::doubleValue).toArray();
+		}
 	}
 
 	/**
