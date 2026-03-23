@@ -28,7 +28,6 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.arrange.AutomationManager;
 import org.almostrealism.audio.arrange.EfxManager;
@@ -180,7 +179,6 @@ import java.util.stream.IntStream;
  *
  * @author Michael Murray
  */
-@ModelEntity
 public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable, CellFeatures {
 	public static final Console console = CellFeatures.console.child();
 	private static final TimingMetric getCellsTime = console.timing("getCells");

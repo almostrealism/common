@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 /**
- * Annotations for keeping track of data types that store state
- * so that the state of any system can be understood by looking
- * for references to the annotations or depicting the meaning
- * of those annotations visually.
- * 
+ * Foundational interfaces for naming, identity, and indexed access.
+ * Provides the base contracts ({@link Named}, {@link Signature},
+ * {@link Multiple}, {@link Plural}) that the rest of the framework
+ * builds upon.
+ *
  * @author  Michael Murray
  */
 package io.almostrealism.uml;

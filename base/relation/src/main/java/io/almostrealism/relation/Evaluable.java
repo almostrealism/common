@@ -18,7 +18,6 @@ package io.almostrealism.relation;
 
 import io.almostrealism.streams.EvaluableStreamingAdapter;
 import io.almostrealism.streams.StreamingEvaluable;
-import io.almostrealism.uml.Function;
 import io.almostrealism.uml.Multiple;
 
 import java.util.concurrent.Executor;
@@ -74,7 +73,6 @@ import java.util.concurrent.Executor;
  *
  * @author Michael Murray
  */
-@Function
 @FunctionalInterface
 public interface Evaluable<T> extends Computable {
 	/**

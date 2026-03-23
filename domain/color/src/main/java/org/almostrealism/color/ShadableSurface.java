@@ -16,7 +16,6 @@
 
 package org.almostrealism.color;
 
-import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.geometry.Intersectable;
@@ -26,7 +25,6 @@ import org.almostrealism.geometry.Intersectable;
  * intersected by a 3d ray. These objects must supply methods for calculating
  * ray-surface intersections.
  */
-@ModelEntity
 public interface ShadableSurface extends ShadableCurve, Intersectable<PackedCollection> {
 	/**
 	 * Returns true if the front side of this Surface object should be shaded.

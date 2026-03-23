@@ -17,7 +17,6 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.algebra.UnityVector;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
@@ -32,7 +31,6 @@ import org.almostrealism.io.DecodePostProcessing;
  * 
  * @author  Michael Murray
  */
-@ModelEntity
 public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostProcessing, VectorFeatures, TransformMatrixFeatures {
 	// TODO  Make these private
 	public Vector location;

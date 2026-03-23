@@ -41,6 +41,5 @@ package io.almostrealism.relation;
  *
  * @author Michael Murray
  */
-@io.almostrealism.uml.Function
 public interface Function<IN, OUT> {
 }
