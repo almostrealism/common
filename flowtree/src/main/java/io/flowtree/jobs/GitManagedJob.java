@@ -239,18 +239,30 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * @throws RuntimeException if any pre-flight check fails
      */
     private void prepareWorkingDirectory() throws IOException, InterruptedException {
-        // 1. Check for uncommitted changes (excluding ignored files)
-        List<String> dirtyFiles = checkForUncommittedChanges();
-        if (!dirtyFiles.isEmpty()) {
-            // Stash uncommitted changes left by a previous (likely interrupted)
-            // job so the working directory can be synced cleanly.  Using stash
-            // instead of checkout/clean preserves the changes for recovery.
-            String fileList = dirtyFiles.size() <= 5
-                ? String.join(", ", dirtyFiles)
-                : String.join(", ", dirtyFiles.subList(0, 5)) + " (+" + (dirtyFiles.size() - 5) + " more)";
+        // 1. Check for ANY uncommitted changes -- even files matching the
+        //    exclusion list must be stashed because their presence on disk
+        //    can prevent git from switching branches.
+        List<String> allDirtyFiles = getAllDirtyFiles();
+        if (!allDirtyFiles.isEmpty()) {
+            List<String> nonExcludedFiles = filterExcluded(allDirtyFiles);
+
+            // Build a descriptive file list for the stash message, preferring
+            // non-excluded files but falling back to excluded ones.
+            List<String> labelFiles = nonExcludedFiles.isEmpty()
+                ? allDirtyFiles : nonExcludedFiles;
+            String fileList = labelFiles.size() <= 5
+                ? String.join(", ", labelFiles)
+                : String.join(", ", labelFiles.subList(0, 5))
+                    + " (+" + (labelFiles.size() - 5) + " more)";
+            if (!nonExcludedFiles.isEmpty()) {
+                warn("Uncommitted changes found: " + fileList + " -- stashing");
+            } else {
+                log("Only excluded files are dirty (" + fileList
+                    + ") -- stashing to allow branch switch");
+            }
+
             String stashMessage = "flowtree: interrupted job residue before "
                 + taskId + " [" + fileList + "]";
-            warn("Uncommitted changes found: " + fileList + " -- stashing");
             // --include-untracked captures new files as well as modifications
             if (executeGit("stash", "push", "--include-untracked", "-m", stashMessage) != 0) {
                 throw new RuntimeException(
@@ -504,16 +516,24 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     /**
      * Checks the working directory for uncommitted changes, excluding files
      * that match the job's excluded patterns (e.g., claude-output, .claude
-     * settings, build artifacts).
+     * settings, build artifacts).  Unlike {@link #getAllDirtyFiles()}, this
+     * only returns files that would NOT normally be excluded.
      *
      * @return list of dirty file paths that are NOT excluded
      */
     private List<String> checkForUncommittedChanges() throws IOException, InterruptedException {
+        return filterExcluded(getAllDirtyFiles());
+    }
+
+    /**
+     * Returns every file reported as dirty by {@code git status --porcelain},
+     * with no exclusion filtering applied.
+     *
+     * @return all dirty file paths
+     */
+    private List<String> getAllDirtyFiles() throws IOException, InterruptedException {
         String statusOutput = executeGitWithOutput("status", "--porcelain");
         List<String> dirtyFiles = new ArrayList<>();
-
-        Set<String> allExcluded = new HashSet<>(excludedPatterns);
-        allExcluded.addAll(additionalExcludedPatterns);
 
         for (String line : statusOutput.split("\n")) {
             if (line.length() > 3) {
@@ -521,25 +541,38 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 if (file.contains(" -> ")) {
                     file = file.split(" -> ")[1];
                 }
-                if (!file.isEmpty() && !matchesAnyPattern(file, allExcluded)) {
+                if (!file.isEmpty()) {
                     dirtyFiles.add(file);
                 }
             }
-        }
-
-        if (!dirtyFiles.isEmpty()) {
-            warn("Found " + dirtyFiles.size() + " uncommitted file(s) not in exclude list");
-        } else {
-            log("Working directory is clean (excluding ignored files)");
         }
 
         return dirtyFiles;
     }
 
     /**
+     * Filters out files that match the job's excluded patterns.
+     *
+     * @param files list of file paths
+     * @return files that do NOT match any excluded pattern
+     */
+    private List<String> filterExcluded(List<String> files) {
+        Set<String> allExcluded = new HashSet<>(excludedPatterns);
+        allExcluded.addAll(additionalExcludedPatterns);
+
+        List<String> result = new ArrayList<>();
+        for (String file : files) {
+            if (!matchesAnyPattern(file, allExcluded)) {
+                result.add(file);
+            }
+        }
+        return result;
+    }
+
+    /**
      * Fires the job completed event by POSTing to the workstream URL.
-     * The controller's {@code SlackNotifier} receives this event and
-     * formats an appropriate Slack message, so no separate Slack message
+     * The controller's notification system receives this event and
+     * formats an appropriate message, so no separate message
      * is sent from here.
      */
     protected void fireJobCompleted(Exception error) {
@@ -1321,7 +1354,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * Returns the workstream URL for this job.
      * This URL serves as a prefix for controller interactions:
      * POST to the URL itself sends status events, appending
-     * {@code /messages} sends Slack messages.
+     * {@code /messages} sends messages.
      */
     public String getWorkstreamUrl() {
         return workstreamUrl;
@@ -1332,7 +1365,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      *
      * <p>The URL follows the pattern
      * {@code http://controller/api/workstreams/{id}/jobs/{jobId}} for job-level
-     * communication (messages go to the job's Slack thread) or
+     * communication (messages go to the job's thread) or
      * {@code http://controller/api/workstreams/{id}} for workstream-level
      * communication (messages go to the channel).</p>
      *

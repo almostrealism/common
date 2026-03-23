@@ -402,6 +402,20 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 	}
 
 	/**
+	 * Applies pitch bend to all active voices.
+	 *
+	 * @param semitones pitch bend amount in semitones
+	 */
+	public void setPitchBend(double semitones) {
+		for (int i = 0; i < voices.size(); i++) {
+			VoiceState state = allocator.getVoice(i);
+			if (state.isActive()) {
+				voices.get(i).setPitchBend(semitones);
+			}
+		}
+	}
+
+	/**
 	 * Releases all notes (panic/all notes off).
 	 */
 	public void allNotesOff() {

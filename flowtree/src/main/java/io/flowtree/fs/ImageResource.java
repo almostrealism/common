@@ -258,32 +258,41 @@ public class ImageResource implements Resource {
 	}
 	
 	
-	// TODO This is probably broken since cx is not used.
+	/**
+	 * Clips the image to the specified region and returns the pixel data.
+	 * The returned array has the format [width, height, pixel0, pixel1, ...].
+	 *
+	 * @param cx the x-offset of the clipping region
+	 * @param cy the y-offset of the clipping region
+	 * @param cw the width of the clipping region
+	 * @param ch the height of the clipping region
+	 * @return pixel data for the clipped region
+	 */
 	public int[] clip(int cx, int cy, int cw, int ch) {
 		System.out.println("ImageResource: Clipping to "
 							+ cx + ", " + cy + ", " +
 							cw + ", " + ch + "...");
-		
+
 		if (cx == 0 && cy == 0 && cw == this.w && ch == this.h) {
 			int[] out = new int[this.data.length];
 			System.arraycopy(this.data, 0, out, 0, this.data.length);
 			return out;
 		}
-		
-//		cx = cx - this.x;
+
+		cx = cx - this.x;
 		cy = cy - this.y;
-		
+
 		if (cw < 0) cw = this.data[0] + cw;
 		if (ch < 0) ch = this.data[1] + ch;
-		
+
 		int[] rgb = new int[2 + cw * ch];
 		rgb[0] = cw;
 		rgb[1] = ch;
 		int index = 2;
-		
+
 		for(int j = 0; j < ch; j++) {
 			for(int i = 0; i < cw; i++) {
-				rgb[index++] = this.data[2 + (j + cy) * this.data[0] + (i + cw)];
+				rgb[index++] = this.data[2 + (j + cy) * this.data[0] + (i + cx)];
 			}
 		}
 		

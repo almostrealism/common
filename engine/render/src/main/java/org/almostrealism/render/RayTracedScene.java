@@ -136,8 +136,8 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 	public Producer<PackedCollection> getProducer() { return getProducer(getRenderParameters()); }
 
 	public Producer<PackedCollection> getProducer(RenderParameters p) {
-		// Use shape(-1, 2) for variable-count to allow kernel size to adapt to output
-		Producer<PackedCollection> producer = operate(v(shape(-1, 2), 0), (Producer) pair(p.width, p.height));
+		int totalPixels = p.width * p.ssWidth * p.height * p.ssHeight;
+		Producer<PackedCollection> producer = operate(v(shape(totalPixels, 2), 0), (Producer) pair(p.width, p.height));
 
 		if (producer instanceof DimensionAware) {
 			((DimensionAware) producer).setDimensions(p.width, p.height, p.ssWidth, p.ssHeight);

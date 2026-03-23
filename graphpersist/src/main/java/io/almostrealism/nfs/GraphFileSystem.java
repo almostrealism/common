@@ -152,10 +152,42 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 		}
 	}
 
+	/**
+	 * Renames/moves a resource by creating a copy at the destination and
+	 * deleting the original, following the same resource lookup and deletion
+	 * patterns used by {@link #lookup} and {@link #remove}.
+	 *
+	 * <p>Content is transferred from the source resource via its
+	 * {@link Resource#getInputStream() InputStream} when available.</p>
+	 */
 	@Override
 	public boolean move(Inode src, String oldName, Inode dest, String newName) throws IOException {
-		// TODO  Implement as a copy followed by a delete
-		return false;
+		String srcPath = path(src) + "/" + oldName;
+		String destPath = path(dest) + "/" + newName;
+
+		Iterator<Resource> itr = search.search(srcPath).iterator();
+		if (!itr.hasNext()) {
+			return false;
+		}
+
+		Resource source = itr.next();
+
+		T copy = factory.construct();
+		copy.setURI(destPath);
+		copy.getPermissions().update(source.getPermissions());
+
+		java.io.InputStream in = source.getInputStream();
+		if (in != null) {
+			try {
+				byte[] data = in.readAllBytes();
+				copy.load(data, 0, data.length);
+			} finally {
+				in.close();
+			}
+		}
+
+		del.delete(srcPath);
+		return true;
 	}
 
 	@Override

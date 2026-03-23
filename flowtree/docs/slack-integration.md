@@ -1,6 +1,6 @@
 # Slack Integration
 
-The Slack integration allows operators to submit coding agent prompts by mentioning a bot in Slack. Results and status updates are posted back to the channel in real time. Running Claude Code sessions can also send messages back to Slack through the `ar-slack` MCP tool.
+The Slack integration allows operators to submit coding agent prompts by mentioning a bot in Slack. Results and status updates are posted back to the channel in real time. Running Claude Code sessions can also store messages and send notifications through the `ar-messages` MCP tool.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ Slack (Socket Mode)          FlowTreeController          FlowTree Network
     |                              |                          |-- Node runs job
     |                              |                          |
     |                    FlowTreeApiEndpoint (port 7780)          |
-    |<-- "Progress update" --------|<-- ar-slack MCP ---------|
+    |<-- "Progress update" --------|<-- ar-messages MCP ---------|
     |                              |                          |
     |                              |<-- JobCompletionEvent ---|
     |<-- "Job complete!" ----------|                          |
@@ -91,7 +91,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | GET | `/api/stats` | -- | Weekly job statistics (query params: `workstream`, `period`) |
 | GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
 
-When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-slack` MCP server reads this and POSTs messages to `{url}/messages`.
+When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-messages` MCP server reads this and POSTs messages to `{url}/messages`.
 
 #### Workstream Registration Endpoint
 
@@ -215,8 +215,8 @@ mcpServers:
 # into dev containers on first use. Use for tools that depend on per-job state.
 # Each entry supports an optional 'env' map for per-tool environment variables.
 pushedTools:
-  ar-slack:
-    source: tools/mcp/slack/server.py
+  ar-messages:
+    source: tools/mcp/messages/server.py
   ar-github:
     source: tools/mcp/github/server.py
     env:

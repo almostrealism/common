@@ -89,8 +89,8 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	private static final String resColor = "<font color=\"blue\">";
 	private static final String endColor = "</font>";
 	
-	private static String httpwww;
-	private static int jobSize;
+	private String httpwww;
+	private int jobSize;
 	private static FlowTreeCliServer current;
 	
 	private final ServerSocket socket;
@@ -109,7 +109,6 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	public static void main(String[] args) { FlowTreeCliServer.start(args); }
 
 	/** Parses command-line arguments, loads configuration, and starts the FlowTree server. */
-	// TODO  This should not be static
 	public static void start(String[] args) {
 		Properties p = new Properties();
 		
@@ -238,8 +237,8 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	
 	public FlowTreeCliServer(String httpwww, int jobSize, int port, boolean gui) throws IOException {
 		FlowTreeCliServer.current = this;
-		FlowTreeCliServer.httpwww = httpwww;
-		FlowTreeCliServer.jobSize = jobSize;
+		this.httpwww = httpwww;
+		this.jobSize = jobSize;
 		
 		this.commands = new Hashtable();
 		
@@ -630,9 +629,9 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 				long id = System.currentTimeMillis();
 				
 				String[] args = {
-						FlowTreeCliServer.httpwww + sceneName,
+						current.httpwww + sceneName,
 						dim, sdim, pdim, fl, cloc, cdir,
-						String.valueOf(FlowTreeCliServer.jobSize),
+						String.valueOf(current.jobSize),
 						String.valueOf(id), pri};
 
 				// TODO  Load producer by reflection
@@ -684,7 +683,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 				
 				String[] args = {sceneName,
 						dim, sdim, pdim, fl, cloc, cdir,
-						String.valueOf(FlowTreeCliServer.jobSize),
+						String.valueOf(current.jobSize),
 						String.valueOf(id), pri};
 
 				// TODO  Load Job Producer using reflection
@@ -737,7 +736,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 				
 				String[] args = {sceneName,
 						dim, sdim, pdim, fl, cloc, cdir,
-						String.valueOf(FlowTreeCliServer.jobSize),
+						String.valueOf(current.jobSize),
 						String.valueOf(id), pri};
 
 				// TODO  Load Job Producer using reflection

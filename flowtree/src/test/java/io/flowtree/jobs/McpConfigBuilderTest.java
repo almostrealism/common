@@ -23,42 +23,41 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Tests for {@link McpConfigBuilder} covering centralized HTTP entries,
- * pushed stdio entries, project server discovery, config parsing, and
- * allowed tools assembly.
+ * Tests for {@link McpConfigBuilder} covering ar-manager HTTP entry,
+ * project server discovery, and allowed tools assembly.
  */
 public class McpConfigBuilderTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
-	public void buildsCentralizedHttpEntries() {
+	public void buildsArManagerHttpEntry() {
 		McpConfigBuilder builder = new McpConfigBuilder();
-		builder.setCentralizedMcpConfig(
-				"{\"ar-slack\":{\"url\":\"http://localhost:8080\",\"tools\":[\"slack_send_message\"]}}");
+		builder.setArManagerUrl("http://ar-manager:8010");
+		builder.setArManagerToken("armt_tmp_testtoken");
 
 		String config = builder.buildMcpConfig();
 		assertNotNull(config);
 		assertTrue("Config should contain http type", config.contains("\"type\":\"http\""));
-		assertTrue("Config should contain ar-slack", config.contains("ar-slack"));
+		assertTrue("Config should contain ar-manager", config.contains("ar-manager"));
+		assertTrue("Config should contain auth header",
+			config.contains("Bearer armt_tmp_testtoken"));
 	}
 
 	@Test(timeout = 30000)
-	public void buildsPushedStdioEntries() {
+	public void omitsArManagerWithoutToken() {
 		McpConfigBuilder builder = new McpConfigBuilder();
-		builder.setPushedToolsConfig(
-				"{\"ar-memory\":{\"url\":\"http://controller/download\",\"tools\":[\"memory_store\",\"memory_search\"]}}");
+		builder.setArManagerUrl("http://ar-manager:8010");
+		// No token set
 
 		String config = builder.buildMcpConfig();
 		assertNotNull(config);
-		assertTrue("Config should contain python3 command", config.contains("\"command\":\"python3\""));
-		assertTrue("Config should contain ar-memory", config.contains("ar-memory"));
+		assertFalse("Config should not contain ar-manager without token",
+			config.contains("ar-manager"));
 	}
 
 	@Test(timeout = 30000)
@@ -92,7 +91,6 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 			assertNotNull(config);
 			assertTrue("Config should contain my-server", config.contains("my-server"));
 		} finally {
-			// Clean up temp files
 			Files.walk(tempDir)
 					.sorted(java.util.Comparator.reverseOrder())
 					.forEach(p -> {
@@ -102,33 +100,69 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 30000)
-	public void parseCentralizedConfigExtractsServerNames() {
+	public void buildAllowedToolsIncludesArManager() {
 		McpConfigBuilder builder = new McpConfigBuilder();
-		builder.setCentralizedMcpConfig(
-				"{\"ar-slack\":{\"url\":\"http://localhost:8080\",\"tools\":[\"slack_send_message\"]}," +
-				"\"ar-memory\":{\"url\":\"http://localhost:8081\",\"tools\":[\"memory_store\",\"memory_search\"]}}");
-
-		Map<String, List<String>> parsed = builder.parseCentralizedConfig();
-		assertEquals(2, parsed.size());
-		assertTrue("Should contain ar-slack", parsed.containsKey("ar-slack"));
-		assertTrue("Should contain ar-memory", parsed.containsKey("ar-memory"));
-		assertEquals(1, parsed.get("ar-slack").size());
-		assertEquals("slack_send_message", parsed.get("ar-slack").get(0));
-		assertEquals(2, parsed.get("ar-memory").size());
-	}
-
-	@Test(timeout = 30000)
-	public void buildAllowedToolsIncludesAll() {
-		McpConfigBuilder builder = new McpConfigBuilder();
-		builder.setCentralizedMcpConfig(
-				"{\"ar-slack\":{\"url\":\"http://localhost:8080\",\"tools\":[\"slack_send_message\"]}}");
-		builder.setPushedToolsConfig(
-				"{\"ar-memory\":{\"url\":\"http://controller/download\",\"tools\":[\"memory_store\"]}}");
+		builder.setArManagerUrl("http://ar-manager:8010");
+		builder.setArManagerToken("armt_tmp_testtoken");
 
 		String allowed = builder.buildAllowedTools("Read,Edit");
 		assertNotNull(allowed);
 		assertTrue("Should start with base tools", allowed.startsWith("Read,Edit"));
-		assertTrue("Should include centralized tool", allowed.contains("mcp__ar-slack__slack_send_message"));
-		assertTrue("Should include pushed tool", allowed.contains("mcp__ar-memory__memory_store"));
+		assertTrue("Should include send_message",
+			allowed.contains("mcp__ar-manager__send_message"));
+		assertTrue("Should include memory_recall",
+			allowed.contains("mcp__ar-manager__memory_recall"));
+		assertTrue("Should include github_pr_find",
+			allowed.contains("mcp__ar-manager__github_pr_find"));
+	}
+
+	@Test(timeout = 30000)
+	public void buildAllowedToolsExcludesArManagerWithoutConfig() {
+		McpConfigBuilder builder = new McpConfigBuilder();
+		// No ar-manager URL or token
+
+		String allowed = builder.buildAllowedTools("Read,Edit");
+		assertNotNull(allowed);
+		assertFalse("Should not include ar-manager tools",
+			allowed.contains("mcp__ar-manager__"));
+	}
+
+	@Test(timeout = 30000)
+	public void excludesArManagerFromProjectDiscovery() throws IOException {
+		Path tempDir = Files.createTempDirectory("mcp_config_test_");
+		try {
+			Path mcpJson = tempDir.resolve(".mcp.json");
+			Files.writeString(mcpJson, String.join("\n",
+					"{",
+					"  \"mcpServers\": {",
+					"    \"ar-manager\": {",
+					"      \"command\": \"python3\",",
+					"      \"args\": [\"tools/mcp/manager/server.py\"]",
+					"    },",
+					"    \"ar-test-runner\": {",
+					"      \"command\": \"python3\",",
+					"      \"args\": [\"tools/mcp/test-runner/server.py\"]",
+					"    }",
+					"  }",
+					"}"
+			), StandardCharsets.UTF_8);
+
+			McpConfigBuilder builder = new McpConfigBuilder();
+			builder.setWorkingDirectory(tempDir);
+
+			String config = builder.buildMcpConfig();
+			// ar-manager should be excluded from project discovery
+			// (it's handled as a centralized HTTP entry)
+			// ar-test-runner should be included
+			assertTrue("Should contain ar-test-runner", config.contains("ar-test-runner"));
+			// ar-manager from .mcp.json should be skipped
+			// (only the HTTP entry from setArManagerUrl is used)
+		} finally {
+			Files.walk(tempDir)
+					.sorted(java.util.Comparator.reverseOrder())
+					.forEach(p -> {
+						try { Files.deleteIfExists(p); } catch (IOException ignored) { }
+					});
+		}
 	}
 }

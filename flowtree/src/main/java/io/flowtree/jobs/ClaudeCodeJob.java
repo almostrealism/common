@@ -34,7 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+
 
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
@@ -81,9 +81,8 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String allowedTools;
     private int maxTurns;
     private double maxBudgetUsd;
-    private String centralizedMcpConfig;
-    private String pushedToolsConfig;
-    private Map<String, String> workstreamEnv;
+    private String arManagerUrl;
+    private String arManagerToken;
     private String planningDocument;
     private String githubOrg;
     private boolean enforceChanges;
@@ -151,7 +150,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Returns a short display summary for this job suitable for Slack notifications.
+     * Returns a short display summary for this job suitable for notifications.
      *
      * <p>If a description is set, it is returned directly. Otherwise, short prompts
      * (80 characters or fewer) are returned as-is, and longer prompts are summarized
@@ -172,7 +171,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * character count.
      *
      * @param prompt the raw prompt text
-     * @return a concise summary suitable for Slack notifications
+     * @return a concise summary suitable for notifications
      */
     public static String summarizePrompt(String prompt) {
         if (prompt == null) {
@@ -202,7 +201,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Sets a short human-readable description for this job. When set, this
-     * description is used in Slack notifications instead of the prompt text.
+     * description is used in notifications instead of the prompt text.
      *
      * @param description a concise label (e.g., "Resolve test failures")
      */
@@ -234,61 +233,32 @@ public class ClaudeCodeJob extends GitManagedJob {
         this.maxBudgetUsd = maxBudgetUsd;
     }
 
-    /**
-     * Returns the centralized MCP configuration JSON string.
-     *
-     * <p>When set, this JSON maps server names to their HTTP URLs and
-     * tool names. Servers in this config are connected via HTTP instead
-     * of stdio, and their tools are included in the allowed tools list.</p>
-     */
-    public String getCentralizedMcpConfig() {
-        return centralizedMcpConfig;
+    /** Returns the ar-manager HTTP URL. */
+    public String getArManagerUrl() {
+        return arManagerUrl;
     }
 
     /**
-     * Sets the centralized MCP configuration JSON string.
+     * Sets the ar-manager HTTP URL for centralized tool access.
      *
-     * @param centralizedMcpConfig JSON mapping server names to URLs and tool names
+     * @param arManagerUrl the ar-manager service URL
      */
-    public void setCentralizedMcpConfig(String centralizedMcpConfig) {
-        this.centralizedMcpConfig = centralizedMcpConfig;
+    public void setArManagerUrl(String arManagerUrl) {
+        this.arManagerUrl = arManagerUrl;
+    }
+
+    /** Returns the ar-manager auth token. */
+    public String getArManagerToken() {
+        return arManagerToken;
     }
 
     /**
-     * Returns the pushed MCP tools configuration JSON string.
+     * Sets the HMAC temporary auth token for ar-manager.
      *
-     * <p>When set, this JSON maps tool server names to their download URLs
-     * and tool names. Tools are downloaded from the controller and run
-     * locally via stdio in the agent's container.</p>
+     * @param arManagerToken the bearer token
      */
-    public String getPushedToolsConfig() {
-        return pushedToolsConfig;
-    }
-
-    /**
-     * Sets the pushed MCP tools configuration JSON string.
-     *
-     * @param pushedToolsConfig JSON mapping server names to download URLs and tool names
-     */
-    public void setPushedToolsConfig(String pushedToolsConfig) {
-        this.pushedToolsConfig = pushedToolsConfig;
-    }
-
-    /**
-     * Returns per-workstream environment variables that override the global
-     * pushed tool env in the final MCP stdio config.
-     */
-    public Map<String, String> getWorkstreamEnv() {
-        return workstreamEnv;
-    }
-
-    /**
-     * Sets per-workstream environment variables for pushed tools.
-     *
-     * @param workstreamEnv map of environment variable names to values
-     */
-    public void setWorkstreamEnv(Map<String, String> workstreamEnv) {
-        this.workstreamEnv = workstreamEnv;
+    public void setArManagerToken(String arManagerToken) {
+        this.arManagerToken = arManagerToken;
     }
 
     /**
@@ -393,7 +363,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * with operational context for autonomous execution.
      *
      * <p>Sections are conditionally included based on the job's configuration:
-     * Slack instructions appear only when a workstream URL is configured,
+     * Messaging instructions appear only when a workstream URL is configured,
      * GitHub instructions only when the MCP config includes ar-github,
      * commit.txt instructions only when git management is active, and
      * budget/turn/task/workstream context is included when available.</p>
@@ -422,11 +392,8 @@ public class ClaudeCodeJob extends GitManagedJob {
      * Configures the MCP config builder with current job state.
      */
     private void configureMcpBuilder() {
-        mcpConfigBuilder.setCentralizedMcpConfig(centralizedMcpConfig);
-        mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
-        mcpConfigBuilder.setWorkstreamEnv(workstreamEnv);
-        mcpConfigBuilder.setWorkstreamUrl(getWorkstreamUrl());
-        mcpConfigBuilder.setGithubOrg(githubOrg);
+        mcpConfigBuilder.setArManagerUrl(arManagerUrl);
+        mcpConfigBuilder.setArManagerToken(arManagerToken);
         Path workDir = getWorkingDirectory() != null
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         mcpConfigBuilder.setWorkingDirectory(workDir);
@@ -467,9 +434,6 @@ public class ClaudeCodeJob extends GitManagedJob {
      * times when enforcement mode is active.</p>
      */
     private void executeSingleRun() {
-        // Download pushed tools from the controller if needed
-        toolsDownloader.ensurePushedTools(pushedToolsConfig);
-
         // Remove stale commit.txt from any previous run
         Path staleCommitFile = resolveWorkingPath("commit.txt");
         if (staleCommitFile != null && Files.exists(staleCommitFile)) {
@@ -517,7 +481,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         toolsDownloader.verifyMcpToolFiles(mcpWorkDir);
 
-        // MCP config (ar-github always; ar-slack when workstream URL is set)
+        // MCP config (ar-github always; ar-messages when workstream URL is set)
         command.add("--mcp-config");
         command.add(mcpConfigBuilder.buildMcpConfig());
 
@@ -529,7 +493,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 pb.directory(new File(workDir));
             }
 
-            // Set resolved workstream URL for MCP servers (ar-slack, ar-github).
+            // Set resolved workstream URL for MCP servers (ar-messages, ar-github).
             // resolveWorkstreamUrl() replaces the 0.0.0.0 placeholder with the
             // actual controller host from FLOWTREE_ROOT_HOST, which is required
             // when the agent runs in a Docker container.
@@ -801,47 +765,6 @@ public class ClaudeCodeJob extends GitManagedJob {
         return (child != null && child.isTextual()) ? child.asText() : null;
     }
 
-    /**
-     * Serializes a {@link Map} of string entries to a JSON object string
-     * using Jackson.
-     *
-     * @param map the map to serialize
-     * @return JSON object string
-     */
-    private static String mapToJsonObject(Map<String, String> map) {
-        try {
-            return outputMapper.writeValueAsString(map);
-        } catch (Exception e) {
-            return "{}";
-        }
-    }
-
-    /**
-     * Parses a JSON object string into a {@link Map} of string entries
-     * using Jackson.
-     *
-     * @param json the JSON object string
-     * @return parsed map, empty if input is null or unparseable
-     */
-    private static Map<String, String> parseJsonObjectToMap(String json) {
-        Map<String, String> result = new java.util.LinkedHashMap<>();
-        if (json == null) return result;
-        try {
-            JsonNode root = outputMapper.readTree(json);
-            java.util.Iterator<String> fieldNames = root.fieldNames();
-            while (fieldNames.hasNext()) {
-                String key = fieldNames.next();
-                JsonNode valueNode = root.get(key);
-                if (valueNode.isTextual()) {
-                    result.put(key, valueNode.asText());
-                }
-            }
-        } catch (Exception e) {
-            // Return empty map on parse failure
-        }
-        return result;
-    }
-
     @Override
     public String encode() {
         StringBuilder sb = new StringBuilder();
@@ -850,14 +773,11 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("::tools:=").append(base64Encode(allowedTools));
         sb.append("::maxTurns:=").append(maxTurns);
         sb.append("::maxBudget:=").append(maxBudgetUsd);
-        if (centralizedMcpConfig != null) {
-            sb.append("::centralMcp:=").append(base64Encode(centralizedMcpConfig));
+        if (arManagerUrl != null) {
+            sb.append("::arManagerUrl:=").append(base64Encode(arManagerUrl));
         }
-        if (pushedToolsConfig != null) {
-            sb.append("::pushedTools:=").append(base64Encode(pushedToolsConfig));
-        }
-        if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
-            sb.append("::wsEnv:=").append(base64Encode(mapToJsonObject(workstreamEnv)));
+        if (arManagerToken != null) {
+            sb.append("::arManagerToken:=").append(base64Encode(arManagerToken));
         }
         if (planningDocument != null) {
             sb.append("::planDoc:=").append(base64Encode(planningDocument));
@@ -882,14 +802,11 @@ public class ClaudeCodeJob extends GitManagedJob {
             case "maxBudget":
                 this.maxBudgetUsd = Double.parseDouble(value);
                 break;
-            case "centralMcp":
-                this.centralizedMcpConfig = base64Decode(value);
+            case "arManagerUrl":
+                this.arManagerUrl = base64Decode(value);
                 break;
-            case "pushedTools":
-                this.pushedToolsConfig = base64Decode(value);
-                break;
-            case "wsEnv":
-                this.workstreamEnv = parseJsonObjectToMap(base64Decode(value));
+            case "arManagerToken":
+                this.arManagerToken = base64Decode(value);
                 break;
             case "planDoc":
                 this.planningDocument = base64Decode(value);
@@ -946,11 +863,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         private String allowedTools = DEFAULT_TOOLS;
         private int maxTurns = 50;
         private double maxBudgetUsd = 10.0;
-        private String centralizedMcpConfig;
-        private String pushedToolsConfig;
-        private Map<String, String> workstreamEnv;
+        private String arManagerUrl;
+        private String arManagerToken;
         private String planningDocument;
-        private String githubOrg;
         private boolean enforceChanges;
 
         /**
@@ -1189,7 +1104,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         /**
          * Sets the workstream URL for jobs created by this factory.
-         * This single URL is used for both status reporting and Slack
+         * This single URL is used for both status reporting and
          * messaging (by appending {@code /messages}).
          *
          * @param workstreamUrl the controller URL for the workstream
@@ -1198,56 +1113,34 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("workstreamUrl", base64Encode(workstreamUrl));
         }
 
-        /**
-         * Returns the centralized MCP configuration JSON for jobs.
-         */
-        public String getCentralizedMcpConfig() {
-            return centralizedMcpConfig;
+        /** Returns the ar-manager HTTP URL. */
+        public String getArManagerUrl() {
+            return arManagerUrl;
         }
 
         /**
-         * Sets the centralized MCP configuration JSON for jobs created by this factory.
+         * Sets the ar-manager HTTP URL for agent jobs.
          *
-         * @param centralizedMcpConfig JSON mapping server names to HTTP URLs and tool names
+         * @param arManagerUrl the ar-manager service URL
          */
-        public void setCentralizedMcpConfig(String centralizedMcpConfig) {
-            this.centralizedMcpConfig = centralizedMcpConfig;
-            set("centralMcp", base64Encode(centralizedMcpConfig));
+        public void setArManagerUrl(String arManagerUrl) {
+            this.arManagerUrl = arManagerUrl;
+            set("arManagerUrl", base64Encode(arManagerUrl));
+        }
+
+        /** Returns the ar-manager auth token. */
+        public String getArManagerToken() {
+            return arManagerToken;
         }
 
         /**
-         * Returns the pushed MCP tools configuration JSON for jobs.
-         */
-        public String getPushedToolsConfig() {
-            return pushedToolsConfig;
-        }
-
-        /**
-         * Sets the pushed MCP tools configuration JSON for jobs created by this factory.
+         * Sets the HMAC temporary auth token for ar-manager.
          *
-         * @param pushedToolsConfig JSON mapping server names to download URLs and tool names
+         * @param arManagerToken the bearer token
          */
-        public void setPushedToolsConfig(String pushedToolsConfig) {
-            this.pushedToolsConfig = pushedToolsConfig;
-            set("pushedTools", base64Encode(pushedToolsConfig));
-        }
-
-        /**
-         * Returns per-workstream environment variables for pushed tools.
-         */
-        public Map<String, String> getWorkstreamEnv() {
-            return workstreamEnv;
-        }
-
-        /**
-         * Sets per-workstream environment variables for pushed tools.
-         * These override global env vars defined on the pushed tool entry.
-         *
-         * @param workstreamEnv map of environment variable names to values
-         */
-        public void setWorkstreamEnv(Map<String, String> workstreamEnv) {
-            this.workstreamEnv = workstreamEnv;
-            set("wsEnv", base64Encode(mapToJsonObject(workstreamEnv)));
+        public void setArManagerToken(String arManagerToken) {
+            this.arManagerToken = arManagerToken;
+            set("arManagerToken", base64Encode(arManagerToken));
         }
 
         /**
@@ -1265,23 +1158,6 @@ public class ClaudeCodeJob extends GitManagedJob {
         public void setPlanningDocument(String planningDocument) {
             this.planningDocument = planningDocument;
             set("planDoc", base64Encode(planningDocument));
-        }
-
-        /**
-         * Returns the GitHub organization name for jobs.
-         */
-        public String getGithubOrg() {
-            return githubOrg;
-        }
-
-        /**
-         * Sets the GitHub organization name for org-based token selection.
-         *
-         * @param githubOrg the GitHub organization name
-         */
-        public void setGithubOrg(String githubOrg) {
-            this.githubOrg = githubOrg;
-            set("githubOrg", base64Encode(githubOrg));
         }
 
         /**
@@ -1359,7 +1235,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             job.setMaxTurns(maxTurns);
             job.setMaxBudgetUsd(maxBudgetUsd);
 
-            // Description for Slack notifications
+            // Description for notifications
             String desc = getDescription();
             if (desc != null) {
                 job.setDescription(desc);
@@ -1388,34 +1264,22 @@ public class ClaudeCodeJob extends GitManagedJob {
                 job.setGitUserEmail(gitUserEmail);
             }
 
-            // Workstream URL (status reporting + Slack messaging)
+            // Workstream URL (status reporting + messaging)
             if (workstreamUrl != null) {
                 job.setWorkstreamUrl(workstreamUrl);
             }
 
-            // Centralized MCP server config
-            if (centralizedMcpConfig != null) {
-                job.setCentralizedMcpConfig(centralizedMcpConfig);
+            // ar-manager config
+            if (arManagerUrl != null) {
+                job.setArManagerUrl(arManagerUrl);
             }
-
-            // Pushed MCP tools config
-            if (pushedToolsConfig != null) {
-                job.setPushedToolsConfig(pushedToolsConfig);
-            }
-
-            // Per-workstream env vars for pushed tools
-            if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
-                job.setWorkstreamEnv(workstreamEnv);
+            if (arManagerToken != null) {
+                job.setArManagerToken(arManagerToken);
             }
 
             // Planning document
             if (planningDocument != null) {
                 job.setPlanningDocument(planningDocument);
-            }
-
-            // GitHub organization for token selection
-            if (githubOrg != null) {
-                job.setGithubOrg(githubOrg);
             }
 
             // Test file protection
@@ -1461,20 +1325,14 @@ public class ClaudeCodeJob extends GitManagedJob {
                 case "maxBudget":
                     this.maxBudgetUsd = Double.parseDouble(value);
                     break;
-                case "centralMcp":
-                    this.centralizedMcpConfig = base64Decode(value);
+                case "arManagerUrl":
+                    this.arManagerUrl = base64Decode(value);
                     break;
-                case "pushedTools":
-                    this.pushedToolsConfig = base64Decode(value);
-                    break;
-                case "wsEnv":
-                    this.workstreamEnv = parseJsonObjectToMap(base64Decode(value));
+                case "arManagerToken":
+                    this.arManagerToken = base64Decode(value);
                     break;
                 case "planDoc":
                     this.planningDocument = base64Decode(value);
-                    break;
-                case "githubOrg":
-                    this.githubOrg = base64Decode(value);
                     break;
                 case "enforceChanges":
                     this.enforceChanges = Boolean.parseBoolean(value);

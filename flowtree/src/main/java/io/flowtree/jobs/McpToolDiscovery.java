@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
  * <p>Supports three common MCP server patterns:</p>
  * <ul>
  *   <li><b>Decorator pattern:</b> {@code @mcp.tool()} decorating individual
- *       {@code def function_name()} definitions (used by ar-slack, ar-memory,
+ *       {@code def function_name()} definitions (used by ar-messages, ar-memory,
  *       ar-consultant, ar-profile-analyzer)</li>
  *   <li><b>List-tools pattern:</b> {@code @server.list_tools()} returning a
  *       list of {@code Tool(name="tool_name", ...)} entries (used by

@@ -40,24 +40,26 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 30000)
-	public void includesSlackSectionWhenUrlSet() {
+	public void includesCommunicationSectionWhenUrlSet() {
 		String result = new InstructionPromptBuilder()
 			.setPrompt("test")
 			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
 			.build();
-		assertTrue("Expected Slack section when workstream URL is set",
-			result.toLowerCase().contains("slack"));
+		assertTrue("Expected Communication section when workstream URL is set",
+			result.contains("## Communication"));
+		assertTrue("Expected send_message reference",
+			result.contains("send_message"));
 	}
 
 	@Test(timeout = 30000)
-	public void excludesSlackSectionWhenNoUrl() {
+	public void excludesMessageSectionWhenNoUrl() {
 		String result = new InstructionPromptBuilder()
 			.setPrompt("test")
 			.build();
-		assertFalse("Expected no slack_send_message reference without workstream URL",
-			result.contains("slack_send_message"));
-		assertFalse("Expected no Slack Communication section without workstream URL",
-			result.contains("## Slack Communication"));
+		assertFalse("Expected no send_message reference without workstream URL",
+			result.contains("send_message"));
+		assertFalse("Expected no Communication section without workstream URL",
+			result.contains("## Communication"));
 	}
 
 	@Test(timeout = 30000)
@@ -95,8 +97,8 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.build();
 		assertTrue("Expected Branch Awareness section when target branch is set",
 			result.contains("Branch Awareness"));
-		assertTrue("Expected branch_catchup reference",
-			result.contains("branch_catchup"));
+		assertTrue("Expected memory_branch_context reference",
+			result.contains("memory_branch_context"));
 	}
 
 	@Test(timeout = 30000)

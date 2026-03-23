@@ -118,7 +118,7 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	 * Verifies that MCP tool server files exist in the working directory
 	 * and logs their modification times for deployment diagnostics.
 	 *
-	 * <p>Checks for {@code tools/mcp/slack/server.py} and
+	 * <p>Checks for {@code tools/mcp/messages/server.py} and
 	 * {@code tools/mcp/github/server.py} relative to the given working
 	 * directory. For each file that exists, the age in seconds since last
 	 * modification is logged. Missing files produce a warning.</p>
@@ -127,7 +127,7 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	 */
 	public void verifyMcpToolFiles(Path workingDirectory) {
 		String[] toolFiles = {
-			"tools/mcp/slack/server.py",
+			"tools/mcp/messages/server.py",
 			"tools/mcp/github/server.py"
 		};
 

@@ -21,7 +21,7 @@ package io.flowtree.jobs;
  *
  * <p>Implementations can be registered with job systems to receive notifications
  * when jobs complete, fail, or are cancelled. This is particularly useful for
- * integrations like Slack that need to post status updates.</p>
+ * integrations that need to post status updates.</p>
  *
  * <p>The {@code workstreamId} parameter identifies the workstream that owns
  * the job. When events arrive via HTTP, the workstream ID is extracted from
