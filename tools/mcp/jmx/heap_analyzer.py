@@ -13,7 +13,7 @@ from typing import Optional
 
 
 # Path to the shaded jar, relative to this module
-_JAR_DIR = Path(__file__).resolve().parent.parent.parent / "ar-heap-analyzer" / "target"
+_JAR_DIR = Path(__file__).resolve().parent.parent.parent.parent / "ar-heap-analyzer" / "target"
 _JAR_NAME = "ar-heap-analyzer.jar"
 
 
@@ -37,7 +37,7 @@ def _find_jar() -> Path:
 
     raise HeapAnalyzerError(
         f"ar-heap-analyzer.jar not found at {jar_path}. "
-        "Build with: mvn package -pl tools/ar-heap-analyzer"
+        "Build with: mvn package -pl ar-heap-analyzer"
     )
 
 
