@@ -12,10 +12,17 @@ from pathlib import Path
 from typing import Optional
 
 
-# Resolve project root relative to this script
+# Resolve project root: AR_DOCS_DIR env var takes priority (required
+# when running as a pushed tool outside the common repo), otherwise
+# fall back to the standard path relative to this script.
 SCRIPT_DIR = Path(__file__).parent
-COMMON_DIR = SCRIPT_DIR.parent.parent.parent  # tools/mcp/consultant -> common
-DOCS_DIR = COMMON_DIR / "docs"
+_env_docs = os.environ.get("AR_DOCS_DIR", "").strip()
+if _env_docs:
+    DOCS_DIR = Path(_env_docs)
+    COMMON_DIR = DOCS_DIR.parent
+else:
+    COMMON_DIR = SCRIPT_DIR.parent.parent.parent  # tools/mcp/consultant -> common
+    DOCS_DIR = COMMON_DIR / "docs"
 MODULES_DIR = DOCS_DIR / "modules"
 INTERNALS_DIR = DOCS_DIR / "internals"
 

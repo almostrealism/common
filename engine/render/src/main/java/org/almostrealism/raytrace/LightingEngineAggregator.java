@@ -128,11 +128,9 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 
 		this.ranks = new ArrayList<>();
 		for (int i = 0; i < size(); i++) {
-			// CRITICAL: Use .each() to properly evaluate batch of rays - without it, only first ray processes correctly
 			PackedCollection rankCollection = new PackedCollection(shape(input.getCount(), 1).traverse(1));
 			this.ranks.add(rankCollection);
 
-			// Evaluate the rank producer
 			Producer rankProducer = get(i).getRank();
 			rankProducer.get().into(rankCollection.each()).evaluate(input);
 		}

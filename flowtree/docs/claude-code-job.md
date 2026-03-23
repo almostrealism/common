@@ -252,7 +252,7 @@ Each of these results in a `FAILED` status event being posted to the workstream 
 
 5. **Instruction prompt building** -- `buildInstructionPrompt()` wraps the user's prompt with operational context (Slack instructions, git instructions, merge conflict resolution, branch awareness, budget/turn limits, planning document reference, and more). See [InstructionPromptBuilder](#instructionpromptbuilder) for full details.
 
-6. **MCP tool file verification** -- `toolsDownloader.verifyMcpToolFiles(workDir)` checks that `tools/mcp/slack/server.py` and `tools/mcp/github/server.py` exist in the working directory and logs their modification times. Missing files produce warnings.
+6. **MCP tool file verification** -- `toolsDownloader.verifyMcpToolFiles(workDir)` checks that `tools/mcp/messages/server.py` and `tools/mcp/github/server.py` exist in the working directory and logs their modification times. Missing files produce warnings.
 
 7. **Command construction** -- The full `claude` command is assembled. See [Command-Line Arguments](#command-line-arguments).
 
@@ -437,9 +437,9 @@ Centralized servers run on or near the controller and are accessed over HTTP. Th
 **Input format:**
 ```json
 {
-  "ar-slack": {
+  "ar-messages": {
     "url": "http://0.0.0.0:8090/mcp",
-    "tools": ["slack_send_message", "slack_get_stats"]
+    "tools": ["send_message", "get_stats"]
   },
   "ar-consultant": {
     "url": "http://0.0.0.0:8091/mcp",
@@ -454,7 +454,7 @@ Centralized servers run on or near the controller and are accessed over HTTP. Th
 ```json
 {
   "mcpServers": {
-    "ar-slack": {
+    "ar-messages": {
       "type": "http",
       "url": "http://controller-host:8090/mcp"
     }
@@ -505,19 +505,19 @@ Pushed tools are MCP server Python scripts that are downloaded from the controll
 
 Project-level MCP servers are defined in the repository's `.mcp.json` file and optionally filtered by `.claude/settings.json`. These are servers bundled with the project (e.g., `ar-test-runner`, `ar-docs`, `ar-profile-analyzer`).
 
-**Discovery:** `discoverProjectMcpServers()` reads `.mcp.json` from the working directory, parses each server's command and args, extracts the Python source file path (first arg), and cross-references with `.claude/settings.json`'s `enabledMcpjsonServers` array. Servers named `ar-github` and `ar-slack` are always skipped (handled separately). Servers that are already centralized or pushed are also skipped.
+**Discovery:** `discoverProjectMcpServers()` reads `.mcp.json` from the working directory, parses each server's command and args, extracts the Python source file path (first arg), and cross-references with `.claude/settings.json`'s `enabledMcpjsonServers` array. Servers named `ar-github` and `ar-messages` are always skipped (handled separately). Servers that are already centralized or pushed are also skipped.
 
 **Output in --mcp-config:** Emitted as stdio entries with `command: "python3"` and `args: ["<path>"]`.
 
 **Tool name discovery for --allowedTools:** For each project server, `McpToolDiscovery.discoverToolNames()` scans the Python source file to extract tool names. See [MCP Tool Discovery](#mcp-tool-discovery).
 
-#### 4. Fallback Servers (ar-github, ar-slack)
+#### 4. Fallback Servers (ar-github, ar-messages)
 
-`ar-github` and `ar-slack` receive special treatment because they have conditional inclusion logic:
+`ar-github` and `ar-messages` receive special treatment because they have conditional inclusion logic:
 
 - **ar-github**: If not present in the centralized config or pushed tools, a stdio fallback entry is added pointing to `tools/mcp/github/server.py`. Its tools (`github_pr_find`, `github_pr_review_comments`, `github_pr_conversation`, `github_pr_reply`) are always added to the allowed tools list.
 
-- **ar-slack**: If not present in the centralized config or pushed tools, a stdio fallback entry is added pointing to `tools/mcp/slack/server.py` -- but only when a workstream URL is configured. Its tool (`slack_send_message`) is added to the allowed tools list under the same condition.
+- **ar-messages**: If not present in the centralized config or pushed tools, a stdio fallback entry is added pointing to `tools/mcp/messages/server.py` -- but only when a workstream URL is configured. Its tool (`send_message`) is added to the allowed tools list under the same condition.
 
 ### buildMcpConfig() Method
 
@@ -530,7 +530,7 @@ This method takes the base tools string (e.g., `"Read,Edit,Write,Bash,Glob,Grep"
 1. Tools from centralized servers: `mcp__<serverName>__<toolName>` for each tool in each centralized server's tools list
 2. Tools from pushed tools: same format
 3. GitHub tools (unless centralized or pushed): the four `mcp__ar-github__*` tools
-4. Slack tool (unless centralized or pushed, and only when workstream URL is set): `mcp__ar-slack__slack_send_message`
+4. Slack tool (unless centralized or pushed, and only when workstream URL is set): `mcp__ar-messages__send_message`
 5. Tools from discovered project servers: for each server, `discoverToolNames()` is called on the Python source file and the resulting names are formatted as `mcp__<serverName>__<toolName>`
 
 ### parseCentralizedConfig() and parsePushedConfig()
@@ -547,7 +547,7 @@ This package-private method performs project-level MCP server discovery by readi
 
 2. **Read .claude/settings.json**: If present, extracts the `enabledMcpjsonServers` array. This array acts as a whitelist: only servers named in this array are included. If the file is absent or the array is missing, all servers from `.mcp.json` are considered enabled.
 
-3. **Filter exclusions**: Servers named `ar-github` and `ar-slack` are always excluded. Servers that appear in the centralized config or pushed tools config are also excluded (they are handled by their respective higher-priority paths).
+3. **Filter exclusions**: Servers named `ar-github` and `ar-messages` are always excluded. Servers that appear in the centralized config or pushed tools config are also excluded (they are handled by their respective higher-priority paths).
 
 4. **Return**: The remaining servers are returned as a `Map<String, String>` from server name to Python file path.
 
@@ -558,9 +558,9 @@ The four configuration sources are processed with strict deduplication to preven
 1. Centralized servers take highest priority. They appear as HTTP entries.
 2. Pushed tools take second priority. They appear as stdio entries.
 3. Project servers take third priority. They are skipped if the server name already appears in centralized or pushed configs.
-4. Fallback servers (ar-github, ar-slack) take lowest priority. They are only added if not already centralized or pushed.
+4. Fallback servers (ar-github, ar-messages) take lowest priority. They are only added if not already centralized or pushed.
 
-This means that if a server like `ar-slack` is configured as a centralized HTTP server, the stdio fallback for `ar-slack` is NOT added, and the tools for `ar-slack` come from the centralized config's `tools` array rather than from any local discovery.
+This means that if a server like `ar-messages` is configured as a centralized HTTP server, the stdio fallback for `ar-messages` is NOT added, and the tools for `ar-messages` come from the centralized config's `tools` array rather than from any local discovery.
 
 ### Environment Variable Resolution Pattern
 
@@ -594,7 +594,7 @@ This is the primary entry point. For each server defined in the pushed tools con
 
 ### verifyMcpToolFiles(Path workingDirectory)
 
-Checks for the existence of `tools/mcp/slack/server.py` and `tools/mcp/github/server.py` relative to the working directory. For each file:
+Checks for the existence of `tools/mcp/messages/server.py` and `tools/mcp/github/server.py` relative to the working directory. For each file:
 
 - If present: logs the file's age in seconds since last modification. This aids deployment diagnostics (stale tool files indicate a deployment problem).
 - If absent: logs a warning with the absolute path. Missing tool files mean the fallback stdio entries in the MCP config will fail at runtime.
@@ -607,7 +607,7 @@ A simple HTTP GET client method that returns the response body as a string. It u
 
 The controller serves pushed tool files at `GET /api/tools/<name>`. This endpoint is handled by `FlowTreeApiEndpoint.handleToolDownload()`, which reads the registered Python source file from disk and serves it as `text/plain`. Tool files are registered on the endpoint by the controller during startup.
 
-The full download URL has the form `http://0.0.0.0:<port>/api/tools/<name>`, where `<port>` is the `FlowTreeApiEndpoint` listening port (default: 7780) and `<name>` is the server name (e.g., `ar-slack`, `ar-memory`). The `0.0.0.0` placeholder is resolved to the actual controller host before the download request is made.
+The full download URL has the form `http://0.0.0.0:<port>/api/tools/<name>`, where `<port>` is the `FlowTreeApiEndpoint` listening port (default: 7780) and `<name>` is the server name (e.g., `ar-messages`, `ar-memory`). The `0.0.0.0` placeholder is resolved to the actual controller host before the download request is made.
 
 ### Pushed Tool File Layout
 
@@ -617,7 +617,7 @@ After downloading, pushed tools are stored in a flat directory structure under t
 ~/.flowtree/
   tools/
     mcp/
-      ar-slack/
+      ar-messages/
         server.py
       ar-memory/
         server.py
@@ -649,18 +649,18 @@ The `ManagedToolsDownloader` is constructed with a reference to the `McpConfigBu
 
 ### Decorator Pattern
 
-Used by: ar-slack, ar-memory, ar-consultant, ar-profile-analyzer, ar-github.
+Used by: ar-messages, ar-memory, ar-consultant, ar-profile-analyzer, ar-github.
 
 In this pattern, each tool is a Python function decorated with `@mcp.tool()`:
 
 ```python
 @mcp.tool()
-def slack_send_message(text: str) -> dict:
+def send_message(text: str) -> dict:
     """Send a message to the workstream channel."""
     ...
 
 @mcp.tool()
-def slack_get_stats(period: str = "weekly") -> dict:
+def get_stats(period: str = "weekly") -> dict:
     """Get job timing statistics."""
     ...
 ```
@@ -881,7 +881,7 @@ When decoded:
 - `repoUrl` = `https://github.com/owner/repo`
 - `prompt` = `Fix the bug in Parser.java`
 - `tools` = `Read,Edit,Write,Bash,Glob,Grep`
-- `centralMcp` = `{"ar-slack":{"url":"http://0.0.0.0:8090/mcp","tools":["slack_send_message"]}}`
+- `centralMcp` = `{"ar-messages":{"url":"http://0.0.0.0:8090/mcp","tools":["send_message"]}}`
 
 ### Factory encode() and Prompt Storage
 
@@ -937,7 +937,7 @@ A comma-separated string listing every tool the agent is allowed to use. Constru
 
 Example output:
 ```
-Read,Edit,Write,Bash,Glob,Grep,mcp__ar-slack__slack_send_message,mcp__ar-slack__slack_get_stats,mcp__ar-consultant__consult,mcp__ar-consultant__recall,mcp__ar-github__github_pr_find,mcp__ar-github__github_pr_review_comments,mcp__ar-github__github_pr_conversation,mcp__ar-github__github_pr_reply
+Read,Edit,Write,Bash,Glob,Grep,mcp__ar-messages__send_message,mcp__ar-messages__get_stats,mcp__ar-consultant__consult,mcp__ar-consultant__recall,mcp__ar-github__github_pr_find,mcp__ar-github__github_pr_review_comments,mcp__ar-github__github_pr_conversation,mcp__ar-github__github_pr_reply
 ```
 
 #### `--max-turns <N>`
@@ -958,7 +958,7 @@ The `ProcessBuilder` sets these environment variables on the Claude Code process
 
 | Variable | Source | Description |
 |---|---|---|
-| `AR_WORKSTREAM_URL` | `resolveWorkstreamUrl()` | The workstream URL with `0.0.0.0` replaced by the controller's actual host. Used by MCP tools (ar-slack, ar-github) to communicate with the controller. |
+| `AR_WORKSTREAM_URL` | `resolveWorkstreamUrl()` | The workstream URL with `0.0.0.0` replaced by the controller's actual host. Used by MCP tools (ar-messages, ar-github) to communicate with the controller. |
 
 ### Process Configuration
 
@@ -1000,10 +1000,10 @@ claude -p "You are working autonomously as a coding agent...
 Fix the memory leak in CacheManager
 --- END USER REQUEST ---" \
 --output-format json \
---allowedTools Read,Edit,Write,Bash,Glob,Grep,mcp__ar-slack__slack_send_message,mcp__ar-consultant__consult,mcp__ar-consultant__recall,mcp__ar-consultant__remember,mcp__ar-consultant__branch_catchup,mcp__ar-github__github_pr_find,mcp__ar-github__github_pr_review_comments,mcp__ar-github__github_pr_conversation,mcp__ar-github__github_pr_reply \
+--allowedTools Read,Edit,Write,Bash,Glob,Grep,mcp__ar-messages__send_message,mcp__ar-consultant__consult,mcp__ar-consultant__recall,mcp__ar-consultant__remember,mcp__ar-consultant__branch_catchup,mcp__ar-github__github_pr_find,mcp__ar-github__github_pr_review_comments,mcp__ar-github__github_pr_conversation,mcp__ar-github__github_pr_reply \
 --max-turns 50 \
 --max-budget-usd 10.00 \
---mcp-config '{"mcpServers":{"ar-slack":{"type":"http","url":"http://controller:8090/mcp"},"ar-consultant":{"type":"http","url":"http://controller:8091/mcp"},"ar-github":{"command":"python3","args":["tools/mcp/github/server.py"]}}}'
+--mcp-config '{"mcpServers":{"ar-messages":{"type":"http","url":"http://controller:8090/mcp"},"ar-consultant":{"type":"http","url":"http://controller:8091/mcp"},"ar-github":{"command":"python3","args":["tools/mcp/github/server.py"]}}}'
 ```
 
 In practice, the prompt and MCP config strings are much longer, but the structure is always the same.

@@ -146,11 +146,67 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 }
 
                 return channelId;
+            } else if ("name_taken".equals(response.getError())) {
+                // Channel already exists — look it up by name
+                log("Channel '" + name + "' already exists, looking up by name");
+                return findChannelByName(name);
             } else {
                 warn("Failed to create channel '" + name + "': " + response.getError());
             }
         } catch (IOException | SlackApiException e) {
             warn("Error creating channel '" + name + "': " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Finds a channel by name that the bot is a member of.
+     *
+     * <p>Uses {@code conversations.list} with {@code types=private_channel}
+     * to find channels the bot has access to. Only returns a match if the
+     * bot is already a member of the channel.</p>
+     *
+     * @param name the channel name (without #)
+     * @return the channel ID, or null if not found or bot is not a member
+     */
+    private String findChannelByName(String name) {
+        if (client == null) return null;
+
+        try {
+            String cursor = null;
+            do {
+                final String pageCursor = cursor;
+                com.slack.api.methods.response.conversations.ConversationsListResponse response =
+                    client.conversationsList(req -> {
+                        req.types(java.util.Arrays.asList(
+                            com.slack.api.model.ConversationType.PRIVATE_CHANNEL,
+                            com.slack.api.model.ConversationType.PUBLIC_CHANNEL));
+                        req.limit(200);
+                        if (pageCursor != null) req.cursor(pageCursor);
+                        return req;
+                    });
+
+                if (!response.isOk()) {
+                    warn("Failed to list channels: " + response.getError());
+                    return null;
+                }
+
+                for (com.slack.api.model.Conversation channel : response.getChannels()) {
+                    if (name.equals(channel.getName()) && channel.isMember()) {
+                        String channelId = channel.getId();
+                        log("Found existing channel '" + name + "' (" + channelId + ")");
+                        return channelId;
+                    }
+                }
+
+                cursor = response.getResponseMetadata() != null
+                    ? response.getResponseMetadata().getNextCursor() : null;
+            } while (cursor != null && !cursor.isEmpty());
+
+            log("Channel '" + name + "' exists but bot is not a member");
+        } catch (IOException | SlackApiException e) {
+            warn("Error looking up channel '" + name + "': " + e.getMessage());
         }
 
         return null;
