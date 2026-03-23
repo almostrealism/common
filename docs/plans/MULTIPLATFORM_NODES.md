@@ -143,46 +143,56 @@ Jobs flow through the system via several paths:
 
 ### Implementation Steps
 
-1. **Add label check in `Node.addJob(Job)`**
+1. **Add label check in the Node worker thread execution path (NOT in `addJob()`)**
    - File: `flowtree/src/main/java/io/flowtree/node/Node.java`
-   - At the beginning of `addJob(Job)` (line 519), before adding to the queue:
+   - Jobs must be **accepted into any Node's queue** regardless of labels. This is critical because Nodes serve as relay points — other Nodes connected via peers can pull jobs from the queue. If `addJob()` rejected mismatched jobs, they would have nowhere to sit while waiting for a matching Node to pick them up.
+   - Instead, add the label check in the worker thread's execution loop (line ~153), before calling `j.run()`:
      ```java
-     if (!satisfies(j.getRequiredLabels())) {
-         displayMessage("Rejecting job " + j.getTaskId() + " -- labels mismatch");
-         return -2;  // New return code for label mismatch
+     Job j = nextJob();
+     if (j != null) {
+         if (!satisfies(j.getRequiredLabels())) {
+             displayMessage("Skipping job " + j.getTaskId() + " -- labels mismatch, relaying");
+             if (this.parent != null) {
+                 this.parent.addJob(j);  // Relay back to NodeGroup for re-routing
+             }
+             continue;
+         }
+         j.run();
      }
      ```
+   - When a Node dequeues a job it cannot execute, it relays it back to its parent NodeGroup. The NodeGroup then routes it to another local Node or to a connected peer server.
 
-2. **Handle mismatch return in `NodeGroup`**
+2. **Handle relayed jobs in `NodeGroup`**
    - File: `flowtree/src/main/java/io/flowtree/node/NodeGroup.java`
-   - In the run loop where `target.addJob(j)` is called (line 1262), check the return value. If `-2` (label mismatch), try the next least active Node. If no Node can take the job, re-add it to the NodeGroup's own job queue so it can be relayed to another server.
-   - Similarly in `addJobs(JobFactory)` (line 1303) and `recievedMessage()` for `Message.Job` (line 1338).
+   - When a job is relayed back from a child Node via `addJob()`, the NodeGroup should attempt to route it to a different local Node. If no local Node can handle it (checked via `satisfies()`), send it to a connected peer server.
+   - Add a method `findMatchingNode(Job)` that iterates `this.nodes` and returns the first Node whose labels satisfy the job's requirements. If none match locally, relay to a peer server.
 
-3. **Add label check in `NodeGroup` for tasks**
-   - In `addJobs(JobFactory)` (line 1281), after getting a job from the factory, check if any local Node can satisfy it. If not, the job should be sent to a connected peer server instead of being dropped.
-
-4. **Relay unmatched jobs to peer servers**
+3. **Relay unmatched jobs to peer servers**
    - When no local Node can run a job, iterate `servers` (the list of connected NodeProxy peers) and send the job as a `Message.Job` to the first available one. This leverages the existing inter-server relay mechanism.
    - Add a relay count or TTL to prevent infinite circulation. Include a `relayCount` in the Job encoding that increments each time the job is relayed. If it exceeds a threshold (e.g., 10), log a warning and drop the job.
+
+4. **Ensure `addJob()` always accepts jobs (no label check)**
+   - `Node.addJob(Job)` (line 519) remains unchanged — it unconditionally adds jobs to the queue. This preserves its role as a queue/warehouse that any connected Node can pull from.
 
 ### Risks and Considerations
 
 - **Infinite circulation**: Without a TTL, a job with requirements that no Node satisfies could circulate forever. The relay count/TTL is essential.
-- **Performance**: The label check is a fast map lookup (O(k) where k = number of required labels, typically 1-2), so there is negligible overhead.
-- **Race conditions**: The `addJob()` method is already synchronized on `this.jobs`. The label check happens before the synchronized block, which is safe since labels are immutable after startup.
-- **Job ordering**: Rejected jobs are re-queued, which may alter ordering. This is acceptable since the system already does not guarantee strict ordering.
+- **Performance**: The label check is a fast map lookup (O(k) where k = number of required labels, typically 1-2), so there is negligible overhead. The relay path (dequeue → check → relay to parent → route to peer) adds minimal latency.
+- **Relay Node churn**: The controller's relay Node (see Requirement 5) will dequeue jobs, fail the label check, and relay them back to its parent NodeGroup. This is by design — the relay Node exists to hold jobs in its queue so connected agent Nodes can discover them. The worker thread's `sleepPeriod` prevents tight spinning.
+- **Job ordering**: Relayed jobs re-enter the NodeGroup's routing, which may alter ordering. This is acceptable since the system already does not guarantee strict ordering.
 
 ### Backward Compatibility
 
-- Jobs with no requirements (`getRequiredLabels()` returns empty map) always pass the label check. Existing job flow is completely unchanged.
+- Jobs with no requirements (`getRequiredLabels()` returns empty map) always pass the `satisfies()` check (empty requirements match any Node). Existing job flow is completely unchanged.
+- `addJob()` behavior is unchanged — all jobs are accepted into any Node's queue as before.
 
 ---
 
-## Requirement 5: Controller "No Execute" Mode
+## Requirement 5: Controller Relay Node
 
 ### Current Behavior
 
-The `FlowTreeController` (line 382-388 in `flowtree/src/main/java/io/flowtree/slack/FlowTreeController.java`) already avoids local execution by setting `nodes.initial=0`:
+The `FlowTreeController` (line 382-388 in `flowtree/src/main/java/io/flowtree/slack/FlowTreeController.java`) currently sets `nodes.initial=0`:
 
 ```java
 // Set nodes.initial=0 so the controller never processes jobs locally --
@@ -193,24 +203,53 @@ flowtreeProps.setProperty("nodes.initial", "0");
 flowtreeServer = new Server(flowtreeProps);
 ```
 
-With `nodes.initial=0`, the `NodeGroup` creates no child Nodes, so `getLeastActiveNode()` returns null, and jobs are only sent to connected peer servers via `sendTask()`.
+With `nodes.initial=0`, the `NodeGroup` creates no child Nodes, so `getLeastActiveNode()` returns null. In the current system (without labels), this works because jobs are sent directly to agents via `sendTask()` and never need to come back through the controller.
+
+### Problem
+
+With label-based routing, jobs can be **rejected** by an agent Node whose labels don't match. Requirement 4 specifies that unmatched jobs are relayed to peer servers, which means they can flow back to the controller's NodeGroup. When this happens with `nodes.initial=0`:
+
+1. `NodeGroup.recievedMessage()` handles `Message.Job` by calling `getLeastActiveNode()`, which returns `null`
+2. The job is logged and **silently discarded** (line ~1338)
+3. Similarly, `addJobs()` silently drops jobs when `getLeastActiveNode()` returns `null`
+
+The controller's Node is essential as a **warehouse/relay point** in the job circulation network. Nodes serve as connection points — jobs sit in a Node's queue and get picked up by other Nodes from other Servers that are connected to it. Without a Node, the controller is a dead end: jobs that arrive via `Message.Job` have nowhere to go.
 
 ### Implementation Steps
 
-1. **No changes needed for controller behavior**
-   - The existing `nodes.initial=0` approach already prevents the controller from executing jobs. The label system provides an alternative mechanism but is not required here.
+1. **Change controller to `nodes.initial=1` with a relay label**
+   - File: `flowtree/src/main/java/io/flowtree/slack/FlowTreeController.java`
+   - Update the controller's FlowTree properties:
+     ```java
+     Properties flowtreeProps = new Properties();
+     flowtreeProps.setProperty("server.port", String.valueOf(flowtreePort));
+     flowtreeProps.setProperty("nodes.initial", "1");
+     flowtreeProps.setProperty("nodes.labels.role", "relay");
+     flowtreeServer = new Server(flowtreeProps);
+     ```
+   - The controller now has one child Node with the label `role:relay`
 
-2. **Optional: Document the label-based alternative**
-   - If desired, the controller could instead use `nodes.initial=1` with an empty label set, which would cause all jobs with any requirements to be rejected and relayed. However, `nodes.initial=0` is simpler and already works.
-   - The label system provides value for agent Nodes that should only run certain types of jobs, not for the controller which should run no jobs at all.
+2. **Ensure the relay Node participates in job circulation**
+   - The controller's Node joins the circulation network like any other Node. Connected Nodes from agent Servers can pull jobs from it via the existing peer relay mechanism (`Connection.sendJob()` / `parent.addJob()`)
+   - When the controller's NodeGroup receives a `Message.Job`, `getLeastActiveNode()` now returns the relay Node instead of null, so the job enters its queue instead of being dropped
+   - When the controller's NodeGroup receives a `Message.Task`, `addJobs()` assigns generated jobs to the relay Node's queue, from which they can be relayed to connected agent Nodes
+
+3. **Label mismatch prevents execution**
+   - No job will ever have `role:relay` in its required labels (this is a controller-internal label, not a platform capability)
+   - When the relay Node's worker thread dequeues a job and checks `satisfies(j.getRequiredLabels())` (the execution-path label check from Requirement 4), the check fails because `role:relay` does not match requirements like `platform:macos`
+   - The Node relays the job back to its parent NodeGroup, which routes it to a connected agent server
+   - This is the same mechanism used by all Nodes — the relay Node is not special-cased, it simply never matches any job's requirements
 
 ### Risks and Considerations
 
-- No risk. The current approach is already clean and correct.
+- **The relay Node's worker thread will spin on unmatched jobs**: If many jobs arrive that the relay Node can't execute, it will repeatedly dequeue and re-relay them. This is acceptable because (a) the controller handles relatively few concurrent jobs, and (b) the relay loop is fast (dequeue → check labels → relay to parent → parent sends to peer). The existing `sleepPeriod` in the Node worker thread prevents tight spinning when the queue is empty.
+- **TTL interaction**: The relay count/TTL from Requirement 4 must account for the extra hop through the controller's relay Node. A job's typical path is: controller relay Node → agent Node A (mismatch) → controller relay Node → agent Node B (match). Each hop increments the relay count. The TTL threshold should be generous enough to allow multi-hop routing (the default of 10 is sufficient).
+- **Label choice**: `role:relay` is used here because it's a distinct namespace from platform capabilities. No job should ever require `role:relay`. If a more robust approach is desired, the relay Node could have **no labels at all** — since `satisfies()` checks that the Node's labels contain every entry in the job's requirements, a Node with zero labels will fail to satisfy any job that has at least one requirement.
 
 ### Backward Compatibility
 
-- No changes to controller behavior.
+- The controller changes from zero Nodes to one Node. Existing jobs with no requirements (empty `getRequiredLabels()`) will match the relay Node's `satisfies()` check (empty requirements always match), so the relay Node would execute them. To prevent this, the execution-path label check should also verify that the Node has at least one label that is **not** `role:relay` before executing — or more simply, jobs with no requirements should continue to be routed to agents via `sendTask()` as they are today, bypassing the relay Node's queue entirely.
+- The `sendTask()` path (controller → agent for new tasks) is unchanged. The relay Node only participates when jobs arrive via `Message.Job` (the recirculation path).
 
 ---
 
@@ -270,18 +309,19 @@ Neither path supports specifying job requirements/labels.
 1. **Node Labels System** (Requirement 1) — Foundation that everything else builds on
 2. **Platform Detection** (Requirement 2) — Immediate value, simple to implement
 3. **Job Requirements** (Requirement 3) — Extends Job/JobFactory model
-4. **Job Circulation on Mismatch** (Requirement 4) — Core routing logic
-5. **MCP/API Integration** (Requirement 6) — Exposes the feature to callers
-6. **Controller No-Execute** (Requirement 5) — Already works, document only
+4. **Job Circulation on Mismatch** (Requirement 4) — Core routing logic, label check in execution path
+5. **Controller Relay Node** (Requirement 5) — Controller runs a `role:relay` Node for job circulation
+6. **MCP/API Integration** (Requirement 6) — Exposes the feature to callers
 
-Requirements 1 and 2 can be implemented together in a single change. Requirements 3 and 4 depend on 1 and should be implemented together. Requirement 6 depends on 3.
+Requirements 1 and 2 can be implemented together in a single change. Requirements 3 and 4 depend on 1 and should be implemented together. Requirement 5 depends on 4 (the execution-path label check). Requirement 6 depends on 3.
 
 ## Files to Change
 
 | File | Changes |
 |------|---------|
-| `flowtree/src/main/java/io/flowtree/node/Node.java` | Add `labels` map, `setLabel()`, `getLabels()`, `satisfies()`, label check in `addJob()` |
-| `flowtree/src/main/java/io/flowtree/node/NodeGroup.java` | Load labels from Properties/env var, auto-detect platform, handle label mismatch in job distribution, relay unmatched jobs |
+| `flowtree/src/main/java/io/flowtree/node/Node.java` | Add `labels` map, `setLabel()`, `getLabels()`, `satisfies()`, label check in worker thread execution path (not `addJob()`), relay mismatched jobs to parent |
+| `flowtree/src/main/java/io/flowtree/node/NodeGroup.java` | Load labels from Properties/env var, auto-detect platform, route relayed jobs to matching Nodes or peer servers |
+| `flowtree/src/main/java/io/flowtree/slack/FlowTreeController.java` | Change `nodes.initial=0` to `nodes.initial=1`, add `role:relay` label for the controller's relay Node |
 | `flowtreeapi/src/main/java/io/flowtree/job/Job.java` | Add `getRequiredLabels()` default method |
 | `flowtree/src/main/java/io/flowtree/jobs/GitManagedJob.java` | Add `requiredLabels` field, serialization in `encode()`/`set()` |
 | `flowtree/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java` | Add `requiredLabels` to `Factory`, propagate to created jobs |
