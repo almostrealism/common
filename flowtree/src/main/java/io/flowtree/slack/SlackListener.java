@@ -338,6 +338,20 @@ public class SlackListener implements ConsoleFeatures {
      * @param threadTs   the existing thread timestamp (non-null if already in a thread)
      */
     private boolean submitJob(SlackWorkstream workstream, String prompt, String messageTs, String threadTs) {
+        return submitJob(workstream, prompt, messageTs, threadTs, java.util.Collections.emptyMap());
+    }
+
+    /**
+     * Submits a job to connected agents via the FlowTree {@link Server}.
+     *
+     * @param workstream     the target workstream
+     * @param prompt         the user prompt
+     * @param messageTs      the timestamp of the triggering message (for threading)
+     * @param threadTs       the existing thread timestamp (non-null if already in a thread)
+     * @param requiredLabels labels that the executing Node must have
+     */
+    private boolean submitJob(SlackWorkstream workstream, String prompt, String messageTs, String threadTs,
+                              java.util.Map<String, String> requiredLabels) {
         if (server == null) {
             warn("No FlowTree server configured");
             return false;
@@ -416,6 +430,13 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         // GitHub organization is now handled via ar-manager's workstream resolution
+
+        // Required labels for Node routing
+        if (requiredLabels != null) {
+            for (java.util.Map.Entry<String, String> entry : requiredLabels.entrySet()) {
+                factory.setRequiredLabel(entry.getKey(), entry.getValue());
+            }
+        }
 
         // Build workstream URL for status reporting and Slack messaging
         if (apiPort > 0) {

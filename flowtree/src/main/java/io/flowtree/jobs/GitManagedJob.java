@@ -35,8 +35,11 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -131,6 +134,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private boolean mergeConflictsDetected = false;
     private List<String> conflictFiles = new ArrayList<>();
 
+    // ---- Label-based routing requirements ----
+    private final Map<String, String> requiredLabels = new LinkedHashMap<>();
+
     private Consumer<JobOutput> outputConsumer;
     private final CompletableFuture<Void> future = new CompletableFuture<>();
 
@@ -149,6 +155,21 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      */
     protected GitManagedJob(String taskId) {
         this.taskId = taskId;
+    }
+
+    /**
+     * Sets a required label that a Node must have to execute this job.
+     *
+     * @param key   the label key (e.g. "platform")
+     * @param value the required value (e.g. "macos")
+     */
+    public void setRequiredLabel(String key, String value) {
+        requiredLabels.put(key, value);
+    }
+
+    @Override
+    public Map<String, String> getRequiredLabels() {
+        return Collections.unmodifiableMap(requiredLabels);
     }
 
     /**
@@ -1603,6 +1624,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         if (workstreamUrl != null) {
             sb.append("::workstreamUrl:=").append(base64Encode(workstreamUrl));
         }
+        for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
+            sb.append("::req.").append(entry.getKey()).append(":=").append(entry.getValue());
+        }
         return sb.toString();
     }
 
@@ -1650,6 +1674,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 break;
             case "dryRun":
                 this.dryRun = Boolean.parseBoolean(value);
+                break;
+            default:
+                if (key.startsWith("req.")) {
+                    requiredLabels.put(key.substring(4), value);
+                }
                 break;
         }
     }

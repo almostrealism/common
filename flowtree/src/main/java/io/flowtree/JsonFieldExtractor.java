@@ -17,7 +17,9 @@
 package io.flowtree;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Lightweight JSON field extraction utilities that avoid external library dependencies.
@@ -369,6 +371,69 @@ public final class JsonFieldExtractor {
 			}
 
 			pos = objEnd;
+		}
+
+		return result;
+	}
+
+	/**
+	 * Extracts a flat JSON object of string key-value pairs from a field.
+	 *
+	 * <p>For example, given JSON containing {@code "requiredLabels": {"platform": "macos", "gpu": "true"}},
+	 * calling {@code extractStringObject(json, "requiredLabels")} returns a map
+	 * with entries {@code platform→macos} and {@code gpu→true}.</p>
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return a map of string key-value pairs, empty if not found
+	 */
+	public static Map<String, String> extractStringObject(String json, String field) {
+		Map<String, String> result = new LinkedHashMap<>();
+		if (json == null) return result;
+
+		int fieldStart = json.indexOf("\"" + field + "\"");
+		if (fieldStart < 0) return result;
+
+		int colonPos = json.indexOf(":", fieldStart);
+		if (colonPos < 0) return result;
+
+		int objStart = json.indexOf("{", colonPos);
+		if (objStart < 0) return result;
+
+		// Find matching closing brace
+		int depth = 1;
+		int objEnd = -1;
+		for (int i = objStart + 1; i < json.length() && depth > 0; i++) {
+			char c = json.charAt(i);
+			if (c == '{') depth++;
+			else if (c == '}') {
+				depth--;
+				if (depth == 0) objEnd = i;
+			}
+		}
+
+		if (objEnd < 0) return result;
+
+		String objContent = json.substring(objStart + 1, objEnd);
+		// Parse simple "key": "value" pairs
+		int pos = 0;
+		while (pos < objContent.length()) {
+			int keyStart = objContent.indexOf("\"", pos);
+			if (keyStart < 0) break;
+			int keyEnd = objContent.indexOf("\"", keyStart + 1);
+			if (keyEnd < 0) break;
+
+			String key = objContent.substring(keyStart + 1, keyEnd);
+
+			int valQuoteStart = objContent.indexOf("\"", keyEnd + 1);
+			if (valQuoteStart < 0) break;
+			int valQuoteEnd = objContent.indexOf("\"", valQuoteStart + 1);
+			if (valQuoteEnd < 0) break;
+
+			String value = objContent.substring(valQuoteStart + 1, valQuoteEnd);
+			result.put(key, value);
+
+			pos = valQuoteEnd + 1;
 		}
 
 		return result;

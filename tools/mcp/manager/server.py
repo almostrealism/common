@@ -996,6 +996,7 @@ def workstream_submit_task(
     protect_test_files: bool = False,
     enforce_changes: bool = False,
     started_after: str = "",
+    required_labels: str = "",
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1024,6 +1025,9 @@ def workstream_submit_task(
             exists on the workstream, the submission is skipped and the
             response includes ``skipped: true``. Used by CI pipelines to
             avoid stale auto-resolve jobs colliding with explicit submissions.
+        required_labels: Comma-separated key:value pairs specifying Node
+            labels required to execute this job (e.g., "platform:macos,gpu:true").
+            Only Nodes with matching labels will execute the job.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -1058,6 +1062,14 @@ def workstream_submit_task(
         payload["enforceChanges"] = True
     if started_after:
         payload["startedAfter"] = started_after
+    if required_labels:
+        labels_dict = {}
+        for pair in required_labels.split(","):
+            parts = pair.strip().split(":", 1)
+            if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+                labels_dict[parts[0].strip()] = parts[1].strip()
+        if labels_dict:
+            payload["requiredLabels"] = labels_dict
 
     result = _controller_post("/api/submit", payload)
 

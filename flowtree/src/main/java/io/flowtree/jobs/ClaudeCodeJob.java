@@ -33,7 +33,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -867,6 +869,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         private String arManagerToken;
         private String planningDocument;
         private boolean enforceChanges;
+        private final Map<String, String> requiredLabels = new LinkedHashMap<>();
 
         /**
          * Default constructor for deserialization.
@@ -1197,6 +1200,27 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
 
         /**
+         * Sets a required label that target Nodes must have to execute jobs
+         * produced by this factory.
+         *
+         * @param key   the label key (e.g. "platform")
+         * @param value the required value (e.g. "macos")
+         */
+        public void setRequiredLabel(String key, String value) {
+            requiredLabels.put(key, value);
+            set("req." + key, value);
+        }
+
+        /**
+         * Returns the required labels for jobs created by this factory.
+         *
+         * @return unmodifiable map of required label key-value pairs
+         */
+        public Map<String, String> getRequiredLabels() {
+            return java.util.Collections.unmodifiableMap(requiredLabels);
+        }
+
+        /**
          * Returns whether a pull request should be automatically created
          * upon successful job completion.
          */
@@ -1288,6 +1312,11 @@ public class ClaudeCodeJob extends GitManagedJob {
             // Enforcement mode
             job.setEnforceChanges(isEnforceChanges());
 
+            // Required labels for Node routing
+            for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
+                job.setRequiredLabel(entry.getKey(), entry.getValue());
+            }
+
             return job;
         }
 
@@ -1336,6 +1365,11 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "enforceChanges":
                     this.enforceChanges = Boolean.parseBoolean(value);
+                    break;
+                default:
+                    if (key.startsWith("req.")) {
+                        requiredLabels.put(key.substring(4), value);
+                    }
                     break;
             }
         }
