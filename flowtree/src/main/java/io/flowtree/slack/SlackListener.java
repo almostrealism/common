@@ -29,6 +29,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAdjusters;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -338,7 +339,7 @@ public class SlackListener implements ConsoleFeatures {
      * @param threadTs   the existing thread timestamp (non-null if already in a thread)
      */
     private boolean submitJob(SlackWorkstream workstream, String prompt, String messageTs, String threadTs) {
-        return submitJob(workstream, prompt, messageTs, threadTs, java.util.Collections.emptyMap());
+        return submitJob(workstream, prompt, messageTs, threadTs, Collections.emptyMap());
     }
 
     /**
@@ -351,7 +352,7 @@ public class SlackListener implements ConsoleFeatures {
      * @param requiredLabels labels that the executing Node must have
      */
     private boolean submitJob(SlackWorkstream workstream, String prompt, String messageTs, String threadTs,
-                              java.util.Map<String, String> requiredLabels) {
+                              Map<String, String> requiredLabels) {
         if (server == null) {
             warn("No FlowTree server configured");
             return false;
@@ -433,7 +434,7 @@ public class SlackListener implements ConsoleFeatures {
 
         // Required labels for Node routing
         if (requiredLabels != null) {
-            for (java.util.Map.Entry<String, String> entry : requiredLabels.entrySet()) {
+            for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
                 factory.setRequiredLabel(entry.getKey(), entry.getValue());
             }
         }

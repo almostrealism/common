@@ -16,7 +16,11 @@
 
 package io.flowtree;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -391,49 +395,21 @@ public final class JsonFieldExtractor {
 		Map<String, String> result = new LinkedHashMap<>();
 		if (json == null) return result;
 
-		int fieldStart = json.indexOf("\"" + field + "\"");
-		if (fieldStart < 0) return result;
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			JsonNode root = mapper.readTree(json);
+			JsonNode obj = root.get(field);
+			if (obj == null || !obj.isObject()) return result;
 
-		int colonPos = json.indexOf(":", fieldStart);
-		if (colonPos < 0) return result;
-
-		int objStart = json.indexOf("{", colonPos);
-		if (objStart < 0) return result;
-
-		// Find matching closing brace
-		int depth = 1;
-		int objEnd = -1;
-		for (int i = objStart + 1; i < json.length() && depth > 0; i++) {
-			char c = json.charAt(i);
-			if (c == '{') depth++;
-			else if (c == '}') {
-				depth--;
-				if (depth == 0) objEnd = i;
+			Iterator<Map.Entry<String, JsonNode>> fields = obj.fields();
+			while (fields.hasNext()) {
+				Map.Entry<String, JsonNode> entry = fields.next();
+				if (entry.getValue().isTextual()) {
+					result.put(entry.getKey(), entry.getValue().asText());
+				}
 			}
-		}
-
-		if (objEnd < 0) return result;
-
-		String objContent = json.substring(objStart + 1, objEnd);
-		// Parse simple "key": "value" pairs
-		int pos = 0;
-		while (pos < objContent.length()) {
-			int keyStart = objContent.indexOf("\"", pos);
-			if (keyStart < 0) break;
-			int keyEnd = objContent.indexOf("\"", keyStart + 1);
-			if (keyEnd < 0) break;
-
-			String key = objContent.substring(keyStart + 1, keyEnd);
-
-			int valQuoteStart = objContent.indexOf("\"", keyEnd + 1);
-			if (valQuoteStart < 0) break;
-			int valQuoteEnd = objContent.indexOf("\"", valQuoteStart + 1);
-			if (valQuoteEnd < 0) break;
-
-			String value = objContent.substring(valQuoteStart + 1, valQuoteEnd);
-			result.put(key, value);
-
-			pos = valQuoteEnd + 1;
+		} catch (Exception e) {
+			// Return empty map on parse failure
 		}
 
 		return result;

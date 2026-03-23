@@ -886,8 +886,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         // Required labels for Node routing (e.g., {"platform": "macos"})
-        java.util.Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
-        for (java.util.Map.Entry<String, String> entry : requiredLabels.entrySet()) {
+        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
+        for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
             factory.setRequiredLabel(entry.getKey(), entry.getValue());
         }
 
@@ -1136,7 +1136,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractStringObject(String, String)}.
      */
-    static java.util.Map<String, String> extractJsonObjectFields(String json, String field) {
+    static Map<String, String> extractJsonObjectFields(String json, String field) {
         return io.flowtree.JsonFieldExtractor.extractStringObject(json, field);
     }
 
