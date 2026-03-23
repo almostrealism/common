@@ -148,6 +148,44 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that cleanup correctly processes all entries even when
+	 * most have been evicted from the in-memory cache. With a cache
+	 * capacity of 1000, inserting 1200 entries means at least 200 are
+	 * evicted. Cleanup must still preserve persistent entries and
+	 * remove non-persistent ones regardless of cache residency.
+	 */
+	@Test(timeout = 30000)
+	public void cleanupCoversAllEntriesBeyondCacheCapacity() {
+		int total = AudioLibrary.DEFAULT_DETAIL_CACHE_CAPACITY + 200;
+		int persistentCount = 0;
+
+		for (int i = 0; i < total; i++) {
+			WaveDetails details = createCompleteDetails("entry-" + i);
+			boolean persistent = (i % 3 == 0);
+			details.setPersistent(persistent);
+			if (persistent) persistentCount++;
+			library.include(details);
+		}
+
+		Assert.assertEquals(total, library.getAllIdentifiers().size());
+		Assert.assertEquals("All persistent entries should be tracked",
+				persistentCount, library.getPersistentIdentifiers().size());
+
+		library.cleanup(null);
+
+		// All persistent entries must survive cleanup
+		Assert.assertEquals("All persistent entries should survive cleanup",
+				persistentCount, library.getAllIdentifiers().size());
+
+		for (int i = 0; i < total; i++) {
+			boolean persistent = (i % 3 == 0);
+			Assert.assertEquals(
+					"Entry entry-" + i + " (persistent=" + persistent + ") presence mismatch",
+					persistent, library.getAllIdentifiers().contains("entry-" + i));
+		}
+	}
+
+	/**
 	 * Verifies that cleanup respects the preserve predicate.
 	 */
 	@Test(timeout = 10000)
