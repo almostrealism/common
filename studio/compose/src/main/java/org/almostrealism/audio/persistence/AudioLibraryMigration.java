@@ -92,7 +92,7 @@ public class AudioLibraryMigration {
 							.newBuilder().mergeFrom(input).build();
 
 					for (Audio.WaveDetailData detailData : data.getInfoMap().values()) {
-						WaveDetails details = AudioLibraryPersistence.decode(detailData);
+						WaveDetails details = AudioLibraryPersistence.decode(detailData, false);
 						String identifier = details.getIdentifier();
 
 						if (identifier == null || identifier.isBlank()) continue;
