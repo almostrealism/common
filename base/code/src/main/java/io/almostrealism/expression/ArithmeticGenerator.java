@@ -17,9 +17,9 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.kernel.ArithmeticIndexSequence;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
 
 import java.util.List;
 import java.util.Objects;

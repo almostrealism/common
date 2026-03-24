@@ -14,11 +14,11 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.kernel;
+package io.almostrealism.sequence;
 
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.util.ArrayItem;
 
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;

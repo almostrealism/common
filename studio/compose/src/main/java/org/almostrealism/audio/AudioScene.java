@@ -23,7 +23,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.module.SimpleModule;
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;

@@ -17,7 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Product;
-import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;

@@ -14,8 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.kernel;
+package io.almostrealism.sequence;
 
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.uml.Named;
 
 import java.util.OptionalLong;

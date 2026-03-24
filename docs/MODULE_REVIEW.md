@@ -146,3 +146,45 @@ Logging, metrics, alerting, and lifecycle management.
 ### Open Questions
 - `RSSFeed` — move to flowtree (trivial, deferred)
 - `JobOutput` / `OutputHandler` / `DatabaseConnection` — refactor as described above (deferred)
+
+---
+
+## ar-code
+
+**Reviewed:** 2026-03-24
+**Branch:** feature/module-layer-review
+
+### Concept
+Code generation infrastructure: expression trees, scope management, kernel indexing, and compilation targeting all backends (OpenCL, Metal, JNI). The bridge between the relational computation model (ar-relation) and hardware execution (ar-hardware).
+
+### Package Structure (post-cleanup: 10 packages, ~208 types)
+
+| Package | Types | Role |
+|---------|-------|------|
+| `io.almostrealism.code` | 43 | Core: Computation, ComputationBase, ProducerComputation, adapters |
+| `io.almostrealism.expression` | 47 | Expression tree AST: Sum, Product, Sine, Conditional, etc. |
+| `io.almostrealism.collect` | 44 | Collection expressions, traversal policies, shape algebra |
+| `io.almostrealism.kernel` | 27 | Kernel indexing, index sequences, matrix operations |
+| `io.almostrealism.scope` | 21 | Scope hierarchy: Variable, Argument, Cases, Repeated |
+| `io.almostrealism.profile` | 9 | Operation profiling, timing, metadata |
+| `io.almostrealism.lang` | 6 | Backend code generation: CodePrintWriter, LanguageOperations |
+| `io.almostrealism.compute` | 6 | Additional optimization strategies (extends relation's compute package) |
+| `io.almostrealism.util` | 5 | Internal utilities: FrequencyCache, NumberFormats, Sequence |
+| `io.almostrealism.concurrent` | 2 | Semaphore for async kernel execution |
+
+### Ratings
+
+| Criterion | Rating | Notes |
+|-----------|--------|-------|
+| Coherence | Adequate-to-Strong | Core code-gen story is strong (~208 types). Minor outliers cleaned up. |
+| Clarity | Adequate | Expression and scope hierarchies are clean. Package naming collisions with collect and compute across modules are confusing but deferred. |
+| Dependencies | Strong | ar-relation + ar-io, both essential. |
+| Necessity | Strong | 6,859 imports across 24 modules. base/hardware alone accounts for 5,197 code.* imports. |
+
+### Actions Taken
+- **Removed** `io.almostrealism.html` package (8 types) — web page generation framework with only 1 downstream user (Tensor.toHTML). Replaced Tensor's implementation with plain string concatenation.
+- **Moved** `io.almostrealism.cycle.Setup` to `io.almostrealism.lifecycle.Setup` in ar-meta — lifecycle initialization interface belongs with Destroyable and Lifecycle, not in code generation. Updated 24 import sites.
+- **Created** `io.almostrealism.sequence` package — consolidated the integer sequence concept that underpins kernel computation. Moved `Sequence` and `ArrayItem` from `io.almostrealism.util`, and `Index`, `DefaultIndex`, `IndexChild`, `IndexValues`, `IndexSequence`, `ArithmeticIndexSequence`, `ArrayIndexSequence`, `SequenceGenerator`, `KernelSeries`, `KernelSeriesMatcher` from `io.almostrealism.kernel`. These types form the algebraic foundation for kernel index mappings — a kernel is fundamentally a computation over the positive integers, and these types represent that mapping.
+
+### Structural Debt (deferred)
+- **Split packages across modules**: `io.almostrealism.collect` spans ar-code (44 types) and ar-collect; `io.almostrealism.compute` spans ar-code (6 types) and ar-relation (10 types). This is a common pattern where types "wanted" to live in the lower module but needed something from higher up. Fixing requires careful dependency analysis — saved for a dedicated session.

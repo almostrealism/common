@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.kernel;
+package io.almostrealism.sequence;
 
 import io.almostrealism.collect.IndexSet;
 import io.almostrealism.expression.DoubleConstant;
@@ -23,7 +23,6 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.util.Sequence;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;

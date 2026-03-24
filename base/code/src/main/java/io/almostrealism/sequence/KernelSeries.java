@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.kernel;
+package io.almostrealism.sequence;
 
 import io.almostrealism.relation.Series;
 

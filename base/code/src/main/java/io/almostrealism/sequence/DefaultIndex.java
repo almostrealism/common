@@ -14,8 +14,9 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.kernel;
+package io.almostrealism.sequence;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;

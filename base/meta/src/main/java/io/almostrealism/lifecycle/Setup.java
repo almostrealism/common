@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.almostrealism.cycle;
+package io.almostrealism.lifecycle;
 
 import java.util.function.Supplier;
 

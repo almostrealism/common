@@ -16,7 +16,7 @@
 
 package org.almostrealism.audio.arrange;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.OperationList;

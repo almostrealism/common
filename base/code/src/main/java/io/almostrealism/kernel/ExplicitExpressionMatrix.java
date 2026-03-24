@@ -16,6 +16,7 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.sequence.Index;
 import io.almostrealism.expression.Expression;
 
 public class ExplicitExpressionMatrix<T> extends ExpressionMatrix<T> {

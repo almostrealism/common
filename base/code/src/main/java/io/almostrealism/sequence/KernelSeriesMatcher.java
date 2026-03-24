@@ -14,8 +14,9 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.kernel;
+package io.almostrealism.sequence;
 
+import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationMetadata;

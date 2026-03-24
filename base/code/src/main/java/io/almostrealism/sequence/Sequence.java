@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.util;
+package io.almostrealism.sequence;
 
 import io.almostrealism.uml.Plural;
 import io.almostrealism.uml.Signature;

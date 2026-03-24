@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.util;
+package io.almostrealism.sequence;
 
 import java.util.Arrays;
 import java.util.HashSet;

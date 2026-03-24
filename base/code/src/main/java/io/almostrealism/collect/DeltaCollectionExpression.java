@@ -17,7 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 
 public class DeltaCollectionExpression extends CollectionExpressionBase {
 	private final CollectionExpression deltaExpression;

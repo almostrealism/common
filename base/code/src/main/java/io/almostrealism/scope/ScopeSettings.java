@@ -18,9 +18,9 @@ package io.almostrealism.scope;
 
 import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.profile.ScopeTimingListener;

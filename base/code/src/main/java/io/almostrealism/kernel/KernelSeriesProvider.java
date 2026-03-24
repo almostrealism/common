@@ -16,6 +16,9 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.code.CachedValue;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;

@@ -16,7 +16,7 @@
 
 package org.almostrealism.audio;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;

@@ -16,7 +16,7 @@
 
 package org.almostrealism.audio.arrange;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.collect.PackedCollection;

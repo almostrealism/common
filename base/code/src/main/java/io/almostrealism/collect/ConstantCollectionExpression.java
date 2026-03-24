@@ -18,7 +18,7 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 
 public class ConstantCollectionExpression extends CollectionExpressionAdapter {
 	private final Expression<?> value;

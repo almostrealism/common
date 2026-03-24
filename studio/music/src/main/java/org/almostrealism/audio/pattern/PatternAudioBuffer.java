@@ -16,7 +16,7 @@
 
 package org.almostrealism.audio.pattern;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.arrange.AudioSceneContext;
 import org.almostrealism.audio.data.ChannelInfo;
