@@ -24,7 +24,7 @@ import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
-import org.almostrealism.persistence.CollectionEncoder;
+import org.almostrealism.persist.assets.CollectionEncoder;
 
 import java.io.File;
 import java.io.FileInputStream;

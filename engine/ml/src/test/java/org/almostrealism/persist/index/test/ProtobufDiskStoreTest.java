@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-package org.almostrealism.persist.test;
+package org.almostrealism.persist.index.test;
 
-import org.almostrealism.persist.ProtobufDiskStore;
+import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;

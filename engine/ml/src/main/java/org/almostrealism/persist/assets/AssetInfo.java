@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.persistence;
+package org.almostrealism.persist.assets;
 
 /**
  * Metadata for a single asset file.

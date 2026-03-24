@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.persist;
+package org.almostrealism.persist.index;
 
 import com.google.protobuf.Message;
 import com.google.protobuf.Parser;

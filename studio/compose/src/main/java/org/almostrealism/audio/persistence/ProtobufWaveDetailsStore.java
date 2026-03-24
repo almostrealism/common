@@ -20,9 +20,9 @@ import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.persist.DiskStore;
-import org.almostrealism.persist.ProtobufDiskStore;
-import org.almostrealism.persist.SearchResult;
+import org.almostrealism.persist.index.DiskStore;
+import org.almostrealism.persist.index.ProtobufDiskStore;
+import org.almostrealism.persist.index.SearchResult;
 
 import java.io.File;
 import java.util.ArrayList;

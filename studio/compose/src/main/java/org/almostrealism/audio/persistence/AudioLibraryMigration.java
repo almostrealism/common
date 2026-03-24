@@ -34,7 +34,7 @@ import java.util.function.Supplier;
  *
  * <p>The legacy format stores {@link Audio.AudioLibraryData} wrapper messages
  * in files named {@code PREFIX_0.bin}, {@code PREFIX_1.bin}, etc. The new
- * format uses a {@link org.almostrealism.persist.ProtobufDiskStore} with
+ * format uses a {@link org.almostrealism.persist.index.ProtobufDiskStore} with
  * length-delimited {@link Audio.WaveDetailData} records, a separate index
  * file, and an optional HNSW vector index.</p>
  *

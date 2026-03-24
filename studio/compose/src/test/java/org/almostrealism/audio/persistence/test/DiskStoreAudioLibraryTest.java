@@ -382,7 +382,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 	 * need to customize memory settings).
 	 */
 	public static final int DEFAULT_TARGET_BATCH_SIZE =
-			org.almostrealism.persist.ProtobufDiskStore.DEFAULT_TARGET_BATCH_SIZE;
+			org.almostrealism.persist.index.ProtobufDiskStore.DEFAULT_TARGET_BATCH_SIZE;
 
 	/**
 	 * Simple feature provider that computes spectral features from audio

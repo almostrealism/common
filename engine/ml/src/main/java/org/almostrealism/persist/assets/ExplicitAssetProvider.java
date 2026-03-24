@@ -14,35 +14,22 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.persistence;
+package org.almostrealism.persist.assets;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-public class CombinedAssetInfoProvider implements AssetInfoProvider {
-	private List<AssetInfoProvider> providers;
+public class ExplicitAssetProvider implements AssetInfoProvider {
+	private String name;
+	private AssetGroup group;
 
-	public CombinedAssetInfoProvider() {
-		this.providers = new ArrayList<>();
-	}
-
-	public CombinedAssetInfoProvider(AssetInfoProvider... providers) {
-		this.providers = Arrays.asList(providers);
-	}
-
-	public void addProvider(AssetInfoProvider p) {
-		this.providers.add(p);
+	public ExplicitAssetProvider(String name, List<Asset> assets) {
+		this.name = name;
+		this.group = new AssetGroup(assets);
 	}
 
 	@Override
 	public Optional<AssetGroup> getAssetGroup(String name) {
-		for (AssetInfoProvider p : providers) {
-			Optional<AssetGroup> group = p.getAssetGroup(name);
-			if (group.isPresent()) return group;
-		}
-
-		return Optional.empty();
+		return this.name.equals(name) ? Optional.of(group) : Optional.empty();
 	}
 }

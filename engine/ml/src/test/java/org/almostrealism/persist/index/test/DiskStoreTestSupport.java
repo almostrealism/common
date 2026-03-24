@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.persist.test;
+package org.almostrealism.persist.index.test;
 
 import org.almostrealism.collect.PackedCollection;
 

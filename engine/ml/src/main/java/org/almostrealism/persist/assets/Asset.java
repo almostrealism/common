@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.persistence;
+package org.almostrealism.persist.assets;
 
 import org.almostrealism.io.SystemUtils;
 

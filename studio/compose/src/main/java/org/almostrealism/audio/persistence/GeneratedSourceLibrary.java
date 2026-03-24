@@ -27,7 +27,7 @@ import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.io.Console;
-import org.almostrealism.persistence.CollectionEncoder;
+import org.almostrealism.persist.assets.CollectionEncoder;
 
 import java.io.IOException;
 import java.io.OutputStream;

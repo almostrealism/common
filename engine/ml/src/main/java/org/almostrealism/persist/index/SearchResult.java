@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.persist;
+package org.almostrealism.persist.index;
 
 /**
  * A single result from a vector similarity search, containing the

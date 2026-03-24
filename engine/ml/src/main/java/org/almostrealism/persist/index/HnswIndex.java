@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-package org.almostrealism.persist;
+package org.almostrealism.persist.index;
 
 import io.almostrealism.code.Precision;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.persistence.CollectionEncoder;
+import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.protobuf.Diskstore;
 
 import java.io.IOException;

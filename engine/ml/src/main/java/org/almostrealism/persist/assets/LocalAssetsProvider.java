@@ -14,22 +14,25 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.persistence;
+package org.almostrealism.persist.assets;
 
-import java.util.List;
-import java.util.Optional;
+import org.almostrealism.io.SystemUtils;
 
-public class ExplicitAssetProvider implements AssetInfoProvider {
-	private String name;
-	private AssetGroup group;
+import java.nio.file.Path;
 
-	public ExplicitAssetProvider(String name, List<Asset> assets) {
-		this.name = name;
-		this.group = new AssetGroup(assets);
+public class LocalAssetsProvider implements AssetInfoProvider {
+	private Path directory;
+
+	public LocalAssetsProvider() {
+		this(Path.of(SystemUtils.getLocalDestination(Asset.ASSETS_DIRECTORY)));
+	}
+
+	public LocalAssetsProvider(Path directory) {
+		this.directory = directory;
 	}
 
 	@Override
-	public Optional<AssetGroup> getAssetGroup(String name) {
-		return this.name.equals(name) ? Optional.of(group) : Optional.empty();
+	public AssetGroupInfo getAssetGroupInfo(String name) {
+		return AssetGroupInfo.forDirectory(directory.resolve(name).toFile());
 	}
 }

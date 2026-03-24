@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package org.almostrealism.persist.test;
+package org.almostrealism.persist.index.test;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.persist.HnswIndex;
-import org.almostrealism.persist.ProtobufDiskStore;
-import org.almostrealism.persist.SearchResult;
-import org.almostrealism.persist.SimilarityMetric;
+import org.almostrealism.persist.index.HnswIndex;
+import org.almostrealism.persist.index.ProtobufDiskStore;
+import org.almostrealism.persist.index.SearchResult;
+import org.almostrealism.persist.index.SimilarityMetric;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;

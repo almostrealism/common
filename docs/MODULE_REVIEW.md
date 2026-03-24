@@ -299,6 +299,60 @@ No actions needed.
 - **Removed** `GoogleImagery` — zero imports, dead code.
 - **Moved** auth package (3 types: Login, Authenticatable, AuthenticatableFactory) from ar-utils to ar-utils-http. Added ar-utils-http dependency to flowtree (no new transitive external libraries — flowtree already had ar-utils and jackson-databind).
 
+---
+
+## Engine Layer — Above Utils
+
+### ar-render (19 types, 3 packages)
+
+Ray tracing engine, lighting, shading. Depends on ar-space + ar-utils. Zero downstream dependents (leaf application endpoint). Clean and focused.
+
+| Criterion | Rating |
+|-----------|--------|
+| Coherence | Strong |
+| Clarity | Strong |
+| Dependencies | Strong |
+| Necessity | Strong (application endpoint) |
+
+### ar-audio (140 types, 12 packages)
+
+Audio synthesis, signal processing, filters, MIDI, samples, tones, similarity. Depends on ar-utils + commons-codec. 160 downstream files (studio/compose, studio/music). Well-organized — largest application module but complexity is inherent to the domain.
+
+| Criterion | Rating |
+|-----------|--------|
+| Coherence | Strong |
+| Clarity | Strong |
+| Dependencies | Strong |
+| Necessity | Strong (160 files) |
+
+### ar-ml (50 types, 7 packages)
+
+Transformer architectures (Qwen3, Llama2), tokenization, model persistence, vector search. Depends on ar-utils + protobuf + kotlin. 17 downstream files + 7 dependent modules.
+
+| Criterion | Rating |
+|-----------|--------|
+| Coherence | Strong |
+| Clarity | Strong (post-rename) |
+| Dependencies | Strong |
+| Necessity | Strong |
+
+#### Actions Taken
+- **Renamed** `org.almostrealism.persist` → `org.almostrealism.persist.index` (vector storage, HNSW, similarity search)
+- **Renamed** `org.almostrealism.persistence` → `org.almostrealism.persist.assets` (model/asset discovery and management)
+
+### ar-utils-http (4 types, 2 packages)
+
+HTTP-related infrastructure: auth (moved here from utils) + HTTP event delivery. Depends on ar-utils + jackson-databind. 2 downstream files.
+
+| Criterion | Rating |
+|-----------|--------|
+| Coherence | Adequate |
+| Clarity | Adequate |
+| Dependencies | Strong |
+| Necessity | Adequate (infrastructure) |
+
+---
+
 #### Deferred Improvements
 - **event package** (6 types) — Only used in utils-http test. Could move to utils-http.
 - **Test migration** — Many of the 158 test classes could move to their respective modules if the CI pipeline is updated to run tests for all modules (currently skips some, creating a gap where tests are written but not executed).

@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.persistence;
+package org.almostrealism.persist.assets;
 
 import java.io.File;
 import java.util.List;
