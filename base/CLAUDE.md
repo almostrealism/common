@@ -1,5 +1,11 @@
 # base/ — Foundation Layer
 
+## CRITICAL: NEVER Create New Maven Modules
+
+**Agents MUST NEVER create new Maven modules.** The Maven module structure is externally controlled. If a task requires a new module, **STOP and abandon the task**. Do not create new `pom.xml` files, add `<module>` entries to parent POMs, or create directory structures constituting a new module. Document the requirement in completion notes instead — the project owner handles module creation.
+
+---
+
 The foundation of the AR framework. Provides core primitives, the execution model,
 memory management, code generation, and hardware acceleration backends. Everything
 above this layer depends on it; nothing here depends on higher layers.

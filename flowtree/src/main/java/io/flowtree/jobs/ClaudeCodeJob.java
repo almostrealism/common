@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -1196,6 +1197,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("enforceChanges", String.valueOf(enforceChanges));
         }
 
+
         /**
          * Returns whether a pull request should be automatically created
          * upon successful job completion.
@@ -1288,6 +1290,11 @@ public class ClaudeCodeJob extends GitManagedJob {
             // Enforcement mode
             job.setEnforceChanges(isEnforceChanges());
 
+            // Required labels for Node routing
+            for (Map.Entry<String, String> entry : getRequiredLabels().entrySet()) {
+                job.setRequiredLabel(entry.getKey(), entry.getValue());
+            }
+
             return job;
         }
 
@@ -1336,6 +1343,8 @@ public class ClaudeCodeJob extends GitManagedJob {
                     break;
                 case "enforceChanges":
                     this.enforceChanges = Boolean.parseBoolean(value);
+                    break;
+                default:
                     break;
             }
         }

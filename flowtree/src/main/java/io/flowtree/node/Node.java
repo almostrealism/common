@@ -24,6 +24,9 @@ import io.flowtree.msg.Connection;
 import io.flowtree.msg.Message;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.RSSFeed;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.almostrealism.util.Chart;
 
 import javax.swing.*;
@@ -117,7 +120,48 @@ public class Node implements Runnable, ThreadFactory {
 	
 	protected String rssfile;
 	protected RSSFeed log;
-	
+
+	private final Map<String, String> labels = new LinkedHashMap<>();
+
+	/**
+	 * Sets a label describing a capability of this Node.
+	 *
+	 * @param key   the label key (e.g. "platform")
+	 * @param value the label value (e.g. "macos")
+	 */
+	public void setLabel(String key, String value) {
+		labels.put(key, value);
+	}
+
+	/**
+	 * Returns an unmodifiable view of the labels assigned to this Node.
+	 *
+	 * @return the labels map
+	 */
+	public Map<String, String> getLabels() {
+		return Collections.unmodifiableMap(labels);
+	}
+
+	/**
+	 * Returns true if this Node's labels satisfy the given requirements.
+	 * An empty requirements map is always satisfied.
+	 *
+	 * @param requirements the required label key-value pairs
+	 * @return true if every requirement is matched by this Node's labels
+	 */
+	public boolean satisfies(Map<String, String> requirements) {
+		if (requirements == null || requirements.isEmpty()) {
+			return true;
+		}
+		for (Map.Entry<String, String> entry : requirements.entrySet()) {
+			String value = labels.get(entry.getKey());
+			if (value == null || !value.equals(entry.getValue())) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	/**
 	 * Constructs a new Node object using the specified parent and id.
 	 * 
@@ -152,19 +196,30 @@ public class Node implements Runnable, ThreadFactory {
 				while (true) {
 					Job j = Node.this.nextJob();
 					Node.this.currentJob = j;
-					
+
 					if (j != null) {
+						// Label check: skip jobs whose requirements
+						// do not match this Node's labels
+						if (!Node.this.satisfies(j.getRequiredLabels())) {
+							Node.this.displayMessage("Skipping job " + j.getTaskId()
+								+ " -- labels mismatch, relaying");
+							if (Node.this.parent != null) {
+								Node.this.parent.addJob(j);
+							}
+							continue;
+						}
+
 						long start = System.currentTimeMillis();
-						
+
 						synchronized (Node.this.listeners) {
 							Node.this.working = true;
 							Node.this.startedWorking();
 						}
-						
+
 						Node.this.working = true;
-						
+
 						boolean complete = false;
-						
+
 						try {
 							j.setExecutorService(pool);
 							j.run();

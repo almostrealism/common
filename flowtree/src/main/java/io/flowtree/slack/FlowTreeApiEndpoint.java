@@ -885,6 +885,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setEnforceChanges(true);
         }
 
+        // Required labels for Node routing (e.g., {"platform": "macos"})
+        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
+        for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
+            factory.setRequiredLabel(entry.getKey(), entry.getValue());
+        }
+
         // Auto-create PR on successful completion
         if (autoCreatePr) {
             factory.setAutoCreatePr(true);
@@ -1125,6 +1131,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     static List<String> extractJsonArrayField(String json, String field) {
         return io.flowtree.JsonFieldExtractor.extractStringArray(json, field);
+    }
+
+    /**
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractStringObject(String, String)}.
+     */
+    static Map<String, String> extractJsonObjectFields(String json, String field) {
+        return io.flowtree.JsonFieldExtractor.extractStringObject(json, field);
     }
 
     /**

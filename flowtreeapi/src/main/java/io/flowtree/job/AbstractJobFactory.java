@@ -16,7 +16,9 @@
 
 package io.flowtree.job;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -28,6 +30,7 @@ public abstract class AbstractJobFactory implements JobFactory {
 
 	private final CompletableFuture<Void> future;
 	private final Map<String, String> properties;
+	private final Map<String, String> requiredLabels = new LinkedHashMap<>();
 
 	public AbstractJobFactory() {
 		future = new CompletableFuture<>();
@@ -66,6 +69,30 @@ public abstract class AbstractJobFactory implements JobFactory {
 	@Override
 	public void set(String key, String value) {
 		properties.put(key, value);
+		if (key.startsWith("req.")) {
+			requiredLabels.put(key.substring(4), value);
+		}
+	}
+
+	/**
+	 * Sets a required label that target Nodes must have to execute jobs
+	 * produced by this factory.
+	 *
+	 * @param key   the label key (e.g. "platform")
+	 * @param value the required value (e.g. "macos")
+	 */
+	public void setRequiredLabel(String key, String value) {
+		requiredLabels.put(key, value);
+		set("req." + key, value);
+	}
+
+	/**
+	 * Returns the required labels for jobs created by this factory.
+	 *
+	 * @return unmodifiable map of required label key-value pairs
+	 */
+	public Map<String, String> getRequiredLabels() {
+		return Collections.unmodifiableMap(requiredLabels);
 	}
 
 	protected String get(String key) { return properties.get(key); }
