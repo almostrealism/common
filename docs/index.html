@@ -203,9 +203,6 @@ graph TB
     color --> physics["physics<br/>atoms, photons, rigid bodies"]
     time --> physics
 
-    %% LLVM
-    hardware --> llvm["llvm<br/>LLVM/C interop"]
-
     %% Neural Networks
     geometry --> graphMod["graph<br/>neural network layers"]
     heredity --> graphMod
@@ -225,7 +222,7 @@ graph TB
 
     class geometry,stats,time compute
     class hardware base
-    class color,physics,llvm,heredity,graphMod,chemistry,spaceMod domain
+    class color,physics,heredity,graphMod,chemistry,spaceMod domain
                 </div>
 
                 <h3>engine &mdash; Applications &amp; Training</h3>
@@ -456,12 +453,6 @@ graph TB
                         <a href="../domain/chemistry/README.md" class="doc-link">README</a> | <a href="modules/chemistry.html" class="doc-link">Details</a> | <a href="apidocs/org/almostrealism/chem/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
-                    <div class="module-card domain">
-                        <h3>llvm</h3>
-                        <span class="badge domain-badge">domain</span>
-                        <p>LLVM/C interoperability for native code generation</p>
-                        <a href="../domain/llvm/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/llvm/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
                 </div>
 
                 <h3>engine &mdash; Applications &amp; Training</h3>

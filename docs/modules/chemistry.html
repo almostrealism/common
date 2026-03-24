@@ -95,11 +95,11 @@
 
                 <h3>Accessing Individual Elements</h3>
                 <pre><code class="language-java">import org.almostrealism.chem.*;
-import org.almostrealism.physics.Atom;
+import org.almostrealism.chem.Atom;
 
 // Access individual elements via PeriodicTable
-Element hydrogen = PeriodicTable.Hydrogen;
-Element carbon = PeriodicTable.Carbon;
+Element hydrogen = Element.Hydrogen;
+Element carbon = Element.Carbon;
 Element gold = PeriodicTable.Gold;
 Element oxygen = PeriodicTable.Oxygen;
 
@@ -273,7 +273,7 @@ public class Carbon implements Element {
     private List&lt;Shell&gt; getShells() {
         ArrayList&lt;Shell&gt; shells = new ArrayList&lt;&gt;();
         // Reuse Helium's shell (1s2)
-        shells.addAll(PeriodicTable.Helium.getShells());
+        shells.addAll(Element.Helium.getShells());
         // Add second shell (2s2 2p2 = 4 electrons)
         shells.add(Shell.second(2, 2));
         return Collections.unmodifiableList(shells);
@@ -325,19 +325,19 @@ import java.util.Arrays;
 
 // Bronze: 88% Copper, 12% Tin
 Alloy bronze = new Alloy(
-    Arrays.asList(PeriodicTable.Copper, PeriodicTable.Tin),
+    Arrays.asList(Element.Copper, Element.Tin),
     0.88, 0.12
 );
 
 // Steel: 98% Iron, 1.5% Carbon, 0.5% Manganese
 Alloy steel = new Alloy(
-    Arrays.asList(PeriodicTable.Iron, PeriodicTable.Carbon, PeriodicTable.Manganese),
+    Arrays.asList(Element.Iron, Element.Carbon, Element.Manganese),
     0.98, 0.015, 0.005
 );
 
 // Brass: 70% Copper, 30% Zinc
 Alloy brass = new Alloy(
-    Arrays.asList(PeriodicTable.Copper, PeriodicTable.Zinc),
+    Arrays.asList(Element.Copper, Element.Zinc),
     0.70, 0.30
 );
 
@@ -412,7 +412,7 @@ public class CommonAlloys {
     public static Alloy stainlessSteel() {
         return new Alloy(
             Arrays.asList(
-                PeriodicTable.Iron,
+                Element.Iron,
                 PeriodicTable.Chromium,
                 PeriodicTable.Nickel
             ),
@@ -422,21 +422,21 @@ public class CommonAlloys {
 
     public static Alloy bronze() {
         return new Alloy(
-            Arrays.asList(PeriodicTable.Copper, PeriodicTable.Tin),
+            Arrays.asList(Element.Copper, Element.Tin),
             0.88, 0.12
         );
     }
 
     public static Alloy solder() {
         return new Alloy(
-            Arrays.asList(PeriodicTable.Tin, PeriodicTable.Lead),
+            Arrays.asList(Element.Tin, PeriodicTable.Lead),
             0.60, 0.40
         );
     }
 
     public static Alloy sterling_silver() {
         return new Alloy(
-            Arrays.asList(PeriodicTable.Silver, PeriodicTable.Copper),
+            Arrays.asList(PeriodicTable.Silver, Element.Copper),
             0.925, 0.075
         );
     }
@@ -448,14 +448,14 @@ public class CommonAlloys {
 
                 <h3>Basic Element Access</h3>
                 <pre><code class="language-java">import org.almostrealism.chem.*;
-import org.almostrealism.physics.Atom;
+import org.almostrealism.chem.Atom;
 
 public class ElementDemo {
     public static void main(String[] args) {
         // Access elements
-        Element carbon = PeriodicTable.Carbon;
+        Element carbon = Element.Carbon;
         Element oxygen = PeriodicTable.Oxygen;
-        Element hydrogen = PeriodicTable.Hydrogen;
+        Element hydrogen = Element.Hydrogen;
 
         // Print atomic numbers
         System.out.println("Carbon: Z=" + carbon.getAtomicNumber());   // 6
@@ -475,7 +475,7 @@ public class ElementDemo {
 
                 <h3>Material Simulation</h3>
                 <pre><code class="language-java">import org.almostrealism.chem.*;
-import org.almostrealism.physics.Atom;
+import org.almostrealism.chem.Atom;
 import java.util.*;
 
 public class MaterialSimulation {
@@ -484,9 +484,9 @@ public class MaterialSimulation {
         // Create a steel alloy
         Alloy steel = new Alloy(
             Arrays.asList(
-                PeriodicTable.Iron,
-                PeriodicTable.Carbon,
-                PeriodicTable.Manganese
+                Element.Iron,
+                Element.Carbon,
+                Element.Manganese
             ),
             0.98, 0.015, 0.005
         );
@@ -560,9 +560,9 @@ public class MaterialEvolution implements HeredityFeatures {
     public void evolve() {
         // Create base components
         List&lt;Atomic&gt; components = Arrays.asList(
-            PeriodicTable.Copper,
-            PeriodicTable.Zinc,
-            PeriodicTable.Tin
+            Element.Copper,
+            Element.Zinc,
+            Element.Tin
         );
 
         // Create evolvable alloy

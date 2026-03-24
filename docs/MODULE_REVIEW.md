@@ -232,3 +232,63 @@ Hardware acceleration: GPU/CPU kernel compilation, memory management, and multi-
 
 ### Actions Taken
 - None needed — this module is well-organized.
+
+---
+
+## Compute Layer (ar-algebra, ar-geometry, ar-stats, ar-time)
+
+**Reviewed:** 2026-03-24
+**Branch:** feature/module-layer-review
+
+### Overview
+
+The compute layer provides typed mathematical abstractions over the base layer's hardware-accelerated primitives. Clean linear dependency chain: `ar-hardware → ar-algebra → {ar-geometry, ar-stats} → ar-time`.
+
+### Module Ratings
+
+| Module | Types | Coherence | Clarity | Dependencies | Necessity |
+|--------|-------|-----------|---------|--------------|-----------|
+| ar-algebra | 93 | Strong | Adequate | Strong | Strong (170 files) |
+| ar-geometry | 34 | Strong | Strong | Strong | Strong (87 files) |
+| ar-stats | 4 | Strong | Strong | Strong | Weak (5 files) |
+| ar-time | 19 | Strong | Strong | Strong | Strong (85 files) |
+
+### Notes
+- **ar-algebra** hosts `org.almostrealism.collect` (PackedCollection, CollectionProducer, feature interfaces) because these concrete types need hardware access. This is the documented split-package debt from the ar-collect review.
+- **ar-stats** has only 4 types and 5 downstream imports. Justified as a future growth area for Monte Carlo, probabilistic inference, and statistical modeling — but should be monitored.
+- **ar-time** depends on ar-geometry for trigonometric functions. This is reasonable given that trig is foundational to signal processing (FFT, etc.).
+
+### Actions Taken
+- None needed — the compute layer is well-organized.
+
+---
+
+## Domain Layer (ar-color, ar-heredity, ar-graph, ar-physics, ar-space, ar-chemistry, ar-llvm)
+
+**Reviewed:** 2026-03-24
+**Branch:** feature/module-layer-review
+
+### Module Ratings
+
+| Module | Types | Coherence | Clarity | Dependencies | Necessity |
+|--------|-------|-----------|---------|--------------|-----------|
+| ar-color | 57 | Strong | Strong | Strong | Strong (63 files) |
+| ar-heredity | 24 | Strong | Strong | Strong | Strong (60 files) |
+| ar-graph | 69 | Strong | Strong | Strong | Strong (135 files) |
+| ar-physics | ~31 (post-move) | Strong | Adequate | Strong | Adequate (13 non-chemistry files) |
+| ar-space | 42 | Strong | Strong | Strong | Adequate (21 files) |
+| ar-chemistry | 23 (post-refactor) | Strong | Strong | Strong | Adequate (specialized) |
+| ~~ar-llvm~~ | ~~2~~ | — | — | — | ~~Removed (zero usage)~~ |
+
+### Actions Taken
+
+- **Removed** ar-llvm module entirely — 2 types, zero downstream imports, aspirational GraalVM integration superseded by the JNI compilation path in ar-hardware. Removed from parent pom.xml and docs/index.html.
+
+- **Moved 13 atomic types from ar-physics to ar-chemistry** — Atom, Atomic, Element (interface), Electron, Electrons, Orbital, Shell, SubShell, Spin, Substance, AtomicProtonCloud, Valence, Photon. These are atomic/molecular modeling concepts, not macro-scale physics. ar-physics now focuses on macro-scale simulation (rigid body, absorbers, photon fields, physical constants).
+
+- **Replaced 118 element classes with Element enum** — Collapsed 118 individual element class files + PeriodicTable.java into a single `Element` enum implementing `Atomic`. Each enum constant carries its atomic number and shell configuration. All PeriodicTable grouping methods (alkali metals, noble gases, periods, groups, orbital blocks) preserved as static methods on the enum. Module went from 129 types to 23.
+
+### Notes
+- **ar-physics** retains macro-scale types: RigidBody, Absorbers, PhotonField, PhysicalConstants, BlackBody, Volume, Pressure, Clock, light sources
+- **ar-graph** has 2 types in the `org.almostrealism` root package — minor but odd
+- **ar-heredity** is surprisingly well-used (60 files) driven by studio/compose audio optimization

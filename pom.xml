@@ -48,7 +48,6 @@
 		<module>domain/physics</module>
 		<module>domain/space</module>
 		<module>domain/chemistry</module>
-		<module>domain/llvm</module>
 
 		<!-- engine — Applications & Training -->
 		<module>engine/optimize</module>
