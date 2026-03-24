@@ -157,7 +157,7 @@ public class LibraryDestination implements ConsoleFeatures {
 
 	public void load(AudioLibrary library) {
 		try {
-			AudioLibraryPersistence.loadLibrary(library, in());
+			AudioLibraryPersistence.loadLibrary(library, in(), false);
 			library.setDetailsLoader(AudioLibraryPersistence.createDetailsLoader(prefix));
 		} catch (IOException e) {
 			throw new RuntimeException(e);
