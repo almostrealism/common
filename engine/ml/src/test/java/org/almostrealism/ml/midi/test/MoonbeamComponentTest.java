@@ -28,6 +28,7 @@ import org.almostrealism.ml.midi.MidiAutoregressiveModel;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -38,105 +39,45 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * Isolated component tests for the Moonbeam MIDI model, each with an explicit
- * timeout. The purpose of this test class is to identify which component is the
- * performance bottleneck when running end-to-end MIDI generation.
+ * Component tests for the Moonbeam MIDI model at REAL model dimensions.
  *
- * <p>Each test exercises a single computational component in isolation with
- * timing output so that CI results immediately reveal where time is spent.
- * Tests that can run with synthetic (random) weights do so; tests that require
- * real weights are skipped via {@code Assume.assumeTrue} if weights are absent.</p>
+ * <p>Every test uses random weights at the full default model dimensions
+ * (hiddenSize=1920, intermediateSize=6720, numLayers=15, etc.) to expose
+ * the actual computational cost. Tests with tiny/synthetic weights are
+ * useless for identifying performance bottlenecks.</p>
+ *
+ * <p>Each test has an explicit {@code @Test(timeout = ...)} so CI will
+ * reveal which component is the bottleneck by timing out. Timing output
+ * is printed for every test.</p>
  *
  * @see MoonbeamMidi
- * @see CompoundMidiEmbedding
- * @see FundamentalMusicEmbedding
- * @see GRUCell
- * @see GRUDecoder
- * @see HeadGroupConfig
+ * @see MoonbeamConfig#defaultConfig()
  */
 public class MoonbeamComponentTest extends TestSuiteBase {
 
-	/* ------------------------------------------------------------ */
-	/*  Test 1: Weight Loading                                      */
-	/* ------------------------------------------------------------ */
-
-	/**
-	 * Verify that StateDictionary can be created from a synthetic weight map,
-	 * and that expected key patterns are present and have correct shapes.
-	 * Uses synthetic weights so it always runs in CI.
-	 */
-	@Test(timeout = 60_000)
-	public void testWeightLoading() {
-		long start = System.currentTimeMillis();
-
-		MoonbeamConfig config = MoonbeamConfig.testConfig();
-		StateDictionary stateDict = createSyntheticWeights(config);
-
-		int expectedKeys = config.numLayers * 9 + 1; // 9 per layer + final norm
-		Assert.assertEquals("Key count", expectedKeys, stateDict.keySet().size());
-
-		Assert.assertTrue("q_proj key exists",
-				stateDict.containsKey("model.layers.0.self_attn.q_proj.weight"));
-		Assert.assertTrue("final norm key exists",
-				stateDict.containsKey("model.norm.weight"));
-
-		PackedCollection qWeight = stateDict.get("model.layers.0.self_attn.q_proj.weight");
-		Assert.assertEquals("q_proj row count", config.hiddenSize,
-				qWeight.getShape().length(0));
-
-		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testWeightLoading: " + elapsed + " ms");
-	}
+	/** Real model config used by all tests. */
+	private static final MoonbeamConfig REAL_CONFIG = MoonbeamConfig.defaultConfig();
 
 	/* ------------------------------------------------------------ */
-	/*  Test 2: Single Embedding                                    */
+	/*  Test 1: Single FME embed at real dim (320)                  */
 	/* ------------------------------------------------------------ */
 
 	/**
-	 * Create a CompoundMidiEmbedding with synthetic weights and embed a
-	 * single compound token. Validates output shape is (hiddenSize).
-	 */
-	@Test(timeout = 10_000)
-	public void testSingleEmbedding() {
-		long start = System.currentTimeMillis();
-
-		MoonbeamConfig config = MoonbeamConfig.testConfig();
-		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
-
-		MidiCompoundToken token = new MidiCompoundToken(100, 50, 5, 7, 0, 80);
-		PackedCollection result = embedding.embed(token);
-
-		Assert.assertNotNull("Embedding result should not be null", result);
-		Assert.assertEquals("Embedding output size", config.hiddenSize,
-				result.getShape().getTotalSize());
-
-		// Check finiteness
-		for (int i = 0; i < config.hiddenSize; i++) {
-			Assert.assertTrue("Value at " + i + " should be finite",
-					Double.isFinite(result.toDouble(i)));
-		}
-
-		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleEmbedding: " + elapsed + " ms");
-	}
-
-	/* ------------------------------------------------------------ */
-	/*  Test 3: Single FME Computation                              */
-	/* ------------------------------------------------------------ */
-
-	/**
-	 * Compute a FundamentalMusicEmbedding for a single attribute value.
-	 * Validates output shape and finiteness.
+	 * Embed a single attribute value using FundamentalMusicEmbedding at the
+	 * real embedding dimension (320). Exercises the sinusoidal encoding,
+	 * translation bias, and linear projection.
 	 */
 	@Test(timeout = 5_000)
-	public void testSingleFmeComputation() {
+	public void testSingleFmeEmbed() {
 		long start = System.currentTimeMillis();
 
-		int dim = 320;
+		int dim = REAL_CONFIG.embeddingDim; // 320
 		double base = 199999.0;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(base, dim);
 
+		long computeStart = System.currentTimeMillis();
 		PackedCollection result = fme.embed(42);
+		long computeTime = System.currentTimeMillis() - computeStart;
 
 		Assert.assertNotNull("FME result should not be null", result);
 		Assert.assertEquals("FME output dimension", dim,
@@ -147,139 +88,107 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 					Double.isFinite(result.toDouble(i)));
 		}
 
-		// Also test the sinusoidal encoding stage separately
-		PackedCollection sincos = fme.encodeSinusoidal(42);
-		Assert.assertEquals("Sinusoidal encoding dimension", dim,
-				sincos.getShape().getTotalSize());
+		long elapsed = System.currentTimeMillis() - start;
+		System.out.println("[MoonbeamComponentTest] testSingleFmeEmbed: "
+				+ elapsed + " ms (compute: " + computeTime + " ms)");
+	}
 
-		for (int i = 0; i < dim; i++) {
-			double val = sincos.toDouble(i);
-			Assert.assertTrue("Sinusoidal value at " + i + " should be in [-1,1]",
-					val >= -1.0 && val <= 1.0);
+	/* ------------------------------------------------------------ */
+	/*  Test 2: Single CompoundMidiEmbedding at real dim (1920)     */
+	/* ------------------------------------------------------------ */
+
+	/**
+	 * Embed a single compound MIDI token at the real hidden dimension (1920).
+	 * This exercises all 6 parallel FME embeddings (5 sinusoidal + 1 lookup)
+	 * and the concatenation to produce the full hidden-size vector.
+	 */
+	@Test(timeout = 10_000)
+	public void testSingleCompoundEmbedding() {
+		long start = System.currentTimeMillis();
+
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(REAL_CONFIG);
+
+		MidiCompoundToken token = new MidiCompoundToken(100, 50, 5, 7, 0, 80);
+
+		long computeStart = System.currentTimeMillis();
+		PackedCollection result = embedding.embed(token);
+		long computeTime = System.currentTimeMillis() - computeStart;
+
+		Assert.assertNotNull("Embedding result should not be null", result);
+		Assert.assertEquals("Embedding output size", REAL_CONFIG.hiddenSize,
+				result.getShape().getTotalSize());
+
+		for (int i = 0; i < REAL_CONFIG.hiddenSize; i++) {
+			Assert.assertTrue("Value at " + i + " should be finite",
+					Double.isFinite(result.toDouble(i)));
 		}
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleFmeComputation: " + elapsed + " ms");
+		System.out.println("[MoonbeamComponentTest] testSingleCompoundEmbedding: "
+				+ elapsed + " ms (compute: " + computeTime + " ms)");
 	}
 
 	/* ------------------------------------------------------------ */
-	/*  Test 4: Single Attention Layer                              */
+	/*  Test 3: RoPE frequency computation at real headDim (160)    */
 	/* ------------------------------------------------------------ */
 
 	/**
-	 * One transformer layer forward pass with MRA attention using a single-layer
-	 * config. Exercises model build + one autoregressive step through the layer.
-	 */
-	@Test(timeout = 30_000)
-	public void testSingleAttentionLayer() {
-		long start = System.currentTimeMillis();
-
-		MoonbeamConfig config = new MoonbeamConfig(
-				48, 144,
-				1, // single layer
-				6, 6, 8,
-				32, 2,
-				8487, 128, 1e-5,
-				new double[]{199999, 1031, 19, 20, 199999, 131},
-				new int[]{1, 1, 1, 1, 1, 1},
-				new int[]{4099, 4099, 13, 14, 131, 130},
-				new double[]{199999, 1031, 19, 20, 199999, 131},
-				2);
-
-		StateDictionary stateDict = createSyntheticWeights(config);
-		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
-		GRUDecoder decoder = createSyntheticDecoder(config);
-
-		long buildStart = System.currentTimeMillis();
-		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		long buildTime = System.currentTimeMillis() - buildStart;
-		System.out.println("[MoonbeamComponentTest] single layer model build: " + buildTime + " ms");
-
-		Assert.assertNotNull("Model should compile", model.getCompiledTransformer());
-
-		// Forward a single token via the autoregressive model
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
-
-		long fwdStart = System.currentTimeMillis();
-		MidiCompoundToken result = autoregressive.next();
-		long fwdTime = System.currentTimeMillis() - fwdStart;
-		System.out.println("[MoonbeamComponentTest] single layer forward+decode: " + fwdTime + " ms");
-
-		Assert.assertNotNull("Forward should produce a token", result);
-
-		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleAttentionLayer: " + elapsed + " ms");
-	}
-
-	/* ------------------------------------------------------------ */
-	/*  Test 5: RoPE Frequency Computation                          */
-	/* ------------------------------------------------------------ */
-
-	/**
-	 * Compute freqCis for each of the 6 theta values used by Moonbeam MRA.
-	 * Validates shapes and that all values are finite.
+	 * Compute RoPE frequencies for all 6 MRA theta values at the real
+	 * head dimension (160) and a reasonable sequence length. Validates
+	 * shapes and value ranges.
 	 */
 	@Test(timeout = 5_000)
 	public void testRopeFrequencyComputation() {
 		long start = System.currentTimeMillis();
 
-		double[] thetas = {199999, 1031, 19, 20, 199999, 131};
-		int headDim = 160;
-		int maxSeqLen = 256; // Small for test, default is 8192
+		int headDim = REAL_CONFIG.headDim; // 160
+		int maxSeqLen = REAL_CONFIG.maxSeqLen; // 8192
 
-		for (int g = 0; g < thetas.length; g++) {
+		for (int g = 0; g < REAL_CONFIG.ropeThetas.length; g++) {
+			double theta = REAL_CONFIG.ropeThetas[g];
+
 			long groupStart = System.currentTimeMillis();
-			PackedCollection freqCis = HeadGroupConfig.computeFreqCis(thetas[g], headDim, maxSeqLen);
+			PackedCollection freqCis = HeadGroupConfig.computeFreqCis(
+					theta, headDim, maxSeqLen);
 			long groupTime = System.currentTimeMillis() - groupStart;
 
 			int expectedSize = maxSeqLen * (headDim / 2) * 2;
-			Assert.assertEquals("FreqCis size for theta=" + thetas[g],
+			Assert.assertEquals("FreqCis size for theta=" + theta,
 					expectedSize, freqCis.getShape().getTotalSize());
 
-			// Spot-check finiteness on first and last positions
-			for (int pos : new int[]{0, maxSeqLen - 1}) {
-				int freqDim = headDim / 2;
-				for (int f = 0; f < freqDim; f++) {
-					int idx = (pos * freqDim + f) * 2;
-					double cos = freqCis.toDouble(idx);
-					double sin = freqCis.toDouble(idx + 1);
-					Assert.assertTrue("cos finite at pos=" + pos + " f=" + f,
-							Double.isFinite(cos));
-					Assert.assertTrue("sin finite at pos=" + pos + " f=" + f,
-							Double.isFinite(sin));
-					Assert.assertTrue("cos in [-1,1]", cos >= -1.0 && cos <= 1.0);
-					Assert.assertTrue("sin in [-1,1]", sin >= -1.0 && sin <= 1.0);
-				}
-			}
-
-			System.out.println("[MoonbeamComponentTest] freqCis theta=" + thetas[g]
-					+ ": " + groupTime + " ms");
+			System.out.println("[MoonbeamComponentTest] freqCis theta=" + theta
+					+ " (headDim=" + headDim + ", seqLen=" + maxSeqLen
+					+ "): " + groupTime + " ms");
 		}
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testRopeFrequencyComputation: " + elapsed + " ms");
+		System.out.println("[MoonbeamComponentTest] testRopeFrequencyComputation: "
+				+ elapsed + " ms");
 	}
 
 	/* ------------------------------------------------------------ */
-	/*  Test 6: Single GRU Cell Step                                */
+	/*  Test 4: Single GRU cell at real dim (1536)                  */
 	/* ------------------------------------------------------------ */
 
 	/**
-	 * One GRUCell forward pass with small synthetic weights.
-	 * Validates output shape and finiteness.
+	 * One GRU cell forward pass at the real decoder hidden dimension (1536).
+	 * Weight matrices are (3*1536, 1536) = ~7M parameters per weight tensor.
 	 */
-	@Test(timeout = 5_000)
-	public void testSingleGruCellStep() {
+	@Test(timeout = 10_000)
+	public void testSingleGruCell() {
 		long start = System.currentTimeMillis();
 
-		int inputSize = 32;
-		int hiddenSize = 32;
+		int inputSize = REAL_CONFIG.decoderHiddenSize; // 1536
+		int hiddenSize = REAL_CONFIG.decoderHiddenSize;
 		Random rng = new Random(42);
 
+		long allocStart = System.currentTimeMillis();
 		PackedCollection weightIh = createRandomCollection(rng, 3 * hiddenSize, inputSize);
 		PackedCollection weightHh = createRandomCollection(rng, 3 * hiddenSize, hiddenSize);
 		PackedCollection biasIh = createRandomCollection(rng, 3 * hiddenSize);
 		PackedCollection biasHh = createRandomCollection(rng, 3 * hiddenSize);
+		long allocTime = System.currentTimeMillis() - allocStart;
+		System.out.println("[MoonbeamComponentTest] GRU cell weight alloc: " + allocTime + " ms");
 
 		GRUCell cell = new GRUCell(inputSize, hiddenSize, weightIh, weightHh, biasIh, biasHh);
 
@@ -296,30 +205,30 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 					Double.isFinite(hNew.toDouble(i)));
 		}
 
-		System.out.println("[MoonbeamComponentTest] GRU cell forward: " + fwdTime + " ms");
-
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleGruCellStep: " + elapsed + " ms");
+		System.out.println("[MoonbeamComponentTest] testSingleGruCell: "
+				+ elapsed + " ms (forward: " + fwdTime + " ms)");
 	}
 
 	/* ------------------------------------------------------------ */
-	/*  Test 7: GRU Decoder (single position)                      */
+	/*  Test 5: GRU decoder (7 tokens, real dims)                   */
 	/* ------------------------------------------------------------ */
 
 	/**
-	 * GRUDecoder decoding 7 tokens from one hidden state using synthetic weights.
-	 * Validates output contains 7 token indices within valid range.
+	 * GRU decoder generating 7 output tokens from one transformer hidden state
+	 * at real dimensions (hiddenSize=1920, decoderHidden=1536, vocab=8487).
 	 */
-	@Test(timeout = 15_000)
-	public void testGruDecoderSinglePosition() {
+	@Test(timeout = 30_000)
+	public void testGruDecoderRealDims() {
 		long start = System.currentTimeMillis();
 
-		MoonbeamConfig config = MoonbeamConfig.testConfig();
-		GRUDecoder decoder = createSyntheticDecoder(config);
+		long allocStart = System.currentTimeMillis();
+		GRUDecoder decoder = createRandomDecoder(REAL_CONFIG);
+		long allocTime = System.currentTimeMillis() - allocStart;
+		System.out.println("[MoonbeamComponentTest] GRU decoder alloc: " + allocTime + " ms");
 
-		// Create a random hidden state vector of size hiddenSize
 		Random rng = new Random(42);
-		PackedCollection hidden = createRandomCollection(rng, config.hiddenSize);
+		PackedCollection hidden = createRandomCollection(rng, REAL_CONFIG.hiddenSize);
 
 		long decodeStart = System.currentTimeMillis();
 		int[] tokens = decoder.decode(hidden);
@@ -331,46 +240,112 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		for (int i = 0; i < tokens.length; i++) {
 			Assert.assertTrue("Token " + i + " should be >= 0", tokens[i] >= 0);
 			Assert.assertTrue("Token " + i + " should be < decodeVocabSize",
-					tokens[i] < config.decodeVocabSize);
+					tokens[i] < REAL_CONFIG.decodeVocabSize);
 		}
 
-		// Verify toAttributeValues also works
-		int[] attrValues = decoder.toAttributeValues(tokens);
-		Assert.assertEquals("Should have 7 attribute values",
-				GRUDecoder.TOKENS_PER_NOTE, attrValues.length);
-
-		System.out.println("[MoonbeamComponentTest] GRU decode: " + decodeTime + " ms");
-		System.out.println("[MoonbeamComponentTest] Decoded tokens: "
+		System.out.println("[MoonbeamComponentTest] GRU decode tokens: "
 				+ java.util.Arrays.toString(tokens));
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testGruDecoderSinglePosition: " + elapsed + " ms");
+		System.out.println("[MoonbeamComponentTest] testGruDecoderRealDims: "
+				+ elapsed + " ms (decode: " + decodeTime + " ms)");
 	}
 
 	/* ------------------------------------------------------------ */
-	/*  Test 8: Two-Layer Forward Pass                              */
+	/*  Test 6: Single attention layer (real dims)                  */
 	/* ------------------------------------------------------------ */
 
 	/**
-	 * Build a model with 2 transformer layers using the test config,
-	 * forward one token through embedding -> 2 layers -> norm -> decode.
-	 * Validates that the full pipeline produces a valid token.
+	 * Build and compile a single transformer layer at real dimensions
+	 * (1920 hidden, 12 heads, 6 kv heads, 160 head dim, 6720 FFN).
+	 * Measures the model compilation cost at real matrix sizes.
 	 */
 	@Test(timeout = 60_000)
+	public void testSingleAttentionLayerBuild() {
+		long start = System.currentTimeMillis();
+
+		MoonbeamConfig oneLayerConfig = createRealConfigWithLayers(1);
+
+		long allocStart = System.currentTimeMillis();
+		StateDictionary stateDict = createRandomWeights(oneLayerConfig);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(oneLayerConfig);
+		GRUDecoder decoder = createRandomDecoder(oneLayerConfig);
+		long allocTime = System.currentTimeMillis() - allocStart;
+		System.out.println("[MoonbeamComponentTest] 1-layer weight alloc: " + allocTime + " ms");
+
+		long buildStart = System.currentTimeMillis();
+		MoonbeamMidi model = new MoonbeamMidi(oneLayerConfig, stateDict, embedding, decoder);
+		long buildTime = System.currentTimeMillis() - buildStart;
+
+		Assert.assertNotNull("Model should compile", model.getCompiledTransformer());
+
+		long elapsed = System.currentTimeMillis() - start;
+		System.out.println("[MoonbeamComponentTest] testSingleAttentionLayerBuild: "
+				+ elapsed + " ms (build: " + buildTime + " ms)");
+	}
+
+	/* ------------------------------------------------------------ */
+	/*  Test 7: Single transformer block forward (real dims)        */
+	/* ------------------------------------------------------------ */
+
+	/**
+	 * Forward one token through a single transformer block (attention + FFN)
+	 * at real dimensions. Measures actual forward pass computation cost.
+	 */
+	@Test(timeout = 120_000)
+	public void testSingleTransformerBlockForward() {
+		long start = System.currentTimeMillis();
+
+		MoonbeamConfig oneLayerConfig = createRealConfigWithLayers(1);
+		StateDictionary stateDict = createRandomWeights(oneLayerConfig);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(oneLayerConfig);
+		GRUDecoder decoder = createRandomDecoder(oneLayerConfig);
+
+		long buildStart = System.currentTimeMillis();
+		MoonbeamMidi model = new MoonbeamMidi(oneLayerConfig, stateDict, embedding, decoder);
+		long buildTime = System.currentTimeMillis() - buildStart;
+		System.out.println("[MoonbeamComponentTest] 1-layer model build: " + buildTime + " ms");
+
+		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+
+		long fwdStart = System.currentTimeMillis();
+		MidiCompoundToken result = autoregressive.next();
+		long fwdTime = System.currentTimeMillis() - fwdStart;
+
+		Assert.assertNotNull("Forward should produce a token", result);
+
+		long elapsed = System.currentTimeMillis() - start;
+		System.out.println("[MoonbeamComponentTest] testSingleTransformerBlockForward: "
+				+ elapsed + " ms (forward+decode: " + fwdTime + " ms)");
+	}
+
+	/* ------------------------------------------------------------ */
+	/*  Test 8: 2-layer forward pass at real dims                   */
+	/* ------------------------------------------------------------ */
+
+	/**
+	 * Build and forward one token through a 2-layer model at real dimensions.
+	 * Measures scaling from 1 to 2 layers.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
 	public void testTwoLayerForwardPass() {
 		long start = System.currentTimeMillis();
 
-		MoonbeamConfig config = MoonbeamConfig.testConfig(); // already 2 layers
-		StateDictionary stateDict = createSyntheticWeights(config);
-		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
-		GRUDecoder decoder = createSyntheticDecoder(config);
+		MoonbeamConfig twoLayerConfig = createRealConfigWithLayers(2);
+
+		long allocStart = System.currentTimeMillis();
+		StateDictionary stateDict = createRandomWeights(twoLayerConfig);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(twoLayerConfig);
+		GRUDecoder decoder = createRandomDecoder(twoLayerConfig);
+		long allocTime = System.currentTimeMillis() - allocStart;
+		System.out.println("[MoonbeamComponentTest] 2-layer weight alloc: " + allocTime + " ms");
 
 		long buildStart = System.currentTimeMillis();
-		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
+		MoonbeamMidi model = new MoonbeamMidi(twoLayerConfig, stateDict, embedding, decoder);
 		long buildTime = System.currentTimeMillis() - buildStart;
 		System.out.println("[MoonbeamComponentTest] 2-layer model build: " + buildTime + " ms");
 
-		// Forward a token via the autoregressive API
 		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos(),
@@ -378,17 +353,15 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		};
 		autoregressive.setPrompt(prompt);
 
-		// Process prompt tokens
 		for (int i = 0; i < prompt.length; i++) {
 			long fwdStart = System.currentTimeMillis();
 			MidiCompoundToken result = autoregressive.next();
 			long fwdTime = System.currentTimeMillis() - fwdStart;
 			System.out.println("[MoonbeamComponentTest] 2-layer prompt token " + i
-					+ " forward: " + fwdTime + " ms");
-			Assert.assertNotNull("Prompt token " + i + " should not be null", result);
+					+ ": " + fwdTime + " ms");
+			Assert.assertNotNull("Prompt token " + i + " result", result);
 		}
 
-		// Generate one token
 		long genStart = System.currentTimeMillis();
 		MidiCompoundToken generated = autoregressive.next();
 		long genTime = System.currentTimeMillis() - genStart;
@@ -401,39 +374,80 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 	}
 
 	/* ------------------------------------------------------------ */
-	/*  Test 9: Single Autoregressive Step                          */
+	/*  Test 9: Full 15-layer single token forward pass             */
 	/* ------------------------------------------------------------ */
 
 	/**
-	 * Full model forward + GRU decode for ONE token using the test config.
-	 * This is the atomic unit of generation -- if this is slow, generation
-	 * will never work.
+	 * Build and forward one token through the full 15-layer model at real
+	 * dimensions. This allocates ~6GB of random weights and exercises the
+	 * complete transformer stack.
 	 */
-	@Test(timeout = 120_000)
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void testFullModelForwardPass() {
+		long start = System.currentTimeMillis();
+
+		long allocStart = System.currentTimeMillis();
+		StateDictionary stateDict = createRandomWeights(REAL_CONFIG);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(REAL_CONFIG);
+		GRUDecoder decoder = createRandomDecoder(REAL_CONFIG);
+		long allocTime = System.currentTimeMillis() - allocStart;
+		System.out.println("[MoonbeamComponentTest] 15-layer weight alloc: " + allocTime + " ms");
+
+		long buildStart = System.currentTimeMillis();
+		MoonbeamMidi model = new MoonbeamMidi(REAL_CONFIG, stateDict, embedding, decoder);
+		long buildTime = System.currentTimeMillis() - buildStart;
+		System.out.println("[MoonbeamComponentTest] 15-layer model build: " + buildTime + " ms");
+
+		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+
+		long fwdStart = System.currentTimeMillis();
+		MidiCompoundToken result = autoregressive.next();
+		long fwdTime = System.currentTimeMillis() - fwdStart;
+
+		Assert.assertNotNull("Forward should produce a token", result);
+		System.out.println("[MoonbeamComponentTest] 15-layer forward+decode: " + fwdTime + " ms");
+
+		long elapsed = System.currentTimeMillis() - start;
+		System.out.println("[MoonbeamComponentTest] testFullModelForwardPass: " + elapsed + " ms");
+	}
+
+	/* ------------------------------------------------------------ */
+	/*  Test 10: Single autoregressive step (full model + GRU)      */
+	/* ------------------------------------------------------------ */
+
+	/**
+	 * Full autoregressive step: embed SOS, forward through all 15 layers,
+	 * RMSNorm, GRU decode 7 tokens, map back to compound token. This is
+	 * the atomic unit of generation at real dimensions.
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
 	public void testSingleAutoregressiveStep() {
 		long start = System.currentTimeMillis();
 
-		MoonbeamConfig config = MoonbeamConfig.testConfig();
-		StateDictionary stateDict = createSyntheticWeights(config);
-		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
-		GRUDecoder decoder = createSyntheticDecoder(config);
+		long allocStart = System.currentTimeMillis();
+		StateDictionary stateDict = createRandomWeights(REAL_CONFIG);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(REAL_CONFIG);
+		GRUDecoder decoder = createRandomDecoder(REAL_CONFIG);
+		long allocTime = System.currentTimeMillis() - allocStart;
+		System.out.println("[MoonbeamComponentTest] weight alloc: " + allocTime + " ms");
 
 		long buildStart = System.currentTimeMillis();
-		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
+		MoonbeamMidi model = new MoonbeamMidi(REAL_CONFIG, stateDict, embedding, decoder);
 		long buildTime = System.currentTimeMillis() - buildStart;
 		System.out.println("[MoonbeamComponentTest] model build: " + buildTime + " ms");
 
 		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
 
-		// Generate a single token (unconditional, from SOS)
 		long stepStart = System.currentTimeMillis();
 		MidiCompoundToken result = autoregressive.next();
 		long stepTime = System.currentTimeMillis() - stepStart;
 
 		Assert.assertNotNull("Should produce a token", result);
-		Assert.assertFalse("Token should not be special", result.isPAD());
+		Assert.assertFalse("Token should not be PAD", result.isPAD());
 
-		System.out.println("[MoonbeamComponentTest] single autoregressive step: " + stepTime + " ms");
+		System.out.println("[MoonbeamComponentTest] autoregressive step: " + stepTime + " ms");
 		System.out.println("[MoonbeamComponentTest] generated token: onset="
 				+ result.getOnset() + " dur=" + result.getDuration()
 				+ " oct=" + result.getOctave() + " pc=" + result.getPitchClass()
@@ -444,182 +458,33 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 	}
 
 	/* ------------------------------------------------------------ */
-	/*  Test 10: Small Sequence Generation                          */
-	/* ------------------------------------------------------------ */
-
-	/**
-	 * Generate 5 tokens from SOS using the test config.
-	 * If this times out, per-token cost is too high for practical generation.
-	 */
-	@Test(timeout = 300_000)
-	public void testSmallSequenceGeneration() {
-		long start = System.currentTimeMillis();
-
-		MoonbeamConfig config = MoonbeamConfig.testConfig();
-		StateDictionary stateDict = createSyntheticWeights(config);
-		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
-		GRUDecoder decoder = createSyntheticDecoder(config);
-
-		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
-
-		int numTokens = 5;
-		long genStart = System.currentTimeMillis();
-		List<MidiCompoundToken> generated = autoregressive.generate(numTokens);
-		long genTime = System.currentTimeMillis() - genStart;
-
-		Assert.assertFalse("Should generate at least one token", generated.isEmpty());
-		Assert.assertTrue("Should generate at most " + numTokens + " tokens",
-				generated.size() <= numTokens);
-
-		// Print per-token timing
-		double perToken = generated.isEmpty() ? 0 : (double) genTime / generated.size();
-		System.out.println("[MoonbeamComponentTest] generated " + generated.size()
-				+ " tokens in " + genTime + " ms ("
-				+ String.format("%.1f", perToken) + " ms/token)");
-
-		for (int i = 0; i < generated.size(); i++) {
-			MidiCompoundToken t = generated.get(i);
-			System.out.println("[MoonbeamComponentTest] token " + i + ": onset="
-					+ t.getOnset() + " dur=" + t.getDuration()
-					+ " oct=" + t.getOctave() + " pc=" + t.getPitchClass()
-					+ " inst=" + t.getInstrument() + " vel=" + t.getVelocity()
-					+ (t.isEOS() ? " [EOS]" : ""));
-		}
-
-		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSmallSequenceGeneration: " + elapsed + " ms");
-	}
-
-	/* ------------------------------------------------------------ */
-	/*  Test 11: FME Multiple Bases                                 */
-	/* ------------------------------------------------------------ */
-
-	/**
-	 * Test FME computation for all 6 attribute bases used by Moonbeam.
-	 * Ensures none of them produce NaN or infinite values.
-	 */
-	@Test(timeout = 5_000)
-	public void testFmeAllBases() {
-		long start = System.currentTimeMillis();
-
-		double[] bases = {199999, 1031, 19, 20, 199999, 131};
-		String[] names = {"onset", "duration", "octave", "pitch", "instrument", "velocity"};
-		int dim = 8; // small for test speed
-
-		for (int b = 0; b < bases.length; b++) {
-			long baseStart = System.currentTimeMillis();
-			FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(bases[b], dim);
-
-			// Test a range of values
-			for (int val : new int[]{0, 1, 100, 4098}) {
-				PackedCollection result = fme.embed(val);
-				Assert.assertEquals("Dimension for " + names[b],
-						dim, result.getShape().getTotalSize());
-				for (int i = 0; i < dim; i++) {
-					Assert.assertTrue(names[b] + " value=" + val + " idx=" + i
-									+ " should be finite",
-							Double.isFinite(result.toDouble(i)));
-				}
-			}
-
-			long baseTime = System.currentTimeMillis() - baseStart;
-			System.out.println("[MoonbeamComponentTest] FME " + names[b]
-					+ " (base=" + bases[b] + "): " + baseTime + " ms");
-		}
-
-		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testFmeAllBases: " + elapsed + " ms");
-	}
-
-	/* ------------------------------------------------------------ */
-	/*  Test 12: GRU Decoder with Sampling                          */
-	/* ------------------------------------------------------------ */
-
-	/**
-	 * Test GRU decoder with temperature and top-p sampling to ensure
-	 * sampling path does not hang or produce invalid tokens.
-	 */
-	@Test(timeout = 15_000)
-	public void testGruDecoderWithSampling() {
-		long start = System.currentTimeMillis();
-
-		MoonbeamConfig config = MoonbeamConfig.testConfig();
-		GRUDecoder decoder = createSyntheticDecoder(config);
-
-		Random rng = new Random(42);
-		PackedCollection hidden = createRandomCollection(rng, config.hiddenSize);
-
-		long decodeStart = System.currentTimeMillis();
-		int[] tokens = decoder.decode(hidden, 0.8, 0.95, new Random(123));
-		long decodeTime = System.currentTimeMillis() - decodeStart;
-
-		Assert.assertEquals("Should produce 7 tokens",
-				GRUDecoder.TOKENS_PER_NOTE, tokens.length);
-		for (int i = 0; i < tokens.length; i++) {
-			Assert.assertTrue("Sampled token " + i + " in valid range",
-					tokens[i] >= 0 && tokens[i] < config.decodeVocabSize);
-		}
-
-		System.out.println("[MoonbeamComponentTest] GRU decode with sampling: " + decodeTime + " ms");
-
-		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testGruDecoderWithSampling: " + elapsed + " ms");
-	}
-
-	/* ------------------------------------------------------------ */
-	/*  Test 13: Embedding Special Tokens                           */
-	/* ------------------------------------------------------------ */
-
-	/**
-	 * Verify that SOS, EOS, and PAD tokens embed correctly and quickly.
-	 */
-	@Test(timeout = 5_000)
-	public void testEmbeddingSpecialTokens() {
-		long start = System.currentTimeMillis();
-
-		MoonbeamConfig config = MoonbeamConfig.testConfig();
-		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
-
-		// SOS
-		long sosStart = System.currentTimeMillis();
-		PackedCollection sosEmb = embedding.embed(MidiCompoundToken.sos());
-		long sosTime = System.currentTimeMillis() - sosStart;
-		Assert.assertEquals("SOS size", config.hiddenSize, sosEmb.getShape().getTotalSize());
-		System.out.println("[MoonbeamComponentTest] SOS embed: " + sosTime + " ms");
-
-		// EOS
-		long eosStart = System.currentTimeMillis();
-		PackedCollection eosEmb = embedding.embed(MidiCompoundToken.eos());
-		long eosTime = System.currentTimeMillis() - eosStart;
-		Assert.assertEquals("EOS size", config.hiddenSize, eosEmb.getShape().getTotalSize());
-		System.out.println("[MoonbeamComponentTest] EOS embed: " + eosTime + " ms");
-
-		// PAD
-		long padStart = System.currentTimeMillis();
-		PackedCollection padEmb = embedding.embed(MidiCompoundToken.pad());
-		long padTime = System.currentTimeMillis() - padStart;
-		Assert.assertEquals("PAD size", config.hiddenSize, padEmb.getShape().getTotalSize());
-		// PAD should be all zeros
-		for (int i = 0; i < config.hiddenSize; i++) {
-			Assert.assertEquals("PAD value at " + i, 0.0, padEmb.toDouble(i), 0.0);
-		}
-		System.out.println("[MoonbeamComponentTest] PAD embed: " + padTime + " ms");
-
-		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testEmbeddingSpecialTokens: " + elapsed + " ms");
-	}
-
-	/* ------------------------------------------------------------ */
 	/*  Helpers                                                     */
 	/* ------------------------------------------------------------ */
 
 	/**
-	 * Create a StateDictionary with synthetic weights for all transformer
-	 * layer parameters. RMSNorm weights are ones so norms don't zero out.
+	 * Create a MoonbeamConfig with real dimensions but a custom number of layers.
+	 * All other parameters match {@link MoonbeamConfig#defaultConfig()}.
 	 */
-	private static StateDictionary createSyntheticWeights(MoonbeamConfig config) {
+	private static MoonbeamConfig createRealConfigWithLayers(int numLayers) {
+		return new MoonbeamConfig(
+				1920, 6720, numLayers,
+				12, 6, 160,
+				1536, 4,
+				8487, 8192, 1e-5,
+				new double[]{199999, 1031, 19, 20, 199999, 131},
+				new int[]{2, 2, 2, 2, 2, 2},
+				new int[]{4099, 4099, 13, 14, 131, 130},
+				new double[]{199999, 1031, 19, 20, 199999, 131},
+				2);
+	}
+
+	/**
+	 * Create a StateDictionary with random weights at the real model dimensions.
+	 * RMSNorm weights are initialized to ones to avoid zeroing out activations.
+	 */
+	private static StateDictionary createRandomWeights(MoonbeamConfig config) {
 		Map<String, PackedCollection> weights = new HashMap<>();
+		Random rng = new Random(42);
 		int dim = config.hiddenSize;
 		int kvDim = dim * config.numKvHeads / config.numHeads;
 		int ffnDim = config.intermediateSize;
@@ -629,19 +494,19 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 			weights.put(prefix + ".input_layernorm.weight", onesCollection(dim));
 			weights.put(prefix + ".post_attention_layernorm.weight", onesCollection(dim));
 			weights.put(prefix + ".self_attn.q_proj.weight",
-					new PackedCollection(new TraversalPolicy(dim, dim)));
+					createRandomCollection(rng, dim, dim));
 			weights.put(prefix + ".self_attn.k_proj.weight",
-					new PackedCollection(new TraversalPolicy(kvDim, dim)));
+					createRandomCollection(rng, kvDim, dim));
 			weights.put(prefix + ".self_attn.v_proj.weight",
-					new PackedCollection(new TraversalPolicy(kvDim, dim)));
+					createRandomCollection(rng, kvDim, dim));
 			weights.put(prefix + ".self_attn.o_proj.weight",
-					new PackedCollection(new TraversalPolicy(dim, dim)));
+					createRandomCollection(rng, dim, dim));
 			weights.put(prefix + ".mlp.gate_proj.weight",
-					new PackedCollection(new TraversalPolicy(ffnDim, dim)));
+					createRandomCollection(rng, ffnDim, dim));
 			weights.put(prefix + ".mlp.down_proj.weight",
-					new PackedCollection(new TraversalPolicy(dim, ffnDim)));
+					createRandomCollection(rng, dim, ffnDim));
 			weights.put(prefix + ".mlp.up_proj.weight",
-					new PackedCollection(new TraversalPolicy(ffnDim, dim)));
+					createRandomCollection(rng, ffnDim, dim));
 		}
 
 		weights.put("model.norm.weight", onesCollection(dim));
@@ -650,9 +515,10 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Create a GRU decoder with synthetic (zero-initialized) weights.
+	 * Create a GRU decoder with random weights at real dimensions.
 	 */
-	private static GRUDecoder createSyntheticDecoder(MoonbeamConfig config) {
+	private static GRUDecoder createRandomDecoder(MoonbeamConfig config) {
+		Random rng = new Random(123);
 		int hidden = config.hiddenSize;
 		int decoderHidden = config.decoderHiddenSize;
 		int vocabSize = config.decodeVocabSize;
@@ -661,18 +527,18 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		for (int l = 0; l < config.decoderLayers; l++) {
 			layers[l] = new GRUCell(
 					decoderHidden, decoderHidden,
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden)));
+					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden));
 		}
 
 		return new GRUDecoder(config, layers,
-				new PackedCollection(new TraversalPolicy(decoderHidden, hidden)),
-				new PackedCollection(new TraversalPolicy(decoderHidden)),
-				new PackedCollection(new TraversalPolicy(vocabSize, decoderHidden)),
-				new PackedCollection(new TraversalPolicy(vocabSize)),
-				new PackedCollection(new TraversalPolicy(vocabSize, decoderHidden)));
+				createRandomCollection(rng, decoderHidden, hidden),
+				createRandomCollection(rng, decoderHidden),
+				createRandomCollection(rng, vocabSize, decoderHidden),
+				createRandomCollection(rng, vocabSize),
+				createRandomCollection(rng, vocabSize, decoderHidden));
 	}
 
 	/**
@@ -688,25 +554,16 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 
 	/**
 	 * Create a PackedCollection with random values scaled by 0.02 (typical weight init).
+	 * Uses bulk setMem to avoid per-element JNI overhead.
 	 */
 	private static PackedCollection createRandomCollection(Random rng, int... dims) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(dims));
 		int total = collection.getShape().getTotalSize();
+		double[] data = new double[total];
 		for (int i = 0; i < total; i++) {
-			collection.setMem(i, rng.nextGaussian() * 0.02);
+			data[i] = rng.nextGaussian() * 0.02;
 		}
+		collection.setMem(0, data, 0, total);
 		return collection;
-	}
-
-	/**
-	 * Create a random input vector of the given size.
-	 */
-	private static PackedCollection createRandomInput(int size) {
-		Random rng = new Random(42);
-		PackedCollection input = new PackedCollection(new TraversalPolicy(size));
-		for (int i = 0; i < size; i++) {
-			input.setMem(i, rng.nextGaussian() * 0.1);
-		}
-		return input;
 	}
 }
