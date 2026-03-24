@@ -28,7 +28,7 @@
 
 	<modules>
 		<!-- base — Foundation -->
-		<module>base/uml</module>
+		<module>base/meta</module>
 		<module>base/io</module>
 		<module>base/relation</module>
 		<module>base/code</module>

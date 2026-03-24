@@ -16,9 +16,7 @@
 
 package org.almostrealism.texture;
 
-import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
@@ -28,41 +26,33 @@ import org.almostrealism.color.computations.GeneratedColorProducer;
 
 /**
  * The {@link StripeTexture} can be used to stripe a surface.
- * 
+ *
  * @author  Michael Murray
  */
 // TODO  ColorProducers should be allowed to be specified in place of RGB values.
-public class StripeTexture implements Texture, Editable {
-  private static final String[] propNames = {"Stripe Width", "Smooth", "Axis",
-  											"First Color", "Second Color",
-											"Offset"};
-  private static final String[] propDesc = {"The width of each stripe", "Smooth stripes or solid stripes", "The axis for the stripes",
-						"The first color to use for the stripes", "The second color to use for the stripes",
-						"Stripe offset"};
-  private static final Class[] propTypes = {Double.class, Boolean.class, Editable.Selection.class, RGB.class, RGB.class, Double.class};
-  private static final String[] axisOptions = {"X Axis", "Y Axis", "Z Axis"};
+public class StripeTexture implements Texture {
   public static final int XAxis = 0;
   public static final int YAxis = 1;
   public static final int ZAxis = 2;
-  
-  private Object[] props;
+
+  private double stripeWidth;
+  private boolean smooth;
+  private int axis;
+  private RGB color1;
+  private RGB color2;
+  private double offset;
 
 	/**
 	 * Constructs a StripeTexture object that can be used to stripe a surface. The default colors are black and white
-	 * with a stripe width of 1.0 that is solid (not smooth) across the x axis.
+	 * with a stripe width of 0.1 that is solid (not smooth) across the x axis.
 	 */
 	public StripeTexture() {
-		Object[] props = {new Double(0.1), Boolean.FALSE,
-							new Editable.Selection(StripeTexture.axisOptions),
-							new RGB(1.0, 1.0, 1.0), new RGB(0.0, 0.0, 0.0),
-							new Double(0.0)};
-		
-		this.setPropertyValues(props);
-	}
-	
-	/** Constructs a StripeTexture object using the specified properties. */
-	public StripeTexture(Object[] props) {
-		this.setPropertyValues(props);
+		this.stripeWidth = 0.1;
+		this.smooth = false;
+		this.axis = XAxis;
+		this.color1 = new RGB(1.0, 1.0, 1.0);
+		this.color2 = new RGB(0.0, 0.0, 0.0);
+		this.offset = 0.0;
 	}
 
 	/**
@@ -70,140 +60,61 @@ public class StripeTexture implements Texture, Editable {
 	 *          object at the specified point as an RGB object.
 	 */
 	public RGB operate(Vector t) {
-		if (this.props == null) return null;
-		PackedCollection result = this.getColorAt(this.props).evaluate(t);
+		PackedCollection result = this.getColorAt(new Object[0]).evaluate(t);
 		return result instanceof RGB ? (RGB) result : new RGB(result.toDouble(0), result.toDouble(1), result.toDouble(2));
 	}
 
 	/**
-	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
-	 * @return  The color of the texture represented by this StripeTexture object at the specified point as an RGB object.
+	 * {@inheritDoc}
 	 */
-	public Evaluable<PackedCollection> getColorAt(Object[] props) {
+	@Override
+	public Evaluable<PackedCollection> getColorAt(Object[] params) {
 		return GeneratedColorProducer.fromProducer(this, () -> args -> {
 			Vector l = args.length > 0 ? (Vector) args[0] : new Vector(1.0, 1.0, 1.0);
 			Vector point = new Vector(l.getX(), l.getY(), l.getZ());
 
-			for (int i = 0; i < StripeTexture.propTypes.length; i++) {
-				if (!StripeTexture.propTypes[i].isInstance(props[i]))
-					throw new IllegalArgumentException("Illegal argument: " + props[i].toString());
-			}
-
-			double width = ((Double) props[0]).doubleValue();
-			boolean smooth = ((Boolean) props[1]).booleanValue();
-			int axis = ((Selection) props[2]).getSelected();
-
-			double offset = ((Double) props[5]).doubleValue();
-
 			double value;
 
-			if (axis == 0)
+			if (axis == XAxis)
 				value = point.getX();
-			else if (axis == 1)
+			else if (axis == YAxis)
 				value = point.getY();
-			else if (axis == 2)
+			else if (axis == ZAxis)
 				value = point.getZ();
 			else
 				return null;
 
-			RGB c1 = (RGB) props[3];
-			RGB c2 = (RGB) props[4];
-
 			if (smooth) {
-				double t = (1 + Math.sin(Math.PI * ((value / width) + offset))) / 2.0;
+				double t = (1 + Math.sin(Math.PI * ((value / stripeWidth) + offset))) / 2.0;
 
-				return (c1.multiply(1.0 - t)).add(c2.multiply(t));
+				return (color1.multiply(1.0 - t)).add(color2.multiply(t));
 			} else {
-				if (Math.sin(Math.PI * ((value / width) + offset)) > 0)
-					return c1;
+				if (Math.sin(Math.PI * ((value / stripeWidth) + offset)) > 0)
+					return color1;
 				else
-					return c2;
+					return color2;
 			}
 		}).get();
 	}
-	
-	/**
-	 * @return  An array of String objects with names for each editable property of this StripeTexture object.
-	 */
-	public String[] getPropertyNames() { return StripeTexture.propNames; }
-	
-	/**
-	 * @return  An array of String objects with descriptions for each editable property of this StripeTexture object.
-	 */
-	public String[] getPropertyDescriptions() { return StripeTexture.propDesc; }
-	
-	/**
-	 * @return  An array of Class objects representing the class types of each editable property of this StripeTexture object.
-	 */
-	public Class[] getPropertyTypes() { return StripeTexture.propTypes; }
-	
-	/**
-	 * @return  The values of the properties of this StripeTexture object as an Object array.
-	 */
-	public Object[] getPropertyValues() { return this.props; }
-	
-	/**
-	 * Sets the value of the property of this StripeTexture object at the specified index to the specified value.
-	 * 
-	 * @throws IllegalArgumentException  If the object specified is not of the correct type.
-	 * @throws IndexOutOfBoundsException  If the index specified does not correspond to an editable property of this
-     *                                    StripeTexture object.
-	 */
-	public void setPropertyValue(Object value, int index) {
-		if (this.props == null)
-			this.props = new Object[StripeTexture.propTypes.length];
-		
-		if (index >= StripeTexture.propTypes.length)
-			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-		else if (!StripeTexture.propTypes[index].isInstance(value))
-			throw new IllegalArgumentException("Illegal argument: " + value.toString());
-		else
-			this.props[index] = value;
-	}
-	
-	/**
-	 * Sets the values of properties of this StripeTexture object to those specified.
-	 * 
-	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
-	 *                                   (Note: none of the values after the erroneous value will be set)
-	 * @throws IndexOutOfBoundsException  If the length of the specified array is longer than permitted.
-	 */
-	public void setPropertyValues(Object[] values) {
-		for (int i = 0; i < values.length; i++) {
-			this.setPropertyValue(values[i], i);
-		}
-	}
-	
-	/**
-	 * @return  {first color, second color}.
-	 */
-	@Override
-	public Producer[] getInputPropertyValues() {
-		return new Producer[] {(Producer) this.props[3], (Producer) this.props[4]};
-	}
-	
-	/**
-	 * Sets the values of properties of this HighlightShader object to those specified.
-	 * 
-	 * @throws IllegalArgumentException  If the Producer object specified is not of the correct type.
-	 * @throws IndexOutOfBoundsException  If the index > 1.
-	 */
-	public void setInputPropertyValue(int index, Producer p) {
-		if (index == 0)
-			this.setPropertyValue(p, 3);
-		else if (index == 1)
-			this.setPropertyValue(p, 4);
-		else
-			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-	}
-	
-	public void setStripeWidth(double w) { this.props[0] = new Double(w); }
-	public void setSmooth(boolean s) { this.props[1] = Boolean.valueOf(s); }
-	public void setAxis(int axis) { ((Editable.Selection)this.props[2]).setSelected(axis); }
-	public void setFirstColor(RGB color) { this.props[3] = color; }
-	public void setSecondColor(RGB color) { this.props[4] = color; }
-	public void setOffset(double off) { this.props[5] = new Double(off); }
-	
+
+	/** Sets the width of each stripe. */
+	public void setStripeWidth(double w) { this.stripeWidth = w; }
+
+	/** Sets whether stripes blend smoothly or have hard edges. */
+	public void setSmooth(boolean s) { this.smooth = s; }
+
+	/** Sets the axis along which stripes are oriented (XAxis, YAxis, or ZAxis). */
+	public void setAxis(int axis) { this.axis = axis; }
+
+	/** Sets the first color used for the stripes. */
+	public void setFirstColor(RGB color) { this.color1 = color; }
+
+	/** Sets the second color used for the stripes. */
+	public void setSecondColor(RGB color) { this.color2 = color; }
+
+	/** Sets the stripe offset. */
+	public void setOffset(double off) { this.offset = off; }
+
 	/**
 	 * @return "Stripe Texture".
 	 */
