@@ -263,6 +263,48 @@ The compute layer provides typed mathematical abstractions over the base layer's
 
 ---
 
+## Engine Layer — Below Utils
+
+### ar-optimize
+
+**Reviewed:** 2026-03-24
+
+19 types, 1 package. Depends only on ar-graph. ModelOptimizer owns training loops, PopulationOptimizer owns evolutionary algorithms, loss functions (MSE, MAE, NLL), Adam optimizer. 26 downstream files.
+
+| Criterion | Rating | Notes |
+|-----------|--------|-------|
+| Coherence | Strong | Single package, single purpose. |
+| Clarity | Strong | 19 types, no overlap, clear naming. |
+| Dependencies | Strong | Only ar-graph. |
+| Necessity | Strong | 26 files. |
+
+No actions needed.
+
+### ar-utils
+
+**Reviewed:** 2026-03-24
+
+31 main types + 158 test types. Depends on ar-space, ar-chemistry, ar-optimize. The **gate between platform infrastructure and application-facing modules** — everything above utils can assume the full platform is available.
+
+| Criterion | Rating | Notes |
+|-----------|--------|-------|
+| Coherence | Weak-to-Adequate | Testing core (90.6% of usage) is strong. Auth, events, and misc utilities are grab-bag items justified by dependency convenience. |
+| Clarity | Adequate | TestSuiteBase + @TestDepth pattern is clean. Module name "utils" communicates nothing. |
+| Dependencies | Adequate | Heavy deps justified for cross-module testing, but creates transitive bloat. |
+| Necessity | Mixed | Testing: Strong (296 test subclasses). Non-testing: varies. |
+
+**Why 158 test classes live here:** Tests often need types from multiple modules (e.g., testing PackedCollection memory performance with trig functions requires both collect and geometry). Utils sits high enough in the dependency tree to bring everything together. This is intentional, though some simpler tests could move to their respective modules.
+
+#### Actions Taken
+- **Removed** `GoogleImagery` — zero imports, dead code.
+- **Moved** auth package (3 types: Login, Authenticatable, AuthenticatableFactory) from ar-utils to ar-utils-http. Added ar-utils-http dependency to flowtree (no new transitive external libraries — flowtree already had ar-utils and jackson-databind).
+
+#### Deferred Improvements
+- **event package** (6 types) — Only used in utils-http test. Could move to utils-http.
+- **Test migration** — Many of the 158 test classes could move to their respective modules if the CI pipeline is updated to run tests for all modules (currently skips some, creating a gap where tests are written but not executed).
+
+---
+
 ## Domain Layer (ar-color, ar-heredity, ar-graph, ar-physics, ar-space, ar-chemistry, ar-llvm)
 
 **Reviewed:** 2026-03-24
