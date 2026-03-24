@@ -284,13 +284,32 @@ public class AudioLibraryPersistence {
 	}
 
 	public static AudioLibrary loadLibrary(AudioLibrary library, Supplier<InputStream> in) throws IOException {
+		return loadLibrary(library, in, true);
+	}
+
+	/**
+	 * Loads library data from protobuf batch files into the given {@link AudioLibrary}.
+	 *
+	 * <p>When {@code includeSimilarities} is false, similarity maps are skipped during
+	 * decoding. This dramatically reduces memory usage for large libraries where each
+	 * entry may store pairwise similarities to every other entry (N² growth). Similarities
+	 * can be recomputed on demand via {@link AudioLibrary#computeSimilarities}.</p>
+	 *
+	 * @param library             the library to populate
+	 * @param in                  supplier of input streams for each batch file
+	 * @param includeSimilarities whether to load similarity maps from protobuf
+	 * @return the populated library
+	 * @throws IOException if reading from the input stream fails
+	 */
+	public static AudioLibrary loadLibrary(AudioLibrary library, Supplier<InputStream> in,
+										   boolean includeSimilarities) throws IOException {
 		InputStream input = in.get();
 
 		while (input != null) {
 			Audio.AudioLibraryData data = Audio.AudioLibraryData.newBuilder().mergeFrom(input).build();
 
 			for (Audio.WaveDetailData d : data.getInfoMap().values()) {
-				WaveDetails details = decode(d);
+				WaveDetails details = decode(d, includeSimilarities);
 
 				if (details.getIdentifier() == null) {
 					Console.root().features(AudioLibraryPersistence.class)
@@ -533,6 +552,18 @@ public class AudioLibraryPersistence {
 	}
 
 	public static WaveDetails decode(Audio.WaveDetailData data) {
+		return decode(data, true);
+	}
+
+	/**
+	 * Decodes a protobuf {@link Audio.WaveDetailData} into a {@link WaveDetails}.
+	 *
+	 * @param data                the protobuf data to decode
+	 * @param includeSimilarities whether to populate the similarity map; when false,
+	 *                            the map is left empty to avoid N² memory growth
+	 * @return the decoded WaveDetails
+	 */
+	public static WaveDetails decode(Audio.WaveDetailData data, boolean includeSimilarities) {
 		WaveDetails details = new WaveDetails(data.getIdentifier().isBlank() ? null : data.getIdentifier());
 		details.setSampleRate(data.getSampleRate());
 		details.setChannelCount(data.getChannelCount());
@@ -549,7 +580,7 @@ public class AudioLibraryPersistence {
 		details.setFeatureChannelCount(data.getFeatureChannelCount());
 		details.setFeatureFrameCount(data.getFeatureFrameCount());
 		if (data.hasFeatureData()) details.setFeatureData(CollectionEncoder.decode(data.getFeatureData()));
-		details.getSimilarities().putAll(data.getSimilaritiesMap());
+		if (includeSimilarities) details.getSimilarities().putAll(data.getSimilaritiesMap());
 		if (data.hasData()) details.setData(CollectionEncoder.decode(data.getData()));
 		return details;
 	}
