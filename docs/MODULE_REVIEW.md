@@ -189,3 +189,46 @@ Code generation infrastructure: expression trees, scope management, kernel index
 ### Structural Debt (deferred)
 - **Split packages across modules**: `io.almostrealism.collect` spans ar-code (44 types) and ar-collect; `io.almostrealism.compute` spans ar-code (6 types) and ar-relation (10 types). This is a common pattern where types "wanted" to live in the lower module but needed something from higher up.
 - **ar-collect is empty**: The 44 collection types in ar-code's `io.almostrealism.collect` are hardware-agnostic and conceptually belong in ar-collect, but 22 files in ar-code's expression/scope/kernel packages reference them (Expression→CollectionExpression coupling). Moving them creates a circular module dependency. The fix requires breaking the expression/collection coupling — either by abstracting the collection references out of expressions, or by moving the dependent expressions alongside the collection types. This is a significant refactoring effort, deferred for a dedicated session.
+
+---
+
+## ar-hardware
+
+**Reviewed:** 2026-03-24
+**Branch:** feature/module-layer-review
+
+### Concept
+Hardware acceleration: GPU/CPU kernel compilation, memory management, and multi-backend execution (Metal, OpenCL, JNI, JVM, NIO, external).
+
+### Package Structure (157 types across 16 packages)
+
+| Package | Types | Role |
+|---------|-------|------|
+| `org.almostrealism.hardware` | 24 | Core: Hardware, MemoryData, AcceleratedOperation, OperationList |
+| `org.almostrealism.hardware.metal` | 23 | Metal backend |
+| `org.almostrealism.hardware.cl` | 21 | OpenCL backend |
+| `org.almostrealism.hardware.mem` | 20 | Memory management, heap, allocation |
+| `org.almostrealism.hardware.jni` | 15 | JNI native compilation |
+| `org.almostrealism.hardware.instructions` | 10 | Scope compilation, execution key caching |
+| `org.almostrealism.c` | 10 | C code generation for native kernels |
+| `org.almostrealism.hardware.computations` | 7 | Assignment, Loop, Periodic |
+| `org.almostrealism.nio` | 6 | NIO shared memory / native buffer interop |
+| `org.almostrealism.hardware.ctx` | 6 | Compute context, thread-local context |
+| `org.almostrealism.hardware.kernel` | 4 | Kernel series cache, traversal operations |
+| `org.almostrealism.hardware.external` | 4 | External compute context |
+| `org.almostrealism.hardware.profile` | 2 | Profiling data |
+| `org.almostrealism.hardware.jvm` | 2 | JVM memory provider |
+| `org.almostrealism.hardware.arguments` | 2 | Process argument evaluation |
+| `org.almostrealism.concurrent` | 1 | SuspendableThreadPoolExecutor |
+
+### Ratings
+
+| Criterion | Rating | Notes |
+|-----------|--------|-------|
+| Coherence | Strong | Every package serves hardware acceleration. No outliers. |
+| Clarity | Adequate-to-Strong | Consistent backend pattern across all backends. Size is inherent complexity. |
+| Dependencies | Strong | ar-collect + JOCL, both essential. |
+| Necessity | Strong | 561 downstream imports. All packages active. |
+
+### Actions Taken
+- None needed — this module is well-organized.
