@@ -69,6 +69,10 @@ public class FundamentalMusicEmbedding {
 	/** Learned linear projection bias, shape (dim,). */
 	private final PackedCollection linearBias;
 
+	/** Cached weight arrays for bulk computation (lazily initialized). */
+	private double[] linearWeightArr;
+	private double[] linearBiasArr;
+
 	/** Learned translation bias added to input before sinusoidal transform, shape (1,). */
 	private final PackedCollection translationBias;
 
@@ -118,6 +122,8 @@ public class FundamentalMusicEmbedding {
 	 * @return PackedCollection of shape (dim,) containing the embedding vector
 	 */
 	public PackedCollection embed(int value) {
+		ensureWeightsCached();
+
 		double bias = translationBias.toDouble(0);
 		double biasedValue = value + bias;
 
@@ -132,17 +138,26 @@ public class FundamentalMusicEmbedding {
 		double[] output = new double[dim];
 		for (int row = 0; row < dim; row++) {
 			double sum = 0.0;
+			int rowOffset = row * dim;
 			for (int col = 0; col < dim; col++) {
-				sum += linearWeight.toDouble(row * dim + col) * sincos[col];
+				sum += linearWeightArr[rowOffset + col] * sincos[col];
 			}
-			output[row] = sum + linearBias.toDouble(row);
+			output[row] = sum + linearBiasArr[row];
 		}
 
 		PackedCollection result = new PackedCollection(new TraversalPolicy(dim));
-		for (int i = 0; i < dim; i++) {
-			result.setMem(i, output[i]);
-		}
+		result.setMem(0, output, 0, dim);
 		return result;
+	}
+
+	/**
+	 * Cache weight arrays from PackedCollections on first use.
+	 */
+	private void ensureWeightsCached() {
+		if (linearWeightArr == null) {
+			linearWeightArr = linearWeight.toArray();
+			linearBiasArr = linearBias.toArray();
+		}
 	}
 
 	/**

@@ -114,10 +114,12 @@ public class MidiTokenizer {
 			if (token.isSpecial()) continue;
 
 			currentOnset += token.getOnset();
-			int pitch = token.getOctave() * 12 + token.getPitchClass();
+			int pitch = clamp(token.getOctave() * 12 + token.getPitchClass(), 0, 127);
+			int velocity = clamp(token.getVelocity(), 0, 127);
+			int instrument = clamp(token.getInstrument(), 0, 127);
 			events.add(new MidiNoteEvent(
 					pitch, currentOnset, token.getDuration(),
-					token.getVelocity(), token.getInstrument()));
+					velocity, instrument));
 		}
 
 		return events;

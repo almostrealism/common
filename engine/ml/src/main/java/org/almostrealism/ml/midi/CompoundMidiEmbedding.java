@@ -185,9 +185,8 @@ public class CompoundMidiEmbedding {
 			}
 
 			int offset = attr * dim;
-			for (int j = 0; j < dim; j++) {
-				result.setMem(offset + j, attrEmb.toDouble(j));
-			}
+			double[] attrData = attrEmb.toArray(0, dim);
+			result.setMem(offset, attrData, 0, dim);
 		}
 
 		return result;
@@ -222,9 +221,8 @@ public class CompoundMidiEmbedding {
 		int dim = config.embeddingDim;
 		PackedCollection result = new PackedCollection(new TraversalPolicy(dim));
 		int offset = instrumentId * dim;
-		for (int i = 0; i < dim; i++) {
-			result.setMem(i, instrumentEmbedding.toDouble(offset + i));
-		}
+		double[] slice = instrumentEmbedding.toArray(offset, dim);
+		result.setMem(0, slice, 0, dim);
 		return result;
 	}
 
@@ -238,19 +236,21 @@ public class CompoundMidiEmbedding {
 
 		PackedCollection lookup = new PackedCollection(new TraversalPolicy(hidden));
 		int offset = tokenIndex * hidden;
-		for (int i = 0; i < hidden; i++) {
-			lookup.setMem(i, supplementaryEmbedding.toDouble(offset + i));
-		}
+		double[] slice = supplementaryEmbedding.toArray(offset, hidden);
+		lookup.setMem(0, slice, 0, hidden);
 
 		int intermediate = supplementaryMlpIntermediateSize;
 
 		PackedCollection mlp0Out = GRUDecoder.linearForward(
 				lookup, hidden, supplementaryMlp0Weight, intermediate, supplementaryMlp0Bias);
 
-		PackedCollection geluOut = new PackedCollection(new TraversalPolicy(intermediate));
+		double[] mlp0Data = mlp0Out.toArray(0, intermediate);
+		double[] geluData = new double[intermediate];
 		for (int i = 0; i < intermediate; i++) {
-			geluOut.setMem(i, gelu(mlp0Out.toDouble(i)));
+			geluData[i] = gelu(mlp0Data[i]);
 		}
+		PackedCollection geluOut = new PackedCollection(new TraversalPolicy(intermediate));
+		geluOut.setMem(0, geluData, 0, intermediate);
 
 		return GRUDecoder.linearForward(
 				geluOut, intermediate, supplementaryMlp2Weight, hidden, supplementaryMlp2Bias);

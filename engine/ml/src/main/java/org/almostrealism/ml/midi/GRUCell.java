@@ -48,6 +48,12 @@ public class GRUCell {
 	private final PackedCollection biasIh;
 	private final PackedCollection biasHh;
 
+	/** Cached weight arrays for bulk computation (lazily initialized). */
+	private double[] weightIhArr;
+	private double[] weightHhArr;
+	private double[] biasIhArr;
+	private double[] biasHhArr;
+
 	/**
 	 * Create a GRU cell with the given weights.
 	 *
@@ -72,17 +78,26 @@ public class GRUCell {
 	/**
 	 * Compute one GRU step.
 	 *
+	 * <p>Uses bulk array reads via {@code toArray()} for input and hidden
+	 * state, and caches weight arrays on first call, to eliminate per-element
+	 * JNI overhead.</p>
+	 *
 	 * @param x input vector of size (inputSize)
 	 * @param h previous hidden state of size (hiddenSize)
 	 * @return new hidden state of size (hiddenSize)
 	 */
 	public PackedCollection forward(PackedCollection x, PackedCollection h) {
-		// Compute stacked input-hidden gates: (3 * hiddenSize)
-		double[] gatesIh = matmulBias(weightIh, 3 * hiddenSize, inputSize, x, biasIh);
-		// Compute stacked hidden-hidden gates: (3 * hiddenSize)
-		double[] gatesHh = matmulBias(weightHh, 3 * hiddenSize, hiddenSize, h, biasHh);
+		ensureWeightsCached();
 
-		PackedCollection hNew = new PackedCollection(hiddenSize);
+		double[] xArr = x.toArray();
+		double[] hArr = h.toArray();
+
+		// Compute stacked input-hidden gates: (3 * hiddenSize)
+		double[] gatesIh = matmulBias(weightIhArr, 3 * hiddenSize, inputSize, xArr, biasIhArr);
+		// Compute stacked hidden-hidden gates: (3 * hiddenSize)
+		double[] gatesHh = matmulBias(weightHhArr, 3 * hiddenSize, hiddenSize, hArr, biasHhArr);
+
+		double[] hNewArr = new double[hiddenSize];
 
 		for (int i = 0; i < hiddenSize; i++) {
 			// Reset gate: r = sigmoid(W_ir@x + b_ir + W_hr@h + b_hr)
@@ -95,9 +110,11 @@ public class GRUCell {
 			double n = Math.tanh(gatesIh[2 * hiddenSize + i] + r * gatesHh[2 * hiddenSize + i]);
 
 			// Hidden state update: h' = (1 - z) * n + z * h
-			hNew.setMem(i, (1.0 - z) * n + z * h.toDouble(i));
+			hNewArr[i] = (1.0 - z) * n + z * hArr[i];
 		}
 
+		PackedCollection hNew = new PackedCollection(hiddenSize);
+		hNew.setMem(0, hNewArr, 0, hiddenSize);
 		return hNew;
 	}
 
@@ -116,23 +133,41 @@ public class GRUCell {
 	}
 
 	/**
+	 * Cache weight arrays from PackedCollections on first use.
+	 * This converts from JNI-backed memory to Java arrays once,
+	 * enabling fast pure-Java computation in subsequent calls.
+	 */
+	private void ensureWeightsCached() {
+		if (weightIhArr == null) {
+			weightIhArr = weightIh.toArray();
+			weightHhArr = weightHh.toArray();
+			biasIhArr = biasIh.toArray();
+			biasHhArr = biasHh.toArray();
+		}
+	}
+
+	/**
 	 * Compute matrix-vector product plus bias: result = weight @ input + bias.
+	 *
+	 * <p>Uses bulk {@code toArray()} to read weight, input, and bias data
+	 * into Java arrays, avoiding per-element JNI overhead.</p>
 	 *
 	 * @param weight weight matrix, row-major (rows, cols)
 	 * @param rows number of rows in weight matrix
 	 * @param cols number of columns in weight matrix
-	 * @param input input vector of size (cols)
-	 * @param bias bias vector of size (rows)
+	 * @param inputArr input vector as double array of size (cols)
+	 * @param biasArr bias vector as double array of size (rows)
+	 * @param weightArr weight matrix as flattened double array of size (rows * cols)
 	 * @return result vector of size (rows)
 	 */
-	private static double[] matmulBias(PackedCollection weight, int rows, int cols,
-									   PackedCollection input, PackedCollection bias) {
+	private static double[] matmulBias(double[] weightArr, int rows, int cols,
+									   double[] inputArr, double[] biasArr) {
 		double[] result = new double[rows];
 		for (int i = 0; i < rows; i++) {
-			double sum = bias.toDouble(i);
+			double sum = biasArr[i];
 			int rowOffset = i * cols;
 			for (int j = 0; j < cols; j++) {
-				sum += weight.toDouble(rowOffset + j) * input.toDouble(j);
+				sum += weightArr[rowOffset + j] * inputArr[j];
 			}
 			result[i] = sum;
 		}

@@ -315,9 +315,8 @@ public class MidiAutoregressiveModel {
 		PackedCollection emb = embedding.embed(token);
 		int hidden = config.hiddenSize;
 		PackedCollection input = new PackedCollection(new TraversalPolicy(1, hidden));
-		for (int i = 0; i < hidden; i++) {
-			input.setMem(i, emb.toDouble(i));
-		}
+		double[] data = emb.toArray(0, hidden);
+		input.setMem(0, data, 0, hidden);
 		return input;
 	}
 
@@ -327,9 +326,8 @@ public class MidiAutoregressiveModel {
 	private PackedCollection extractHiddenVector(PackedCollection transformerOutput) {
 		int hidden = config.hiddenSize;
 		PackedCollection vec = new PackedCollection(hidden);
-		for (int i = 0; i < hidden; i++) {
-			vec.setMem(i, transformerOutput.toDouble(i));
-		}
+		double[] data = transformerOutput.toArray(0, hidden);
+		vec.setMem(0, data, 0, hidden);
 		return vec;
 	}
 

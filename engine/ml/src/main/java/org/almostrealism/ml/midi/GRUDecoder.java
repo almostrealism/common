@@ -77,6 +77,15 @@ public class GRUDecoder {
 	private final PackedCollection decoderEmbedding;
 	private final int[] vocabOffsets;
 
+	/** Cached array views for bulk computation (lazily initialized). */
+	private double[] summaryWeightArr;
+	private double[] summaryBiasArr;
+	private double[] fcOutWeightArr;
+	private double[] fcOutBiasArr;
+	private double[] lmHeadWeightArr;
+	private double[] lmHeadBiasArr;
+	private double[] decoderEmbeddingArr;
+
 	/**
 	 * Create a GRU decoder with explicit weights.
 	 *
@@ -154,12 +163,13 @@ public class GRUDecoder {
 	 * @return array of 7 output token indices in the flat decode vocabulary
 	 */
 	private int[] runGruLoop(PackedCollection transformerHidden, TokenSelector selector) {
+		ensureWeightsCached();
 		int decoderHidden = config.decoderHiddenSize;
 
 		// Summary projection: hidden_size -> decoder_hidden_size
-		PackedCollection initialHidden = linearForward(
-				transformerHidden, config.hiddenSize,
-				summaryWeight, decoderHidden, summaryBias);
+		PackedCollection initialHidden = linearForwardCached(
+				transformerHidden.toArray(), config.hiddenSize,
+				summaryWeightArr, decoderHidden, summaryBiasArr);
 
 		// Initialize hidden state for each GRU layer
 		PackedCollection[] h = new PackedCollection[layers.length];
@@ -168,7 +178,7 @@ public class GRUDecoder {
 		}
 
 		// Start with SOS output embedding (token 0)
-		PackedCollection x = getEmbedding(0);
+		PackedCollection x = getEmbeddingCached(0);
 		int[] outputTokens = new int[TOKENS_PER_NOTE];
 
 		for (int step = 0; step < TOKENS_PER_NOTE; step++) {
@@ -181,22 +191,22 @@ public class GRUDecoder {
 
 			// fc_out: optional intermediate projection after GRU
 			PackedCollection gruOutput = h[layers.length - 1];
-			if (fcOutWeight != null) {
-				gruOutput = linearForward(gruOutput, decoderHidden,
-						fcOutWeight, decoderHidden, fcOutBias);
+			if (fcOutWeightArr != null) {
+				gruOutput = linearForwardCached(gruOutput.toArray(), decoderHidden,
+						fcOutWeightArr, decoderHidden, fcOutBiasArr);
 			}
 
 			// lm_head: project to decode vocabulary logits
-			PackedCollection logits = linearForward(
-					gruOutput, decoderHidden,
-					lmHeadWeight, config.decodeVocabSize, lmHeadBias);
+			PackedCollection logits = linearForwardCached(
+					gruOutput.toArray(), decoderHidden,
+					lmHeadWeightArr, config.decodeVocabSize, lmHeadBiasArr);
 
 			// Select token via the provided strategy
 			int token = selector.select(logits);
 			outputTokens[step] = token;
 
 			// Embed selected token as input for next step
-			x = getEmbedding(token);
+			x = getEmbeddingCached(token);
 		}
 
 		return outputTokens;
@@ -312,10 +322,11 @@ public class GRUDecoder {
 	 */
 	public static int sampleFromLogits(PackedCollection logits, int vocabSize,
 									   double temperature, double topP, Random random) {
+		double[] logitArr = logits.toArray(0, vocabSize);
 		double[] probs = new double[vocabSize];
 		double maxLogit = Double.NEGATIVE_INFINITY;
 		for (int i = 0; i < vocabSize; i++) {
-			double scaled = logits.toDouble(i) / temperature;
+			double scaled = logitArr[i] / temperature;
 			if (scaled > maxLogit) maxLogit = scaled;
 			probs[i] = scaled;
 		}
@@ -389,6 +400,9 @@ public class GRUDecoder {
 	/**
 	 * Look up a token embedding from the decoder embedding table.
 	 *
+	 * <p>Uses bulk {@code toArray()} to read the embedding slice,
+	 * avoiding per-element JNI overhead.</p>
+	 *
 	 * @param tokenIndex index in the flat decode vocabulary
 	 * @return embedding vector of size (decoderHiddenSize)
 	 */
@@ -396,18 +410,65 @@ public class GRUDecoder {
 		int decoderHidden = config.decoderHiddenSize;
 		PackedCollection embedding = new PackedCollection(decoderHidden);
 		int baseOffset = tokenIndex * decoderHidden;
-		for (int i = 0; i < decoderHidden; i++) {
-			embedding.setMem(i, decoderEmbedding.toDouble(baseOffset + i));
-		}
+		double[] slice = decoderEmbedding.toArray(baseOffset, decoderHidden);
+		embedding.setMem(0, slice, 0, decoderHidden);
 		return embedding;
+	}
+
+	/**
+	 * Look up a token embedding from the cached decoder embedding array.
+	 */
+	private PackedCollection getEmbeddingCached(int tokenIndex) {
+		int decoderHidden = config.decoderHiddenSize;
+		PackedCollection embedding = new PackedCollection(decoderHidden);
+		int baseOffset = tokenIndex * decoderHidden;
+		embedding.setMem(0, decoderEmbeddingArr, baseOffset, decoderHidden);
+		return embedding;
+	}
+
+	/**
+	 * Cache all weight arrays from PackedCollections on first use.
+	 */
+	private void ensureWeightsCached() {
+		if (summaryWeightArr == null) {
+			summaryWeightArr = summaryWeight.toArray();
+			summaryBiasArr = summaryBias.toArray();
+			lmHeadWeightArr = lmHeadWeight.toArray();
+			lmHeadBiasArr = lmHeadBias.toArray();
+			decoderEmbeddingArr = decoderEmbedding.toArray();
+			if (fcOutWeight != null) {
+				fcOutWeightArr = fcOutWeight.toArray();
+				fcOutBiasArr = fcOutBias.toArray();
+			}
+		}
+	}
+
+	/**
+	 * Compute matrix-vector product plus bias using pre-cached arrays.
+	 */
+	private static PackedCollection linearForwardCached(double[] inputArr, int inputSize,
+														double[] weightArr, int outputSize,
+														double[] biasArr) {
+		double[] resultArr = new double[outputSize];
+		for (int i = 0; i < outputSize; i++) {
+			double sum = biasArr[i];
+			int rowOffset = i * inputSize;
+			for (int j = 0; j < inputSize; j++) {
+				sum += weightArr[rowOffset + j] * inputArr[j];
+			}
+			resultArr[i] = sum;
+		}
+
+		PackedCollection result = new PackedCollection(outputSize);
+		result.setMem(0, resultArr, 0, outputSize);
+		return result;
 	}
 
 	/**
 	 * Compute matrix-vector product plus bias: result = weight @ input + bias.
 	 *
-	 * <p>This is the canonical reference implementation of linear projection
-	 * used across the MIDI package (embedding, decoder, etc.). It uses
-	 * element-wise access as a stepping-stone reference implementation.</p>
+	 * <p>Uses bulk {@code toArray()} to read weight, input, and bias data
+	 * into Java arrays, avoiding per-element JNI overhead.</p>
 	 *
 	 * @param input input vector
 	 * @param inputSize dimension of input
@@ -419,28 +480,35 @@ public class GRUDecoder {
 	static PackedCollection linearForward(PackedCollection input, int inputSize,
 										  PackedCollection weight, int outputSize,
 										  PackedCollection bias) {
-		PackedCollection result = new PackedCollection(outputSize);
+		double[] inputArr = input.toArray();
+		double[] weightArr = weight.toArray();
+		double[] biasArr = bias.toArray();
+
+		double[] resultArr = new double[outputSize];
 		for (int i = 0; i < outputSize; i++) {
-			double sum = bias.toDouble(i);
+			double sum = biasArr[i];
 			int rowOffset = i * inputSize;
 			for (int j = 0; j < inputSize; j++) {
-				sum += weight.toDouble(rowOffset + j) * input.toDouble(j);
+				sum += weightArr[rowOffset + j] * inputArr[j];
 			}
-			result.setMem(i, sum);
+			resultArr[i] = sum;
 		}
+
+		PackedCollection result = new PackedCollection(outputSize);
+		result.setMem(0, resultArr, 0, outputSize);
 		return result;
 	}
 
 	/**
-	 * Find the index of the maximum value in a collection.
+	 * Find the index of the maximum value in a collection using bulk read.
 	 */
 	private static int argmax(PackedCollection collection, int size) {
+		double[] data = collection.toArray(0, size);
 		int maxIdx = 0;
-		double maxVal = collection.toDouble(0);
+		double maxVal = data[0];
 		for (int i = 1; i < size; i++) {
-			double val = collection.toDouble(i);
-			if (val > maxVal) {
-				maxVal = val;
+			if (data[i] > maxVal) {
+				maxVal = data[i];
 				maxIdx = i;
 			}
 		}
@@ -448,13 +516,12 @@ public class GRUDecoder {
 	}
 
 	/**
-	 * Create a copy of a PackedCollection.
+	 * Create a copy of a PackedCollection using bulk array transfer.
 	 */
 	private static PackedCollection copyCollection(PackedCollection source, int size) {
 		PackedCollection copy = new PackedCollection(size);
-		for (int i = 0; i < size; i++) {
-			copy.setMem(i, source.toDouble(i));
-		}
+		double[] data = source.toArray(0, size);
+		copy.setMem(0, data, 0, size);
 		return copy;
 	}
 }
