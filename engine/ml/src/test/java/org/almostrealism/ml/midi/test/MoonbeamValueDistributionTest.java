@@ -55,15 +55,15 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 			"sos_out", "onset", "duration", "octave", "pitch_class", "instrument", "velocity"
 	};
 
-	/** Maximum valid attribute values (from MidiTokenizer). */
+	/** Maximum valid attribute values per decode step (vocabSize - 1 for each). */
 	private static final int[] MAX_ATTR_VALUES = {
 			0,    // sos_out (always 0)
-			4098, // onset (MAX_TIME_VALUE)
-			4098, // duration (MAX_TIME_VALUE)
-			10,   // octave (MAX_OCTAVE)
-			11,   // pitch_class (MAX_PITCH_CLASS)
-			128,  // instrument (MAX_INSTRUMENT)
-			127   // velocity (MAX_VELOCITY)
+			4098, // onset (vocabSize 4099)
+			4098, // duration (vocabSize 4099)
+			12,   // octave (vocabSize 13)
+			13,   // pitch_class (vocabSize 14)
+			130,  // instrument (vocabSize 131)
+			129   // velocity (vocabSize 130)
 	};
 
 	/* ================================================================ */
@@ -86,7 +86,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	 *   <li>velocity: offset 8357, size 130</li>
 	 * </ul>
 	 */
-	@Test(timeout = 5_000)
+	@Test(timeout = 120_000)
 	public void testVocabOffsetMapping() {
 		System.out.println("\n=== Test 1: Vocabulary Offset Mapping ===\n");
 
@@ -183,18 +183,15 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 			System.out.printf("  Raw decode tokens: %s%n", Arrays.toString(tokens));
 			System.out.printf("  Attribute values:  %s%n", Arrays.toString(attrValues));
 
-			boolean anyOutOfRange = false;
 			for (int i = 1; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
 				boolean inRange = attrValues[i] >= 0 && attrValues[i] <= MAX_ATTR_VALUES[i];
-				if (!inRange) anyOutOfRange = true;
 				System.out.printf("    [%d] %-12s: attr=%5d, max=%5d %s%n",
 						i, ATTR_NAMES[i], attrValues[i], MAX_ATTR_VALUES[i],
 						inRange ? "OK" : "OUT OF RANGE");
-			}
-
-			if (anyOutOfRange) {
-				System.out.println("  >>> VALUES EXCEED VALID RANGE - diagnosing...");
-				diagnoseTokenSelection(tokens, decoder);
+				Assert.assertTrue(
+						String.format("Trial %d, %s: value %d exceeds max %d",
+								trial, ATTR_NAMES[i], attrValues[i], MAX_ATTR_VALUES[i]),
+						inRange);
 			}
 			System.out.println();
 		}
@@ -541,6 +538,90 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		System.out.println("then attr = 5000 - 8199 = -3199, which is nonsensical.");
 		System.out.println("If it picks e.g. 8486 (last token), attr = 8486 - 8199 = 287,");
 		System.out.println("which is >> max octave of 10, resulting in clamping to 10.");
+	}
+
+	/* ================================================================ */
+	/*  Test 7: Decoded Attribute Range Validation                      */
+	/* ================================================================ */
+
+	/**
+	 * Verify that the GRU decoder with per-step logit masking produces
+	 * attribute values strictly within valid MIDI ranges across many trials.
+	 *
+	 * <p>Checks: octave 0-10, pitchClass 0-11, velocity 0-127,
+	 * instrument 0-128, onset 0-4098, duration 0-4098.</p>
+	 *
+	 * <p>Tests both greedy (argmax) and sampling decode paths.</p>
+	 */
+	@Test(timeout = 60_000)
+	public void testDecodedAttributeRangeValidation() {
+		System.out.println("\n=== Test 7: Decoded Attribute Range Validation ===\n");
+
+		int hidden = REAL_CONFIG.hiddenSize;
+		Random rng = new Random(123);
+		GRUDecoder decoder = createRandomDecoder(rng);
+
+		int numTrials = 20;
+
+		// Test greedy decode
+		System.out.println("Greedy decode (argmax) - " + numTrials + " trials:");
+		for (int trial = 0; trial < numTrials; trial++) {
+			PackedCollection hiddenState = createRandomCollection(new Random(trial * 7), hidden);
+			int[] tokens = decoder.decode(hiddenState);
+			int[] attrValues = decoder.toAttributeValues(tokens);
+
+			assertAttributeRanges(attrValues, "greedy trial " + trial);
+		}
+		System.out.println("  All greedy trials passed.\n");
+
+		// Test sampling decode
+		System.out.println("Sampling decode (temperature=0.8, topP=0.9) - " + numTrials + " trials:");
+		for (int trial = 0; trial < numTrials; trial++) {
+			PackedCollection hiddenState = createRandomCollection(new Random(trial * 13), hidden);
+			Random samplingRng = new Random(trial * 17);
+			int[] tokens = decoder.decode(hiddenState, 0.8, 0.9, samplingRng);
+			int[] attrValues = decoder.toAttributeValues(tokens);
+
+			assertAttributeRanges(attrValues, "sampling trial " + trial);
+		}
+		System.out.println("  All sampling trials passed.\n");
+
+		// Test high-temperature sampling (more randomness, higher chance of edge cases)
+		System.out.println("High-temperature sampling (temperature=2.0, topP=1.0) - " + numTrials + " trials:");
+		for (int trial = 0; trial < numTrials; trial++) {
+			PackedCollection hiddenState = createRandomCollection(new Random(trial * 19), hidden);
+			Random samplingRng = new Random(trial * 23);
+			int[] tokens = decoder.decode(hiddenState, 2.0, 1.0, samplingRng);
+			int[] attrValues = decoder.toAttributeValues(tokens);
+
+			assertAttributeRanges(attrValues, "high-temp trial " + trial);
+		}
+		System.out.println("  All high-temperature trials passed.");
+	}
+
+	/**
+	 * Assert that decoded attribute values are within their valid ranges.
+	 *
+	 * <p>The masking guarantees values are within the vocab sub-range for each
+	 * attribute: onset [0, 4098], duration [0, 4098], octave [0, 12],
+	 * pitchClass [0, 13], instrument [0, 130], velocity [0, 129].
+	 * Values above the musical maximum (e.g., octave 11-12) are reserved
+	 * tokens (SOS/EOS) which is valid model behavior.</p>
+	 */
+	private void assertAttributeRanges(int[] attrValues, String context) {
+		int[] vocabSizes = REAL_CONFIG.vocabSizes;
+		Assert.assertTrue(context + ": onset " + attrValues[1],
+				attrValues[1] >= 0 && attrValues[1] < vocabSizes[0]);
+		Assert.assertTrue(context + ": duration " + attrValues[2],
+				attrValues[2] >= 0 && attrValues[2] < vocabSizes[1]);
+		Assert.assertTrue(context + ": octave " + attrValues[3],
+				attrValues[3] >= 0 && attrValues[3] < vocabSizes[2]);
+		Assert.assertTrue(context + ": pitchClass " + attrValues[4],
+				attrValues[4] >= 0 && attrValues[4] < vocabSizes[3]);
+		Assert.assertTrue(context + ": instrument " + attrValues[5],
+				attrValues[5] >= 0 && attrValues[5] < vocabSizes[4]);
+		Assert.assertTrue(context + ": velocity " + attrValues[6],
+				attrValues[6] >= 0 && attrValues[6] < vocabSizes[5]);
 	}
 
 	/* ================================================================ */

@@ -76,6 +76,7 @@ public class GRUDecoder {
 	private final PackedCollection lmHeadBias;
 	private final PackedCollection decoderEmbedding;
 	private final int[] vocabOffsets;
+	private final int[] vocabSizesPerStep;
 
 	/** Cached array views for bulk computation (lazily initialized). */
 	private double[] summaryWeightArr;
@@ -114,6 +115,7 @@ public class GRUDecoder {
 		this.lmHeadBias = lmHeadBias;
 		this.decoderEmbedding = decoderEmbedding;
 		this.vocabOffsets = computeVocabOffsets(config);
+		this.vocabSizesPerStep = computeVocabSizesPerStep(config);
 	}
 
 	/**
@@ -147,7 +149,7 @@ public class GRUDecoder {
 	 */
 	public int[] decode(PackedCollection transformerHidden) {
 		return runGruLoop(transformerHidden,
-				logits -> argmax(logits, config.decodeVocabSize));
+				(logits, step) -> argmax(logits, config.decodeVocabSize));
 	}
 
 	/**
@@ -201,8 +203,11 @@ public class GRUDecoder {
 					gruOutput.toArray(), decoderHidden,
 					lmHeadWeightArr, config.decodeVocabSize, lmHeadBiasArr);
 
+			// Mask logits to the valid sub-range for this decode step
+			maskLogitsForStep(logits, step);
+
 			// Select token via the provided strategy
-			int token = selector.select(logits);
+			int token = selector.select(logits, step);
 			outputTokens[step] = token;
 
 			// Embed selected token as input for next step
@@ -216,7 +221,9 @@ public class GRUDecoder {
 	 * Functional interface for token selection from logits.
 	 *
 	 * <p>Used by {@link #runGruLoop} to abstract the token selection
-	 * strategy (greedy argmax vs. temperature/nucleus sampling).</p>
+	 * strategy (greedy argmax vs. temperature/nucleus sampling).
+	 * The step index is provided so that selection can be restricted
+	 * to the valid vocabulary sub-range for that decode step.</p>
 	 */
 	@FunctionalInterface
 	interface TokenSelector {
@@ -224,9 +231,10 @@ public class GRUDecoder {
 		 * Select a token index from a logits vector.
 		 *
 		 * @param logits raw logits of shape (decodeVocabSize)
+		 * @param step the current decode step (0-6)
 		 * @return selected token index
 		 */
-		int select(PackedCollection logits);
+		int select(PackedCollection logits, int step);
 	}
 
 	/**
@@ -285,6 +293,50 @@ public class GRUDecoder {
 	}
 
 	/**
+	 * Compute the vocabulary size for each of the 7 decode steps.
+	 * Step 0 is the SOS token (size 1), steps 1-6 correspond to the
+	 * 6 compound token attributes.
+	 */
+	public static int[] computeVocabSizesPerStep(MoonbeamConfig config) {
+		int[] sizes = new int[TOKENS_PER_NOTE];
+		sizes[0] = 1; // SOS output token
+		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
+			sizes[i + 1] = config.vocabSizes[i];
+		}
+		return sizes;
+	}
+
+	/**
+	 * Mask logits so only the valid sub-range for the given decode step
+	 * can be selected. All logits outside [offset, offset + vocabSize) are
+	 * set to negative infinity, ensuring argmax or softmax/sampling only
+	 * considers tokens valid for the current attribute.
+	 *
+	 * @param logits the full decode vocabulary logits (decodeVocabSize)
+	 * @param step the current decode step (0-6)
+	 */
+	private void maskLogitsForStep(PackedCollection logits, int step) {
+		int offset = vocabOffsets[step];
+		int size = vocabSizesPerStep[step];
+		int totalVocab = config.decodeVocabSize;
+
+		double[] logitArr = logits.toArray(0, totalVocab);
+		for (int i = 0; i < totalVocab; i++) {
+			if (i < offset || i >= offset + size) {
+				logitArr[i] = Double.NEGATIVE_INFINITY;
+			}
+		}
+		logits.setMem(0, logitArr, 0, totalVocab);
+	}
+
+	/**
+	 * Returns the vocabulary size for each decode step.
+	 */
+	public int[] getVocabSizesPerStep() {
+		return vocabSizesPerStep.clone();
+	}
+
+	/**
 	 * Decode output tokens with temperature and top-p (nucleus) sampling.
 	 *
 	 * <p>When temperature is 0, reverts to greedy argmax decoding.
@@ -306,7 +358,7 @@ public class GRUDecoder {
 		}
 
 		return runGruLoop(transformerHidden,
-				logits -> sampleFromLogits(logits, config.decodeVocabSize,
+				(logits, step) -> sampleFromLogits(logits, config.decodeVocabSize,
 						temperature, topP, random));
 	}
 
