@@ -1,0 +1,883 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.ml.midi.test;
+
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.midi.GRUCell;
+import org.almostrealism.ml.midi.GRUDecoder;
+import org.almostrealism.ml.midi.MidiCompoundToken;
+import org.almostrealism.ml.midi.MidiTokenizer;
+import org.almostrealism.ml.midi.MoonbeamConfig;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
+import org.junit.Test;
+
+import java.util.Arrays;
+import java.util.Random;
+
+/**
+ * Diagnostic tests for understanding the Moonbeam MIDI value distribution problem.
+ *
+ * <p>When generating with real weights, ALL output values exceed valid MIDI ranges
+ * (e.g. pitch &gt; 127). A previous clamping fix hides the real problem by clamping
+ * everything to the maximum. These tests diagnose exactly WHERE and WHY the values
+ * go wrong in the GRU decoder pipeline.</p>
+ *
+ * <p>All tests use REAL model dimensions (hiddenSize=1920, decoderHiddenSize=1536,
+ * decodeVocabSize=8487) with random weights scaled at 0.02 (typical initialization).
+ * Diagnostic output is printed liberally so CI logs reveal the distribution characteristics.</p>
+ *
+ * @see GRUDecoder
+ * @see MoonbeamConfig
+ */
+public class MoonbeamValueDistributionTest extends TestSuiteBase {
+
+	/** Real model config used by all tests. */
+	private static final MoonbeamConfig REAL_CONFIG = MoonbeamConfig.defaultConfig();
+
+	/** Attribute names for diagnostic output. */
+	private static final String[] ATTR_NAMES = {
+			"sos_out", "onset", "duration", "octave", "pitch_class", "instrument", "velocity"
+	};
+
+	/** Maximum valid attribute values (from MidiTokenizer). */
+	private static final int[] MAX_ATTR_VALUES = {
+			0,    // sos_out (always 0)
+			4098, // onset (MAX_TIME_VALUE)
+			4098, // duration (MAX_TIME_VALUE)
+			10,   // octave (MAX_OCTAVE)
+			11,   // pitch_class (MAX_PITCH_CLASS)
+			128,  // instrument (MAX_INSTRUMENT)
+			127   // velocity (MAX_VELOCITY)
+	};
+
+	/* ================================================================ */
+	/*  Test 1: Vocabulary Offset Mapping                               */
+	/* ================================================================ */
+
+	/**
+	 * Verify that {@link GRUDecoder#computeVocabOffsets} and
+	 * {@link GRUDecoder#toAttributeValues} correctly partition the flat
+	 * decode vocabulary of 8487 tokens into per-attribute ranges.
+	 *
+	 * <p>The expected layout is:</p>
+	 * <ul>
+	 *   <li>sos_out: offset 0, size 1</li>
+	 *   <li>onset: offset 1, size 4099</li>
+	 *   <li>duration: offset 4100, size 4099</li>
+	 *   <li>octave: offset 8199, size 13</li>
+	 *   <li>pitch_class: offset 8212, size 14</li>
+	 *   <li>instrument: offset 8226, size 131</li>
+	 *   <li>velocity: offset 8357, size 130</li>
+	 * </ul>
+	 */
+	@Test(timeout = 5_000)
+	public void testVocabOffsetMapping() {
+		System.out.println("\n=== Test 1: Vocabulary Offset Mapping ===\n");
+
+		int[] offsets = GRUDecoder.computeVocabOffsets(REAL_CONFIG);
+
+		int[] expectedOffsets = {0, 1, 4100, 8199, 8212, 8226, 8357};
+		int[] expectedSizes = {1, 4099, 4099, 13, 14, 131, 130};
+
+		System.out.println("Computed offsets vs expected:");
+		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
+			System.out.printf("  [%d] %-12s: offset=%5d (expected %5d), vocabSize=%4d%n",
+					i, ATTR_NAMES[i], offsets[i], expectedOffsets[i],
+					i < expectedSizes.length ? expectedSizes[i] : -1);
+			Assert.assertEquals("Offset for " + ATTR_NAMES[i],
+					expectedOffsets[i], offsets[i]);
+		}
+
+		int totalVocab = expectedOffsets[6] + expectedSizes[6];
+		System.out.printf("\nTotal vocab: %d (expected %d, config says %d)%n",
+				totalVocab, 8487, REAL_CONFIG.decodeVocabSize);
+		Assert.assertEquals("Total vocab size", 8487, totalVocab);
+
+		// Test round-trip with known flat indices
+		System.out.println("\nRound-trip tests with known flat indices:");
+
+		// Token representing onset=100 should be at flat index 1 + 100 = 101
+		int[] flatTokens = new int[]{0, 101, 4150, 8204, 8219, 8226, 8421};
+		int[] attrValues = createDecoderForTest().toAttributeValues(flatTokens);
+		int[] expectedAttr = {0, 100, 50, 5, 7, 0, 64};
+
+		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
+			System.out.printf("  [%d] %-12s: flat=%5d -> attr=%5d (expected %5d) %s%n",
+					i, ATTR_NAMES[i], flatTokens[i], attrValues[i], expectedAttr[i],
+					attrValues[i] == expectedAttr[i] ? "OK" : "MISMATCH");
+			Assert.assertEquals("Attribute value for " + ATTR_NAMES[i],
+					expectedAttr[i], attrValues[i]);
+		}
+
+		// Test boundary: what happens if the decoder picks a flat token
+		// that is BEYOND the valid range for its position?
+		System.out.println("\nBoundary test: what happens with out-of-range flat tokens?");
+		int[] outOfRange = new int[]{0, 8000, 8400, 8400, 8400, 8400, 8487};
+		int[] outValues = createDecoderForTest().toAttributeValues(outOfRange);
+		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
+			boolean inRange = (i == 0)
+					? outValues[i] == 0
+					: (outValues[i] >= 0 && outValues[i] <= MAX_ATTR_VALUES[i]);
+			System.out.printf("  [%d] %-12s: flat=%5d -> attr=%5d, valid_max=%5d, in_range=%s%n",
+					i, ATTR_NAMES[i], outOfRange[i], outValues[i], MAX_ATTR_VALUES[i],
+					inRange ? "YES" : "NO (THIS IS THE BUG)");
+		}
+
+		System.out.println("\nKey insight: toAttributeValues() just subtracts the offset.");
+		System.out.println("If the GRU decoder picks a flat token > offset + vocabSize for");
+		System.out.println("that position, the resulting attribute value exceeds the valid range.");
+		System.out.println("The GRU decoder does NOT constrain its argmax to the correct");
+		System.out.println("sub-range of the flat vocabulary for each decode step.");
+	}
+
+	/* ================================================================ */
+	/*  Test 2: GRU Decoder Output Distribution with Random Weights     */
+	/* ================================================================ */
+
+	/**
+	 * Run the GRU decoder on random hidden states at real dimensions and
+	 * analyze the raw logits at each of the 7 decode steps.
+	 *
+	 * <p>This test instruments the decoder to capture logit statistics
+	 * BEFORE argmax, revealing whether the lm_head projection produces
+	 * logits in a reasonable range or if they are exploding.</p>
+	 */
+	@Test(timeout = 60_000)
+	public void testGruDecoderLogitDistribution() {
+		System.out.println("\n=== Test 2: GRU Decoder Logit Distribution ===\n");
+
+		int decoderHidden = REAL_CONFIG.decoderHiddenSize;
+		int vocabSize = REAL_CONFIG.decodeVocabSize;
+		int hidden = REAL_CONFIG.hiddenSize;
+		Random rng = new Random(42);
+
+		// Build decoder with random weights
+		GRUDecoder decoder = createRandomDecoder(rng);
+
+		// Run decoder on multiple random hidden states
+		int numTrials = 5;
+		System.out.printf("Running %d decode trials with random hidden states...%n%n", numTrials);
+
+		for (int trial = 0; trial < numTrials; trial++) {
+			PackedCollection hiddenState = createRandomCollection(new Random(trial), hidden);
+			int[] tokens = decoder.decode(hiddenState);
+			int[] attrValues = decoder.toAttributeValues(tokens);
+
+			System.out.printf("Trial %d:%n", trial);
+			System.out.printf("  Raw decode tokens: %s%n", Arrays.toString(tokens));
+			System.out.printf("  Attribute values:  %s%n", Arrays.toString(attrValues));
+
+			boolean anyOutOfRange = false;
+			for (int i = 1; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
+				boolean inRange = attrValues[i] >= 0 && attrValues[i] <= MAX_ATTR_VALUES[i];
+				if (!inRange) anyOutOfRange = true;
+				System.out.printf("    [%d] %-12s: attr=%5d, max=%5d %s%n",
+						i, ATTR_NAMES[i], attrValues[i], MAX_ATTR_VALUES[i],
+						inRange ? "OK" : "OUT OF RANGE");
+			}
+
+			if (anyOutOfRange) {
+				System.out.println("  >>> VALUES EXCEED VALID RANGE - diagnosing...");
+				diagnoseTokenSelection(tokens, decoder);
+			}
+			System.out.println();
+		}
+
+		// Now analyze the lm_head logits directly
+		System.out.println("=== Logit Analysis: lm_head output at each GRU step ===\n");
+		analyzeLogitsAtEachStep(rng, hidden, decoderHidden, vocabSize);
+	}
+
+	/* ================================================================ */
+	/*  Test 3: Softmax and Sampling Verification                       */
+	/* ================================================================ */
+
+	/**
+	 * Verify that the sampling implementation in {@link GRUDecoder#sampleFromLogits}
+	 * correctly applies softmax and produces varied token indices.
+	 *
+	 * <p>Tests with uniform logits (should produce uniform sampling) and
+	 * with a spike logit (should strongly prefer the spike index).</p>
+	 */
+	@Test(timeout = 10_000)
+	public void testSoftmaxAndSampling() {
+		System.out.println("\n=== Test 3: Softmax and Sampling Verification ===\n");
+
+		int vocabSize = REAL_CONFIG.decodeVocabSize;
+
+		// Test 1: Uniform logits should produce diverse samples
+		System.out.println("Test 3a: Uniform logits (all zeros)");
+		PackedCollection uniformLogits = new PackedCollection(vocabSize);
+		// All zeros by default
+
+		int[] histogram = new int[10]; // 10 bins across vocab
+		int binSize = vocabSize / 10;
+		int numSamples = 1000;
+		Random samplingRng = new Random(42);
+
+		for (int i = 0; i < numSamples; i++) {
+			int token = GRUDecoder.sampleFromLogits(uniformLogits, vocabSize,
+					1.0, 1.0, samplingRng);
+			int bin = Math.min(token / binSize, 9);
+			histogram[bin]++;
+		}
+
+		System.out.println("  Histogram of 1000 samples across 10 bins (expect ~100 each):");
+		boolean uniformish = true;
+		for (int b = 0; b < 10; b++) {
+			String bar = "=".repeat(Math.min(histogram[b] / 2, 80));
+			System.out.printf("    bin %d [%5d-%5d]: %4d %s%n",
+					b, b * binSize, (b + 1) * binSize - 1, histogram[b], bar);
+			if (histogram[b] < 20 || histogram[b] > 300) uniformish = false;
+		}
+		System.out.println("  Distribution roughly uniform: " + uniformish);
+
+		// Test 2: Spike logit should produce concentrated samples
+		System.out.println("\nTest 3b: Spike logit at index 100");
+		PackedCollection spikeLogits = new PackedCollection(vocabSize);
+		double[] spikeData = new double[vocabSize];
+		spikeData[100] = 100.0; // Very strong preference
+		spikeLogits.setMem(0, spikeData, 0, vocabSize);
+
+		int spikeCount = 0;
+		samplingRng = new Random(42);
+		for (int i = 0; i < numSamples; i++) {
+			int token = GRUDecoder.sampleFromLogits(spikeLogits, vocabSize,
+					1.0, 1.0, samplingRng);
+			if (token == 100) spikeCount++;
+		}
+		System.out.printf("  Spike token selected %d/%d times (expect ~1000)%n",
+				spikeCount, numSamples);
+		Assert.assertTrue("Spike logit should dominate", spikeCount > 900);
+
+		// Test 3: Greedy (argmax) should always pick the max
+		System.out.println("\nTest 3c: Greedy argmax verification");
+		spikeData = new double[vocabSize];
+		spikeData[4242] = 10.0;
+		PackedCollection greedyLogits = new PackedCollection(vocabSize);
+		greedyLogits.setMem(0, spikeData, 0, vocabSize);
+
+		// GRUDecoder.decode uses argmax internally, but we verify the static method
+		int argmaxResult = argmax(greedyLogits, vocabSize);
+		System.out.printf("  Argmax of logits with spike at 4242: %d%n", argmaxResult);
+		Assert.assertEquals("Argmax should find the spike", 4242, argmaxResult);
+
+		// Test 4: What does argmax on random logits look like?
+		System.out.println("\nTest 3d: Argmax on random N(0,1) logits (10 trials)");
+		System.out.println("  (Shows which vocab region argmax lands in with random weights)");
+		Random rng = new Random(42);
+		for (int trial = 0; trial < 10; trial++) {
+			PackedCollection randomLogits = createRandomLogits(rng, vocabSize, 1.0);
+			int maxIdx = argmax(randomLogits, vocabSize);
+			double maxVal = randomLogits.toDouble(maxIdx);
+			String region = describeVocabRegion(maxIdx);
+			System.out.printf("    trial %d: argmax=%5d (val=%.4f) -> %s%n",
+					trial, maxIdx, maxVal, region);
+		}
+	}
+
+	/* ================================================================ */
+	/*  Test 4: Weight Shape Verification                               */
+	/* ================================================================ */
+
+	/**
+	 * Verify the expected shapes of all GRU decoder weight matrices.
+	 *
+	 * <p>If weights are loaded with the wrong shape (e.g. lm_head transposed),
+	 * the decoder will produce garbage. This test prints all expected vs actual
+	 * shapes for the decoder components.</p>
+	 */
+	@Test(timeout = 10_000)
+	public void testWeightShapeVerification() {
+		System.out.println("\n=== Test 4: Weight Shape Verification ===\n");
+
+		int hidden = REAL_CONFIG.hiddenSize;           // 1920
+		int decoderHidden = REAL_CONFIG.decoderHiddenSize; // 1536
+		int vocabSize = REAL_CONFIG.decodeVocabSize;   // 8487
+		int decoderLayers = REAL_CONFIG.decoderLayers;  // 4
+
+		System.out.println("Expected GRU decoder weight shapes:");
+		System.out.printf("  summary_projection.weight: (%d, %d) = %d elements%n",
+				decoderHidden, hidden, decoderHidden * hidden);
+		System.out.printf("  summary_projection.bias:   (%d) = %d elements%n",
+				decoderHidden, decoderHidden);
+		System.out.printf("  lm_head.weight:            (%d, %d) = %d elements%n",
+				vocabSize, decoderHidden, vocabSize * decoderHidden);
+		System.out.printf("  lm_head.bias:              (%d) = %d elements%n",
+				vocabSize, vocabSize);
+		System.out.printf("  decoder_embedding.weight:  (%d, %d) = %d elements%n",
+				vocabSize, decoderHidden, vocabSize * decoderHidden);
+
+		for (int l = 0; l < decoderLayers; l++) {
+			System.out.printf("  decoder.weight_ih_l%d:      (%d, %d) = %d elements%n",
+					l, 3 * decoderHidden, decoderHidden, 3 * decoderHidden * decoderHidden);
+			System.out.printf("  decoder.weight_hh_l%d:      (%d, %d) = %d elements%n",
+					l, 3 * decoderHidden, decoderHidden, 3 * decoderHidden * decoderHidden);
+			System.out.printf("  decoder.bias_ih_l%d:        (%d) = %d elements%n",
+					l, 3 * decoderHidden, 3 * decoderHidden);
+			System.out.printf("  decoder.bias_hh_l%d:        (%d) = %d elements%n",
+					l, 3 * decoderHidden, 3 * decoderHidden);
+		}
+
+		// Create decoder and verify shapes match
+		Random rng = new Random(42);
+		GRUDecoder decoder = createRandomDecoder(rng);
+
+		Assert.assertEquals("Decoder layers", decoderLayers, decoder.getNumLayers());
+		Assert.assertEquals("Decoder hidden size", decoderHidden, decoder.getDecoderHiddenSize());
+
+		// Verify the lm_head output is vocabSize-dimensional
+		System.out.println("\nVerifying lm_head produces correct output dimension...");
+		PackedCollection hiddenState = createRandomCollection(rng, hidden);
+		int[] tokens = decoder.decode(hiddenState);
+		for (int i = 0; i < tokens.length; i++) {
+			Assert.assertTrue("Token " + i + " in valid range [0, " + vocabSize + ")",
+					tokens[i] >= 0 && tokens[i] < vocabSize);
+		}
+		System.out.println("  All 7 decode tokens are within [0, " + vocabSize + ") - shapes OK");
+
+		// Check for potential transposition issue with lm_head
+		System.out.println("\nTransposition diagnostic:");
+		System.out.printf("  If lm_head.weight is (%d, %d) [correct]: output = W @ h + b%n",
+				vocabSize, decoderHidden);
+		System.out.printf("  If lm_head.weight is (%d, %d) [transposed]: wrong matmul dims%n",
+				decoderHidden, vocabSize);
+		System.out.println("  The linearForward method assumes (outputSize, inputSize) layout.");
+		System.out.println("  If the extraction script produces (inputSize, outputSize), the");
+		System.out.println("  matmul is silently wrong (no size check) and produces garbage logits.");
+	}
+
+	/* ================================================================ */
+	/*  Test 5: Pipeline Stage Analysis                                 */
+	/* ================================================================ */
+
+	/**
+	 * Trace the value distribution through each stage of the GRU decoder
+	 * pipeline: summary projection, GRU layers, lm_head, and argmax.
+	 *
+	 * <p>At each stage, prints min/max/mean/std to identify where values
+	 * start going wrong (exploding or collapsing).</p>
+	 */
+	@Test(timeout = 60_000)
+	public void testPipelineStageAnalysis() {
+		System.out.println("\n=== Test 5: Pipeline Stage Analysis ===\n");
+
+		int hidden = REAL_CONFIG.hiddenSize;
+		int decoderHidden = REAL_CONFIG.decoderHiddenSize;
+		int vocabSize = REAL_CONFIG.decodeVocabSize;
+		Random rng = new Random(42);
+
+		// Create components separately to instrument intermediate values
+		PackedCollection summaryWeight = createRandomCollection(rng, decoderHidden, hidden);
+		PackedCollection summaryBias = createRandomCollection(rng, decoderHidden);
+		PackedCollection lmHeadWeight = createRandomCollection(rng, vocabSize, decoderHidden);
+		PackedCollection lmHeadBias = createRandomCollection(rng, vocabSize);
+		PackedCollection decoderEmb = createRandomCollection(rng, vocabSize, decoderHidden);
+
+		GRUCell[] layers = new GRUCell[REAL_CONFIG.decoderLayers];
+		for (int l = 0; l < REAL_CONFIG.decoderLayers; l++) {
+			layers[l] = new GRUCell(decoderHidden, decoderHidden,
+					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden));
+		}
+
+		// Stage 1: Random input hidden state
+		PackedCollection inputHidden = createRandomCollection(new Random(99), hidden);
+		double[] inputArr = inputHidden.toArray(0, hidden);
+		printStats("Stage 1: Input hidden state (hiddenSize=" + hidden + ")", inputArr);
+
+		// Stage 2: Summary projection
+		PackedCollection projected = linearForward(
+				inputHidden, hidden, summaryWeight, decoderHidden, summaryBias);
+		double[] projArr = projected.toArray(0, decoderHidden);
+		printStats("Stage 2: After summary projection (decoderHidden=" + decoderHidden + ")", projArr);
+
+		// Stage 3: GRU forward steps
+		PackedCollection[] h = new PackedCollection[layers.length];
+		for (int l = 0; l < layers.length; l++) {
+			h[l] = copyCollection(projected, decoderHidden);
+		}
+
+		PackedCollection sosEmb = getEmbeddingSlice(decoderEmb, 0, decoderHidden);
+		double[] sosArr = sosEmb.toArray(0, decoderHidden);
+		printStats("Stage 3a: SOS embedding (token 0)", sosArr);
+
+		PackedCollection x = sosEmb;
+		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
+			PackedCollection layerInput = x;
+			for (int l = 0; l < layers.length; l++) {
+				h[l] = layers[l].forward(layerInput, h[l]);
+				layerInput = h[l];
+			}
+
+			double[] gruOut = h[layers.length - 1].toArray(0, decoderHidden);
+			printStats("Stage 3b: GRU output (step " + step + ", " + ATTR_NAMES[step] + ")", gruOut);
+
+			// Stage 4: lm_head projection to logits
+			PackedCollection logits = linearForward(
+					h[layers.length - 1], decoderHidden,
+					lmHeadWeight, vocabSize, lmHeadBias);
+			double[] logitArr = logits.toArray(0, vocabSize);
+			printStats("Stage 4: lm_head logits (step " + step + ", " + ATTR_NAMES[step] + ")", logitArr);
+
+			// Stage 5: Argmax
+			int token = argmax(logits, vocabSize);
+			String region = describeVocabRegion(token);
+			System.out.printf("Stage 5: Argmax token=%d -> %s%n%n", token, region);
+
+			// Embed the selected token for next step
+			x = getEmbeddingSlice(decoderEmb, token, decoderHidden);
+		}
+
+		// Key diagnostic: what is the lm_head logit magnitude relative to vocab structure?
+		System.out.println("=== KEY DIAGNOSTIC ===");
+		System.out.println("The lm_head projects a " + decoderHidden + "-dim vector to " + vocabSize + " logits.");
+		System.out.printf("With random N(0, 0.02) weights, each logit is a sum of %d terms.%n", decoderHidden);
+		System.out.printf("Expected logit std ~ 0.02 * sqrt(%d) * input_std%n", decoderHidden);
+		System.out.println("If input values are O(1), logit std ~ " +
+				String.format("%.4f", 0.02 * Math.sqrt(decoderHidden)));
+		System.out.println("With such small variance, argmax is essentially RANDOM across all 8487 tokens.");
+		System.out.println("The argmax has no reason to stay within the correct attribute sub-range.");
+		System.out.println();
+		System.out.println("ROOT CAUSE HYPOTHESIS: The decoder picks argmax over the FULL 8487 vocab");
+		System.out.println("at every step, but each step should only pick from its attribute's sub-range.");
+		System.out.println("With random/trained weights, the argmax token at step i (e.g. 'octave')");
+		System.out.println("could land anywhere in the 8487-token space, not just in the 13-token");
+		System.out.println("octave sub-range. After subtracting the octave offset, this produces");
+		System.out.println("a value >> 12, which gets clamped to the max.");
+	}
+
+	/* ================================================================ */
+	/*  Test 6: Round-Trip Validation                                   */
+	/* ================================================================ */
+
+	/**
+	 * Create a known valid compound token (middle C, velocity 64, quarter note),
+	 * compute what flat decode indices would represent it, and verify that
+	 * {@link GRUDecoder#toAttributeValues} maps those indices back correctly.
+	 *
+	 * <p>Also tests what flat decode indices the decoder SHOULD produce for
+	 * this token, and checks whether the decoder can actually produce them.</p>
+	 */
+	@Test(timeout = 10_000)
+	public void testRoundTripValidation() {
+		System.out.println("\n=== Test 6: Round-Trip Validation ===\n");
+
+		// Middle C = MIDI note 60, octave 5, pitch class 0
+		// Quarter note at 120 BPM with 100 ticks/sec = 50 ticks duration
+		// Velocity 64 (mezzo-forte), piano (instrument 0), onset delta 100 ticks
+		int onset = 100;
+		int duration = 50;
+		int octave = 5;
+		int pitchClass = 0;
+		int instrument = 0;
+		int velocity = 64;
+
+		MidiCompoundToken middleC = new MidiCompoundToken(
+				onset, duration, octave, pitchClass, instrument, velocity);
+		System.out.println("Target token: " + middleC);
+
+		int[] offsets = GRUDecoder.computeVocabOffsets(REAL_CONFIG);
+		System.out.println("Vocab offsets: " + Arrays.toString(offsets));
+
+		// Compute what flat tokens would represent this compound token
+		int[] expectedFlat = new int[GRUDecoder.TOKENS_PER_NOTE];
+		expectedFlat[0] = 0;                        // SOS output token
+		expectedFlat[1] = offsets[1] + onset;        // 1 + 100 = 101
+		expectedFlat[2] = offsets[2] + duration;     // 4100 + 50 = 4150
+		expectedFlat[3] = offsets[3] + octave;       // 8199 + 5 = 8204
+		expectedFlat[4] = offsets[4] + pitchClass;   // 8212 + 0 = 8212
+		expectedFlat[5] = offsets[5] + instrument;   // 8226 + 0 = 8226
+		expectedFlat[6] = offsets[6] + velocity;     // 8357 + 64 = 8421
+
+		System.out.println("Expected flat tokens for middle C: " + Arrays.toString(expectedFlat));
+
+		// Verify round-trip
+		GRUDecoder decoder = createDecoderForTest();
+		int[] roundTripped = decoder.toAttributeValues(expectedFlat);
+
+		System.out.println("Round-tripped attribute values: " + Arrays.toString(roundTripped));
+
+		int[] expectedAttr = {0, onset, duration, octave, pitchClass, instrument, velocity};
+		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
+			System.out.printf("  [%d] %-12s: expected=%5d, got=%5d %s%n",
+					i, ATTR_NAMES[i], expectedAttr[i], roundTripped[i],
+					roundTripped[i] == expectedAttr[i] ? "OK" : "MISMATCH");
+			Assert.assertEquals("Round-trip for " + ATTR_NAMES[i],
+					expectedAttr[i], roundTripped[i]);
+		}
+
+		// Now show the valid flat token ranges for each step
+		System.out.println("\nValid flat token ranges per decode step:");
+		int[] vocabSizes = {1, 4099, 4099, 13, 14, 131, 130};
+		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
+			int lo = offsets[i];
+			int hi = offsets[i] + vocabSizes[i] - 1;
+			System.out.printf("  step %d %-12s: flat tokens [%5d, %5d] (size=%4d)%n",
+					i, ATTR_NAMES[i], lo, hi, vocabSizes[i]);
+		}
+
+		System.out.println("\nNote: The decoder does argmax over ALL 8487 tokens at every step.");
+		System.out.println("For step 3 (octave), valid flat tokens are [8199, 8211] (13 values).");
+		System.out.println("But argmax could land anywhere in [0, 8486]. If it picks e.g. 5000,");
+		System.out.println("then attr = 5000 - 8199 = -3199, which is nonsensical.");
+		System.out.println("If it picks e.g. 8486 (last token), attr = 8486 - 8199 = 287,");
+		System.out.println("which is >> max octave of 10, resulting in clamping to 10.");
+	}
+
+	/* ================================================================ */
+	/*  Helper Methods                                                  */
+	/* ================================================================ */
+
+	/**
+	 * Create a minimal GRU decoder for offset/mapping tests (tiny weights).
+	 */
+	private GRUDecoder createDecoderForTest() {
+		Random rng = new Random(0);
+		int decoderHidden = REAL_CONFIG.decoderHiddenSize;
+		int vocabSize = REAL_CONFIG.decodeVocabSize;
+		int hidden = REAL_CONFIG.hiddenSize;
+
+		GRUCell[] cells = new GRUCell[REAL_CONFIG.decoderLayers];
+		for (int l = 0; l < cells.length; l++) {
+			cells[l] = new GRUCell(decoderHidden, decoderHidden,
+					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden));
+		}
+
+		return new GRUDecoder(REAL_CONFIG, cells,
+				createRandomCollection(rng, decoderHidden, hidden),
+				createRandomCollection(rng, decoderHidden),
+				createRandomCollection(rng, vocabSize, decoderHidden),
+				createRandomCollection(rng, vocabSize),
+				createRandomCollection(rng, vocabSize, decoderHidden));
+	}
+
+	/**
+	 * Create a GRU decoder with random weights at real dimensions.
+	 */
+	private GRUDecoder createRandomDecoder(Random rng) {
+		int decoderHidden = REAL_CONFIG.decoderHiddenSize;
+		int vocabSize = REAL_CONFIG.decodeVocabSize;
+		int hidden = REAL_CONFIG.hiddenSize;
+
+		GRUCell[] cells = new GRUCell[REAL_CONFIG.decoderLayers];
+		for (int l = 0; l < cells.length; l++) {
+			cells[l] = new GRUCell(decoderHidden, decoderHidden,
+					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden));
+		}
+
+		return new GRUDecoder(REAL_CONFIG, cells,
+				createRandomCollection(rng, decoderHidden, hidden),
+				createRandomCollection(rng, decoderHidden),
+				createRandomCollection(rng, vocabSize, decoderHidden),
+				createRandomCollection(rng, vocabSize),
+				createRandomCollection(rng, vocabSize, decoderHidden));
+	}
+
+	/**
+	 * Analyze lm_head logits at each GRU decode step by manually stepping
+	 * through the decode pipeline.
+	 */
+	private void analyzeLogitsAtEachStep(Random rng, int hidden, int decoderHidden, int vocabSize) {
+		PackedCollection summaryWeight = createRandomCollection(rng, decoderHidden, hidden);
+		PackedCollection summaryBias = createRandomCollection(rng, decoderHidden);
+		PackedCollection lmHeadWeight = createRandomCollection(rng, vocabSize, decoderHidden);
+		PackedCollection lmHeadBias = createRandomCollection(rng, vocabSize);
+		PackedCollection decoderEmb = createRandomCollection(rng, vocabSize, decoderHidden);
+
+		GRUCell[] cells = new GRUCell[REAL_CONFIG.decoderLayers];
+		for (int l = 0; l < cells.length; l++) {
+			cells[l] = new GRUCell(decoderHidden, decoderHidden,
+					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden),
+					createRandomCollection(rng, 3 * decoderHidden));
+		}
+
+		PackedCollection inputHidden = createRandomCollection(new Random(77), hidden);
+
+		// Summary projection
+		PackedCollection projected = linearForward(
+				inputHidden, hidden, summaryWeight, decoderHidden, summaryBias);
+
+		PackedCollection[] h = new PackedCollection[cells.length];
+		for (int l = 0; l < cells.length; l++) {
+			h[l] = copyCollection(projected, decoderHidden);
+		}
+
+		PackedCollection x = getEmbeddingSlice(decoderEmb, 0, decoderHidden);
+
+		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
+			PackedCollection layerInput = x;
+			for (int l = 0; l < cells.length; l++) {
+				h[l] = cells[l].forward(layerInput, h[l]);
+				layerInput = h[l];
+			}
+
+			PackedCollection logits = linearForward(
+					h[cells.length - 1], decoderHidden,
+					lmHeadWeight, vocabSize, lmHeadBias);
+
+			double[] logitArr = logits.toArray(0, vocabSize);
+
+			// Find top-5 tokens
+			int[] topK = topKIndices(logitArr, 5);
+			System.out.printf("Step %d (%s):%n", step, ATTR_NAMES[step]);
+			System.out.printf("  Logit stats: min=%.6f, max=%.6f, mean=%.6f, std=%.6f%n",
+					arrayMin(logitArr), arrayMax(logitArr),
+					arrayMean(logitArr), arrayStd(logitArr));
+			System.out.print("  Top-5 tokens: ");
+			for (int k = 0; k < 5; k++) {
+				System.out.printf("[%d]=%.4f ", topK[k], logitArr[topK[k]]);
+			}
+			System.out.println();
+
+			// Where do the top tokens fall in the vocab layout?
+			int token = topK[0];
+			String region = describeVocabRegion(token);
+			System.out.printf("  Argmax token %d -> %s%n", token, region);
+
+			// What would be the correct range for this step?
+			int[] offsets = GRUDecoder.computeVocabOffsets(REAL_CONFIG);
+			int[] sizes = {1, 4099, 4099, 13, 14, 131, 130};
+			System.out.printf("  Expected range for this step: [%d, %d] (size %d)%n",
+					offsets[step], offsets[step] + sizes[step] - 1, sizes[step]);
+
+			// How many of the top-5 are in the correct range?
+			int inRange = 0;
+			for (int k = 0; k < 5; k++) {
+				if (topK[k] >= offsets[step] && topK[k] < offsets[step] + sizes[step]) {
+					inRange++;
+				}
+			}
+			System.out.printf("  Top-5 tokens in correct range: %d/5%n%n", inRange);
+
+			x = getEmbeddingSlice(decoderEmb, token, decoderHidden);
+		}
+	}
+
+	/**
+	 * Diagnose why a particular set of decode tokens are out of range.
+	 */
+	private void diagnoseTokenSelection(int[] tokens, GRUDecoder decoder) {
+		int[] offsets = decoder.getVocabOffsets();
+		int[] sizes = {1, 4099, 4099, 13, 14, 131, 130};
+
+		for (int i = 1; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
+			int lo = offsets[i];
+			int hi = offsets[i] + sizes[i] - 1;
+			boolean inExpectedRange = tokens[i] >= lo && tokens[i] <= hi;
+			if (!inExpectedRange) {
+				System.out.printf("    Step %d (%s): token=%d but valid range=[%d,%d]. ",
+						i, ATTR_NAMES[i], tokens[i], lo, hi);
+				if (tokens[i] < lo) {
+					System.out.printf("Token is %d below range (in %s region)%n",
+							lo - tokens[i], describeVocabRegion(tokens[i]));
+				} else {
+					System.out.printf("Token is %d above range (in %s region)%n",
+							tokens[i] - hi, describeVocabRegion(tokens[i]));
+				}
+			}
+		}
+	}
+
+	/**
+	 * Describe which attribute region a flat vocab index falls in.
+	 */
+	private String describeVocabRegion(int flatIndex) {
+		if (flatIndex == 0) return "sos_out [0,0]";
+		if (flatIndex >= 1 && flatIndex <= 4099) return "onset [1,4099]";
+		if (flatIndex >= 4100 && flatIndex <= 8198) return "duration [4100,8198]";
+		if (flatIndex >= 8199 && flatIndex <= 8211) return "octave [8199,8211]";
+		if (flatIndex >= 8212 && flatIndex <= 8225) return "pitch_class [8212,8225]";
+		if (flatIndex >= 8226 && flatIndex <= 8356) return "instrument [8226,8356]";
+		if (flatIndex >= 8357 && flatIndex <= 8486) return "velocity [8357,8486]";
+		return "UNKNOWN (index=" + flatIndex + ")";
+	}
+
+	/**
+	 * Slice an embedding row from a flat (vocabSize * dim) embedding table.
+	 */
+	private static PackedCollection getEmbeddingSlice(PackedCollection embedding,
+													  int tokenIndex, int dim) {
+		PackedCollection slice = new PackedCollection(dim);
+		double[] data = embedding.toArray(tokenIndex * dim, dim);
+		slice.setMem(0, data, 0, dim);
+		return slice;
+	}
+
+	/**
+	 * Copy a PackedCollection.
+	 */
+	private static PackedCollection copyCollection(PackedCollection source, int size) {
+		PackedCollection copy = new PackedCollection(size);
+		double[] data = source.toArray(0, size);
+		copy.setMem(0, data, 0, size);
+		return copy;
+	}
+
+	/**
+	 * Create a PackedCollection with random N(0, scale) values.
+	 */
+	private static PackedCollection createRandomCollection(Random rng, int... dims) {
+		PackedCollection collection = new PackedCollection(new TraversalPolicy(dims));
+		int total = collection.getShape().getTotalSize();
+		double[] data = new double[total];
+		for (int i = 0; i < total; i++) {
+			data[i] = rng.nextGaussian() * 0.02;
+		}
+		collection.setMem(0, data, 0, total);
+		return collection;
+	}
+
+	/**
+	 * Create random logits with specified standard deviation.
+	 */
+	private static PackedCollection createRandomLogits(Random rng, int size, double std) {
+		PackedCollection collection = new PackedCollection(size);
+		double[] data = new double[size];
+		for (int i = 0; i < size; i++) {
+			data[i] = rng.nextGaussian() * std;
+		}
+		collection.setMem(0, data, 0, size);
+		return collection;
+	}
+
+	/**
+	 * Compute matrix-vector product plus bias: result = weight @ input + bias.
+	 * Mirrors GRUDecoder.linearForward which is package-private.
+	 */
+	private static PackedCollection linearForward(PackedCollection input, int inputSize,
+												  PackedCollection weight, int outputSize,
+												  PackedCollection bias) {
+		double[] inputArr = input.toArray();
+		double[] weightArr = weight.toArray();
+		double[] biasArr = bias.toArray();
+		double[] resultArr = new double[outputSize];
+		for (int i = 0; i < outputSize; i++) {
+			double sum = biasArr[i];
+			int rowOffset = i * inputSize;
+			for (int j = 0; j < inputSize; j++) {
+				sum += weightArr[rowOffset + j] * inputArr[j];
+			}
+			resultArr[i] = sum;
+		}
+		PackedCollection result = new PackedCollection(outputSize);
+		result.setMem(0, resultArr, 0, outputSize);
+		return result;
+	}
+
+	/**
+	 * Find argmax of a PackedCollection.
+	 */
+	private static int argmax(PackedCollection collection, int size) {
+		double[] data = collection.toArray(0, size);
+		int maxIdx = 0;
+		double maxVal = data[0];
+		for (int i = 1; i < size; i++) {
+			if (data[i] > maxVal) {
+				maxVal = data[i];
+				maxIdx = i;
+			}
+		}
+		return maxIdx;
+	}
+
+	/**
+	 * Find the indices of the top-k values in an array.
+	 */
+	private static int[] topKIndices(double[] arr, int k) {
+		int[] indices = new int[k];
+		double[] values = new double[k];
+		Arrays.fill(values, Double.NEGATIVE_INFINITY);
+
+		for (int i = 0; i < arr.length; i++) {
+			int minPos = 0;
+			for (int j = 1; j < k; j++) {
+				if (values[j] < values[minPos]) minPos = j;
+			}
+			if (arr[i] > values[minPos]) {
+				values[minPos] = arr[i];
+				indices[minPos] = i;
+			}
+		}
+
+		// Sort by descending value
+		for (int i = 0; i < k - 1; i++) {
+			for (int j = i + 1; j < k; j++) {
+				if (values[j] > values[i]) {
+					double tmpV = values[i]; values[i] = values[j]; values[j] = tmpV;
+					int tmpI = indices[i]; indices[i] = indices[j]; indices[j] = tmpI;
+				}
+			}
+		}
+		return indices;
+	}
+
+	/** Print min/max/mean/std statistics for an array. */
+	private static void printStats(String label, double[] arr) {
+		System.out.printf("%s:%n", label);
+		System.out.printf("  size=%d, min=%.6f, max=%.6f, mean=%.6f, std=%.6f%n",
+				arr.length, arrayMin(arr), arrayMax(arr), arrayMean(arr), arrayStd(arr));
+
+		// Count NaN/Inf
+		int nanCount = 0;
+		int infCount = 0;
+		for (double v : arr) {
+			if (Double.isNaN(v)) nanCount++;
+			if (Double.isInfinite(v)) infCount++;
+		}
+		if (nanCount > 0 || infCount > 0) {
+			System.out.printf("  WARNING: %d NaN, %d Inf values%n", nanCount, infCount);
+		}
+	}
+
+	private static double arrayMin(double[] arr) {
+		double min = arr[0];
+		for (int i = 1; i < arr.length; i++) if (arr[i] < min) min = arr[i];
+		return min;
+	}
+
+	private static double arrayMax(double[] arr) {
+		double max = arr[0];
+		for (int i = 1; i < arr.length; i++) if (arr[i] > max) max = arr[i];
+		return max;
+	}
+
+	private static double arrayMean(double[] arr) {
+		double sum = 0;
+		for (double v : arr) sum += v;
+		return sum / arr.length;
+	}
+
+	private static double arrayStd(double[] arr) {
+		double mean = arrayMean(arr);
+		double sumSq = 0;
+		for (double v : arr) sumSq += (v - mean) * (v - mean);
+		return Math.sqrt(sumSq / arr.length);
+	}
+}
