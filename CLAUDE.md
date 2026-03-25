@@ -72,6 +72,8 @@ mcp__ar-consultant__consult question:"..." keywords:["SpecificClass", "method", 
 
 Always provide `keywords` (2-5 domain-specific terms, most specific first). Without keywords, search results are poor.
 
+**Use multi-word phrases as keywords, not individual common words.** For example, use `["Features mixin", "CollectionFeatures"]` instead of `["Features", "mixin", "CollectionFeatures", "default", "interface"]`. Single common words like "default", "interface", "pattern" match too many documents and drown out the specific result. Compound phrases match the right doc on the first try.
+
 For debugging/CI failures: extract component names from the error, consult about those components, THEN investigate.
 
 **Why mechanical:** Judgment-based rules fail because you always think the current task is an exception.
