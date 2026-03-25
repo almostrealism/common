@@ -353,6 +353,42 @@ HTTP-related infrastructure: auth (moved here from utils) + HTTP event delivery.
 
 ---
 
+---
+
+## Extern Layer (ar-ml-djl, ar-ml-onnx, ar-ml-script)
+
+**Reviewed:** 2026-03-24
+
+Thin wrappers around third-party ML runtimes. All consumed only by studio/experiments.
+
+| Module | Types | Notes |
+|--------|-------|-------|
+| ar-ml-djl | 1 | SentencePiece tokenizer via DJL |
+| ar-ml-onnx | 4 | ONNX Runtime inference adapters |
+| ar-ml-script | 1 | Groovy DSL for model definition (no Java sources) |
+
+All Strong on coherence, clarity, dependencies. No actions needed.
+
+---
+
+## Studio Layer (ar-music, ar-compose, ar-spatial, ar-studio-experiments)
+
+**Reviewed:** 2026-03-24
+
+| Module | Types | Coherence | Clarity | Dependencies | Necessity |
+|--------|-------|-----------|---------|--------------|-----------|
+| ar-music | 58 | Strong | Strong (post-rename) | Strong | Strong (153 files) |
+| ar-compose | 71 | Strong | Strong (post-rename) | Strong | Strong (158 files) |
+| ar-spatial | 34 | Strong | Strong (post-fix) | Strong | Adequate (leaf) |
+| ar-studio-experiments | 1 | Strong | Strong | Strong | Adequate (integration test) |
+
+### Actions Taken
+- **Fixed** spatial module namespace: `com.almostrealism.spatial` → `org.almostrealism.spatial` (35 files). Consistent with all other modules.
+- **Renamed** music module packages: `org.almostrealism.audio.*` → `org.almostrealism.music.*` (58 types + tests). Resolves split-package problem where music and audio shared `audio.notes`, `audio.data`, `audio.filter`, `audio.pattern`, `audio.sequence`. Updated imports in common/, rings/, ringsdesktop/.
+- **Renamed** compose module packages: `org.almostrealism.audio.*` → `org.almostrealism.studio.*`, `org.almostrealism.ml.audio` → `org.almostrealism.studio.ml` (71 types + tests). Resolves split-package problem where compose and audio shared `audio.arrange`, `audio.computations`, `audio.notes`, and root `audio` package. Updated imports in common/, rings/, ringsdesktop/.
+
+---
+
 #### Deferred Improvements
 - **event package** (6 types) — Only used in utils-http test. Could move to utils-http.
 - **Test migration** — Many of the 158 test classes could move to their respective modules if the CI pipeline is updated to run tests for all modules (currently skips some, creating a gap where tests are written but not executed).
