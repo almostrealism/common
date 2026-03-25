@@ -35,7 +35,6 @@
 - [space](domain/space/README.md): Scene management, meshes, spatial acceleration | [Details](docs/modules/space.html)
 - [heredity](domain/heredity/README.md): Genetic algorithms, Gene/Chromosome/Genome hierarchy | [Details](docs/modules/heredity.html)
 - [chemistry](domain/chemistry/README.md): Periodic table, elements, molecular structures | [Details](docs/modules/chemistry.html)
-- [llvm](domain/llvm/README.md): LLVM/C interoperability for native code
 
 ### engine/ — Applications & Training
 - [ml](engine/ml/README.md): Transformer models (Qwen3), StateDictionary, attention mechanisms | [Details](docs/modules/ml.html)

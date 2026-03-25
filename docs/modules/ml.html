@@ -542,7 +542,7 @@ for (int step = 0; step < maxTokens; step++) {
                 </div>
 
                 <h4>Usage Example</h4>
-                <pre><code class="language-java">import org.almostrealism.ml.audio.DiffusionTransformer;
+                <pre><code class="language-java">import org.almostrealism.studio.ml.DiffusionTransformer;
 import org.almostrealism.ml.StateDictionary;
 
 // Load weights
@@ -639,7 +639,7 @@ PackedCollection output = model.forward(
 
                 <h3>LoRA Fine-Tuning</h3>
                 <p>For parameter-efficient fine-tuning, use <code>LoRADiffusionTransformer</code> which extends DiffusionTransformer with <code>LowRankAdapterSupport</code>:</p>
-                <pre><code class="language-java">import org.almostrealism.ml.audio.LoRADiffusionTransformer;
+                <pre><code class="language-java">import org.almostrealism.studio.ml.LoRADiffusionTransformer;
 import org.almostrealism.layers.AdapterConfig;
 
 // Create LoRA-enabled model

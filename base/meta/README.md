@@ -1,6 +1,6 @@
-# Almost Realism UML Module (`ar-uml`)
+# Meta Module (`ar-meta`)
 
-The UML Module provides foundational annotations and interfaces for semantic metadata and system introspection in Almost Realism. Despite its name, it does not generate or parse UML diagrams. Instead, it serves as a lightweight annotation library that helps the framework understand class semantics, lifecycle, and identification.
+The Meta Module provides foundational interfaces for naming, identity, indexed access, and lifecycle management. It is the absolute root of the dependency tree — every other module depends on it, and it depends on nothing.
 
 ## Purpose
 

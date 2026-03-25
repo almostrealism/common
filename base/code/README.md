@@ -23,8 +23,8 @@ This module provides:
 | `io.almostrealism.lang` | Language operations abstractions for code generation backends |
 | `io.almostrealism.compute` | Computation requirements and optimization strategies |
 | `io.almostrealism.profile` | Performance profiling and operation metadata tracking |
-| `io.almostrealism.html` | HTML and JavaScript code generation utilities |
-| `io.almostrealism.util` | Utility classes (caching, sequences, formatting) |
+| `io.almostrealism.sequence` | Integer sequence algebra (12 types) |
+| `io.almostrealism.util` | Utility classes (caching, formatting); Sequence and ArrayItem moved to io.almostrealism.sequence |
 | `io.almostrealism.concurrent` | Concurrency primitives (semaphores) |
 
 ## Key Concepts
