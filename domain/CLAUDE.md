@@ -1,5 +1,11 @@
 # domain/ — Domain Models
 
+## CRITICAL: NEVER Create New Maven Modules
+
+**Agents MUST NEVER create new Maven modules.** The Maven module structure is externally controlled. If a task requires a new module, **STOP and abandon the task**. Do not create new `pom.xml` files, add `<module>` entries to parent POMs, or create directory structures constituting a new module. Document the requirement in completion notes instead — the project owner handles module creation.
+
+---
+
 Concrete domain models that combine foundation and mathematical layers into
 specialized representations. Neural network graphs, color and lighting,
 3D scene hierarchies, genetic algorithms, physics simulation, and more.

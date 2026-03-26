@@ -101,6 +101,15 @@ Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_reca
 
 # CODE RULES
 
+## CRITICAL: NEVER Create New Maven Modules
+
+**Agents MUST NEVER create new Maven modules.** The Maven module structure of this project is externally controlled. If a task appears to require creating a new Maven module, the agent MUST STOP and abandon the task rather than create one. This applies to:
+- Creating new `pom.xml` files that define a new module
+- Adding new `<module>` entries to any parent `pom.xml`
+- Creating new directory structures that would constitute a Maven module
+
+If the agent believes a new module is needed, it must document the requirement in its completion notes and explain why, but MUST NOT create the module itself. The project owner will handle module creation manually.
+
 ## Do Not Commit Code
 
 Never use `git commit`. Stage changes with `git add` only. The developer reviews and commits.

@@ -19,6 +19,8 @@ package io.flowtree.job;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.util.KeyValueStore;
 
+import java.util.Collections;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
@@ -59,5 +61,16 @@ public interface Job extends Runnable, KeyValueStore {
 	 * process the result of this {@link Job}.
 	 */
 	default void setOutputConsumer(Consumer<JobOutput> outputConsumer) {
+	}
+
+	/**
+	 * Returns the labels that a Node must have in order to execute this Job.
+	 * A Node will only execute this Job if its labels contain every entry
+	 * in the returned map. An empty map means the Job can run on any Node.
+	 *
+	 * @return the required label key-value pairs
+	 */
+	default Map<String, String> getRequiredLabels() {
+		return Collections.emptyMap();
 	}
 }

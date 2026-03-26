@@ -178,6 +178,13 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	private final Set<String> completeIdentifiers;
 
+	/**
+	 * Set of content identifiers known to be persistent. Tracked separately
+	 * so that {@link #cleanup(Predicate)} can check persistence without loading
+	 * evicted entries from disk.
+	 */
+	private final Set<String> persistentIdentifiers;
+
 	private final WaveDetailsFactory factory;
 	private final PriorityBlockingQueue<WaveDetailsJob> queue;
 	private int totalJobs;
@@ -242,6 +249,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		this.identifiers = new HashMap<>();
 		this.detailsCache = new FrequencyCache<>(DEFAULT_DETAIL_CACHE_CAPACITY, 0.4);
 		this.completeIdentifiers = new HashSet<>();
+		this.persistentIdentifiers = new HashSet<>();
 		this.factory = new WaveDetailsFactory(sampleRate);
 		this.queue = new PriorityBlockingQueue<>(100,
 				Comparator.comparing(WaveDetailsJob::getPriority).reversed());
@@ -345,6 +353,15 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	public Set<String> getAllIdentifiers() {
 		return Collections.unmodifiableSet(completeIdentifiers);
+	}
+
+	/**
+	 * Returns the set of all identifiers known to be persistent.
+	 *
+	 * @return an unmodifiable view of the persistent identifiers
+	 */
+	public Set<String> getPersistentIdentifiers() {
+		return Collections.unmodifiableSet(persistentIdentifiers);
 	}
 
 	public int getTotalJobs() { return totalJobs; }
@@ -504,6 +521,10 @@ public class AudioLibrary implements ConsoleFeatures {
 		if (isComplete(details)) {
 			completeIdentifiers.add(details.getIdentifier());
 		}
+
+		if (details.isPersistent()) {
+			persistentIdentifiers.add(details.getIdentifier());
+		}
 	}
 
 	public Optional<WaveDetails> getDetailsNow(String key) {
@@ -583,6 +604,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		WaveDetails existing = resolveDetails(id);
 		if (existing != null) {
 			existing.setPersistent(persistent || existing.isPersistent());
+			if (existing.isPersistent()) persistentIdentifiers.add(id);
 			return CompletableFuture.completedFuture(existing);
 		}
 
@@ -633,6 +655,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			}
 
 			details.setPersistent(persistent || details.isPersistent());
+			if (details.isPersistent()) persistentIdentifiers.add(id);
 			return details;
 		} catch (Exception e) {
 			warn("Failed to create WaveDetails for " +
@@ -1025,12 +1048,10 @@ public class AudioLibrary implements ConsoleFeatures {
 				.collect(Collectors.toSet());
 
 		// Exclude persistent entries and those associated with active files
-		// or otherwise explicitly preserved
+		// or otherwise explicitly preserved. Uses the persistentIdentifiers set
+		// to avoid loading evicted entries from disk just to check persistence.
 		List<String> toRemove = new ArrayList<>(completeIdentifiers).stream()
-				.filter(id -> {
-					WaveDetails d = resolveDetails(id);
-					return d == null || !d.isPersistent();
-				})
+				.filter(id -> !persistentIdentifiers.contains(id))
 				.filter(id -> !activeIds.contains(id))
 				.filter(id -> preserve == null || !preserve.test(id))
 				.toList();
