@@ -340,16 +340,20 @@ optimizer.step(parameters, gradients);
 ```
 
 ### Training Loop Pattern
+
+**ModelOptimizer owns the training loop.** Never write `for (int epoch = 0; ...)` directly.
+
 ```java
-for (int epoch = 0; epoch < epochs; epoch++) {
-    for (Batch batch : dataset) {
-        PackedCollection output = model.forward(batch.input());
-        PackedCollection loss = lossFunction.apply(output, batch.target());
-        PackedCollection gradients = model.backward(loss);
-        optimizer.step(model.parameters(), gradients);
-    }
-}
+// Configure the optimizer
+ModelOptimizer optimizer = new ModelOptimizer(model);
+optimizer.setLossProvider(new MeanSquaredError());
+optimizer.setParameterUpdate(new AdamOptimizer(learningRate));
+
+// Run training — ModelOptimizer manages the loop
+optimizer.train(dataset, epochs, batchSize);
 ```
+
+See [training-loop-examples.md](internals/training-loop-examples.md) for detailed patterns.
 
 ---
 
@@ -436,8 +440,11 @@ public class MyTest implements TestFeatures, ConsoleFeatures {
 ```
 
 ### Run Tests
-```bash
-mvn test -pl <module> -Dtest=<TestName>
+
+Use the MCP test runner — never use `mvn test` directly:
+
+```
+mcp__ar-test-runner__start_test_run module:<module> test:<TestName>
 ```
 
 ---

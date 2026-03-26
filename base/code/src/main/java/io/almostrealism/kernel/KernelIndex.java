@@ -20,6 +20,12 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ScopeSettings;
+import io.almostrealism.sequence.ArrayIndexSequence;
+import io.almostrealism.sequence.DefaultIndex;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
+import io.almostrealism.sequence.KernelSeries;
 
 import java.util.Objects;
 import java.util.OptionalInt;

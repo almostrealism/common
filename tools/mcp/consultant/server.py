@@ -80,24 +80,25 @@ def _build_consult_prompt(question: str, doc_context: str, memory_context: str,
     """Build the prompt for a consultation question."""
     parts = []
 
+    # Put the question FIRST so the model knows what to look for in the docs
+    parts.append(f"## Question\n\n{question}")
+
+    if extra_context:
+        parts.append(f"## Additional Context from Agent\n\n{extra_context}")
+
     if doc_context:
-        parts.append(f"## Relevant Documentation\n\n{doc_context}")
+        parts.append(f"## Relevant Documentation\n\nRead these chunks carefully — the answer is in here.\n\n{doc_context}")
     else:
         parts.append("## Relevant Documentation\n\n(No documentation found for this query)")
 
     if memory_context:
         parts.append(f"## Relevant Memories from Prior Sessions\n\n{memory_context}")
 
-    if extra_context:
-        parts.append(f"## Additional Context from Agent\n\n{extra_context}")
-
-    parts.append(f"## Question\n\n{question}")
-
     parts.append(
-        "Answer the question using ONLY the documentation context above. "
-        "If the documentation does not directly answer the question but contains "
-        "related material, summarize what IS covered and cite the relevant sources. "
-        "Only respond with 'Not documented' if the context is completely empty."
+        "## Instructions\n\n"
+        "Answer the question above using the documentation chunks. "
+        "Include a code example if the docs provide one. "
+        "Cite the source file and line number."
     )
 
     return "\n\n".join(parts)
@@ -141,6 +142,44 @@ def _build_reformulate_prompt(raw_note: str, doc_context: str) -> str:
     )
 
     return "\n\n".join(parts)
+
+
+def _keyword_guidance(keywords: Optional[list[str]]) -> str:
+    """Generate guidance about keyword usage when results are poor."""
+    hints = []
+
+    if not keywords:
+        hints.append(
+            "Tip: Provide explicit keywords for better results. "
+            "Example: keywords=[\"StateDictionary\", \"weight loading\"]"
+        )
+    else:
+        # Check if keywords are all single words (common issue)
+        all_single = all(" " not in kw for kw in keywords)
+        has_generic = any(
+            kw.lower() in {
+                "default", "interface", "class", "method", "pattern",
+                "type", "module", "use", "create", "build", "make",
+            }
+            for kw in keywords
+        )
+        if all_single and len(keywords) > 2:
+            hints.append(
+                "Tip: Use multi-word phrases as keywords instead of "
+                "individual words. For example, [\"Features mixin\", "
+                "\"CollectionFeatures\"] works better than "
+                "[\"Features\", \"mixin\", \"CollectionFeatures\", "
+                "\"default\", \"interface\"] because single common words "
+                "match too many documents."
+            )
+        elif has_generic:
+            hints.append(
+                "Tip: Avoid generic keywords like 'default', 'interface', "
+                "'pattern'. Use domain-specific terms or multi-word phrases "
+                "that match documentation headings."
+            )
+
+    return (" " + " ".join(hints)) if hints else ""
 
 
 def _format_memory_context(memories: list[dict], max_entries: int = 3) -> str:
@@ -209,8 +248,9 @@ def consult(
         context: Optional additional context (e.g., code snippet, error message).
         keywords: Optional list of specific search terms. If provided, these are
             used directly for documentation search instead of extracting keywords
-            from the question. Use this to specify domain-specific terms that
-            matter most (e.g., ["AttentionFeatures", "backward", "gradient"]).
+            from the question. Use multi-word phrases for best results — e.g.,
+            ["Features mixin", "CollectionFeatures"] rather than individual
+            common words like ["Features", "mixin", "default", "interface"].
 
     Returns:
         Dictionary with answer, sources, and related memories.
@@ -254,12 +294,16 @@ def consult(
     # a "note" that encourages the caller to explore the listed sources.
     if answer.strip().lower() in ("not documented", "not documented."):
         if sources or html_refs:
-            result["note"] = (
-                "No direct answer was synthesized, but the sources listed "
-                "below may contain related information worth exploring."
+            note = (
+                "No direct answer was synthesized, but the sources and "
+                "html_refs fields contain related documentation worth exploring."
             )
+            note += _keyword_guidance(keywords)
+            result["note"] = note
         else:
-            result["answer"] = answer
+            note = "No documentation found for this query."
+            note += _keyword_guidance(keywords)
+            result["note"] = note
     else:
         result["answer"] = answer
 

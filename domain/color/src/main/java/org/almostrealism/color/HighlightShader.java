@@ -16,7 +16,6 @@
 
 package org.almostrealism.color;
 
-import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
@@ -78,11 +77,7 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
  * @author Michael Murray
  */
 public class HighlightShader extends ShaderSet<ShaderContext> implements
-		Shader<ShaderContext>, Editable, RGBFeatures, RayFeatures {
-  private static final String[] propNames = { "Highlight Color", "Highlight Exponent" };
-  private static final String[] propDesc = { "The base color for the highlight", "The exponent used to dampen the highlight (phong exponent)" };
-  private static final Class[] propTypes = { Producer.class, Double.class };
-  
+		Shader<ShaderContext>, RGBFeatures, RayFeatures {
   private Producer<PackedCollection> highlightColor;
   private double highlightExponent;
 
@@ -193,83 +188,6 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 	 * Returns the highlight exponent (phong exponent) used by this HighlightShader object.
 	 */
 	public double getHighlightExponent() { return this.highlightExponent; }
-	
-	/**
-	 * Returns an array of String objects with names for each editable property of this HighlightShader object.
-	 */
-	public String[] getPropertyNames() { return HighlightShader.propNames; }
-	
-	/**
-	 * Returns an array of String objects with descriptions for each editable property of this HighlightShader object.
-	 */
-	public String[] getPropertyDescriptions() { return HighlightShader.propDesc; }
-	
-	/**
-	 * Returns an array of Class objects representing the class types of each editable property of this HighlightShader object.
-	 */
-	public Class[] getPropertyTypes() { return HighlightShader.propTypes; }
-	
-	/**
-	 * Returns the values of the properties of this HighlightShader object as an Object array.
-	 */
-	public Object[] getPropertyValues() {
-		return new Object[] {this.highlightColor, Double.valueOf(this.highlightExponent)};
-	}
-	
-	/**
-	 * Sets the value of the property of this HighlightShader object at the specified index to the specified value.
-	 * 
-	 * @throws IllegalArgumentException  If the object specified is not of the correct type.
-	 * @throws IndexOutOfBoundsException  If the index specified does not correspond to an editable property
-	 *                                    of this HighlightShader object.
-	 */
-	public void setPropertyValue(Object value, int index) {
-		if (index == 0) {
-			if (value instanceof Producer)
-				this.setHighlightColor((Producer<PackedCollection>) value);
-			else
-				throw new IllegalArgumentException("Illegal argument: " + value.toString());
-		} else if (index == 1) {
-			if (value instanceof Double)
-				this.setHighlightExponent(((Double)value).doubleValue());
-			else
-				throw new IllegalArgumentException("Illegal argument: " + value.toString());
-		} else {
-			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-		}
-	}
-	
-	/**
-	 * Sets the values of properties of this HighlightShader object to those specified.
-	 * 
-	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
-	 *                                   (Note: none of the values after the erroneous value will be set)
-	 * @throws IndexOutOfBoundsException  If the length of the specified array is longer than permitted.
-	 */
-	public void setPropertyValues(Object[] values) {
-		for (int i = 0; i < values.length; i++) {
-			this.setPropertyValue(values[i], i);
-		}
-	}
-	
-	/**
-	 * @return  {highlight color}.
-	 */
-	public Producer[] getInputPropertyValues() { return new Producer[] { this.highlightColor }; }
-	
-	/**
-	 * Sets the values of properties of this HighlightShader object to those specified.
-	 * 
-	 * @throws IllegalArgumentException  If the Producer object specified is not of the correct type.
-	 * @throws IndexOutOfBoundsException  If the lindex != 0;
-	 */
-	@Override
-	public void setInputPropertyValue(int index, Producer p) {
-		if (index == 0)
-			this.setPropertyValue(p, 0);
-		else
-			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-	}
 	
 	/**
 	 * Returns "Highlight Shader".

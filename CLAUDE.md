@@ -7,7 +7,7 @@
 ```
 common/
 ├── base/                          # Layer 1 — Foundation
-│   ├── uml/                       #   ar-uml: Annotations, lifecycle, semantic metadata
+│   ├── meta/                      #   ar-meta: Annotations, lifecycle, semantic metadata
 │   ├── io/                        #   ar-io: Logging, metrics, alerts, lifecycle management
 │   ├── relation/                  #   ar-relation: Producer/Evaluable model, process optimization
 │   ├── code/                      #   ar-code: Expression trees, scopes, code generation
@@ -26,8 +26,7 @@ common/
 │   ├── graph/                     #   ar-graph: Neural network layers, computation graphs, autodiff
 │   ├── physics/                   #   ar-physics: Atomic structures, photon fields, rigid body dynamics
 │   ├── space/                     #   ar-space: 3D scenes, meshes, CSG, spatial acceleration
-│   ├── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
-│   └── llvm/                      #   ar-llvm: LLVM IR / C code integration via GraalVM polyglot
+│   └── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
 │
 ├── engine/                        # Layer 4 — Applications & Training
 │   ├── optimize/                  #   ar-optimize: Adam, evolutionary algorithms, training loops
@@ -72,6 +71,8 @@ mcp__ar-consultant__consult question:"..." keywords:["SpecificClass", "method", 
 ```
 
 Always provide `keywords` (2-5 domain-specific terms, most specific first). Without keywords, search results are poor.
+
+**Use multi-word phrases as keywords, not individual common words.** For example, use `["Features mixin", "CollectionFeatures"]` instead of `["Features", "mixin", "CollectionFeatures", "default", "interface"]`. Single common words like "default", "interface", "pattern" match too many documents and drown out the specific result. Compound phrases match the right doc on the first try.
 
 For debugging/CI failures: extract component names from the error, consult about those components, THEN investigate.
 

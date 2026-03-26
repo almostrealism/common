@@ -4,8 +4,8 @@ The foundation layer provides the core primitives, abstractions, and execution i
 
 ## Modules
 
-### [ar-uml](uml/README.md)
-Foundational annotations and interfaces for semantic metadata and system introspection. Provides semantic annotations (`@ModelEntity`, `@Function`, `@Stateless`), naming contracts (`Named`, `Nameable`), lifecycle management (`Destroyable`, `Lifecycle`), and signature-based identification for deduplication. Zero external dependencies.
+### [ar-meta](meta/README.md)
+Foundational interfaces for naming, identity, indexed access, and lifecycle management. Provides naming contracts (`Named`, `Nameable`), lifecycle management (`Destroyable`, `Lifecycle`, `Setup`), signature-based identification (`Signature`), and indexed access patterns (`Multiple`, `Plural`). Zero external dependencies.
 
 ### [ar-io](io/README.md)
 Core infrastructure for logging, performance monitoring, alerts, and lifecycle management. Includes hierarchical console logging, `TimingMetric` and `DistributionMetric` for performance tracking, an alert system with pluggable delivery, and lazy initialization via `SuppliedValue`. Used across all modules for diagnostics and output.

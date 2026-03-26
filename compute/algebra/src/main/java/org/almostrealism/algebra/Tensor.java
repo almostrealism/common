@@ -17,9 +17,6 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.html.Div;
-import io.almostrealism.html.HTMLContent;
-import io.almostrealism.html.HTMLString;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 
@@ -112,7 +109,7 @@ import java.util.stream.IntStream;
  * @see PackedCollection
  * @see TraversalPolicy
  */
-public class Tensor<T> implements HTMLContent {
+public class Tensor<T> {
 	private final LinkedList top;
 
 	/**
@@ -329,45 +326,37 @@ public class Tensor<T> implements HTMLContent {
 	 *
 	 * @return an HTML string representation of this tensor
 	 */
-	@Override
+	/** Returns an HTML table representation of this tensor. */
 	public String toHTML() {
-		Div d = new Div();
-		d.addStyleClass("tensor-table");
+		StringBuilder buf = new StringBuilder();
+		buf.append("<div class=\"tensor-table\">");
 
 		for (int i = 0; ; i++) {
 			if (get(i, 0) == null) break;
 
-			Div row = new Div();
-			row.addStyleClass("tensor-row");
+			buf.append("<div class=\"tensor-row\">");
 
 			for (int j = 0; ; j++) {
 				T o = get(i, j);
 				if (o == null) break;
 
-				if (o instanceof HTMLContent) {
-					row.add((HTMLContent) o);
-				} else if (o instanceof String) {
-					Div cell = new Div();
-					cell.addStyleClass("tensor-cell");
-					cell.add(new HTMLString((String) o));
-					row.add(cell);
+				String cellValue;
+				if (o instanceof String) {
+					cellValue = (String) o;
 				} else if (o instanceof PackedCollection) {
-					Div cell = new Div();
-					cell.addStyleClass("tensor-cell");
-					cell.add(new HTMLString(String.valueOf(((PackedCollection) o).toDouble(0))));
-					row.add(cell);
+					cellValue = String.valueOf(((PackedCollection) o).toDouble(0));
 				} else {
-					Div cell = new Div();
-					cell.addStyleClass("tensor-cell");
-					cell.add(new HTMLString(o.getClass().getSimpleName()));
-					row.add(cell);
+					cellValue = o.getClass().getSimpleName();
 				}
+
+				buf.append("<div class=\"tensor-cell\">").append(cellValue).append("</div>");
 			}
 
-			d.add(row);
+			buf.append("</div>");
 		}
-		
-		return d.toHTML();
+
+		buf.append("</div>");
+		return buf.toString();
 	}
 
 	/**

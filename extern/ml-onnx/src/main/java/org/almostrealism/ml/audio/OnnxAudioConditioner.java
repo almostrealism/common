@@ -23,7 +23,7 @@ import ai.onnxruntime.OrtSession;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.ml.OnnxFeatures;
-import org.almostrealism.persistence.AssetGroup;
+import org.almostrealism.persist.assets.AssetGroup;
 
 import java.util.HashMap;
 import java.util.Map;

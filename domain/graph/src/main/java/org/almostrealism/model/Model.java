@@ -17,7 +17,7 @@
 package org.almostrealism.model;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.CodeFeatures;

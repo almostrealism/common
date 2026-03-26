@@ -15,7 +15,7 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
-			<artifactId>ar-uml</artifactId>
+			<artifactId>ar-meta</artifactId>
 			<version>0.73</version>
 		</dependency>
 	</dependencies>

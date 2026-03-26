@@ -17,7 +17,6 @@
 package org.almostrealism.projection;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 
@@ -43,7 +42,6 @@ import org.almostrealism.collect.CollectionProducer;
  * 
  * @author  Michael Murray
  */
-@ModelEntity
 public class PinholeCamera extends OrthographicCamera implements ProjectionFeatures {
   	private double focalLength = 1.0;
   	private double blur = 0.0;

@@ -25,7 +25,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.ml.OnnxFeatures;
-import org.almostrealism.persistence.AssetGroup;
+import org.almostrealism.persist.assets.AssetGroup;
 
 import java.nio.FloatBuffer;
 import java.util.HashMap;
