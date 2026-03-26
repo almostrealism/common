@@ -16,7 +16,6 @@
 
 package org.almostrealism.space;
 
-import io.almostrealism.uml.Function;
 import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.geometry.Ray;
 
@@ -26,7 +25,6 @@ import org.almostrealism.geometry.Ray;
  * 
  * @author Michael Murray
  */
-@Function
 public interface DistanceEstimator {
 	double estimateDistance(Ray r);
 }

@@ -20,7 +20,6 @@ import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Sortable;
 import io.almostrealism.uml.Nameable;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Describable;
@@ -65,7 +64,7 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class Variable<T, V extends Variable<T, ?>>
-		implements Nameable, Sortable, Delegated<V>, Describable, ConsoleFeatures {
+		implements Nameable, Delegated<V>, Describable, ConsoleFeatures {
 	private String name;
 	private PhysicalScope physicalScope;
 	private int sortHint;
@@ -189,7 +188,6 @@ public class Variable<T, V extends Variable<T, ?>>
 	 *
 	 * @return the sort hint value
 	 */
-	@Override
 	public int getSortHint() { return sortHint; }
 
 	private void setProducer(Supplier<Evaluable<? extends T>> producer) {

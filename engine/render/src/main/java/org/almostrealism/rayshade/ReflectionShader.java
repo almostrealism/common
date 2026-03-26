@@ -16,7 +16,6 @@
 
 package org.almostrealism.rayshade;
 
-import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
@@ -95,7 +94,7 @@ import java.util.List;
  * @author Michael Murray
  */
 public class ReflectionShader extends ShaderSet<ShaderContext> implements
-		Shader<ShaderContext>, Editable, RGBFeatures, RayFeatures {
+		Shader<ShaderContext>, RGBFeatures, RayFeatures {
 
 	/**
 	 * Maximum number of recursive reflection bounces allowed.
@@ -103,14 +102,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	 * Default is 4. Higher values produce more accurate results but are slower.</p>
 	 */
 	public static int maxReflections = 4;
-  
-  private static final String[] propNames = {"Reflectivity", "Reflective Color",
-  										"Blur factor", "Environment map"};
-  private static final String[] propDesc = {"The reflectivity of the surface at a direct (normal) viewing angle, usually in the range [0,1].",
-										"The base color of the reflection.", "Blur factor.",
-										"Texture to use as an environment map."};
-  private static final Class[] propTypes = {Double.class, Producer.class, Double.class, Texture.class};
-  
+
   private double reflectivity, blur;
   private Producer<PackedCollection> reflectiveColor;
   private Texture eMap;
@@ -286,92 +278,6 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	 * @return  The Texture object used as an environment map for this ReflectionShader object.
 	 */
 	public Texture getEnvironmentMap() { return this.eMap; }
-	
-	/**
-	 * Returns an array of String objects with names for each editable property of this ReflectionShader object.
-	 */
-	@Override
-	public String[] getPropertyNames() { return ReflectionShader.propNames; }
-	
-	/**
-	 * Returns an array of String objects with descriptions for each editable property of this ReflectionShader object.
-	 */
-	public String[] getPropertyDescriptions() { return ReflectionShader.propDesc; }
-	
-	/**
-	 * Returns an array of Class objects representing the class types of each editable property of this ReflectionShader object.
-	 */
-	public Class[] getPropertyTypes() { return ReflectionShader.propTypes; }
-	
-	/**
-	 * Returns the values of the properties of this ReflectionShader object as an Object array.
-	 */
-	public Object[] getPropertyValues() {
-		return new Object[] {Double.valueOf(this.reflectivity), this.reflectiveColor, Double.valueOf(this.blur), this.eMap};
-	}
-	
-	/**
-	 * Sets the value of the property of this ReflectionShader object at the specified index to the specified value.
-	 * 
-	 * @throws IllegalArgumentException  If the object specified is not of the correct type.
-	 * @throws IndexOutOfBoundsException  If the index specified does not correspond to an editable property of this 
-	 *                                    ReflectionShader object.
-	 */
-	public void setPropertyValue(Object value, int index) {
-		if (index == 0) {
-			if (value instanceof Double)
-				this.setReflectivity(((Double)value).doubleValue());
-			else
-				throw new IllegalArgumentException("Illegal argument: " + value);
-		} else if (index == 1) {
-			if (value instanceof Producer)
-				this.setReflectiveColor((Producer) value);
-			else
-				throw new IllegalArgumentException("Illegal argument: " + value);
-		} else if (index == 2) {
-			if (value instanceof Double)
-				this.setBlur(((Double)value).doubleValue());
-			else
-				throw new IllegalArgumentException("Illegal argument: " + value);
-		} else if (index == 3) {
-			if (value instanceof Texture)
-				this.setEnvironmentMap((Texture)value);
-			else
-				throw new IllegalArgumentException("Illegal argument: " + value);
-		} else {
-			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-		}
-	}
-	
-	/**
-	 * Sets the values of editable properties of this ReflectionShader object to those specified.
-	 * 
-	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
-     *                                       (Note: none of the values after the erroneous value will be set)
-	 * @throws IndexOutOfBoundsException  If the length of the specified array is longer than permitted.
-	 */
-	public void setPropertyValues(Object[] values) {
-		for (int i = 0; i < values.length; i++)
-			this.setPropertyValue(values[i], i);
-	}
-	
-	/**
-	 * @return  {reflective color}.
-	 */
-	public Producer[] getInputPropertyValues() { return new Producer[] {this.reflectiveColor}; }
-	
-	/**
-	 * Sets the values of properties of this HighlightShader object to those specified.
-	 * 
-	 * @throws IllegalArgumentException  If the Producer object specified is not of the correct type.
-	 * @throws IndexOutOfBoundsException  If the lindex != 0;
-	 */
-	public void setInputPropertyValue(int index, Producer p) {
-		if (index == 0)
-			this.setPropertyValue(p, 1);
-		else
-			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-	}
 	
 	/**
 	 * Returns "Reflection Shader".

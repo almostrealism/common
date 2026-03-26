@@ -16,7 +16,6 @@
 
 package org.almostrealism.color;
 
-import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -69,11 +68,7 @@ import org.almostrealism.geometry.RayFeatures;
  * @see Shader
  * @author Michael Murray
  */
-public class BlendingShader implements Shader<LightingContext>, Editable, RGBFeatures, RayFeatures {
-  private static final String[] names = { "Hot color", "Cold color" };
-  private static final String[] desc = { "Color for hot (lit) area.", "Color for cold (dim) area." };
-  private static final Class[] types = { Producer.class, Producer.class };
-  
+public class BlendingShader implements Shader<LightingContext>, RGBFeatures, RayFeatures {
   private Producer<PackedCollection> hotColor, coldColor;
 
 	/**
@@ -126,54 +121,6 @@ public class BlendingShader implements Shader<LightingContext>, Editable, RGBFea
 		return GeneratedColorProducer.fromProducer(this, c);
 	}
 
-	/**
-	 * @see Editable#getPropertyNames()
-	 */
-	public String[] getPropertyNames() { return BlendingShader.names; }
-
-	/**
-	 * @see Editable#getPropertyDescriptions()
-	 */
-	public String[] getPropertyDescriptions() { return BlendingShader.desc; }
-
-	/**
-	 * @see Editable#getPropertyTypes()
-	 */
-	public Class[] getPropertyTypes() { return BlendingShader.types; }
-
-	/**
-	 * @see Editable#getPropertyValues()
-	 */
-	public Object[] getPropertyValues() { return this.getInputPropertyValues(); }
-
-	/**
-	 * @see Editable#setPropertyValue(java.lang.Object, int)
-	 */
-	public void setPropertyValue(Object o, int index) { this.setInputPropertyValue(index, (Producer) o); }
-
-	/**
-	 * @see Editable#setPropertyValues(java.lang.Object[])
-	 */
-	public void setPropertyValues(Object[] values) {
-		for (int i = 0; i < values.length; i++) this.setPropertyValue(values[i], i);
-	}
-
-	/** @see Editable#getInputPropertyValues() */
-	public Producer[] getInputPropertyValues() { return new Producer[] {this.hotColor, this.coldColor}; }
-
-	/**
-	 * @see Editable#setInputPropertyValue(int, Producer)
-	 * @throws IndexOutOfBoundsException  If the property index is out of bounds.
-	 */
-	public void setInputPropertyValue(int index, Producer p) {
-		if (index == 0)
-			this.hotColor = (Producer) p;
-		else if (index == 1)
-			this.coldColor = (Producer) p;
-		else
-			throw new IndexOutOfBoundsException("Property index out of bounds: " + index);
-	}
-	
 	/** @return  "Blending Shader". */
 	public String toString() { return "Blending Shader"; }
 }

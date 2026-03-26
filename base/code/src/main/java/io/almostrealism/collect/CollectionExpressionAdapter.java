@@ -17,7 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.sequence.DefaultIndex;
 
 /**
  * Abstract base class providing common functionality for {@link CollectionExpression}

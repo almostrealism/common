@@ -39,6 +39,71 @@ The platform is pursuing a layered strategy:
 
 ## Planning History
 
+### 2026-03-24 — Module Layer Review and Structural Cleanup
+
+**Category:** Code Quality / Architecture
+**Branch:** `feature/module-layer-review`
+**Review Document:** [`docs/MODULE_REVIEW.md`](../MODULE_REVIEW.md)
+**Rubric:** [`docs/MODULE_RUBRIC.md`](../MODULE_RUBRIC.md)
+
+#### What Happened
+
+Comprehensive review of all 28 modules (now 27) against a rubric evaluating conceptual coherence, clarity, dependency justification, and necessity. The review was conducted interactively with the project owner, resulting in significant structural improvements.
+
+#### Changes Made
+
+**Removals:**
+- ar-llvm module (zero usage, aspirational GraalVM integration superseded by JNI path)
+- 118 individual element classes → replaced with single `Element` enum in ar-chemistry
+- 5 unused annotations from ar-meta (@Function, @ModelEntity, @Stateless, @ViewModel, Standards)
+- `Sortable`, `Function<IN,OUT>`, `Editable` interfaces from ar-relation (+ 8 shader/texture class cleanups)
+- `GoogleImagery` (dead code), `html` package (8 types, 1 consumer)
+
+**Renames:**
+- ar-uml → ar-meta (folder, artifact, all pom refs)
+- `org.almostrealism.audio.*` → `org.almostrealism.music.*` in studio/music (58 types)
+- `org.almostrealism.audio.*` → `org.almostrealism.studio.*` in studio/compose (71 types)
+- `com.almostrealism.spatial` → `org.almostrealism.spatial` (namespace consistency)
+- `org.almostrealism.persist`/`persistence` → `persist.index`/`persist.assets` in ar-ml
+
+**Moves:**
+- 13 atomic types (Atom, Shell, Orbital, etc.) from ar-physics → ar-chemistry
+- `Setup` interface from ar-code → ar-meta lifecycle package
+- auth package (3 types) from ar-utils → ar-utils-http
+
+**New structure:**
+- `io.almostrealism.sequence` package (12 types consolidated from util+kernel) — integer sequence algebra underpinning kernel computation
+
+#### Deferred Items (Future Work)
+
+These are documented in `docs/MODULE_REVIEW.md` and represent the next wave of structural improvement:
+
+1. **ar-collect is empty** — 44 hardware-agnostic collection types in ar-code's `io.almostrealism.collect` should live in ar-collect, but 22 code module files reference them (Expression→CollectionExpression coupling). Requires breaking the expression/collection coupling. This is the single largest structural debt in the foundation layer.
+
+2. **Split packages across modules** — `io.almostrealism.collect` spans ar-code and ar-collect; `io.almostrealism.compute` spans ar-code and ar-relation. Common pattern where types migrated upward due to dependency constraints.
+
+3. **JobOutput/OutputHandler migration** — FlowTree job concepts trapped in ar-io. Moving to flowtreeapi requires extracting job-output handling from `DatabaseConnection` (730-line class in graphpersist). Meaningful refactor, deferred.
+
+4. **event package in ar-utils** — 6 types used only in utils-http test. Should move to utils-http.
+
+5. **Test migration** — 158 test classes in ar-utils could partially move to their respective modules. Requires CI pipeline update to run tests for all modules (current pipeline skips some, creating a gap).
+
+6. **Documentation update** — All module READMEs, CLAUDE.md files, docs/index.html, and internal documentation need updating to reflect the structural changes. Many had pre-existing inconsistencies that are now compounded by the renames and moves.
+
+#### Why This Task
+
+The module structure had accumulated organic drift: misnamed modules (ar-uml), dead code (ar-llvm, 5 unused annotations, GoogleImagery), split packages (audio shared across 3 modules), misplaced types (atomic types in physics, auth in utils), and bloated representations (118 element classes). These issues erode developer orientation and compound over time. The review produced a rubric for ongoing evaluation and addressed the most actionable problems while documenting the harder structural debt for future sessions.
+
+#### What Comes Next
+
+**Immediate:** Documentation sweep to update all READMEs, CLAUDE.md files, and HTML docs to reflect structural changes. Pre-existing inconsistencies need correction alongside the new changes.
+
+**Medium-term:** The ar-collect population (breaking expression/collection coupling) is the most impactful remaining structural improvement. The test migration and CI pipeline update would improve test coverage confidence.
+
+**Long-term:** The deferred items (split packages, JobOutput migration) can be addressed opportunistically as related work touches those areas.
+
+---
+
 ### 2026-03-12 — TODO/FIXME Individual Fixes
 
 **Category:** Code Quality

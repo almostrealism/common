@@ -16,7 +16,7 @@
 
 package io.almostrealism.expression.test;
 
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.KernelSeries;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;

@@ -16,6 +16,10 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.sequence.ArrayIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Tree;
 

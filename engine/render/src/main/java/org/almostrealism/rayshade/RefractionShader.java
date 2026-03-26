@@ -16,7 +16,6 @@
 
 package org.almostrealism.rayshade;
 
-import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
@@ -97,7 +96,7 @@ import java.util.List;
  * @author Michael Murray
  */
 // TODO  Fix refraction algorithm.
-public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFeatures, CodeFeatures {
+public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, CodeFeatures {
 
 	/**
 	 * The last refracted ray direction (for debugging purposes).
@@ -108,13 +107,6 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 	 * Enables debug output during refraction calculations.
 	 */
 	public static boolean produceOutput = false;
-  
-	private static final String propNames[] = {"Index of refraction", "Red attenuation", "Green attenuation", "Blue attenuation"};
-	private static final String propDesc[] = {"The index of refraction of the medium",
-						"The attenuation factor for the red channel",
-						"The attenuation factor for the green channel",
-						"The attenuation factor for the blue channel"};
-	private static final Class propTypes[] = {Double.class, Double.class, Double.class, Double.class};
   
 	private double indexOfRefraction;
 	private double ra, ga, ba;
@@ -482,82 +474,6 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 	 */
 	public double[] getAttenuationFactors() {
 		return new double[] {this.ra, this.ga, this.ba};
-	}
-	
-	/**
-	 * Returns an array of String objects with names for each editable property of this RefractionShader object.
-	 */
-	public String[] getPropertyNames() { return RefractionShader.propNames; }
-	
-	/**
-	 * Returns an array of String objects with descriptions for each editable property of this RefractionShader object.
-	 */
-	public String[] getPropertyDescriptions() { return RefractionShader.propDesc; }
-	
-	/**
-	 * Returns an array of Class objects representing the class types of each editable property of this RefractionShader object.
-	 */
-	public Class[] getPropertyTypes() { return RefractionShader.propTypes; }
-	
-	/**
-	 * Returns the values of the properties of this ReflectionShader object as an Object array.
-	 */
-	public Object[] getPropertyValues() {
-		return new Object[] {Double.valueOf(this.indexOfRefraction), Double.valueOf(this.ra), Double.valueOf(this.ga), Double.valueOf(this.ba)};
-	}
-	
-	/**
-	 * Sets the value of the property of this RefractionShader object at the specified index to the specified value.
-	 * 
-	 * @throws IllegalArgumentException  If the object specified is not of the correct type.
-	 * @throws IndexOutOfBoundsException  If the index specified does not correspond to an editable property of this
-	 *                                    RefractionShader object.
-	 */
-	public void setPropertyValue(Object value, int index) {
-		if (value instanceof Double == false)
-			throw new IllegalArgumentException("Illegal argument: " + value.toString());
-		
-		if (index == 0) {
-				this.setIndexOfRefraction(((Double)value).doubleValue());
-		} else if (index == 1) {
-				this.setAttenuationFactors(((Double)value).doubleValue(),
-								this.getAttenuationFactors()[1],
-								this.getAttenuationFactors()[2]);
-		} else if (index == 2) {
-				this.setAttenuationFactors(this.getAttenuationFactors()[0],
-								((Double)value).doubleValue(),
-								this.getAttenuationFactors()[2]);
-		} else if (index == 3) {
-				this.setAttenuationFactors(this.getAttenuationFactors()[0],
-								this.getAttenuationFactors()[1],
-								((Double)value).doubleValue());
-		} else {
-			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-		}
-	}
-	
-	/**
-	 * @return  An empty array.
-	 */
-	@Override
-	public Producer[] getInputPropertyValues() { return new Producer[0]; }
-	
-	/**
-	 * Does nothing.
-	 */
-	@Override
-	public void setInputPropertyValue(int index, Producer p) { }
-	
-	/**
-	 * Sets the values of editable properties of this ReflectionShader object to those specified.
-	 * 
-	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
-	 *                                   (Note: none of the values after the erroneous value will be set)
-	 * @throws IndexOutOfBoundsException  If the length of the specified array is longer than permitted.
-	 */
-	public void setPropertyValues(Object values[]) {
-		for (int i = 0; i < values.length; i++)
-			this.setPropertyValue(values[i], i);
 	}
 	
 	/**

@@ -22,7 +22,7 @@ import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.profile.OperationMetadata;

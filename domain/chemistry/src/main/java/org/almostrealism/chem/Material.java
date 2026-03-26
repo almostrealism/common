@@ -1,7 +1,5 @@
 package org.almostrealism.chem;
 
-import org.almostrealism.physics.Atomic;
-import org.almostrealism.physics.Element;
 
 /**
  * A simple wrapper class for atomic substances used in material science contexts.

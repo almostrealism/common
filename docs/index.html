@@ -137,11 +137,11 @@
                 <div class="mermaid">
 graph TB
     %% Foundation
-    uml["uml<br/>metadata &amp; lifecycle"]
+    meta["meta<br/>naming, identity, lifecycle"]
 
     %% Core Abstractions
-    uml --> io["io<br/>logging, metrics"]
-    uml --> relation["relation<br/>Producer/Evaluable"]
+    meta --> io["io<br/>logging, metrics"]
+    meta --> relation["relation<br/>relational computation"]
 
     %% Code Generation
     io --> code["code<br/>code generation"]
@@ -156,7 +156,7 @@ graph TB
     %% Styling
     classDef base fill:#e1f5ff,stroke:#0277bd,stroke-width:2px
 
-    class uml,io,relation,code,collect,hardware base
+    class meta,io,relation,code,collect,hardware base
                 </div>
 
                 <h3>compute &mdash; Mathematical Domains</h3>
@@ -203,9 +203,6 @@ graph TB
     color --> physics["physics<br/>atoms, photons, rigid bodies"]
     time --> physics
 
-    %% LLVM
-    hardware --> llvm["llvm<br/>LLVM/C interop"]
-
     %% Neural Networks
     geometry --> graphMod["graph<br/>neural network layers"]
     heredity --> graphMod
@@ -225,7 +222,7 @@ graph TB
 
     class geometry,stats,time compute
     class hardware base
-    class color,physics,llvm,heredity,graphMod,chemistry,spaceMod domain
+    class color,physics,heredity,graphMod,chemistry,spaceMod domain
                 </div>
 
                 <h3>engine &mdash; Applications &amp; Training</h3>
@@ -339,10 +336,10 @@ graph TB
                 <h3>base &mdash; Foundation</h3>
                 <div class="module-grid">
                     <div class="module-card base">
-                        <h3>uml</h3>
+                        <h3>meta</h3>
                         <span class="badge base-badge">base</span>
-                        <p>Metadata, lifecycle management, and framework-wide utilities</p>
-                        <a href="../base/uml/README.md" class="doc-link">README</a> | <a href="modules/uml.html" class="doc-link">Details</a> | <a href="apidocs/io/almostrealism/uml/package-summary.html" class="doc-link">JavaDoc</a>
+                        <p>Foundational interfaces for naming, identity, indexed access, and lifecycle</p>
+                        <a href="../base/meta/README.md" class="doc-link">README</a> | <a href="modules/meta.html" class="doc-link">Details</a> | <a href="apidocs/io/almostrealism/meta/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
                     <div class="module-card base">
@@ -355,7 +352,7 @@ graph TB
                     <div class="module-card base">
                         <h3>relation</h3>
                         <span class="badge base-badge">base</span>
-                        <p>Producer/Evaluable abstraction - foundation for deferred execution</p>
+                        <p>Relational computation model - describe, compose, transform, and execute relations between things</p>
                         <a href="../base/relation/README.md" class="doc-link">README</a> | <a href="modules/relation.html" class="doc-link">Details</a> | <a href="apidocs/io/almostrealism/relation/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
@@ -456,12 +453,6 @@ graph TB
                         <a href="../domain/chemistry/README.md" class="doc-link">README</a> | <a href="modules/chemistry.html" class="doc-link">Details</a> | <a href="apidocs/org/almostrealism/chem/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
-                    <div class="module-card domain">
-                        <h3>llvm</h3>
-                        <span class="badge domain-badge">domain</span>
-                        <p>LLVM/C interoperability for native code generation</p>
-                        <a href="../domain/llvm/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/llvm/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
                 </div>
 
                 <h3>engine &mdash; Applications &amp; Training</h3>
