@@ -28,8 +28,12 @@ import org.almostrealism.music.pattern.PatternFeatures;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
+import org.almostrealism.audio.notes.NoteAudioProvider;
 import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.music.notes.NoteAudioContext;
+import org.almostrealism.music.notes.PatternNote;
+import org.almostrealism.music.notes.SimplePatternNote;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 

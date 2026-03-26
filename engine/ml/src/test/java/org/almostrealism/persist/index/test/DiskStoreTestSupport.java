@@ -17,6 +17,7 @@
 package org.almostrealism.persist.index.test;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.persist.test.TestRecordProto;
 
 import java.io.File;
 

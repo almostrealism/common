@@ -22,6 +22,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.Tokenizer;
 import org.almostrealism.ml.audio.*;
+import org.almostrealism.studio.ml.AudioGenerator;
+import org.almostrealism.studio.ml.LegacyAudioGenerator;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 

@@ -21,6 +21,7 @@ import org.almostrealism.persist.index.HnswIndex;
 import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.persist.index.SearchResult;
 import org.almostrealism.persist.index.SimilarityMetric;
+import org.almostrealism.persist.test.TestRecordProto;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;
@@ -35,9 +36,9 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 
-import static org.almostrealism.persist.test.DiskStoreTestSupport.deleteRecursively;
-import static org.almostrealism.persist.test.DiskStoreTestSupport.makeRecord;
-import static org.almostrealism.persist.test.DiskStoreTestSupport.vec;
+import static org.almostrealism.persist.index.test.DiskStoreTestSupport.deleteRecursively;
+import static org.almostrealism.persist.index.test.DiskStoreTestSupport.makeRecord;
+import static org.almostrealism.persist.index.test.DiskStoreTestSupport.vec;
 
 /**
  * Tests for HNSW vector similarity search integrated into

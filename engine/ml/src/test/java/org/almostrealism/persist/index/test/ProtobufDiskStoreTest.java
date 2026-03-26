@@ -17,6 +17,7 @@
 package org.almostrealism.persist.index.test;
 
 import org.almostrealism.persist.index.ProtobufDiskStore;
+import org.almostrealism.persist.test.TestRecordProto;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;
@@ -32,8 +33,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.almostrealism.persist.test.DiskStoreTestSupport.deleteRecursively;
-import static org.almostrealism.persist.test.DiskStoreTestSupport.makeRecord;
+import static org.almostrealism.persist.index.test.DiskStoreTestSupport.deleteRecursively;
+import static org.almostrealism.persist.index.test.DiskStoreTestSupport.makeRecord;
 
 /**
  * Tests for {@link ProtobufDiskStore} verifying round-trip persistence,
