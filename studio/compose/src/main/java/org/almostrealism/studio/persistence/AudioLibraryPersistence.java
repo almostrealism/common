@@ -32,8 +32,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -117,6 +119,18 @@ import java.util.function.Supplier;
 public class AudioLibraryPersistence {
 	/** Maximum bytes per batch file before starting a new file. */
 	public static int batchSize = Integer.MAX_VALUE / 2;
+
+	/** Maximum number of loadSingleDetail calls allowed within the rate window. */
+	static final int SINGLE_DETAIL_MAX_CALLS = 10;
+
+	/** Rate window in milliseconds for loadSingleDetail call tracking. */
+	static final long SINGLE_DETAIL_RATE_WINDOW_MS = 60_000;
+
+	/**
+	 * Timestamps of recent {@link #loadSingleDetail} calls, used to detect
+	 * runaway loops that should be using a {@link org.almostrealism.audio.data.WaveDetailsStore} instead.
+	 */
+	private static final Deque<Long> singleDetailCallTimestamps = new ArrayDeque<>();
 
 	public static Consumer<WaveDetails> saveWaveDetails(String destination) {
 		return details -> {
@@ -463,6 +477,7 @@ public class AudioLibraryPersistence {
 	 * @return the decoded WaveDetails, or null if not found
 	 */
 	public static WaveDetails loadSingleDetail(String dataPrefix, String identifier) {
+		enforceCallRateLimit();
 		try {
 			long start = System.currentTimeMillis();
 			WaveDetails result = loadSingleDetail(new LibraryDestination(dataPrefix).in(), identifier);
@@ -504,6 +519,37 @@ public class AudioLibraryPersistence {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Enforces a call-rate limit on {@link #loadSingleDetail}. If more than
+	 * {@link #SINGLE_DETAIL_MAX_CALLS} calls occur within
+	 * {@link #SINGLE_DETAIL_RATE_WINDOW_MS}, an {@link IllegalStateException}
+	 * is thrown. This prevents runaway loops where the slow full-scan path
+	 * is used instead of a {@link org.almostrealism.audio.data.WaveDetailsStore}.
+	 */
+	static synchronized void enforceCallRateLimit() {
+		long now = System.currentTimeMillis();
+		long cutoff = now - SINGLE_DETAIL_RATE_WINDOW_MS;
+
+		while (!singleDetailCallTimestamps.isEmpty()
+				&& singleDetailCallTimestamps.peekFirst() < cutoff) {
+			singleDetailCallTimestamps.pollFirst();
+		}
+
+		singleDetailCallTimestamps.addLast(now);
+
+		if (singleDetailCallTimestamps.size() > SINGLE_DETAIL_MAX_CALLS) {
+			throw new IllegalStateException(
+					"loadSingleDetail called " + singleDetailCallTimestamps.size()
+					+ " times within " + (SINGLE_DETAIL_RATE_WINDOW_MS / 1000)
+					+ "s — use a WaveDetailsStore instead of the legacy batch-scan path");
+		}
+	}
+
+	/** Resets the call-rate tracking for {@link #loadSingleDetail}. Visible for testing. */
+	public static synchronized void resetCallRateLimit() {
+		singleDetailCallTimestamps.clear();
 	}
 
 	/**
