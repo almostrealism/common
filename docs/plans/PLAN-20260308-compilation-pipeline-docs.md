@@ -3,6 +3,16 @@
 **Category:** Documentation
 **Date:** 2026-03-08
 **Estimated Complexity:** Medium-Large
+**Status:** COMPLETED (obsolete — work was done on branch `project/plan-20260311-202910`)
+
+> **Note (2026-03-26):** This plan was the first planning cycle output. All three proposed
+> documents were created and merged to master via subsequent branches before this branch
+> was merged. The deliverables now exist at:
+> - `docs/internals/computation-graph-to-process-tree.md`
+> - `docs/internals/process-optimization-pipeline.md`
+> - `docs/internals/backend-compilation-and-dispatch.md`
+>
+> No remaining work from this plan is outstanding.
 
 ---
 
