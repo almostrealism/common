@@ -47,6 +47,7 @@ import org.almostrealism.studio.generative.GenerationProvider;
 import org.almostrealism.studio.generative.NoOpGenerationProvider;
 import org.almostrealism.studio.health.HealthComputationAdapter;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
+import org.almostrealism.studio.persistence.MigrationClassLoader;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.music.pattern.ChordProgressionManager;
@@ -1207,6 +1208,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public static ObjectMapper defaultMapper() {
 		ObjectMapper mapper = new ObjectMapper();
 		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+		mapper.setTypeFactory(mapper.getTypeFactory()
+				.withClassLoader(MigrationClassLoader.getInstance()));
 
 		SimpleModule module = new SimpleModule();
 		module.addDeserializer(KeyPosition.class, keyPositionDeserializer(KeyPosition.class, KeyPosition::of));
