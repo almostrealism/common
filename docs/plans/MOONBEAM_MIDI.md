@@ -657,3 +657,412 @@ engine/ml/scripts/
 - **No audio generation:** This is symbolic MIDI, not audio waveforms
 - **No model distillation:** Use the full ~200M model
 - **No custom CUDA kernels:** Use the existing hardware acceleration layer
+
+---
+
+## 14. Pattern-to-MIDI Bridge: PatternSystemManager MIDI Output
+
+### What Exists
+
+The `PatternSystemManager` in `studio/music` is a hierarchical, real-time audio composition system. Its core data flow is:
+
+```
+PatternSystemManager
+  → PatternLayerManager (one per pattern slot, with channel/duration/melodic flag)
+    → PatternLayer (linked-list hierarchy, each child at half granularity)
+      → PatternElement (individual musical event)
+        → ScaleTraversalStrategy (CHORD or SEQUENCE pitch selection)
+          → RenderedNoteAudio (bridge to audio rendering)
+```
+
+**Key musical properties already present in the pattern system:**
+
+| Property | Source | MIDI Equivalent |
+|---|---|---|
+| Position (measures) | `PatternElement.position` | Note onset (ticks) |
+| Duration | `NoteDurationStrategy` + next-note distance | Note duration (ticks) |
+| Pitch | `ScaleTraversalStrategy` → `KeyPosition` via `Scale` | MIDI pitch (0-127) |
+| Repetitions | `PatternElement.repeatCount/repeatDuration` | Multiple note events |
+| Instrument | `NoteAudioChoice` / channel assignment | MIDI program number |
+| Automation | `PatternElement.automationParameters` | Could map to velocity |
+
+**What's missing for MIDI output:**
+
+1. **No explicit velocity.** `PatternNote` has no velocity field. Automation parameters (a `PackedCollection`) could be mapped to velocity, or a sensible default (e.g., 100) could be used with automation scaling.
+
+2. **No MIDI export path.** The current flow always terminates at audio rendering (`PatternFeatures.render()` → `RenderedNoteAudio.getProducer()` → PCM audio). There is no branch that produces MIDI events.
+
+3. **Pitch resolution.** `ScaleTraversalStrategy` resolves scale degrees to `KeyPosition<?>` objects, which represent keys on a keyboard tuning. The concrete pitch (as a MIDI note number 0-127) requires resolving the `KeyPosition` through a `KeyboardTuning` to get a frequency, then mapping frequency to MIDI note number. Alternatively, if the `Scale` is `WesternChromatic`-based, the `KeyPosition` index can map directly.
+
+4. **Timing conversion.** Pattern positions are in measures (doubles). Converting to MIDI ticks requires a tempo mapping: `ticks = position * measuresPerBeat * beatsPerMinute * (TIME_RESOLUTION / 60.0)`. The `AudioSceneContext.frameForPosition()` does an analogous conversion for audio frames.
+
+### What to Build
+
+A `PatternMidiExporter` class (in `studio/music`) that traverses the pattern hierarchy and emits `MidiNoteEvent` objects:
+
+```java
+/**
+ * Exports pattern elements as MIDI note events.
+ * Traverses PatternSystemManager's hierarchy and converts each
+ * PatternElement into one or more MidiNoteEvent instances.
+ */
+public class PatternMidiExporter {
+    /** Export all patterns in the time range [start, end) measures. */
+    List<MidiNoteEvent> export(PatternSystemManager manager,
+                                AudioSceneContext context,
+                                double start, double end);
+
+    /** Convert a single element's rendered notes to MIDI events. */
+    List<MidiNoteEvent> elementToMidi(PatternElement element,
+                                       AudioSceneContext context,
+                                       boolean melodic);
+}
+```
+
+The conversion for each element:
+1. Call `element.getNoteDestinations()` to get `List<RenderedNoteAudio>` (reuses existing traversal logic)
+2. For each `RenderedNoteAudio`, extract: frame offset → onset ticks, frame count → duration ticks
+3. Resolve `KeyPosition` → MIDI pitch via the scale's note index
+4. Map automation level → MIDI velocity (0-127)
+5. Map channel/choice → MIDI instrument
+
+The output `List<MidiNoteEvent>` feeds directly into the existing `MidiFileReader.write()` to produce a standard `.mid` file, or into `MidiTokenizer.tokenize()` for Moonbeam input.
+
+**Effort:** Small-Medium. The hard musical logic (scale traversal, repetition, timing) already exists. This is primarily a data extraction and format conversion task.
+
+---
+
+## 15. Moonbeam Infilling Integration
+
+### How Infilling Works in Moonbeam
+
+The Moonbeam reference repository's `conditional_gen_commu` branch implements music infilling — the model fills in missing sections of a MIDI composition given surrounding context. The approach:
+
+1. **Segmented input:** A MIDI sequence is divided into segments. Some segments are provided as context (prefix and/or suffix), while others are marked as "fill regions" to be generated.
+
+2. **Special delimiter tokens:** Fill regions are demarcated by special tokens in the compound token vocabulary. The model sees: `[context tokens] [FILL_START] [FILL_END] [more context]` and generates the tokens that should go in the fill region.
+
+3. **Bidirectional context:** Unlike unconditional generation (which only has left context), infilling provides both left and right context, letting the model generate musically coherent bridges between known sections.
+
+4. **Autoregressive fill:** The model generates tokens for the fill region one at a time, conditioned on both the surrounding context and previously generated fill tokens.
+
+### Integration Pipeline: Algorithmic Patterns + Moonbeam Infilling
+
+The key insight: **algorithmically generated patterns provide structural scaffolding, and Moonbeam fills in the musical details.** This should produce better results than either approach alone — patterns give structure and harmonic correctness, while Moonbeam adds stylistic nuance and natural variation.
+
+**Pipeline:**
+
+```
+1. PatternSystemManager generates a structured composition
+   (chord progressions via ChordProgressionManager, melodic patterns
+    via ScaleTraversalStrategy, rhythmic patterns via PatternLayer hierarchy)
+        ↓
+2. PatternMidiExporter converts to List<MidiNoteEvent>
+        ↓
+3. MidiTokenizer.tokenize() → List<MidiCompoundToken>
+        ↓
+4. Selective masking: replace certain regions with FILL tokens
+   - Option A: Mask melodic sections, keep rhythm/harmony (Moonbeam adds melody)
+   - Option B: Mask every N-th bar (Moonbeam adds variation to repetitive patterns)
+   - Option C: Mask embellishment regions (Moonbeam adds fills/transitions)
+        ↓
+5. MidiAutoregressiveModel with infilling mode generates fill tokens
+        ↓
+6. MidiTokenizer.detokenize() → enhanced List<MidiNoteEvent>
+        ↓
+7. MidiFileReader.write() → final .mid file
+```
+
+### What to Implement
+
+1. **Infilling token support in `MidiCompoundToken`:** Add `FILL_START` and `FILL_END` special token types alongside existing SOS/EOS/PAD. These need corresponding entries in the compound token vocabulary with sentinel values (e.g., -4, -5) and embedding support in `CompoundMidiEmbedding`.
+
+2. **Masking strategies:** A `PatternMaskingStrategy` interface with implementations:
+   - `BarMasking(int interval)` — mask every N-th bar
+   - `TrackMasking(Set<Integer> instruments)` — mask specific instrument tracks
+   - `RegionMasking(double startMeasure, double endMeasure)` — mask a time range
+   - `DensityMasking(double keepRatio)` — randomly keep a fraction of notes
+
+3. **Infilling generation mode in `MidiAutoregressiveModel`:** Extend `generate()` to accept a partially-masked token sequence and generate only the fill regions, respecting the right-context constraint.
+
+4. **Attention mask modification:** For infilling, the attention mask must allow the model to attend to tokens on both sides of the fill region. This requires modifying the causal mask used in `MoonbeamMidi.forward()`.
+
+**Key dependency:** The pretrained Moonbeam checkpoint may not support infilling out of the box — the `conditional_gen_commu` branch likely requires a specifically trained or fine-tuned checkpoint. We may need to fine-tune the base model on infilling examples first.
+
+**Effort:** Medium-Large. The tokenization changes are small, but the attention mask modification and generation loop changes are non-trivial.
+
+---
+
+## 16. Synthetic Data Generation Pipeline
+
+### Concept
+
+Use the algorithmic pattern system to generate large volumes of structured MIDI, optionally enhance with Moonbeam infilling, then curate the best results via human ranking to create a high-quality fine-tuning dataset.
+
+### Pipeline Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  Stage 1: Algorithmic Generation                                      │
+│                                                                        │
+│  ChordProgressionManager → varied chord sequences (key, mode, depth)  │
+│  PatternSystemManager → rhythmic/melodic patterns per chord           │
+│  PatternMidiExporter → MIDI files                                     │
+│                                                                        │
+│  Parameters to vary:                                                   │
+│  - Key (all 12 chromatic roots × major/minor/modes)                   │
+│  - Tempo (60-180 BPM)                                                  │
+│  - Time signature (4/4, 3/4, 6/8)                                     │
+│  - Pattern density (sparse to dense via PatternLayer depth)            │
+│  - ScaleTraversalStrategy (CHORD vs SEQUENCE)                          │
+│  - Repetition patterns (repeatCount, repeatDuration)                  │
+│  - Instrument combinations                                             │
+│  - ChordProgressionManager chromosome values (genetic variation)       │
+└──────────────────────────────────────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────────────────────────────────────┐
+│  Stage 2: (Optional) Moonbeam Enhancement                             │
+│                                                                        │
+│  For each generated MIDI:                                              │
+│  - Tokenize                                                            │
+│  - Apply masking strategy (e.g., mask every other bar)                │
+│  - Run Moonbeam infilling to add variation                            │
+│  - Detokenize back to MIDI                                             │
+│  - Produces N variants per base pattern                                │
+│                                                                        │
+│  This stage is optional — Stage 1 alone produces valid training data.  │
+└──────────────────────────────────────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────────────────────────────────────┐
+│  Stage 3: Human Curation (Ranking App)                                │
+│                                                                        │
+│  Web interface that:                                                   │
+│  - Plays MIDI clips via embedded synthesizer (Web MIDI API or          │
+│    server-side synthesis to audio)                                      │
+│  - Presents pairs or batches for comparison                            │
+│  - Collects ratings: keep / discard / favorite                         │
+│  - Tracks metadata: which parameters produced good results             │
+│                                                                        │
+│  Output: curated MIDI dataset with quality labels                      │
+└──────────────────────────────────────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────────────────────────────────────┐
+│  Stage 4: Fine-tuning                                                  │
+│                                                                        │
+│  MidiDataset loads curated MIDI files                                  │
+│  ModelOptimizer trains with LoRA adapters                              │
+│  Produces fine-tuned checkpoint for higher-quality generation           │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Batch Generation Implementation
+
+A `SyntheticMidiGenerator` class would orchestrate Stage 1:
+
+```java
+/**
+ * Generates a corpus of MIDI files by varying pattern parameters.
+ * Uses ChordProgressionManager for harmonic structure and
+ * PatternSystemManager for rhythmic/melodic content.
+ */
+public class SyntheticMidiGenerator {
+    /** Generate N MIDI files with randomized parameters. */
+    List<File> generate(int count, File outputDir, SyntheticMidiConfig config);
+}
+```
+
+The genetic algorithm infrastructure (`ProjectedChromosome`, `ProjectedGenome`) already built into `PatternSystemManager` and `ChordProgressionManager` is ideal for generating diverse patterns — different chromosome values produce different musical structures without any manual parameter tuning.
+
+**Estimated yield:** With 12 keys × 2 modes × 5 tempos × 3 densities × 10 chromosome seeds = ~3,600 base patterns. With Moonbeam enhancement producing 3 variants each = ~10,800 clips. After human curation keeping ~30% = ~3,200 training examples. This is a reasonable fine-tuning dataset.
+
+---
+
+## 17. Human Ranking and Curation App
+
+### Concept
+
+A lightweight web application for listening to generated MIDI clips and rating them. The goal is to curate a high-quality fine-tuning dataset from algorithmically and model-generated MIDI.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│  Frontend (Browser)                          │
+│  - Embedded MIDI playback (Tone.js or        │
+│    Web MIDI API with virtual synth)          │
+│  - A/B comparison interface                  │
+│  - Rating controls: 1-5 stars or keep/skip  │
+│  - Batch mode: queue of clips to review      │
+│  - Metadata display: key, tempo, parameters  │
+└──────────────────┬──────────────────────────┘
+                   │ REST API
+┌──────────────────▼──────────────────────────┐
+│  Backend (Java, using ar-utils-http)         │
+│  - Serves MIDI files from generation output  │
+│  - Stores ratings in SQLite or flat JSON     │
+│  - Exports curated set as MIDI directory     │
+│  - Tracks reviewer and clip metadata         │
+└──────────────────┬──────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────┐
+│  Storage                                     │
+│  - /generated/  — raw MIDI from pipeline     │
+│  - /curated/    — accepted clips             │
+│  - /rejected/   — discarded clips            │
+│  - ratings.json — rating data                │
+└─────────────────────────────────────────────┘
+```
+
+### Key Design Decisions
+
+1. **MIDI playback in browser:** Use [Tone.js](https://tonejs.github.io/) with `@tonejs/midi` for client-side MIDI rendering. This avoids server-side audio synthesis and gives instant playback. The SoundFont-based playback provides reasonable instrument sounds.
+
+2. **A/B comparison mode:** Present two clips side by side. The reviewer picks the better one, or skips both. This is faster and more consistent than absolute rating scales. Can also be used for Elo-style ranking.
+
+3. **Batch workflow:** Reviewer opens the app, gets a queue of unreviewed clips, rates them one at a time. Progress is saved per-reviewer. Multiple reviewers can work in parallel.
+
+4. **Export:** A command exports all clips rated above a threshold to a clean directory that `MidiDataset` can load directly.
+
+**Effort:** Medium. The backend is straightforward HTTP serving. The frontend requires Tone.js integration but is a standard web app. Could start with a minimal version (single-clip playback + keep/skip) and iterate.
+
+---
+
+## 18. Fine-Tuning Pipeline Readiness
+
+### What Already Exists
+
+| Component | Class | Status |
+|---|---|---|
+| Training loop | `ModelOptimizer` | Production-ready, used by other models |
+| Adam optimizer | `AdamOptimizer` | Production-ready |
+| Cross-entropy loss | `NegativeLogLikelihood` | Production-ready |
+| LoRA support | `LoRALinear`, `LowRankAdapterSupport` | Production-ready, used in diffusion |
+| LoRA config | `AdapterConfig` | Supports rank, alpha, target layers |
+| Dataset interface | `MidiDataset` | Implemented: loads MIDI files, tokenizes, packs sequences |
+| Training config | `MidiTrainingConfig` | Implemented: LR, batch size, LoRA rank/alpha, epochs |
+| LoRA application | `MoonbeamMidi.createLoraConfig()` | Implemented |
+| Adapter save/load | `MoonbeamMidi.saveLoraAdapter()`, `ModelBundle` | Implemented |
+
+### Gaps to Close
+
+1. **Training loop integration test.** `MidiDataset` and `ModelOptimizer` exist independently but have not been tested together with the Moonbeam model in an end-to-end training loop. The compound token structure and GRU decoder add complexity: the loss function must operate on the 7-token GRU output vocabulary, not a standard single-token vocabulary.
+
+2. **GRU decoder gradient flow.** The GRU decoder runs autoregressively (7 steps per position) during training. Backpropagation through the GRU steps needs to work correctly with the AR framework's automatic differentiation. This is the highest-risk gap.
+
+3. **Multi-attribute loss.** The current `NegativeLogLikelihood` computes loss on a single token prediction. For Moonbeam, the loss should be summed across all 7 decode steps per position. `MidiDataset.tokenToOneHot()` already encodes the target as a multi-hot vector over the 8487-token decode vocabulary, which is compatible — but the loss aggregation needs verification.
+
+4. **Training data volume.** LoRA fine-tuning typically needs hundreds to low thousands of examples. The synthetic generation pipeline (Section 16) can produce this volume. For comparison, the Moonbeam paper's fine-tuning datasets ranged from ~200 to ~2000 pieces.
+
+5. **Evaluation metrics.** No automated evaluation of generated MIDI quality exists. Options include:
+   - **Token-level perplexity** on a held-out set (standard, easy to implement)
+   - **Musical metrics:** pitch range, note density, repetition structure (custom, but straightforward)
+   - **Human evaluation** via the ranking app (gold standard but slow)
+
+### Estimated Effort to First Fine-Tuning Run
+
+| Task | Effort | Dependency |
+|---|---|---|
+| Verify loss function with GRU decoder | Small | None |
+| End-to-end training test (synthetic data, 1 epoch) | Small | Loss verification |
+| Synthetic MIDI generation (Stage 1, no Moonbeam) | Medium | PatternMidiExporter |
+| Run fine-tuning on synthetic data | Small | Training test + synthetic data |
+| Evaluate fine-tuned model vs base | Small | Fine-tuning run |
+
+The path to a first fine-tuning experiment is short — the infrastructure is substantially complete.
+
+---
+
+## 19. New Milestones: Pattern Integration and Enhancement
+
+These milestones extend the original plan (Milestones 1-8) with the pattern integration, infilling, and fine-tuning directions.
+
+### Milestone 9: Pattern-to-MIDI Export
+**Goal:** Enable PatternSystemManager to output standard MIDI files.
+
+- [ ] `PatternMidiExporter` class in `studio/music`
+- [ ] `KeyPosition` → MIDI pitch resolution (via scale index mapping)
+- [ ] Automation parameters → velocity mapping
+- [ ] Channel/choice → MIDI instrument mapping
+- [ ] Timing conversion: measure position → MIDI ticks (with configurable tempo)
+- [ ] Integration test: generate pattern → export MIDI → play back / verify round-trip
+- [ ] Verify output loads correctly in external MIDI software
+
+**Dependencies:** Milestone 1 (MidiNoteEvent, MidiFileReader already exist)
+**Value:** Unlocks all downstream pipelines. Patterns become MIDI, which feeds both direct playback and Moonbeam tokenization.
+
+### Milestone 10: Synthetic MIDI Dataset Generation
+**Goal:** Batch-generate diverse MIDI files from algorithmic patterns.
+
+- [ ] `SyntheticMidiGenerator` class orchestrating ChordProgressionManager + PatternSystemManager
+- [ ] Parameter variation: key, tempo, mode, density, traversal strategy
+- [ ] Chromosome-based diversity via genetic algorithm
+- [ ] Output: directory of labeled MIDI files with metadata JSON
+- [ ] Generate initial corpus (~1000+ files)
+
+**Dependencies:** Milestone 9
+**Value:** Provides training data for fine-tuning without requiring external MIDI datasets.
+
+### Milestone 11: Fine-Tuning Verification
+**Goal:** Verify the LoRA fine-tuning pipeline works end-to-end.
+
+- [ ] Integration test: MidiDataset + ModelOptimizer + MoonbeamMidi with LoRA
+- [ ] Verify loss decreases over epochs on synthetic data
+- [ ] Verify GRU decoder gradient flow through autoregressive steps
+- [ ] Multi-attribute loss aggregation validation
+- [ ] Save and reload LoRA adapter checkpoint
+- [ ] Generate MIDI from fine-tuned model and compare to base model output
+
+**Dependencies:** Milestone 7 (training pipeline) + Milestone 10 (synthetic data)
+**Value:** Proves the fine-tuning loop works before investing in data curation.
+
+### Milestone 12: Infilling Support
+**Goal:** Add music infilling capability to Moonbeam inference.
+
+- [ ] `FILL_START` / `FILL_END` special tokens in `MidiCompoundToken`
+- [ ] Embedding support for fill tokens in `CompoundMidiEmbedding`
+- [ ] `PatternMaskingStrategy` interface + implementations (bar, track, region, density)
+- [ ] Modified attention mask for bidirectional context in `MoonbeamMidi`
+- [ ] Infilling generation mode in `MidiAutoregressiveModel`
+- [ ] End-to-end test: pattern → MIDI → mask → infill → output MIDI
+- [ ] Fine-tune base model on infilling examples if needed
+
+**Dependencies:** Milestone 6 (inference) + Milestone 9 (pattern MIDI export)
+**Value:** Enables the hybrid approach — algorithmic structure + neural detail.
+
+### Milestone 13: Curation App
+**Goal:** Web app for human review and rating of generated MIDI clips.
+
+- [ ] Backend: HTTP server using `ar-utils-http` to serve MIDI files and collect ratings
+- [ ] Frontend: Tone.js MIDI playback with keep/skip/favorite controls
+- [ ] A/B comparison mode for pairwise ranking
+- [ ] Rating storage and export to curated directory
+- [ ] Batch workflow with progress tracking
+- [ ] Export command: curated set → directory loadable by `MidiDataset`
+
+**Dependencies:** Milestone 10 (synthetic data to review)
+**Value:** Human-in-the-loop quality filtering. The curated dataset should produce significantly better fine-tuning results than unfiltered synthetic data.
+
+### Milestone 14: Curated Fine-Tuning
+**Goal:** Fine-tune Moonbeam on human-curated data and evaluate improvement.
+
+- [ ] Fine-tune on curated dataset from Milestone 13
+- [ ] Compare generation quality: base model vs synthetic-finetuned vs curated-finetuned
+- [ ] Perplexity evaluation on held-out set
+- [ ] Human evaluation via the curation app (rate outputs from each model variant)
+- [ ] Document best hyperparameters and training recipe
+
+**Dependencies:** Milestone 11 (verified fine-tuning) + Milestone 13 (curated data)
+**Value:** The end goal — a Moonbeam model fine-tuned on curated musical content that generates higher-quality MIDI than the base pretrained model.
+
+### Milestone Priority Order
+
+```
+Milestone 9  (Pattern MIDI Export)         — HIGH, unlocks everything
+Milestone 10 (Synthetic Dataset)           — HIGH, creates training data
+Milestone 11 (Fine-Tuning Verification)    — HIGH, proves the loop works
+Milestone 12 (Infilling Support)           — MEDIUM, powerful but complex
+Milestone 13 (Curation App)               — MEDIUM, improves data quality
+Milestone 14 (Curated Fine-Tuning)        — MEDIUM, final quality target
+```
+
+Milestones 9-11 form the critical path and can be done in sequence relatively quickly. Milestones 12-14 are valuable but independent — infilling (12) can proceed in parallel with the curation pipeline (13-14).
