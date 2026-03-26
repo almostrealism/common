@@ -83,7 +83,7 @@ Special tokens: SOS = all -1, EOS = all -2, PAD = all -3 (handled by a separate 
 
 ### Implementation Plan
 
-**New class: `MidiTokenizer`** in `engine/ml/src/main/java/org/almostrealism/ml/midi/`
+**New class: `MidiTokenizer`** in `studio/music/src/main/java/org/almostrealism/music/midi/`
 
 This is NOT a subclass of `ByteLevelBPETokenizer` -- MIDI tokenization is fundamentally different from text BPE. It implements `Tokenizer` only for compatibility, but the primary API works with `MidiCompoundToken` arrays.
 
@@ -113,7 +113,7 @@ public class MidiTokenizer {
 }
 ```
 
-**New class: `MidiFileReader`** in `engine/ml/src/main/java/org/almostrealism/ml/midi/`
+**New class: `MidiFileReader`** in `studio/music/src/main/java/org/almostrealism/music/midi/`
 
 Uses `javax.sound.midi` (standard JDK) to parse MIDI files into note events. No external dependency needed.
 
@@ -253,7 +253,7 @@ The decode vocabulary is flat: 8487 tokens = concatenation of all attribute voca
 
 ### Implementation Plan
 
-**New class: `GRUDecoder`** in `engine/ml/src/main/java/org/almostrealism/ml/midi/`
+**New class: `GRUDecoder`** in `studio/compose/src/main/java/org/almostrealism/studio/midi/`
 
 ```java
 /**
@@ -336,7 +336,7 @@ Weight key naming convention follows HuggingFace format for easy debugging, matc
 
 ### Implementation Plan
 
-**New class: `MoonbeamMidi`** in `engine/ml/src/main/java/org/almostrealism/ml/midi/`
+**New class: `MoonbeamMidi`** in `studio/compose/src/main/java/org/almostrealism/studio/midi/`
 
 Follows the `Qwen3` pattern exactly:
 
@@ -608,16 +608,19 @@ MidiFileReader.write(tokenizer.detokenize(generated), "output.mid");
 
 ## 11. File Organization
 
-All new code goes in `engine/ml/src/main/java/org/almostrealism/ml/midi/`:
+MIDI data types and I/O belong in the **music module** — they represent music concepts.
+The Moonbeam model implementation belongs in the **compose module** — it combines ML and music.
 
 ```
-engine/ml/src/main/java/org/almostrealism/ml/midi/
-    MoonbeamMidi.java              # Main model class
-    MoonbeamConfig.java            # Model configuration
-    MidiTokenizer.java             # Compound token encoding/decoding
-    MidiCompoundToken.java         # 6-attribute token data class
+studio/music/src/main/java/org/almostrealism/music/midi/
     MidiNoteEvent.java             # Raw MIDI event data class
     MidiFileReader.java            # MIDI file I/O (javax.sound.midi)
+    MidiCompoundToken.java         # 6-attribute token data class
+    MidiTokenizer.java             # Compound token encoding/decoding
+
+studio/compose/src/main/java/org/almostrealism/studio/midi/
+    MoonbeamMidi.java              # Main model class
+    MoonbeamConfig.java            # Model configuration
     MidiAutoregressiveModel.java   # Compound-token generation loop
     FundamentalMusicEmbedding.java # Sinusoidal continuous embedding
     CompoundMidiEmbedding.java     # 6-parallel embedding layer
@@ -626,7 +629,7 @@ engine/ml/src/main/java/org/almostrealism/ml/midi/
     GRUDecoder.java                # 4-layer GRU output decoder
     MidiDataset.java               # Training dataset
 
-engine/ml/src/test/java/org/almostrealism/ml/midi/test/
+studio/compose/src/test/java/org/almostrealism/studio/midi/test/
     MidiTokenizerTest.java
     FundamentalMusicEmbeddingTest.java
     MoonbeamMidiTest.java
@@ -698,33 +701,24 @@ PatternSystemManager
 
 ### What to Build
 
-A `PatternMidiExporter` class (in `studio/music`) that traverses the pattern hierarchy and emits `MidiNoteEvent` objects:
+MIDI export is a behavior that belongs on the types that own the musical data. Do NOT create a separate exporter/converter class — add methods directly to the types in the pattern hierarchy:
 
-```java
-/**
- * Exports pattern elements as MIDI note events.
- * Traverses PatternSystemManager's hierarchy and converts each
- * PatternElement into one or more MidiNoteEvent instances.
- */
-public class PatternMidiExporter {
-    /** Export all patterns in the time range [start, end) measures. */
-    List<MidiNoteEvent> export(PatternSystemManager manager,
-                                AudioSceneContext context,
-                                double start, double end);
+**`PatternElement.toMidiEvents(AudioSceneContext, boolean melodic)`** → `List<MidiNoteEvent>`
 
-    /** Convert a single element's rendered notes to MIDI events. */
-    List<MidiNoteEvent> elementToMidi(PatternElement element,
-                                       AudioSceneContext context,
-                                       boolean melodic);
-}
-```
-
-The conversion for each element:
-1. Call `element.getNoteDestinations()` to get `List<RenderedNoteAudio>` (reuses existing traversal logic)
+Converts a single element's rendered notes to MIDI events:
+1. Call `getNoteDestinations()` to get `List<RenderedNoteAudio>` (reuses existing traversal logic)
 2. For each `RenderedNoteAudio`, extract: frame offset → onset ticks, frame count → duration ticks
 3. Resolve `KeyPosition` → MIDI pitch via the scale's note index
 4. Map automation level → MIDI velocity (0-127)
 5. Map channel/choice → MIDI instrument
+
+**`PatternLayerManager.toMidiEvents(AudioSceneContext)`** → `List<MidiNoteEvent>`
+
+Iterates over all elements in its layer hierarchy and collects their MIDI events. Delegates to `PatternElement.toMidiEvents()` for each element.
+
+**`PatternSystemManager.toMidiEvents(AudioSceneContext, double start, double end)`** → `List<MidiNoteEvent>`
+
+Exports all patterns in the time range `[start, end)` measures. Iterates over its `PatternLayerManager` instances and collects their MIDI events.
 
 The output `List<MidiNoteEvent>` feeds directly into the existing `MidiFileReader.write()` to produce a standard `.mid` file, or into `MidiTokenizer.tokenize()` for Moonbeam input.
 
@@ -757,7 +751,7 @@ The key insight: **algorithmically generated patterns provide structural scaffol
    (chord progressions via ChordProgressionManager, melodic patterns
     via ScaleTraversalStrategy, rhythmic patterns via PatternLayer hierarchy)
         ↓
-2. PatternMidiExporter converts to List<MidiNoteEvent>
+2. PatternSystemManager.toMidiEvents() converts to List<MidiNoteEvent>
         ↓
 3. MidiTokenizer.tokenize() → List<MidiCompoundToken>
         ↓
@@ -807,7 +801,7 @@ Use the algorithmic pattern system to generate large volumes of structured MIDI,
 │                                                                        │
 │  ChordProgressionManager → varied chord sequences (key, mode, depth)  │
 │  PatternSystemManager → rhythmic/melodic patterns per chord           │
-│  PatternMidiExporter → MIDI files                                     │
+│  PatternSystemManager.toMidiEvents() → MIDI files                                     │
 │                                                                        │
 │  Parameters to vary:                                                   │
 │  - Key (all 12 chromatic roots × major/minor/modes)                   │
@@ -857,19 +851,11 @@ Use the algorithmic pattern system to generate large volumes of structured MIDI,
 
 ### Batch Generation Implementation
 
-A `SyntheticMidiGenerator` class would orchestrate Stage 1:
+Batch generation is orchestrated by `PatternSystemManager` itself — it already owns the relationship between `ChordProgressionManager` and the pattern hierarchy. Add a method:
 
-```java
-/**
- * Generates a corpus of MIDI files by varying pattern parameters.
- * Uses ChordProgressionManager for harmonic structure and
- * PatternSystemManager for rhythmic/melodic content.
- */
-public class SyntheticMidiGenerator {
-    /** Generate N MIDI files with randomized parameters. */
-    List<File> generate(int count, File outputDir, SyntheticMidiConfig config);
-}
-```
+**`PatternSystemManager.generateMidiCorpus(int count, File outputDir, SyntheticMidiConfig config)`** → `List<File>`
+
+This method varies pattern parameters (key, tempo, mode, density, traversal strategy) and generates MIDI files via `toMidiEvents()` + `MidiFileReader.write()`.
 
 The genetic algorithm infrastructure (`ProjectedChromosome`, `ProjectedGenome`) already built into `PatternSystemManager` and `ChordProgressionManager` is ideal for generating diverse patterns — different chromosome values produce different musical structures without any manual parameter tuning.
 
@@ -964,7 +950,7 @@ A lightweight web application for listening to generated MIDI clips and rating t
 |---|---|---|
 | Verify loss function with GRU decoder | Small | None |
 | End-to-end training test (synthetic data, 1 epoch) | Small | Loss verification |
-| Synthetic MIDI generation (Stage 1, no Moonbeam) | Medium | PatternMidiExporter |
+| Synthetic MIDI generation (Stage 1, no Moonbeam) | Medium | Pattern MIDI export methods |
 | Run fine-tuning on synthetic data | Small | Training test + synthetic data |
 | Evaluate fine-tuned model vs base | Small | Fine-tuning run |
 
@@ -979,7 +965,9 @@ These milestones extend the original plan (Milestones 1-8) with the pattern inte
 ### Milestone 9: Pattern-to-MIDI Export
 **Goal:** Enable PatternSystemManager to output standard MIDI files.
 
-- [ ] `PatternMidiExporter` class in `studio/music`
+- [ ] `PatternElement.toMidiEvents()` method
+- [ ] `PatternLayerManager.toMidiEvents()` method
+- [ ] `PatternSystemManager.toMidiEvents()` method
 - [ ] `KeyPosition` → MIDI pitch resolution (via scale index mapping)
 - [ ] Automation parameters → velocity mapping
 - [ ] Channel/choice → MIDI instrument mapping
@@ -993,7 +981,7 @@ These milestones extend the original plan (Milestones 1-8) with the pattern inte
 ### Milestone 10: Synthetic MIDI Dataset Generation
 **Goal:** Batch-generate diverse MIDI files from algorithmic patterns.
 
-- [ ] `SyntheticMidiGenerator` class orchestrating ChordProgressionManager + PatternSystemManager
+- [ ] `PatternSystemManager.generateMidiCorpus()` method for batch generation
 - [ ] Parameter variation: key, tempo, mode, density, traversal strategy
 - [ ] Chromosome-based diversity via genetic algorithm
 - [ ] Output: directory of labeled MIDI files with metadata JSON
