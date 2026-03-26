@@ -16,6 +16,7 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.sequence.KernelSeriesMatcher;
 import io.almostrealism.profile.OperationInfo;
 
 import java.util.OptionalLong;

@@ -18,6 +18,7 @@ package org.almostrealism.ml.audio;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -57,6 +58,7 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 	 * Tests that encoder output length calculation works correctly.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(1)
 	public void testEncoderConstruction() {
 		// Just verify output length calculation without building full model
 		// Full model tests are memory-intensive; see OobleckValidationTest for real validation
@@ -104,6 +106,7 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 	 * Tests that the VAE bottleneck can be constructed.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(1)
 	public void testBottleneckConstruction() {
 		int batchSize = 1;
 		int seqLength = 256;
@@ -121,6 +124,7 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 	 * <p>Total theoretical compression: 4 * 8 * 8 * 16 * 16 = 65536x.</p>
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(1)
 	public void testCompressionRatio() {
 		int totalCompression = 1;
 		for (int stride : STRIDES) {

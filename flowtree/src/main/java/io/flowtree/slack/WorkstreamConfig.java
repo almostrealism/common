@@ -58,6 +58,7 @@ public class WorkstreamConfig {
 
     private String defaultWorkspacePath;
     private String channelOwnerUserId;
+    private String defaultChannel;
     private Map<String, McpServerEntry> mcpServers = new LinkedHashMap<>();
     private Map<String, PushedToolEntry> pushedTools = new LinkedHashMap<>();
     private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
@@ -207,6 +208,8 @@ public class WorkstreamConfig {
     public static class McpServerEntry {
         private String source;
         private int port;
+        private String url;
+        private List<String> tools;
 
         /** Returns the Python source file path (relative to project root). */
         public String getSource() { return source; }
@@ -215,6 +218,26 @@ public class WorkstreamConfig {
         /** Returns the HTTP port to listen on. */
         public int getPort() { return port; }
         public void setPort(int port) { this.port = port; }
+
+        /**
+         * Returns the URL of an already-running centralized server.
+         * When set, the controller does not launch a subprocess —
+         * it simply passes the URL through to agents.
+         */
+        public String getUrl() { return url; }
+        public void setUrl(String url) { this.url = url; }
+
+        /**
+         * Returns the explicit tool names for this server.
+         * Required when {@code url} is set (no source file to discover from).
+         */
+        public List<String> getTools() { return tools; }
+        public void setTools(List<String> tools) { this.tools = tools; }
+
+        /** Returns true if this entry references an external server by URL. */
+        public boolean isExternal() {
+            return url != null && !url.isEmpty();
+        }
     }
 
     /**
@@ -274,6 +297,18 @@ public class WorkstreamConfig {
      */
     public String getChannelOwnerUserId() { return channelOwnerUserId; }
     public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
+
+    /**
+     * Returns the default Slack channel ID to use as a fallback when a
+     * workstream has no channel configured or when publishing to the
+     * configured channel fails.
+     *
+     * <p>This is a global setting. When set in the YAML configuration,
+     * all workstreams without a valid channel will fall back to this
+     * channel instead of silently dropping messages.</p>
+     */
+    public String getDefaultChannel() { return defaultChannel; }
+    public void setDefaultChannel(String defaultChannel) { this.defaultChannel = defaultChannel; }
 
     /** Returns the centralized MCP server configurations. */
     public Map<String, McpServerEntry> getMcpServers() { return mcpServers; }

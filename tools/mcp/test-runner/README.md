@@ -131,8 +131,7 @@ Maximum 50 runs are retained; oldest runs are cleaned up automatically.
 
 ## Environment Variables
 
-The server sets these for test execution:
-- `AR_HARDWARE_LIBS=/tmp/ar_libs/`
+The server does not set `AR_HARDWARE_LIBS` — it is auto-detected by the system. Do not set it manually.
 
 `AR_HARDWARE_DRIVER` is **not** set by the test runner — leave it unset to inherit the best available backend for the system.
 

@@ -16,9 +16,7 @@
 
 package org.almostrealism.chem;
 
-import org.almostrealism.electrostatic.Photon;
 import org.almostrealism.physics.HarmonicAbsorber;
-import org.almostrealism.electrostatic.Valence;
 import org.almostrealism.algebra.Vector;
 
 import java.util.Queue;
@@ -63,8 +61,14 @@ public class ElectronCloud extends HarmonicAbsorber {
         return a;
     }
 
+    /**
+     * Returns 0 if there are photons queued for emission, or {@link Integer#MAX_VALUE} otherwise.
+     * The superclass {@link HarmonicAbsorber#getNextEmit()} cannot be used here because it checks
+     * displacement vs quanta ({@code d >= q}), whereas {@link ElectronCloud} emits photons from
+     * valence electron transitions queued during {@link #absorb(Vector, Vector, double)}.
+     */
     @Override
-    public double getNextEmit() { // TODO  Superclass implementation should work...
+    public double getNextEmit() {
 		return toEmit.isEmpty() ? Integer.MAX_VALUE : 0.0;
 	}
 

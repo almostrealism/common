@@ -165,7 +165,7 @@ ${CRASH_SUMMARY}
 
 If the crash is memory-related (exit code 137 or OutOfMemoryError in the output),
 the root cause is almost always that branch changes increased memory consumption
-beyond the configured limit (AR_HARDWARE_MEMORY_SCALE=7 → 8GB).
+beyond the configured limit (AR_HARDWARE_MEMORY_SCALE=7 → ~32GB with FP32).
 
 ---
 

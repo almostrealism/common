@@ -42,6 +42,21 @@ public interface LanguageOperations {
 
 	String pow(String a, String b);
 
+	/**
+	 * Returns an expression for the integer modulo {@code a mod b} that is
+	 * guaranteed to produce a non-negative result even when {@code a} is
+	 * negative. The default implementation emits {@code ((a % b) + b) % b}
+	 * because C, OpenCL, and Metal all follow C99 semantics where {@code %}
+	 * preserves the sign of the dividend.
+	 *
+	 * @param a the dividend expression
+	 * @param b the divisor expression
+	 * @return a language-appropriate non-negative modulo expression
+	 */
+	default String floorMod(String a, String b) {
+		return "((" + a + " % " + b + ") + " + b + ") % " + b;
+	}
+
 	String min(String a, String b);
 	String max(String a, String b);
 

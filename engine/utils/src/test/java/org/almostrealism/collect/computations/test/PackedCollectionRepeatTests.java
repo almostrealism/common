@@ -20,6 +20,7 @@ import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -29,8 +30,8 @@ import java.util.function.Supplier;
 
 public class PackedCollectionRepeatTests extends TestSuiteBase {
 	@Test(timeout = 30000)
+	@TestProperties(knownIssue = true)
 	public void isolatedRepeat() {
-		if (skipKnownIssues) return;
 
 		int d = 4;
 		int w = 2;

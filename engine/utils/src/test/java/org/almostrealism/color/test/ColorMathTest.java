@@ -21,6 +21,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -128,8 +129,8 @@ public class ColorMathTest extends TestSuiteBase implements RGBFeatures {
 	 * @see #greaterThan() for a working single-value comparison example
 	 */
 	@Test(timeout = 30000)
+	@TestProperties(knownIssue = true)
 	public void greaterThanKernel() {
-		if (skipKnownIssues) return;
 
 		verboseLog(() -> {
 			Producer<PackedCollection> arg0 = v(shape(-1, 1), 0);

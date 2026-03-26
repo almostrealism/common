@@ -17,7 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 

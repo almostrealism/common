@@ -24,8 +24,13 @@
  * <h2>Key Classes</h2>
  * <ul>
  *   <li>{@link org.almostrealism.audio.similarity.AudioSimilarityGraph} -
- *       Adapts a collection of {@link org.almostrealism.audio.data.WaveDetails} to
- *       {@link io.almostrealism.relation.IndexedGraph}</li>
+ *       Adapts audio similarity data to {@link io.almostrealism.relation.IndexedGraph}
+ *       using lightweight {@link org.almostrealism.audio.similarity.SimilarityNode}
+ *       instances (identifier + similarity scores only, not full
+ *       {@link org.almostrealism.audio.data.WaveDetails})</li>
+ *   <li>{@link org.almostrealism.audio.similarity.SimilarityNode} -
+ *       Lightweight graph node carrying only the content identifier and
+ *       precomputed similarity map</li>
  * </ul>
  *
  * <h2>Usage with Graph Algorithms</h2>

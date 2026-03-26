@@ -3502,10 +3502,11 @@ export AR_HARDWARE_PRECISION=FP64
 ### Memory Configuration
 
 ```bash
-# Maximum memory allocation (2^SCALE × 64MB)
-export AR_HARDWARE_MEMORY_SCALE=4   # 1GB (default)
-export AR_HARDWARE_MEMORY_SCALE=6   # 4GB
-export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
+# Maximum memory allocation (precision.bytes() * 2^SCALE * 64MB)
+# With FP32 (4 bytes): scale 4 = ~4GB, scale 6 = ~16GB, scale 7 = ~32GB
+export AR_HARDWARE_MEMORY_SCALE=4   # ~4GB (default, FP32)
+export AR_HARDWARE_MEMORY_SCALE=6   # ~16GB (FP32)
+export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB (FP32)
 
 # Memory location (OpenCL only)
 export AR_HARDWARE_MEMORY_LOCATION=device   # GPU memory (fastest)
@@ -3520,13 +3521,13 @@ export AR_HARDWARE_NIO_MEMORY=true
 
 **Development (Fast Compilation, Easy Debugging):**
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 export AR_HARDWARE_PRECISION=FP64
 ```
 
 **Production GPU (Maximum Performance):**
 ```bash
-export AR_HARDWARE_LIBS=/var/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 export AR_HARDWARE_DRIVER=gpu
 export AR_HARDWARE_PRECISION=FP32
 export AR_HARDWARE_MEMORY_SCALE=6
@@ -3798,7 +3799,7 @@ System.out.println("Compilable: " + canCompile);
 **Solution:**
 ```bash
 # Increase memory scale
-export AR_HARDWARE_MEMORY_SCALE=6  # 4GB
+export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB (FP32)
 
 # Or use host memory
 export AR_HARDWARE_MEMORY_LOCATION=host

@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -56,9 +57,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private final Map<String, SlackWorkstream> workstreams;
     private final Map<String, String> jobThreadTs;
     private final Map<String, Map<String, JobCompletionEvent>> jobHistory;
+    private final Map<String, Long> lastJobStartTime;
     private Consumer<String> messageCallback;
     private JobStatsStore statsStore;
     private String channelOwnerUserId;
+    private String defaultChannelId;
 
     /**
      * Creates a new notifier with the specified bot token.
@@ -70,6 +73,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         this.workstreams = new HashMap<>();
         this.jobThreadTs = new HashMap<>();
         this.jobHistory = new HashMap<>();
+        this.lastJobStartTime = new ConcurrentHashMap<>();
 
         if (botToken != null && !botToken.isEmpty()) {
             this.client = Slack.getInstance().methods(botToken);
@@ -142,11 +146,67 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 }
 
                 return channelId;
+            } else if ("name_taken".equals(response.getError())) {
+                // Channel already exists — look it up by name
+                log("Channel '" + name + "' already exists, looking up by name");
+                return findChannelByName(name);
             } else {
                 warn("Failed to create channel '" + name + "': " + response.getError());
             }
         } catch (IOException | SlackApiException e) {
             warn("Error creating channel '" + name + "': " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Finds a channel by name that the bot is a member of.
+     *
+     * <p>Uses {@code conversations.list} with {@code types=private_channel}
+     * to find channels the bot has access to. Only returns a match if the
+     * bot is already a member of the channel.</p>
+     *
+     * @param name the channel name (without #)
+     * @return the channel ID, or null if not found or bot is not a member
+     */
+    private String findChannelByName(String name) {
+        if (client == null) return null;
+
+        try {
+            String cursor = null;
+            do {
+                final String pageCursor = cursor;
+                com.slack.api.methods.response.conversations.ConversationsListResponse response =
+                    client.conversationsList(req -> {
+                        req.types(java.util.Arrays.asList(
+                            com.slack.api.model.ConversationType.PRIVATE_CHANNEL,
+                            com.slack.api.model.ConversationType.PUBLIC_CHANNEL));
+                        req.limit(200);
+                        if (pageCursor != null) req.cursor(pageCursor);
+                        return req;
+                    });
+
+                if (!response.isOk()) {
+                    warn("Failed to list channels: " + response.getError());
+                    return null;
+                }
+
+                for (com.slack.api.model.Conversation channel : response.getChannels()) {
+                    if (name.equals(channel.getName()) && channel.isMember()) {
+                        String channelId = channel.getId();
+                        log("Found existing channel '" + name + "' (" + channelId + ")");
+                        return channelId;
+                    }
+                }
+
+                cursor = response.getResponseMetadata() != null
+                    ? response.getResponseMetadata().getNextCursor() : null;
+            } while (cursor != null && !cursor.isEmpty());
+
+            log("Channel '" + name + "' exists but bot is not a member");
+        } catch (IOException | SlackApiException e) {
+            warn("Error looking up channel '" + name + "': " + e.getMessage());
         }
 
         return null;
@@ -203,6 +263,26 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     public void setChannelOwnerUserId(String userId) {
         this.channelOwnerUserId = userId;
+    }
+
+    /**
+     * Sets the default Slack channel ID used as a fallback when a
+     * workstream has no channel configured or when publishing to
+     * the configured channel fails.
+     *
+     * @param channelId the fallback Slack channel ID (e.g., "C0123456789")
+     */
+    public void setDefaultChannelId(String channelId) {
+        this.defaultChannelId = channelId;
+    }
+
+    /**
+     * Returns the default Slack channel ID used as a fallback.
+     *
+     * @return the fallback channel ID, or null if not configured
+     */
+    public String getDefaultChannelId() {
+        return defaultChannelId;
     }
 
     /**
@@ -287,6 +367,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         trackJob(workstreamId, event);
+        lastJobStartTime.put(workstreamId, System.currentTimeMillis());
 
         String message = formatSubmittedMessage(event, workstream);
         String ts;
@@ -374,26 +455,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @return the message timestamp (for threading), or null on failure
      */
     public String postMessage(String channelId, String text) {
-        if (channelId == null || channelId.isEmpty()) {
-            log("No channel ID - skipping message post");
+        String effectiveChannel = resolveChannel(channelId);
+        if (effectiveChannel == null) {
+            log("No channel ID and no default channel - skipping message post");
             return null;
         }
 
         // Notify callback for testing
         if (messageCallback != null) {
-            messageCallback.accept("{\"channel\":\"" + channelId + "\",\"text\":\"" +
+            messageCallback.accept("{\"channel\":\"" + effectiveChannel + "\",\"text\":\"" +
                                    escapeJson(text) + "\"}");
         }
 
         if (client == null) {
-            log("No bot token - message would be posted to " + channelId + ":");
+            log("No bot token - message would be posted to " + effectiveChannel + ":");
             log(text);
             return null;
         }
 
         try {
             ChatPostMessageResponse response = client.chatPostMessage(req -> req
-                .channel(channelId)
+                .channel(effectiveChannel)
                 .text(text)
                 .unfurlLinks(false)
                 .unfurlMedia(false)
@@ -402,13 +484,13 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             if (response.isOk()) {
                 return response.getTs();
             } else {
-                warn("Failed to post message: " + response.getError());
+                warn("Failed to post message to " + effectiveChannel + ": " + response.getError());
+                return postToFallbackChannel(effectiveChannel, text, null);
             }
         } catch (IOException | SlackApiException e) {
-            warn("Error posting message: " + e.getMessage());
+            warn("Error posting message to " + effectiveChannel + ": " + e.getMessage());
+            return postToFallbackChannel(effectiveChannel, text, null);
         }
-
-        return null;
     }
 
     /**
@@ -420,19 +502,20 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @return the reply message timestamp, or null on failure
      */
     public String postMessageInThread(String channelId, String text, String threadTs) {
-        if (channelId == null || channelId.isEmpty()) {
-            log("No channel ID - skipping thread reply");
+        String effectiveChannel = resolveChannel(channelId);
+        if (effectiveChannel == null) {
+            log("No channel ID and no default channel - skipping thread reply");
             return null;
         }
 
         if (messageCallback != null) {
-            messageCallback.accept("{\"channel\":\"" + channelId +
+            messageCallback.accept("{\"channel\":\"" + effectiveChannel +
                                    "\",\"thread_ts\":\"" + escapeJson(threadTs) +
                                    "\",\"text\":\"" + escapeJson(text) + "\"}");
         }
 
         if (client == null) {
-            log("No bot token - thread reply would be posted to " + channelId +
+            log("No bot token - thread reply would be posted to " + effectiveChannel +
                 " (thread " + threadTs + "):");
             log(text);
             return null;
@@ -440,7 +523,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         try {
             ChatPostMessageResponse response = client.chatPostMessage(req -> req
-                .channel(channelId)
+                .channel(effectiveChannel)
                 .text(text)
                 .threadTs(threadTs)
                 .unfurlLinks(false)
@@ -450,10 +533,73 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             if (response.isOk()) {
                 return response.getTs();
             } else {
-                warn("Failed to post thread reply: " + response.getError());
+                warn("Failed to post thread reply to " + effectiveChannel + ": " + response.getError());
+                return postToFallbackChannel(effectiveChannel, text, null);
             }
         } catch (IOException | SlackApiException e) {
-            warn("Error posting thread reply: " + e.getMessage());
+            warn("Error posting thread reply to " + effectiveChannel + ": " + e.getMessage());
+            return postToFallbackChannel(effectiveChannel, text, null);
+        }
+    }
+
+    /**
+     * Resolves the effective channel ID for posting. If the provided channel
+     * is null or empty, falls back to the configured default channel.
+     *
+     * @param channelId the primary channel ID (may be null)
+     * @return the resolved channel ID, or null if no channel is available
+     */
+    private String resolveChannel(String channelId) {
+        if (channelId != null && !channelId.isEmpty()) {
+            return channelId;
+        }
+        return defaultChannelId;
+    }
+
+    /**
+     * Attempts to post a message to the default fallback channel after a
+     * failure on the primary channel. No-op if the default channel is not
+     * configured or is the same as the failed channel.
+     *
+     * @param failedChannel the channel that failed
+     * @param text          the message text
+     * @param threadTs      the thread timestamp (may be null for top-level messages)
+     * @return the message timestamp from the fallback post, or null
+     */
+    private String postToFallbackChannel(String failedChannel, String text, String threadTs) {
+        if (defaultChannelId == null || defaultChannelId.isEmpty()
+                || defaultChannelId.equals(failedChannel)) {
+            return null;
+        }
+
+        log("Falling back to default channel " + defaultChannelId);
+
+        try {
+            ChatPostMessageResponse response;
+            if (threadTs != null) {
+                response = client.chatPostMessage(req -> req
+                    .channel(defaultChannelId)
+                    .text(text)
+                    .threadTs(threadTs)
+                    .unfurlLinks(false)
+                    .unfurlMedia(false)
+                );
+            } else {
+                response = client.chatPostMessage(req -> req
+                    .channel(defaultChannelId)
+                    .text(text)
+                    .unfurlLinks(false)
+                    .unfurlMedia(false)
+                );
+            }
+
+            if (response.isOk()) {
+                return response.getTs();
+            } else {
+                warn("Failed to post to fallback channel: " + response.getError());
+            }
+        } catch (IOException | SlackApiException e) {
+            warn("Error posting to fallback channel: " + e.getMessage());
         }
 
         return null;
@@ -500,6 +646,23 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         Map<String, JobCompletionEvent> jobs = jobHistory.get(workstreamId);
         if (jobs == null) return Collections.emptyMap();
         return Collections.unmodifiableMap(jobs);
+    }
+
+    /**
+     * Checks whether any job on the given workstream was started after the
+     * specified epoch timestamp. Used by the submission endpoint to skip
+     * stale auto-resolve jobs from CI pipelines that ran hours ago.
+     *
+     * <p>The tracking map is in-memory and reset on controller restart,
+     * which is safe: a restart means no false positives, only missed guards.</p>
+     *
+     * @param workstreamId the workstream identifier
+     * @param epochMillis  the epoch milliseconds threshold
+     * @return {@code true} if a more recent job exists
+     */
+    public boolean hasJobStartedAfter(String workstreamId, long epochMillis) {
+        Long last = lastJobStartTime.get(workstreamId);
+        return last != null && last > epochMillis;
     }
 
     /**

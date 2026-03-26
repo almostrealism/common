@@ -124,14 +124,53 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		this.cachedTasks = new ArrayList();
 		
 		if (nodeCount > 0) System.out.println("NodeGroup: Constructing child nodes...");
-		
+
 		for (int i = 0; i < nodeCount; i++) {
 			Node n = new Node(this, i, nodeMaxJobs, nodeMaxPeers);
 			this.nodes.add(n);
-			
+
 			System.out.println("NodeGroup: Added node " + i + " (" + n + ")");
 		}
-		
+
+		// Load labels from properties (nodes.labels.<key>=<value>)
+		String labelPrefix = "nodes.labels.";
+		for (Object keyObj : p.keySet()) {
+			String key = (String) keyObj;
+			if (key.startsWith(labelPrefix)) {
+				String labelKey = key.substring(labelPrefix.length());
+				String labelValue = p.getProperty(key);
+				this.setLabel(labelKey, labelValue);
+				for (Node n : this.nodes) {
+					n.setLabel(labelKey, labelValue);
+				}
+			}
+		}
+
+		// Load labels from environment variable (FLOWTREE_NODE_LABELS=key1:value1,key2:value2)
+		String envLabels = System.getenv("FLOWTREE_NODE_LABELS");
+		if (envLabels != null && !envLabels.isEmpty()) {
+			for (String pair : envLabels.split(",")) {
+				String[] parts = pair.split(":", 2);
+				if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
+					this.setLabel(parts[0].trim(), parts[1].trim());
+					for (Node n : this.nodes) {
+						n.setLabel(parts[0].trim(), parts[1].trim());
+					}
+				}
+			}
+		}
+
+		// Auto-detect platform label if not explicitly set
+		if (this.getLabels().get("platform") == null) {
+			String os = System.getProperty("os.name", "").toLowerCase();
+			String platform = os.contains("mac") ? "macos" : "linux";
+			this.setLabel("platform", platform);
+			for (Node n : this.nodes) {
+				n.setLabel("platform", platform);
+			}
+			System.out.println("NodeGroup: Auto-detected platform label: platform=" + platform);
+		}
+
 		this.setParam(p);
 		
 		this.servers = new ArrayList(serverCount);
@@ -1264,16 +1303,17 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 			addJobs(defaultFactory);
 
-			i: for (int i = 0; itr.hasNext() && i < this.maxTasks; i++) {
+			List<JobFactory> completed = new ArrayList<>();
+			for (int i = 0; itr.hasNext() && i < this.maxTasks; i++) {
 				JobFactory f = (JobFactory) itr.next();
-				
-				if (f.isComplete()) {
-					this.tasks.remove(i);
-					continue i;
-				}
 
-				addJobs(f);
+				if (f.isComplete()) {
+					completed.add(f);
+				} else {
+					addJobs(f);
+				}
 			}
+			this.tasks.removeAll(completed);
 		}
 	}
 
@@ -1385,10 +1425,10 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 					if (index > 0 && index < s[i].length() - 1) v = s[i].substring(index + JobFactory.ENTRY_SEPARATOR.length());
 					
 					try {
-						if (s[i].startsWith("jobtime:")) { // TODO Should ":" be ENTRY_SEPARATOR?
+						if (s[i].startsWith("jobtime" + JobFactory.ENTRY_SEPARATOR)) {
 							p.setJobTime(Double.parseDouble(v));
 							h = true;
-						} else if (s[i].startsWith("activity:")) { // TODO Should ":" be ENTRY_SEPARATOR?
+						} else if (s[i].startsWith("activity" + JobFactory.ENTRY_SEPARATOR)) {
 							p.setActivityRating(Double.parseDouble(v));
 							h = true;
 						} else {

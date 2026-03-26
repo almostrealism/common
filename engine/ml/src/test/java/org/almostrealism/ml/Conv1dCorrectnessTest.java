@@ -22,6 +22,7 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -35,7 +36,7 @@ import org.junit.Test;
  * Uses simple inputs and hand-calculated expected outputs
  * to verify the implementation is correct.
  */
-public class Conv1dCorrectnessTest implements LayerFeatures {
+public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeatures {
 
 	/**
 	 * Test weightedSum directly with the same parameters as conv1d.

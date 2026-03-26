@@ -19,6 +19,7 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -49,8 +50,8 @@ public class ComplexMathTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 30000)
+	@TestProperties(knownIssue = true)
 	public void complexFromPartsBatches2() {
-		if (skipKnownIssues) return;
 
 		PackedCollection values = new PackedCollection(10, 2, 1024).fill(Math::random);
 

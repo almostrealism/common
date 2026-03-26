@@ -5,6 +5,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assume;
@@ -37,6 +38,7 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 	 * Run benchmark measuring time per token for autoregressive generation.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void benchmarkGeneration() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
@@ -54,6 +56,7 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 	 * Uses 128 positions instead of 32K - should be much faster if our hypothesis is correct.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void benchmarkGenerationReducedContext() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 

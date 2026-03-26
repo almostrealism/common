@@ -19,7 +19,96 @@ on:
       - master
 
 jobs:
+  # ─── Change Detection ─────────────────────────────────────────────
+  # Determines whether code files were changed. If only documentation
+  # files were modified, downstream test jobs are skipped to save CI
+  # compute. workflow_dispatch always runs the full pipeline.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code_changed: ${{ steps.filter.outputs.code }}
+      started_at: ${{ steps.timing.outputs.started_at }}
+      base_changed: ${{ steps.filter.outputs.base_changed }}
+      compute_changed: ${{ steps.filter.outputs.compute_changed }}
+      domain_changed: ${{ steps.filter.outputs.domain_changed }}
+      engine_changed: ${{ steps.filter.outputs.engine_changed }}
+      extern_changed: ${{ steps.filter.outputs.extern_changed }}
+      studio_changed: ${{ steps.filter.outputs.studio_changed }}
+    steps:
+      - name: Record pipeline start time
+        id: timing
+        run: echo "started_at=$(date +%s000)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - id: filter
+        run: |
+          set_all_flags_true() {
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            for layer in base compute domain engine extern studio; do
+              echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
+            done
+          }
+
+          # workflow_dispatch always runs the full pipeline
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            set_all_flags_true
+            exit 0
+          fi
+
+          # Push to master: ALL tests must run unconditionally.
+          # Layer-based skipping and docs-only skipping apply only to PRs,
+          # where we are evaluating whether a feature branch warrants
+          # running specific test groups. On master, every push (whether a
+          # direct push or a merged PR) must execute the complete test
+          # suite to guarantee full coverage on the default branch.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            set_all_flags_true
+            echo "::notice::Push to master — running full pipeline (no layer skipping)"
+            exit 0
+          fi
+
+          # ── Below here: pull_request events only ──
+
+          BASE="${{ github.event.pull_request.base.sha }}"
+
+          # If BASE is all zeros (initial push / new branch), run full pipeline
+          if echo "$BASE" | grep -qE '^0+$'; then
+            set_all_flags_true
+            echo "::notice::Initial push detected — running full pipeline"
+            exit 0
+          fi
+
+          # Look for non-doc code files (java, xml, yaml, yml, sh, py, groovy, properties)
+          CODE_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            '*.java' '*.xml' '*.yaml' '*.yml' '*.sh' '*.py' '*.groovy' '*.properties' \
+            | grep -v '^docs/' | grep -v '\.md$' || true)
+          if [ -z "$CODE_FILES" ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Docs-only change detected — skipping test pipeline"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Layer change detection for selective test skipping (PR only).
+          # Each layer flag indicates whether files in that directory were
+          # modified. Test jobs use these flags to skip when their layer
+          # (and all layers below it) are unmodified.
+          for layer in base compute domain engine extern studio; do
+            LAYER_FILES=$(git diff --name-only "$BASE" HEAD -- "${layer}/" || true)
+            if [ -n "$LAYER_FILES" ]; then
+              echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::Layer '${layer}' has changes"
+            else
+              echo "${layer}_changed=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
   build:
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -70,10 +159,10 @@ jobs:
       - name: Code Policy Enforcement
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl tools \
            -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -131,15 +220,15 @@ jobs:
 
           if [ -n "$TAMPERED" ]; then
             echo "::error::Enforcement infrastructure was modified — this is not allowed on PR branches"
-            echo -e "## Enforcement Infrastructure Tampering Detected\n" > /tmp/enforcement-report.txt
-            echo -e "The following protected files were modified on this branch:\n" >> /tmp/enforcement-report.txt
-            echo -e "$TAMPERED" >> /tmp/enforcement-report.txt
-            echo -e "\nThese files enforce code policies and test integrity. They CANNOT be" >> /tmp/enforcement-report.txt
-            echo -e "modified on PR branches. The only way to pass the build is to fix the" >> /tmp/enforcement-report.txt
-            echo -e "production code that violates the policies — not to weaken the policies.\n" >> /tmp/enforcement-report.txt
-            echo -e "If you believe a policy needs to change, open a separate PR with a" >> /tmp/enforcement-report.txt
-            echo -e "justification for human review." >> /tmp/enforcement-report.txt
-            cat /tmp/enforcement-report.txt
+            echo -e "## Enforcement Infrastructure Tampering Detected\n" > ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "The following protected files were modified on this branch:\n" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "$TAMPERED" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "\nThese files enforce code policies and test integrity. They CANNOT be" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "modified on PR branches. The only way to pass the build is to fix the" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "production code that violates the policies — not to weaken the policies.\n" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "If you believe a policy needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "justification for human review." >> ${RUNNER_TEMP}/enforcement-report.txt
+            cat ${RUNNER_TEMP}/enforcement-report.txt
             exit 1
           fi
 
@@ -150,7 +239,7 @@ jobs:
         if: github.ref != 'refs/heads/master'
         run: |
           chmod +x ./tools/ci/agent-protection/detect-test-hiding.sh
-          ./tools/ci/agent-protection/detect-test-hiding.sh origin/master /tmp/test-integrity-report.txt || {
+          ./tools/ci/agent-protection/detect-test-hiding.sh origin/master ${RUNNER_TEMP}/test-integrity-report.txt || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::error::Test integrity violations detected — existing tests were modified to hide failures"
@@ -170,9 +259,9 @@ jobs:
             echo "The code policy enforcement files are protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
             echo "Fix the policy violations in your production code instead." >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f /tmp/enforcement-report.txt ]; then
+            if [ -f ${RUNNER_TEMP}/enforcement-report.txt ]; then
               echo '```' >> "$GITHUB_STEP_SUMMARY"
-              cat /tmp/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
+              cat ${RUNNER_TEMP}/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
               echo '```' >> "$GITHUB_STEP_SUMMARY"
             fi
           elif [ "${{ steps.check.outcome }}" != "success" ]; then
@@ -181,9 +270,9 @@ jobs:
             echo "Tests that exist on the base branch are the specification. If the branch breaks" >> "$GITHUB_STEP_SUMMARY"
             echo "them, the production code must be fixed — not the tests." >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f /tmp/test-integrity-report.txt ]; then
+            if [ -f ${RUNNER_TEMP}/test-integrity-report.txt ]; then
               echo '```' >> "$GITHUB_STEP_SUMMARY"
-              cat /tmp/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+              cat ${RUNNER_TEMP}/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
               echo '```' >> "$GITHUB_STEP_SUMMARY"
             fi
           else
@@ -217,7 +306,7 @@ jobs:
         id: audit
         run: |
           chmod +x ./tools/ci/agent-protection/deception-audit.sh
-          ./tools/ci/agent-protection/deception-audit.sh origin/master /tmp/deception-audit-report.txt || {
+          ./tools/ci/agent-protection/deception-audit.sh origin/master ${RUNNER_TEMP}/deception-audit-report.txt || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::warning::Deception patterns detected on this branch"
@@ -234,8 +323,8 @@ jobs:
           if [ "${{ steps.audit.outputs.has_findings }}" = "true" ]; then
             echo "**WARNING: ${{ steps.audit.outputs.finding_count }} deception pattern(s) detected.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f /tmp/deception-audit-report.txt ]; then
-              cat /tmp/deception-audit-report.txt >> "$GITHUB_STEP_SUMMARY"
+            if [ -f ${RUNNER_TEMP}/deception-audit-report.txt ]; then
+              cat ${RUNNER_TEMP}/deception-audit-report.txt >> "$GITHUB_STEP_SUMMARY"
             fi
           else
             echo "No deception patterns detected." >> "$GITHUB_STEP_SUMMARY"
@@ -357,10 +446,10 @@ jobs:
       - name: Check Test Timeouts
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts \
            -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -400,10 +489,10 @@ jobs:
       - name: Check Duplicate Code
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode \
            -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -417,8 +506,70 @@ jobs:
             echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # ─── Checkstyle Check ──────────────────────────────────────────────
+  # Runs the default checkstyle rules (no var, no @SuppressWarnings)
+  # as a dedicated job for clear violation reporting in the PR summary.
+  checkstyle:
+    needs: [changes, build]
+    if: needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run Checkstyle
+        id: check
+        continue-on-error: true
+        run: |
+          mvn checkstyle:check -B 2>&1 | tee /tmp/checkstyle-output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Checkstyle" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outcome }}" = "success" ]; then
+            echo "No checkstyle violations detected." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Checkstyle violations detected.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            grep -E '\[ERROR\]' /tmp/checkstyle-output.txt >> "$GITHUB_STEP_SUMMARY" || echo "(no ERROR lines captured)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn checkstyle:check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   test:
-    needs: [build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # Layer gate: engine tests only run when engine-or-below layers are modified
+    if: >-
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
     strategy:
       fail-fast: true
@@ -441,15 +592,36 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
-      - name: Run Utils Tests (Group ${{ matrix.group }})
+      - name: Run Hardware Tests
+        if: matrix.group == 0
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl engine/utils \
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl base/hardware \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           2>&1 | tee "${{ runner.temp }}/mvn-hardware-test.log"
+
+      - name: Upload Hardware Surefire Reports
+        if: always() && matrix.group == 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-hardware
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Run Utils Tests (Group ${{ matrix.group }})
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/utils \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=7 \
-           2>&1 | tee /tmp/mvn-utils-test.log
+           2>&1 | tee "${{ runner.temp }}/mvn-utils-test.log"
 
       - name: Upload Surefire Reports
         if: always()
@@ -463,14 +635,15 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl engine/ml \
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=7 \
-           2>&1 | tee /tmp/mvn-ml-test.log
+           2>&1 | tee "${{ runner.temp }}/mvn-ml-test.log"
 
       - name: Upload ML Surefire Reports
         if: always()
@@ -482,17 +655,39 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Run Render Tests
+        if: matrix.group == 0
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/render \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           2>&1 | tee "${{ runner.temp }}/mvn-render-test.log"
+
+      - name: Upload Render Surefire Reports
+        if: always() && matrix.group == 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-render
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Extract crash reports
         if: always()
+        env:
+          CRASH_REPORT_DIR: ${{ runner.temp }}/crash-reports
         run: |
-          ./tools/ci/extract-crash-reports.sh /tmp/mvn-*.log
+          ./tools/ci/extract-crash-reports.sh "${{ runner.temp }}"/mvn-*.log
 
       - name: Upload Crash Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: crash-reports-group-${{ matrix.group }}
-          path: /tmp/crash-reports/
+          path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -511,7 +706,18 @@ jobs:
           retention-days: 1
 
   test-media:
-    needs: [test]
+    needs: [changes, build, test]
+    # Layer gate: studio tests run when any layer is modified.
+    # Must tolerate test being skipped (no engine-layer changes).
+    if: >-
+      needs.build.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.changes.outputs.studio_changed == 'true' ||
+       needs.changes.outputs.extern_changed == 'true' ||
+       needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
     steps:
       - name: Checkout Code
@@ -532,30 +738,33 @@ jobs:
 
       - name: Run Audio Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl engine/audio \
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           2>&1 | tee /tmp/mvn-audio-test.log
+           2>&1 | tee "${{ runner.temp }}/mvn-audio-test.log"
 
       - name: Run Music Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl studio/music \
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/music \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           2>&1 | tee /tmp/mvn-music-test.log
+           2>&1 | tee "${{ runner.temp }}/mvn-music-test.log"
 
       - name: Run Compose Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl studio/compose \
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           2>&1 | tee /tmp/mvn-compose-test.log
+           2>&1 | tee "${{ runner.temp }}/mvn-compose-test.log"
 
       - name: Upload Surefire Reports
         if: always()
@@ -569,15 +778,17 @@ jobs:
 
       - name: Extract crash reports
         if: always()
+        env:
+          CRASH_REPORT_DIR: ${{ runner.temp }}/crash-reports
         run: |
-          ./tools/ci/extract-crash-reports.sh /tmp/mvn-*.log
+          ./tools/ci/extract-crash-reports.sh "${{ runner.temp }}"/mvn-*.log
 
       - name: Upload Crash Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: crash-reports-media
-          path: /tmp/crash-reports/
+          path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -598,7 +809,16 @@ jobs:
   # ─── macOS Test Jobs ────────────────────────────────────────────────
 
   test-mac:
-    needs: [test-media]
+    needs: [changes, build, test-media]
+    # Layer gate: engine tests only run when engine-or-below layers are modified.
+    # Must tolerate test-media being skipped (no layer changes).
+    if: >-
+      needs.build.result == 'success' &&
+      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
       group: test-mac-${{ github.ref }}-${{ matrix.group }}
@@ -624,27 +844,54 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
-      - name: Run Utils Tests (Group ${{ matrix.group }})
+      - name: Run Hardware Tests
+        if: matrix.group == 0
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/utils \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl base/hardware \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
+      - name: Run Utils Tests (Group ${{ matrix.group }})
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/utils \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=3
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/ml \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/ml \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=3
 
+      - name: Run Render Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/render \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
   test-media-mac:
-    needs: [test-mac]
+    needs: [changes, build, test-mac]
+    # Layer gate: studio tests run when any layer is modified.
+    # Must tolerate test-mac being skipped (no engine-layer changes).
+    if: >-
+      needs.build.result == 'success' &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.changes.outputs.studio_changed == 'true' ||
+       needs.changes.outputs.extern_changed == 'true' ||
+       needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
     steps:
       - name: Checkout Code
@@ -665,24 +912,24 @@ jobs:
 
       - name: Run Audio Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/audio \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/audio \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Music Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl studio/music \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/music \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Compose Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl studio/compose \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
@@ -810,7 +1057,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [build, test, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, analysis]
+    needs: [changes, build, test, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
@@ -830,11 +1077,17 @@ jobs:
       - name: Check build result
         id: build-check
         run: |
-          if [ "${{ needs.build.result }}" != "success" ]; then
+          if [ "${{ needs.changes.outputs.code_changed }}" = "false" ]; then
+            echo "build_failed=false" >> "$GITHUB_OUTPUT"
+            echo "docs_only_skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Build skipped — docs-only change"
+          elif [ "${{ needs.build.result }}" != "success" ]; then
             echo "build_failed=true" >> "$GITHUB_OUTPUT"
+            echo "docs_only_skip=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Build failed — treating as total test failure"
           else
             echo "build_failed=false" >> "$GITHUB_OUTPUT"
+            echo "docs_only_skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine branch context
@@ -877,7 +1130,7 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (build failure)
         if: steps.build-check.outputs.build_failed == 'true' && inputs.auto_resolve != 'false'
@@ -886,9 +1139,10 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve build failure"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Test failure path ───────────────────────────────────────
       # When the build succeeded, download and parse Surefire reports.
@@ -946,7 +1200,7 @@ jobs:
         if: steps.build-check.outputs.build_failed != 'true'
         id: failures
         run: |
-          eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports /tmp/test-failures.txt)"
+          eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports "${{ runner.temp }}/test-failures.txt")"
           echo "failure_count=$failure_count" >> "$GITHUB_OUTPUT"
           echo "has_failures=$has_failures" >> "$GITHUB_OUTPUT"
           if [ "$has_failures" = "true" ]; then
@@ -1017,11 +1271,31 @@ jobs:
             VALIDATION_FAILED="true"
           fi
 
+          # Determine whether layer-based filtering explains a skipped test job.
+          # Engine tests (test, test-mac) only run when engine-or-below layers change.
+          ENGINE_LAYERS_CHANGED="false"
+          if [ "${{ needs.changes.outputs.engine_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.domain_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.compute_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.base_changed }}" = "true" ]; then
+            ENGINE_LAYERS_CHANGED="true"
+          fi
+
+          # Studio tests (test-media, test-media-mac) run when any layer changes.
+          ANY_LAYER_CHANGED="false"
+          if [ "$ENGINE_LAYERS_CHANGED" = "true" ] || \
+             [ "${{ needs.changes.outputs.extern_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.studio_changed }}" = "true" ]; then
+            ANY_LAYER_CHANGED="true"
+          fi
+
           # Only flag as incomplete if jobs were cancelled/skipped without
-          # an upstream failure to explain it
+          # an upstream failure or layer-based filtering to explain it
           if [ "$TEST_RESULT" = "cancelled" ] || [ "$TEST_RESULT" = "skipped" ]; then
             if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test job was ${TEST_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
+              echo "::notice::test job was ${TEST_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
             else
               echo "::warning::test job was ${TEST_RESULT} without an upstream failure"
               INCOMPLETE="true"
@@ -1032,6 +1306,8 @@ jobs:
             if [ "$TEST_RESULT" != "failure" ] && [ "$TEST_RESULT" != "skipped" ]; then
               if [ "$VALIDATION_FAILED" = "true" ]; then
                 echo "::notice::test-media job was ${MEDIA_RESULT} because an upstream validation check failed — not treating as incomplete"
+              elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
+                echo "::notice::test-media job was ${MEDIA_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
               else
                 echo "::warning::test-media job was ${MEDIA_RESULT} without test job failure"
                 INCOMPLETE="true"
@@ -1045,7 +1321,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-failure-summary
-          path: /tmp/test-failures.txt
+          path: ${{ runner.temp }}/test-failures.txt
           retention-days: 7
 
       - name: Build prompt (test failures)
@@ -1056,14 +1332,14 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-resolve-prompt.sh "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Extract failing test class names
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
         id: test-classes
         run: |
           # Extract test class names from the failure summary for the escalation tracker
-          CLASSES=$(grep -oP '[\w.]+Test\w*' /tmp/test-failures.txt 2>/dev/null | sort -u | tr '\n' ' ' || true)
+          CLASSES=$(grep -oP '[\w.]+Test\w*' "${{ runner.temp }}/test-failures.txt" 2>/dev/null | sort -u | tr '\n' ' ' || true)
           echo "failing_classes=$CLASSES" >> "$GITHUB_OUTPUT"
 
       - name: Submit agent job (test failures)
@@ -1076,9 +1352,10 @@ jobs:
           PROTECT_TEST_FILES: "true"
           FAILING_TEST_CLASSES: ${{ steps.test-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Test job failure without surefire XML ──────────────────────
       # When a test job had result "failure" but no surefire failures
@@ -1092,7 +1369,7 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Extract crashed test class names
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
@@ -1114,9 +1391,10 @@ jobs:
           PROTECT_TEST_FILES: "true"
           FAILING_TEST_CLASSES: ${{ steps.crash-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve JVM crash in test execution"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Incomplete test execution path ─────────────────────────────
       # When test jobs were cancelled or skipped without any upstream
@@ -1131,7 +1409,7 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (incomplete tests)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true' && inputs.auto_resolve != 'false'
@@ -1140,9 +1418,10 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Quality gate fallback ──────────────────────────────────────
       # When no test failures exist, check quality gates and submit
@@ -1161,7 +1440,7 @@ jobs:
 
         run: |
           chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
-          ./tools/ci/prompts/build-policy-violation-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (code policy violations)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed != 'true' && inputs.auto_resolve != 'false'
@@ -1170,9 +1449,10 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Other quality gate fallback ──────────────────────────────
       # When no test failures or policy violations exist, check
@@ -1190,15 +1470,16 @@ jobs:
           AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
+          CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
         run: |
-          ./tools/ci/agent-protection/check-quality-gates.sh /tmp/quality-gate-failures.txt
+          ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
 
       - name: Upload quality gate summary
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: quality-gate-summary
-          path: /tmp/quality-gate-failures.txt
+          path: ${{ runner.temp }}/quality-gate-failures.txt
           retention-days: 7
 
       - name: Build prompt (quality gates)
@@ -1209,7 +1490,7 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (quality gates)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true' && inputs.auto_resolve != 'false'
@@ -1218,9 +1499,10 @@ jobs:
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── Docs-only verify path ──────────────────────────────────
       # When all changes are under docs/, skip the general review
@@ -1228,25 +1510,26 @@ jobs:
       # are typically plan documents for a workstream.
 
       - name: Build prompt (docs-only verify)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true'
+        if: (steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
         run: |
           chmod +x ./tools/ci/prompts/build-verify-prompt.sh
-          ./tools/ci/prompts/build-verify-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (docs-only verify)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true' && inputs.auto_resolve != 'false'
+        if: ((steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')) && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Verify docs changes"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # ── General review fallback ─────────────────────────────────
       # When all tests and quality gates pass, submit a general
@@ -1254,31 +1537,35 @@ jobs:
       # documentation, and consistency with existing patterns.
 
       - name: Build prompt (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
+        if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
         run: |
-          ./tools/ci/prompts/build-review-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true' && inputs.auto_resolve != 'false'
+        if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true' && inputs.auto_resolve != 'false'
         env:
           CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
           CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Review branch changes"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Summary
         if: ${{ !cancelled() }}
         run: |
           echo "## Auto-Resolve" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.build-check.outputs.build_failed }}" = "true" ]; then
+          if [ "${{ steps.build-check.outputs.docs_only_skip }}" = "true" ]; then
+            echo "**Docs-only change** — test pipeline was skipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to verify docs changes." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.build-check.outputs.build_failed }}" = "true" ]; then
             echo "**Build failed** — no tests were able to run." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was submitted to fix the build." >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
@@ -1287,7 +1574,7 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Failing tests" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat /tmp/test-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
+            cat "${{ runner.temp }}/test-failures.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.test-completeness.outputs.build_failed_in_tests }}" = "true" ]; then
             echo "**Test job failed** without producing surefire results (JVM crash, OOM, or build error within test step)." >> "$GITHUB_STEP_SUMMARY"
@@ -1304,7 +1591,7 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Failing quality gates" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat /tmp/quality-gate-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
+            cat "${{ runner.temp }}/quality-gate-failures.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.docs-check.outputs.docs_only }}" = "true" ]; then
             echo "All changes are under \`docs/\` — docs-only PR detected." >> "$GITHUB_STEP_SUMMARY"

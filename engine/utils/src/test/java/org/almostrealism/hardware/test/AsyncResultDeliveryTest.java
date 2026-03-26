@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.test;
 
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -52,7 +52,7 @@ import java.util.function.Consumer;
  * @see org.almostrealism.hardware.ProcessDetailsFactory
  * @see org.almostrealism.hardware.mem.AcceleratedProcessDetails
  */
-public class AsyncResultDeliveryTest implements TestFeatures {
+public class AsyncResultDeliveryTest extends TestSuiteBase {
 
 	/**
 	 * Demonstrates the core bug: a lambda that captures a mutable field by reference

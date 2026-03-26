@@ -3,6 +3,7 @@ package org.almostrealism.hardware.metal.test;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.metal.MTL;
 import org.almostrealism.hardware.metal.MetalComputeContext;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.BufferedReader;
@@ -13,7 +14,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
-public class MetalJNI {
+public class MetalJNI extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void run() throws IOException {
 		if (!(Hardware.getLocalHardware().getComputeContext() instanceof MetalComputeContext)) return;

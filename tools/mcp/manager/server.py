@@ -32,6 +32,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -57,6 +58,20 @@ TOKEN_FILE = os.environ.get(
 
 # Rate limit: requests per minute per token/IP (configurable)
 RATE_LIMIT = int(os.environ.get("AR_MANAGER_RATE_LIMIT", "60"))
+
+def _load_shared_secret() -> str:
+    """Load the shared secret from file or environment variable."""
+    secret_file = os.environ.get("AR_MANAGER_SHARED_SECRET_FILE", "").strip()
+    if secret_file and os.path.isfile(secret_file):
+        try:
+            with open(secret_file) as f:
+                return f.read().strip()
+        except OSError as e:
+            print(f"ar-manager: WARNING: Failed to read shared secret file: {e}",
+                  file=sys.stderr)
+    return os.environ.get("AR_MANAGER_SHARED_SECRET", "").strip()
+
+SHARED_SECRET = _load_shared_secret()
 
 # Input length limits
 MAX_PROMPT_LEN = 50_000
@@ -137,6 +152,8 @@ print(
     f"ar-manager: GITHUB_TOKEN={'<set>' if GITHUB_TOKEN else '<not set>'}",
     file=sys.stderr,
 )
+print(f"ar-manager: AR_MANAGER_SHARED_SECRET={'<set>' if SHARED_SECRET else '<not set>'}",
+      file=sys.stderr)
 
 # ---------------------------------------------------------------------------
 # Bearer token authentication
@@ -176,6 +193,86 @@ def _set_scopes(scopes: list, label: str = "anonymous") -> None:
     _request_token_label.set(label)
     _thread_local.scopes = scopes
     _thread_local.token_label = label
+
+
+_request_workstream_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "_request_workstream_id", default=None
+)
+_request_job_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "_request_job_id", default=None
+)
+
+def _get_token_workstream_id() -> Optional[str]:
+    ws = _request_workstream_id.get(None)
+    if ws is not None:
+        return ws
+    return getattr(_thread_local, "workstream_id", None)
+
+def _get_token_job_id() -> Optional[str]:
+    jid = _request_job_id.get(None)
+    if jid is not None:
+        return jid
+    return getattr(_thread_local, "job_id", None)
+
+def _set_token_context(workstream_id: str, job_id: str) -> None:
+    _request_workstream_id.set(workstream_id)
+    _request_job_id.set(job_id)
+    _thread_local.workstream_id = workstream_id
+    _thread_local.job_id = job_id
+
+
+def _validate_temp_token(token_value: str) -> Optional[tuple[list, str, str, str]]:
+    """Validate an HMAC temporary token.
+
+    Token format: armt_tmp_{base64url(hmac)}:{base64url(payload)}
+    Payload format: {workstream_id}:{job_id}:{expiry_epoch}
+
+    Returns (scopes, label, workstream_id, job_id) or None if invalid.
+    """
+    if not SHARED_SECRET:
+        return None
+    if not token_value.startswith("armt_tmp_"):
+        return None
+
+    rest = token_value[len("armt_tmp_"):]
+    parts = rest.split(":", 1)
+    if len(parts) != 2:
+        return None
+
+    token_hmac_b64, payload_b64 = parts
+    try:
+        token_hmac = base64.urlsafe_b64decode(token_hmac_b64 + "==")
+        payload = base64.urlsafe_b64decode(payload_b64 + "==").decode("utf-8")
+    except Exception:
+        return None
+
+    # Verify HMAC
+    expected_hmac = hmac.new(
+        SHARED_SECRET.encode("utf-8"),
+        payload.encode("utf-8"),
+        "sha256"
+    ).digest()
+    if not hmac.compare_digest(token_hmac, expected_hmac):
+        return None
+
+    # Parse payload
+    payload_parts = payload.split(":")
+    if len(payload_parts) != 3:
+        return None
+
+    workstream_id, job_id, expiry_str = payload_parts
+    try:
+        expiry = int(expiry_str)
+    except ValueError:
+        return None
+
+    # Check expiry
+    if time.time() > expiry:
+        return None
+
+    scopes = ["read", "write", "memory"]
+    label = f"tmp:{workstream_id}/{job_id}"
+    return scopes, label, workstream_id, job_id
 
 
 def _require_scope(scope: str) -> None:
@@ -313,6 +410,15 @@ class BearerAuthMiddleware:
 
                 if matched_scopes is not None:
                     _set_scopes(matched_scopes, matched_label)
+                    await self.app(scope, receive, send)
+                    return
+
+                # Try HMAC temporary token
+                temp_result = _validate_temp_token(token_value)
+                if temp_result is not None:
+                    scopes, label, ws_id, job_id = temp_result
+                    _set_scopes(scopes, label)
+                    _set_token_context(ws_id, job_id)
                     await self.app(scope, receive, send)
                     return
 
@@ -496,28 +602,134 @@ def _controller_post(path: str, payload: dict, timeout: int = 15) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# GitHub API helpers
+# GitHub API helpers — routed through the FlowTree controller proxy
 # ---------------------------------------------------------------------------
+
+# Thread-local org context set by Tier 2 tools before calling _github_request
+_current_github_org: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "_current_github_org", default=None,
+)
+
 
 def _github_request(method: str, path: str, payload: dict = None,
                     timeout: int = 15) -> dict:
-    """Make an authenticated request to the GitHub API.
+    """Make a GitHub API request via the controller's proxy endpoint.
+
+    The controller resolves the GitHub token from its per-organization
+    token map (``githubOrgs`` in ``workstreams.yaml``), falling back to
+    its instance-level token and then the ``GITHUB_TOKEN`` env var.
+
+    If the controller proxy is unreachable and a local ``GITHUB_TOKEN``
+    is available, falls back to a direct API call.
 
     Args:
         method: HTTP method (GET, POST, PUT).
-        path: API path (e.g., ``/repos/owner/repo/actions/workflows/...``).
+        path: GitHub API path (e.g., ``/repos/owner/repo/...``).
         payload: Optional dict to JSON-encode as the request body.
         timeout: Request timeout in seconds.
 
     Returns:
         Parsed JSON response, or a status dict for empty responses (204).
     """
+    org = _current_github_org.get()
+
+    # Try controller proxy first
+    result = _github_proxy_request(method, path, payload, org, timeout)
+    if result is not None:
+        return result
+
+    # Fallback to direct API call if a local token is available
     if not GITHUB_TOKEN:
         return {
             "ok": False,
-            "error": "GitHub token not configured. Set AR_MANAGER_GITHUB_TOKEN or GITHUB_TOKEN.",
+            "error": (
+                "GitHub API unavailable: controller proxy unreachable "
+                "and no local GITHUB_TOKEN configured."
+            ),
+            "next_steps": [
+                "Ensure the FlowTree controller is running and reachable",
+                "Or set AR_MANAGER_GITHUB_TOKEN / GITHUB_TOKEN as fallback",
+            ],
         }
 
+    return _github_direct_request(method, path, payload, timeout)
+
+
+def _github_proxy_request(method: str, path: str, payload: dict = None,
+                          org: str = None, timeout: int = 15) -> Optional[dict]:
+    """Route a GitHub API request through the controller's proxy.
+
+    Returns:
+        Parsed response dict, or None if the proxy is unreachable.
+    """
+    params = f"url={quote(path, safe='')}"
+    if org:
+        params += f"&org={quote(org, safe='')}"
+    proxy_url = CONTROLLER_URL.rstrip("/") + f"/api/github/proxy?{params}"
+
+    data = json.dumps(payload).encode("utf-8") if payload else None
+    req = Request(proxy_url, data=data, method=method)
+    req.add_header("Accept", "application/json")
+    if data:
+        req.add_header("Content-Type", "application/json")
+
+    print(f"ar-manager: {method} {path} (via controller proxy, org={org})",
+          file=sys.stderr)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            if not body:
+                return {"ok": True, "status": 204}
+            wrapper = json.loads(body)
+
+        # The proxy wraps responses as {"status": N, "link": "...", "body": <json>}
+        gh_status = wrapper.get("status", 0)
+        gh_body = wrapper.get("body")
+
+        if gh_status == 204 or gh_body is None:
+            return {"ok": True, "status": gh_status}
+        if 200 <= gh_status < 300:
+            # GitHub returns dicts for single resources and lists for
+            # collection endpoints (e.g., /pulls, /comments).  Both are
+            # valid success responses.
+            if isinstance(gh_body, (dict, list)):
+                return gh_body
+        if isinstance(gh_body, dict):
+            msg = gh_body.get("message", "")
+            return {"ok": False, "error": f"GitHub returned HTTP {gh_status}: {msg}"}
+        return {"ok": False, "error": f"GitHub returned HTTP {gh_status}"}
+    except HTTPError as e:
+        # The controller returned an error response (e.g., 400 Bad Request
+        # for missing org token) — read and report the error body
+        try:
+            err_body = e.read().decode("utf-8")
+            err_json = json.loads(err_body)
+            msg = err_json.get("error", f"Controller returned HTTP {e.code}")
+        except Exception:
+            msg = f"Controller returned HTTP {e.code}"
+        print(f"ar-manager: controller proxy error: {msg}", file=sys.stderr)
+        return {"ok": False, "error": msg}
+    except (URLError, OSError, TimeoutError) as e:
+        print(f"ar-manager: controller proxy unreachable: {e}", file=sys.stderr)
+        return None
+    except Exception as e:
+        logging.getLogger("ar-manager").error("GitHub proxy %s %s: %s", method, path, e)
+        return None
+
+
+def _github_direct_request(method: str, path: str, payload: dict = None,
+                           timeout: int = 15) -> dict:
+    """Direct GitHub API call using local GITHUB_TOKEN (fallback only).
+
+    Args:
+        method: HTTP method (GET, POST, PUT).
+        path: GitHub API path.
+        payload: Optional request body.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        Parsed JSON response.
+    """
     url = f"https://api.github.com{path}"
     data = json.dumps(payload).encode("utf-8") if payload else None
     req = Request(url, data=data, method=method)
@@ -527,7 +739,7 @@ def _github_request(method: str, path: str, payload: dict = None,
     if data:
         req.add_header("Content-Type", "application/json")
 
-    print(f"ar-manager: {method} {url}", file=sys.stderr)
+    print(f"ar-manager: {method} {url} (direct fallback)", file=sys.stderr)
     try:
         with urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8")
@@ -548,6 +760,20 @@ def _github_request(method: str, path: str, payload: dict = None,
     except Exception as e:
         logging.getLogger("ar-manager").error("GitHub %s %s: %s", method, path, e)
         return {"ok": False, "error": "Internal error contacting GitHub API"}
+
+
+def _set_github_org(ws: dict) -> None:
+    """Set the GitHub org context from a workstream for token routing.
+
+    Uses the explicit ``githubOrg`` field if configured, otherwise
+    extracts the org from the repository URL.
+    """
+    org = ws.get("githubOrg")
+    if not org:
+        owner_repo = _extract_owner_repo(ws.get("repoUrl", ""))
+        if owner_repo:
+            org = owner_repo[0]
+    _current_github_org.set(org)
 
 
 def _extract_owner_repo(repo_url: str) -> Optional[tuple]:
@@ -646,6 +872,48 @@ def controller_health() -> dict:
 
 
 @mcp.tool()
+def controller_update_config(
+    accept_automated_jobs: str = "",
+) -> dict:
+    """Get or update the FlowTree controller's runtime configuration.
+
+    Currently supports toggling whether automated job submissions (e.g.,
+    from CI pipelines) are accepted. When automated jobs are disabled,
+    submissions with ``automated: true`` in the payload are rejected.
+    This prevents infinite loops where CI submits work to an agent which
+    then triggers CI again.
+
+    Call with no arguments to read the current setting. Provide
+    ``accept_automated_jobs`` to change it.
+
+    Args:
+        accept_automated_jobs: Set to ``true`` to accept automated job
+            submissions (the default) or ``false`` to reject them.
+            Leave empty to read the current setting.
+
+    Returns:
+        Dictionary with the current ``acceptAutomatedJobs`` setting.
+    """
+    _require_scope("write")
+    _audit("controller_update_config", accept_automated_jobs=accept_automated_jobs)
+
+    if accept_automated_jobs:
+        accept = accept_automated_jobs.lower() == "true"
+        result = _controller_post(
+            "/api/config/accept-automated-jobs",
+            {"accept": accept},
+        )
+    else:
+        result = _controller_get("/api/config/accept-automated-jobs")
+
+    result.setdefault("next_steps", [
+        "Use workstream_submit_task to submit a coding task",
+        "Use controller_health to check controller status",
+    ])
+    return result
+
+
+@mcp.tool()
 def workstream_list() -> dict:
     """List all registered workstreams with their configuration and capabilities.
 
@@ -727,6 +995,8 @@ def workstream_submit_task(
     max_budget_usd: float = 0.0,
     protect_test_files: bool = False,
     enforce_changes: bool = False,
+    started_after: str = "",
+    required_labels: str = "",
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -751,6 +1021,13 @@ def workstream_submit_task(
         max_budget_usd: Maximum cost in USD (0 = use workstream default).
         protect_test_files: If true, prevent the agent from modifying test files.
         enforce_changes: If true, require the agent to produce code changes.
+        started_after: Epoch milliseconds timestamp. If a newer job already
+            exists on the workstream, the submission is skipped and the
+            response includes ``skipped: true``. Used by CI pipelines to
+            avoid stale auto-resolve jobs colliding with explicit submissions.
+        required_labels: Comma-separated key:value pairs specifying Node
+            labels required to execute this job (e.g., "platform:macos,gpu:true").
+            Only Nodes with matching labels will execute the job.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -761,7 +1038,7 @@ def workstream_submit_task(
         return err
     err = _check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
-        description=description,
+        description=description, started_after=started_after,
     )
     if err:
         return err
@@ -783,6 +1060,16 @@ def workstream_submit_task(
         payload["protectTestFiles"] = True
     if enforce_changes:
         payload["enforceChanges"] = True
+    if started_after:
+        payload["startedAfter"] = started_after
+    if required_labels:
+        labels_dict = {}
+        for pair in required_labels.split(","):
+            parts = pair.strip().split(":", 1)
+            if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+                labels_dict[parts[0].strip()] = parts[1].strip()
+        if labels_dict:
+            payload["requiredLabels"] = labels_dict
 
     result = _controller_post("/api/submit", payload)
 
@@ -955,7 +1242,8 @@ def workstream_update_config(
 
 @mcp.tool()
 def project_create_branch(
-    workstream_id: str,
+    workstream_id: str = "",
+    repo_url: str = "",
     plan_title: str = "",
     plan_content: str = "",
 ) -> dict:
@@ -971,8 +1259,14 @@ def project_create_branch(
     date and plan title), so it cannot be returned immediately. Use
     workstream_list after the workflow completes to see the new workstream.
 
+    The repository is resolved in priority order:
+    1. If ``repo_url`` is provided, use it directly.
+    2. If ``workstream_id`` is provided, resolve from the workstream config.
+    3. If neither is provided, default to ``almostrealism/common`` on master.
+
     Args:
-        workstream_id: Source workstream with repo_url (from workstream_list).
+        workstream_id: Optional source workstream (from workstream_list).
+        repo_url: Optional repository URL (HTTPS or SSH). Overrides workstream.
         plan_title: Short title for the plan branch (used in branch name).
         plan_content: Optional markdown content for the initial plan document.
 
@@ -981,7 +1275,7 @@ def project_create_branch(
     """
     _require_scope("pipeline")
     err = _check_short_strings(
-        workstream_id=workstream_id, plan_title=plan_title,
+        workstream_id=workstream_id, repo_url=repo_url, plan_title=plan_title,
     )
     if err:
         return err
@@ -989,26 +1283,36 @@ def project_create_branch(
         err = _check_length(plan_content, "plan_content", MAX_CONTENT_LEN)
         if err:
             return err
-    _audit("project_create_branch", workstream_id=workstream_id, plan_title=plan_title)
+    _audit("project_create_branch", workstream_id=workstream_id,
+           repo_url=repo_url, plan_title=plan_title)
 
-    ws = _find_workstream(workstream_id)
-    if ws is None:
-        return {
-            "ok": False,
-            "error": f"Workstream '{workstream_id}' not found",
-            "next_steps": ["Use workstream_list to find valid workstream IDs"],
-        }
+    # Resolve repository URL and base branch
+    effective_repo = None
+    effective_base = "master"
 
-    repo_url = ws.get("repoUrl")
-    if not repo_url:
-        return _pipeline_error(workstream_id, "repo_url is not configured")
+    if repo_url:
+        effective_repo = repo_url
+    elif workstream_id:
+        ws = _find_workstream(workstream_id)
+        if ws is None:
+            return {
+                "ok": False,
+                "error": f"Workstream '{workstream_id}' not found",
+                "next_steps": ["Use workstream_list to find valid workstream IDs"],
+            }
+        _set_github_org(ws)
+        effective_repo = ws.get("repoUrl")
+        effective_base = ws.get("baseBranch", "master")
 
-    owner_repo = _extract_owner_repo(repo_url)
+    if not effective_repo:
+        effective_repo = "https://github.com/almostrealism/common"
+
+    owner_repo = _extract_owner_repo(effective_repo)
     if not owner_repo:
         return {
             "ok": False,
-            "error": f"Cannot parse owner/repo from: {repo_url}",
-            "next_steps": ["Use workstream_update_config to fix repo_url"],
+            "error": f"Cannot parse owner/repo from: {effective_repo}",
+            "next_steps": ["Provide a valid repo_url (HTTPS or SSH format)"],
         }
 
     owner, repo = owner_repo
@@ -1021,7 +1325,7 @@ def project_create_branch(
     result = _github_request(
         "POST",
         f"/repos/{owner}/{repo}/actions/workflows/project-manager.yaml/dispatches",
-        {"ref": ws.get("baseBranch", "master"), "inputs": inputs},
+        {"ref": effective_base, "inputs": inputs},
     )
 
     if result.get("ok") or result.get("status") == 204:
@@ -1077,6 +1381,8 @@ def project_verify_branch(
             "error": f"Workstream '{workstream_id}' not found",
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
+
+    _set_github_org(ws)
 
     repo_url = ws.get("repoUrl")
     if not repo_url:
@@ -1178,6 +1484,8 @@ def project_commit_plan(
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
 
+    _set_github_org(ws)
+
     repo_url = ws.get("repoUrl")
     if not repo_url:
         return _pipeline_error(workstream_id, "repo_url is not configured")
@@ -1273,6 +1581,117 @@ def project_commit_plan(
     return result
 
 
+@mcp.tool()
+def project_read_plan(
+    workstream_id: str,
+    path: str = "",
+    branch: str = "",
+) -> dict:
+    """Read the planning document for a workstream from GitHub.
+
+    Fetches the file content via the GitHub Contents API, routed through
+    the FlowTree controller's proxy for authentication. Only works for
+    repositories hosted on GitHub.
+
+    If no path is provided, uses the workstream's configured
+    ``planningDocument`` path.
+
+    Args:
+        workstream_id: Workstream to read from (from workstream_list).
+        path: File path in the repository. Defaults to the workstream's
+            configured planningDocument.
+        branch: Branch to read from (default: workstream's defaultBranch).
+
+    Returns:
+        Dictionary with the file content, path, and branch.
+    """
+    _require_scope("read")
+    err = _check_short_strings(
+        workstream_id=workstream_id, path=path, branch=branch,
+    )
+    if err:
+        return err
+    _audit("project_read_plan", workstream_id=workstream_id, path=path, branch=branch)
+
+    ws = _find_workstream(workstream_id)
+    if ws is None:
+        return {
+            "ok": False,
+            "error": f"Workstream '{workstream_id}' not found",
+            "next_steps": ["Use workstream_list to find valid workstream IDs"],
+        }
+
+    _set_github_org(ws)
+
+    repo_url = ws.get("repoUrl")
+    if not repo_url:
+        return _pipeline_error(workstream_id, "repo_url is not configured")
+
+    owner_repo = _extract_owner_repo(repo_url)
+    if not owner_repo:
+        return {
+            "ok": False,
+            "error": f"Cannot parse owner/repo from: {repo_url}",
+            "next_steps": ["Use workstream_update_config to fix repo_url"],
+        }
+
+    owner, repo = owner_repo
+    effective_branch = branch or ws.get("defaultBranch", "")
+    if not effective_branch:
+        return {
+            "ok": False,
+            "error": "No branch specified and workstream has no defaultBranch",
+            "next_steps": ["Provide the branch parameter explicitly"],
+        }
+
+    effective_path = path or ws.get("planningDocument", "")
+    if not effective_path:
+        return {
+            "ok": False,
+            "error": "No planning document path configured for this workstream",
+            "next_steps": [
+                "Provide the path parameter explicitly",
+                "Or use workstream_update_config to set planning_document",
+            ],
+        }
+
+    ref_param = quote(effective_branch, safe="")
+    result = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/contents/{quote(effective_path, safe='/')}?ref={ref_param}",
+    )
+
+    if result.get("ok") is False:
+        result.setdefault("next_steps", [
+            f"Verify the file exists at '{effective_path}' on branch '{effective_branch}'",
+            "Use project_commit_plan to create the planning document first",
+        ])
+        return result
+
+    content_b64 = result.get("content", "")
+    encoding = result.get("encoding", "")
+    if encoding == "base64" and content_b64:
+        try:
+            content = base64.b64decode(content_b64).decode("utf-8")
+        except Exception:
+            content = content_b64
+    else:
+        content = content_b64
+
+    return {
+        "ok": True,
+        "path": effective_path,
+        "branch": effective_branch,
+        "repo": f"{owner}/{repo}",
+        "content": content,
+        "sha": result.get("sha", ""),
+        "next_steps": [
+            "Use project_commit_plan to update this document",
+            "Use workstream_submit_task to send an agent to work on the plan",
+        ],
+    }
+
+
 # -- Tier 3: Memory tools ---------------------------------------------------
 
 
@@ -1321,6 +1740,7 @@ def memory_recall(
     repo_url: str = "",
     branch: str = "",
     workstream_id: str = "",
+    include_messages: bool = False,
 ) -> dict:
     """Search agent memories with optional LLM synthesis.
 
@@ -1335,6 +1755,8 @@ def memory_recall(
         repo_url: Optional repository URL filter.
         branch: Optional branch name filter.
         workstream_id: Optional workstream to resolve repo/branch from.
+        include_messages: If true, also search the "messages" namespace
+            and merge results. Defaults to false.
 
     Returns:
         Dictionary with memories and optional summary.
@@ -1379,6 +1801,23 @@ def memory_recall(
         )
     except ConnectionError as e:
         return {"ok": False, "error": f"Memory search failed: {e}"}
+
+    # Merge results from the "messages" namespace if requested
+    if include_messages and namespace != "messages":
+        try:
+            msg_memories = client.search(
+                query=query,
+                namespace="messages",
+                limit=limit,
+                repo_url=effective_repo or None,
+                branch=effective_branch or None,
+            )
+            if msg_memories:
+                memories = memories + msg_memories
+                memories.sort(key=lambda m: m.get("score", 999))
+                memories = memories[:limit]
+        except ConnectionError:
+            pass  # Non-critical: proceed without messages
 
     if not memories:
         return {
@@ -1443,11 +1882,16 @@ def memory_branch_context(
     branch: str = "",
     namespace: str = "default",
     limit: int = 20,
+    include_messages: bool = True,
+    include_commits: bool = True,
+    commit_limit: int = 30,
 ) -> dict:
-    """Get all memories for a specific branch.
+    """Get all memories and optionally the commit history for a branch.
 
     Returns memories ordered by creation time (newest first). Can resolve
-    repo_url/branch from workstream_id if provided.
+    repo_url/branch from workstream_id if provided. When ``include_commits``
+    is True, fetches the branch's commit list via the GitHub Compare API
+    relative to the base branch (default ``master``).
 
     Args:
         workstream_id: Workstream to resolve repo/branch from.
@@ -1455,9 +1899,17 @@ def memory_branch_context(
         branch: Branch name to match.
         namespace: Memory namespace to search.
         limit: Maximum number of entries.
+        include_messages: If true (default), also include memories from the
+            "messages" namespace. Set to false to exclude Slack messages.
+        include_commits: If true (default), include the list of commits on
+            the branch relative to its base branch.
+        commit_limit: Maximum number of commits to include (default 30).
 
     Returns:
-        Dictionary with branch memories.
+        Dictionary with branch memories and optionally commits.  When
+        commits are included, the response also contains ``total_commits``
+        (the full number of commits on the branch) and ``initial_commit_sha``
+        (the first commit on the branch relative to the base).
     """
     _require_scope("memory")
     err = _check_short_strings(
@@ -1494,7 +1946,86 @@ def memory_branch_context(
     except ConnectionError as e:
         return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
 
-    return {
+    # Merge results from the "messages" namespace if requested.
+    # Messages are appended AFTER the primary namespace results so that
+    # the caller always receives up to ``limit`` memories from the
+    # requested namespace.  Messages are capped at ``limit`` as well and
+    # interleaved by recency, but they never displace primary memories.
+    if include_messages and namespace != "messages":
+        try:
+            msg_memories = client.search_by_branch(
+                repo_url=effective_repo,
+                branch=effective_branch,
+                namespace="messages",
+                limit=limit,
+            )
+            if msg_memories:
+                primary = memories[:limit]
+                combined = primary + msg_memories
+                combined.sort(
+                    key=lambda m: m.get("created_at", ""),
+                    reverse=True,
+                )
+                memories = combined
+        except ConnectionError:
+            pass  # Non-critical: proceed without messages
+
+    # Fetch commit history from GitHub Compare API if requested
+    commits = None
+    commit_error = None
+    total_commits = 0
+    all_commits = []
+    if include_commits and effective_repo:
+        owner_repo = _extract_owner_repo(effective_repo)
+        if owner_repo:
+            owner, repo = owner_repo
+            # Determine the base branch from the workstream if available
+            ws = _find_workstream(workstream_id) if workstream_id else None
+            base = ws.get("baseBranch", "master") if ws else "master"
+
+            # Set GitHub org context so the proxy uses the correct per-org token
+            if ws:
+                _set_github_org(ws)
+            elif owner:
+                _current_github_org.set(owner)
+
+            try:
+                compare = _github_request(
+                    "GET",
+                    f"/repos/{owner}/{repo}/compare/{base}...{effective_branch}",
+                )
+                if compare.get("ok") is False:
+                    commit_error = compare.get("error", "GitHub API returned an error")
+                    logging.getLogger("ar-manager").warning(
+                        "Failed to fetch commits for %s...%s: %s",
+                        base, effective_branch, commit_error)
+                elif "commits" in compare:
+                    all_commits = compare.get("commits", [])
+                    total_commits = len(all_commits)
+                    # Take the most recent commits (Compare API returns
+                    # oldest-first, so slice from the end).
+                    recent = all_commits[-commit_limit:] if len(all_commits) > commit_limit else all_commits
+                    commits = []
+                    for c in recent:
+                        commit_obj = c.get("commit", {})
+                        author_obj = commit_obj.get("author", {})
+                        commits.append({
+                            "sha": c.get("sha", "")[:10],
+                            "author": author_obj.get("name", ""),
+                            "date": author_obj.get("date", ""),
+                            "message": commit_obj.get("message", "").split("\n")[0],
+                        })
+                else:
+                    commit_error = "GitHub Compare API returned no commits field"
+            except Exception as exc:
+                commit_error = str(exc)
+                logging.getLogger("ar-manager").warning(
+                    "Failed to fetch commits for %s...%s: %s",
+                    base, effective_branch, exc)
+        else:
+            commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
+
+    result = {
         "ok": True,
         "repo_url": effective_repo,
         "branch": effective_branch,
@@ -1506,6 +2037,16 @@ def memory_branch_context(
             "Use memory_store to add a new memory for this branch",
         ],
     }
+    if commits is not None:
+        result["commits"] = commits
+        result["commit_count"] = len(commits)
+        result["total_commits"] = total_commits
+        if all_commits:
+            result["initial_commit_sha"] = all_commits[0].get("sha", "")[:10]
+    if commit_error is not None:
+        result["commit_error"] = commit_error
+
+    return result
 
 
 @mcp.tool()
@@ -1581,6 +2122,341 @@ def memory_store(
         "Use memory_branch_context to see all memories for this branch",
     ]
     return entry
+
+
+# ---------------------------------------------------------------------------
+# Messaging tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def send_message(
+    text: str,
+    workstream_id: str = "",
+    job_id: str = "",
+) -> dict:
+    """Send a message for archival and optional notification.
+
+    Messages are stored in the memory database by the controller and
+    optionally forwarded to a notification channel.  Use this tool to
+    report status updates, results, or errors back to the user who
+    initiated this task.
+
+    Args:
+        text: The message text to send.
+        workstream_id: Workstream to send the message to.  Defaults to
+            the workstream from the auth token when available.
+        job_id: Job to thread the message under.  Defaults to the job
+            from the auth token when available.
+
+    Returns:
+        Dictionary with ok=true on success or ok=false with error details.
+    """
+    _require_scope("write")
+
+    effective_ws = workstream_id or _get_token_workstream_id() or ""
+    effective_job = job_id or _get_token_job_id() or ""
+
+    if not effective_ws:
+        return {"ok": False, "error": "workstream_id is required (pass explicitly or use a job token)"}
+
+    _audit("send_message", workstream_id=effective_ws, job_id=effective_job,
+           text=text[:80])
+
+    err = _check_length(text, "text", MAX_CONTENT_LEN)
+    if err:
+        return err
+
+    # Build the controller path
+    path = f"/api/workstreams/{quote(effective_ws, safe='')}"
+    if effective_job:
+        path += f"/jobs/{quote(effective_job, safe='')}"
+    path += "/messages"
+
+    return _controller_post(path, {"text": text})
+
+
+# ---------------------------------------------------------------------------
+# GitHub PR tools
+# ---------------------------------------------------------------------------
+
+
+def _resolve_github_repo(workstream_id: str = "", branch: str = "") -> tuple[str, str, str, Optional[dict]]:
+    """Resolve GitHub owner, repo, and branch from workstream context.
+
+    Returns (owner, repo, branch, error_dict_or_None).
+    """
+    effective_ws = workstream_id or _get_token_workstream_id() or ""
+
+    if not effective_ws:
+        return "", "", branch, {"ok": False, "error": "workstream_id is required"}
+
+    ws = _find_workstream(effective_ws)
+    if ws is None:
+        return "", "", branch, {"ok": False, "error": f"Workstream '{effective_ws}' not found"}
+
+    repo_url = ws.get("repoUrl", "")
+    if not repo_url:
+        return "", "", branch, {"ok": False, "error": f"Workstream '{effective_ws}' has no repoUrl"}
+
+    # Parse owner/repo from URL
+    # Formats: git@github.com:owner/repo.git, https://github.com/owner/repo.git
+    m = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?$", repo_url)
+    if not m:
+        return "", "", branch, {"ok": False, "error": f"Cannot parse repo URL: {repo_url}"}
+
+    owner, repo = m.group(1), m.group(2)
+    effective_branch = branch or ws.get("defaultBranch", "")
+
+    return owner, repo, effective_branch, None
+
+
+@mcp.tool()
+def github_pr_find(
+    workstream_id: str = "",
+    branch: str = "",
+) -> dict:
+    """Find an open pull request for a branch.
+
+    Args:
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch to search for. Defaults to workstream's defaultBranch.
+
+    Returns:
+        PR details if found, or error.
+    """
+    _require_scope("read")
+    owner, repo, effective_branch, err = _resolve_github_repo(workstream_id, branch)
+    if err:
+        return err
+
+    _audit("github_pr_find", workstream_id=workstream_id, branch=effective_branch)
+
+    head = f"{owner}:{effective_branch}"
+    result = _github_request("GET", f"/repos/{owner}/{repo}/pulls?head={quote(head, safe='')}&state=open")
+
+    if isinstance(result, list):
+        if not result:
+            return {"ok": True, "found": False, "branch": effective_branch}
+        pr = result[0]
+        return {
+            "ok": True,
+            "found": True,
+            "number": pr.get("number"),
+            "title": pr.get("title"),
+            "url": pr.get("html_url"),
+            "state": pr.get("state"),
+            "branch": effective_branch,
+        }
+    return result  # error dict from _github_request
+
+
+@mcp.tool()
+def github_pr_review_comments(
+    pr_number: int,
+    workstream_id: str = "",
+    branch: str = "",
+) -> dict:
+    """Get code review comments on a pull request.
+
+    Args:
+        pr_number: The PR number.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint (used for repo resolution if needed).
+
+    Returns:
+        List of review comments.
+    """
+    _require_scope("read")
+    owner, repo, _, err = _resolve_github_repo(workstream_id, branch)
+    if err:
+        return err
+
+    _audit("github_pr_review_comments", pr_number=pr_number)
+
+    result = _github_request("GET", f"/repos/{owner}/{repo}/pulls/{pr_number}/comments")
+    if isinstance(result, list):
+        comments = []
+        for c in result:
+            comments.append({
+                "id": c.get("id"),
+                "path": c.get("path"),
+                "line": c.get("line") or c.get("original_line"),
+                "body": c.get("body"),
+                "user": c.get("user", {}).get("login"),
+                "created_at": c.get("created_at"),
+                "in_reply_to_id": c.get("in_reply_to_id"),
+            })
+        return {"ok": True, "comments": comments, "count": len(comments)}
+    return result
+
+
+@mcp.tool()
+def github_pr_conversation(
+    pr_number: int,
+    workstream_id: str = "",
+    branch: str = "",
+) -> dict:
+    """Get the conversation (issue comments) on a pull request.
+
+    Args:
+        pr_number: The PR number.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint (used for repo resolution if needed).
+
+    Returns:
+        List of conversation comments.
+    """
+    _require_scope("read")
+    owner, repo, _, err = _resolve_github_repo(workstream_id, branch)
+    if err:
+        return err
+
+    _audit("github_pr_conversation", pr_number=pr_number)
+
+    result = _github_request("GET", f"/repos/{owner}/{repo}/issues/{pr_number}/comments")
+    if isinstance(result, list):
+        comments = []
+        for c in result:
+            comments.append({
+                "id": c.get("id"),
+                "body": c.get("body"),
+                "user": c.get("user", {}).get("login"),
+                "created_at": c.get("created_at"),
+            })
+        return {"ok": True, "comments": comments, "count": len(comments)}
+    return result
+
+
+@mcp.tool()
+def github_pr_reply(
+    comment_id: int,
+    body: str,
+    pr_number: int,
+    workstream_id: str = "",
+    branch: str = "",
+) -> dict:
+    """Reply to a pull request review comment.
+
+    Args:
+        comment_id: The ID of the review comment to reply to.
+        body: The reply text.
+        pr_number: The PR number.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint.
+
+    Returns:
+        The created reply.
+    """
+    _require_scope("write")
+    owner, repo, _, err = _resolve_github_repo(workstream_id, branch)
+    if err:
+        return err
+
+    _audit("github_pr_reply", comment_id=comment_id, pr_number=pr_number)
+
+    result = _github_request(
+        "POST",
+        f"/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies",
+        {"body": body},
+    )
+    if result.get("id"):
+        return {"ok": True, "id": result["id"]}
+    return result
+
+
+@mcp.tool()
+def github_list_open_prs(
+    workstream_id: str = "",
+    base: str = "",
+) -> dict:
+    """List open pull requests.
+
+    Args:
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        base: Filter by base branch (e.g., "master"). If empty, lists all open PRs.
+
+    Returns:
+        List of open PRs.
+    """
+    _require_scope("read")
+    owner, repo, _, err = _resolve_github_repo(workstream_id)
+    if err:
+        return err
+
+    _audit("github_list_open_prs", base=base)
+
+    path = f"/repos/{owner}/{repo}/pulls?state=open"
+    if base:
+        path += f"&base={quote(base, safe='')}"
+
+    result = _github_request("GET", path)
+    if isinstance(result, list):
+        prs = []
+        for pr in result:
+            prs.append({
+                "number": pr.get("number"),
+                "title": pr.get("title"),
+                "url": pr.get("html_url"),
+                "head": pr.get("head", {}).get("ref"),
+                "base": pr.get("base", {}).get("ref"),
+                "user": pr.get("user", {}).get("login"),
+                "created_at": pr.get("created_at"),
+            })
+        return {"ok": True, "prs": prs, "count": len(prs)}
+    return result
+
+
+@mcp.tool()
+def github_create_pr(
+    title: str,
+    body: str,
+    workstream_id: str = "",
+    base: str = "",
+    head: str = "",
+) -> dict:
+    """Create a pull request.
+
+    Args:
+        title: PR title.
+        body: PR description.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        base: Base branch (default: workstream's baseBranch or "master").
+        head: Head branch (default: workstream's defaultBranch).
+
+    Returns:
+        The created PR details.
+    """
+    _require_scope("write")
+    owner, repo, default_branch, err = _resolve_github_repo(workstream_id)
+    if err:
+        return err
+
+    effective_ws = workstream_id or _get_token_workstream_id() or ""
+    ws = _find_workstream(effective_ws) if effective_ws else None
+    effective_base = base or (ws.get("baseBranch", "master") if ws else "master")
+    effective_head = head or default_branch
+
+    if not effective_head:
+        return {"ok": False, "error": "head branch is required"}
+
+    _audit("github_create_pr", title=title, base=effective_base, head=effective_head)
+
+    result = _github_request("POST", f"/repos/{owner}/{repo}/pulls", {
+        "title": title,
+        "body": body,
+        "base": effective_base,
+        "head": effective_head,
+    })
+
+    if result.get("number"):
+        return {
+            "ok": True,
+            "number": result["number"],
+            "url": result.get("html_url"),
+            "title": result.get("title"),
+        }
+    return result
 
 
 # ---------------------------------------------------------------------------

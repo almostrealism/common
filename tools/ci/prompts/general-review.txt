@@ -103,13 +103,39 @@ specification. Fix the production code to make the original test pass.
   area for bugs and makes it nearly impossible for the next reader to know which
   path is actually expected to execute in production.
 
-### 3. Test Quality
+### 3. Test Coverage and Quality (CRITICAL — EQUAL PRIORITY TO TEST INTEGRITY)
 
-- Do the tests actually prove the new functionality works, or are they
-  superficial?
-- Are edge cases covered?
-- Do the tests follow project conventions (extend TestSuiteBase, use @TestDepth
-  for expensive tests, include timeout parameters)?
+**Every modified line of production code MUST be covered by tests.** This is not
+optional. If a branch adds or changes production code without corresponding test
+coverage, that is a defect you MUST fix before anything else.
+
+Specifically:
+- For every changed method: there must be a test that exercises the changed code
+  path. If no such test exists, WRITE ONE.
+- For every new method or class: there must be tests that verify its behavior.
+  If no such tests exist, WRITE THEM.
+- For every bug fix: there must be a regression test that fails without the fix
+  and passes with it. If no such test exists, WRITE ONE.
+- For every new branch or conditional: there must be tests for both the true and
+  false paths. If coverage is missing, ADD IT.
+
+**Test quality requirements — every test you write or evaluate must meet ALL of
+these criteria:**
+- Tests must verify BEHAVIOR, not just that code runs without throwing. A test
+  that calls a method and checks no assertions is worthless.
+- Tests must include adversarial and boundary cases: null inputs, empty
+  collections, maximum/minimum values, off-by-one boundaries, concurrent access
+  where applicable, malformed input, and type edge cases.
+- Tests must assert on specific expected values, not just "result is not null."
+- Tests must be independent and deterministic — no reliance on execution order or
+  external state.
+- Tests must follow project conventions (extend TestSuiteBase, use @TestDepth
+  for expensive tests, include timeout parameters).
+
+**If the branch has production code changes but insufficient test coverage, this
+is a blocking issue.** Do not proceed to other review categories until test
+coverage is complete. Write the missing tests yourself — you are a coding agent,
+not a reviewer.
 
 ### 4. Correctness
 
@@ -133,11 +159,16 @@ specification. Fix the production code to make the original test pass.
 
 ## How to proceed
 
-1. Identify every issue across the categories above.
-2. **Fix each issue directly** by editing the source files.
-3. Verify the build still succeeds: `mvn install -DskipTests`
-4. Send a Slack summary of what you changed and why. Organize by category.
+1. **First: audit test coverage.** Diff all production code changes against
+   existing tests. For every changed or added production method that lacks test
+   coverage, write tests BEFORE moving to other review categories. This is your
+   highest-priority deliverable after test integrity checks.
+2. Identify every issue across the remaining categories above.
+3. **Fix each issue directly** by editing the source files.
+4. Verify the build still succeeds: `mvn install -DskipTests`
+5. Run the tests you wrote to confirm they pass.
+6. Send a summary of what you changed and why. Organize by category.
    For each fix, include the file path and a one-line explanation.
 
 If the changes look good across all categories and nothing needs fixing,
-say so explicitly via Slack and explain why you are confident.
+say so explicitly via a message and explain why you are confident.

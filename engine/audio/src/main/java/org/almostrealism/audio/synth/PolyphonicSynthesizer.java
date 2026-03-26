@@ -26,7 +26,7 @@ import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Frequency;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -399,6 +399,20 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Applies pitch bend to all active voices.
+	 *
+	 * @param semitones pitch bend amount in semitones
+	 */
+	public void setPitchBend(double semitones) {
+		for (int i = 0; i < voices.size(); i++) {
+			VoiceState state = allocator.getVoice(i);
+			if (state.isActive()) {
+				voices.get(i).setPitchBend(semitones);
+			}
+		}
 	}
 
 	/**

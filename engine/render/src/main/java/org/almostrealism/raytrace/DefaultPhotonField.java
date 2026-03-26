@@ -18,7 +18,6 @@ package org.almostrealism.raytrace;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorMath;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.physics.Absorber;
 import org.almostrealism.physics.AbsorberSet;
@@ -104,16 +103,18 @@ public class DefaultPhotonField implements PhotonField {
 
 	@Override
 	public double getEnergy(double[] x, double radius) {
-		Iterator itr = this.photons.iterator();
+		Iterator<Object[]> itr = this.photons.iterator();
+		Vector center = new Vector(x);
 		double e = 0.0;
-		
+
 		while (itr.hasNext()) {
-			double[][] p = (double[][]) itr.next();
-			
-			if (VectorMath.length(VectorMath.subtract(p[0], x)) < radius)
-				e += p[2][0];
+			Object[] p = itr.next();
+			Vector pos = (Vector) p[0];
+
+			if (pos.subtract(center).length() < radius)
+				e += ((double[]) p[2])[0];
 		}
-		
+
 		return e;
 	}
 
@@ -128,8 +129,21 @@ public class DefaultPhotonField implements PhotonField {
 
 	@Override
 	public int removePhotons(double[] x, double radius) {
-		// TODO  Implement removePhotons method.
-		return 0;
+		Iterator<Object[]> itr = this.photons.iterator();
+		Vector center = new Vector(x);
+		int removed = 0;
+
+		while (itr.hasNext()) {
+			Object[] p = itr.next();
+			Vector pos = (Vector) p[0];
+
+			if (pos.subtract(center).length() < radius) {
+				itr.remove();
+				removed++;
+			}
+		}
+
+		return removed;
 	}
 
 	@Override

@@ -16,8 +16,14 @@
 
 package io.flowtree;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Lightweight JSON field extraction utilities that avoid external library dependencies.
@@ -369,6 +375,41 @@ public final class JsonFieldExtractor {
 			}
 
 			pos = objEnd;
+		}
+
+		return result;
+	}
+
+	/**
+	 * Extracts a flat JSON object of string key-value pairs from a field.
+	 *
+	 * <p>For example, given JSON containing {@code "requiredLabels": {"platform": "macos", "gpu": "true"}},
+	 * calling {@code extractStringObject(json, "requiredLabels")} returns a map
+	 * with entries {@code platform→macos} and {@code gpu→true}.</p>
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return a map of string key-value pairs, empty if not found
+	 */
+	public static Map<String, String> extractStringObject(String json, String field) {
+		Map<String, String> result = new LinkedHashMap<>();
+		if (json == null) return result;
+
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			JsonNode root = mapper.readTree(json);
+			JsonNode obj = root.get(field);
+			if (obj == null || !obj.isObject()) return result;
+
+			Iterator<Map.Entry<String, JsonNode>> fields = obj.fields();
+			while (fields.hasNext()) {
+				Map.Entry<String, JsonNode> entry = fields.next();
+				if (entry.getValue().isTextual()) {
+					result.put(entry.getKey(), entry.getValue().asText());
+				}
+			}
+		} catch (Exception e) {
+			// Return empty map on parse failure
 		}
 
 		return result;

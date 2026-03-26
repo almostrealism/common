@@ -18,7 +18,7 @@ package org.almostrealism.audio.midi.test;
 
 import org.almostrealism.audio.midi.MidiInputListener;
 import org.almostrealism.audio.midi.VelocityCurve;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -29,7 +29,7 @@ import static org.junit.Assert.*;
 /**
  * Tests for {@link MidiInputListener} and related classes.
  */
-public class MidiInputListenerTest implements TestFeatures {
+public class MidiInputListenerTest extends TestSuiteBase {
 
 	@Test(timeout = 5000)
 	public void testDefaultMethodsDoNotThrow() {

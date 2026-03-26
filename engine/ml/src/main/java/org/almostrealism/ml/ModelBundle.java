@@ -19,7 +19,7 @@ package org.almostrealism.ml;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
-import org.almostrealism.persistence.CollectionEncoder;
+import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.protobuf.Collections;
 import org.almostrealism.protobuf.Model;
 

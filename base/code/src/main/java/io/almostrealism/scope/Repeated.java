@@ -22,7 +22,7 @@ import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.profile.OperationMetadata;
@@ -453,7 +453,8 @@ public class Repeated<T> extends Scope<T> {
 				if (isSubstantialForExtraction(child, minDepth)) {
 					StaticReference<?> ref = extracted.get(child);
 					if (ref == null) {
-						ref = new StaticReference<>(child.getType(),
+						Class<?> type = child.promoteIfOverflows();
+						ref = new StaticReference<>(type,
 								"f_licm_" + extractIdx[0]++);
 						extracted.put(child, ref);
 						declarations.add(new ExpressionAssignment(true, ref, child));

@@ -24,6 +24,7 @@ import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -60,23 +61,23 @@ public class CollectionAddTests extends TestSuiteBase {
 
 	@Test(timeout = 60 * 60000)
 	@TestDepth(10)
+	@TestProperties(longRunning = true)
 	public void cpuAdd() {
-		if (skipLongTests) return;
 
 		add(ComputeRequirement.CPU);
 	}
 
 	@Test(timeout = 60 * 60000)
 	@TestDepth(10)
+	@TestProperties(longRunning = true)
 	public void gpuAdd() {
-		if (skipLongTests) return;
 
 		add(ComputeRequirement.GPU);
 	}
 
 	@Test(timeout = 60 * 60000)
+	@TestProperties(longRunning = true)
 	public void javaAdd() throws InterruptedException {
-		if (skipLongTests) return;
 
 		double[] a = new double[size];
 		double[] b = new double[size];

@@ -39,6 +39,7 @@ import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.instructions.ComputationScopeCompiler;
 import org.almostrealism.hardware.jni.NativeDataContext;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.Console;
@@ -117,10 +118,8 @@ import java.util.function.Consumer;
  *
  * <h3>AR_HARDWARE_LIBS</h3>
  * <p><strong>Purpose:</strong> Directory where generated native libraries are stored.</p>
- * <p><strong>Required:</strong> Yes (system will not function without this)</p>
- * <pre>
- * export AR_HARDWARE_LIBS=/tmp/ar_libs/
- * </pre>
+ * <p><strong>Default:</strong> Auto-detected via {@link io.almostrealism.io.SystemUtils#getExtensionsPath()}.
+ * Setting this manually is almost always a mistake — the auto-detected path is preferred.</p>
  *
  * <h3>AR_HARDWARE_PRECISION</h3>
  * <p><strong>Purpose:</strong> Floating-point precision for computations.</p>
@@ -132,10 +131,10 @@ import java.util.function.Consumer;
  *
  * <h3>AR_HARDWARE_MEMORY_SCALE</h3>
  * <p><strong>Purpose:</strong> Controls maximum memory allocation size.</p>
- * <p><strong>Formula:</strong> Max reservation = 2^MEMORY_SCALE * 64MB</p>
- * <p><strong>Default:</strong> 4 (i.e., 2^4 * 64MB = 1GB)</p>
+ * <p><strong>Formula:</strong> Max bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB</p>
+ * <p><strong>Default:</strong> 4 (~4GB with FP32)</p>
  * <pre>
- * # Allow 4GB max reservation (2^6 * 64MB = 4GB)
+ * # Allow ~16GB max (FP32: 4 * 2^6 * 64MB)
  * export AR_HARDWARE_MEMORY_SCALE=6
  * </pre>
  *
@@ -179,13 +178,13 @@ import java.util.function.Consumer;
  *
  * <h3>Development (Fast Compilation, CPU Execution)</h3>
  * <pre>
- * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * # AR_HARDWARE_LIBS is auto-detected — do not set manually
  * export AR_HARDWARE_PRECISION=FP64
  * </pre>
  *
  * <h3>Production GPU (Maximum Performance)</h3>
  * <pre>
- * export AR_HARDWARE_LIBS=/var/ar_libs/
+ * # AR_HARDWARE_LIBS is auto-detected — do not set manually
  * export AR_HARDWARE_DRIVER=gpu
  * export AR_HARDWARE_PRECISION=FP32
  * export AR_HARDWARE_MEMORY_SCALE=6
@@ -194,7 +193,7 @@ import java.util.function.Consumer;
  *
  * <h3>Apple Silicon (Unified Memory)</h3>
  * <pre>
- * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * # AR_HARDWARE_LIBS is auto-detected — do not set manually
  * export AR_HARDWARE_DRIVER=mtl
  * export AR_HARDWARE_NIO_MEMORY=true
  * export AR_HARDWARE_PRECISION=FP32
@@ -202,7 +201,7 @@ import java.util.function.Consumer;
  *
  * <h3>Multi-Backend (OpenCL + JNI Fallback)</h3>
  * <pre>
- * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * # AR_HARDWARE_LIBS is auto-detected — do not set manually
  * export AR_HARDWARE_DRIVER=cl,native
  * export AR_HARDWARE_PRECISION=FP32
  * </pre>
@@ -410,15 +409,12 @@ import java.util.function.Consumer;
  *
  * <h2>Common Pitfalls</h2>
  *
- * <h3>Forgetting AR_HARDWARE_LIBS</h3>
+ * <h3>AR_HARDWARE_LIBS</h3>
  * <pre>
- * # BAD: Missing required environment variable
- * java -jar myapp.jar
- * # Error: NoClassDefFoundError
- *
- * # GOOD: Set AR_HARDWARE_LIBS before running
- * export AR_HARDWARE_LIBS=/tmp/ar_libs/
- * java -jar myapp.jar
+ * # AR_HARDWARE_LIBS is auto-detected — setting it manually is almost
+ * # always a mistake and can cause permission errors on shared systems.
+ * # If you see NoClassDefFoundError, check that the auto-detected
+ * # directory is writable rather than overriding with a custom path.
  * </pre>
  *
  * <h3>Incompatible Memory Location with NIO</h3>
@@ -561,6 +557,7 @@ public final class Hardware {
 
 	private final String name;
 	private final boolean memVolatile;
+	private final KernelMemoryGuard kernelMemoryGuard;
 	private long maxReservation;
 	private Location location;
 	private NativeBufferMemoryProvider nioMemory;
@@ -580,6 +577,7 @@ public final class Hardware {
 		this.maxReservation = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
 		this.location = location;
 		this.memVolatile = location == Location.HEAP;
+		this.kernelMemoryGuard = new KernelMemoryGuard();
 		this.contextListeners = Collections.synchronizedList(new ArrayList<>());
 		this.contexts = new ArrayList<>();
 
@@ -767,6 +765,14 @@ public final class Hardware {
 	 * @return The local hardware singleton
 	 */
 	public static Hardware getLocalHardware() { return local; }
+
+	/**
+	 * Returns the {@link KernelMemoryGuard} that tracks active kernel executions
+	 * and prevents native memory deallocation while kernels are in flight.
+	 *
+	 * @return The kernel memory guard instance
+	 */
+	public KernelMemoryGuard getKernelMemoryGuard() { return kernelMemoryGuard; }
 
 	/**
 	 * Returns the {@link DefaultComputer} managing compilation and execution.
@@ -1033,7 +1039,7 @@ public final class Hardware {
 	/**
 	 * Returns the memory scale exponent for maximum allocation size.
 	 *
-	 * <p>Max reservation = 2^MEMORY_SCALE * 64MB. Default is 4 (1GB).</p>
+	 * <p>Max bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB. Default is 4 (~4GB with FP32).</p>
 	 *
 	 * @return The memory scale exponent
 	 */

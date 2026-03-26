@@ -27,21 +27,34 @@ import java.lang.annotation.Target;
  * (from {@code AR_TEST_DEPTH} environment variable) is less than the
  * specified value.
  *
- * <p>Test depth tiers:</p>
+ * <p>Each depth tier should contain a <b>representative mix</b> of test
+ * types and durations — fast unit tests alongside longer integration tests —
+ * so that even a low-depth run exercises the full range of functionality.
+ * Depth is not a proxy for test duration; it controls how many tests run
+ * at each level of thoroughness.</p>
+ *
+ * <p>Target time budgets per tier:</p>
  * <ul>
- *   <li><b>0</b>: Basic smoke tests (always run)</li>
- *   <li><b>1+</b>: Medium complexity tests</li>
- *   <li><b>2+</b>: Comprehensive tests</li>
- *   <li><b>3+</b>: Heavy/expensive tests</li>
- *   <li><b>10+</b>: Very expensive tests</li>
+ *   <li><b>0 (no annotation)</b>: ~20 minutes total — core coverage across
+ *       all modules, including some long-running tests</li>
+ *   <li><b>1</b>: ~60 minutes total — broader coverage, still a mix of
+ *       fast and slow tests</li>
+ *   <li><b>2</b>: ~2 hours total — comprehensive coverage</li>
+ *   <li><b>3+</b>: Full suite — everything runs (~4+ hours)</li>
  * </ul>
+ *
+ * <p><b>Important:</b> Do not assign depth based solely on timeout duration.
+ * A 2-minute test that validates a critical code path belongs at depth 0.
+ * A 5-second test that duplicates coverage already present at depth 0
+ * belongs at depth 1 or higher. The goal is that each tier provides
+ * meaningful confidence independently.</p>
  *
  * <h2>Usage</h2>
  * <pre>{@code
- * public class MyTest extends AlmostRealismTest {
+ * public class MyTest extends TestSuiteBase {
  *     @Test(timeout = 30000)
  *     @TestDepth(2)
- *     public void expensiveTest() {
+ *     public void additionalCoverageTest() {
  *         // Only runs if AR_TEST_DEPTH >= 2
  *     }
  * }

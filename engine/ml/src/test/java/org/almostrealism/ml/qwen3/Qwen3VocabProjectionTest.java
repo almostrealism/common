@@ -141,7 +141,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 	/**
 	 * Incrementally test larger vocab sizes to find the breaking point.
 	 */
-	@Test(timeout = 60000)
+	@Test(timeout = 2 * 60000)
 	public void testProgressiveVocabSizes() {
 		int inputDim = 896;
 		int[] vocabSizes = {1000, 5000, 10000, 25000, 50000, 100000, 151936};

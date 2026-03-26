@@ -35,8 +35,11 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -131,6 +134,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private boolean mergeConflictsDetected = false;
     private List<String> conflictFiles = new ArrayList<>();
 
+    // ---- Label-based routing requirements ----
+    private final Map<String, String> requiredLabels = new LinkedHashMap<>();
+
     private Consumer<JobOutput> outputConsumer;
     private final CompletableFuture<Void> future = new CompletableFuture<>();
 
@@ -149,6 +155,21 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      */
     protected GitManagedJob(String taskId) {
         this.taskId = taskId;
+    }
+
+    /**
+     * Sets a required label that a Node must have to execute this job.
+     *
+     * @param key   the label key (e.g. "platform")
+     * @param value the required value (e.g. "macos")
+     */
+    public void setRequiredLabel(String key, String value) {
+        requiredLabels.put(key, value);
+    }
+
+    @Override
+    public Map<String, String> getRequiredLabels() {
+        return Collections.unmodifiableMap(requiredLabels);
     }
 
     /**
@@ -239,24 +260,36 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * @throws RuntimeException if any pre-flight check fails
      */
     private void prepareWorkingDirectory() throws IOException, InterruptedException {
-        // 1. Check for uncommitted changes (excluding ignored files)
-        List<String> dirtyFiles = checkForUncommittedChanges();
-        if (!dirtyFiles.isEmpty()) {
-            // Discard uncommitted changes left by a previous job so the
-            // working directory can be synced cleanly.  This is safe because
-            // agent workers should never have manual edits; any uncommitted
-            // changes are residue from a prior (likely failed) job run.
-            String fileList = dirtyFiles.size() <= 5
-                ? String.join(", ", dirtyFiles)
-                : String.join(", ", dirtyFiles.subList(0, 5)) + " (+" + (dirtyFiles.size() - 5) + " more)";
-            warn("Uncommitted changes found: " + fileList + " -- resetting to clean state");
-            if (executeGit("checkout", ".") != 0) {
-                throw new RuntimeException(
-                    "Failed to discard uncommitted changes: " + fileList);
+        // 1. Check for ANY uncommitted changes -- even files matching the
+        //    exclusion list must be stashed because their presence on disk
+        //    can prevent git from switching branches.
+        List<String> allDirtyFiles = getAllDirtyFiles();
+        if (!allDirtyFiles.isEmpty()) {
+            List<String> nonExcludedFiles = filterExcluded(allDirtyFiles);
+
+            // Build a descriptive file list for the stash message, preferring
+            // non-excluded files but falling back to excluded ones.
+            List<String> labelFiles = nonExcludedFiles.isEmpty()
+                ? allDirtyFiles : nonExcludedFiles;
+            String fileList = labelFiles.size() <= 5
+                ? String.join(", ", labelFiles)
+                : String.join(", ", labelFiles.subList(0, 5))
+                    + " (+" + (labelFiles.size() - 5) + " more)";
+            if (!nonExcludedFiles.isEmpty()) {
+                warn("Uncommitted changes found: " + fileList + " -- stashing");
+            } else {
+                log("Only excluded files are dirty (" + fileList
+                    + ") -- stashing to allow branch switch");
             }
-            // Also remove untracked files that are not in .gitignore
-            executeGit("clean", "-fd");
-            log("Working directory cleaned");
+
+            String stashMessage = "flowtree: interrupted job residue before "
+                + taskId + " [" + fileList + "]";
+            // --include-untracked captures new files as well as modifications
+            if (executeGit("stash", "push", "--include-untracked", "-m", stashMessage) != 0) {
+                throw new RuntimeException(
+                    "Failed to stash uncommitted changes: " + fileList);
+            }
+            log("Working directory cleaned (changes stashed)");
         }
 
         // 2. Fetch latest from origin
@@ -504,16 +537,24 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     /**
      * Checks the working directory for uncommitted changes, excluding files
      * that match the job's excluded patterns (e.g., claude-output, .claude
-     * settings, build artifacts).
+     * settings, build artifacts).  Unlike {@link #getAllDirtyFiles()}, this
+     * only returns files that would NOT normally be excluded.
      *
      * @return list of dirty file paths that are NOT excluded
      */
     private List<String> checkForUncommittedChanges() throws IOException, InterruptedException {
+        return filterExcluded(getAllDirtyFiles());
+    }
+
+    /**
+     * Returns every file reported as dirty by {@code git status --porcelain},
+     * with no exclusion filtering applied.
+     *
+     * @return all dirty file paths
+     */
+    private List<String> getAllDirtyFiles() throws IOException, InterruptedException {
         String statusOutput = executeGitWithOutput("status", "--porcelain");
         List<String> dirtyFiles = new ArrayList<>();
-
-        Set<String> allExcluded = new HashSet<>(excludedPatterns);
-        allExcluded.addAll(additionalExcludedPatterns);
 
         for (String line : statusOutput.split("\n")) {
             if (line.length() > 3) {
@@ -521,25 +562,38 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 if (file.contains(" -> ")) {
                     file = file.split(" -> ")[1];
                 }
-                if (!file.isEmpty() && !matchesAnyPattern(file, allExcluded)) {
+                if (!file.isEmpty()) {
                     dirtyFiles.add(file);
                 }
             }
-        }
-
-        if (!dirtyFiles.isEmpty()) {
-            warn("Found " + dirtyFiles.size() + " uncommitted file(s) not in exclude list");
-        } else {
-            log("Working directory is clean (excluding ignored files)");
         }
 
         return dirtyFiles;
     }
 
     /**
+     * Filters out files that match the job's excluded patterns.
+     *
+     * @param files list of file paths
+     * @return files that do NOT match any excluded pattern
+     */
+    private List<String> filterExcluded(List<String> files) {
+        Set<String> allExcluded = new HashSet<>(excludedPatterns);
+        allExcluded.addAll(additionalExcludedPatterns);
+
+        List<String> result = new ArrayList<>();
+        for (String file : files) {
+            if (!matchesAnyPattern(file, allExcluded)) {
+                result.add(file);
+            }
+        }
+        return result;
+    }
+
+    /**
      * Fires the job completed event by POSTing to the workstream URL.
-     * The controller's {@code SlackNotifier} receives this event and
-     * formats an appropriate Slack message, so no separate Slack message
+     * The controller's notification system receives this event and
+     * formats an appropriate message, so no separate message
      * is sent from here.
      */
     protected void fireJobCompleted(Exception error) {
@@ -857,9 +911,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * Detects an open pull request URL for the target branch.
      *
      * <p>Only attempts detection if the origin remote points to GitHub.
-     * Uses the GitHub REST API directly (via {@link HttpURLConnection})
-     * to query for an open PR, authenticated with a {@code GITHUB_TOKEN}
-     * or {@code GH_TOKEN} environment variable.</p>
+     * Uses the controller's GitHub proxy endpoint, which authenticates
+     * with per-org tokens from workstreams.yaml.</p>
      *
      * @return the PR URL, or null if no PR was found
      */
@@ -1322,7 +1375,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * Returns the workstream URL for this job.
      * This URL serves as a prefix for controller interactions:
      * POST to the URL itself sends status events, appending
-     * {@code /messages} sends Slack messages.
+     * {@code /messages} sends messages.
      */
     public String getWorkstreamUrl() {
         return workstreamUrl;
@@ -1333,7 +1386,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      *
      * <p>The URL follows the pattern
      * {@code http://controller/api/workstreams/{id}/jobs/{jobId}} for job-level
-     * communication (messages go to the job's Slack thread) or
+     * communication (messages go to the job's thread) or
      * {@code http://controller/api/workstreams/{id}} for workstream-level
      * communication (messages go to the channel).</p>
      *
@@ -1571,6 +1624,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         if (workstreamUrl != null) {
             sb.append("::workstreamUrl:=").append(base64Encode(workstreamUrl));
         }
+        for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
+            sb.append("::req.").append(entry.getKey()).append(":=").append(entry.getValue());
+        }
         return sb.toString();
     }
 
@@ -1618,6 +1674,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 break;
             case "dryRun":
                 this.dryRun = Boolean.parseBoolean(value);
+                break;
+            default:
+                if (key.startsWith("req.")) {
+                    requiredLabels.put(key.substring(4), value);
+                }
                 break;
         }
     }

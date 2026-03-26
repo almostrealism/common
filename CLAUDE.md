@@ -7,7 +7,7 @@
 ```
 common/
 ├── base/                          # Layer 1 — Foundation
-│   ├── uml/                       #   ar-uml: Annotations, lifecycle, semantic metadata
+│   ├── meta/                      #   ar-meta: Annotations, lifecycle, semantic metadata
 │   ├── io/                        #   ar-io: Logging, metrics, alerts, lifecycle management
 │   ├── relation/                  #   ar-relation: Producer/Evaluable model, process optimization
 │   ├── code/                      #   ar-code: Expression trees, scopes, code generation
@@ -26,8 +26,7 @@ common/
 │   ├── graph/                     #   ar-graph: Neural network layers, computation graphs, autodiff
 │   ├── physics/                   #   ar-physics: Atomic structures, photon fields, rigid body dynamics
 │   ├── space/                     #   ar-space: 3D scenes, meshes, CSG, spatial acceleration
-│   ├── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
-│   └── llvm/                      #   ar-llvm: LLVM IR / C code integration via GraalVM polyglot
+│   └── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
 │
 ├── engine/                        # Layer 4 — Applications & Training
 │   ├── optimize/                  #   ar-optimize: Adam, evolutionary algorithms, training loops
@@ -73,13 +72,15 @@ mcp__ar-consultant__consult question:"..." keywords:["SpecificClass", "method", 
 
 Always provide `keywords` (2-5 domain-specific terms, most specific first). Without keywords, search results are poor.
 
+**Use multi-word phrases as keywords, not individual common words.** For example, use `["Features mixin", "CollectionFeatures"]` instead of `["Features", "mixin", "CollectionFeatures", "default", "interface"]`. Single common words like "default", "interface", "pattern" match too many documents and drown out the specific result. Compound phrases match the right doc on the first try.
+
 For debugging/CI failures: extract component names from the error, consult about those components, THEN investigate.
 
 **Why mechanical:** Judgment-based rules fail because you always think the current task is an exception.
 
 ## Rule 2: STORE MEMORIES IMMEDIATELY
 
-Call `mcp__ar-consultant__remember` **immediately** when you:
+Call `mcp__ar-consultant__remember` (interactive) or `mcp__ar-manager__memory_store` (FlowTree jobs) **immediately** when you:
 - Fix a bug (root cause + fix)
 - Complete a task (what changed and why)
 - Discover a non-obvious behavior or gotcha
@@ -94,11 +95,20 @@ Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. 
 
 ## Rule 3: RECALL MEMORIES BEFORE STARTING WORK
 
-Call `mcp__ar-consultant__recall` at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
 
 ---
 
 # CODE RULES
+
+## CRITICAL: NEVER Create New Maven Modules
+
+**Agents MUST NEVER create new Maven modules.** The Maven module structure of this project is externally controlled. If a task appears to require creating a new Maven module, the agent MUST STOP and abandon the task rather than create one. This applies to:
+- Creating new `pom.xml` files that define a new module
+- Adding new `<module>` entries to any parent `pom.xml`
+- Creating new directory structures that would constitute a Maven module
+
+If the agent believes a new module is needed, it must document the requirement in its completion notes and explain why, but MUST NOT create the module itself. The project owner will handle module creation manually.
 
 ## Do Not Commit Code
 
@@ -138,25 +148,20 @@ See [docs/internals/test-examples.md](docs/internals/test-examples.md).
 
 # SETUP
 
-**Required environment variable** before running Java code:
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-```
-
+**Do NOT set `AR_HARDWARE_LIBS`** — the system auto-detects a suitable directory. Setting it
+manually (especially to `/tmp/ar_libs/`) causes permission errors on shared or sandboxed systems.
 Leave `AR_HARDWARE_DRIVER` unset — the system auto-selects the best backend.
-
-Forgetting `AR_HARDWARE_LIBS` causes `NoClassDefFoundError: PackedCollection` and similar failures.
 
 **Memory configuration** for large models or `HardwareException: Memory max reached`:
 ```bash
-export AR_HARDWARE_MEMORY_SCALE=8   # 16GB (default is 7 = 8GB)
+export AR_HARDWARE_MEMORY_SCALE=6   # 16GB (default is 4 = ~4GB)
 ```
 
 See [hardware/README.md](base/hardware/README.md).
 
 **Build verification** — before declaring a task complete:
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && mvn clean install -DskipTests
+mvn clean install -DskipTests
 ```
 
 This must succeed. Do not rely on `mvn compile` alone.

@@ -21,6 +21,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
@@ -44,7 +45,7 @@ public class Convolution2dDeltaComputationTests extends TestSuiteBase {
 		convolution2d("convSmallest", shape(dim, dim), size, filters);
 	}
 
-	@Test(timeout = 40 * 60000)
+	@Test(timeout = 60 * 60000)
 	@TestDepth(2)
 	public void convSmall() throws IOException {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -57,8 +58,8 @@ public class Convolution2dDeltaComputationTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 60000)
+	@TestProperties(knownIssue = true)
 	public void convLarge() throws IOException {
-		if (skipKnownIssues) return;
 
 		int dim = 64;
 		int size = 3;

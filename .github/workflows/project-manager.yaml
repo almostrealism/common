@@ -91,7 +91,7 @@ jobs:
           BRANCH: ${{ steps.new_branch.outputs.branch }}
           BASE_BRANCH: master
         run: |
-          ./tools/ci/prompts/build-planning-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-planning-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit planning agent job
         if: steps.branches.outputs.needs_new_branch == 'true'
@@ -101,8 +101,9 @@ jobs:
           BRANCH: ${{ steps.new_branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Plan new work branch"
+          AUTO_CREATE_PR: "true"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Summary
         if: always()

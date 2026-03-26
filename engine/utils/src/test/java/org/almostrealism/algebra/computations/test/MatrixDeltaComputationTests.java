@@ -25,6 +25,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -418,8 +419,8 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 60000)
+	@TestProperties(knownIssue = true)
 	public void denseWeightsLarge() throws IOException {
-		if (skipKnownIssues) return;
 
 		denseWeights("denseWeightsLarge", 7688, 10);
 	}

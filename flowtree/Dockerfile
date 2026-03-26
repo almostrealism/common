@@ -8,10 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 # Copy pre-built JARs from host build
 # Requires: mvn package -pl flowtree -am -DskipTests
 #           mvn dependency:copy-dependencies -pl flowtree -DoutputDirectory=target/dependency
-COPY target/ar-flowtree-*.jar /app/lib/
-COPY target/dependency/*.jar /app/lib/
+COPY flowtree/target/ar-flowtree-*.jar /app/lib/
+COPY flowtree/target/dependency/*.jar /app/lib/
 
-# Working directory for config files (workstreams.yaml, slack-tokens.json)
+# No MCP tool source files needed — ar-manager is the single
+# centralized tool, running as a separate Docker service.
+
+# Working directory for config files (workstreams.yaml, notification tokens, etc.)
 # Mount /Users/Shared/flowtree/controller here at runtime
 WORKDIR /config
 

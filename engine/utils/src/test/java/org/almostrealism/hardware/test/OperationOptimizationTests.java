@@ -24,6 +24,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -82,8 +83,8 @@ public class OperationOptimizationTests extends TestSuiteBase {
 
 	@Test(timeout = 2 * 60000)
 	@TestDepth(3)
+	@TestProperties(longRunning = true)
 	public void matmulLoopComparison() {
-		if (skipLongTests) return;
 
 		int itr = 2000000;
 		int dim = 64;

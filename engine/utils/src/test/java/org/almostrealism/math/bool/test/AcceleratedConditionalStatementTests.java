@@ -22,6 +22,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -72,8 +73,8 @@ public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 	}
 
 	@Test(timeout = 10000)
+	@TestProperties(knownIssue = true)
 	public void dotProduct() {
-		if (skipKnownIssues) return;
 
 		Evaluable<PackedCollection> lt = lessThan(
 				oDotd(ray(i -> Math.random())),

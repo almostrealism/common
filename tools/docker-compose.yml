@@ -17,7 +17,7 @@
 #   mvn dependency:copy-dependencies -pl flowtree -DoutputDirectory=target/dependency
 #
 # Controller configuration:
-#   Place workstreams.yaml and slack-tokens.json in
+#   Place workstreams.yaml and notification token files in
 #   /Users/Shared/flowtree/controller/ on the host.
 #   GitHub org tokens go in the githubOrgs section of workstreams.yaml.
 #   See flowtree/src/main/resources/workstreams-example.yaml for reference.
@@ -49,16 +49,19 @@ services:
 
   controller:
     build:
-      context: ../flowtree
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: flowtree/Dockerfile
     ports:
       - "7780:7780"
       - "7766:7766"
     volumes:
       - /Users/Shared/flowtree/controller:/config
+      - /Users/Shared/flowtree/secrets:/secrets:ro
     environment:
       - FLOWTREE_PORT=7766
       - AR_MEMORY_URL=http://ar-memory:8020
+      - AR_MANAGER_URL=https://mac-studio.taild0f87.ts.net
+      - AR_MANAGER_SHARED_SECRET_FILE=/secrets/shared-secret
     depends_on:
       ar-memory:
         condition: service_healthy
@@ -72,12 +75,14 @@ services:
       - "${AR_MANAGER_PORT:-8010}:8010"
     volumes:
       - /Users/Shared/flowtree/manager:/config:ro
+      - /Users/Shared/flowtree/secrets:/secrets:ro
     environment:
       - AR_CONTROLLER_URL=http://controller:7780
       - AR_MEMORY_URL=http://ar-memory:8020
       - AR_MANAGER_GITHUB_TOKEN=${AR_MANAGER_GITHUB_TOKEN:-}
       - AR_MANAGER_TOKEN_FILE=/config/manager-tokens.json
       - AR_MANAGER_ISSUER_URL=${AR_MANAGER_ISSUER_URL:-}
+      - AR_MANAGER_SHARED_SECRET_FILE=/secrets/shared-secret
       - AR_CONSULTANT_BACKEND=${AR_CONSULTANT_BACKEND:-llamacpp}
       - AR_CONSULTANT_LLAMA_URL=${AR_CONSULTANT_LLAMA_URL:-}
     depends_on:

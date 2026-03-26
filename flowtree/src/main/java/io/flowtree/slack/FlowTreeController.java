@@ -31,6 +31,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.util.SignalWireDeliveryProvider;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -213,11 +214,73 @@ public class FlowTreeController implements ConsoleFeatures {
             notifier.setChannelOwnerUserId(config.getChannelOwnerUserId());
         }
 
+        // Pass default channel to notifier for fallback message delivery
+        if (config.getDefaultChannel() != null) {
+            notifier.setDefaultChannelId(config.getDefaultChannel());
+        }
+
         // Pass config and file reference to listener for /flowtree setup persistence
         listener.setWorkstreamConfig(config, configFile);
 
-        // Start centralized MCP servers if configured
-        startCentralizedMcpServers(config, configFile.getParentFile());
+        // Validate GitHub tokens before proceeding
+        validateGitHubTokens(config);
+
+        // Configure ar-manager URL and shared secret for agent jobs
+        String arManagerUrl = System.getenv("AR_MANAGER_URL");
+        if (arManagerUrl == null || arManagerUrl.isEmpty()) {
+            arManagerUrl = "http://ar-manager:8010";
+        }
+        String arManagerSecret = loadSharedSecret();
+        listener.setArManagerUrl(arManagerUrl);
+        if (arManagerSecret != null && !arManagerSecret.isEmpty()) {
+            listener.setArManagerSharedSecret(arManagerSecret);
+            log("ar-manager URL: " + arManagerUrl + " (HMAC auth enabled)");
+        } else {
+            log("ar-manager URL: " + arManagerUrl + " (WARNING: no shared secret — agents will not have ar-manager access)");
+        }
+    }
+
+    /**
+     * Validates all GitHub tokens referenced by the configuration.
+     *
+     * <p>Checks that each token is valid, can access its target repositories,
+     * and has the required permissions for PR operations. If any token fails
+     * validation, the controller exits with an error to prevent agents from
+     * running with broken credentials.</p>
+     *
+     * @param config the loaded workstream configuration
+     */
+    private void validateGitHubTokens(WorkstreamConfig config) {
+        GitHubTokenValidator validator = new GitHubTokenValidator();
+        List<GitHubTokenValidator.TokenValidationResult> results =
+                validator.validateAll(config);
+
+        if (results.isEmpty()) {
+            log("No GitHub tokens configured — skipping validation");
+            return;
+        }
+
+        log("Validating " + results.size() + " GitHub token(s)...");
+
+        boolean anyFailed = false;
+        for (GitHubTokenValidator.TokenValidationResult result : results) {
+            if (result.isValid()) {
+                log("  [OK] " + result.getLabel());
+            } else {
+                anyFailed = true;
+                warn("  [FAIL] " + result.getLabel());
+                for (String error : result.getErrors()) {
+                    warn("    - " + error);
+                }
+            }
+        }
+
+        if (anyFailed) {
+            warn("GitHub token validation failed — fix the tokens above and restart");
+            System.exit(1);
+        }
+
+        log("All GitHub tokens validated successfully");
     }
 
     /**
@@ -316,11 +379,14 @@ public class FlowTreeController implements ConsoleFeatures {
         log("===========================================");
 
         // Start FlowTree server for inbound agent connections.
-        // Set nodes.initial=0 so the controller never processes jobs locally --
-        // all jobs are forwarded to connected agents.
+        // The controller runs one relay Node (nodes.initial=1) with a "role:relay"
+        // label so it never matches job requirements (e.g., platform:macos).
+        // This Node serves as a warehouse: jobs sit in its queue and get
+        // picked up by connected agent Nodes for execution.
         Properties flowtreeProps = new Properties();
         flowtreeProps.setProperty("server.port", String.valueOf(flowtreePort));
-        flowtreeProps.setProperty("nodes.initial", "0");
+        flowtreeProps.setProperty("nodes.initial", "1");
+        flowtreeProps.setProperty("nodes.labels.role", "relay");
         flowtreeServer = new Server(flowtreeProps);
         flowtreeServer.start();
         listener.setServer(flowtreeServer);
@@ -332,7 +398,7 @@ public class FlowTreeController implements ConsoleFeatures {
             log("         Running in simulation mode");
             simulationMode = true;
             startApiEndpoint();
-            registerPushedTools();
+            // Pushed tools removed — ar-manager is the single centralized tool
             printStartupSummary();
             return;
         }
@@ -368,7 +434,7 @@ public class FlowTreeController implements ConsoleFeatures {
         log("Socket Mode connection established");
 
         startApiEndpoint();
-        registerPushedTools();
+        // Pushed tools removed — ar-manager is the single centralized tool
         printStartupSummary();
     }
 
@@ -445,13 +511,20 @@ public class FlowTreeController implements ConsoleFeatures {
      * @param configDir the directory containing the YAML config file, used to
      *                  resolve relative source paths (may be null)
      */
+    /**
+     * @deprecated Centralized MCP servers are no longer managed by the controller.
+     *             ar-manager is the single centralized tool, running as a
+     *             separate Docker service.
+     */
     private void startCentralizedMcpServers(WorkstreamConfig config, File configDir) {
+        // No-op: ar-manager replaces all centralized MCP servers.
+        // Agents access ar-manager over HTTP with HMAC temp tokens.
         Map<String, WorkstreamConfig.McpServerEntry> mcpServers = config.getMcpServers();
         if (mcpServers == null || mcpServers.isEmpty()) return;
 
-        log("Starting " + mcpServers.size() + " centralized MCP server(s)...");
+        log("Configuring " + mcpServers.size() + " centralized MCP server(s)...");
 
-        // Build the centralized config JSON as we start each server
+        // Build the centralized config JSON as we register each server
         StringBuilder configJson = new StringBuilder("{");
         boolean first = true;
 
@@ -459,48 +532,53 @@ public class FlowTreeController implements ConsoleFeatures {
             String serverName = entry.getKey();
             WorkstreamConfig.McpServerEntry serverEntry = entry.getValue();
 
-            // Resolve source path relative to config file directory
-            Path sourcePath;
-            if (configDir != null) {
-                sourcePath = configDir.toPath().resolve(serverEntry.getSource());
+            String url;
+            List<String> tools;
+
+            if (serverEntry.isExternal()) {
+                // External server: already running, just reference by URL
+                url = serverEntry.getUrl();
+                tools = serverEntry.getTools();
+                if (tools == null || tools.isEmpty()) {
+                    warn("External server " + serverName + " has no tools listed — "
+                        + "agents will not be able to use it");
+                    tools = List.of();
+                }
+                log("External " + serverName + " at " + url
+                    + " (" + tools.size() + " tools)");
             } else {
-                sourcePath = Path.of(serverEntry.getSource());
-            }
+                // Managed server: resolve source, discover tools, launch process
+                Path sourcePath = resolveToolSource(serverEntry.getSource(), configDir);
 
-            // Discover tool names from the source file
-            List<String> tools = McpToolDiscovery.discoverToolNames(sourcePath);
-            if (tools.isEmpty()) {
-                warn("No tools discovered from " + sourcePath + " for server " + serverName);
-            }
-
-            // Start the Python process
-            try {
-                ProcessBuilder pb = new ProcessBuilder("python3", sourcePath.toString());
-                pb.environment().put("MCP_TRANSPORT", "http");
-                pb.environment().put("MCP_PORT", String.valueOf(serverEntry.getPort()));
-
-                // Forward AR_* environment variables to the subprocess so that
-                // server-specific configuration (e.g., AR_CONSULTANT_LLAMACPP_URL)
-                // set on the controller is visible to the Python process.
-                for (Map.Entry<String, String> env : System.getenv().entrySet()) {
-                    if (env.getKey().startsWith("AR_")) {
-                        pb.environment().put(env.getKey(), env.getValue());
-                    }
+                tools = McpToolDiscovery.discoverToolNames(sourcePath);
+                if (tools.isEmpty()) {
+                    warn("No tools discovered from " + sourcePath + " for server " + serverName);
                 }
 
-                pb.inheritIO();
+                try {
+                    ProcessBuilder pb = new ProcessBuilder("python3", sourcePath.toString());
+                    pb.environment().put("MCP_TRANSPORT", "http");
+                    pb.environment().put("MCP_PORT", String.valueOf(serverEntry.getPort()));
 
-                Process process = pb.start();
-                mcpProcesses.add(process);
-                log("Started " + serverName + " on port " + serverEntry.getPort()
-                    + " (PID " + process.pid() + ", " + tools.size() + " tools)");
-            } catch (IOException e) {
-                warn("Failed to start " + serverName + ": " + e.getMessage());
-                continue;
+                    for (Map.Entry<String, String> env : System.getenv().entrySet()) {
+                        if (env.getKey().startsWith("AR_")) {
+                            pb.environment().put(env.getKey(), env.getValue());
+                        }
+                    }
+
+                    pb.inheritIO();
+
+                    Process process = pb.start();
+                    mcpProcesses.add(process);
+                    log("Started " + serverName + " on port " + serverEntry.getPort()
+                        + " (PID " + process.pid() + ", " + tools.size() + " tools)");
+                } catch (IOException e) {
+                    warn("Failed to start " + serverName + ": " + e.getMessage());
+                    continue;
+                }
+
+                url = "http://0.0.0.0:" + serverEntry.getPort() + "/mcp";
             }
-
-            // Build this server's entry in the config JSON
-            String url = "http://0.0.0.0:" + serverEntry.getPort() + "/mcp";
 
             if (!first) configJson.append(",");
             first = false;
@@ -517,8 +595,7 @@ public class FlowTreeController implements ConsoleFeatures {
         configJson.append("}");
         String centralizedConfig = configJson.toString();
 
-        listener.setCentralizedMcpConfig(centralizedConfig);
-        log("Centralized MCP config: " + centralizedConfig);
+        log("Centralized MCP config (legacy, not used): " + centralizedConfig);
     }
 
     /**
@@ -533,6 +610,60 @@ public class FlowTreeController implements ConsoleFeatures {
      * <p>Must be called after {@link #startApiEndpoint()} since it requires
      * the API endpoint reference and listening port.</p>
      */
+    /**
+     * Resolves a tool source path, trying the config directory first,
+     * then falling back to the application directory. This supports
+     * container deployments where {@code /config} is a volume mount
+     * that hides files bundled into the image at {@code /app}.
+     */
+    /**
+     * Loads the ar-manager shared secret from a file or environment variable.
+     *
+     * <p>Checks {@code AR_MANAGER_SHARED_SECRET_FILE} first (path to a file
+     * containing the secret), then falls back to {@code AR_MANAGER_SHARED_SECRET}
+     * (the secret value directly).</p>
+     *
+     * @return the shared secret, or null if not configured
+     */
+    static String loadSharedSecret() {
+        String secretFile = System.getenv("AR_MANAGER_SHARED_SECRET_FILE");
+        if (secretFile != null && !secretFile.isEmpty()) {
+            try {
+                String secret = java.nio.file.Files.readString(
+                    java.nio.file.Path.of(secretFile), java.nio.charset.StandardCharsets.UTF_8).trim();
+                if (!secret.isEmpty()) {
+                    return secret;
+                }
+            } catch (java.io.IOException e) {
+                Console.root().warn("Failed to read shared secret file " + secretFile + ": " + e.getMessage());
+            }
+        }
+        return System.getenv("AR_MANAGER_SHARED_SECRET");
+    }
+
+    private static Path resolveToolSource(String source, File configDir) {
+        if (configDir != null) {
+            Path configRelative = configDir.toPath().resolve(source);
+            if (Files.exists(configRelative)) {
+                return configRelative;
+            }
+        }
+
+        // Fall back to app directory (set via FLOWTREE_APP_DIR, default /app)
+        String appDir = System.getenv("FLOWTREE_APP_DIR");
+        if (appDir == null) appDir = "/app";
+        Path appRelative = Path.of(appDir).resolve(source);
+        if (Files.exists(appRelative)) {
+            return appRelative;
+        }
+
+        // Neither exists — return the config-relative path for the error message
+        if (configDir != null) {
+            return configDir.toPath().resolve(source);
+        }
+        return Path.of(source);
+    }
+
     private void registerPushedTools() {
         if (loadedConfig == null || apiEndpoint == null) return;
 
@@ -551,13 +682,10 @@ public class FlowTreeController implements ConsoleFeatures {
             String serverName = entry.getKey();
             WorkstreamConfig.PushedToolEntry toolEntry = entry.getValue();
 
-            // Resolve source path relative to config file directory
-            Path sourcePath;
-            if (configDir != null) {
-                sourcePath = configDir.toPath().resolve(toolEntry.getSource());
-            } else {
-                sourcePath = Path.of(toolEntry.getSource());
-            }
+            // Resolve source path relative to config file directory,
+            // falling back to the app directory for container deployments
+            // where /config is a volume mount that hides bundled files
+            Path sourcePath = resolveToolSource(toolEntry.getSource(), configDir);
 
             // Discover tool names from the source file
             List<String> tools = McpToolDiscovery.discoverToolNames(sourcePath);
@@ -604,8 +732,7 @@ public class FlowTreeController implements ConsoleFeatures {
         configJson.append("}");
         String pushedConfig = configJson.toString();
 
-        listener.setPushedToolsConfig(pushedConfig);
-        log("Pushed tools config: " + pushedConfig);
+        log("Pushed tools config (legacy, not used): " + pushedConfig);
     }
 
     /**
@@ -613,8 +740,12 @@ public class FlowTreeController implements ConsoleFeatures {
      * and for programmatic job submission.
      */
     private void startApiEndpoint() {
-        // Initialize stats store
-        String dataDir = System.getProperty("user.home") + "/.flowtree";
+        // Initialize stats store — prefer the config directory (which is
+        // typically a persistent volume mount) over user.home so that stats
+        // survive container rebuilds.
+        String dataDir = configFile != null
+                ? configFile.getParentFile().getAbsolutePath()
+                : System.getProperty("user.home") + "/.flowtree";
         new File(dataDir).mkdirs();
         statsStore = new JobStatsStore(dataDir + "/stats");
         statsStore.initialize();
@@ -644,6 +775,22 @@ public class FlowTreeController implements ConsoleFeatures {
                     log("Loaded GitHub tokens for " + orgTokens.size() + " org(s)");
                 }
             }
+
+            // Configure memory server URL for message storage
+            String memoryUrl = System.getenv("AR_MEMORY_URL");
+            if (memoryUrl == null || memoryUrl.isEmpty()) {
+                memoryUrl = "http://localhost:8020";
+            }
+            apiEndpoint.setMemoryServerUrl(memoryUrl);
+            log("Memory server URL: " + memoryUrl);
+
+            // Configure ar-manager URL for token generation
+            String arManagerUrl = System.getenv("AR_MANAGER_URL");
+            if (arManagerUrl == null || arManagerUrl.isEmpty()) {
+                arManagerUrl = "http://ar-manager:8010";
+            }
+            apiEndpoint.setArManagerUrl(arManagerUrl);
+            log("AR Manager URL: " + arManagerUrl);
 
             apiEndpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
             int listeningPort = apiEndpoint.getListeningPort();
