@@ -16,10 +16,10 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.ArrayIndexSequence;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.sequence.ArrayIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ScopeSettings;

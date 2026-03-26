@@ -16,6 +16,8 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexChild;
 import io.almostrealism.expression.Expression;
 
 import java.util.OptionalLong;

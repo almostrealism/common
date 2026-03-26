@@ -1,6 +1,5 @@
 package org.almostrealism.chem;
 
-import org.almostrealism.electrostatic.Photon;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
 import org.almostrealism.physics.BlackBody;

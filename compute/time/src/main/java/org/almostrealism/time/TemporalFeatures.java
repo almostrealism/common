@@ -21,7 +21,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.expression.Atan2;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;

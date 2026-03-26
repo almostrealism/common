@@ -40,7 +40,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.Temporal;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 
 import java.util.ArrayList;
 import java.util.Iterator;

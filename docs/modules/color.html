@@ -237,7 +237,7 @@ Producer&lt;RGB&gt; colorAtPoint = light.getColorAt(pointProducer);</code></pre>
                 <h3>Shader Interface</h3>
                 <p>Shaders compute surface color from lighting context and surface normals.</p>
                 <div class="code-example">
-                    <pre><code class="language-java">public interface Shader&lt;C extends LightingContext&gt; extends Node, Editable {
+                    <pre><code class="language-java">public interface Shader&lt;C extends LightingContext&gt; extends Node {
     // Compute shaded color for surface
     Producer&lt;RGB&gt; shade(C context, DiscreteField normals);
 }</code></pre>

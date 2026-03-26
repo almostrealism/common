@@ -20,8 +20,8 @@ import ai.onnxruntime.OrtException;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.audio.AutoEncoder;
 import org.almostrealism.ml.audio.OnnxAutoEncoder;
-import org.almostrealism.persistence.AssetGroup;
-import org.almostrealism.persistence.AssetGroupInfo;
+import org.almostrealism.persist.assets.AssetGroup;
+import org.almostrealism.persist.assets.AssetGroupInfo;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 

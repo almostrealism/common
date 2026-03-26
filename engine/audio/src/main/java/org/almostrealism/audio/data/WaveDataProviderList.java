@@ -16,7 +16,7 @@
 
 package org.almostrealism.audio.data;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.List;

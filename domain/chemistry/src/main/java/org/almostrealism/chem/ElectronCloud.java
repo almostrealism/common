@@ -16,9 +16,7 @@
 
 package org.almostrealism.chem;
 
-import org.almostrealism.electrostatic.Photon;
 import org.almostrealism.physics.HarmonicAbsorber;
-import org.almostrealism.electrostatic.Valence;
 import org.almostrealism.algebra.Vector;
 
 import java.util.Queue;

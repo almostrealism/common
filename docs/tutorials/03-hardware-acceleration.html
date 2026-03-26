@@ -67,15 +67,14 @@
 echo $AR_HARDWARE_LIBS</code></pre>
 
                 <h3>Windows (PowerShell)</h3>
-                <pre><code class="language-powershell"># Set the library directory
-$env:AR_HARDWARE_LIBS="C:\Temp\ar_libs\"
+                <pre><code class="language-powershell"># AR_HARDWARE_LIBS is auto-detected — do not set manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 
-# Verify
+# Verify auto-detected value
 echo $env:AR_HARDWARE_LIBS</code></pre>
 
                 <h3>Windows (Command Prompt)</h3>
-                <pre><code class="language-bash">set AR_HARDWARE_LIBS=C:\Temp\ar_libs\
+                <pre><code class="language-bash">:: AR_HARDWARE_LIBS is auto-detected — do not set manually
 :: AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 
 echo %AR_HARDWARE_LIBS%</code></pre>
@@ -126,17 +125,12 @@ source ~/.bashrc  # or ~/.zshrc
                 <h2>Step 5: Maven Integration</h2>
                 <p>When running tests or applications via Maven, always prefix with environment variables:</p>
 
-                <pre><code class="language-bash"># Run tests
-# AR_HARDWARE_LIBS is auto-detected — do not set manually && \
-mvn test -pl algebra
-
-# Run specific test
-# AR_HARDWARE_LIBS is auto-detected — do not set manually && \
-mvn test -pl ml -Dtest=TransformerTest
-
-# Run all module tests
-# AR_HARDWARE_LIBS is auto-detected — do not set manually && \
-mvn test</code></pre>
+                <pre><code class="language-bash"># Use the MCP test runner for running tests (recommended):
+#   mcp__ar-test-runner__start_test_run
+#
+# Or from the IDE, set environment variables in Run Configurations.
+# AR_HARDWARE_LIBS is auto-detected — do not set manually.
+# AR_HARDWARE_DRIVER is best left unset to auto-detect.</code></pre>
 
                 <h3>Alternative: Set in IDE</h3>
                 <p>In IntelliJ IDEA or Eclipse, add environment variables to run configurations:</p>

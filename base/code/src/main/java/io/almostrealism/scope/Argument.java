@@ -18,7 +18,6 @@ package io.almostrealism.scope;
 
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Sortable;
 import io.almostrealism.uml.Named;
 
 import java.util.Objects;
@@ -45,7 +44,7 @@ import java.util.function.Supplier;
  * @see Scope
  * @see Expectation
  */
-public class Argument<T> implements Named, Sortable, Delegated<Argument<T>> {
+public class Argument<T> implements Named, Delegated<Argument<T>> {
 	/**
 	 * Indicates how an argument is expected to be used during scope execution.
 	 */
@@ -93,7 +92,6 @@ public class Argument<T> implements Named, Sortable, Delegated<Argument<T>> {
 	 *
 	 * @return the sort hint value
 	 */
-	@Override
 	public int getSortHint() { return getVariable().getSortHint(); }
 
 	/**

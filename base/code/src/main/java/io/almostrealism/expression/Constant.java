@@ -18,8 +18,8 @@ package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Collections;

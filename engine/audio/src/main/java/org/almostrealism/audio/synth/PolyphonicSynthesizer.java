@@ -26,7 +26,7 @@ import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Frequency;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 
 import java.util.ArrayList;
 import java.util.List;
