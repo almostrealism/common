@@ -23,6 +23,7 @@ import org.almostrealism.music.arrange.ChannelSection;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.music.data.ParameterSet;
+import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.collect.PackedCollection;
@@ -282,6 +283,40 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				.map(l -> l.getAllElements(start, end))
 				.flatMap(List::stream)
 				.collect(Collectors.toList());
+	}
+
+	/**
+	 * Converts all elements in this pattern's layer hierarchy to MIDI events.
+	 *
+	 * <p>Iterates over all elements grouped by {@link NoteAudioChoice},
+	 * delegating to {@link PatternElement#toMidiEvents} for each element.
+	 * Melodic patterns produce pitched MIDI events (instrument 0 by default);
+	 * percussive patterns produce drum events (instrument 128).</p>
+	 *
+	 * @param context the audio scene context for timing and scale resolution
+	 * @return list of MIDI note events from all elements, sorted by onset
+	 */
+	public List<MidiNoteEvent> toMidiEvents(AudioSceneContext context) {
+		return toMidiEvents(context, 0.0);
+	}
+
+	/**
+	 * Converts all elements in this pattern's layer hierarchy to MIDI events,
+	 * offset by the given number of measures.
+	 *
+	 * @param context the audio scene context for timing and scale resolution
+	 * @param offset  the pattern offset in measures (for repetitions)
+	 * @return list of MIDI note events from all elements, sorted by onset
+	 */
+	public List<MidiNoteEvent> toMidiEvents(AudioSceneContext context, double offset) {
+		int instrument = melodic ? 0 : MidiNoteEvent.DRUM_INSTRUMENT;
+
+		List<MidiNoteEvent> events = getAllElements(0.0, duration).stream()
+				.flatMap(element -> element.toMidiEvents(context, melodic, offset, instrument).stream())
+				.sorted()
+				.collect(Collectors.toList());
+
+		return events;
 	}
 
 	public Settings getSettings() {
