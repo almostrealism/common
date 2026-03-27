@@ -1538,7 +1538,7 @@ def project_commit_plan(
     # Check if file already exists (need current SHA for updates)
     existing = _github_request(
         "GET",
-        f"/repos/{owner}/{repo}/contents/{quote(path, safe='/')}?ref={quote(effective_branch, safe='')}",
+        f"/repos/{owner}/{repo}/contents/{quote(path, safe='/')}?ref={quote(effective_branch, safe='/')}",
     )
     existing_sha = existing.get("sha")
 
@@ -2181,34 +2181,87 @@ def send_message(
 # ---------------------------------------------------------------------------
 
 
+def _parse_github_remote(url: str) -> Optional[tuple[str, str]]:
+    """Parse owner and repo from a GitHub remote URL.
+
+    Supports ``git@github.com:owner/repo.git`` and
+    ``https://github.com/owner/repo.git`` formats.
+
+    Returns (owner, repo) or None if the URL cannot be parsed.
+    """
+    m = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?$", url)
+    return (m.group(1), m.group(2)) if m else None
+
+
+def _detect_local_github_repo() -> Optional[tuple[str, str, str]]:
+    """Detect the GitHub owner, repo, and current branch from the local git
+    working directory.
+
+    Returns (owner, repo, branch) or None if detection fails.
+    """
+    try:
+        import subprocess
+        remote = subprocess.check_output(
+            ["git", "remote", "get-url", "origin"],
+            stderr=subprocess.DEVNULL, timeout=5,
+        ).decode().strip()
+        parsed = _parse_github_remote(remote)
+        if not parsed:
+            return None
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL, timeout=5,
+        ).decode().strip()
+        return parsed[0], parsed[1], branch
+    except Exception:
+        return None
+
+
 def _resolve_github_repo(workstream_id: str = "", branch: str = "") -> tuple[str, str, str, Optional[dict]]:
     """Resolve GitHub owner, repo, and branch from workstream context.
+
+    Falls back to the local git working directory when no workstream is
+    configured or when the caller supplies a *branch* hint that belongs
+    to a different repository than the workstream's ``repoUrl``.
 
     Returns (owner, repo, branch, error_dict_or_None).
     """
     effective_ws = workstream_id or _get_token_workstream_id() or ""
 
+    ws = _find_workstream(effective_ws) if effective_ws else None
+
+    if ws is not None:
+        repo_url = ws.get("repoUrl", "")
+        parsed = _parse_github_remote(repo_url) if repo_url else None
+
+        if parsed:
+            owner, repo = parsed
+            effective_branch = branch or ws.get("defaultBranch", "")
+
+            # If a branch hint was given, verify it matches this repo by
+            # checking the local git state.  When the local repo differs
+            # from the workstream repo, prefer the local repo so that
+            # callers operating on a sibling checkout get the right result.
+            if branch:
+                local = _detect_local_github_repo()
+                if local and (local[0], local[1]) != (owner, repo):
+                    _current_github_org.set(local[0])
+                    return local[0], local[1], branch, None
+
+            _set_github_org(ws)
+            return owner, repo, effective_branch, None
+
+    # Workstream lookup failed or has no repoUrl — try local git
+    local = _detect_local_github_repo()
+    if local:
+        effective_branch = branch or local[2]
+        _current_github_org.set(local[0])
+        return local[0], local[1], effective_branch, None
+
     if not effective_ws:
-        return "", "", branch, {"ok": False, "error": "workstream_id is required"}
+        return "", "", branch, {"ok": False, "error": "workstream_id is required and no local git repo detected"}
 
-    ws = _find_workstream(effective_ws)
-    if ws is None:
-        return "", "", branch, {"ok": False, "error": f"Workstream '{effective_ws}' not found"}
-
-    repo_url = ws.get("repoUrl", "")
-    if not repo_url:
-        return "", "", branch, {"ok": False, "error": f"Workstream '{effective_ws}' has no repoUrl"}
-
-    # Parse owner/repo from URL
-    # Formats: git@github.com:owner/repo.git, https://github.com/owner/repo.git
-    m = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?$", repo_url)
-    if not m:
-        return "", "", branch, {"ok": False, "error": f"Cannot parse repo URL: {repo_url}"}
-
-    owner, repo = m.group(1), m.group(2)
-    effective_branch = branch or ws.get("defaultBranch", "")
-
-    return owner, repo, effective_branch, None
+    return "", "", branch, {"ok": False, "error": f"Workstream '{effective_ws}' not found and no local git repo detected"}
 
 
 @mcp.tool()
@@ -2233,7 +2286,7 @@ def github_pr_find(
     _audit("github_pr_find", workstream_id=workstream_id, branch=effective_branch)
 
     head = f"{owner}:{effective_branch}"
-    result = _github_request("GET", f"/repos/{owner}/{repo}/pulls?head={quote(head, safe='')}&state=open")
+    result = _github_request("GET", f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open")
 
     if isinstance(result, list):
         if not result:
@@ -2388,7 +2441,7 @@ def github_list_open_prs(
 
     path = f"/repos/{owner}/{repo}/pulls?state=open"
     if base:
-        path += f"&base={quote(base, safe='')}"
+        path += f"&base={quote(base, safe='/')}"
 
     result = _github_request("GET", path)
     if isinstance(result, list):
