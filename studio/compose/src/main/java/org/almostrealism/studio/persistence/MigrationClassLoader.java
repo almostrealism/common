@@ -16,17 +16,23 @@
 
 package org.almostrealism.studio.persistence;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * A {@link ClassLoader} that transparently maps old fully-qualified class
- * names to their new locations after the package reorganization. This allows
+ * Migrates serialized file content from old fully-qualified class names
+ * to their current locations after the package reorganization. This allows
  * legacy JSON files (via Jackson {@code @JsonTypeInfo}) and XML files (via
  * {@link java.beans.XMLDecoder}) to be deserialized without manual edits.
  *
- * <p>Two mapping layers are applied in order:</p>
+ * <p>Migration works by replacing old class name strings in the serialized
+ * content before it reaches the deserializer. Two mapping layers are applied
+ * in order:</p>
  * <ol>
  *   <li><b>Exact mappings</b> for classes whose destination does not follow
  *       the general prefix pattern (e.g. {@code audio.notes.AudioChoiceNode}
@@ -35,26 +41,21 @@ import java.util.Map;
  *       first.</li>
  * </ol>
  *
- * <p>If a translated class name cannot be loaded, the loader falls back to
- * the original name so that unmoved classes under old-looking prefixes are
- * not broken.</p>
- *
  * <h3>Usage with Jackson</h3>
  * <pre>{@code
- * ObjectMapper mapper = new ObjectMapper();
- * mapper.setTypeFactory(mapper.getTypeFactory()
- *         .withClassLoader(MigrationClassLoader.getInstance()));
+ * ObjectMapper mapper = AudioScene.defaultMapper();
+ * NoteAudioChoiceList list = mapper.readValue(
+ *         MigrationClassLoader.migrateStream(new FileInputStream(file)),
+ *         NoteAudioChoiceList.class);
  * }</pre>
  *
  * <h3>Usage with XMLDecoder</h3>
  * <pre>{@code
- * XMLDecoder dec = new XMLDecoder(in, null, null,
- *         MigrationClassLoader.getInstance());
+ * XMLDecoder dec = new XMLDecoder(
+ *         MigrationClassLoader.migrateStream(new FileInputStream(file)));
  * }</pre>
  */
-public class MigrationClassLoader extends ClassLoader {
-
-	private static volatile MigrationClassLoader instance;
+public class MigrationClassLoader {
 
 	/**
 	 * Exact old-FQCN &rarr; new-FQCN overrides for classes that moved to
@@ -96,26 +97,6 @@ public class MigrationClassLoader extends ClassLoader {
 		PREFIX_MAPPINGS = Collections.unmodifiableMap(prefix);
 	}
 
-	private MigrationClassLoader(ClassLoader parent) {
-		super(parent);
-	}
-
-	/**
-	 * Returns the shared singleton instance, creating it lazily with the
-	 * current thread's context class loader as its parent.
-	 */
-	public static MigrationClassLoader getInstance() {
-		if (instance == null) {
-			synchronized (MigrationClassLoader.class) {
-				if (instance == null) {
-					instance = new MigrationClassLoader(
-							Thread.currentThread().getContextClassLoader());
-				}
-			}
-		}
-		return instance;
-	}
-
 	/**
 	 * Translates an old fully-qualified class name to its current name.
 	 * Returns the original name unchanged if no mapping applies.
@@ -138,19 +119,41 @@ public class MigrationClassLoader extends ClassLoader {
 		return className;
 	}
 
-	@Override
-	public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-		String translated = translate(name);
-
-		if (!translated.equals(name)) {
-			try {
-				return super.loadClass(translated, resolve);
-			} catch (ClassNotFoundException e) {
-				// Fall back to the original name in case the prefix
-				// matched but the class was not actually renamed.
-			}
+	/**
+	 * Replaces all old class name references in the given content string
+	 * with their current equivalents.
+	 *
+	 * <p>Exact mappings are applied first, then prefix-based replacements.
+	 * This is safe for both XML and JSON content because fully-qualified
+	 * class names are unique identifiers that do not collide with data
+	 * values.</p>
+	 *
+	 * @param content the serialized file content
+	 * @return the content with all old class names replaced
+	 */
+	public static String migrateContent(String content) {
+		for (Map.Entry<String, String> entry : EXACT_MAPPINGS.entrySet()) {
+			content = content.replace(entry.getKey(), entry.getValue());
 		}
 
-		return super.loadClass(name, resolve);
+		for (Map.Entry<String, String> entry : PREFIX_MAPPINGS.entrySet()) {
+			content = content.replace(entry.getKey(), entry.getValue());
+		}
+
+		return content;
+	}
+
+	/**
+	 * Reads all bytes from the given stream, replaces old class name
+	 * references, and returns a new stream over the migrated content.
+	 *
+	 * @param in the original input stream (will be fully consumed)
+	 * @return a new stream with migrated class names
+	 * @throws IOException if reading the stream fails
+	 */
+	public static InputStream migrateStream(InputStream in) throws IOException {
+		String content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+		String migrated = migrateContent(content);
+		return new ByteArrayInputStream(migrated.getBytes(StandardCharsets.UTF_8));
 	}
 }
