@@ -941,7 +941,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     private int executeGit(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
-        command.add("git");
+        command.add(GitOperations.resolveGitCommand());
         command.addAll(Arrays.asList(args));
 
         ProcessBuilder pb = new ProcessBuilder(command);
@@ -949,6 +949,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             pb.directory(new File(workingDirectory));
         }
         pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
 
         // Prevent SSH from hanging on unknown host keys (no TTY available)
         pb.environment().put("GIT_SSH_COMMAND",
@@ -975,7 +976,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     private String executeGitWithOutput(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
-        command.add("git");
+        command.add(GitOperations.resolveGitCommand());
         command.addAll(Arrays.asList(args));
 
         ProcessBuilder pb = new ProcessBuilder(command);
@@ -983,6 +984,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             pb.directory(new File(workingDirectory));
         }
         pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
 
         // Prevent SSH from hanging on unknown host keys (no TTY available)
         pb.environment().put("GIT_SSH_COMMAND",
@@ -1013,6 +1015,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             pb.directory(new File(workingDirectory));
         }
         pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
 
         Process process = pb.start();
         StringBuilder output = new StringBuilder();

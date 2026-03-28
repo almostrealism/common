@@ -96,7 +96,10 @@ public class ExternalProcessJob implements Job {
         }
 
         try {
-            Process p = new ProcessBuilder().command("sh", script).inheritIO().start();
+            ProcessBuilder pb = new ProcessBuilder().command("sh", script);
+            pb.inheritIO();
+            GitOperations.augmentPath(pb);
+            Process p = pb.start();
             p.waitFor();
         } catch (Exception e) {
             e.printStackTrace();

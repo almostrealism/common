@@ -25,6 +25,7 @@ import com.slack.api.methods.response.auth.AuthTestResponse;
 import com.slack.api.model.event.AppMentionEvent;
 import com.slack.api.model.event.MessageEvent;
 import io.flowtree.Server;
+import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.McpToolDiscovery;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -537,6 +538,7 @@ public class FlowTreeController implements ConsoleFeatures {
                 }
 
                 pb.inheritIO();
+                GitOperations.augmentPath(pb);
 
                 Process process = pb.start();
                 mcpProcesses.add(process);
