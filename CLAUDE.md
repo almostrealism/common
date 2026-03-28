@@ -2,6 +2,72 @@
 
 ---
 
+# THE FUNDAMENTAL RULE — Java is Orchestration, Not Execution
+
+**This is the single most important concept in the entire project. Violating this principle produces code that is 1000x slower, cannot be hardware-accelerated, and breaks automatic differentiation. Read this section completely before writing any code.**
+
+## The Concept
+
+Java is NOT the execution language. Java is the ORCHESTRATION language. It builds **computation graphs** — DAGs of `CollectionProducer` — that get compiled to native code (Metal, OpenCL) for actual execution.
+
+Think of Java as YAML: you don't execute YAML, you use it to describe what something else should execute. In this project, Java describes a computation graph. The framework compiles that graph to native code. If you do math in Java instead of describing it as Producers, you completely defeat the purpose.
+
+## What You MUST NOT Do
+
+- **NEVER** call `.evaluate()` or `.get()` on a `Producer`/`Evaluable` inside any class that participates in model computation. The ONLY acceptable place for `.evaluate()` is at the **top of the call stack**: test methods, main methods, pipeline boundaries, or step boundaries in autoregressive loops.
+- **NEVER** call `.toDouble()` or `.toFloat()` on a `PackedCollection` inside computation code. These are JNI calls that pull data back to the host one element at a time.
+- **NEVER** use Java `for` loops to perform element-wise math on collections.
+- **NEVER** perform matrix multiplication using Java arithmetic.
+
+## What You MUST Do Instead
+
+Express ALL computation as `CollectionProducer` compositions:
+- Matrix multiply → `dense()` or `matmul()` from `LayerFeatures`
+- Activation functions → `sigmoid()`, `tanh()` from `LayerFeatures`/`CollectionFeatures`
+- Element-wise math → `.multiply()`, `.add()`, `.subtract()`, `.divide()` on Producers
+- Bias addition → `.add()` on Producers
+
+## The Test
+
+Ask yourself: *"If I removed this class, would the native compiler produce different output?"* If yes, the class does computation, and ALL of that computation MUST be expressed as Producers.
+
+## Before/After Example
+
+```java
+// WRONG — Java program doing math (1000x slower, no GPU, no gradients)
+public PackedCollection forward(PackedCollection x, PackedCollection h) {
+    PackedCollection result = new PackedCollection(hiddenSize);
+    for (int i = 0; i < hiddenSize; i++) {
+        double sum = 0;
+        for (int j = 0; j < inputSize; j++) {
+            sum += weights.toDouble(i * inputSize + j) * x.toDouble(j);
+        }
+        sum += bias.toDouble(i);
+        result.setMem(i, 1.0 / (1.0 + Math.exp(-sum)));  // sigmoid in Java!
+    }
+    return result;
+}
+
+// CORRECT — Computation graph (compiled to native kernel, GPU-accelerated)
+public CollectionProducer<PackedCollection> forward(
+        Producer<PackedCollection> x, Producer<PackedCollection> h) {
+    return sigmoid(matmul(p(weights), x).add(p(bias)));
+}
+```
+
+The wrong version makes `hiddenSize * inputSize` JNI calls and does math on the CPU. The correct version builds a single computation graph that the framework compiles into one GPU kernel.
+
+## Naming Conventions That Enforce This
+
+- Any class whose name ends in `Cell` **MUST** implement `org.almostrealism.graph.Cell`
+- Any class whose name ends in `Block` **MUST** implement `org.almostrealism.model.Block`
+
+## Build Enforcement
+
+`CodePolicyViolationDetector` enforces these rules in CI. The build FAILS when violations are detected. Agents MUST run the enforcement check before completing any task. Do not circumvent it.
+
+---
+
 # MODULE MAP
 
 ```
