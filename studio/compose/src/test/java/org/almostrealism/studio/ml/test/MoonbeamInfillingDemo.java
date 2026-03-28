@@ -16,29 +16,16 @@
 
 package org.almostrealism.studio.ml.test;
 
-import org.almostrealism.audio.line.OutputLine;
-import org.almostrealism.audio.tone.Scale;
-import org.almostrealism.audio.tone.WesternChromatic;
-import org.almostrealism.ml.midi.CompoundMidiEmbedding;
-import org.almostrealism.ml.midi.GRUCell;
-import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiAutoregressiveModel;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiFileReader;
 import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
-import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.music.arrange.AudioSceneContext;
-import org.almostrealism.music.midi.MidiNoteEvent;
-import org.almostrealism.music.pattern.NoteDurationStrategy;
-import org.almostrealism.music.pattern.PatternElement;
-import org.almostrealism.music.pattern.ScaleTraversalStrategy;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,10 +33,9 @@ import java.util.List;
  * Prototype demonstrating Moonbeam infilling on algorithmically generated
  * chord patterns. Generates baseline MIDI files and infilled variants.
  *
- * <p>This demo uses the test model configuration with random weights to
- * verify the end-to-end pipeline. With pretrained weights (from the
- * {@code moonbeam_309M.pt} checkpoint), the infilled output would be
- * musically meaningful.</p>
+ * <p>This demo loads the pretrained 309M checkpoint from
+ * {@code /Users/Shared/models/moonbeam-weights-protobuf} and uses
+ * {@link MoonbeamConfig#checkpoint309M()} for the real model dimensions.</p>
  *
  * <h2>Output Files</h2>
  * <p>Files are written to {@code ~/moonbeam-infill-samples/}:</p>
@@ -81,7 +67,10 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 	private static final long TICKS_PER_MEASURE = (long) (SECONDS_PER_MEASURE * TIME_RESOLUTION);
 
 	/** Maximum fill tokens to generate per infilling call. */
-	private static final int MAX_FILL_TOKENS = 60;
+	private static final int MAX_FILL_TOKENS = 25;
+
+	/** Directory containing pretrained protobuf weights for the 309M checkpoint. */
+	private static final String WEIGHTS_DIR = "/Users/Shared/models/moonbeam-weights-protobuf";
 
 	/** Output directory for generated MIDI files. */
 	private static final String OUTPUT_DIR = System.getProperty("user.home") + "/moonbeam-infill-samples";
@@ -98,8 +87,8 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 		File outputDir = new File(OUTPUT_DIR);
 		outputDir.mkdirs();
 
-		MoonbeamConfig config = MoonbeamConfig.testConfig();
-		MoonbeamMidi model = buildTestModel(config);
+		MoonbeamConfig config = MoonbeamConfig.checkpoint309M();
+		MoonbeamMidi model = new MoonbeamMidi(WEIGHTS_DIR, config);
 		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
 		autoregressive.setTemperature(0.8);
 		autoregressive.setTopP(0.95);
@@ -391,129 +380,6 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 
 		result.sort(null);
 		return result;
-	}
-
-	/**
-	 * Build a MoonbeamMidi model with the test configuration and synthetic weights.
-	 *
-	 * <p>Uses properly shaped PackedCollections with TraversalPolicy to match
-	 * the shapes expected by the transformer builder. Normalization weights are
-	 * initialized to ones (identity normalization), other weights to zeros.</p>
-	 */
-	private MoonbeamMidi buildTestModel(MoonbeamConfig config) throws IOException {
-		StateDictionary stateDict = createTestStateDictionary(config);
-		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
-		GRUDecoder decoder = buildTestDecoder(config);
-		return new MoonbeamMidi(config, stateDict, embedding, decoder);
-	}
-
-	/**
-	 * Create a StateDictionary with synthetic weights matching the test config.
-	 * Follows the same pattern as MoonbeamMidiTest.createSyntheticWeights().
-	 */
-	private StateDictionary createTestStateDictionary(MoonbeamConfig config) {
-		java.util.Map<String, org.almostrealism.collect.PackedCollection> weights =
-				new java.util.HashMap<>();
-		int dim = config.hiddenSize;
-		int kvDim = dim * config.numKvHeads / config.numHeads;
-		int ffnDim = config.intermediateSize;
-
-		for (int i = 0; i < config.numLayers; i++) {
-			String prefix = String.format("model.layers.%d", i);
-			weights.put(prefix + ".input_layernorm.weight", onesCollection(dim));
-			weights.put(prefix + ".post_attention_layernorm.weight", onesCollection(dim));
-			weights.put(prefix + ".self_attn.q_proj.weight",
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(dim, dim)));
-			weights.put(prefix + ".self_attn.k_proj.weight",
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(kvDim, dim)));
-			weights.put(prefix + ".self_attn.v_proj.weight",
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(kvDim, dim)));
-			weights.put(prefix + ".self_attn.o_proj.weight",
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(dim, dim)));
-			weights.put(prefix + ".mlp.gate_proj.weight",
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(ffnDim, dim)));
-			weights.put(prefix + ".mlp.down_proj.weight",
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(dim, ffnDim)));
-			weights.put(prefix + ".mlp.up_proj.weight",
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(ffnDim, dim)));
-		}
-
-		weights.put("model.norm.weight", onesCollection(dim));
-		return new StateDictionary(weights);
-	}
-
-	/**
-	 * Build a GRU decoder with synthetic weights for the test configuration.
-	 * Follows the same pattern as MoonbeamMidiTest.createSyntheticDecoder().
-	 */
-	private GRUDecoder buildTestDecoder(MoonbeamConfig config) {
-		int hidden = config.hiddenSize;
-		int decoderHidden = config.decoderHiddenSize;
-		int vocabSize = config.decodeVocabSize;
-
-		GRUCell[] layers = new GRUCell[config.decoderLayers];
-		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUCell(
-					decoderHidden, decoderHidden,
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(3 * decoderHidden, decoderHidden)),
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(3 * decoderHidden, decoderHidden)),
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(3 * decoderHidden)),
-					new org.almostrealism.collect.PackedCollection(
-							new io.almostrealism.collect.TraversalPolicy(3 * decoderHidden)));
-		}
-
-		return new GRUDecoder(config, layers,
-				new org.almostrealism.collect.PackedCollection(
-						new io.almostrealism.collect.TraversalPolicy(decoderHidden, hidden)),
-				new org.almostrealism.collect.PackedCollection(
-						new io.almostrealism.collect.TraversalPolicy(decoderHidden)),
-				new org.almostrealism.collect.PackedCollection(
-						new io.almostrealism.collect.TraversalPolicy(vocabSize, decoderHidden)),
-				new org.almostrealism.collect.PackedCollection(
-						new io.almostrealism.collect.TraversalPolicy(vocabSize)),
-				new org.almostrealism.collect.PackedCollection(
-						new io.almostrealism.collect.TraversalPolicy(vocabSize, decoderHidden)));
-	}
-
-	/**
-	 * Create a PackedCollection initialized to ones (for normalization weights).
-	 */
-	private static org.almostrealism.collect.PackedCollection onesCollection(int size) {
-		org.almostrealism.collect.PackedCollection collection =
-				new org.almostrealism.collect.PackedCollection(
-						new io.almostrealism.collect.TraversalPolicy(size));
-		double[] data = new double[size];
-		java.util.Arrays.fill(data, 1.0);
-		collection.setMem(0, data, 0, size);
-		return collection;
-	}
-
-	/**
-	 * Create an AudioSceneContext for pattern generation.
-	 */
-	private AudioSceneContext createContext(int measures, Scale<?> scale) {
-		double secondsPerBeat = 60.0 / BPM;
-		double secondsPerMeasure = secondsPerBeat * BEATS_PER_MEASURE;
-		double framesPerMeasure = secondsPerMeasure * OutputLine.sampleRate;
-
-		AudioSceneContext context = new AudioSceneContext();
-		context.setMeasures(measures);
-		context.setFrames((int) (measures * framesPerMeasure));
-		context.setFrameForPosition(pos -> (int) (pos * framesPerMeasure));
-		context.setTimeForDuration(dur -> dur * secondsPerMeasure);
-		context.setScaleForPosition(pos -> scale);
-
-		return context;
 	}
 
 	/** Clamp pitch to valid MIDI range. */
