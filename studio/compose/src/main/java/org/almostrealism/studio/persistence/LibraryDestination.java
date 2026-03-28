@@ -164,6 +164,34 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Migrates old-format library data to a {@link ProtobufWaveDetailsStore}
+	 * if necessary, then returns the store.
+	 *
+	 * <p>If old batch files exist ({@code PREFIX_0.bin}) and the store directory
+	 * is empty, migration runs first. The returned store should be passed to the
+	 * {@link org.almostrealism.audio.AudioLibrary} constructor so that all
+	 * lookups use the indexed store instead of the legacy full-scan path.</p>
+	 *
+	 * @param storeDir directory for the {@link ProtobufWaveDetailsStore}
+	 * @return a ready-to-use store, never null
+	 */
+	public ProtobufWaveDetailsStore migrateAndOpenStore(File storeDir) {
+		boolean oldDataExists = new File(prefix + "_0.bin").exists();
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir);
+		boolean storeEmpty = store.size() == 0;
+
+		if (oldDataExists && storeEmpty) {
+			store.close();
+			AudioLibraryMigration.migrate(
+					java.nio.file.Path.of(prefix),
+					storeDir.toPath());
+			store = new ProtobufWaveDetailsStore(storeDir);
+		}
+
+		return store;
+	}
+
 	public void save(AudioLibrary library) {
 		try (Writer writer = out()) {
 			AudioLibraryPersistence.saveLibrary(library, writer);

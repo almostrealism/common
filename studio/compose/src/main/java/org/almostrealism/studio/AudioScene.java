@@ -47,6 +47,7 @@ import org.almostrealism.studio.generative.GenerationProvider;
 import org.almostrealism.studio.generative.NoOpGenerationProvider;
 import org.almostrealism.studio.health.HealthComputationAdapter;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
+import org.almostrealism.studio.persistence.MigrationClassLoader;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.music.pattern.ChordProgressionManager;
@@ -75,6 +76,7 @@ import org.almostrealism.time.Frequency;
 import org.almostrealism.time.Temporal;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -405,9 +407,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	public void loadPatterns(String patternsFile) throws IOException {
-		NoteAudioChoiceList choices = defaultMapper()
-				.readValue(new File(patternsFile), NoteAudioChoiceList.class);
-		getPatternManager().getChoices().addAll(choices);
+		try (FileInputStream in = new FileInputStream(patternsFile)) {
+			NoteAudioChoiceList choices = defaultMapper()
+					.readValue(MigrationClassLoader.migrateStream(in),
+							NoteAudioChoiceList.class);
+			getPatternManager().getChoices().addAll(choices);
+		}
 	}
 
 	public Animation<T> getScene() { return scene; }
@@ -1119,8 +1124,10 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 	public void loadSettings(File file, Function<String, AudioLibrary> libraryProvider, DoubleConsumer progress) {
 		if (file != null && file.exists()) {
-			try {
-				setSettings(defaultMapper().readValue(file, AudioScene.Settings.class), libraryProvider, progress);
+			try (FileInputStream in = new FileInputStream(file)) {
+				setSettings(defaultMapper().readValue(
+						MigrationClassLoader.migrateStream(in),
+						AudioScene.Settings.class), libraryProvider, progress);
 				return;
 			} catch (Exception e) {
 				e.printStackTrace();

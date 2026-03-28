@@ -99,6 +99,18 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     /** Default workspace path when /workspace/project does not exist. */
     private static final String FALLBACK_WORKSPACE_DIR = "/tmp/flowtree-workspaces";
 
+    /**
+     * System property key for a server-wide working directory override.
+     *
+     * <p>When set (via {@code -Dflowtree.workingDirectory=...} or the
+     * {@code nodes.workingDirectory} property in the flowtree properties
+     * file), this value takes precedence over the working directory
+     * assigned by the job factory. This allows the server that
+     * <em>executes</em> a job to control where work takes place,
+     * independent of the creating server's configuration.</p>
+     */
+    public static final String WORKING_DIRECTORY_PROPERTY = "flowtree.workingDirectory";
+
     // ---- Identity and branch configuration ----
     private String taskId;
     private String targetBranch;
@@ -205,6 +217,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         Exception error = null;
 
         try {
+            // Apply server-wide workspace override if configured.
+            // This sets the parent directory under which repos are cloned,
+            // allowing the executing server to control where work takes
+            // place regardless of the factory-assigned configuration.
+            String serverWorkDir = System.getProperty(WORKING_DIRECTORY_PROPERTY);
+            if (serverWorkDir != null && !serverWorkDir.isEmpty()) {
+                log("Overriding default workspace path with server property: " + serverWorkDir);
+                defaultWorkspacePath = serverWorkDir;
+                workingDirectory = null;
+            }
+
             // Resolve working directory from repoUrl if needed.
             // This clones the repo if a repoUrl is specified but no
             // working directory is set (or the directory is empty).
@@ -995,7 +1018,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     private int executeGit(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
-        command.add("git");
+        command.add(GitOperations.resolveGitCommand());
         command.addAll(Arrays.asList(args));
 
         ProcessBuilder pb = new ProcessBuilder(command);
@@ -1003,6 +1026,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             pb.directory(new File(workingDirectory));
         }
         pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
 
         // Prevent SSH from hanging on unknown host keys (no TTY available)
         pb.environment().put("GIT_SSH_COMMAND",
@@ -1029,7 +1053,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     private String executeGitWithOutput(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
-        command.add("git");
+        command.add(GitOperations.resolveGitCommand());
         command.addAll(Arrays.asList(args));
 
         ProcessBuilder pb = new ProcessBuilder(command);
@@ -1037,6 +1061,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             pb.directory(new File(workingDirectory));
         }
         pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
 
         // Prevent SSH from hanging on unknown host keys (no TTY available)
         pb.environment().put("GIT_SSH_COMMAND",
@@ -1067,6 +1092,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             pb.directory(new File(workingDirectory));
         }
         pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
 
         Process process = pb.start();
         StringBuilder output = new StringBuilder();

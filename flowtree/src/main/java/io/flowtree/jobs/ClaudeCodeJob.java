@@ -504,6 +504,8 @@ public class ClaudeCodeJob extends GitManagedJob {
                 log("AR_WORKSTREAM_URL: " + wsUrl);
             }
 
+            GitOperations.augmentPath(pb);
+
             log("Command: " + String.join(" ", command));
             log("Working directory: " + (workDir != null ? workDir : System.getProperty("user.dir")));
 
@@ -562,12 +564,13 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     private boolean hasUncommittedChanges() {
         try {
-            ProcessBuilder pb = new ProcessBuilder("git", "status", "--porcelain");
+            ProcessBuilder pb = new ProcessBuilder(GitOperations.resolveGitCommand(), "status", "--porcelain");
             String workDir = getWorkingDirectory();
             if (workDir != null) {
                 pb.directory(new File(workDir));
             }
             pb.redirectErrorStream(true);
+            GitOperations.augmentPath(pb);
             Process process = pb.start();
             String statusOutput = new String(
                 process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
@@ -644,6 +647,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             pb.directory(new File(workDir));
         }
         pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
         Process p = pb.start();
         String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = p.waitFor();
