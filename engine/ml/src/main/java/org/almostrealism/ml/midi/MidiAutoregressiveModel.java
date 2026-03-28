@@ -251,6 +251,91 @@ public class MidiAutoregressiveModel {
 	public double getTopP() { return topP; }
 
 	/**
+	 * Generate tokens for a fill region within a masked token sequence.
+	 *
+	 * <p>The input sequence contains normal tokens as context, with one or more
+	 * regions delimited by {@link MidiCompoundToken#fillStart()} and
+	 * {@link MidiCompoundToken#fillEnd()} markers. This method:</p>
+	 * <ol>
+	 *   <li>Feeds all tokens before the first FILL_START through the transformer
+	 *       (building up the KV cache as left context)</li>
+	 *   <li>Feeds the FILL_START token itself</li>
+	 *   <li>Autoregressively generates tokens until maxFillTokens is reached
+	 *       or EOS is produced</li>
+	 *   <li>Feeds the FILL_END token and any remaining right-context tokens</li>
+	 * </ol>
+	 *
+	 * <p>The returned list contains only the generated fill tokens (not the
+	 * context tokens or fill delimiters).</p>
+	 *
+	 * @param maskedSequence token sequence containing FILL_START/FILL_END markers
+	 * @param maxFillTokens  maximum number of tokens to generate for the fill region
+	 * @return list of generated tokens for the fill region
+	 */
+	public List<MidiCompoundToken> generateInfill(List<MidiCompoundToken> maskedSequence,
+												   int maxFillTokens) {
+		int fillStartIdx = -1;
+		int fillEndIdx = -1;
+		for (int i = 0; i < maskedSequence.size(); i++) {
+			if (maskedSequence.get(i).isFillStart() && fillStartIdx < 0) {
+				fillStartIdx = i;
+			} else if (maskedSequence.get(i).isFillEnd() && fillStartIdx >= 0) {
+				fillEndIdx = i;
+				break;
+			}
+		}
+
+		if (fillStartIdx < 0 || fillEndIdx < 0) {
+			throw new IllegalArgumentException(
+					"Masked sequence must contain FILL_START and FILL_END markers");
+		}
+
+		currentStep = 0;
+		lastHidden = null;
+
+		for (int i = 0; i < fillStartIdx; i++) {
+			MidiCompoundToken token = maskedSequence.get(i);
+			processToken(token);
+			lastHidden = model.forward(embedToken(token));
+			currentStep++;
+		}
+
+		MidiCompoundToken fillStartToken = maskedSequence.get(fillStartIdx);
+		processToken(fillStartToken);
+		lastHidden = model.forward(embedToken(fillStartToken));
+		currentStep++;
+
+		List<MidiCompoundToken> fillTokens = new ArrayList<>();
+		for (int i = 0; i < maxFillTokens; i++) {
+			PackedCollection hiddenVec = extractHiddenVector(lastHidden);
+			int[] decodeTokens = decoder.decode(hiddenVec, temperature, topP, random);
+			MidiCompoundToken generated = decodeToCompoundToken(decodeTokens);
+
+			if (generated.isEOS()) break;
+
+			fillTokens.add(generated);
+			processToken(generated);
+			lastHidden = model.forward(embedToken(generated));
+			currentStep++;
+		}
+
+		MidiCompoundToken fillEndToken = maskedSequence.get(fillEndIdx);
+		processToken(fillEndToken);
+		lastHidden = model.forward(embedToken(fillEndToken));
+		currentStep++;
+
+		for (int i = fillEndIdx + 1; i < maskedSequence.size(); i++) {
+			MidiCompoundToken token = maskedSequence.get(i);
+			if (token.isEOS()) break;
+			processToken(token);
+			lastHidden = model.forward(embedToken(token));
+			currentStep++;
+		}
+
+		return fillTokens;
+	}
+
+	/**
 	 * Generate tokens from an input MIDI file and write the result.
 	 *
 	 * <p>Reads a MIDI file as prompt, generates additional tokens, and

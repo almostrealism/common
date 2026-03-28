@@ -338,13 +338,13 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				.toList();
 
 		MidiTokenizer tokenizer = new MidiTokenizer();
-		var tokens = tokenizer.tokenize(mlEvents);
+		List<org.almostrealism.ml.midi.MidiCompoundToken> tokens = tokenizer.tokenize(mlEvents);
 
 		assertNotNull("Tokens should not be null", tokens);
 		assertTrue("Should have SOS + events + EOS",
 				tokens.size() >= mlEvents.size() + 2);
 
-		var detokenized = tokenizer.detokenize(tokens);
+		List<org.almostrealism.ml.midi.MidiNoteEvent> detokenized = tokenizer.detokenize(tokens);
 		assertEquals("Detokenized count should match",
 				mlEvents.size(), detokenized.size());
 

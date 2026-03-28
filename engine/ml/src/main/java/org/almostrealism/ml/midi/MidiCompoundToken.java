@@ -33,7 +33,8 @@ package org.almostrealism.ml.midi;
  *   <tr><td>5</td><td>velocity</td><td>130</td><td>MIDI velocity (+ 2 reserved)</td></tr>
  * </table>
  *
- * <p>Special tokens use sentinel values: SOS = -1, EOS = -2, PAD = -3.</p>
+ * <p>Special tokens use sentinel values: SOS = -1, EOS = -2, PAD = -3,
+ * FILL_START = -4, FILL_END = -5.</p>
  *
  * @see MidiTokenizer
  * @see MoonbeamConfig
@@ -50,6 +51,12 @@ public class MidiCompoundToken {
 
 	/** Sentinel value for padding in all attributes. */
 	public static final int PAD_VALUE = -3;
+
+	/** Sentinel value for Fill-Start delimiter in all attributes. */
+	public static final int FILL_START_VALUE = -4;
+
+	/** Sentinel value for Fill-End delimiter in all attributes. */
+	public static final int FILL_END_VALUE = -5;
 
 	/** Relative onset delta in ticks (0 to 4098, or sentinel). */
 	private final int onset;
@@ -140,7 +147,16 @@ public class MidiCompoundToken {
 	/** Returns true if this is a padding token. */
 	public boolean isPAD() { return onset == PAD_VALUE; }
 
-	/** Returns true if this is a special token (SOS, EOS, or PAD). */
+	/** Returns true if this is a Fill-Start delimiter token. */
+	public boolean isFillStart() { return onset == FILL_START_VALUE; }
+
+	/** Returns true if this is a Fill-End delimiter token. */
+	public boolean isFillEnd() { return onset == FILL_END_VALUE; }
+
+	/** Returns true if this is any fill delimiter token (FILL_START or FILL_END). */
+	public boolean isFill() { return isFillStart() || isFillEnd(); }
+
+	/** Returns true if this is a special token (SOS, EOS, PAD, FILL_START, or FILL_END). */
 	public boolean isSpecial() { return onset < 0; }
 
 	/** Creates the Start-Of-Sequence special token. */
@@ -161,11 +177,25 @@ public class MidiCompoundToken {
 				PAD_VALUE, PAD_VALUE, PAD_VALUE);
 	}
 
+	/** Creates a Fill-Start delimiter token, marking the beginning of a fill region. */
+	public static MidiCompoundToken fillStart() {
+		return new MidiCompoundToken(FILL_START_VALUE, FILL_START_VALUE, FILL_START_VALUE,
+				FILL_START_VALUE, FILL_START_VALUE, FILL_START_VALUE);
+	}
+
+	/** Creates a Fill-End delimiter token, marking the end of a fill region. */
+	public static MidiCompoundToken fillEnd() {
+		return new MidiCompoundToken(FILL_END_VALUE, FILL_END_VALUE, FILL_END_VALUE,
+				FILL_END_VALUE, FILL_END_VALUE, FILL_END_VALUE);
+	}
+
 	@Override
 	public String toString() {
 		if (isSOS()) return "MidiCompoundToken{SOS}";
 		if (isEOS()) return "MidiCompoundToken{EOS}";
 		if (isPAD()) return "MidiCompoundToken{PAD}";
+		if (isFillStart()) return "MidiCompoundToken{FILL_START}";
+		if (isFillEnd()) return "MidiCompoundToken{FILL_END}";
 		return String.format("MidiCompoundToken{onset=%d, dur=%d, oct=%d, pc=%d, inst=%d, vel=%d}",
 				onset, duration, octave, pitchClass, instrument, velocity);
 	}

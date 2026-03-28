@@ -168,6 +168,10 @@ public class CompoundMidiEmbedding {
 			return embedSupplementary(0);
 		} else if (token.isEOS()) {
 			return embedSupplementary(1);
+		} else if (token.isFillStart()) {
+			return embedSupplementary(0);
+		} else if (token.isFillEnd()) {
+			return embedSupplementary(1);
 		} else if (token.isPAD()) {
 			return new PackedCollection(new TraversalPolicy(hidden));
 		}
