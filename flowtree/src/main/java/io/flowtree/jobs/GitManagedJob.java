@@ -217,13 +217,15 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         Exception error = null;
 
         try {
-            // Apply server-wide working directory override if configured.
-            // This allows the executing server to control where work takes
-            // place, regardless of the directory assigned at creation time.
+            // Apply server-wide workspace override if configured.
+            // This sets the parent directory under which repos are cloned,
+            // allowing the executing server to control where work takes
+            // place regardless of the factory-assigned configuration.
             String serverWorkDir = System.getProperty(WORKING_DIRECTORY_PROPERTY);
             if (serverWorkDir != null && !serverWorkDir.isEmpty()) {
-                log("Overriding working directory with server property: " + serverWorkDir);
-                workingDirectory = serverWorkDir;
+                log("Overriding default workspace path with server property: " + serverWorkDir);
+                defaultWorkspacePath = serverWorkDir;
+                workingDirectory = null;
             }
 
             // Resolve working directory from repoUrl if needed.
