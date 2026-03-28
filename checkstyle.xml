@@ -21,5 +21,29 @@
             <property name="message" value="@SuppressWarnings is prohibited."/>
             <property name="ignoreComments" value="true"/>
         </module>
+
+        <!-- Detect fully-qualified class references that should use imports.
+             Matches common java.* and javax.* packages used inline (not in
+             import statements). Uses severity=warning until existing violations
+             are cleaned up.
+             Note: ErrorProne was considered but cannot be added because pom.xml
+             modifications are not permitted, and ErrorProne lacks a built-in check
+             for this pattern. Checkstyle RegexpSinglelineJava is a better fit. -->
+        <module name="RegexpSinglelineJava">
+            <property name="format" value="[^\.]\bjava\.(util|io|nio|lang|math|net|time)\.[A-Z]\w+[^;]"/>
+            <property name="message" value="Use an import instead of a fully-qualified class reference."/>
+            <property name="ignoreComments" value="true"/>
+            <property name="severity" value="warning"/>
+        </module>
+        <!-- Detect System.out and System.err usage that should use
+             ConsoleFeatures logging instead. Classes should implement
+             ConsoleFeatures and use log(), warn(), or alert() methods.
+             Uses severity=warning until existing violations are cleaned up. -->
+        <module name="RegexpSinglelineJava">
+            <property name="format" value="System\.(out|err)\.(print|println|printf|write)"/>
+            <property name="message" value="Use ConsoleFeatures (log/warn/alert) instead of System.out/err. Implement ConsoleFeatures interface on the class."/>
+            <property name="ignoreComments" value="true"/>
+            <property name="severity" value="warning"/>
+        </module>
     </module>
 </module>

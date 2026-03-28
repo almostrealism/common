@@ -537,7 +537,7 @@ jobs:
         id: check
         continue-on-error: true
         run: |
-          mvn checkstyle:check -B 2>&1 | tee /tmp/checkstyle-output.txt
+          mvn checkstyle:check -B 2>&1 | tee ${RUNNER_TEMP}/checkstyle-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Summary
@@ -551,7 +551,7 @@ jobs:
             echo "**Checkstyle violations detected.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            grep -E '\[ERROR\]' /tmp/checkstyle-output.txt >> "$GITHUB_STEP_SUMMARY" || echo "(no ERROR lines captured)" >> "$GITHUB_STEP_SUMMARY"
+            grep -E '\[ERROR\]' ${RUNNER_TEMP}/checkstyle-output.txt >> "$GITHUB_STEP_SUMMARY" || echo "(no ERROR lines captured)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "Run \`mvn checkstyle:check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
