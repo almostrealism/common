@@ -99,6 +99,18 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     /** Default workspace path when /workspace/project does not exist. */
     private static final String FALLBACK_WORKSPACE_DIR = "/tmp/flowtree-workspaces";
 
+    /**
+     * System property key for a server-wide working directory override.
+     *
+     * <p>When set (via {@code -Dflowtree.workingDirectory=...} or the
+     * {@code nodes.workingDirectory} property in the flowtree properties
+     * file), this value takes precedence over the working directory
+     * assigned by the job factory. This allows the server that
+     * <em>executes</em> a job to control where work takes place,
+     * independent of the creating server's configuration.</p>
+     */
+    public static final String WORKING_DIRECTORY_PROPERTY = "flowtree.workingDirectory";
+
     // ---- Identity and branch configuration ----
     private String taskId;
     private String targetBranch;
@@ -205,6 +217,15 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         Exception error = null;
 
         try {
+            // Apply server-wide working directory override if configured.
+            // This allows the executing server to control where work takes
+            // place, regardless of the directory assigned at creation time.
+            String serverWorkDir = System.getProperty(WORKING_DIRECTORY_PROPERTY);
+            if (serverWorkDir != null && !serverWorkDir.isEmpty()) {
+                log("Overriding working directory with server property: " + serverWorkDir);
+                workingDirectory = serverWorkDir;
+            }
+
             // Resolve working directory from repoUrl if needed.
             // This clones the repo if a repoUrl is specified but no
             // working directory is set (or the directory is empty).

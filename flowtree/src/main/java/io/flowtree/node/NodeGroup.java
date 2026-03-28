@@ -357,6 +357,9 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		} else if (name.equals("group.taskmax")) {
 			msg = "MaxTasks = " + value;
 			this.maxTasks = Integer.parseInt(value);
+		} else if (name.equals("nodes.workingDirectory")) {
+			msg = "WorkingDirectory = " + value;
+			System.setProperty("flowtree.workingDirectory", value);
 		} else if (name.equals("nodes.relay")) {
 			msg = "RelayP = " + value;
 			this.setRelayProbability(Double.parseDouble(value));
