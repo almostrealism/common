@@ -17,7 +17,9 @@
 package org.almostrealism.ml.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.StateDictionary;
 
 import java.util.List;
@@ -56,7 +58,7 @@ import java.util.List;
  * @see MidiCompoundToken
  * @see MoonbeamConfig
  */
-public class CompoundMidiEmbedding {
+public class CompoundMidiEmbedding implements LayerFeatures {
 
 	private static final String[] FME_PREFIXES = {
 			"onset_embedding", "duration_embedding", "octave_embedding",
@@ -245,10 +247,10 @@ public class CompoundMidiEmbedding {
 
 		int intermediate = supplementaryMlpIntermediateSize;
 
-		PackedCollection mlp0Out = GRUDecoder.linearForward(
-				lookup, hidden, supplementaryMlp0Weight, intermediate, supplementaryMlp0Bias);
+		CollectionProducer mlp0Out = add(matmul(p(supplementaryMlp0Weight), p(lookup)),
+				c(supplementaryMlp0Bias));
 
-		double[] mlp0Data = mlp0Out.toArray(0, intermediate);
+		double[] mlp0Data = mlp0Out.evaluate().toArray(0, intermediate);
 		double[] geluData = new double[intermediate];
 		for (int i = 0; i < intermediate; i++) {
 			geluData[i] = gelu(mlp0Data[i]);
@@ -256,8 +258,9 @@ public class CompoundMidiEmbedding {
 		PackedCollection geluOut = new PackedCollection(new TraversalPolicy(intermediate));
 		geluOut.setMem(0, geluData, 0, intermediate);
 
-		return GRUDecoder.linearForward(
-				geluOut, intermediate, supplementaryMlp2Weight, hidden, supplementaryMlp2Bias);
+		CollectionProducer mlp2Out = add(matmul(p(supplementaryMlp2Weight), p(geluOut)),
+				c(supplementaryMlp2Bias));
+		return mlp2Out.evaluate();
 	}
 
 	/**

@@ -16,10 +16,14 @@
 
 package org.almostrealism.ml.midi;
 
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.layers.LayerFeatures;
 
 /**
- * A single Gated Recurrent Unit (GRU) cell implementing the standard GRU equations.
+ * A single Gated Recurrent Unit (GRU) cell implementing the standard GRU equations
+ * using hardware-accelerated Producer operations.
  *
  * <p>The GRU cell computes:</p>
  * <pre>
@@ -28,6 +32,10 @@ import org.almostrealism.collect.PackedCollection;
  * n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))  // new gate
  * h' = (1 - z) * n + z * h                            // new hidden state
  * </pre>
+ *
+ * <p>All matrix and element-wise operations use the Producer pattern for
+ * hardware-accelerated computation, enabling gradient flow for training
+ * and eliminating the per-element JNI overhead of host-side loops.</p>
  *
  * <p>The weight matrices are stored in stacked form following PyTorch convention:</p>
  * <ul>
@@ -39,7 +47,7 @@ import org.almostrealism.collect.PackedCollection;
  *
  * @see GRUDecoder
  */
-public class GRUCell {
+public class GRUCell implements LayerFeatures {
 	private final int inputSize;
 	private final int hiddenSize;
 
@@ -47,12 +55,6 @@ public class GRUCell {
 	private final PackedCollection weightHh;
 	private final PackedCollection biasIh;
 	private final PackedCollection biasHh;
-
-	/** Cached weight arrays for bulk computation (lazily initialized). */
-	private double[] weightIhArr;
-	private double[] weightHhArr;
-	private double[] biasIhArr;
-	private double[] biasHhArr;
 
 	/**
 	 * Create a GRU cell with the given weights.
@@ -76,46 +78,47 @@ public class GRUCell {
 	}
 
 	/**
-	 * Compute one GRU step.
+	 * Compute one GRU step using hardware-accelerated Producer operations.
 	 *
-	 * <p>Uses bulk array reads via {@code toArray()} for input and hidden
-	 * state, and caches weight arrays on first call, to eliminate per-element
-	 * JNI overhead.</p>
+	 * <p>Builds a computation graph for the GRU equations using matmul,
+	 * sigmoid, tanh, and element-wise operations, then evaluates it on
+	 * the hardware backend. This replaces host-side double[] loops with
+	 * GPU/accelerated computation and preserves the autodiff chain for
+	 * gradient flow during training.</p>
 	 *
 	 * @param x input vector of size (inputSize)
 	 * @param h previous hidden state of size (hiddenSize)
 	 * @return new hidden state of size (hiddenSize)
 	 */
 	public PackedCollection forward(PackedCollection x, PackedCollection h) {
-		ensureWeightsCached();
+		TraversalPolicy gateShape = shape(hiddenSize);
 
-		double[] xArr = x.toArray();
-		double[] hArr = h.toArray();
+		// Stacked gate computations: matmul + bias
+		// gatesIh = W_ih @ x + b_ih  (3*hiddenSize vector)
+		// gatesHh = W_hh @ h + b_hh  (3*hiddenSize vector)
+		CollectionProducer gatesIh = add(matmul(p(weightIh), p(x)), c(biasIh));
+		CollectionProducer gatesHh = add(matmul(p(weightHh), p(h)), c(biasHh));
 
-		// Compute stacked input-hidden gates: (3 * hiddenSize)
-		double[] gatesIh = matmulBias(weightIhArr, 3 * hiddenSize, inputSize, xArr, biasIhArr);
-		// Compute stacked hidden-hidden gates: (3 * hiddenSize)
-		double[] gatesHh = matmulBias(weightHhArr, 3 * hiddenSize, hiddenSize, hArr, biasHhArr);
+		// Subset into reset (r), update (z), and new (n) gate components
+		CollectionProducer rIh = subset(gateShape, gatesIh, 0);
+		CollectionProducer zIh = subset(gateShape, gatesIh, hiddenSize);
+		CollectionProducer nIh = subset(gateShape, gatesIh, 2 * hiddenSize);
 
-		double[] hNewArr = new double[hiddenSize];
+		CollectionProducer rHh = subset(gateShape, gatesHh, 0);
+		CollectionProducer zHh = subset(gateShape, gatesHh, hiddenSize);
+		CollectionProducer nHh = subset(gateShape, gatesHh, 2 * hiddenSize);
 
-		for (int i = 0; i < hiddenSize; i++) {
-			// Reset gate: r = sigmoid(W_ir@x + b_ir + W_hr@h + b_hr)
-			double r = sigmoid(gatesIh[i] + gatesHh[i]);
+		// r = sigmoid(rIh + rHh), z = sigmoid(zIh + zHh)
+		CollectionProducer r = sigmoid(add(rIh, rHh));
+		CollectionProducer z = sigmoid(add(zIh, zHh));
 
-			// Update gate: z = sigmoid(W_iz@x + b_iz + W_hz@h + b_hz)
-			double z = sigmoid(gatesIh[hiddenSize + i] + gatesHh[hiddenSize + i]);
+		// n = tanh(nIh + r * nHh)
+		CollectionProducer n = tanh(add(nIh, multiply(r, nHh)));
 
-			// New gate: n = tanh(W_in@x + b_in + r * (W_hn@h + b_hn))
-			double n = Math.tanh(gatesIh[2 * hiddenSize + i] + r * gatesHh[2 * hiddenSize + i]);
+		// h' = (1 - z) * n + z * h  rewritten as  n + z * (h - n)
+		CollectionProducer hNew = add(n, multiply(z, subtract(c(h), n)));
 
-			// Hidden state update: h' = (1 - z) * n + z * h
-			hNewArr[i] = (1.0 - z) * n + z * hArr[i];
-		}
-
-		PackedCollection hNew = new PackedCollection(hiddenSize);
-		hNew.setMem(0, hNewArr, 0, hiddenSize);
-		return hNew;
+		return hNew.evaluate();
 	}
 
 	/**
@@ -130,51 +133,5 @@ public class GRUCell {
 	 */
 	public int getHiddenSize() {
 		return hiddenSize;
-	}
-
-	/**
-	 * Cache weight arrays from PackedCollections on first use.
-	 * This converts from JNI-backed memory to Java arrays once,
-	 * enabling fast pure-Java computation in subsequent calls.
-	 */
-	private void ensureWeightsCached() {
-		if (weightIhArr == null) {
-			weightIhArr = weightIh.toArray();
-			weightHhArr = weightHh.toArray();
-			biasIhArr = biasIh.toArray();
-			biasHhArr = biasHh.toArray();
-		}
-	}
-
-	/**
-	 * Compute matrix-vector product plus bias: result = weight @ input + bias.
-	 *
-	 * <p>Uses bulk {@code toArray()} to read weight, input, and bias data
-	 * into Java arrays, avoiding per-element JNI overhead.</p>
-	 *
-	 * @param weight weight matrix, row-major (rows, cols)
-	 * @param rows number of rows in weight matrix
-	 * @param cols number of columns in weight matrix
-	 * @param inputArr input vector as double array of size (cols)
-	 * @param biasArr bias vector as double array of size (rows)
-	 * @param weightArr weight matrix as flattened double array of size (rows * cols)
-	 * @return result vector of size (rows)
-	 */
-	private static double[] matmulBias(double[] weightArr, int rows, int cols,
-									   double[] inputArr, double[] biasArr) {
-		double[] result = new double[rows];
-		for (int i = 0; i < rows; i++) {
-			double sum = biasArr[i];
-			int rowOffset = i * cols;
-			for (int j = 0; j < cols; j++) {
-				sum += weightArr[rowOffset + j] * inputArr[j];
-			}
-			result[i] = sum;
-		}
-		return result;
-	}
-
-	private static double sigmoid(double x) {
-		return 1.0 / (1.0 + Math.exp(-x));
 	}
 }

@@ -16,12 +16,16 @@
 
 package org.almostrealism.ml.midi;
 
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.layers.LayerFeatures;
 
 import java.util.Random;
 
 /**
- * GRU-based output decoder for compound MIDI token generation.
+ * GRU-based output decoder for compound MIDI token generation using
+ * hardware-accelerated Producer operations.
  *
  * <p>Moonbeam does not use a standard lm_head linear projection. Instead, it uses
  * a multi-layer GRU that autoregressively generates 7 output tokens per position
@@ -62,7 +66,7 @@ import java.util.Random;
  * @see GRUCell
  * @see MoonbeamConfig
  */
-public class GRUDecoder {
+public class GRUDecoder implements LayerFeatures {
 	/** Number of output tokens generated per position. */
 	public static final int TOKENS_PER_NOTE = 7;
 
@@ -77,15 +81,6 @@ public class GRUDecoder {
 	private final PackedCollection decoderEmbedding;
 	private final int[] vocabOffsets;
 	private final int[] vocabSizesPerStep;
-
-	/** Cached array views for bulk computation (lazily initialized). */
-	private double[] summaryWeightArr;
-	private double[] summaryBiasArr;
-	private double[] fcOutWeightArr;
-	private double[] fcOutBiasArr;
-	private double[] lmHeadWeightArr;
-	private double[] lmHeadBiasArr;
-	private double[] decoderEmbeddingArr;
 
 	/**
 	 * Create a GRU decoder with explicit weights.
@@ -160,18 +155,20 @@ public class GRUDecoder {
 	 * token selection strategy (argmax vs. sampling) is delegated to the
 	 * provided selector function.</p>
 	 *
+	 * <p>All linear projections (summary, fc_out, lm_head) use hardware-accelerated
+	 * matmul via the Producer pattern. The autoregressive loop remains in Java
+	 * since each step depends on the previous hidden state.</p>
+	 *
 	 * @param transformerHidden the transformer output hidden state of size (hiddenSize)
 	 * @param selector function that selects a token index from logits
 	 * @return array of 7 output token indices in the flat decode vocabulary
 	 */
 	private int[] runGruLoop(PackedCollection transformerHidden, TokenSelector selector) {
-		ensureWeightsCached();
 		int decoderHidden = config.decoderHiddenSize;
 
-		// Summary projection: hidden_size -> decoder_hidden_size
-		PackedCollection initialHidden = linearForwardCached(
-				transformerHidden.toArray(), config.hiddenSize,
-				summaryWeightArr, decoderHidden, summaryBiasArr);
+		// Summary projection: hidden_size -> decoder_hidden_size (hardware-accelerated)
+		PackedCollection initialHidden = linearForward(transformerHidden,
+				summaryWeight, summaryBias);
 
 		// Initialize hidden state for each GRU layer
 		PackedCollection[] h = new PackedCollection[layers.length];
@@ -180,11 +177,11 @@ public class GRUDecoder {
 		}
 
 		// Start with SOS output embedding (token 0)
-		PackedCollection x = getEmbeddingCached(0);
+		PackedCollection x = getEmbedding(0);
 		int[] outputTokens = new int[TOKENS_PER_NOTE];
 
 		for (int step = 0; step < TOKENS_PER_NOTE; step++) {
-			// Forward through all GRU layers
+			// Forward through all GRU layers (each step is hardware-accelerated)
 			PackedCollection layerInput = x;
 			for (int l = 0; l < layers.length; l++) {
 				h[l] = layers[l].forward(layerInput, h[l]);
@@ -193,15 +190,12 @@ public class GRUDecoder {
 
 			// fc_out: optional intermediate projection after GRU
 			PackedCollection gruOutput = h[layers.length - 1];
-			if (fcOutWeightArr != null) {
-				gruOutput = linearForwardCached(gruOutput.toArray(), decoderHidden,
-						fcOutWeightArr, decoderHidden, fcOutBiasArr);
+			if (fcOutWeight != null) {
+				gruOutput = linearForward(gruOutput, fcOutWeight, fcOutBias);
 			}
 
-			// lm_head: project to decode vocabulary logits
-			PackedCollection logits = linearForwardCached(
-					gruOutput.toArray(), decoderHidden,
-					lmHeadWeightArr, config.decodeVocabSize, lmHeadBiasArr);
+			// lm_head: project to decode vocabulary logits (hardware-accelerated)
+			PackedCollection logits = linearForward(gruOutput, lmHeadWeight, lmHeadBias);
 
 			// Mask logits to the valid sub-range for this decode step
 			maskLogitsForStep(logits, step);
@@ -211,7 +205,7 @@ public class GRUDecoder {
 			outputTokens[step] = token;
 
 			// Embed selected token as input for next step
-			x = getEmbeddingCached(token);
+			x = getEmbedding(token);
 		}
 
 		return outputTokens;
@@ -373,7 +367,7 @@ public class GRUDecoder {
 	 * @return sampled token index
 	 */
 	public static int sampleFromLogits(PackedCollection logits, int vocabSize,
-									   double temperature, double topP, Random random) {
+										double temperature, double topP, Random random) {
 		double[] logitArr = logits.toArray(0, vocabSize);
 		double[] probs = new double[vocabSize];
 		double maxLogit = Double.NEGATIVE_INFINITY;
@@ -452,104 +446,37 @@ public class GRUDecoder {
 	/**
 	 * Look up a token embedding from the decoder embedding table.
 	 *
-	 * <p>Uses bulk {@code toArray()} to read the embedding slice,
-	 * avoiding per-element JNI overhead.</p>
+	 * <p>Uses the Producer pattern to extract a row from the embedding
+	 * matrix via subset operation.</p>
 	 *
 	 * @param tokenIndex index in the flat decode vocabulary
 	 * @return embedding vector of size (decoderHiddenSize)
 	 */
 	private PackedCollection getEmbedding(int tokenIndex) {
 		int decoderHidden = config.decoderHiddenSize;
-		PackedCollection embedding = new PackedCollection(decoderHidden);
-		int baseOffset = tokenIndex * decoderHidden;
-		double[] slice = decoderEmbedding.toArray(baseOffset, decoderHidden);
-		embedding.setMem(0, slice, 0, decoderHidden);
-		return embedding;
+		TraversalPolicy rowShape = shape(decoderHidden);
+		int offset = tokenIndex * decoderHidden;
+		return subset(rowShape, p(decoderEmbedding), offset).evaluate();
 	}
 
 	/**
-	 * Look up a token embedding from the cached decoder embedding array.
-	 */
-	private PackedCollection getEmbeddingCached(int tokenIndex) {
-		int decoderHidden = config.decoderHiddenSize;
-		PackedCollection embedding = new PackedCollection(decoderHidden);
-		int baseOffset = tokenIndex * decoderHidden;
-		embedding.setMem(0, decoderEmbeddingArr, baseOffset, decoderHidden);
-		return embedding;
-	}
-
-	/**
-	 * Cache all weight arrays from PackedCollections on first use.
-	 */
-	private void ensureWeightsCached() {
-		if (summaryWeightArr == null) {
-			summaryWeightArr = summaryWeight.toArray();
-			summaryBiasArr = summaryBias.toArray();
-			lmHeadWeightArr = lmHeadWeight.toArray();
-			lmHeadBiasArr = lmHeadBias.toArray();
-			decoderEmbeddingArr = decoderEmbedding.toArray();
-			if (fcOutWeight != null) {
-				fcOutWeightArr = fcOutWeight.toArray();
-				fcOutBiasArr = fcOutBias.toArray();
-			}
-		}
-	}
-
-	/**
-	 * Compute matrix-vector product plus bias using pre-cached arrays.
-	 */
-	private static PackedCollection linearForwardCached(double[] inputArr, int inputSize,
-														double[] weightArr, int outputSize,
-														double[] biasArr) {
-		double[] resultArr = new double[outputSize];
-		for (int i = 0; i < outputSize; i++) {
-			double sum = biasArr[i];
-			int rowOffset = i * inputSize;
-			for (int j = 0; j < inputSize; j++) {
-				sum += weightArr[rowOffset + j] * inputArr[j];
-			}
-			resultArr[i] = sum;
-		}
-
-		PackedCollection result = new PackedCollection(outputSize);
-		result.setMem(0, resultArr, 0, outputSize);
-		return result;
-	}
-
-	/**
-	 * Compute matrix-vector product plus bias: result = weight @ input + bias.
+	 * Compute a linear projection using hardware-accelerated matmul: result = weight @ input + bias.
 	 *
-	 * <p>Uses bulk {@code toArray()} to read weight, input, and bias data
-	 * into Java arrays, avoiding per-element JNI overhead.</p>
+	 * <p>Uses the Producer pattern for hardware-accelerated matrix-vector multiplication,
+	 * replacing host-side double[] loops.</p>
 	 *
 	 * @param input input vector
-	 * @param inputSize dimension of input
 	 * @param weight weight matrix, row-major (outputSize, inputSize)
-	 * @param outputSize number of output dimensions
 	 * @param bias bias vector of size (outputSize)
-	 * @return result as PackedCollection of size (outputSize)
+	 * @return result as PackedCollection
 	 */
-	static PackedCollection linearForward(PackedCollection input, int inputSize,
-										  PackedCollection weight, int outputSize,
-										  PackedCollection bias) {
-		double[] inputArr = input.toArray();
-		double[] weightArr = weight.toArray();
-		double[] biasArr = bias.toArray();
-
-		double[] resultArr = new double[outputSize];
-		for (int i = 0; i < outputSize; i++) {
-			double sum = biasArr[i];
-			int rowOffset = i * inputSize;
-			for (int j = 0; j < inputSize; j++) {
-				sum += weightArr[rowOffset + j] * inputArr[j];
-			}
-			resultArr[i] = sum;
-		}
-
-		PackedCollection result = new PackedCollection(outputSize);
-		result.setMem(0, resultArr, 0, outputSize);
-		return result;
+	private PackedCollection linearForward(PackedCollection input,
+										   PackedCollection weight,
+										   PackedCollection bias) {
+		CollectionProducer result = add(matmul(p(weight), p(input)), c(bias));
+		return result.evaluate();
 	}
+
 
 	/**
 	 * Find the index of the maximum value in a collection using bulk read.
