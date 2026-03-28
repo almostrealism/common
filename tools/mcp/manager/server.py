@@ -1699,13 +1699,21 @@ def _resolve_branch_context(
     workstream_id: str = "",
     repo_url: str = "",
     branch: str = "",
+    require_branch: bool = True,
 ) -> tuple[str, str, Optional[dict]]:
     """Resolve repo_url and branch from workstream_id if needed.
+
+    Args:
+        workstream_id: Workstream to look up repo/branch from.
+        repo_url: Explicit repository URL.
+        branch: Explicit branch name.
+        require_branch: If False, only repo_url is required (branch may
+            be empty).  Defaults to True for backward compatibility.
 
     Returns:
         (repo_url, branch, error_dict_or_None)
     """
-    if repo_url and branch:
+    if repo_url and (branch or not require_branch):
         return (repo_url, branch, None)
 
     if workstream_id:
@@ -1719,10 +1727,24 @@ def _resolve_branch_context(
         repo_url = repo_url or ws.get("repoUrl", "")
         branch = branch or ws.get("defaultBranch", "")
 
-    if not repo_url or not branch:
+    if not repo_url and not require_branch:
+        # Try to resolve repo from the token's workstream context
+        token_ws_id = _get_token_workstream_id()
+        if token_ws_id:
+            ws = _find_workstream(token_ws_id)
+            if ws:
+                repo_url = repo_url or ws.get("repoUrl", "")
+                branch = branch or ws.get("defaultBranch", "")
+
+    missing = []
+    if not repo_url:
+        missing.append("repo_url")
+    if require_branch and not branch:
+        missing.append("branch")
+    if missing:
         return ("", "", {
             "ok": False,
-            "error": "Either (repo_url + branch) or workstream_id is required",
+            "error": f"Either ({' + '.join(missing)}) or workstream_id is required",
             "next_steps": [
                 "Provide repo_url and branch directly, or",
                 "Provide workstream_id to resolve them from the workstream config",
@@ -1741,12 +1763,16 @@ def memory_recall(
     branch: str = "",
     workstream_id: str = "",
     include_messages: bool = False,
+    scope: str = "repo",
 ) -> dict:
     """Search agent memories with optional LLM synthesis.
 
     Retrieves semantically similar memories from the ar-memory server.
     If an LLM backend is available, provides a synthesized summary.
     Can resolve repo_url/branch from workstream_id if provided.
+
+    By default, results are scoped to the current repository to avoid
+    returning unrelated memories from other projects.
 
     Args:
         query: Natural language search query.
@@ -1757,18 +1783,26 @@ def memory_recall(
         workstream_id: Optional workstream to resolve repo/branch from.
         include_messages: If true, also search the "messages" namespace
             and merge results. Defaults to false.
+        scope: Search scope — ``repo`` (default) searches the current
+            repository across all branches; ``branch`` narrows to the
+            current branch within the repo; ``all`` searches all repos.
 
     Returns:
         Dictionary with memories and optional summary.
     """
     _require_scope("memory")
+    if scope not in ("repo", "branch", "all"):
+        return {
+            "ok": False,
+            "error": f"Invalid scope '{scope}'. Must be 'repo', 'branch', or 'all'.",
+        }
     err = _check_short_strings(
         query=query, namespace=namespace, repo_url=repo_url,
         branch=branch, workstream_id=workstream_id,
     )
     if err:
         return err
-    _audit("memory_recall", query=query, namespace=namespace)
+    _audit("memory_recall", query=query, namespace=namespace, scope=scope)
 
     client = _get_memory_client()
     if client is None:
@@ -1781,15 +1815,35 @@ def memory_recall(
             ],
         }
 
-    # Resolve branch context if filtering requested
+    # Resolve context based on scope
     effective_repo = repo_url
     effective_branch = branch
-    if workstream_id and (not repo_url or not branch):
-        effective_repo, effective_branch, err = _resolve_branch_context(
-            workstream_id=workstream_id, repo_url=repo_url, branch=branch,
-        )
-        if err:
-            return err
+
+    if scope == "all" and not repo_url and not workstream_id:
+        # Explicitly requested: search everything, no filtering
+        effective_repo = ""
+        effective_branch = ""
+    elif scope == "branch":
+        # Need both repo and branch — use the strict resolver
+        if workstream_id or not (repo_url and branch):
+            effective_repo, effective_branch, err = _resolve_branch_context(
+                workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+                require_branch=True,
+            )
+            if err:
+                return err
+    else:
+        # scope == "repo" (default) — need at least repo_url
+        if workstream_id or not repo_url:
+            effective_repo, effective_branch, err = _resolve_branch_context(
+                workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+                require_branch=False,
+            )
+            if err:
+                return err
+        # For repo scope, don't filter by branch unless explicitly provided
+        if scope == "repo" and not branch:
+            effective_branch = ""
 
     try:
         memories = client.search(
