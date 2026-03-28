@@ -75,11 +75,13 @@ io.almostrealism.scope.ScopeSettings.maxStatements = 1 << 18;  // 262144 for lar
 
 ```bash
 # Quick validation (uses manual logits - no long compilation)
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
+
 mvn test -pl ml -Dtest=SimpleTransformerValidationTest
 
 # Full model test (20+ min compilation)
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
+
 mvn test -pl ml -Dtest=Qwen3LogitsTest
 ```
 

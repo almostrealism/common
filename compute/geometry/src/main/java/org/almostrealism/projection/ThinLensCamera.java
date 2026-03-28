@@ -16,8 +16,6 @@
 
 package org.almostrealism.projection;
 
-import io.almostrealism.uml.ModelEntity;
-
 /**
  * A {@link ThinLensCamera} provides a camera with viewing rays that originate
  * from a random point on a circular lens. By default the width and height of
@@ -27,7 +25,6 @@ import io.almostrealism.uml.ModelEntity;
  * 
  * @author  Michael Murray
  */
-@ModelEntity
 public class ThinLensCamera extends PinholeCamera {
 	private double focalLength, radius, width, height;
 

@@ -20,11 +20,11 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
-import io.almostrealism.kernel.DefaultIndex;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.sequence.DefaultIndex;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;

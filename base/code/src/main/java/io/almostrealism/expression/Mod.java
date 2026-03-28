@@ -17,10 +17,10 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.IndexValues;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ScopeSettings;
@@ -65,8 +65,19 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return fp ? "fmod(" + getChildren().get(0).getExpression(lang) + ", " + getChildren().get(1).getExpression(lang) + ")" :
-				getChildren().get(0).getWrappedExpression(lang) + " % " + getChildren().get(1).getWrappedExpression(lang);
+		if (fp) {
+			return "fmod(" + getChildren().get(0).getExpression(lang) + ", " +
+					getChildren().get(1).getExpression(lang) + ")";
+		}
+
+		String a = getChildren().get(0).getWrappedExpression(lang);
+		String b = getChildren().get(1).getWrappedExpression(lang);
+
+		if (getChildren().get(0).isPossiblyNegative()) {
+			return lang.floorMod(a, b);
+		}
+
+		return a + " % " + b;
 	}
 
 	@Override

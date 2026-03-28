@@ -17,7 +17,6 @@
 package org.almostrealism.projection;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
@@ -44,7 +43,6 @@ import org.almostrealism.io.DecodePostProcessing;
  * 
  * @author  Michael Murray
  */
-@ModelEntity
 public class OrthographicCamera implements Camera, Positioned, DecodePostProcessing, ScalarFeatures, PairFeatures, VectorFeatures, RayFeatures {
 	private Vector location = new Vector(0.0, 0.0, 0.0);
 	private Vector viewDirection = new Vector(0.0, 0.0, 1.0);

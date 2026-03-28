@@ -22,7 +22,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Node;

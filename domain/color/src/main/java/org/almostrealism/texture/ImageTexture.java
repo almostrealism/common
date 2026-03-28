@@ -16,9 +16,7 @@
 
 package org.almostrealism.texture;
 
-import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
@@ -89,13 +87,7 @@ import java.net.URL;
  * @see GraphicsConverter
  * @author Mike Murray
  */
-public class ImageTexture implements Texture, Editable {
-  private static final String[] propNames = {"Image Source", "X Scale", "Y Scale",
-  											"X Offset", "Y Offset"};
-  private static final String[] propDesc = {"URL to load image data from", "X scale factor", "Y scale factor",
-  											"X offset factor", "Y offset factor"};
-  private static final Class[] propTypes = {URL.class, Double.class, Double.class};
-  
+public class ImageTexture implements Texture {
   public static final int SPHERICAL_PROJECTION = 1;
   public static final int XY_PLANAR_PROJECTION = 2;
   public static final int XZ_PLANAR_PROJECTION = 3;
@@ -317,62 +309,6 @@ public class ImageTexture implements Texture, Editable {
 		}).get();
 	}
 
-    /** @see io.almostrealism.relation.Editable#getPropertyNames() */
-	@Override
-    public String[] getPropertyNames() { return ImageTexture.propNames; }
-
-    /** @see io.almostrealism.relation.Editable#getPropertyDescriptions() */
-	@Override
-    public String[] getPropertyDescriptions() { return ImageTexture.propDesc; }
-
-    /** @see io.almostrealism.relation.Editable#getPropertyTypes() */
-	@Override
-    public Class[] getPropertyTypes() { return ImageTexture.propTypes; }
-
-    /** @see io.almostrealism.relation.Editable#getPropertyValues() */
-	@Override
-    public Object[] getPropertyValues() { return new Object[] {this.url, Double.valueOf(this.xScale), Double.valueOf(this.yScale)}; }
-
-    /** @see io.almostrealism.relation.Editable#setPropertyValue(java.lang.Object, int) */
-	@Override
-    public void setPropertyValue(Object value, int index) {
-    		if (index >= ImageTexture.propTypes.length) {
-    			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-    		} else if (!ImageTexture.propTypes[index].isInstance(value)) {
-    			throw new IllegalArgumentException("Illegal argument: " + value.toString());
-    		} else {
-  	 		if (index == 0) this.url = (URL)value;
-  	 		else if (index == 1) this.xScale = ((Double)value).doubleValue();
-  	 		else if (index == 2) this.yScale = ((Double)value).doubleValue();
-  	 		else if (index == 3) this.xOff = ((Double)value).doubleValue();
-  	 		else if (index == 4) this.yOff = ((Double)value).doubleValue();
-			
-			this.update();
-    		}
-    }
-
-    /**
-     * @see io.almostrealism.relation.Editable#setPropertyValues(java.lang.Object[])
-     */
-	@Override
-    public void setPropertyValues(Object[] values) {
-		for (int i = 0; i < values.length; i++) {
-			this.setPropertyValue(values[i], i);
-		}
-    }
-    
-	/**
-	 * @return  An empty array.
-	 */
-	@Override
-	public Producer[] getInputPropertyValues() { return new Producer[0]; }
-	
-	/**
-	 * Does nothing.
-	 */
-	@Override
-	public void setInputPropertyValue(int index, Producer p) { }
-    
     /**
      * @return  "Image Texture".
      */

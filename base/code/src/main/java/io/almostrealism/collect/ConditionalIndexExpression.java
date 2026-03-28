@@ -19,7 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 
 import java.util.Optional;
 import java.util.OptionalInt;

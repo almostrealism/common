@@ -21,7 +21,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.DefaultKernelStructureContext;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import org.almostrealism.io.ConsoleFeatures;

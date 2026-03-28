@@ -23,7 +23,7 @@ import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;

@@ -20,6 +20,7 @@ Tools:
   get_native_memory     - Native Memory Tracking summary from jcmd
   start_memory_monitor  - Start background jstat sampling with JSONL output
   get_memory_timeline   - Read timeline samples and compute memory trends
+  analyze_heap_dump     - Offline HPROF analysis (histogram, dominators, summary)
 """
 
 import asyncio
@@ -46,6 +47,7 @@ from jvm_diagnostics import (
     JVMDiagnosticsError,
 )
 from histogram_parser import parse_histogram, filter_histogram, diff_histograms
+from heap_analyzer import analyze_heap_dump as _analyze_heap_dump, HeapAnalyzerError
 from jfr_parser import parse_allocation_events
 from timeline import MemoryMonitor, read_timeline, compute_trend
 
@@ -369,6 +371,33 @@ async def list_tools():
                     }
                 },
                 "required": ["pid"]
+            }
+        ),
+        Tool(
+            name="analyze_heap_dump",
+            description=(
+                "Analyze an offline HPROF heap dump file. Produces class histogram "
+                "(top classes by shallow size), dominator tree (top objects by retained "
+                "size), or both. Does not require a live JVM process."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to the .hprof file"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["histogram", "dominators", "summary"],
+                        "description": "Analysis mode (default: summary)"
+                    },
+                    "top": {
+                        "type": "integer",
+                        "description": "Max entries to return (default: 30)"
+                    }
+                },
+                "required": ["path"]
             }
         ),
     ]
@@ -712,6 +741,17 @@ async def call_tool(name: str, arguments: dict):
                 "note": "Use this run_id with all other ar-jmx tools. "
                         "JFR and NMT are not available unless the JVM was started with those args."
             })
+
+        elif name == "analyze_heap_dump":
+            hprof_path = arguments["path"]
+            mode = arguments.get("mode", "summary")
+            top = arguments.get("top", 30)
+
+            try:
+                result = _analyze_heap_dump(hprof_path, mode=mode, top=top)
+                return _ok_response(result)
+            except HeapAnalyzerError as e:
+                return _error_response(str(e))
 
         else:
             return _error_response(f"Unknown tool: {name}")

@@ -208,6 +208,8 @@ public class WorkstreamConfig {
     public static class McpServerEntry {
         private String source;
         private int port;
+        private String url;
+        private List<String> tools;
 
         /** Returns the Python source file path (relative to project root). */
         public String getSource() { return source; }
@@ -216,6 +218,26 @@ public class WorkstreamConfig {
         /** Returns the HTTP port to listen on. */
         public int getPort() { return port; }
         public void setPort(int port) { this.port = port; }
+
+        /**
+         * Returns the URL of an already-running centralized server.
+         * When set, the controller does not launch a subprocess —
+         * it simply passes the URL through to agents.
+         */
+        public String getUrl() { return url; }
+        public void setUrl(String url) { this.url = url; }
+
+        /**
+         * Returns the explicit tool names for this server.
+         * Required when {@code url} is set (no source file to discover from).
+         */
+        public List<String> getTools() { return tools; }
+        public void setTools(List<String> tools) { this.tools = tools; }
+
+        /** Returns true if this entry references an external server by URL. */
+        public boolean isExternal() {
+            return url != null && !url.isEmpty();
+        }
     }
 
     /**

@@ -18,8 +18,6 @@ package org.almostrealism.geometry;
 
 import io.almostrealism.code.Operator;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.Function;
-
 import java.util.function.Supplier;
 
 /**
@@ -43,7 +41,6 @@ import java.util.function.Supplier;
  * @see ContinuousField
  * @see Ray
  */
-@Function
 public interface Intersectable<T> extends Supplier<Operator<T>> {
 	/**
 	 * Computes the intersection points between the specified ray and this surface.

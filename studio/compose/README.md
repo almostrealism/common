@@ -34,17 +34,17 @@ ar-compose
 
 | Class | Package | Responsibility |
 |-------|---------|----------------|
-| `AudioScene` | `org.almostrealism.audio` | Central orchestrator for audio scenes |
-| `MixdownManager` | `org.almostrealism.audio.arrange` | Effects routing, delays, reverb |
-| `AutomationManager` | `org.almostrealism.audio.arrange` | Parameter automation over time |
-| `GlobalTimeManager` | `org.almostrealism.audio.arrange` | Time tracking and reset points |
-| `EfxManager` | `org.almostrealism.audio.arrange` | Per-channel effects management |
-| `RiseManager` | `org.almostrealism.audio.arrange` | Rise/swell effect processing |
-| `SceneSectionManager` | `org.almostrealism.audio.arrange` | Musical section organization |
-| `AudioComposer` | `org.almostrealism.ml.audio` | ML-based audio generation |
-| `AudioLibraryPersistence` | `org.almostrealism.audio.persistence` | Save/load library to Protocol Buffer |
-| `LibraryDestination` | `org.almostrealism.audio.persistence` | Batched protobuf file management |
-| `PrototypeDiscovery` | `org.almostrealism.audio.discovery` | Find representative samples via graph algorithms |
+| `AudioScene` | `org.almostrealism.studio` | Central orchestrator for audio scenes |
+| `MixdownManager` | `org.almostrealism.studio.arrange` | Effects routing, delays, reverb |
+| `AutomationManager` | `org.almostrealism.studio.arrange` | Parameter automation over time |
+| `GlobalTimeManager` | `org.almostrealism.studio.arrange` | Time tracking and reset points |
+| `EfxManager` | `org.almostrealism.studio.arrange` | Per-channel effects management |
+| `RiseManager` | `org.almostrealism.studio.arrange` | Rise/swell effect processing |
+| `SceneSectionManager` | `org.almostrealism.studio.arrange` | Musical section organization |
+| `AudioComposer` | `org.almostrealism.studio.ml` | ML-based audio generation |
+| `AudioLibraryPersistence` | `org.almostrealism.studio.persistence` | Save/load library to Protocol Buffer |
+| `LibraryDestination` | `org.almostrealism.studio.persistence` | Batched protobuf file management |
+| `PrototypeDiscovery` | `org.almostrealism.studio.discovery` | Find representative samples via graph algorithms |
 
 ## AudioScene: The Central Orchestrator
 
@@ -122,7 +122,7 @@ CellList cells(CellList sources, CellList wetSources, CellList riser,
 
 ## Arrangement Package
 
-The `org.almostrealism.audio.arrange` package contains:
+The `org.almostrealism.studio.arrange` package contains:
 
 ### GlobalTimeManager
 Manages global playback position with support for:
@@ -150,7 +150,7 @@ Per-channel effects including:
 
 ## Health and Optimization Package
 
-The `org.almostrealism.audio.health` package provides audio quality metrics:
+The `org.almostrealism.studio.health` package provides audio quality metrics:
 
 ### StableDurationHealthComputation
 Evaluates audio quality by measuring how long playback can continue before:
@@ -178,7 +178,7 @@ for (long frame = 0; frame < maxFrames; frame += batchSize) {
 
 ## Generation Package
 
-The `org.almostrealism.audio.generative` package provides:
+The `org.almostrealism.studio.generative` package provides:
 
 ### GenerationManager
 Coordinates audio generation from various sources:
@@ -194,7 +194,7 @@ Manages generation resources including:
 
 ## ML Audio Package
 
-The `org.almostrealism.ml.audio` package provides:
+The `org.almostrealism.studio.ml` package provides:
 
 ### AudioComposer
 Generates audio using autoencoder-based latent space interpolation:
@@ -207,7 +207,7 @@ Enables weighted feature composition for audio generation.
 
 ## Persistence Package
 
-The `org.almostrealism.audio.persistence` package handles audio library storage.
+The `org.almostrealism.studio.persistence` package handles audio library storage.
 
 ### Key-Identifier Architecture
 
@@ -240,14 +240,14 @@ String filePath = provider.getKey();  // Actual file path!
 
 ## Discovery Package
 
-The `org.almostrealism.audio.discovery` package provides sample discovery tools.
+The `org.almostrealism.studio.discovery` package provides sample discovery tools.
 
 ### PrototypeDiscovery
 
 Console app for finding representative samples using graph algorithms.
 
 ```bash
-java -cp ... org.almostrealism.audio.discovery.PrototypeDiscovery \
+java -cp ... org.almostrealism.studio.discovery.PrototypeDiscovery \
   --data ~/.almostrealism/library --clusters 5
 ```
 
@@ -318,7 +318,7 @@ The `AudioScene` class is the central orchestration class for audio generation, 
 The `runner()` method creates a `TemporalCellular` that wraps the audio generation pipeline for iterative execution.
 
 ```java
-import org.almostrealism.audio.AudioScene;
+import org.almostrealism.studio.AudioScene;
 import org.almostrealism.heredity.TemporalCellular;
 
 // Create AudioScene
@@ -393,7 +393,7 @@ The compose module provides evolutionary optimization for audio scenes, breeding
 Evolutionary algorithm optimizer that breeds and evaluates audio scenes to maximize health fitness.
 
 ```java
-import org.almostrealism.audio.optimize.AudioSceneOptimizer;
+import org.almostrealism.studio.optimize.AudioSceneOptimizer;
 
 // Build optimizer from an AudioScene
 AudioSceneOptimizer optimizer = AudioSceneOptimizer.build(scene, cycles);
@@ -420,7 +420,7 @@ for (int gen = 0; gen < generations; gen++) {
 Manages a population of audio scene genomes, coordinating evaluation and execution.
 
 ```java
-import org.almostrealism.audio.optimize.AudioScenePopulation;
+import org.almostrealism.studio.optimize.AudioScenePopulation;
 
 // AudioScenePopulation wraps an AudioScene and maintains genome list
 AudioScenePopulation population = new AudioScenePopulation(scene);
@@ -450,7 +450,7 @@ population.generate(
 Fitness evaluator that measures how long an audio scene plays before clipping or silence.
 
 ```java
-import org.almostrealism.audio.health.StableDurationHealthComputation;
+import org.almostrealism.studio.health.StableDurationHealthComputation;
 
 // Create health computation
 StableDurationHealthComputation health = new StableDurationHealthComputation();

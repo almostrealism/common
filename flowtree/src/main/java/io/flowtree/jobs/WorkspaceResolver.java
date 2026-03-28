@@ -135,7 +135,7 @@ public class WorkspaceResolver {
      * <p>When jobs run inside containers, the controller address is
      * typically configured as {@code 0.0.0.0} in the job descriptor.
      * This method substitutes the real host address so that HTTP
-     * callbacks (status events, Slack messages) reach the controller.</p>
+     * callbacks (status events, messages) reach the controller.</p>
      *
      * <p>If {@code FLOWTREE_ROOT_HOST} is not set, or the URL does not
      * contain {@code 0.0.0.0}, the original URL is returned unchanged.</p>

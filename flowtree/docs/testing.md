@@ -454,7 +454,7 @@ mcp__ar-test-runner__get_run_failures
 If you need to run tests via Maven directly (e.g., for CI pipeline debugging), set the required environment variables first:
 
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 ```
 

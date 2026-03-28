@@ -943,9 +943,9 @@ The configuration arrives as a JSON string in the `centralizedMcpConfig` field:
 
 ```json
 {
-    "ar-slack": {
-        "url": "http://0.0.0.0:8080/mcp/ar-slack",
-        "tools": ["slack_send_message", "slack_get_stats"]
+    "ar-messages": {
+        "url": "http://0.0.0.0:8080/mcp/ar-messages",
+        "tools": ["send_message", "get_stats"]
     },
     "ar-consultant": {
         "url": "http://0.0.0.0:8080/mcp/ar-consultant",
@@ -962,9 +962,9 @@ In the final `--mcp-config` JSON, centralized servers appear as HTTP entries:
 ```json
 {
     "mcpServers": {
-        "ar-slack": {
+        "ar-messages": {
             "type": "http",
-            "url": "http://192.168.1.100:8080/mcp/ar-slack"
+            "url": "http://192.168.1.100:8080/mcp/ar-messages"
         }
     }
 }
@@ -1035,7 +1035,7 @@ consulted to determine which servers are enabled.
 1. Read `.mcp.json` from the working directory.
 2. Extract server names and their Python source file paths.
 3. Read `.claude/settings.json` to get the `enabledMcpjsonServers` list.
-4. Filter out `ar-github` and `ar-slack` (handled separately).
+4. Filter out `ar-github` and `ar-messages` (handled separately).
 5. Filter out any servers already covered by centralized or pushed configs.
 6. Return the remaining servers.
 
@@ -1043,20 +1043,20 @@ For each discovered project server, `McpToolDiscovery.discoverToolNames()` parse
 Python source file to extract the tool function names, so they can be added to the
 `--allowedTools` list.
 
-### Special Servers: ar-github and ar-slack
+### Special Servers: ar-github and ar-messages
 
 Two MCP servers receive special treatment because they are always needed (ar-github) or
-conditionally needed (ar-slack):
+conditionally needed (ar-messages):
 
 **ar-github** is always included. Its tools (`github_pr_find`, `github_pr_review_comments`,
 `github_pr_conversation`, `github_pr_reply`) are essential for reading and responding to
 PR review comments. If ar-github is not provided via centralized or pushed configs, a stdio
 fallback is added pointing to `tools/mcp/github/server.py` in the working directory.
 
-**ar-slack** is included only when a `workstreamUrl` is configured (i.e., the job has a
-communication channel back to the user). Its tool (`slack_send_message`) allows the agent
-to post status updates. Like ar-github, if not centralized or pushed, a stdio fallback is
-used pointing to `tools/mcp/slack/server.py`.
+**ar-messages** is included only when a `workstreamUrl` is configured (i.e., the job has a
+communication channel back to the user). Its tool (`send_message`) allows the agent
+to store messages and post status updates. Like ar-github, if not centralized or pushed, a stdio fallback is
+used pointing to `tools/mcp/messages/server.py`.
 
 ### Configuration Assembly
 
@@ -1075,14 +1075,14 @@ buildMcpConfig()
     |       (with global env merged with workstreamEnv, workstream wins)
     |
     +-- Discover project servers from .mcp.json
-    |       (skip ar-github, ar-slack, already centralized, already pushed)
+    |       (skip ar-github, ar-messages, already centralized, already pushed)
     |       Emit as {"command":"python3","args":["path/to/server.py"]}
     |
     +-- If ar-github not centralized and not pushed:
     |       Emit stdio fallback: {"command":"python3","args":["tools/mcp/github/server.py"]}
     |
-    +-- If ar-slack not centralized and not pushed AND workstreamUrl is set:
-            Emit stdio fallback: {"command":"python3","args":["tools/mcp/slack/server.py"]}
+    +-- If ar-messages not centralized and not pushed AND workstreamUrl is set:
+            Emit stdio fallback: {"command":"python3","args":["tools/mcp/messages/server.py"]}
 ```
 
 `McpConfigBuilder.buildAllowedTools()` assembles the comma-separated tools string:
@@ -1101,8 +1101,8 @@ buildAllowedTools(baseTools)
     +-- If ar-github not centralized/pushed:
     |       Append: mcp__ar-github__github_pr_find,...
     |
-    +-- If ar-slack not centralized/pushed AND workstreamUrl set:
-    |       Append: mcp__ar-slack__slack_send_message
+    +-- If ar-messages not centralized/pushed AND workstreamUrl set:
+    |       Append: mcp__ar-messages__send_message
     |
     +-- For each discovered project server:
             Parse Python source for tool names

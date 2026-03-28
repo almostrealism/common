@@ -17,8 +17,8 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.Precision;
-import io.almostrealism.kernel.IndexValues;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.IndexValues;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;

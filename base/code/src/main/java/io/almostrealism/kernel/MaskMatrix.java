@@ -16,6 +16,7 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.sequence.Index;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mask;

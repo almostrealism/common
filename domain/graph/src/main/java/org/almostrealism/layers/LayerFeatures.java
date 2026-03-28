@@ -19,7 +19,7 @@ package org.almostrealism.layers;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;

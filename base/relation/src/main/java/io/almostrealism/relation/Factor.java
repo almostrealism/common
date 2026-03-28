@@ -64,7 +64,7 @@ import io.almostrealism.uml.Signature;
  * @author Michael Murray
  */
 @FunctionalInterface
-public interface Factor<T> extends Function<T, T>, Signature {
+public interface Factor<T> extends Signature {
 	/**
 	 * Transforms the given {@link Producer} into a new {@link Producer}.
 	 *
