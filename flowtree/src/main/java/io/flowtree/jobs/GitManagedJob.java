@@ -85,7 +85,7 @@ import java.util.function.Consumer;
  *
  * @author Michael Murray
  */
-public abstract class GitManagedJob implements Job, ConsoleFeatures {
+public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /** Default maximum file size to commit (1 MB). */
     public static final long DEFAULT_MAX_FILE_SIZE = 1024 * 1024;
@@ -242,6 +242,9 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 originalBranch = getCurrentBranch();
                 prepareWorkingDirectory();
             }
+
+            // Prepare execution environment (Python venv, etc.)
+            prepareEnvironment();
 
             // Perform the actual work
             doWork();
@@ -1232,6 +1235,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return workingDirectory;
     }
 
+    @Override
+    protected String getEnvironmentWorkingDirectory() {
+        return workingDirectory;
+    }
+
     public void setWorkingDirectory(String workingDirectory) {
         this.workingDirectory = workingDirectory;
     }
@@ -1653,6 +1661,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
             sb.append("::req.").append(entry.getKey()).append(":=").append(entry.getValue());
         }
+        sb.append(encodeEnvironmentProperties());
         return sb.toString();
     }
 
@@ -1704,6 +1713,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             default:
                 if (key.startsWith("req.")) {
                     requiredLabels.put(key.substring(4), value);
+                } else {
+                    setEnvironmentProperty(key, value);
                 }
                 break;
         }
