@@ -25,6 +25,22 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/**
+ * A lightweight block implementation with no input/output tracking buffers.
+ * DefaultBlock wraps a forward cell and optional backward cell without the
+ * entry/exit cell architecture of {@link org.almostrealism.layers.DefaultCellularLayer}.
+ *
+ * <p>Use DefaultBlock for pure transformations that do not require weight updates
+ * or gradient computation through a tracked input buffer. Examples include reshape
+ * operations, scaling, and other stateless transformations.</p>
+ *
+ * <p>For trainable layers that need input tracking for backpropagation, use
+ * {@link org.almostrealism.layers.DefaultCellularLayer} instead.</p>
+ *
+ * @see org.almostrealism.layers.DefaultCellularLayer
+ * @see Block
+ * @author Michael Murray
+ */
 public class DefaultBlock implements Block {
 	private final TraversalPolicy inputShape;
 	private final TraversalPolicy outputShape;

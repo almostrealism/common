@@ -811,6 +811,11 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @param server  Server index.
 	 */
 	public synchronized void sendTask(String data, int server) {
+		if (server < 0 || server >= this.servers.size()) {
+			System.out.println("NodeGroup: Server " + server + " is not connected");
+			return;
+		}
+
 		try {
 			Message m = new Message(Message.Task, -1, this.servers.get(server));
 			m.setString(data);
@@ -828,6 +833,11 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @param server  Server index.
 	 */
 	public synchronized void sendTask(JobFactory f, int server) {
+		if (server < 0 || server >= this.servers.size()) {
+			System.out.println("NodeGroup: Server " + server + " is not connected");
+			return;
+		}
+
 		try {
 			Message m = new Message(Message.Task, -1, this.servers.get(server));
 			m.setString(f.encode());

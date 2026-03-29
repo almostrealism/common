@@ -1381,37 +1381,33 @@ public interface TemporalFeatures extends GeometryFeatures {
 		int fftSize = nextPowerOfTwo(outputLength);
 		TraversalPolicy outputShape = shape(outputLength);
 
-		// Step 1: Zero-pad signal to fftSize
-		CollectionProducer paddedSignal = pad(shape(fftSize), signal, 0);
+		// Each stage is evaluated separately to prevent the entire pipeline
+		// from compiling into a single monolithic native code file, which
+		// causes C compilation timeouts for large FFT sizes.
+		// Intermediate collections are destroyed to avoid memory pressure.
 
-		// Step 2: Convert signal to complex format [fftSize, 2]
-		CollectionProducer signalComplex = complexFromParts(
-				paddedSignal,
-				zeros(shape(fftSize))
-		);
+		// Stage 1: Forward FFT of signal (pad, convert to complex, transform)
+		PackedCollection signalFFT = fft(fftSize,
+				complexFromParts(pad(shape(fftSize), signal, 0), zeros(shape(fftSize))),
+				requirements).evaluate();
 
-		// Step 3: Zero-pad kernel to fftSize
-		CollectionProducer paddedKernel = pad(shape(fftSize), kernel, 0);
+		// Stage 2: Forward FFT of kernel
+		PackedCollection kernelFFT = fft(fftSize,
+				complexFromParts(pad(shape(fftSize), kernel, 0), zeros(shape(fftSize))),
+				requirements).evaluate();
 
-		// Step 4: Convert kernel to complex format [fftSize, 2]
-		CollectionProducer kernelComplex = complexFromParts(
-				paddedKernel,
-				zeros(shape(fftSize))
-		);
+		// Stage 3: Complex multiplication in frequency domain
+		PackedCollection product = multiplyComplex(cp(signalFFT), cp(kernelFFT)).evaluate();
+		signalFFT.destroy();
+		kernelFFT.destroy();
 
-		// Step 5: FFT both (GPU-accelerated)
-		FourierTransform signalFFT = fft(fftSize, signalComplex, requirements);
-		FourierTransform kernelFFT = fft(fftSize, kernelComplex, requirements);
+		// Stage 4: Inverse FFT
+		PackedCollection ifftResult = ifft(fftSize, cp(product), requirements).evaluate();
+		product.destroy();
 
-		// Step 6: Complex multiplication in frequency domain
-		CollectionProducer product = multiplyComplex(signalFFT, kernelFFT);
-
-		// Step 7: Inverse FFT (GPU-accelerated)
-		FourierTransform ifftResult = ifft(fftSize, product, requirements);
-
-		// Step 8: Extract real parts and trim to output length
-		CollectionProducer flatIfft = ifftResult.traverseEach();
-
+		// Stage 5: Extract real parts from interleaved complex format and trim
+		// Use the Producer pattern to avoid setMem in a loop (code policy violation)
+		CollectionProducer flatIfft = cp(ifftResult).traverseEach();
 		return new DefaultTraversableExpressionComputation(
 				"extractRealParts",
 				outputShape,
