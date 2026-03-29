@@ -49,11 +49,42 @@ import java.util.Optional;
 import java.util.Properties;
 
 /**
- * A {@link NodeGroup} object represents a group of {@link Node}s
- * The {@link NodeGroup} object is responsible for moderating communication
- * with each of its children.
- * 
+ * A {@link NodeGroup} manages a collection of child {@link Node}s and
+ * their connections to remote Servers.
+ *
+ * <h2>Two Networking Layers</h2>
+ * <ul>
+ *   <li><b>Server connections</b> ({@link NodeProxy}, stored in
+ *       {@code this.servers}) are socket-level links between two
+ *       Servers. They carry {@link Message} objects (tasks, connection
+ *       requests, job data). When an agent connects to the controller,
+ *       a NodeProxy is added to this list.</li>
+ *   <li><b>Peer connections</b> ({@link Connection}, stored in each
+ *       {@code Node.peers}) are logical links between individual Nodes
+ *       on different Servers. They wrap a NodeProxy and target a
+ *       specific remote Node by ID. Peer connections are how jobs
+ *       actually move between Nodes via the relay loop.</li>
+ * </ul>
+ *
+ * <h2>Job Distribution</h2>
+ * <p>The run loop iterates registered {@link JobFactory} instances,
+ * calls {@code nextJob()} to produce {@link Job} objects, and hands
+ * each job to {@link #getLeastActiveNode()} via {@link Node#addJob(Job)}.
+ * Jobs enter the child Node's queue unconditionally -- label matching
+ * happens later in the Node's worker thread.</p>
+ *
+ * <h2>Peer Connection Establishment</h2>
+ * <p>Child Nodes request peer connections automatically through their
+ * activity threads by calling {@link #getConnection(int)}, which picks
+ * a random entry from {@code this.servers} and sends a
+ * {@link Message#ConnectionRequest}. The remote NodeGroup responds with
+ * a {@link Message#ConnectionConfirmation}, establishing a peer
+ * {@link Connection} on both sides.</p>
+ *
  * @author  Michael Murray
+ * @see Node
+ * @see Connection
+ * @see <a href="../docs/node-relay.md">Node Relay and Job Routing</a>
  */
 public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener,
 														Node.ActivityListener {
@@ -487,11 +518,43 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	}
 	
 	/**
+	 * Finds the least active child Node whose labels satisfy the
+	 * job's required labels. Returns null if no child qualifies.
+	 *
+	 * @param j the job to match
+	 * @return a suitable Node, or null
+	 */
+	public Node findNodeForJob(Job j) {
+		Map<String, String> requirements = j.getRequiredLabels();
+
+		List<Node> candidates = new ArrayList<>();
+		double rating = -1.0;
+
+		synchronized (this.nodes) {
+			for (Node n : this.nodes) {
+				if (n.satisfies(requirements)) {
+					double a = n.getActivityRating();
+					if (rating == -1.0 || rating > a) {
+						candidates.clear();
+						candidates.add(n);
+						rating = a;
+					} else if (a == rating) {
+						candidates.add(n);
+					}
+				}
+			}
+		}
+
+		if (candidates.isEmpty()) return null;
+		return candidates.get(random.nextInt(candidates.size()));
+	}
+
+	/**
 	 * Adds the specified socket connection as a server for this NodeGroup to communicate with.
-	 * 
+	 *
 	 * @param s  Socket connection to server.
 	 * @throws IOException  If an IO error occurs constructing a NodeProxy using the Socket.
-	 * @throws InvalidAlgorithmParameterException 
+	 * @throws InvalidAlgorithmParameterException
 	 * @throws NoSuchPaddingException 
 	 * @throws InvalidKeySpecException 
 	 * @throws NoSuchAlgorithmException 
@@ -823,7 +886,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	/**
 	 * Sends an encoded JobFactory instance to a server that this {@link NodeGroup}
 	 * is connected to.
-	 * 
+	 *
 	 * @param f  JobFactory to transmit.
 	 * @param server  Server index.
 	 */

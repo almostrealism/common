@@ -926,11 +926,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
         notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent);
 
-        // Round-robin to connected agents
-        int index = peers.length > 1 ? (int) (System.currentTimeMillis() % peers.length) : 0;
-        server.sendTask(factory, index);
+        // Queue locally — the NodeGroup relay mechanism distributes
+        // the job to a Node whose labels match the job's requirements
+        server.addTask(factory);
 
-        log("Submitted job via API: " + factory.getTaskId() + " to agent " + index);
+        log("Submitted job via API: " + factory.getTaskId());
 
         String json = "{\"ok\":true,\"jobId\":\"" + factory.getTaskId()
             + "\",\"workstreamId\":\"" + workstreamId + "\"}";

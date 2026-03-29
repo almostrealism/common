@@ -53,8 +53,39 @@ import java.util.concurrent.ThreadFactory;
  * which can process one {@link Job} at a time. A {@link Node} is
  * tied to a parent {@link NodeGroup} and is assigned an id that
  * is unique for that parent.
- * 
+ *
+ * <h2>Threads</h2>
+ * <p>Each Node runs two threads:</p>
+ * <ul>
+ *   <li><b>Worker thread</b> -- pulls jobs from the queue, checks
+ *       label requirements via {@link #satisfies(Map)}, and either
+ *       executes the job or puts it back in the queue for relay.</li>
+ *   <li><b>Activity thread</b> -- manages peer {@link Connection}
+ *       establishment and relays excess jobs to peers. This is the
+ *       only mechanism that moves jobs between Nodes on different
+ *       Servers.</li>
+ * </ul>
+ *
+ * <h2>Job Queue Invariant</h2>
+ * <p>Any Node accepts any job into its queue via {@link #addJob(Job)},
+ * regardless of labels. Label checking happens only in the worker
+ * thread at execution time. This allows a Node to hold jobs that it
+ * cannot execute, so that the activity thread's relay loop can
+ * forward them to a peer that can.</p>
+ *
+ * <h2>Relay Nodes</h2>
+ * <p>A Node with the label {@code role:relay} never executes jobs.
+ * The worker thread is not started on relay Nodes (the
+ * {@link #addJob(Job)} method skips worker startup when
+ * {@code role:relay} is set). Jobs accumulate in the queue and are
+ * moved exclusively by the relay loop in the activity thread. This
+ * is used by the controller to act as a job warehouse without
+ * executing anything locally.</p>
+ *
  * @author  Michael Murray
+ * @see NodeGroup
+ * @see Connection
+ * @see <a href="../docs/node-relay.md">Node Relay and Job Routing</a>
  */
 // TODO  Implement JobQueue
 public class Node implements Runnable, ThreadFactory {
@@ -144,12 +175,19 @@ public class Node implements Runnable, ThreadFactory {
 
 	/**
 	 * Returns true if this Node's labels satisfy the given requirements.
-	 * An empty requirements map is always satisfied.
+	 * An empty requirements map is satisfied unless this Node has the
+	 * {@code role:relay} label, which marks it as a queue-only Node
+	 * that never executes jobs.
 	 *
 	 * @param requirements the required label key-value pairs
 	 * @return true if every requirement is matched by this Node's labels
 	 */
 	public boolean satisfies(Map<String, String> requirements) {
+		// Relay nodes never execute jobs — they only queue and forward
+		if ("relay".equals(labels.get("role"))) {
+			return false;
+		}
+
 		if (requirements == null || requirements.isEmpty()) {
 			return true;
 		}
@@ -198,14 +236,15 @@ public class Node implements Runnable, ThreadFactory {
 					Node.this.currentJob = j;
 
 					if (j != null) {
-						// Label check: skip jobs whose requirements
-						// do not match this Node's labels
+						// If this Node cannot satisfy the job's label
+						// requirements, put it back at the end of the
+						// queue for the activity thread to relay.
 						if (!Node.this.satisfies(j.getRequiredLabels())) {
-							Node.this.displayMessage("Skipping job " + j.getTaskId()
-								+ " -- labels mismatch, relaying");
-							if (Node.this.parent != null) {
-								Node.this.parent.addJob(j);
-							}
+							Node.this.displayMessage("Re-queuing job "
+								+ j.getTaskId()
+								+ " -- labels mismatch");
+							Node.this.addJob(j);
+							Thread.yield();
 							continue;
 						}
 
@@ -588,10 +627,17 @@ public class Node implements Runnable, ThreadFactory {
 			else
 				return id;
 		}
-		
-		if (this.worker != null) synchronized (this.worker) {
-			if (!this.working &&
-					!this.worker.isAlive()) this.worker.start();
+
+		this.displayMessage("Queued job " + j.getTaskId()
+			+ " at position " + id
+			+ " (queue size " + this.jobs.size() + ")"
+			+ ("relay".equals(labels.get("role")) ? " [relay node]" : ""));
+
+		if (this.worker != null && !"relay".equals(labels.get("role"))) {
+			synchronized (this.worker) {
+				if (!this.working &&
+						!this.worker.isAlive()) this.worker.start();
+			}
 		}
 		
 		if (this.parent != null) this.parent.addCachedTask(j.getTaskString());
@@ -1062,43 +1108,58 @@ public class Node implements Runnable, ThreadFactory {
 			}
 			
 			r = 0.0;
-			
+
 			int js = this.jobs.size();
-			
+
 			if (js > this.minJobs)
 				r = this.relay;
 			else if (js > this.maxJobs)
 				r = this.relay * 2.0;
-			
+
 			r *= ((double)js) / (this.maxJobs - 1.0);
 			r += this.peerRelayC * (((double)this.peers.size()) / this.maxPeers);
-			
+
 			this.relaySum += r;
 			this.relayDiv++;
 
+			if (js > 0) {
+				this.displayMessage("Relay check: jobs=" + js
+					+ " minJobs=" + this.minJobs
+					+ " peers=" + this.peers.size()
+					+ " r=" + String.format("%.4f", r));
+			}
+
 			r: if (js > this.minJobs && Math.random() < r) {
 				Connection c;
-				
+
 				if (Math.random() < this.parentalRelayP ||
 					(c = this.getRandomPeer()) == null) {
 					if (this.parent != null) {
 						Job j = this.nextJob();
+						this.displayMessage("Relaying job " + j
+							+ " to parent NodeGroup");
 						this.parent.addJob(j);
 						break r;
+					} else {
+						this.displayMessage("No parent and no peers"
+							+ " -- cannot relay");
 					}
 				} else {
 					try {
 						Job j = this.nextJob();
-						
+
 						if (j != null) {
+							this.displayMessage("Relaying job "
+								+ j.getTaskId()
+								+ " to peer " + c);
 							c.sendJob(j);
 							this.totalRelay++;
-							
+
 							if (totalRelay % 20 == 0)
 								this.displayMessage("Relayed 20 jobs (" + r + ").");
 							else if (totalRelay == 1)
-								this.displayMessage("Relayed a job (" + r + ").");
-							
+								this.displayMessage("Relayed first job (" + r + ").");
+
 							break r;
 						}
 					} catch (SocketException se) {

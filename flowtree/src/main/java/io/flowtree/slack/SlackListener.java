@@ -458,11 +458,11 @@ public class SlackListener implements ConsoleFeatures {
 
         notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent, replyTo);
 
-        // Round-robin to connected agents
-        int index = nextAgent++ % peers.length;
-        server.sendTask(factory, index);
+        // Queue locally — the NodeGroup relay mechanism distributes
+        // the job to a Node whose labels match the job's requirements
+        server.addTask(factory);
 
-        log("Submitted job to agent " + index + ": " + factory.getTaskId());
+        log("Submitted job: " + factory.getTaskId());
         return true;
     }
 
