@@ -16,6 +16,8 @@
 #
 # ─────────────────────────────────────────────────────────────────────
 
+name: flowtree
+
 services:
   agent:
     build:
@@ -29,7 +31,9 @@ services:
           memory: "${AGENT_MEMORY:-4g}"
     volumes:
       - workspaces:/workspace/project
-      - ${SSH_KEY_DIR:-/dev/null}:/home/agent/.ssh:ro
+      - ${SSH_KEY_DIR}:/home/agent/.ssh:ro
+      - ${MODELS_DIR:-/dev/null}:/models:ro
+      - ${SAMPLES_DIR:-/dev/null}:/samples:ro
     environment:
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:?Run claude setup-token and set this}
       - FLOWTREE_ROOT_HOST=${FLOWTREE_ROOT_HOST:?Set to controller hostname}
