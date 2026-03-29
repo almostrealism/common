@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.KeyUtils;
 
 import java.io.BufferedWriter;
@@ -32,7 +33,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class ExternalProcessJob implements Job {
+public class ExternalProcessJob implements Job, ConsoleFeatures {
     public static final String COMMAND_SEPARATOR = ";;";
     public static final String JOB_SEPARATOR = "&;";
 
@@ -85,13 +86,13 @@ public class ExternalProcessJob implements Job {
         String script = "commands/" + KeyUtils.generateKey() + ".sh";
         try (BufferedWriter out = new BufferedWriter(new FileWriter(script))) {
             out.write("#!/bin/sh\n");
-            System.out.println("!/bin/sh");
+            log("!/bin/sh");
             for (String cmd : commands) {
                 out.write(cmd + "\n");
-                System.out.println(cmd);
+                log(cmd);
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            warn("Failed to write script: " + e.getMessage(), e);
             return;
         }
 

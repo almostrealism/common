@@ -9,7 +9,7 @@
 #   extract-crash-reports.sh <log-file> [log-file ...]
 #
 # Environment:
-#   CRASH_REPORT_DIR - output directory (default: /tmp/crash-reports)
+#   CRASH_REPORT_DIR - output directory (default: unique temp directory)
 #
 # Output:
 #   $CRASH_REPORT_DIR/crash-summary.txt   - consolidated crash info
@@ -20,8 +20,17 @@
 
 set -euo pipefail
 
-# Output directory can be overridden via CRASH_REPORT_DIR env var
-OUTPUT_DIR="${CRASH_REPORT_DIR:-/tmp/crash-reports}"
+# Output directory can be overridden via CRASH_REPORT_DIR env var.
+# Uses RUNNER_TEMP (GitHub Actions) or mktemp to avoid /tmp collisions.
+if [ -z "${CRASH_REPORT_DIR:-}" ]; then
+    if [ -n "${RUNNER_TEMP:-}" ]; then
+        OUTPUT_DIR="${RUNNER_TEMP}/crash-reports"
+    else
+        OUTPUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/crash-reports-XXXXXX")"
+    fi
+else
+    OUTPUT_DIR="${CRASH_REPORT_DIR}"
+fi
 SUMMARY_FILE="${OUTPUT_DIR}/crash-summary.txt"
 DUMPSTREAM_DIR="${OUTPUT_DIR}/dumpstreams"
 

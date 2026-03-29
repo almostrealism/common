@@ -59,8 +59,9 @@ ENV MAVEN_HOME=/opt/maven
 ENV PATH="${MAVEN_HOME}/bin:${PATH}"
 
 # ---------- AR environment ----------
-ENV AR_HARDWARE_LIBS=/tmp/ar_libs/
-# AR_HARDWARE_DRIVER is intentionally left unset to auto-detect the best available backend
+# AR_HARDWARE_LIBS is intentionally NOT set — the system auto-detects a suitable directory.
+# Setting it to /tmp/ar_libs/ causes permission errors on shared or sandboxed systems.
+# AR_HARDWARE_DRIVER is intentionally left unset to auto-detect the best available backend.
 
 # ---------- Runner user ----------
 RUN useradd -m -s /bin/bash runner && \

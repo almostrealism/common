@@ -55,6 +55,7 @@ public class InstructionPromptBuilder {
     private int maxTurns;
     private String taskId;
     private String planningDocument;
+    private List<String> dependentRepoPaths;
 
     /**
      * Sets the user's request prompt.
@@ -234,6 +235,19 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Sets the resolved filesystem paths for dependent repositories.
+     * When set, the prompt will include information about these repos
+     * so the agent knows they are available.
+     *
+     * @param dependentRepoPaths list of absolute paths to dependent repo checkouts
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setDependentRepoPaths(List<String> dependentRepoPaths) {
+        this.dependentRepoPaths = dependentRepoPaths;
+        return this;
+    }
+
+    /**
      * Builds the full instruction prompt by assembling all configured
      * sections into a single string.
      *
@@ -408,6 +422,20 @@ public class InstructionPromptBuilder {
             sb.append("Target branch: ").append(targetBranch).append("\n");
         }
         sb.append("\n");
+
+        // Dependent repos context
+        if (dependentRepoPaths != null && !dependentRepoPaths.isEmpty()) {
+            sb.append("## Dependent Repositories\n");
+            sb.append("The following additional repositories have been checked out ");
+            sb.append("alongside the primary working directory. They are on the same ");
+            sb.append("branch (").append(targetBranch != null ? targetBranch : "default");
+            sb.append(") and any changes you make in them will be committed and pushed ");
+            sb.append("automatically when the job completes.\n\n");
+            for (String depPath : dependentRepoPaths) {
+                sb.append("- `").append(depPath).append("`\n");
+            }
+            sb.append("\n");
+        }
 
         // Branch awareness and anti-loop guidance
         if (targetBranch != null && !targetBranch.isEmpty()) {

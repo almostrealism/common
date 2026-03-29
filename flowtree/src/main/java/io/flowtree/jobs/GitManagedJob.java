@@ -97,7 +97,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private static final Set<String> PROTECTED_PATH_PATTERNS = GitJobConfig.PROTECTED_PATH_PATTERNS;
 
     /** Default workspace path when /workspace/project does not exist. */
-    private static final String FALLBACK_WORKSPACE_DIR = "/tmp/flowtree-workspaces";
+    private static final String FALLBACK_WORKSPACE_DIR =
+        System.getProperty("java.io.tmpdir") + "/flowtree-workspaces";
 
     /**
      * System property key for a server-wide working directory override.
@@ -121,6 +122,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private String repoUrl;
     private String workingDirectory;
     private String defaultWorkspacePath;
+    private List<String> dependentRepos;
+    private List<String> dependentRepoPaths = new ArrayList<>();
 
     // ---- Git operation flags ----
     private boolean pushToOrigin = true;
@@ -235,12 +238,16 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 resolveAndCloneRepository();
             }
 
+            // Clone/sync dependent repos alongside the primary repo
+            prepareDependentRepos();
+
             // Prepare working directory: verify clean state, checkout branch,
             // pull latest. This must happen before doWork() so the agent
             // operates on the current remote state of the target branch.
             if (targetBranch != null && !targetBranch.isEmpty()) {
                 originalBranch = getCurrentBranch();
                 prepareWorkingDirectory();
+                prepareDependentReposBranches();
             }
 
             // Perform the actual work
@@ -250,6 +257,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             if (targetBranch != null && !targetBranch.isEmpty()) {
                 if (validateChanges()) {
                     handleGitOperations();
+                    handleDependentRepoGitOperations();
                 } else {
                     warn("Change validation failed - skipping git operations");
                 }
@@ -456,7 +464,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * <ol>
      *   <li>{@link #defaultWorkspacePath} from the global YAML configuration</li>
      *   <li>{@code /workspace/project} if that directory exists</li>
-     *   <li>{@code /tmp/flowtree-workspaces/<repo-name>} as a last resort</li>
+     *   <li>{@code <tmpdir>/flowtree-workspaces/<repo-name>} as a last resort</li>
      * </ol>
      *
      * <p>If the resolved directory already contains a {@code .git} directory,
@@ -501,7 +509,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      * <ol>
      *   <li>{@link #defaultWorkspacePath} if explicitly configured</li>
      *   <li>{@code /workspace/project} if the directory exists</li>
-     *   <li>{@code /tmp/flowtree-workspaces} as fallback</li>
+     *   <li>{@code <tmpdir>/flowtree-workspaces} as fallback</li>
      * </ol>
      *
      * <p>In all cases, the repository name (derived from {@link #repoUrl})
@@ -524,7 +532,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             return "/workspace/project/" + repoName;
         }
 
-        // 3. Fall back to /tmp with a repo-derived name
+        // 3. Fall back to system temp dir with a repo-derived name
         return FALLBACK_WORKSPACE_DIR + "/" + repoName;
     }
 
@@ -555,6 +563,221 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     private void cloneRepository(String targetPath) throws IOException, InterruptedException {
         GitOperations gitOps = new GitOperations(workingDirectory, taskId);
         gitOps.cloneRepository(repoUrl, targetPath);
+    }
+
+    /**
+     * Clones or syncs dependent repositories alongside the primary repo.
+     *
+     * <p>Each dependent repo is cloned as a sibling directory of the
+     * primary working directory. If a repo is already cloned, this
+     * method ensures it is up-to-date with origin.</p>
+     */
+    private void prepareDependentRepos() throws IOException, InterruptedException {
+        if (dependentRepos == null || dependentRepos.isEmpty()) {
+            return;
+        }
+
+        String parentDir = resolveParentDirectory();
+        if (parentDir == null) {
+            warn("Cannot resolve parent directory for dependent repos");
+            return;
+        }
+
+        for (String depRepoUrl : dependentRepos) {
+            String repoName = WorkspaceResolver.extractRepoName(depRepoUrl);
+            String depPath = parentDir + "/" + repoName;
+
+            File depDir = new File(depPath);
+            if (new File(depDir, ".git").exists()) {
+                log("Dependent repo already cloned: " + depPath);
+            } else {
+                log("Cloning dependent repo: " + depRepoUrl + " into " + depPath);
+                GitOperations gitOps = new GitOperations(parentDir, taskId);
+                gitOps.cloneRepository(depRepoUrl, depPath);
+            }
+
+            dependentRepoPaths.add(depPath);
+        }
+    }
+
+    /**
+     * Prepares branch state for all dependent repos: fetch, checkout
+     * the target branch (creating it from the base branch if needed),
+     * and pull latest changes.
+     */
+    private void prepareDependentReposBranches() throws IOException, InterruptedException {
+        for (String depPath : dependentRepoPaths) {
+            log("Preparing dependent repo branch: " + depPath);
+
+            // Fetch latest
+            executeGitInDir(depPath, "fetch", "origin");
+
+            // Check out target branch or create it
+            String currentBranch = executeGitWithOutputInDir(depPath,
+                "rev-parse", "--abbrev-ref", "HEAD").trim();
+            if (!targetBranch.equals(currentBranch)) {
+                boolean exists = executeGitInDir(depPath, "rev-parse",
+                    "--verify", targetBranch) == 0
+                    || executeGitInDir(depPath, "rev-parse",
+                        "--verify", "origin/" + targetBranch) == 0;
+
+                if (exists) {
+                    executeGitInDir(depPath, "checkout", targetBranch);
+                } else {
+                    String startPoint = "origin/" + baseBranch;
+                    log("Creating branch " + targetBranch + " from "
+                        + startPoint + " in " + depPath);
+                    executeGitInDir(depPath, "checkout", "-b",
+                        targetBranch, "--no-track", startPoint);
+                }
+            }
+
+            // Pull latest (fast-forward only, ignore failure for new branches)
+            executeGitInDir(depPath, "pull", "--ff-only", "origin", targetBranch);
+        }
+    }
+
+    /**
+     * Handles git operations (stage, commit, push) for all dependent
+     * repos. Uses the same commit message pattern as the primary repo,
+     * reading {@code commit.txt} from the primary working directory if
+     * it exists.
+     */
+    private void handleDependentRepoGitOperations() throws IOException, InterruptedException {
+        for (String depPath : dependentRepoPaths) {
+            // Check for changes
+            String statusOutput = executeGitWithOutputInDir(depPath,
+                "status", "--porcelain");
+            List<String> changedFiles = new ArrayList<>();
+            for (String line : statusOutput.split("\n")) {
+                if (line.length() > 3) {
+                    String file = line.substring(3).trim();
+                    if (file.contains(" -> ")) {
+                        file = file.split(" -> ")[1];
+                    }
+                    if (!file.isEmpty()) {
+                        changedFiles.add(file);
+                    }
+                }
+            }
+
+            if (changedFiles.isEmpty()) {
+                log("No changes in dependent repo: " + depPath);
+                continue;
+            }
+
+            log("Committing " + changedFiles.size() + " changes in dependent repo: " + depPath);
+
+            // Stage all changes (apply same size guardrail)
+            for (String file : changedFiles) {
+                File f = new File(depPath, file);
+                if (f.exists() && f.length() > maxFileSizeBytes) {
+                    log("SKIP (size) in dependent repo: " + file);
+                    continue;
+                }
+                executeGitInDir(depPath, "add", file);
+            }
+
+            // Read commit message from primary working directory's commit.txt
+            String commitMessage = getCommitMessage();
+            File commitFile = resolveFile("commit.txt");
+            if (commitFile != null && commitFile.exists()) {
+                try {
+                    String content = Files.readString(commitFile.toPath()).trim();
+                    if (!content.isEmpty()) {
+                        commitMessage = content;
+                    }
+                } catch (IOException e) {
+                    log("Could not read commit.txt for dependent repo: " + e.getMessage());
+                }
+            }
+
+            // Commit with identity
+            List<String> args = new ArrayList<>();
+            if (gitUserName != null && !gitUserName.isEmpty()) {
+                args.add("-c");
+                args.add("user.name=" + gitUserName);
+            }
+            if (gitUserEmail != null && !gitUserEmail.isEmpty()) {
+                args.add("-c");
+                args.add("user.email=" + gitUserEmail);
+            }
+            args.add("commit");
+            args.add("-m");
+            args.add(commitMessage);
+
+            executeGitInDir(depPath, args.toArray(new String[0]));
+
+            // Push
+            if (pushToOrigin && !dryRun) {
+                String refspec = targetBranch + ":" + targetBranch;
+                executeGitInDir(depPath, "push", "-u", "origin", refspec);
+                log("Pushed dependent repo: " + depPath);
+            }
+        }
+    }
+
+    /**
+     * Resolves the parent directory of the primary working directory.
+     * Dependent repos are cloned as siblings of the primary repo.
+     */
+    private String resolveParentDirectory() {
+        if (workingDirectory != null && !workingDirectory.isEmpty()) {
+            return new File(workingDirectory).getParent();
+        }
+        if (defaultWorkspacePath != null && !defaultWorkspacePath.isEmpty()) {
+            return defaultWorkspacePath;
+        }
+        return null;
+    }
+
+    /**
+     * Executes a git command in a specific directory.
+     */
+    private int executeGitInDir(String dir, String... args) throws IOException, InterruptedException {
+        List<String> command = new ArrayList<>();
+        command.add("git");
+        command.add("-C");
+        command.add(dir);
+        command.addAll(Arrays.asList(args));
+
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                log("[dep-git] " + line);
+            }
+        }
+        return process.waitFor();
+    }
+
+    /**
+     * Executes a git command in a specific directory and returns stdout.
+     */
+    private String executeGitWithOutputInDir(String dir, String... args)
+            throws IOException, InterruptedException {
+        List<String> command = new ArrayList<>();
+        command.add("git");
+        command.add("-C");
+        command.add(dir);
+        command.addAll(Arrays.asList(args));
+
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        StringBuilder output = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+            }
+        }
+        process.waitFor();
+        return output.toString();
     }
 
     /**
@@ -1269,6 +1492,34 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
      */
     public void setDefaultWorkspacePath(String defaultWorkspacePath) {
         this.defaultWorkspacePath = defaultWorkspacePath;
+    }
+
+    /**
+     * Returns the list of dependent repository URLs that should be
+     * checked out alongside the primary repo.
+     */
+    public List<String> getDependentRepos() {
+        return dependentRepos;
+    }
+
+    /**
+     * Sets the dependent repository URLs. Each repo is cloned as a
+     * sibling directory of the primary working directory and managed
+     * with the same branch and commit lifecycle.
+     *
+     * @param dependentRepos list of git clone URLs
+     */
+    public void setDependentRepos(List<String> dependentRepos) {
+        this.dependentRepos = dependentRepos;
+    }
+
+    /**
+     * Returns the resolved filesystem paths for dependent repos that
+     * were cloned during job preparation. Available after
+     * {@link #run()} has completed the preparation phase.
+     */
+    public List<String> getDependentRepoPaths() {
+        return new ArrayList<>(dependentRepoPaths);
     }
 
     public long getMaxFileSizeBytes() {

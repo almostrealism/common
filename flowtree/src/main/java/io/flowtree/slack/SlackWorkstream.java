@@ -90,6 +90,9 @@ public class SlackWorkstream {
     // GitHub organization for org-based token selection
     private String githubOrg;
 
+    // Dependent repos to clone alongside the primary repo
+    private List<String> dependentRepos;
+
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
 
@@ -357,6 +360,25 @@ public class SlackWorkstream {
      */
     public void setGithubOrg(String githubOrg) {
         this.githubOrg = githubOrg;
+    }
+
+    /**
+     * Returns the list of dependent repository URLs that should be
+     * checked out alongside the primary repo. Each dependent repo is
+     * cloned as a sibling directory and managed with the same branch
+     * and commit lifecycle as the primary repo.
+     */
+    public List<String> getDependentRepos() {
+        return dependentRepos;
+    }
+
+    /**
+     * Sets the dependent repository URLs.
+     *
+     * @param dependentRepos list of git clone URLs for dependent repos
+     */
+    public void setDependentRepos(List<String> dependentRepos) {
+        this.dependentRepos = dependentRepos;
     }
 
     /**

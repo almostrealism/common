@@ -8,7 +8,7 @@
 # Environment variables (set automatically if not present):
 #   FLOWTREE_ROOT_HOST  - Controller host to connect to (default: host.docker.internal)
 #   FLOWTREE_ROOT_PORT  - Controller port (default: 7766)
-#   AR_HARDWARE_LIBS    - Directory for native libraries (default: /tmp/ar_libs/)
+#   AR_HARDWARE_LIBS    - Directory for native libraries (auto-detected; do not set manually)
 #   AR_HARDWARE_DRIVER  - Hardware backend (leave unset for best available)
 #
 # Usage:
@@ -29,9 +29,8 @@ PROPERTIES_FILE="${MODULE_DIR}/conf/agent.properties"
 export FLOWTREE_ROOT_HOST="${FLOWTREE_ROOT_HOST:-host.docker.internal}"
 export FLOWTREE_ROOT_PORT="${FLOWTREE_ROOT_PORT:-7766}"
 
-# Set AR hardware defaults if not already set
-export AR_HARDWARE_LIBS="${AR_HARDWARE_LIBS:-/tmp/ar_libs/}"
-# AR_HARDWARE_DRIVER is intentionally left unset to auto-detect the best available backend
+# AR_HARDWARE_LIBS is intentionally NOT set — the system auto-detects a suitable directory.
+# AR_HARDWARE_DRIVER is intentionally left unset to auto-detect the best available backend.
 
 # Build if target directory is missing (first-run convenience)
 if [ ! -d "${MODULE_DIR}/target" ]; then

@@ -875,6 +875,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setPlanningDocument(workstream.getPlanningDocument());
         }
 
+        // Dependent repos
+        if (workstream.getDependentRepos() != null && !workstream.getDependentRepos().isEmpty()) {
+            factory.setDependentRepos(workstream.getDependentRepos());
+        }
+
         // Test file protection
         if (protectTestFiles) {
             factory.setProtectTestFiles(true);

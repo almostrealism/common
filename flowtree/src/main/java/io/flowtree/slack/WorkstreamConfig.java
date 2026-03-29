@@ -86,6 +86,7 @@ public class WorkstreamConfig {
         private Map<String, String> env;
         private String planningDocument;
         private String githubOrg;
+        private List<String> dependentRepos;
 
         public String getWorkstreamId() { return workstreamId; }
         public void setWorkstreamId(String workstreamId) { this.workstreamId = workstreamId; }
@@ -143,6 +144,15 @@ public class WorkstreamConfig {
         public void setGithubOrg(String githubOrg) { this.githubOrg = githubOrg; }
 
         /**
+         * Returns the list of dependent repository URLs that should be
+         * checked out alongside the primary repo. Each repo is cloned
+         * as a sibling directory and managed with the same branch/commit
+         * lifecycle as the primary repo.
+         */
+        public List<String> getDependentRepos() { return dependentRepos; }
+        public void setDependentRepos(List<String> dependentRepos) { this.dependentRepos = dependentRepos; }
+
+        /**
          * Converts this entry to a {@link SlackWorkstream} instance.
          *
          * <p>If a {@code workstreamId} is present, it is used as the persistent
@@ -171,6 +181,7 @@ public class WorkstreamConfig {
             ws.setEnv(env);
             ws.setPlanningDocument(planningDocument);
             ws.setGithubOrg(githubOrg);
+            ws.setDependentRepos(dependentRepos);
             return ws;
         }
     }
@@ -441,6 +452,7 @@ public class WorkstreamConfig {
         entry.setEnv(ws.getEnv());
         entry.setPlanningDocument(ws.getPlanningDocument());
         entry.setGithubOrg(ws.getGithubOrg());
+        entry.setDependentRepos(ws.getDependentRepos());
         workstreams.add(entry);
     }
 
@@ -473,6 +485,7 @@ public class WorkstreamConfig {
                     entry.setEnv(ws.getEnv());
                     entry.setPlanningDocument(ws.getPlanningDocument());
                     entry.setGithubOrg(ws.getGithubOrg());
+                    entry.setDependentRepos(ws.getDependentRepos());
                     found = true;
                     break;
                 }

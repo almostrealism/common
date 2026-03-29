@@ -385,6 +385,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 .setMaxTurns(maxTurns)
                 .setTaskId(getTaskId())
                 .setPlanningDocument(planningDocument)
+                .setDependentRepoPaths(getDependentRepoPaths())
                 .setGitHubMcpEnabled(true)
                 .build();
     }
@@ -1221,6 +1222,32 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("autoCreatePr", String.valueOf(autoCreatePr));
         }
 
+        /**
+         * Returns the dependent repository URLs for jobs.
+         */
+        public List<String> getDependentRepos() {
+            String encoded = get("dependentRepos");
+            if (encoded == null || encoded.isEmpty()) {
+                return null;
+            }
+            String decoded = base64Decode(encoded);
+            if (decoded == null || decoded.isEmpty()) {
+                return null;
+            }
+            return new ArrayList<>(List.of(decoded.split(",")));
+        }
+
+        /**
+         * Sets the dependent repository URLs for jobs created by this factory.
+         *
+         * @param dependentRepos list of git clone URLs
+         */
+        public void setDependentRepos(List<String> dependentRepos) {
+            if (dependentRepos != null && !dependentRepos.isEmpty()) {
+                set("dependentRepos", base64Encode(String.join(",", dependentRepos)));
+            }
+        }
+
         @Override
         public Job nextJob() {
             List<String> p = getPrompts();
@@ -1286,6 +1313,12 @@ public class ClaudeCodeJob extends GitManagedJob {
             // Planning document
             if (planningDocument != null) {
                 job.setPlanningDocument(planningDocument);
+            }
+
+            // Dependent repos
+            List<String> depRepos = getDependentRepos();
+            if (depRepos != null && !depRepos.isEmpty()) {
+                job.setDependentRepos(depRepos);
             }
 
             // Test file protection
