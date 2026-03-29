@@ -40,6 +40,10 @@ import java.util.stream.Stream;
  *   <li>CPU loops with toDouble()/toArray() followed by setMem() - forces GPU-CPU round trips</li>
  *   <li>System.arraycopy near PackedCollection - cannot move GPU data</li>
  *   <li>Interfaces named *Features with abstract methods - violates Features pattern convention</li>
+ *   <li>.evaluate() calls in computation code (engine/ml/, studio/ source trees)</li>
+ *   <li>.toDouble() calls in computation code</li>
+ *   <li>Classes named *Cell that don't implement org.almostrealism.graph.Cell</li>
+ *   <li>Classes named *Block that don't implement org.almostrealism.model.Block</li>
  * </ul>
  *
  */
@@ -84,6 +88,48 @@ public class CodePolicyViolationDetector {
 			"CodePolicyViolationDetector.java",  // This file
 			"CodePolicyEnforcementTest.java",    // The test that runs this
 			"/test/"                              // Test files may have intentional examples
+	);
+
+	/**
+	 * Source trees where .evaluate() and .toDouble() in computation code
+	 * are flagged as Producer pattern violations.
+	 */
+	private static final List<String> COMPUTATION_SOURCE_TREES = List.of(
+			"/ml/src/main/java/",
+			"/studio/"
+	);
+
+	/**
+	 * Files in computation source trees where .evaluate() is legitimate.
+	 * These are pipeline boundaries, data loading, or sampling loops.
+	 */
+	private static final List<String> EVALUATE_ALLOWED_FILES = List.of(
+			"DiffusionSampler.java",            // Step boundary in sampling loop
+			"DiffusionFeatures.java",           // Diffusion setup
+			"DiffusionTrainingDataset.java",    // Data loading boundary
+			"AudioScene.java",                  // Pipeline boundary
+			"AudioDiffusionGenerator.java",     // Step boundaries
+			"AudioGenerator.java",              // Pipeline boundary
+			"AudioModulator.java",              // Pipeline boundary
+			"AudioTrainingDataCollector.java",  // Data loading boundary
+			"AudioLatentDataset.java",          // Data loading boundary
+			"AutoEncoderFeatureProvider.java",  // Pipeline boundary
+			"DefaultChannelSectionFactory.java", // Configuration
+			"ChordProgressionManager.java",     // Heredity domain
+			"ParameterSet.java",                // Heredity domain
+			"PatternFeatures.java",             // Pattern setup
+			"LegacyAudioGenerator.java"         // Legacy code
+	);
+
+	/**
+	 * Files in computation source trees where .toDouble() is legitimate.
+	 */
+	private static final List<String> TODOUBLE_ALLOWED_FILES = List.of(
+			"AudioMeter.java",                  // Monitoring/metrics
+			"ConditionalAudioScoring.java",     // Loss/metric at pipeline boundary
+			"ChordProgressionManager.java",     // Heredity domain
+			"ParameterSet.java",                // Heredity domain
+			"PatternLayerManager.java"          // Automation parameter
 	);
 
 	/**
@@ -163,6 +209,36 @@ public class CodePolicyViolationDetector {
 	);
 
 	/**
+	 * Pattern to detect .evaluate() calls in source code.
+	 */
+	private static final Pattern EVALUATE_CALL = Pattern.compile(
+			"\\.evaluate\\s*\\("
+	);
+
+	/**
+	 * Pattern to detect .toDouble() calls in source code.
+	 */
+	private static final Pattern TODOUBLE_CALL = Pattern.compile(
+			"\\.toDouble\\s*\\("
+	);
+
+	/**
+	 * Pattern to detect class declarations ending in "Cell".
+	 * Group 1 captures the class name.
+	 */
+	private static final Pattern CELL_CLASS_PATTERN = Pattern.compile(
+			"(?:public|protected)\\s+(?:abstract\\s+)?class\\s+(\\w*Cell)\\b"
+	);
+
+	/**
+	 * Pattern to detect class declarations ending in "Block".
+	 * Group 1 captures the class name.
+	 */
+	private static final Pattern BLOCK_CLASS_PATTERN = Pattern.compile(
+			"(?:public|protected)\\s+(?:abstract\\s+)?class\\s+(\\w*Block)\\b"
+	);
+
+	/**
 	 * Pattern to detect interfaces named *Features.
 	 * Group 1 captures the interface name.
 	 */
@@ -222,6 +298,12 @@ public class CodePolicyViolationDetector {
 			if (usesPackedCollection) {
 				checkPackedCollectionViolations(file, content, lines);
 			}
+
+			// Check for Producer pattern violations in computation source trees
+			checkProducerPatternViolations(file, content, lines);
+
+			// Check for Cell/Block naming violations
+			checkCellBlockNaming(file, content, lines);
 
 			// Check for Features interface violations
 			checkFeaturesInterfaceViolations(file, content, lines);
@@ -366,6 +448,166 @@ public class CodePolicyViolationDetector {
 				|| line.contains("getChannelData")  // Common bulk copy source
 				|| line.contains(".range(")         // View-based copy
 				|| (line.contains(".setMem(") && line.contains(", new double["));  // Array initialization
+	}
+
+	/**
+	 * Checks for .evaluate() and .toDouble() calls in computation source trees.
+	 *
+	 * <p>These calls break the computation graph when used inside model layers.
+	 * They are only acceptable at pipeline boundaries (test methods, main methods,
+	 * autoregressive loop boundaries, data loading).</p>
+	 */
+	private void checkProducerPatternViolations(Path file, String content, List<String> lines) {
+		String pathStr = file.toString();
+
+		// Only check files in computation source trees
+		boolean inComputationTree = false;
+		for (String tree : COMPUTATION_SOURCE_TREES) {
+			if (pathStr.contains(tree)) {
+				inComputationTree = true;
+				break;
+			}
+		}
+		if (!inComputationTree) return;
+
+		String fileName = file.getFileName().toString();
+
+		// Check .evaluate() calls
+		boolean evaluateAllowed = false;
+		for (String allowed : EVALUATE_ALLOWED_FILES) {
+			if (fileName.equals(allowed)) {
+				evaluateAllowed = true;
+				break;
+			}
+		}
+
+		// Check .toDouble() calls
+		boolean toDoubleAllowed = false;
+		for (String allowed : TODOUBLE_ALLOWED_FILES) {
+			if (fileName.equals(allowed)) {
+				toDoubleAllowed = true;
+				break;
+			}
+		}
+
+		boolean inJavadoc = false;
+
+		for (int i = 0; i < lines.size(); i++) {
+			String line = lines.get(i);
+			String trimmedLine = line.trim();
+			int lineNum = i + 1;
+
+			if (trimmedLine.startsWith("/**")) inJavadoc = true;
+			if (trimmedLine.contains("*/")) { inJavadoc = false; continue; }
+			if (inJavadoc || trimmedLine.startsWith("*") || trimmedLine.startsWith("//")) {
+				continue;
+			}
+
+			// Check enclosing method — main methods and constructors are exempt
+			String methodName = findEnclosingMethodName(lines, i);
+			if (methodName.equals("main") || methodName.equals("<constructor>")) {
+				continue;
+			}
+
+			if (!evaluateAllowed && EVALUATE_CALL.matcher(line).find()) {
+				violations.add(new Violation(file, lineNum, line,
+						"PRODUCER_EVALUATE_IN_COMPUTATION",
+						".evaluate() inside computation code breaks the computation graph. " +
+								"Return a CollectionProducer instead and let the caller evaluate at the pipeline boundary."));
+			}
+
+			if (!toDoubleAllowed && TODOUBLE_CALL.matcher(line).find()) {
+				violations.add(new Violation(file, lineNum, line,
+						"PRODUCER_TODOUBLE_IN_COMPUTATION",
+						".toDouble() in computation code pulls data to host via JNI. " +
+								"Use Producer operations (.multiply(), .add(), etc.) to keep computation on the device."));
+			}
+		}
+	}
+
+	/**
+	 * Checks that classes whose names end in "Cell" implement
+	 * {@code org.almostrealism.graph.Cell} and classes ending in "Block"
+	 * implement {@code org.almostrealism.model.Block}.
+	 */
+	private void checkCellBlockNaming(Path file, String content, List<String> lines) {
+		// Check for *Cell classes
+		Matcher cellMatcher = CELL_CLASS_PATTERN.matcher(content);
+		while (cellMatcher.find()) {
+			String className = cellMatcher.group(1);
+			int lineNum = countLines(content, cellMatcher.start());
+
+			// Check if the class declaration or its hierarchy mentions Cell interface
+			// Look for "implements ... Cell" or "extends ... Cell" or known Cell adapters
+			if (!classImplementsInterface(content, className, "Cell", List.of(
+					"CellAdapter", "CachedStateCell", "FilteredCell",
+					"CollectionTemporalCellAdapter", "CollectionCachedStateCell",
+					"SummationCell", "AudioCellChoiceAdapter", "BatchedCell"))) {
+				violations.add(new Violation(file, lineNum,
+						lines.get(Math.min(lineNum - 1, lines.size() - 1)),
+						"CELL_NAMING_VIOLATION",
+						"Class '" + className + "' ends in 'Cell' but does not implement " +
+								"org.almostrealism.graph.Cell. All *Cell classes must implement the Cell interface."));
+			}
+		}
+
+		// Check for *Block classes
+		Matcher blockMatcher = BLOCK_CLASS_PATTERN.matcher(content);
+		while (blockMatcher.find()) {
+			String className = blockMatcher.group(1);
+			int lineNum = countLines(content, blockMatcher.start());
+
+			// Skip inner utility classes like CodeBlock in DuplicateCodeDetector
+			if (className.equals("CodeBlock")) continue;
+
+			if (!classImplementsInterface(content, className, "Block", List.of(
+					"SequentialBlock", "DefaultBlock", "ForwardOnlyBlock", "BranchBlock"))) {
+				violations.add(new Violation(file, lineNum,
+						lines.get(Math.min(lineNum - 1, lines.size() - 1)),
+						"BLOCK_NAMING_VIOLATION",
+						"Class '" + className + "' ends in 'Block' but does not implement " +
+								"org.almostrealism.model.Block. All *Block classes must implement the Block interface."));
+			}
+		}
+	}
+
+	/**
+	 * Checks if a class declaration in the given content implements a target interface
+	 * or extends a known base class that implements it.
+	 */
+	private boolean classImplementsInterface(String content, String className,
+			String interfaceName, List<String> knownBaseClasses) {
+		// Build a regex to find the class declaration line with extends/implements
+		Pattern classLine = Pattern.compile(
+				"class\\s+" + Pattern.quote(className) + "\\b[^{]*",
+				Pattern.DOTALL
+		);
+		Matcher matcher = classLine.matcher(content);
+		if (!matcher.find()) return false;
+
+		String declaration = matcher.group();
+
+		// Check implements directly
+		if (declaration.contains("implements") && declaration.contains(interfaceName)) {
+			return true;
+		}
+
+		// Check extends known base classes
+		for (String base : knownBaseClasses) {
+			if (declaration.contains("extends") && declaration.contains(base)) {
+				return true;
+			}
+		}
+
+		// Check extends a class that ends with the interface name (e.g., extends FooCell)
+		if (declaration.contains("extends")) {
+			Pattern extendsPattern = Pattern.compile("extends\\s+(\\w*" + interfaceName + ")\\b");
+			if (extendsPattern.matcher(declaration).find()) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
