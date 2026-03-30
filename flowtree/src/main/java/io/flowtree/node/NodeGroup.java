@@ -774,7 +774,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		
 		try {
 			Message m = new Message(Message.ConnectionRequest, id, p);
-			m.setLocalNode(this.nodes.get(id));
+			Node localNode = id < this.nodes.size() ? this.nodes.get(id) : this.relayNode;
+			m.setLocalNode(localNode);
 			c = (Connection)m.send(-1);
 		} catch (SocketException se) {
 			this.displayMessage("Removing server " + p + " (" + se.getMessage() + ")");
