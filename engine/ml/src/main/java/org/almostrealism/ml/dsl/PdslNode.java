@@ -234,6 +234,27 @@ public abstract class PdslNode {
 		public Expression getRight() { return right; }
 	}
 
+	/**
+	 * AddBlocks statement: element-wise addition of two sub-block outputs.
+	 * Both sub-blocks receive the same input; their outputs are summed.
+	 * {@code add_blocks(blockA, blockB)}
+	 */
+	public static class AddBlocksStatement extends Statement {
+		private final Expression left;
+		private final Expression right;
+
+		public AddBlocksStatement(Expression left, Expression right,
+								  int line, int column) {
+			super(line, column);
+			this.left = left;
+			this.right = right;
+		}
+
+		public Expression getLeft() { return left; }
+
+		public Expression getRight() { return right; }
+	}
+
 	/** For-loop: {@code for i in start..end { body }}. */
 	public static class ForStatement extends Statement {
 		private final String variable;

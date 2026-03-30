@@ -200,6 +200,38 @@ public interface ActivationFeatures extends GeometryFeatures {
 	}
 
 	/**
+	 * Creates a Sigmoid activation layer factory.
+	 * Sigmoid is defined as: f(x) = 1 / (1 + exp(-x))
+	 *
+	 * @param requirements Optional compute requirements
+	 * @return Function that creates a Sigmoid activation layer for any input shape
+	 */
+	default Function<TraversalPolicy, CellularLayer> sigmoid(ComputeRequirement... requirements) {
+		return shape -> sigmoid(shape, requirements);
+	}
+
+	default CellularLayer sigmoid(TraversalPolicy shape, ComputeRequirement... requirements) {
+		return layer("sigmoid", shape, shape,
+				input -> sigmoid(traverseEach(input)), requirements);
+	}
+
+	/**
+	 * Creates a Tanh activation layer factory.
+	 * Tanh is defined as: f(x) = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
+	 *
+	 * @param requirements Optional compute requirements
+	 * @return Function that creates a Tanh activation layer for any input shape
+	 */
+	default Function<TraversalPolicy, CellularLayer> tanhActivation(ComputeRequirement... requirements) {
+		return shape -> tanhActivation(shape, requirements);
+	}
+
+	default CellularLayer tanhActivation(TraversalPolicy shape, ComputeRequirement... requirements) {
+		return layer("tanh", shape, shape,
+				input -> tanh(traverseEach(input)), requirements);
+	}
+
+	/**
 	 * Creates a Snake activation layer factory with default alpha=1.0.
 	 * Snake activation is defined as: f(x) = x + (1/alpha) * sin^2(alpha * x)
 	 *

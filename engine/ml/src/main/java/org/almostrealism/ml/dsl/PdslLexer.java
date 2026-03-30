@@ -44,6 +44,7 @@ public class PdslLexer {
 		KEYWORDS.put("branch", PdslToken.Type.BRANCH);
 		KEYWORDS.put("accum", PdslToken.Type.ACCUM);
 		KEYWORDS.put("product", PdslToken.Type.PRODUCT);
+		KEYWORDS.put("add_blocks", PdslToken.Type.ADD_BLOCKS);
 		KEYWORDS.put("weight", PdslToken.Type.WEIGHT);
 		KEYWORDS.put("scalar", PdslToken.Type.SCALAR);
 		KEYWORDS.put("int", PdslToken.Type.INT_TYPE);

@@ -210,6 +210,7 @@ public class PdslParser {
 		List<PdslNode.Statement> stmts = new ArrayList<>();
 		while (!check(PdslToken.Type.RBRACE) && !check(PdslToken.Type.EOF)) {
 			stmts.add(parseStatement());
+			while (check(PdslToken.Type.SEMICOLON)) advance(); // consume optional statement separators
 		}
 		return stmts;
 	}
@@ -222,6 +223,7 @@ public class PdslParser {
 			case BRANCH: return parseBranchStatement();
 			case ACCUM: return parseAccumStatement();
 			case PRODUCT: return parseProductStatement();
+			case ADD_BLOCKS: return parseAddBlocksStatement();
 			case FOR: return parseForStatement();
 			default: return parseExpressionStatement();
 		}
@@ -276,19 +278,51 @@ public class PdslParser {
 	private PdslNode.ProductStatement parseProductStatement() {
 		PdslToken kw = consume(PdslToken.Type.PRODUCT);
 		consume(PdslToken.Type.LPAREN);
-		PdslNode.Expression left = parseProductArg();
+		PdslNode.Expression left = parseBlockArg();
 		consume(PdslToken.Type.COMMA);
-		PdslNode.Expression right = parseProductArg();
+		PdslNode.Expression right = parseBlockArg();
 		consume(PdslToken.Type.RPAREN);
 		return new PdslNode.ProductStatement(left, right, kw.getLine(), kw.getColumn());
 	}
 
-	private PdslNode.Expression parseProductArg() {
+	private PdslNode.AddBlocksStatement parseAddBlocksStatement() {
+		PdslToken kw = consume(PdslToken.Type.ADD_BLOCKS);
+		consume(PdslToken.Type.LPAREN);
+		PdslNode.Expression left = parseBlockArg();
+		consume(PdslToken.Type.COMMA);
+		PdslNode.Expression right = parseBlockArg();
+		consume(PdslToken.Type.RPAREN);
+		return new PdslNode.AddBlocksStatement(left, right, kw.getLine(), kw.getColumn());
+	}
+
+	/**
+	 * Parse an argument that can be an inline block {@code { ... }},
+	 * a nested {@code product(...)} statement (wrapped in a synthetic inline block),
+	 * a nested {@code add_blocks(...)} statement (wrapped in a synthetic inline block),
+	 * or a plain expression.
+	 */
+	private PdslNode.Expression parseBlockArg() {
 		if (check(PdslToken.Type.LBRACE)) {
 			PdslToken brace = consume(PdslToken.Type.LBRACE);
 			List<PdslNode.Statement> body = parseBody();
 			consume(PdslToken.Type.RBRACE);
 			return new PdslNode.InlineBlock(body, brace.getLine(), brace.getColumn());
+		} else if (check(PdslToken.Type.PRODUCT)) {
+			// Wrap a product statement inside a synthetic inline block
+			int line = peek().getLine();
+			int col = peek().getColumn();
+			PdslNode.ProductStatement productStmt = parseProductStatement();
+			List<PdslNode.Statement> body = new ArrayList<>();
+			body.add(productStmt);
+			return new PdslNode.InlineBlock(body, line, col);
+		} else if (check(PdslToken.Type.ADD_BLOCKS)) {
+			// Wrap an add_blocks statement inside a synthetic inline block
+			int line = peek().getLine();
+			int col = peek().getColumn();
+			PdslNode.AddBlocksStatement addStmt = parseAddBlocksStatement();
+			List<PdslNode.Statement> body = new ArrayList<>();
+			body.add(addStmt);
+			return new PdslNode.InlineBlock(body, line, col);
 		}
 		return parseExpression();
 	}
