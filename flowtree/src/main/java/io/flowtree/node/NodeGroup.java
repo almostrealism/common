@@ -146,6 +146,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		int nodeCount = Integer.parseInt(p.getProperty("nodes.initial", "1"));
 		int nodeMaxJobs = Integer.parseInt(p.getProperty("nodes.jobs.max", "4"));
 		int nodeMaxPeers = Integer.parseInt(p.getProperty("nodes.peers.max", "2"));
+		int relayMaxPeers = Integer.parseInt(p.getProperty("nodes.relay.peers.max", "10"));
 		
 		int serverCount = Integer.parseInt(p.getProperty("servers.total", "0"));
 		
@@ -163,7 +164,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			System.out.println("NodeGroup: Added node " + i + " (" + n + ")");
 		}
 
-		this.relayNode = new Node(this, nodeCount, nodeMaxJobs, nodeMaxPeers);
+		this.relayNode = new Node(this, nodeCount, nodeMaxJobs, relayMaxPeers);
 		this.relayNode.setLabel("role", "relay");
 		System.out.println("NodeGroup: Added relay node (index " + nodeCount + ")");
 
