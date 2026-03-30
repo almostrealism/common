@@ -23,10 +23,30 @@ import io.flowtree.node.Node;
 import java.io.IOException;
 
 /**
- * A {@link Connection} is used to relay information between a local node
- * and a remote node.
- * 
+ * A peer-to-peer link between a local {@link Node} and a specific
+ * remote Node on another Server.
+ *
+ * <p>A Connection wraps a {@link NodeProxy} (the socket-level server
+ * connection) and adds a remote Node ID, so that messages are routed
+ * to a particular Node rather than broadcast to the entire remote
+ * {@link io.flowtree.node.NodeGroup}.</p>
+ *
+ * <p>Connections are the mechanism through which the relay loop moves
+ * jobs between Nodes. When a Node has excess jobs in its queue, the
+ * activity thread calls {@link #sendJob(Job)} on a peer Connection to
+ * transfer the job to the remote Node.</p>
+ *
+ * <p>Connections are established automatically: a Node's activity
+ * thread requests a connection via
+ * {@link io.flowtree.node.NodeGroup#getConnection(int)}, which sends
+ * a {@link Message#ConnectionRequest} through a NodeProxy. The remote
+ * NodeGroup responds and both sides add a Connection to their peer
+ * sets.</p>
+ *
  * @author Mike Murray
+ * @see Node
+ * @see NodeProxy
+ * @see <a href="../docs/node-relay.md">Node Relay and Job Routing</a>
  */
 public class Connection implements Runnable, NodeProxy.EventListener {
 	private final Node node;

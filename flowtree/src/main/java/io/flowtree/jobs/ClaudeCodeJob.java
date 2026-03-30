@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
 import org.almostrealism.io.JobOutput;
@@ -725,7 +726,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         // Claude Code with --output-format json emits NDJSON: one JSON object
         // per line. Locate the result object (type=result) and extract from that.
-        String resultJson = io.flowtree.JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
+        String resultJson = JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
         if (resultJson == null) {
             resultJson = jsonOutput;
         }

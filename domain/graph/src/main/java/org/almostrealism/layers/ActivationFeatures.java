@@ -23,6 +23,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.GeometryFeatures;
 
+import java.util.Arrays;
 import java.util.function.Function;
 
 /**
@@ -333,8 +334,8 @@ public interface ActivationFeatures extends GeometryFeatures {
 				double alphaVal = alpha.valueAt(c);
 				double betaVal = beta.valueAt(c);
 				int baseIdx = (b * channels + c) * seqLen;
-				java.util.Arrays.fill(alphaData, baseIdx, baseIdx + seqLen, alphaVal);
-				java.util.Arrays.fill(betaData, baseIdx, baseIdx + seqLen, betaVal);
+				Arrays.fill(alphaData, baseIdx, baseIdx + seqLen, alphaVal);
+				Arrays.fill(betaData, baseIdx, baseIdx + seqLen, betaVal);
 			}
 		}
 

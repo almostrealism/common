@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -95,13 +96,13 @@ public class PdslInterpreter {
 	}
 
 	/** Returns the names of all layer definitions. */
-	public java.util.Set<String> getLayerNames() { return layerDefs.keySet(); }
+	public Set<String> getLayerNames() { return layerDefs.keySet(); }
 
 	/** Returns the names of all model definitions. */
-	public java.util.Set<String> getModelNames() { return modelDefs.keySet(); }
+	public Set<String> getModelNames() { return modelDefs.keySet(); }
 
 	/** Returns the names of all config definitions. */
-	public java.util.Set<String> getConfigNames() { return configDefs.keySet(); }
+	public Set<String> getConfigNames() { return configDefs.keySet(); }
 
 	/**
 	 * Build a {@link Block} from a named layer definition.
