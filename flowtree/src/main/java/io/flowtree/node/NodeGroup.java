@@ -69,9 +69,8 @@ import java.util.Properties;
  * <h2>Job Distribution</h2>
  * <p>The run loop iterates registered {@link JobFactory} instances,
  * calls {@code nextJob()} to produce {@link Job} objects, and hands
- * each job to {@link #getLeastActiveNode()} via {@link Node#addJob(Job)}.
- * Jobs enter the child Node's queue unconditionally -- label matching
- * happens later in the Node's worker thread.</p>
+ * each job to {@link #routeJob(Job)}, which routes to a label-matching worker
+ * Node or falls back to the relay Node if none is available locally.</p>
  *
  * <h2>Peer Connection Establishment</h2>
  * <p>Child Nodes request peer connections automatically through their
@@ -98,6 +97,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	private final JobFactory defaultFactory;
 	
 	private final List<Node> nodes;
+	private final Node relayNode;
 	private final List<NodeProxy> servers;
 	private final List connecting;
 	private final List<JobFactory> tasks;
@@ -162,6 +162,10 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 			System.out.println("NodeGroup: Added node " + i + " (" + n + ")");
 		}
+
+		this.relayNode = new Node(this, nodeCount, nodeMaxJobs, nodeMaxPeers);
+		this.relayNode.setLabel("role", "relay");
+		System.out.println("NodeGroup: Added relay node (index " + nodeCount + ")");
 
 		// Load labels from properties (nodes.labels.<key>=<value>)
 		String labelPrefix = "nodes.labels.";
@@ -296,6 +300,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		synchronized (this.nodes) {
 			nodes.forEach(Node::start);
 		}
+
+		this.relayNode.start();
 		
 		return this;
 	}
@@ -318,6 +324,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			Iterator itr = this.nodes.iterator();
 			while (itr.hasNext()) ((Node)itr.next()).stop();
 		}
+
+		this.relayNode.stop();
 	}
 	
 	/**
@@ -766,7 +774,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		
 		try {
 			Message m = new Message(Message.ConnectionRequest, id, p);
-			m.setLocalNode(this.nodes.get(id));
+			Node localNode = id < this.nodes.size() ? this.nodes.get(id) : this.relayNode;
+			m.setLocalNode(localNode);
 			c = (Connection)m.send(-1);
 		} catch (SocketException se) {
 			this.displayMessage("Removing server " + p + " (" + se.getMessage() + ")");
@@ -1363,8 +1372,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			}
 			
 			if (j != null) {
-				Node target = this.getLeastActiveNode();
-				if (target != null) target.addJob(j);
+				routeJob(j);
 			}
 
 			addJobs(defaultFactory);
@@ -1381,6 +1389,20 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			}
 			this.tasks.removeAll(completed);
 		}
+	}
+
+	/**
+	 * Routes a job to the most appropriate child {@link Node}. If a Node exists
+	 * whose labels satisfy the job's requirements it receives the job directly.
+	 * Otherwise the job is queued on the relay Node so the activity thread can
+	 * forward it to a capable peer.
+	 *
+	 * @param j the job to route
+	 */
+	private void routeJob(Job j) {
+		Node target = findNodeForJob(j);
+		if (target == null) target = this.relayNode;
+		target.addJob(j);
 	}
 
 	private void addJobs(JobFactory f) {
@@ -1404,8 +1426,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				if (this.verbose)
 					System.out.println("NodeGroup: " + f + "  nextJob = " + j);
 
-				Node n = this.getLeastActiveNode();
-				if (n != null) n.addJob(j);
+				routeJob(j);
 			}
 		}
 	}
@@ -1438,19 +1459,15 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			
 			if (type == Message.Job) {
 				System.out.println("NodeGroup: Received job. Data = " + m.getData());
-				Node target = this.getLeastActiveNode();
-				if (target != null) {
-					target.addJob(this.defaultFactory.createJob(m.getData()));
-				} else {
-					System.out.println("NodeGroup: No local nodes available, ignoring received job");
-				}
+				routeJob(this.defaultFactory.createJob(m.getData()));
 			} else if (type == Message.StringMessage) {
 				System.out.println("Message from " + p.toString() + ": " + m.getData());
 			} else if (type == Message.ConnectionRequest) {
 				try {
 					Node n = this.getLeastConnectedNode();
+					if (n == null) n = this.relayNode;
 					Connection c;
-					
+
 					if (n != null && n.getPeers().length < n.getMaxPeers() && !n.isConnected(p)) {
 						System.out.println("NodeGroup: Constructing connection...");
 						c = new Connection(n, p, remoteId);

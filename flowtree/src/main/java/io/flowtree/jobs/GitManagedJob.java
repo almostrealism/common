@@ -146,6 +146,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     private boolean mergeConflictsDetected = false;
     private List<String> conflictFiles = new ArrayList<>();
 
+    // ---- Git tampering detection state ----
+    /** HEAD commit hash recorded just before doWork() starts. */
+    private String preWorkHeadHash;
+    /** Whether git tampering was detected after doWork(). */
+    private boolean gitTamperingDetected = false;
+    /** Human-readable description of what tampering was detected. */
+    private String tamperingDescription;
+
     // ---- Label-based routing requirements ----
     private final Map<String, String> requiredLabels = new LinkedHashMap<>();
 
@@ -203,6 +211,26 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
+     * Called when git tampering is detected after {@link #doWork()}.
+     *
+     * <p>The default implementation logs a warning and returns {@code false}
+     * (no retry). Subclasses like {@link ClaudeCodeJob} override this to
+     * restart the agent session with a violation warning, giving the agent
+     * one chance to redo its work without tampering.</p>
+     *
+     * <p>When this method returns {@code true}, the caller will re-run
+     * tampering detection. If tampering persists, all changes are
+     * destroyed with no further retries.</p>
+     *
+     * @return true if the subclass restarted the work and wants re-evaluation
+     */
+    protected boolean onGitTampering() {
+        warn("Git tampering detected but no restart handler configured -- "
+            + "proceeding with reverted state");
+        return false;
+    }
+
+    /**
      * Returns the commit message for changes made by this job.
      * Subclasses should override to provide a descriptive message.
      *
@@ -246,11 +274,41 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             // Prepare execution environment (Python venv, etc.)
             prepareEnvironment();
 
+            // Record pre-work HEAD so we can detect unauthorized commits
+            if (targetBranch != null && !targetBranch.isEmpty()) {
+                preWorkHeadHash = executeGitWithOutput("rev-parse", "HEAD").trim();
+                log("Pre-work HEAD: " + preWorkHeadHash.substring(0, Math.min(7, preWorkHeadHash.length())));
+            }
+
             // Perform the actual work
             doWork();
 
             // Handle git operations if a target branch is specified
             if (targetBranch != null && !targetBranch.isEmpty()) {
+                // Detect and handle git tampering.  If the agent switched
+                // branches, created commits, or otherwise mutated the repo,
+                // revert to the pre-work state and allow the subclass to
+                // retry the session with a stern warning.
+                detectGitTampering();
+
+                if (gitTamperingDetected) {
+                    revertGitTampering();
+
+                    // Give the subclass a chance to restart.  onGitTampering()
+                    // may call doWork() again (with an amended prompt) and
+                    // will return true if it wants us to re-evaluate.
+                    if (onGitTampering()) {
+                        // Re-check after the restart
+                        resetTamperingState();
+                        detectGitTampering();
+                        if (gitTamperingDetected) {
+                            revertGitTampering();
+                            warn("Git tampering persisted after restart -- "
+                                + "all agent changes destroyed");
+                        }
+                    }
+                }
+
                 if (validateChanges()) {
                     handleGitOperations();
                 } else {
@@ -665,6 +723,181 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
+     * Detects whether the coding agent tampered with the git repository
+     * during its session.
+     *
+     * <p>Tampering is defined as any of the following:
+     * <ul>
+     *   <li>Switching to a different branch than the target branch</li>
+     *   <li>Creating new commits (HEAD has advanced beyond the pre-work hash)</li>
+     *   <li>Creating new local branches that did not exist before</li>
+     * </ul>
+     *
+     * <p>When tampering is detected, {@link #gitTamperingDetected} is set to
+     * {@code true} and {@link #tamperingDescription} is populated with details.</p>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void detectGitTampering() throws IOException, InterruptedException {
+        if (preWorkHeadHash == null) {
+            return;
+        }
+
+        StringBuilder violations = new StringBuilder();
+
+        // Check 1: Has the branch changed?
+        String currentBranch = getCurrentBranch();
+        if (!targetBranch.equals(currentBranch)) {
+            violations.append("Branch switched from '").append(targetBranch)
+                .append("' to '").append(currentBranch).append("'. ");
+        }
+
+        // Check 2: Were any commits created on the current branch?
+        // rev-list returns commits reachable from HEAD but not from the
+        // pre-work hash.  Any output means new commits were made.
+        String newCommits = executeGitWithOutput(
+            "rev-list", preWorkHeadHash + "..HEAD", "--count").trim();
+        int commitCount = 0;
+        try {
+            commitCount = Integer.parseInt(newCommits);
+        } catch (NumberFormatException ignored) {
+            // If we can't parse, check whether HEAD moved at all
+            String currentHead = executeGitWithOutput("rev-parse", "HEAD").trim();
+            if (!currentHead.equals(preWorkHeadHash)) {
+                commitCount = -1; // unknown but HEAD moved
+            }
+        }
+
+        if (commitCount != 0) {
+            if (commitCount > 0) {
+                violations.append("Agent created ").append(commitCount)
+                    .append(" unauthorized commit(s) on ").append(currentBranch).append(". ");
+            } else {
+                violations.append("HEAD moved from pre-work position (unknown commit count). ");
+            }
+        }
+
+        // Check 3: Were any new local branches created?
+        // List all local branches and check for any that don't match
+        // the target branch or the original branch
+        String branchOutput = executeGitWithOutput("branch", "--list", "--format=%(refname:short)");
+        List<String> newBranches = new ArrayList<>();
+        for (String branch : branchOutput.split("\n")) {
+            String trimmed = branch.trim();
+            if (!trimmed.isEmpty()
+                    && !trimmed.equals(targetBranch)
+                    && !trimmed.equals(originalBranch)
+                    && !trimmed.equals(baseBranch)) {
+                // This could be a pre-existing branch, but in a container workspace
+                // where prepareWorkingDirectory controls the branch state, any
+                // unexpected local branch is suspicious.  We log but don't treat
+                // it as a hard violation — commits and branch switches are the
+                // real problems.
+                newBranches.add(trimmed);
+            }
+        }
+
+        if (!newBranches.isEmpty()) {
+            // Only flag as tampering if there are also other violations;
+            // extra local branches alone may be artifacts from prior jobs.
+            if (violations.length() > 0) {
+                violations.append("Unexpected local branches found: ")
+                    .append(String.join(", ", newBranches)).append(". ");
+            }
+        }
+
+        if (violations.length() > 0) {
+            gitTamperingDetected = true;
+            tamperingDescription = violations.toString().trim();
+            warn("Git tampering detected: " + tamperingDescription);
+        }
+    }
+
+    /**
+     * Reverts all git changes made by the agent that constitute tampering.
+     *
+     * <p>This method:
+     * <ol>
+     *   <li>Discards all uncommitted changes (staged and unstaged)</li>
+     *   <li>Removes all untracked files</li>
+     *   <li>Switches back to the target branch</li>
+     *   <li>Resets HEAD to the pre-work commit hash, undoing any commits
+     *       the agent made</li>
+     * </ol>
+     *
+     * <p>After this method completes, the working directory is in exactly
+     * the state it was in just before {@link #doWork()} was called.</p>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void revertGitTampering() throws IOException, InterruptedException {
+        log("Reverting git tampering -- restoring pre-work state...");
+
+        // 1. Discard all uncommitted changes and untracked files on
+        //    whatever branch we're currently on.
+        executeGit("reset", "--hard");
+        executeGit("clean", "-fd");
+
+        // 2. Switch back to the target branch if needed
+        String currentBranch = getCurrentBranch();
+        if (!targetBranch.equals(currentBranch)) {
+            log("Switching from '" + currentBranch + "' back to '" + targetBranch + "'");
+            if (executeGit("checkout", targetBranch) != 0) {
+                // Target branch may have been deleted or never existed locally
+                // if the agent was creating branches.  Force-create it from the
+                // pre-work hash.
+                warn("Could not checkout " + targetBranch + " -- recreating from pre-work HEAD");
+                executeGit("checkout", "-B", targetBranch, preWorkHeadHash);
+            }
+        }
+
+        // 3. Reset to the pre-work HEAD, undoing any commits the agent made
+        String headBefore = executeGitWithOutput("rev-parse", "--short", "HEAD").trim();
+        if (executeGit("reset", "--hard", preWorkHeadHash) != 0) {
+            throw new RuntimeException(
+                "Failed to reset to pre-work HEAD " + preWorkHeadHash
+                    + " -- manual intervention required");
+        }
+
+        // 4. Clean again in case the reset left untracked files
+        executeGit("clean", "-fd");
+
+        String headAfter = executeGitWithOutput("rev-parse", "--short", "HEAD").trim();
+        log("Tampering reverted: HEAD was " + headBefore + ", now restored to " + headAfter);
+    }
+
+    /**
+     * Returns whether git tampering was detected after the last
+     * {@link #doWork()} execution.
+     *
+     * @return true if the agent tampered with the git repository
+     */
+    protected boolean isGitTamperingDetected() {
+        return gitTamperingDetected;
+    }
+
+    /**
+     * Returns a human-readable description of the git tampering that
+     * was detected, or null if no tampering occurred.
+     *
+     * @return the tampering description, or null
+     */
+    protected String getTamperingDescription() {
+        return tamperingDescription;
+    }
+
+    /**
+     * Resets the git tampering detection state.
+     * Called before each doWork() invocation when retrying.
+     */
+    protected void resetTamperingState() {
+        gitTamperingDetected = false;
+        tamperingDescription = null;
+    }
+
+    /**
      * Handles all git operations: branch management, staging, committing, and pushing.
      *
      * @throws IOException if a git command fails to execute
@@ -675,7 +908,10 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         log("Starting git operations...");
         log("Target branch: " + targetBranch);
 
-        // Ensure we're on the target branch
+        // At this point, detectGitTampering()/revertGitTampering() have already
+        // run.  We should be on the target branch with a clean HEAD (any
+        // unauthorized commits have been reset).  If the branch still doesn't
+        // match, something unexpected happened — fail loudly.
         if (!ensureOnTargetBranch()) {
             String msg = "Failed to switch to target branch '" + targetBranch + "'" +
                 " (working directory: " + (workingDirectory != null ? workingDirectory : System.getProperty("user.dir")) + ")";

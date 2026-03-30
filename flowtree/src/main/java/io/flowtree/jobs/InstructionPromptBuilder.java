@@ -55,6 +55,7 @@ public class InstructionPromptBuilder {
     private int maxTurns;
     private String taskId;
     private String planningDocument;
+    private String gitTamperingViolation;
 
     /**
      * Sets the user's request prompt.
@@ -234,6 +235,23 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Sets a git tampering violation description from a previous session.
+     *
+     * <p>When set, the prompt will include a prominent warning explaining
+     * that the previous session was terminated because the agent tampered
+     * with the git repository, and that repeating this behavior will result
+     * in all changes being destroyed and the agent being terminated.</p>
+     *
+     * @param violation the description of the tampering that was detected,
+     *                  or null if no tampering occurred
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setGitTamperingViolation(String violation) {
+        this.gitTamperingViolation = violation;
+        return this;
+    }
+
+    /**
      * Builds the full instruction prompt by assembling all configured
      * sections into a single string.
      *
@@ -261,6 +279,29 @@ public class InstructionPromptBuilder {
      */
     public String build() {
         StringBuilder sb = new StringBuilder();
+
+        // Git tampering violation warning -- highest priority, prepended above
+        // everything else.  This is used when the previous session was killed
+        // because the agent tampered with git (made commits, switched branches,
+        // etc.).
+        if (gitTamperingViolation != null && !gitTamperingViolation.isEmpty()) {
+            sb.append("## !! SESSION RESTARTED -- GIT TAMPERING VIOLATION !!\n\n");
+            sb.append("Your previous session was TERMINATED and ALL your changes were ");
+            sb.append("DESTROYED because you violated the rules against tampering with ");
+            sb.append("the git repository.\n\n");
+            sb.append("**What you did:** ").append(gitTamperingViolation).append("\n\n");
+            sb.append("**The rules:**\n");
+            sb.append("- You MUST NOT run `git commit`, `git checkout`, `git switch`, ");
+            sb.append("`git branch`, `git merge`, `git rebase`, `git reset`, `git stash`, ");
+            sb.append("or any other command that modifies git state.\n");
+            sb.append("- You MUST NOT change branches. Stay on the branch you were given.\n");
+            sb.append("- You MUST NOT create commits. The harness commits your work.\n");
+            sb.append("- Your ONLY job is to edit files. Git management is handled for you.\n\n");
+            sb.append("**Consequences:** This is your LAST chance. If you tamper with git ");
+            sb.append("again, ALL your changes will be destroyed and this session will be ");
+            sb.append("terminated with no further retries. Your work will be lost entirely.\n\n");
+            sb.append("---\n\n");
+        }
 
         // Enforcement retry warning -- prepended above everything else so the
         // agent sees it immediately.  This is used when the job has been

@@ -31,6 +31,7 @@ services:
           memory: "${AGENT_MEMORY:-4g}"
     volumes:
       - workspaces:/workspace/project
+      - maven-cache:/home/agent/.m2
       - ${SSH_KEY_DIR}:/home/agent/.ssh:ro
       - ${MODELS_DIR:-/Users/Shared/models}:/models:ro
       - ${SAMPLES_DIR:-/dev/null}:/samples:ro
@@ -43,7 +44,13 @@ services:
       - GIT_USER_NAME=${GIT_USER_NAME:-FlowTree Agent}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-agent@flowtree.io}
       - MAVEN_OPTS=${AGENT_JVM_OPTS:--Xmx2048m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     restart: unless-stopped
 
 volumes:
   workspaces:
+  maven-cache:
