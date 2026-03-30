@@ -89,6 +89,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String githubOrg;
     private boolean enforceChanges;
     private int enforcementAttempt;
+    private String gitTamperingViolation;
 
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
     private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
@@ -387,6 +388,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 .setTaskId(getTaskId())
                 .setPlanningDocument(planningDocument)
                 .setGitHubMcpEnabled(true)
+                .setGitTamperingViolation(gitTamperingViolation)
                 .build();
     }
 
@@ -426,6 +428,28 @@ public class ClaudeCodeJob extends GitManagedJob {
                     + " retries without producing changes");
             }
         }
+    }
+
+    @Override
+    protected boolean onGitTampering() {
+        String violation = getTamperingDescription();
+        warn("Agent tampered with git: " + violation
+            + " -- destroying all changes and restarting session");
+
+        // Set the violation message so buildInstructionPrompt() includes
+        // the warning in the restarted session's prompt.
+        gitTamperingViolation = violation;
+
+        // Re-run the session.  The prompt will now include a stern warning
+        // about the violation and the consequences of repeating it.
+        executeSingleRun();
+
+        // Clear the violation so it doesn't persist into further retries
+        // (onGitTampering won't be called again — the caller handles the
+        // second-chance logic).
+        gitTamperingViolation = null;
+
+        return true;
     }
 
     /**
