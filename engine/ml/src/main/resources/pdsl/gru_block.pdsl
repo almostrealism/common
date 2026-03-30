@@ -1,0 +1,72 @@
+// GRU Block computation from low-level primitives
+//
+// Implements the four sub-computations of one GRU step:
+//   r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)     // reset gate
+//   z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)     // update gate
+//   n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))  // new gate
+//   h' = n + z * (h - n)                                // hidden state update (lerp)
+//
+// Each layer takes a concatenated input vector and parameter weights.
+// Weight matrices are per-gate slices of the stacked PyTorch weight tensors.
+//
+// Input conventions:
+//   gru_r_gate, gru_z_gate: [x(input_size) | h(hidden_size)]
+//   gru_n_gate:             [x(input_size) | h(hidden_size) | r(hidden_size)]
+//   gru_h_new:              [n(hidden_size) | z(hidden_size) | h(hidden_size)]
+
+// ----- Reset Gate -----
+// r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)
+// Input: [x(input_size) | h(hidden_size)]
+// Output: r of shape (hidden_size)
+
+layer gru_r_gate(w_ir: weight, b_ir: weight, w_hr: weight, b_hr: weight,
+                 input_size: int, hidden_size: int) {
+    add_blocks(
+        { slice(0, input_size); dense(w_ir, b_ir) },
+        { slice(input_size, hidden_size); dense(w_hr, b_hr) }
+    )
+    sigmoid()
+}
+
+// ----- Update Gate -----
+// z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)
+// Input: [x(input_size) | h(hidden_size)]
+// Output: z of shape (hidden_size)
+
+layer gru_z_gate(w_iz: weight, b_iz: weight, w_hz: weight, b_hz: weight,
+                 input_size: int, hidden_size: int) {
+    add_blocks(
+        { slice(0, input_size); dense(w_iz, b_iz) },
+        { slice(input_size, hidden_size); dense(w_hz, b_hz) }
+    )
+    sigmoid()
+}
+
+// ----- New Gate -----
+// n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))
+// Input: [x(input_size) | h(hidden_size) | r(hidden_size)]
+// Output: n of shape (hidden_size)
+//
+// The r * (W_hn @ h + b_hn) term is computed as a product of:
+//   - left:  slice(r) from position input_size + hidden_size
+//   - right: slice(h) then dense(w_hn, b_hn)
+// Then added to W_in @ x + b_in from slice(x).
+
+layer gru_n_gate(w_in: weight, b_in: weight, w_hn: weight, b_hn: weight,
+                 input_size: int, hidden_size: int) {
+    add_blocks(
+        product({ slice(input_size + hidden_size, hidden_size) },
+                { slice(input_size, hidden_size); dense(w_hn, b_hn) }),
+        { slice(0, input_size); dense(w_in, b_in) }
+    )
+    tanh_act()
+}
+
+// ----- Hidden State Update -----
+// h' = n + z * (h - n)  expressed as lerp([n | z | h])
+// Input: [n(hidden_size) | z(hidden_size) | h(hidden_size)]
+// Output: h' of shape (hidden_size)
+
+layer gru_h_new(hidden_size: int) {
+    lerp(hidden_size)
+}

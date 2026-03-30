@@ -20,7 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
-import org.almostrealism.ml.midi.GRUCell;
+import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiAutoregressiveModel;
 import org.almostrealism.ml.midi.MidiCompoundToken;
@@ -318,9 +318,9 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		int decoderHidden = config.decoderHiddenSize;
 		int vocabSize = config.decodeVocabSize;
 
-		GRUCell[] layers = new GRUCell[config.decoderLayers];
+		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
 		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUCell(
+			layers[l] = new GRUBlock(
 					decoderHidden, decoderHidden,
 					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
 					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
@@ -337,7 +337,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verify that GRUCell produces the correct output for known weights and inputs.
+	 * Verify that GRUBlock produces the correct output for known weights and inputs.
 	 *
 	 * <p>Uses identity-like weights to verify the GRU equations:
 	 * r = sigmoid(W_ir@x + b_ir + W_hr@h + b_hr),
@@ -364,7 +364,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		PackedCollection biasIh = new PackedCollection(new TraversalPolicy(6));
 		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(6));
 
-		GRUCell cell = new GRUCell(inputSize, hiddenSize, weightIh, weightHh, biasIh, biasHh);
+		GRUBlock cell = new GRUBlock(inputSize, hiddenSize, weightIh, weightHh, biasIh, biasHh);
 
 		PackedCollection x = new PackedCollection(2);
 		x.setMem(0, 1.0);
@@ -374,7 +374,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		h.setMem(0, 0.5);
 		h.setMem(1, -0.5);
 
-		PackedCollection hNew = cell.forward(x, h);
+		PackedCollection hNew = GRUDecoder.gruStep(cell, x, h);
 
 		Assert.assertEquals("Output size", 2, hNew.getShape().getTotalSize());
 
@@ -404,7 +404,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verify that GRUCell correctly applies reset and update gates
+	 * Verify that GRUBlock correctly applies reset and update gates
 	 * when biases shift the gate activations away from 0.5.
 	 */
 	@Test
@@ -419,14 +419,14 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		biasIh.setMem(1, 10.0); // bias for z (update gate)
 		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(3));
 
-		GRUCell cell = new GRUCell(size, size, weightIh, weightHh, biasIh, biasHh);
+		GRUBlock cell = new GRUBlock(size, size, weightIh, weightHh, biasIh, biasHh);
 
 		PackedCollection x = new PackedCollection(1);
 		x.setMem(0, 5.0);
 		PackedCollection h = new PackedCollection(1);
 		h.setMem(0, 3.0);
 
-		PackedCollection hNew = cell.forward(x, h);
+		PackedCollection hNew = GRUDecoder.gruStep(cell, x, h);
 
 		// With z ≈ sigmoid(10) ≈ 1.0, h' ≈ z * h ≈ h
 		Assert.assertEquals("With high update gate, h' should be close to h",

@@ -19,7 +19,7 @@ package org.almostrealism.ml.midi.test;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
-import org.almostrealism.ml.midi.GRUCell;
+import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiAutoregressiveModel;
 import org.almostrealism.ml.midi.MidiCompoundToken;
@@ -204,9 +204,9 @@ public class MoonbeamInferenceTest extends TestSuiteBase {
 
 	/** Build a GRU decoder from the state dictionary. */
 	private static GRUDecoder buildDecoder(StateDictionary stateDict, MoonbeamConfig config) {
-		GRUCell[] layers = new GRUCell[config.decoderLayers];
+		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
 		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUCell(
+			layers[l] = new GRUBlock(
 					config.decoderHiddenSize, config.decoderHiddenSize,
 					stateDict.get(String.format("decoder.weight_ih_l%d", l)),
 					stateDict.get(String.format("decoder.weight_hh_l%d", l)),

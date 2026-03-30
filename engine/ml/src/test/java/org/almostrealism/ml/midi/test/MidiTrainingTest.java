@@ -21,7 +21,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
-import org.almostrealism.ml.midi.GRUCell;
+import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiAutoregressiveModel;
 import org.almostrealism.ml.midi.MidiCompoundToken;
@@ -667,9 +667,9 @@ public class MidiTrainingTest extends TestSuiteBase {
 		int decoderHidden = config.decoderHiddenSize;
 		int vocabSize = config.decodeVocabSize;
 
-		GRUCell[] layers = new GRUCell[config.decoderLayers];
+		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
 		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUCell(
+			layers[l] = new GRUBlock(
 					decoderHidden, decoderHidden,
 					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
 					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
@@ -696,9 +696,9 @@ public class MidiTrainingTest extends TestSuiteBase {
 
 		Random rng = new Random(42);
 
-		GRUCell[] layers = new GRUCell[config.decoderLayers];
+		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
 		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUCell(
+			layers[l] = new GRUBlock(
 					decoderHidden, decoderHidden,
 					randomCollection(3 * decoderHidden * decoderHidden, rng),
 					randomCollection(3 * decoderHidden * decoderHidden, rng),

@@ -24,7 +24,7 @@ import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
-import org.almostrealism.ml.midi.GRUCell;
+import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiDataset;
@@ -542,9 +542,9 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 		int decoderHidden = config.decoderHiddenSize;
 		int vocabSize = config.decodeVocabSize;
 
-		GRUCell[] layers = new GRUCell[config.decoderLayers];
+		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
 		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUCell(
+			layers[l] = new GRUBlock(
 					decoderHidden, decoderHidden,
 					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
 					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),

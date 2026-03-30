@@ -18,7 +18,7 @@ package org.almostrealism.ml.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.midi.GRUCell;
+import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiTokenizer;
@@ -387,9 +387,9 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		PackedCollection lmHeadBias = createRandomCollection(rng, vocabSize);
 		PackedCollection decoderEmb = createRandomCollection(rng, vocabSize, decoderHidden);
 
-		GRUCell[] layers = new GRUCell[REAL_CONFIG.decoderLayers];
+		GRUBlock[] layers = new GRUBlock[REAL_CONFIG.decoderLayers];
 		for (int l = 0; l < REAL_CONFIG.decoderLayers; l++) {
-			layers[l] = new GRUCell(decoderHidden, decoderHidden,
+			layers[l] = new GRUBlock(decoderHidden, decoderHidden,
 					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
 					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
 					createRandomCollection(rng, 3 * decoderHidden),
@@ -421,7 +421,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
 			PackedCollection layerInput = x;
 			for (int l = 0; l < layers.length; l++) {
-				h[l] = layers[l].forward(layerInput, h[l]);
+				h[l] = GRUDecoder.gruStep(layers[l], layerInput, h[l]);
 				layerInput = h[l];
 			}
 
@@ -637,9 +637,9 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		int vocabSize = REAL_CONFIG.decodeVocabSize;
 		int hidden = REAL_CONFIG.hiddenSize;
 
-		GRUCell[] cells = new GRUCell[REAL_CONFIG.decoderLayers];
+		GRUBlock[] cells = new GRUBlock[REAL_CONFIG.decoderLayers];
 		for (int l = 0; l < cells.length; l++) {
-			cells[l] = new GRUCell(decoderHidden, decoderHidden,
+			cells[l] = new GRUBlock(decoderHidden, decoderHidden,
 					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
 					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
 					createRandomCollection(rng, 3 * decoderHidden),
@@ -662,9 +662,9 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		int vocabSize = REAL_CONFIG.decodeVocabSize;
 		int hidden = REAL_CONFIG.hiddenSize;
 
-		GRUCell[] cells = new GRUCell[REAL_CONFIG.decoderLayers];
+		GRUBlock[] cells = new GRUBlock[REAL_CONFIG.decoderLayers];
 		for (int l = 0; l < cells.length; l++) {
-			cells[l] = new GRUCell(decoderHidden, decoderHidden,
+			cells[l] = new GRUBlock(decoderHidden, decoderHidden,
 					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
 					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
 					createRandomCollection(rng, 3 * decoderHidden),
@@ -690,9 +690,9 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		PackedCollection lmHeadBias = createRandomCollection(rng, vocabSize);
 		PackedCollection decoderEmb = createRandomCollection(rng, vocabSize, decoderHidden);
 
-		GRUCell[] cells = new GRUCell[REAL_CONFIG.decoderLayers];
+		GRUBlock[] cells = new GRUBlock[REAL_CONFIG.decoderLayers];
 		for (int l = 0; l < cells.length; l++) {
-			cells[l] = new GRUCell(decoderHidden, decoderHidden,
+			cells[l] = new GRUBlock(decoderHidden, decoderHidden,
 					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
 					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
 					createRandomCollection(rng, 3 * decoderHidden),
@@ -715,7 +715,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
 			PackedCollection layerInput = x;
 			for (int l = 0; l < cells.length; l++) {
-				h[l] = cells[l].forward(layerInput, h[l]);
+				h[l] = GRUDecoder.gruStep(cells[l], layerInput, h[l]);
 				layerInput = h[l];
 			}
 

@@ -21,7 +21,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.FundamentalMusicEmbedding;
-import org.almostrealism.ml.midi.GRUCell;
+import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.ml.midi.MidiAutoregressiveModel;
@@ -173,43 +173,39 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 	/* ------------------------------------------------------------ */
 
 	/**
-	 * One GRU cell forward pass at the real decoder hidden dimension (1536).
+	 * One GRU block forward pass at the real decoder hidden dimension (1536).
 	 * Weight matrices are (3*1536, 1536) = ~7M parameters per weight tensor.
+	 * Tests via a single-step decode using a minimal GRUDecoder wrapper.
 	 */
 	@Test(timeout = 10_000)
-	public void testSingleGruCell() {
+	public void testSingleGruBlock() {
 		long start = System.currentTimeMillis();
 
-		int inputSize = REAL_CONFIG.decoderHiddenSize; // 1536
-		int hiddenSize = REAL_CONFIG.decoderHiddenSize;
+		int decoderHidden = REAL_CONFIG.decoderHiddenSize; // 1536
 		Random rng = new Random(42);
 
 		long allocStart = System.currentTimeMillis();
-		PackedCollection weightIh = createRandomCollection(rng, 3 * hiddenSize, inputSize);
-		PackedCollection weightHh = createRandomCollection(rng, 3 * hiddenSize, hiddenSize);
-		PackedCollection biasIh = createRandomCollection(rng, 3 * hiddenSize);
-		PackedCollection biasHh = createRandomCollection(rng, 3 * hiddenSize);
+		GRUDecoder decoder = createRandomDecoder(REAL_CONFIG);
 		long allocTime = System.currentTimeMillis() - allocStart;
-		System.out.println("[MoonbeamComponentTest] GRU cell weight alloc: " + allocTime + " ms");
+		System.out.println("[MoonbeamComponentTest] GRU block weight alloc: " + allocTime + " ms");
 
-		GRUCell cell = new GRUCell(inputSize, hiddenSize, weightIh, weightHh, biasIh, biasHh);
-
-		PackedCollection x = createRandomCollection(rng, inputSize);
-		PackedCollection h = createRandomCollection(rng, hiddenSize);
+		PackedCollection hidden = createRandomCollection(rng, REAL_CONFIG.hiddenSize);
 
 		long fwdStart = System.currentTimeMillis();
-		PackedCollection hNew = cell.forward(x, h);
+		int[] tokens = decoder.decode(hidden);
 		long fwdTime = System.currentTimeMillis() - fwdStart;
 
-		Assert.assertEquals("GRU output size", hiddenSize, hNew.getShape().getTotalSize());
-		for (int i = 0; i < hiddenSize; i++) {
-			Assert.assertTrue("GRU output at " + i + " should be finite",
-					Double.isFinite(hNew.toDouble(i)));
+		Assert.assertEquals("GRU should produce 7 tokens",
+				GRUDecoder.TOKENS_PER_NOTE, tokens.length);
+		for (int i = 0; i < tokens.length; i++) {
+			Assert.assertTrue("Token " + i + " should be >= 0", tokens[i] >= 0);
+			Assert.assertTrue("Token " + i + " should be < decodeVocabSize",
+					tokens[i] < REAL_CONFIG.decodeVocabSize);
 		}
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleGruCell: "
-				+ elapsed + " ms (forward: " + fwdTime + " ms)");
+		System.out.println("[MoonbeamComponentTest] testSingleGruBlock: "
+				+ elapsed + " ms (decode: " + fwdTime + " ms)");
 	}
 
 	/* ------------------------------------------------------------ */
@@ -525,9 +521,9 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		int decoderHidden = config.decoderHiddenSize;
 		int vocabSize = config.decodeVocabSize;
 
-		GRUCell[] layers = new GRUCell[config.decoderLayers];
+		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
 		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUCell(
+			layers[l] = new GRUBlock(
 					decoderHidden, decoderHidden,
 					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
 					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),

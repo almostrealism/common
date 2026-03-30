@@ -20,6 +20,9 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.model.Block;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
 
 import java.util.Random;
 
@@ -37,7 +40,7 @@ import java.util.Random;
  *   <li>Initialize all GRU layer hidden states to the projected summary</li>
  *   <li>For each of 7 output tokens:
  *     <ol type="a">
- *       <li>Forward through all GRU layers</li>
+ *       <li>Forward through all GRU layers via compiled DSL sub-models</li>
  *       <li>lm_head: last layer output -&gt; (decodeVocabSize) logits</li>
  *       <li>Argmax to select token</li>
  *       <li>Embed selected token as input for next step</li>
@@ -63,7 +66,7 @@ import java.util.Random;
  *   <tr><td>6</td><td>velocity</td><td>8357</td><td>130</td></tr>
  * </table>
  *
- * @see GRUCell
+ * @see GRUBlock
  * @see MoonbeamConfig
  */
 public class GRUDecoder implements LayerFeatures {
@@ -71,7 +74,7 @@ public class GRUDecoder implements LayerFeatures {
 	public static final int TOKENS_PER_NOTE = 7;
 
 	private final MoonbeamConfig config;
-	private final GRUCell[] layers;
+	private final GRUBlock[] layers;
 	private final PackedCollection summaryWeight;
 	private final PackedCollection summaryBias;
 	private final PackedCollection fcOutWeight;
@@ -83,10 +86,20 @@ public class GRUDecoder implements LayerFeatures {
 	private final int[] vocabSizesPerStep;
 
 	/**
+	 * Compiled DSL sub-models for each GRU layer — one array per gate,
+	 * indexed by layer. Populated in the constructor by compiling the
+	 * uncompiled {@link Block} objects from each {@link GRUBlock}.
+	 */
+	private final CompiledModel[] rGateModels;
+	private final CompiledModel[] zGateModels;
+	private final CompiledModel[] nGateModels;
+	private final CompiledModel[] hNewModels;
+
+	/**
 	 * Create a GRU decoder with explicit weights.
 	 *
 	 * @param config model configuration
-	 * @param layers array of GRU cells (one per layer)
+	 * @param layers array of GRU blocks (one per layer)
 	 * @param summaryWeight summary projection weights (decoderHiddenSize, hiddenSize)
 	 * @param summaryBias summary projection bias (decoderHiddenSize)
 	 * @param fcOutWeight fc_out projection weights (decoderHiddenSize, decoderHiddenSize), may be null
@@ -95,7 +108,7 @@ public class GRUDecoder implements LayerFeatures {
 	 * @param lmHeadBias output projection bias (decodeVocabSize)
 	 * @param decoderEmbedding output token embedding (decodeVocabSize, decoderHiddenSize)
 	 */
-	public GRUDecoder(MoonbeamConfig config, GRUCell[] layers,
+	public GRUDecoder(MoonbeamConfig config, GRUBlock[] layers,
 					  PackedCollection summaryWeight, PackedCollection summaryBias,
 					  PackedCollection fcOutWeight, PackedCollection fcOutBias,
 					  PackedCollection lmHeadWeight, PackedCollection lmHeadBias,
@@ -111,20 +124,45 @@ public class GRUDecoder implements LayerFeatures {
 		this.decoderEmbedding = decoderEmbedding;
 		this.vocabOffsets = computeVocabOffsets(config);
 		this.vocabSizesPerStep = computeVocabSizesPerStep(config);
+
+		// Compile DSL sub-blocks from each GRUBlock layer
+		this.rGateModels = new CompiledModel[layers.length];
+		this.zGateModels = new CompiledModel[layers.length];
+		this.nGateModels = new CompiledModel[layers.length];
+		this.hNewModels  = new CompiledModel[layers.length];
+		for (int l = 0; l < layers.length; l++) {
+			rGateModels[l] = compileBlock(layers[l].rGateBlock);
+			zGateModels[l] = compileBlock(layers[l].zGateBlock);
+			nGateModels[l] = compileBlock(layers[l].nGateBlock);
+			hNewModels[l]  = compileBlock(layers[l].hNewBlock);
+		}
+	}
+
+	/**
+	 * Compile an uncompiled DSL {@link Block} into a {@link CompiledModel}
+	 * ready for forward pass execution.
+	 *
+	 * @param block an uncompiled block from {@link GRUBlock}
+	 * @return compiled model
+	 */
+	private static CompiledModel compileBlock(Block block) {
+		Model m = new Model(block.getInputShape());
+		m.add(block);
+		return m.compile(false);
 	}
 
 	/**
 	 * Create a GRU decoder without fc_out layer (backward compatibility).
 	 *
 	 * @param config model configuration
-	 * @param layers array of GRU cells (one per layer)
+	 * @param layers array of GRU blocks (one per layer)
 	 * @param summaryWeight summary projection weights (decoderHiddenSize, hiddenSize)
 	 * @param summaryBias summary projection bias (decoderHiddenSize)
 	 * @param lmHeadWeight output projection weights (decodeVocabSize, decoderHiddenSize)
 	 * @param lmHeadBias output projection bias (decodeVocabSize)
 	 * @param decoderEmbedding output token embedding (decodeVocabSize, decoderHiddenSize)
 	 */
-	public GRUDecoder(MoonbeamConfig config, GRUCell[] layers,
+	public GRUDecoder(MoonbeamConfig config, GRUBlock[] layers,
 					  PackedCollection summaryWeight, PackedCollection summaryBias,
 					  PackedCollection lmHeadWeight, PackedCollection lmHeadBias,
 					  PackedCollection decoderEmbedding) {
@@ -155,9 +193,11 @@ public class GRUDecoder implements LayerFeatures {
 	 * token selection strategy (argmax vs. sampling) is delegated to the
 	 * provided selector function.</p>
 	 *
-	 * <p>All linear projections (summary, fc_out, lm_head) use hardware-accelerated
-	 * matmul via the Producer pattern. The autoregressive loop remains in Java
-	 * since each step depends on the previous hidden state.</p>
+	 * <p>All GRU math (matmul, sigmoid, tanh, element-wise multiply, lerp) is
+	 * defined in {@code gru_block.pdsl} and executed through the compiled models
+	 * in each {@link GRUBlock}. This method orchestrates data routing: vector
+	 * concatenation using {@link PackedCollection#setMem(int, org.almostrealism.hardware.MemoryData, int, int)}
+	 * and dispatch to the compiled sub-models in each GRU layer.</p>
 	 *
 	 * @param transformerHidden the transformer output hidden state of size (hiddenSize)
 	 * @param selector function that selects a token index from logits
@@ -181,10 +221,10 @@ public class GRUDecoder implements LayerFeatures {
 		int[] outputTokens = new int[TOKENS_PER_NOTE];
 
 		for (int step = 0; step < TOKENS_PER_NOTE; step++) {
-			// Forward through all GRU layers (each step is hardware-accelerated)
+			// Forward through all GRU layers via compiled DSL sub-models
 			PackedCollection layerInput = x;
 			for (int l = 0; l < layers.length; l++) {
-				h[l] = layers[l].forward(layerInput, h[l]);
+				h[l] = gruStep(l, layerInput, h[l]);
 				layerInput = h[l];
 			}
 
@@ -209,6 +249,75 @@ public class GRUDecoder implements LayerFeatures {
 		}
 
 		return outputTokens;
+	}
+
+	/**
+	 * Execute one GRU step for a specific layer using the compiled DSL sub-models.
+	 *
+	 * <p>All GRU math is defined in {@code gru_block.pdsl}. This method performs
+	 * only data routing: concatenating input vectors using
+	 * {@link PackedCollection#setMem(int, org.almostrealism.hardware.MemoryData, int, int)}
+	 * and calling {@link CompiledModel#forward} on the compiled sub-models for
+	 * the given layer index.</p>
+	 *
+	 * @param layerIndex the GRU layer index (0-based)
+	 * @param x          input vector of size (inputSize)
+	 * @param h          previous hidden state of size (hiddenSize)
+	 * @return new hidden state h' of size (hiddenSize)
+	 */
+	private PackedCollection gruStep(int layerIndex, PackedCollection x, PackedCollection h) {
+		int inputSz  = layers[layerIndex].getInputSize();
+		int hiddenSz = layers[layerIndex].getHiddenSize();
+
+		// [x | h] for r and z gates
+		PackedCollection xh = concatTwo(x, inputSz, h, hiddenSz);
+		PackedCollection r  = rGateModels[layerIndex].forward(xh);
+		PackedCollection z  = zGateModels[layerIndex].forward(xh);
+
+		// [x | h | r] for n gate
+		PackedCollection xhr = concatTwo(xh, inputSz + hiddenSz, r, hiddenSz);
+		PackedCollection n   = nGateModels[layerIndex].forward(xhr);
+
+		// [n | z | h] for h_new (lerp)
+		PackedCollection nzh = concatThree(n, z, h, hiddenSz);
+		return hNewModels[layerIndex].forward(nzh);
+	}
+
+	/**
+	 * Execute one GRU step for a single layer using on-the-fly compilation.
+	 *
+	 * <p>This convenience overload is intended for test and diagnostic use.
+	 * The four DSL sub-blocks from {@link GRUBlock} are compiled into
+	 * {@link CompiledModel} instances on each call. For production inference,
+	 * use a {@link GRUDecoder} instance where sub-models are compiled once
+	 * in the constructor.</p>
+	 *
+	 * @param block the GRU block whose sub-blocks will be compiled and run
+	 * @param x     input vector of size (inputSize)
+	 * @param h     previous hidden state of size (hiddenSize)
+	 * @return new hidden state h' of size (hiddenSize)
+	 */
+	public static PackedCollection gruStep(GRUBlock block, PackedCollection x, PackedCollection h) {
+		int inputSz  = block.getInputSize();
+		int hiddenSz = block.getHiddenSize();
+
+		CompiledModel rModel  = compileBlock(block.rGateBlock);
+		CompiledModel zModel  = compileBlock(block.zGateBlock);
+		CompiledModel nModel  = compileBlock(block.nGateBlock);
+		CompiledModel hnModel = compileBlock(block.hNewBlock);
+
+		// [x | h] for r and z gates
+		PackedCollection xh = concatTwo(x, inputSz, h, hiddenSz);
+		PackedCollection r  = rModel.forward(xh);
+		PackedCollection z  = zModel.forward(xh);
+
+		// [x | h | r] for n gate
+		PackedCollection xhr = concatTwo(xh, inputSz + hiddenSz, r, hiddenSz);
+		PackedCollection n   = nModel.forward(xhr);
+
+		// [n | z | h] for h_new (lerp)
+		PackedCollection nzh = concatThree(n, z, h, hiddenSz);
+		return hnModel.forward(nzh);
 	}
 
 	/**
@@ -303,8 +412,7 @@ public class GRUDecoder implements LayerFeatures {
 	/**
 	 * Mask logits so only the valid sub-range for the given decode step
 	 * can be selected. All logits outside [offset, offset + vocabSize) are
-	 * set to negative infinity, ensuring argmax or softmax/sampling only
-	 * considers tokens valid for the current attribute.
+	 * set to negative infinity.
 	 *
 	 * @param logits the full decode vocabulary logits (decodeVocabSize)
 	 * @param step the current decode step (0-6)
@@ -314,13 +422,11 @@ public class GRUDecoder implements LayerFeatures {
 		int size = vocabSizesPerStep[step];
 		int totalVocab = config.decodeVocabSize;
 
-		double[] logitArr = logits.toArray(0, totalVocab);
 		for (int i = 0; i < totalVocab; i++) {
 			if (i < offset || i >= offset + size) {
-				logitArr[i] = Double.NEGATIVE_INFINITY;
+				logits.setMem(i, Double.NEGATIVE_INFINITY);
 			}
 		}
-		logits.setMem(0, logitArr, 0, totalVocab);
 	}
 
 	/**
@@ -359,6 +465,8 @@ public class GRUDecoder implements LayerFeatures {
 	/**
 	 * Sample a token index from logits using temperature scaling and top-p filtering.
 	 *
+	 * <p>Uses {@link PackedCollection} for probability storage.</p>
+	 *
 	 * @param logits      raw logits of shape (vocabSize)
 	 * @param vocabSize   vocabulary size
 	 * @param temperature temperature for scaling
@@ -368,22 +476,22 @@ public class GRUDecoder implements LayerFeatures {
 	 */
 	public static int sampleFromLogits(PackedCollection logits, int vocabSize,
 										double temperature, double topP, Random random) {
-		double[] logitArr = logits.toArray(0, vocabSize);
-		double[] probs = new double[vocabSize];
+		PackedCollection probs = new PackedCollection(vocabSize);
 		double maxLogit = Double.NEGATIVE_INFINITY;
 		for (int i = 0; i < vocabSize; i++) {
-			double scaled = logitArr[i] / temperature;
+			double scaled = logits.toDouble(i) / temperature;
 			if (scaled > maxLogit) maxLogit = scaled;
-			probs[i] = scaled;
+			probs.setMem(i, scaled);
 		}
 
 		double sumExp = 0.0;
 		for (int i = 0; i < vocabSize; i++) {
-			probs[i] = Math.exp(probs[i] - maxLogit);
-			sumExp += probs[i];
+			double expVal = Math.exp(probs.toDouble(i) - maxLogit);
+			probs.setMem(i, expVal);
+			sumExp += expVal;
 		}
 		for (int i = 0; i < vocabSize; i++) {
-			probs[i] /= sumExp;
+			probs.setMem(i, probs.toDouble(i) / sumExp);
 		}
 
 		if (topP < 1.0) {
@@ -393,7 +501,7 @@ public class GRUDecoder implements LayerFeatures {
 		double r = random.nextDouble();
 		double cumulative = 0.0;
 		for (int i = 0; i < vocabSize; i++) {
-			cumulative += probs[i];
+			cumulative += probs.toDouble(i);
 			if (cumulative >= r) return i;
 		}
 
@@ -407,14 +515,14 @@ public class GRUDecoder implements LayerFeatures {
 	 * of tokens whose cumulative probability exceeds topP), then
 	 * renormalizes.</p>
 	 */
-	private static void applyTopP(double[] probs, int vocabSize, double topP) {
+	private static void applyTopP(PackedCollection probs, int vocabSize, double topP) {
 		int[] sortedIndices = new int[vocabSize];
 		for (int i = 0; i < vocabSize; i++) sortedIndices[i] = i;
 
 		for (int i = 0; i < vocabSize - 1; i++) {
 			int maxIdx = i;
 			for (int j = i + 1; j < vocabSize; j++) {
-				if (probs[sortedIndices[j]] > probs[sortedIndices[maxIdx]]) {
+				if (probs.toDouble(sortedIndices[j]) > probs.toDouble(sortedIndices[maxIdx])) {
 					maxIdx = j;
 				}
 			}
@@ -426,20 +534,20 @@ public class GRUDecoder implements LayerFeatures {
 
 			double cumProb = 0.0;
 			for (int k = 0; k <= i; k++) {
-				cumProb += probs[sortedIndices[k]];
+				cumProb += probs.toDouble(sortedIndices[k]);
 			}
 			if (cumProb >= topP) {
 				for (int j = i + 1; j < vocabSize; j++) {
-					probs[sortedIndices[j]] = 0.0;
+					probs.setMem(sortedIndices[j], 0.0);
 				}
 				break;
 			}
 		}
 
 		double sum = 0.0;
-		for (int i = 0; i < vocabSize; i++) sum += probs[i];
+		for (int i = 0; i < vocabSize; i++) sum += probs.toDouble(i);
 		if (sum > 0.0) {
-			for (int i = 0; i < vocabSize; i++) probs[i] /= sum;
+			for (int i = 0; i < vocabSize; i++) probs.setMem(i, probs.toDouble(i) / sum);
 		}
 	}
 
@@ -460,10 +568,8 @@ public class GRUDecoder implements LayerFeatures {
 	}
 
 	/**
-	 * Compute a linear projection using hardware-accelerated matmul: result = weight @ input + bias.
-	 *
-	 * <p>Uses the Producer pattern for hardware-accelerated matrix-vector multiplication,
-	 * replacing host-side double[] loops.</p>
+	 * Compute a linear projection using hardware-accelerated matmul:
+	 * result = weight @ input + bias.
 	 *
 	 * @param input input vector
 	 * @param weight weight matrix, row-major (outputSize, inputSize)
@@ -471,23 +577,23 @@ public class GRUDecoder implements LayerFeatures {
 	 * @return result as PackedCollection
 	 */
 	private PackedCollection linearForward(PackedCollection input,
-										   PackedCollection weight,
-										   PackedCollection bias) {
+											PackedCollection weight,
+											PackedCollection bias) {
 		CollectionProducer result = add(matmul(p(weight), p(input)), c(bias));
 		return result.evaluate();
 	}
 
-
 	/**
-	 * Find the index of the maximum value in a collection using bulk read.
+	 * Find the index of the maximum value in a collection.
+	 * Uses element-wise access via {@link PackedCollection#toDouble(int)}.
 	 */
 	private static int argmax(PackedCollection collection, int size) {
-		double[] data = collection.toArray(0, size);
 		int maxIdx = 0;
-		double maxVal = data[0];
+		double maxVal = collection.toDouble(0);
 		for (int i = 1; i < size; i++) {
-			if (data[i] > maxVal) {
-				maxVal = data[i];
+			double val = collection.toDouble(i);
+			if (val > maxVal) {
+				maxVal = val;
 				maxIdx = i;
 			}
 		}
@@ -495,12 +601,51 @@ public class GRUDecoder implements LayerFeatures {
 	}
 
 	/**
-	 * Create a copy of a PackedCollection using bulk array transfer.
+	 * Create a copy of a PackedCollection using
+	 * {@link PackedCollection#setMem(int, org.almostrealism.hardware.MemoryData, int, int)}.
 	 */
 	private static PackedCollection copyCollection(PackedCollection source, int size) {
 		PackedCollection copy = new PackedCollection(size);
-		double[] data = source.toArray(0, size);
-		copy.setMem(0, data, 0, size);
+		copy.setMem(0, source, 0, size);
 		return copy;
+	}
+
+	/**
+	 * Concatenate two vectors [a | b] into a new PackedCollection using
+	 * {@link PackedCollection#setMem(int, org.almostrealism.hardware.MemoryData, int, int)}.
+	 * Uses {@link PackedCollection#setMem(int, org.almostrealism.hardware.MemoryData, int, int)} only.
+	 *
+	 * @param a     first vector
+	 * @param sizeA number of elements in a
+	 * @param b     second vector
+	 * @param sizeB number of elements in b
+	 * @return concatenated PackedCollection of shape (sizeA + sizeB)
+	 */
+	private static PackedCollection concatTwo(PackedCollection a, int sizeA,
+											   PackedCollection b, int sizeB) {
+		PackedCollection result = new PackedCollection(sizeA + sizeB);
+		result.setMem(0, a, 0, sizeA);
+		result.setMem(sizeA, b, 0, sizeB);
+		return result;
+	}
+
+	/**
+	 * Concatenate three equal-sized vectors [a | b | c] into a new PackedCollection
+	 * using {@link PackedCollection#setMem(int, org.almostrealism.hardware.MemoryData, int, int)}.
+	 * Uses {@link PackedCollection#setMem(int, org.almostrealism.hardware.MemoryData, int, int)} only.
+	 *
+	 * @param a    first vector
+	 * @param b    second vector
+	 * @param c    third vector
+	 * @param size number of elements in each vector
+	 * @return concatenated PackedCollection of shape (3 * size)
+	 */
+	private static PackedCollection concatThree(PackedCollection a, PackedCollection b,
+												  PackedCollection c, int size) {
+		PackedCollection result = new PackedCollection(3 * size);
+		result.setMem(0,        a, 0, size);
+		result.setMem(size,     b, 0, size);
+		result.setMem(2 * size, c, 0, size);
+		return result;
 	}
 }
