@@ -66,21 +66,21 @@ import java.util.concurrent.ThreadFactory;
  *       Servers.</li>
  * </ul>
  *
- * <h2>Job Queue Invariant</h2>
- * <p>Any Node accepts any job into its queue via {@link #addJob(Job)},
- * regardless of labels. Label checking happens only in the worker
- * thread at execution time. This allows a Node to hold jobs that it
- * cannot execute, so that the activity thread's relay loop can
- * forward them to a peer that can.</p>
+ * <h2>Job Routing</h2>
+ * <p>{@link io.flowtree.node.NodeGroup} routes each incoming job to the most
+ * appropriate child Node via {@code routeJob()}: a Node whose labels satisfy
+ * the job's requirements is preferred; if none exists locally the job goes to
+ * the NodeGroup's built-in relay Node. A worker Node that still receives a
+ * mismatched job (e.g. via a direct peer connection) relays it to its parent
+ * NodeGroup for re-routing rather than re-queuing to itself.</p>
  *
  * <h2>Relay Nodes</h2>
  * <p>A Node with the label {@code role:relay} never executes jobs.
  * The worker thread is not started on relay Nodes (the
  * {@link #addJob(Job)} method skips worker startup when
  * {@code role:relay} is set). Jobs accumulate in the queue and are
- * moved exclusively by the relay loop in the activity thread. This
- * is used by the controller to act as a job warehouse without
- * executing anything locally.</p>
+ * moved exclusively by the relay loop in the activity thread until a
+ * capable peer connection becomes available.</p>
  *
  * @author  Michael Murray
  * @see NodeGroup
@@ -237,14 +237,18 @@ public class Node implements Runnable, ThreadFactory {
 
 					if (j != null) {
 						// If this Node cannot satisfy the job's label
-						// requirements, put it back at the end of the
-						// queue for the activity thread to relay.
+						// requirements, relay the job to the parent
+						// NodeGroup so it can route it to a capable node.
+						// Do NOT re-queue to self: the worker thread would
+						// spin at thousands of iterations per second with
+						// only Thread.yield() as back-pressure.
 						if (!Node.this.satisfies(j.getRequiredLabels())) {
-							Node.this.displayMessage("Re-queuing job "
+							Node.this.displayMessage("Relaying job "
 								+ j.getTaskId()
 								+ " -- labels mismatch");
-							Node.this.addJob(j);
-							Thread.yield();
+							if (Node.this.parent != null) {
+								Node.this.parent.addJob(j);
+							}
 							continue;
 						}
 
@@ -627,11 +631,6 @@ public class Node implements Runnable, ThreadFactory {
 			else
 				return id;
 		}
-
-		this.displayMessage("Queued job " + j.getTaskId()
-			+ " at position " + id
-			+ " (queue size " + this.jobs.size() + ")"
-			+ ("relay".equals(labels.get("role")) ? " [relay node]" : ""));
 
 		if (this.worker != null && !"relay".equals(labels.get("role"))) {
 			synchronized (this.worker) {
@@ -1134,13 +1133,6 @@ public class Node implements Runnable, ThreadFactory {
 
 			this.relaySum += r;
 			this.relayDiv++;
-
-			if (js > 0) {
-				this.displayMessage("Relay check: jobs=" + js
-					+ " minJobs=" + this.minJobs
-					+ " peers=" + this.peers.size()
-					+ " r=" + String.format("%.4f", r));
-			}
 
 			r: if (js > this.minJobs && Math.random() < r) {
 				Connection c;

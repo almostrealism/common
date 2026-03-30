@@ -27,5 +27,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -sf http://localhost:7780/api/health || exit 1
 
 ENTRYPOINT ["java", "-cp", "/app/lib/*", "io.flowtree.slack.FlowTreeController", \
-    "--config", "/config/workstreams.yaml", \
-    "--log-file", "/config/flowtree-controller.log"]
+    "--config", "/config/workstreams.yaml"]
