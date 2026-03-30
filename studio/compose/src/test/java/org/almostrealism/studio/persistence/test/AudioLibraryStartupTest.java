@@ -27,6 +27,7 @@ import org.almostrealism.studio.persistence.LibraryDestination;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persist.assets.CollectionEncoder;
+import io.almostrealism.code.Precision;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;
@@ -216,13 +217,13 @@ public class AudioLibraryStartupTest extends TestSuiteBase {
 					.setFreqChannelCount(1)
 					.setFreqFrameCount(8)
 					.setFreqData(CollectionEncoder.encode(
-							new PackedCollection(16), io.almostrealism.code.Precision.FP32))
+							new PackedCollection(16), Precision.FP32))
 					.setFeatureSampleRate(64)
 					.setFeatureBinCount(32)
 					.setFeatureChannelCount(1)
 					.setFeatureFrameCount(16)
 					.setFeatureData(CollectionEncoder.encode(
-							createFeatureData(i), io.almostrealism.code.Precision.FP32));
+							createFeatureData(i), Precision.FP32));
 
 			if (includeSimilarities) {
 				Map<String, Double> sims = new HashMap<>();

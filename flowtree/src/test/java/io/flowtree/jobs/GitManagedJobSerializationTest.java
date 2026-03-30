@@ -19,6 +19,9 @@ package io.flowtree.jobs;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -58,13 +61,13 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 	public void setRestoresAllFields() {
 		ClaudeCodeJob job = new ClaudeCodeJob();
 		job.set("taskId", "task-2");
-		job.set("prompt", java.util.Base64.getEncoder()
-			.encodeToString("Do the work".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-		job.set("tools", java.util.Base64.getEncoder()
-			.encodeToString("Read,Glob".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+		job.set("prompt", Base64.getEncoder()
+			.encodeToString("Do the work".getBytes(StandardCharsets.UTF_8)));
+		job.set("tools", Base64.getEncoder()
+			.encodeToString("Read,Glob".getBytes(StandardCharsets.UTF_8)));
 		job.set("maxTurns", "30");
-		job.set("branch", java.util.Base64.getEncoder()
-			.encodeToString("feature/test".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+		job.set("branch", Base64.getEncoder()
+			.encodeToString("feature/test".getBytes(StandardCharsets.UTF_8)));
 
 		assertEquals("task-2", job.getTaskId());
 		assertEquals("Do the work", job.getPrompt());

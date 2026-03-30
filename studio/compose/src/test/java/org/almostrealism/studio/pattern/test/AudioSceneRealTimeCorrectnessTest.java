@@ -34,7 +34,10 @@ import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.music.pattern.RenderedNoteAudio;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.BatchedCell;
+import org.almostrealism.graph.temporal.WaveCell;
+import org.almostrealism.graph.temporal.WaveCellData;
 import org.almostrealism.hardware.OperationList;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
 import org.junit.Before;
@@ -1015,12 +1018,12 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 
 		// Create WaveCell pointing to the source buffer
 		// This mimics how efx.createCells() creates WaveCells for pattern output
-		org.almostrealism.graph.temporal.WaveCell waveCell =
-				new org.almostrealism.graph.temporal.WaveCell(
+		WaveCell waveCell =
+				new WaveCell(
 						sourceBuffer, SAMPLE_RATE, 1.0, null, null);
 
 		// Get the internal data to read output values
-		org.almostrealism.graph.temporal.WaveCellData data = waveCell.getData();
+		WaveCellData data = waveCell.getData();
 
 		// Setup
 		waveCell.setup().get().run();
@@ -1358,7 +1361,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 
 						// --- Partial evaluation ---
 						note.getOffsetArg().setMem(0, sourceOffset);
-						io.almostrealism.relation.Producer<PackedCollection> partialProducer =
+						Producer<PackedCollection> partialProducer =
 								note.getProducer(overlapLength);
 
 						long partialStart = System.nanoTime();

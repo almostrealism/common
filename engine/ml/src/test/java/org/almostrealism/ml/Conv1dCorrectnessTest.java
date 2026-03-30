@@ -27,6 +27,8 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.collect.SubsetTraversalExpression;
+import io.almostrealism.collect.SubsetTraversalIndexMapping;
 import org.almostrealism.collect.CollectionProducer;
 import org.junit.Assert;
 import org.junit.Test;
@@ -156,8 +158,8 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 	@Test(timeout = 60000)
 	public void testSimpleConv1d() {
 		// Disable debug logging - it causes toArray() errors with parameterized expressions
-		io.almostrealism.collect.SubsetTraversalExpression.enableLogging = false;
-		io.almostrealism.collect.SubsetTraversalIndexMapping.enableLogging = false;
+		SubsetTraversalExpression.enableLogging = false;
+		SubsetTraversalIndexMapping.enableLogging = false;
 
 		int batchSize = 1;
 		int inputChannels = 1;

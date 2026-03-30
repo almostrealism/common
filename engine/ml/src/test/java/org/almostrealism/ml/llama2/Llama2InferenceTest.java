@@ -26,6 +26,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -190,7 +191,7 @@ public class Llama2InferenceTest extends TestSuiteBase implements ConsoleFeature
 		// Check token diversity: split into words and verify not all identical
 		String[] words = text.trim().split("\\s+");
 		if (words.length > 3) {
-			long distinctWords = java.util.Arrays.stream(words).distinct().count();
+			long distinctWords = Arrays.stream(words).distinct().count();
 			Assert.assertTrue(
 					"Output should have diverse tokens, not a degenerate loop (distinct: "
 							+ distinctWords + "/" + words.length + ")",
