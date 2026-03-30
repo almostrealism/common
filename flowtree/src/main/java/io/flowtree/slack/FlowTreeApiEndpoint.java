@@ -17,6 +17,7 @@
 package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.ClaudeCodeJobEvent;
@@ -37,7 +38,11 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1095,49 +1100,49 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractString(String, String)}.
      */
     static String extractJsonField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractString(json, field);
+        return JsonFieldExtractor.extractString(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractBoolean(String, String)}.
      */
     static boolean extractJsonBooleanField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractBoolean(json, field);
+        return JsonFieldExtractor.extractBoolean(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractInt(String, String)}.
      */
     static int extractJsonIntField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractInt(json, field);
+        return JsonFieldExtractor.extractInt(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractLong(String, String)}.
      */
     static long extractJsonLongField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractLong(json, field);
+        return JsonFieldExtractor.extractLong(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractDouble(String, String)}.
      */
     static double extractJsonDoubleField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractDouble(json, field);
+        return JsonFieldExtractor.extractDouble(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractStringArray(String, String)}.
      */
     static List<String> extractJsonArrayField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractStringArray(json, field);
+        return JsonFieldExtractor.extractStringArray(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractStringObject(String, String)}.
      */
     static Map<String, String> extractJsonObjectFields(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractStringObject(json, field);
+        return JsonFieldExtractor.extractStringObject(json, field);
     }
 
     /**
@@ -1161,16 +1166,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String payload = workstreamId + ":" + jobId + ":" + expiry;
 
         try {
-            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
-            mac.init(new javax.crypto.spec.SecretKeySpec(
-                sharedSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(
+                sharedSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             byte[] hmacBytes = mac.doFinal(
-                payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                payload.getBytes(StandardCharsets.UTF_8));
 
-            String hmacB64 = java.util.Base64.getUrlEncoder().withoutPadding()
+            String hmacB64 = Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(hmacBytes);
-            String payloadB64 = java.util.Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            String payloadB64 = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(payload.getBytes(StandardCharsets.UTF_8));
 
             return "armt_tmp_" + hmacB64 + ":" + payloadB64;
         } catch (Exception e) {

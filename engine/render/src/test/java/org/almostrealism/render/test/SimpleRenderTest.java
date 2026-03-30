@@ -1,6 +1,7 @@
 package org.almostrealism.render.test;
 
 import io.almostrealism.relation.Producer;
+import java.util.Collections;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -10,7 +11,11 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.RealizableImage;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.Shader;
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.projection.PinholeCamera;
 import org.almostrealism.raytrace.FogParameters;
@@ -46,14 +51,14 @@ public class SimpleRenderTest extends TestSuiteBase {
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
 		sphere.setColor(new RGB(0.8, 0.2, 0.2)); // Red
-		((AbstractSurface) sphere).setShaders(new org.almostrealism.color.Shader[]{
+		((AbstractSurface) sphere).setShaders(new Shader[]{
 				DiffuseShader.defaultDiffuseShader
 		});
 		sphere.calculateTransform();
 		log("Sphere created at origin, size 1.0, transforms enabled");
 
 		// DEBUG: Print the actual transform matrix
-		org.almostrealism.geometry.TransformMatrix transform = sphere.getTransform(true);
+		TransformMatrix transform = sphere.getTransform(true);
 		if (transform != null) {
 			double[] tmData = transform.toArray(0, 16);
 			log("Sphere transform matrix:");
@@ -130,7 +135,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
 		sphere.setColor(new RGB(1.0, 1.0, 1.0));
-		((AbstractSurface) sphere).setShaders(new org.almostrealism.color.Shader[]{
+		((AbstractSurface) sphere).setShaders(new Shader[]{
 				DiffuseShader.defaultDiffuseShader
 		});
 		sphere.calculateTransform();
@@ -161,8 +166,8 @@ public class SimpleRenderTest extends TestSuiteBase {
 		// TEST 1: Working approach - static ray
 		log("\n=== TEST 1: Static ray (working) ===");
 		CollectionProducer staticRay = ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
-		org.almostrealism.geometry.ShadableIntersection staticIntersection = sphere.intersectAt(staticRay);
-		org.almostrealism.collect.PackedCollection staticDistance = staticIntersection.getDistance().get().evaluate();
+		ShadableIntersection staticIntersection = sphere.intersectAt(staticRay);
+		PackedCollection staticDistance = staticIntersection.getDistance().get().evaluate();
 		double staticDistValue = staticDistance.toDouble(0);
 		log("Static ray distance: " + staticDistValue);
 		log("Expected: ~9.0");
@@ -172,8 +177,8 @@ public class SimpleRenderTest extends TestSuiteBase {
 		CollectionProducer pixelPos = pair(0.0, 0.0);
 		CollectionProducer screenDim = pair(1.0, 1.0);
 		CollectionProducer dynamicRay = camera.rayAt(pixelPos, screenDim);
-		org.almostrealism.geometry.ShadableIntersection dynamicIntersection = sphere.intersectAt(dynamicRay);
-		org.almostrealism.collect.PackedCollection dynamicDistance = dynamicIntersection.getDistance().get().evaluate();
+		ShadableIntersection dynamicIntersection = sphere.intersectAt(dynamicRay);
+		PackedCollection dynamicDistance = dynamicIntersection.getDistance().get().evaluate();
 		double dynamicDistValue = dynamicDistance.toDouble(0);
 		log("Dynamic ray distance: " + dynamicDistValue);
 		log("Expected: ~9.0");
@@ -183,16 +188,16 @@ public class SimpleRenderTest extends TestSuiteBase {
 		Producer<?> variablePixelPos = v(shape(-1, 2), 0);
 		CollectionProducer constantScreenDim = pair(1.0, 1.0);
 		CollectionProducer variableRay = camera.rayAt(variablePixelPos, constantScreenDim);
-		org.almostrealism.geometry.ShadableIntersection variableIntersection = sphere.intersectAt(variableRay);
+		ShadableIntersection variableIntersection = sphere.intersectAt(variableRay);
 
 		// Create input like initRankCache does
-		org.almostrealism.collect.PackedCollection input =
-				org.almostrealism.algebra.Pair.bank(1);
+		PackedCollection input =
+				Pair.bank(1);
 		input.get(0).setMem(new double[]{0.0, 0.0});  // Single pixel at (0, 0)
 
 		// Evaluate with batch input like rank cache does
-		org.almostrealism.collect.PackedCollection rankCollection =
-				new org.almostrealism.collect.PackedCollection(shape(1, 1).traverse(1));
+		PackedCollection rankCollection =
+				new PackedCollection(shape(1, 1).traverse(1));
 		variableIntersection.getDistance().get().into(rankCollection.each()).evaluate(input);
 
 		double variableDistValue = rankCollection.valueAt(0, 0);
@@ -236,7 +241,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		CollectionProducer rayProducer = camera.rayAt(pixelPos, screenDim);
 
 		// Evaluate the ray
-		org.almostrealism.collect.PackedCollection rayData = rayProducer.get().evaluate();
+		PackedCollection rayData = rayProducer.get().evaluate();
 		log("Ray data count: " + rayData.getCount());
 		log("Ray data memory size: " + rayData.getMemLength());
 
@@ -284,7 +289,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
 		sphere.setColor(new RGB(1.0, 1.0, 1.0)); // White surface
-		((AbstractSurface) sphere).setShaders(new org.almostrealism.color.Shader[]{
+		((AbstractSurface) sphere).setShaders(new Shader[]{
 				DiffuseShader.defaultDiffuseShader
 		});
 		log("Created white sphere at origin, radius 1.0");
@@ -301,13 +306,13 @@ public class SimpleRenderTest extends TestSuiteBase {
 		log("Created ray: origin (0, 0, 10), direction (0, 0, -1)");
 
 		// Create shader context
-		org.almostrealism.color.ShaderContext context = new org.almostrealism.color.ShaderContext(sphere, light);
+		ShaderContext context = new ShaderContext(sphere, light);
 		log("Created shader context");
 
 		// Create lighting engine directly
 		IntersectionalLightingEngine engine =
 				new IntersectionalLightingEngine(
-						testRay, sphere, java.util.Collections.emptyList(), light, java.util.Collections.emptyList(), context);
+						testRay, sphere, Collections.emptyList(), light, Collections.emptyList(), context);
 		log("Created IntersectionalLightingEngine");
 
 		// Get the color producer
@@ -315,15 +320,15 @@ public class SimpleRenderTest extends TestSuiteBase {
 		log("Got color producer: " + colorProducer);
 
 		// Evaluate with a pixel position argument (doesn't matter which, just need to match expected args)
-		org.almostrealism.algebra.Pair pixelPos = new org.almostrealism.algebra.Pair(32.0, 32.0);
+		Pair pixelPos = new Pair(32.0, 32.0);
 		Object result = colorProducer.get().evaluate(pixelPos);
 
 		// Handle PackedCollection -> RGB conversion
 		RGB color;
 		if (result instanceof RGB) {
 			color = (RGB) result;
-		} else if (result instanceof org.almostrealism.collect.PackedCollection) {
-			color = new RGB((org.almostrealism.collect.PackedCollection) result, 0);
+		} else if (result instanceof PackedCollection) {
+			color = new RGB((PackedCollection) result, 0);
 		} else {
 			throw new IllegalStateException("Unexpected result type: " + result.getClass().getName());
 		}
@@ -353,10 +358,10 @@ public class SimpleRenderTest extends TestSuiteBase {
 		log("Sphere at origin (0, 0, 0), size 1.0");
 
 		// Get intersection
-		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(testRay);
+		ShadableIntersection intersection = sphere.intersectAt(testRay);
 
 		// Evaluate the distance
-		org.almostrealism.collect.PackedCollection distance = intersection.getDistance().get().evaluate();
+		PackedCollection distance = intersection.getDistance().get().evaluate();
 
 		log("Distance value: " + distance.toDouble(0));
 		log("Expected: around 9.0 (10 - radius of 1)");
@@ -402,8 +407,8 @@ public class SimpleRenderTest extends TestSuiteBase {
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
 
-		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(cameraRay);
-		org.almostrealism.collect.PackedCollection distance = intersection.getDistance().get().evaluate();
+		ShadableIntersection intersection = sphere.intersectAt(cameraRay);
+		PackedCollection distance = intersection.getDistance().get().evaluate();
 
 		log("Intersection distance from camera ray: " + distance.toDouble(0));
 		double dist = distance.toDouble(0);
@@ -532,7 +537,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		sphere1.setLocation(new Vector(-1.5, 0.0, 0.0));
 		sphere1.setSize(1.0);
 		sphere1.setColor(new RGB(0.8, 0.2, 0.2)); // Red
-		((AbstractSurface) sphere1).setShaders(new org.almostrealism.color.Shader[]{
+		((AbstractSurface) sphere1).setShaders(new Shader[]{
 				DiffuseShader.defaultDiffuseShader
 		});
 		sphere1.calculateTransform();
@@ -542,7 +547,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		sphere2.setLocation(new Vector(1.5, 0.0, 0.0));
 		sphere2.setSize(1.0);
 		sphere2.setColor(new RGB(0.2, 0.8, 0.2)); // Green
-		((AbstractSurface) sphere2).setShaders(new org.almostrealism.color.Shader[]{
+		((AbstractSurface) sphere2).setShaders(new Shader[]{
 				DiffuseShader.defaultDiffuseShader
 		});
 		sphere2.calculateTransform();

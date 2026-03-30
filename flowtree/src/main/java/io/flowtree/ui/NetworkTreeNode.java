@@ -21,6 +21,7 @@ import io.flowtree.node.Node;
 import io.flowtree.node.NodeGroup;
 
 import javax.swing.tree.MutableTreeNode;
+import javax.swing.tree.TreeNode;
 import java.util.Enumeration;
 
 
@@ -30,7 +31,7 @@ import java.util.Enumeration;
  * 
  * @author Mike Murray
  */
-public class NetworkTreeNode implements javax.swing.tree.MutableTreeNode {
+public class NetworkTreeNode implements MutableTreeNode {
 	private String label;
 	private Node node;
 	private NetworkTreeNode parent;
@@ -57,7 +58,7 @@ public class NetworkTreeNode implements javax.swing.tree.MutableTreeNode {
 	/**
 	 * @see javax.swing.tree.TreeNode#getChildAt(int)
 	 */
-	public javax.swing.tree.TreeNode getChildAt(int index) {
+	public TreeNode getChildAt(int index) {
 		if (this.node == null) {
 			return null;
 		} else if (this.node instanceof NodeGroup) {
@@ -82,13 +83,13 @@ public class NetworkTreeNode implements javax.swing.tree.MutableTreeNode {
 	/**
 	 * @see javax.swing.tree.TreeNode#getParent()
 	 */
-	public javax.swing.tree.TreeNode getParent() { return this.parent; }
+	public TreeNode getParent() { return this.parent; }
 
 	/**
 	 * @see javax.swing.tree.TreeNode#getIndex(javax.swing.tree.TreeNode)
 	 * @return  -1
 	 */
-	public int getIndex(javax.swing.tree.TreeNode node) { return -1; }
+	public int getIndex(TreeNode node) { return -1; }
 
 	/**
 	 * @see javax.swing.tree.TreeNode#getAllowsChildren()

@@ -16,7 +16,9 @@
 
 package org.almostrealism.ml.midi.test;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.util.TestSuiteBase;
@@ -118,7 +120,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	public void testFromConfigHeadGroups() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 
-		io.almostrealism.relation.Producer<PackedCollection>[] positions =
+		Producer<PackedCollection>[] positions =
 				createPositionProducers(MoonbeamConfig.NUM_ATTRIBUTES);
 		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
 			PackedCollection posVal = new PackedCollection(1);
@@ -149,7 +151,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 		int freqDim = config.headDim / 2;
 
 		PackedCollection posVal = new PackedCollection(1);
-		io.almostrealism.relation.Producer<PackedCollection>[] positions =
+		Producer<PackedCollection>[] positions =
 				createPositionProducers(MoonbeamConfig.NUM_ATTRIBUTES);
 		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
 			positions[i] = () -> args -> posVal;
@@ -173,7 +175,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	@Test
 	public void testDecodeVocabOffsets() {
 		MoonbeamConfig config = MoonbeamConfig.defaultConfig();
-		int[] offsets = org.almostrealism.ml.midi.GRUDecoder.computeVocabOffsets(config);
+		int[] offsets = GRUDecoder.computeVocabOffsets(config);
 
 		Assert.assertEquals(7, offsets.length);
 		Assert.assertEquals(0, offsets[0]); // SOS
@@ -196,7 +198,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	 * Helper to create a Producer array, isolating the unavoidable unchecked
 	 * cast required by Java's lack of generic array creation.
 	 */
-	private static io.almostrealism.relation.Producer<PackedCollection>[] createPositionProducers(int size) {
-		return new io.almostrealism.relation.Producer[size];
+	private static Producer<PackedCollection>[] createPositionProducers(int size) {
+		return new Producer[size];
 	}
 }

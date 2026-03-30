@@ -17,9 +17,12 @@
 package org.almostrealism.ml.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
+import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.GRUCell;
 import org.almostrealism.ml.midi.GRUDecoder;
@@ -92,7 +95,7 @@ import java.util.Map;
  * @see ModelOptimizer
  */
 public class MoonbeamFineTuningTest extends TestSuiteBase implements
-		org.almostrealism.ml.AttentionFeatures {
+		AttentionFeatures {
 
 	private static final String WEIGHTS_DIR = "/Users/Shared/models/moonbeam-weights-protobuf";
 
@@ -462,14 +465,14 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 			attributePositions[i] = new PackedCollection(1);
 		}
 
-		io.almostrealism.relation.Producer<PackedCollection>[] attrProducers =
-				new io.almostrealism.relation.Producer[MoonbeamConfig.NUM_ATTRIBUTES];
+		Producer<PackedCollection>[] attrProducers =
+				new Producer[MoonbeamConfig.NUM_ATTRIBUTES];
 		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
 			attrProducers[i] = p(attributePositions[i]);
 		}
 
-		org.almostrealism.ml.midi.HeadGroupConfig[] headGroups =
-				org.almostrealism.ml.midi.HeadGroupConfig.fromConfig(config, attrProducers);
+		HeadGroupConfig[] headGroups =
+				HeadGroupConfig.fromConfig(config, attrProducers);
 
 		for (int i = 0; i < config.numLayers; i++) {
 			String prefix = String.format("model.layers.%d", i);

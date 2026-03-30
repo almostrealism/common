@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -203,7 +204,7 @@ public class McpToolDiscovery {
             }
 
             // Reverse to preserve source order (we scanned backward)
-            java.util.Collections.reverse(tools);
+            Collections.reverse(tools);
             break;
         }
 

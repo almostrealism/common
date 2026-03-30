@@ -7,6 +7,7 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
+import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.TransformMatrixFeatures;
 import org.almostrealism.primitives.Sphere;
@@ -15,7 +16,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
- * Tests for {@link org.almostrealism.geometry.TransformMatrix} creation, inversion,
+ * Tests for {@link TransformMatrix} creation, inversion,
  * and ray transformation operations.
  */
 public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, TransformMatrixFeatures {
@@ -25,8 +26,8 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing TransformMatrix inverse and ray transformation...");
 
 		// First check what translationMatrix produces
-		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = (Producer) translationMatrix(vector(2.0, 0.0, 0.0));
-		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(2.0, 0.0, 0.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
 		log("TranslationMatrix producer evaluated, result type: " + tmResult.getClass().getName());
 		log("Result count: " + tmResult.getCount() + ", mem length: " + tmResult.getMemLength());
 
@@ -37,8 +38,8 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		}
 
 		// Create a translation matrix for (2, 0, 0)
-		org.almostrealism.geometry.TransformMatrix mat =
-				new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
+		TransformMatrix mat =
+				new TransformMatrix(tmResult, 0);
 
 		log("Created translation matrix for (2, 0, 0)");
 
@@ -50,7 +51,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		}
 
 		// Get the inverse
-		org.almostrealism.geometry.TransformMatrix inv = mat.getInverse();
+		TransformMatrix inv = mat.getInverse();
 		log("Got inverse matrix");
 
 		// Print the inverse matrix to verify it's correct
@@ -103,7 +104,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		sphere1.calculateTransform();
 
 		Producer<Ray> ray1 = (Producer) ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
-		org.almostrealism.geometry.ShadableIntersection intersection1 = sphere1.intersectAt(ray1);
+		ShadableIntersection intersection1 = sphere1.intersectAt(ray1);
 		double dist1 = intersection1.getDistance().get().evaluate().toDouble(0);
 
 		log("Test 1 - Sphere at origin:");
@@ -141,7 +142,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 					transformedEval.getDirection().toDouble(1) + ", " + transformedEval.getDirection().toDouble(2) + ")");
 		}
 
-		org.almostrealism.geometry.ShadableIntersection intersection2 = sphere2.intersectAt(ray2);
+		ShadableIntersection intersection2 = sphere2.intersectAt(ray2);
 		double dist2 = intersection2.getDistance().get().evaluate().toDouble(0);
 
 		log("  Expected distance: ~9.0");
@@ -151,7 +152,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 		// Test 3: Ray that should MISS the translated sphere
 		Producer<Ray> ray3 = (Producer) ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);  // Aims at origin
-		org.almostrealism.geometry.ShadableIntersection intersection3 = sphere2.intersectAt(ray3);
+		ShadableIntersection intersection3 = sphere2.intersectAt(ray3);
 		double dist3 = intersection3.getDistance().get().evaluate().toDouble(0);
 
 		log("Test 3 - Ray at origin should MISS sphere at (2, 0, 0):");
@@ -166,7 +167,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		sphere3.calculateTransform();
 
 		Producer<Ray> ray4 = (Producer) ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
-		org.almostrealism.geometry.ShadableIntersection intersection4 = sphere3.intersectAt(ray4);
+		ShadableIntersection intersection4 = sphere3.intersectAt(ray4);
 		double dist4 = intersection4.getDistance().get().evaluate().toDouble(0);
 
 		log("Test 4 - Scaled sphere (radius 2) at origin:");
@@ -184,9 +185,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing ray origin translation...");
 
 		// Create translation matrix for (3, 2, 1)
-		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = (Producer) translationMatrix(vector(3.0, 2.0, 1.0));
-		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(3.0, 2.0, 1.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
 
 		// Create ray at origin
 		Producer<Ray> r = (Producer) ray(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -211,9 +212,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing ray origin inverse translation...");
 
 		// Create translation matrix for (5, -3, 2)
-		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = (Producer) translationMatrix(vector(5.0, -3.0, 2.0));
-		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(5.0, -3.0, 2.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
 
 		// Create ray at (5, -3, 2)
 		Producer<Ray> r = (Producer) ray(5.0, -3.0, 2.0, 0.0, 1.0, 0.0);
@@ -238,9 +239,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing ray direction unaffected by translation...");
 
 		// Create translation matrix
-		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = (Producer) translationMatrix(vector(10.0, 20.0, 30.0));
-		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(10.0, 20.0, 30.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
 
 		// Create ray with direction (0, 0, -1)
 		Producer<Ray> r = (Producer) ray(1.0, 1.0, 1.0, 0.0, 0.0, -1.0);
@@ -276,7 +277,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 		// Intersection should occur at (0,0,2) - the front surface of radius-2 sphere
 		// Distance from (0,0,10) to (0,0,2) is 8.0 in world space
-		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(r);
+		ShadableIntersection intersection = sphere.intersectAt(r);
 		double dist = intersection.getDistance().get().evaluate().toDouble(0);
 
 		log("  Sphere at origin with radius 2.0");
@@ -303,16 +304,16 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing combined transform (translate + scale) on ray...");
 
 		// Create translation matrix for (1, 2, 3)
-		Producer<org.almostrealism.geometry.TransformMatrix> t1 = (Producer) translationMatrix(vector(1.0, 2.0, 3.0));
-		org.almostrealism.collect.PackedCollection t1Result = t1.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix translateMat =
-				new org.almostrealism.geometry.TransformMatrix(t1Result, 0);
+		Producer<TransformMatrix> t1 = (Producer) translationMatrix(vector(1.0, 2.0, 3.0));
+		PackedCollection t1Result = t1.get().evaluate();
+		TransformMatrix translateMat =
+				new TransformMatrix(t1Result, 0);
 
 		// Create scale matrix (2x in all directions)
-		Producer<org.almostrealism.geometry.TransformMatrix> t2 = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
-		org.almostrealism.collect.PackedCollection t2Result = t2.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix scaleMat =
-				new org.almostrealism.geometry.TransformMatrix(t2Result, 0);
+		Producer<TransformMatrix> t2 = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
+		PackedCollection t2Result = t2.get().evaluate();
+		TransformMatrix scaleMat =
+				new TransformMatrix(t2Result, 0);
 
 		// Create ray at origin
 		Producer<Ray> r = (Producer) ray(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -348,7 +349,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		Producer<Ray> r = (Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0);
 
 		// Get intersection
-		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(r);
+		ShadableIntersection intersection = sphere.intersectAt(r);
 		double dist = intersection.getDistance().get().evaluate().toDouble(0);
 
 		log("  Sphere at (0, 0, -5), radius 1.0");
@@ -379,7 +380,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		// Ray from (3, 0, 5) pointing down -Z should hit the translated sphere
 		Producer<Ray> r = (Producer) ray(3.0, 0.0, 5.0, 0.0, 0.0, -1.0);
 
-		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(r);
+		ShadableIntersection intersection = sphere.intersectAt(r);
 		double dist = intersection.getDistance().get().evaluate().toDouble(0);
 
 		log("  Sphere at (3, 0, 0), ray from (3, 0, 5) towards -Z");
@@ -402,7 +403,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		sphere.setSize(2.0);
 		sphere.calculateTransform();
 
-		org.almostrealism.geometry.TransformMatrix transform = sphere.getTransform(true);
+		TransformMatrix transform = sphere.getTransform(true);
 		assertNotNull("Transform should exist", transform);
 
 		double[] matData = transform.toArray(0, 16);
@@ -435,8 +436,8 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		sphere.setSize(2.0);
 		sphere.calculateTransform();
 
-		org.almostrealism.geometry.TransformMatrix transform = sphere.getTransform(true);
-		org.almostrealism.geometry.TransformMatrix inverse = transform.getInverse();
+		TransformMatrix transform = sphere.getTransform(true);
+		TransformMatrix inverse = transform.getInverse();
 
 		double[] invData = inverse.toArray(0, 16);
 		log("Inverse transform matrix:");
@@ -470,7 +471,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		sphere.calculateTransform();
 
 		// Get inverse transform
-		org.almostrealism.geometry.TransformMatrix inverse = sphere.getTransform(true).getInverse();
+		TransformMatrix inverse = sphere.getTransform(true).getInverse();
 
 		// Create ray from (0,0,10) towards -Z
 		Producer<Ray> r = (Producer) ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
@@ -992,7 +993,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 			Producer<?> staticRay = ray(
 					singleRay.toDouble(0), singleRay.toDouble(1), singleRay.toDouble(2),
 					singleRay.toDouble(3), singleRay.toDouble(4), singleRay.toDouble(5));
-			org.almostrealism.geometry.ShadableIntersection si = sphere.intersectAt(staticRay);
+			ShadableIntersection si = sphere.intersectAt(staticRay);
 			double dist = si.getDistance().get().evaluate().toDouble(0);
 			log("Ray " + i + ": distance = " + dist + (dist > 0 ? " (HIT)" : " (MISS)"));
 		}
@@ -1000,7 +1001,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		// Test batch evaluation
 		log("\n=== Batch evaluation ===");
 		Producer<?> explicitRay = v(shape(-1, 6), 0);
-		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(explicitRay);
+		ShadableIntersection intersection = sphere.intersectAt(explicitRay);
 		Producer<?> distanceProducer = intersection.getDistance();
 
 		PackedCollection rankCollection = new PackedCollection(shape(3, 1).traverse(1));
@@ -1058,7 +1059,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 		log("Batch evaluation:");
 		Producer<?> variableRay = v(shape(-1, 6), 0);
-		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(variableRay);
+		ShadableIntersection intersection = sphere.intersectAt(variableRay);
 		PackedCollection rankCollection = new PackedCollection(shape(3, 1).traverse(1));
 		intersection.getDistance().get().into(rankCollection.each()).evaluate(rayBatch);
 
@@ -1132,9 +1133,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing edge case: zero scale transform...");
 
 		// Create a scale matrix with zero in one dimension
-		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(1.0, 0.0, 1.0));
-		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
+		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(1.0, 0.0, 1.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
 
 		double[] matData = mat.toArray(0, 16);
 		log("  Scale matrix with Y=0:");

@@ -24,6 +24,7 @@ import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
@@ -100,7 +101,7 @@ public class RealTimeRenderingTest extends TestSuiteBase {
 	@Test(timeout = 30_000)
 	public void testPatternAudioBufferSetup() {
 		// Create a minimal pattern system manager
-		PatternSystemManager patterns = new PatternSystemManager(new java.util.ArrayList<>());
+		PatternSystemManager patterns = new PatternSystemManager(new ArrayList<>());
 
 		// Create context supplier
 		AudioSceneContext baseContext = new AudioSceneContext();
@@ -108,7 +109,7 @@ public class RealTimeRenderingTest extends TestSuiteBase {
 		baseContext.setFrames(44100 * 4);
 		baseContext.setFrameForPosition(pos -> (int) (pos * 44100));
 
-		java.util.function.Supplier<AudioSceneContext> contextSupplier = () -> baseContext;
+		Supplier<AudioSceneContext> contextSupplier = () -> baseContext;
 
 		// Create render cell
 		ChannelInfo channel = new ChannelInfo(0, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);

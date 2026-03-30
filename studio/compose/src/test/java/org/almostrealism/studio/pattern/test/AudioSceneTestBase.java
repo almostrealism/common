@@ -32,8 +32,11 @@ import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
 
+import org.almostrealism.heredity.ProjectedGenome;
+
 import java.io.File;
 import java.util.List;
+import java.util.Random;
 
 /**
  * Shared test infrastructure for AudioScene tests.
@@ -137,7 +140,7 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * @param seed the seed for generating deterministic genome parameters
 	 */
 	protected void applyGenome(AudioScene<?> scene, long seed) {
-		java.util.Random random = new java.util.Random(seed);
+		Random random = new Random(seed);
 
 		PackedCollection genomeParams = scene.getGenome().getParameters();
 		PackedCollection seededParams = new PackedCollection(genomeParams.getShape());
@@ -145,7 +148,7 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 			seededParams.setMem(i, random.nextDouble());
 		}
 
-		scene.assignGenome(new org.almostrealism.heredity.ProjectedGenome(seededParams));
+		scene.assignGenome(new ProjectedGenome(seededParams));
 	}
 
 	/**

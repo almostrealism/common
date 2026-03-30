@@ -5,6 +5,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
@@ -101,7 +102,7 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 		log("");
 
 		// Get components for direct token generation
-		org.almostrealism.model.CompiledModel compiledModel = model.getCompiledModel();
+		CompiledModel compiledModel = model.getCompiledModel();
 		PackedCollection embeddings = model.getTokenEmbeddings();
 		PackedCollection position = model.getPosition();
 		int dim = config.dim;

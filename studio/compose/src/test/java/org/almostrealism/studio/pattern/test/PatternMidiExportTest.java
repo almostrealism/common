@@ -19,6 +19,8 @@ package org.almostrealism.studio.pattern.test;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.tone.Scale;
 import org.almostrealism.audio.tone.WesternChromatic;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiFileReader;
 import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.music.arrange.AudioSceneContext;
@@ -31,7 +33,10 @@ import org.junit.Test;
 
 import java.io.File;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
+import org.junit.Assert;
 import static org.junit.Assert.*;
 
 /**
@@ -198,8 +203,8 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		element.setRepeatCount(1);
 		element.setRepeatDuration(0.25);
 
-		org.almostrealism.collect.PackedCollection automation =
-				new org.almostrealism.collect.PackedCollection(6);
+		PackedCollection automation =
+				new PackedCollection(6);
 		automation.setMem(0, 0.5);
 		element.setAutomationParameters(automation);
 
@@ -338,7 +343,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				.toList();
 
 		MidiTokenizer tokenizer = new MidiTokenizer();
-		List<org.almostrealism.ml.midi.MidiCompoundToken> tokens = tokenizer.tokenize(mlEvents);
+		List<MidiCompoundToken> tokens = tokenizer.tokenize(mlEvents);
 
 		assertNotNull("Tokens should not be null", tokens);
 		assertTrue("Should have SOS + events + EOS",
@@ -348,13 +353,13 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		assertEquals("Detokenized count should match",
 				mlEvents.size(), detokenized.size());
 
-		java.util.Set<Integer> originalPitches = mlEvents.stream()
+		Set<Integer> originalPitches = mlEvents.stream()
 				.map(org.almostrealism.ml.midi.MidiNoteEvent::getPitch)
-				.collect(java.util.stream.Collectors.toSet());
-		java.util.Set<Integer> roundTrippedPitches = detokenized.stream()
+				.collect(Collectors.toSet());
+		Set<Integer> roundTrippedPitches = detokenized.stream()
 				.map(org.almostrealism.ml.midi.MidiNoteEvent::getPitch)
-				.collect(java.util.stream.Collectors.toSet());
-		org.junit.Assert.assertEquals("Pitches should survive tokenization round-trip",
+				.collect(Collectors.toSet());
+		Assert.assertEquals("Pitches should survive tokenization round-trip",
 				originalPitches, roundTrippedPitches);
 	}
 

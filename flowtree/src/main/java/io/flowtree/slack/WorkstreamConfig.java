@@ -25,6 +25,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -453,7 +454,7 @@ public class WorkstreamConfig {
      *
      * @param activeWorkstreams the current in-memory workstreams
      */
-    public void syncFromWorkstreams(java.util.Collection<SlackWorkstream> activeWorkstreams) {
+    public void syncFromWorkstreams(Collection<SlackWorkstream> activeWorkstreams) {
         for (SlackWorkstream ws : activeWorkstreams) {
             boolean found = false;
             for (WorkstreamEntry entry : workstreams) {

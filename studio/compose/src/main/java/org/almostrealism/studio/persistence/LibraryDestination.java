@@ -184,7 +184,7 @@ public class LibraryDestination implements ConsoleFeatures {
 		if (oldDataExists && storeEmpty) {
 			store.close();
 			AudioLibraryMigration.migrate(
-					java.nio.file.Path.of(prefix),
+					Path.of(prefix),
 					storeDir.toPath());
 			store = new ProtobufWaveDetailsStore(storeDir);
 		}

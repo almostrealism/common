@@ -34,7 +34,10 @@ import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
+import org.almostrealism.graph.Receptor;
+
 import java.io.File;
+import java.util.Collection;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -203,7 +206,7 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 		CellList cells = (CellList) scene.getCells(new MultiChannelAudioOutput(output));
 
 		// Inspect CellList structure
-		java.util.Collection<org.almostrealism.graph.Receptor<PackedCollection>> roots =
+		Collection<Receptor<PackedCollection>> roots =
 				cells.getAllRoots();
 		log("Root count: " + roots.size());
 		log("Cell count: " + cells.size());

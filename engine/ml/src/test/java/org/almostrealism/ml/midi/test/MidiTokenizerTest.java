@@ -21,6 +21,7 @@ import org.almostrealism.ml.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -141,7 +142,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 		MidiCompoundToken token = new MidiCompoundToken(100, 50, 5, 0, 0, 80);
 		int[] array = token.toArray();
 		MidiCompoundToken rebuilt = MidiCompoundToken.fromArray(array);
-		org.junit.Assert.assertEquals("Array round-trip should preserve token", token, rebuilt);
+		Assert.assertEquals("Array round-trip should preserve token", token, rebuilt);
 	}
 
 	/**
@@ -239,7 +240,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 		MidiNoteEvent b = new MidiNoteEvent(60, 100, 50, 80, 0);
 		MidiNoteEvent c = new MidiNoteEvent(61, 100, 50, 80, 0);
 
-		org.junit.Assert.assertEquals("Equal events", a, b);
+		Assert.assertEquals("Equal events", a, b);
 		assertEquals("Equal events same hashCode", a.hashCode(), b.hashCode());
 		assertFalse("Different pitch should not be equal", a.equals(c));
 		assertFalse("Should not equal null", a.equals(null));
@@ -305,7 +306,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 		MidiCompoundToken b = new MidiCompoundToken(100, 50, 5, 0, 0, 80);
 		MidiCompoundToken c = new MidiCompoundToken(200, 50, 5, 0, 0, 80);
 
-		org.junit.Assert.assertEquals("Equal tokens", a, b);
+		Assert.assertEquals("Equal tokens", a, b);
 		assertEquals("Equal tokens same hashCode", a.hashCode(), b.hashCode());
 		assertFalse("Different tokens", a.equals(c));
 	}

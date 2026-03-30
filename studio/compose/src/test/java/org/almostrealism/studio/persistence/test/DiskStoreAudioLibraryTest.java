@@ -24,6 +24,7 @@ import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDataFeatureProvider;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsStore;
+import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.studio.discovery.PrototypeDiscovery;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.collect.PackedCollection;
@@ -382,7 +383,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 	 * need to customize memory settings).
 	 */
 	public static final int DEFAULT_TARGET_BATCH_SIZE =
-			org.almostrealism.persist.index.ProtobufDiskStore.DEFAULT_TARGET_BATCH_SIZE;
+			ProtobufDiskStore.DEFAULT_TARGET_BATCH_SIZE;
 
 	/**
 	 * Simple feature provider that computes spectral features from audio

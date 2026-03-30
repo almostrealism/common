@@ -31,6 +31,7 @@ import org.junit.Test;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import static org.junit.Assert.*;
 
@@ -198,7 +199,7 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 
 		// Change genome to a different seed
 		long newSeed = 99;
-		java.util.Random random = new java.util.Random(newSeed);
+		Random random = new Random(newSeed);
 		PackedCollection genomeParams = scene.getGenome().getParameters();
 		PackedCollection newParams = new PackedCollection(genomeParams.getShape());
 		for (int i = 0; i < newParams.getMemLength(); i++) {

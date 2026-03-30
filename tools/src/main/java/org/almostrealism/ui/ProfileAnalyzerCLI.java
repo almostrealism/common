@@ -22,6 +22,8 @@ import io.almostrealism.profile.OperationSource;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -571,7 +573,7 @@ public class ProfileAnalyzerCLI {
         String[] lines = sourceCode.split("\n");
 
         // Count function definitions and categorize them
-        Map<String, Integer> functionTypeCounts = new java.util.LinkedHashMap<>();
+        Map<String, Integer> functionTypeCounts = new LinkedHashMap<>();
         List<String> functionSignatures = new ArrayList<>();
         int forLoopCount = 0;
         int ifCount = 0;
@@ -609,7 +611,7 @@ public class ProfileAnalyzerCLI {
         mathOps = sinCount + cosCount + expCount + powCount + fmodCount + floorCount + fabsCount;
 
         // Count unique function bodies (deduplicate by normalizing variable names)
-        Map<String, Integer> uniqueBodies = new java.util.HashMap<>();
+        Map<String, Integer> uniqueBodies = new HashMap<>();
         StringBuilder currentBody = new StringBuilder();
         boolean inFunction = false;
         int braceDepth = 0;

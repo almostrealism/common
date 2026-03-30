@@ -35,6 +35,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -180,7 +181,7 @@ public class MoonbeamInferenceTest extends TestSuiteBase {
 
 		// Try converting to MIDI note events
 		MidiTokenizer tokenizer = new MidiTokenizer();
-		List<MidiCompoundToken> withoutEos = new java.util.ArrayList<>();
+		List<MidiCompoundToken> withoutEos = new ArrayList<>();
 		for (MidiCompoundToken token : generated) {
 			if (!token.isEOS() && !token.isSOS()) {
 				withoutEos.add(token);

@@ -22,6 +22,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -185,7 +186,7 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		StubValidator validator = new StubValidator();
 		WorkstreamConfig config = new WorkstreamConfig();
 
-		java.util.List<GitHubTokenValidator.TokenValidationResult> results =
+		List<GitHubTokenValidator.TokenValidationResult> results =
 				validator.validateAll(config);
 
 		assertTrue("Should have no results when no tokens configured",

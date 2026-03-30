@@ -20,6 +20,7 @@ import io.flowtree.job.Job;
 import io.flowtree.job.JobFactory;
 import io.flowtree.node.Node;
 import io.flowtree.node.NodeGroup;
+import java.lang.reflect.Field;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
@@ -298,7 +299,7 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
      */
     private List<Node> getChildNodes(NodeGroup group) {
         try {
-            java.lang.reflect.Field nodesField = NodeGroup.class.getDeclaredField("nodes");
+            Field nodesField = NodeGroup.class.getDeclaredField("nodes");
             nodesField.setAccessible(true);
             Object raw = nodesField.get(group);
             List<Node> result = new ArrayList<>();

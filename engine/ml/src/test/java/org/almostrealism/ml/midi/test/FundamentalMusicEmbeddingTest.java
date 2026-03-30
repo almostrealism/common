@@ -24,6 +24,9 @@ import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * Tests for {@link FundamentalMusicEmbedding} and {@link CompoundMidiEmbedding},
  * verifying output shapes and basic mathematical properties.
@@ -194,7 +197,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
 
-		java.util.List<MidiCompoundToken> tokens = java.util.Arrays.asList(
+		List<MidiCompoundToken> tokens = Arrays.asList(
 				MidiCompoundToken.sos(),
 				new MidiCompoundToken(100, 50, 5, 0, 0, 80),
 				MidiCompoundToken.eos()
@@ -219,7 +222,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		MidiCompoundToken token1 = new MidiCompoundToken(100, 50, 5, 0, 0, 80);
 		MidiCompoundToken token2 = MidiCompoundToken.pad();
 
-		java.util.List<MidiCompoundToken> tokens = java.util.Arrays.asList(token0, token1, token2);
+		List<MidiCompoundToken> tokens = Arrays.asList(token0, token1, token2);
 		PackedCollection sequenceResult = embedding.embedSequence(tokens);
 
 		PackedCollection emb0 = embedding.embed(token0);

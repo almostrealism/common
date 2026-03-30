@@ -19,6 +19,7 @@ package org.almostrealism.audio.midi;
 import javax.sound.midi.MidiDevice;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.MidiUnavailableException;
+import javax.sound.midi.Synthesizer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -295,7 +296,7 @@ public class MidiDeviceManager implements AutoCloseable {
 			   name.contains("java sound") ||
 			   name.contains("gervill") ||
 			   desc.contains("synthesizer") ||
-			   device instanceof javax.sound.midi.Synthesizer;
+			   device instanceof Synthesizer;
 	}
 
 	/**

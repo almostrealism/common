@@ -32,6 +32,8 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -320,7 +322,7 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 		}
 
 		try {
-			java.nio.file.Files.writeString(java.nio.file.Path.of(path), sb.toString());
+			Files.writeString(Path.of(path), sb.toString());
 		} catch (IOException e) {
 			log("Failed to write summary: " + e.getMessage());
 		}

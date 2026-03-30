@@ -9,7 +9,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.StateDictionary;
-import CompiledModel;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
 import java.io.IOException;

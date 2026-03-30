@@ -96,7 +96,7 @@
 						<arg>target/headers</arg>
 						<arg>-XDcompilePolicy=simple</arg>
 						<arg>-XDshould-stop.ifError=FLOW</arg>
-						<arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:UnnecessarilyFullyQualified:ERROR -XepExcludedPaths:.*/target/generated-sources/.*</arg>
+						<arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:UnnecessarilyFullyQualified:ERROR -XepExcludedPaths:.*/target/generated(-test)?-sources/.*</arg>
 						<arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
 						<arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED</arg>
 						<arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED</arg>

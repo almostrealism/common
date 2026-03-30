@@ -346,7 +346,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 			total = total - skip - 2;
 		}
 
-		return java.util.stream.DoubleStream.of(values)
+		return DoubleStream.of(values)
 				.sorted().skip(skip).limit(total)
 				.average().orElseThrow();
 	}

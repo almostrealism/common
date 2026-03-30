@@ -20,94 +20,50 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.dsl.PdslNode;
+import org.almostrealism.ml.dsl.PdslParseException;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * A single Gated Recurrent Unit (GRU) cell backed by Producer DSL computation graphs.
+ * A single Gated Recurrent Unit (GRU) cell backed by Producer DSL computation graphs
+ * loaded from {@code /pdsl/gru_cell.pdsl} at runtime.
  *
  * <p>The GRU cell computes:</p>
  * <pre>
- * r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)     // reset gate
- * z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)     // update gate
- * n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))  // new gate
+ * r = σ(W_ir @ x + b_ir + W_hr @ h + b_hr)           // reset gate
+ * z = σ(W_iz @ x + b_iz + W_hz @ h + b_hz)           // update gate
+ * n = φ(W_in @ x + b_in + r ⊙ (W_hn @ h + b_hn))    // new gate (φ = tanh activation)
  * h' = n + z * (h - n)                                // new hidden state (lerp)
  * </pre>
  *
- * <p>The computation is expressed as four Producer DSL layers loaded from an embedded
- * PDSL program. Each layer is compiled into a {@link CompiledModel} at construction
- * time. No {@code evaluate()}, {@code matmul()}, {@code sigmoid()}, {@code tanh()},
- * {@code add()}, or {@code multiply()} calls appear in this class; all math is
- * defined in the DSL source and executed via {@link CompiledModel#forward}.</p>
+ * <p>All computation is defined in {@code gru_cell.pdsl} using only low-level
+ * primitives ({@code dense}, {@code sigmoid}, {@code tanh_act}, {@code slice},
+ * {@code add_blocks}, {@code product}, {@code lerp}). Each sub-layer is compiled
+ * into a {@link CompiledModel} at construction time.</p>
  *
- * <p>The weight matrices from the stacked PyTorch convention are split into
- * per-gate sub-matrices at construction time using bulk array operations.</p>
- *
- * <p>This class implements {@link Block} with the concatenated {@code [x;h]} input
- * as the block input shape and {@code h'} as the output shape. The primary inference
- * entry point is {@link #forward(PackedCollection, PackedCollection)}.</p>
+ * <p>This class implements both {@link Cell} and {@link Block}. The {@link Block}
+ * view exposes input shape {@code [x;h]} and output shape {@code h'}. The
+ * {@link Cell} view allows GRUCell to be wired into graph-based computation
+ * pipelines. The primary inference entry point for autoregressive decoding is
+ * {@link #forward(PackedCollection, PackedCollection)}.</p>
  *
  * @see GRUDecoder
  */
-public class GRUCell implements Block {
+public class GRUCell implements Cell<PackedCollection>, Block {
 
-	/**
-	 * Embedded PDSL source defining the four GRU sub-layers.
-	 *
-	 * <p>Layers:
-	 * <ul>
-	 *   <li>{@code gru_r_gate} – input [x;h] → reset gate r</li>
-	 *   <li>{@code gru_z_gate} – input [x;h] → update gate z</li>
-	 *   <li>{@code gru_n_gate} – input [x;h;r] → candidate state n</li>
-	 *   <li>{@code gru_h_new}  – input [n;z;h] → new hidden state h'</li>
-	 * </ul>
-	 */
-	private static final String GRU_PDSL = "" +
-			"// r gate: sigmoid(W_ir@x + b_ir + W_hr@h + b_hr)\n" +
-			"layer gru_r_gate(w_ir: weight, b_ir: weight, w_hr: weight, b_hr: weight,\n" +
-			"                 input_size: int, hidden_size: int) {\n" +
-			"    add_blocks(\n" +
-			"        { slice(0, input_size); dense(w_ir, b_ir) },\n" +
-			"        { slice(input_size, hidden_size); dense(w_hr, b_hr) }\n" +
-			"    )\n" +
-			"    sigmoid()\n" +
-			"}\n" +
-			"\n" +
-			"// z gate: sigmoid(W_iz@x + b_iz + W_hz@h + b_hz)\n" +
-			"layer gru_z_gate(w_iz: weight, b_iz: weight, w_hz: weight, b_hz: weight,\n" +
-			"                 input_size: int, hidden_size: int) {\n" +
-			"    add_blocks(\n" +
-			"        { slice(0, input_size); dense(w_iz, b_iz) },\n" +
-			"        { slice(input_size, hidden_size); dense(w_hz, b_hz) }\n" +
-			"    )\n" +
-			"    sigmoid()\n" +
-			"}\n" +
-			"\n" +
-			"// n gate: tanh(W_in@x + b_in + r*(W_hn@h + b_hn))\n" +
-			"// Input: [x(input_size) | h(hidden_size) | r(hidden_size)]\n" +
-			"layer gru_n_gate(w_in: weight, b_in: weight, w_hn: weight, b_hn: weight,\n" +
-			"                 input_size: int, hidden_size: int) {\n" +
-			"    add_blocks(\n" +
-			"        product({ slice(input_size + hidden_size, hidden_size) },\n" +
-			"                { slice(input_size, hidden_size); dense(w_hn, b_hn) }),\n" +
-			"        { slice(0, input_size); dense(w_in, b_in) }\n" +
-			"    )\n" +
-			"    tanh_act()\n" +
-			"}\n" +
-			"\n" +
-			"// h_new: n + z*(h-n)  via lerp([n|z|h])\n" +
-			"// Input: [n(hidden_size) | z(hidden_size) | h(hidden_size)]\n" +
-			"layer gru_h_new(hidden_size: int) {\n" +
-			"    lerp(hidden_size)\n" +
-			"}\n";
+	/** Classpath resource path for the GRU cell PDSL definition. */
+	private static final String GRU_PDSL_RESOURCE = "/pdsl/gru_cell.pdsl";
 
 	private final int inputSize;
 	private final int hiddenSize;
@@ -122,6 +78,9 @@ public class GRUCell implements Block {
 	private final CompiledModel zGateModel;
 	private final CompiledModel nGateModel;
 	private final CompiledModel hNewModel;
+
+	/** Downstream receptor for Cell-based graph wiring. */
+	private Receptor<PackedCollection> receptor;
 
 	/**
 	 * Create a GRU cell with the given weights.
@@ -171,9 +130,9 @@ public class GRUCell implements Block {
 		bHz = packVector(bHhData, hiddenSize,   hiddenSize);
 		bHn = packVector(bHhData, 2*hiddenSize, hiddenSize);
 
-		// Parse DSL and compile one model per sub-computation (backprop not needed)
+		// Load the DSL from the classpath resource and compile one model per sub-computation
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(GRU_PDSL);
+		PdslNode.Program program = loadProgram(loader);
 
 		rGateModel = buildRGate(loader, program).compile(false);
 		zGateModel = buildZGate(loader, program).compile(false);
@@ -184,9 +143,10 @@ public class GRUCell implements Block {
 	/**
 	 * Compute one GRU step via four DSL-compiled sub-models.
 	 *
-	 * <p>Inputs are concatenated and fed through the DSL models sequentially.
-	 * No {@code evaluate()}, {@code matmul()}, {@code sigmoid()}, {@code tanh()},
-	 * {@code add()}, or {@code multiply()} is called from this class.</p>
+	 * <p>All math (matmul, sigmoid, tanh, element-wise multiply, lerp) is
+	 * defined in {@code gru_cell.pdsl} and executed through the compiled models.
+	 * This method performs only data routing: concatenation of inputs for each
+	 * sub-model and dispatch to {@link CompiledModel#forward}.</p>
 	 *
 	 * @param x input vector of size (inputSize)
 	 * @param h previous hidden state of size (hiddenSize)
@@ -225,29 +185,98 @@ public class GRUCell implements Block {
 	public TraversalPolicy getOutputShape() { return shape(hiddenSize); }
 
 	/**
-	 * {@inheritDoc}
+	 * Returns this cell as the forward processing unit.
 	 *
-	 * <p>The forward cell for GRUCell is not implemented; use {@link #forward(PackedCollection,
-	 * PackedCollection)} directly for inference.</p>
+	 * <p>GRUCell implements {@link Cell} directly so {@link #push} handles
+	 * data flow for graph-wiring use cases. The primary inference path uses
+	 * {@link #forward(PackedCollection, PackedCollection)} called from
+	 * {@link GRUDecoder}.</p>
 	 *
-	 * @throws UnsupportedOperationException always
+	 * @return this
 	 */
 	@Override
 	public Cell<PackedCollection> getForward() {
-		throw new UnsupportedOperationException(
-				"GRUCell.getForward() is not supported; use forward(x, h) for inference");
+		return this;
 	}
 
 	/**
-	 * {@inheritDoc}
+	 * Backpropagation is not supported for GRUCell.
 	 *
-	 * <p>Backpropagation is not supported for GRUCell.</p>
+	 * @return null
 	 */
 	@Override
 	public Cell<PackedCollection> getBackward() { return null; }
 
+	/** {@inheritDoc} */
 	@Override
 	public Supplier<Runnable> setup() { return new OperationList(); }
+
+	// ---- Cell interface ----
+
+	/**
+	 * Resolve the ambiguity between {@link Cell#apply} and
+	 * {@link org.almostrealism.graph.CellularPropagation#apply}.
+	 *
+	 * <p>{@link org.almostrealism.graph.CellularPropagation#apply} delegates to
+	 * {@link #getForward()}, which returns {@code this}, causing infinite
+	 * recursion. Delegating to {@link Cell#apply} avoids this.</p>
+	 *
+	 * @param input the input data producer
+	 * @return the output producer
+	 */
+	@Override
+	public Producer<PackedCollection> apply(Producer<PackedCollection> input) {
+		return Cell.super.apply(input);
+	}
+
+	/**
+	 * Store the downstream receptor for Cell-based graph wiring.
+	 *
+	 * @param r the downstream receptor
+	 */
+	@Override
+	public void setReceptor(Receptor<PackedCollection> r) {
+		this.receptor = r;
+	}
+
+	/**
+	 * Satisfies the {@link Cell} push interface for graph-wiring compatibility.
+	 *
+	 * <p>The primary inference path for GRU decoding uses
+	 * {@link #forward(PackedCollection, PackedCollection)} called from
+	 * {@link GRUDecoder}, which manages the autoregressive hidden state.
+	 * Caller-managed hidden state cannot be expressed through the single-input
+	 * push protocol, so this method returns an empty operation.</p>
+	 *
+	 * @param protein the input producer (not used; see forward for inference)
+	 * @return an empty operation list
+	 */
+	@Override
+	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
+		return new OperationList();
+	}
+
+	// ---- PDSL loading ----
+
+	/**
+	 * Load the GRU cell PDSL program from the classpath resource.
+	 *
+	 * @param loader the PDSL loader to parse with
+	 * @return the parsed program
+	 * @throws PdslParseException if the resource is not found or cannot be parsed
+	 */
+	private static PdslNode.Program loadProgram(PdslLoader loader) {
+		try (InputStream is = GRUCell.class.getResourceAsStream(GRU_PDSL_RESOURCE)) {
+			if (is == null) {
+				throw new PdslParseException(
+						"GRU cell PDSL resource not found on classpath: " + GRU_PDSL_RESOURCE);
+			}
+			return loader.parse(new String(is.readAllBytes()));
+		} catch (IOException e) {
+			throw new PdslParseException(
+					"Failed to load GRU cell PDSL from " + GRU_PDSL_RESOURCE, e);
+		}
+	}
 
 	// ---- DSL model builders ----
 
@@ -306,7 +335,7 @@ public class GRUCell implements Block {
 		return model;
 	}
 
-	// ---- Private bulk-copy helpers (no forbidden math operations) ----
+	// ---- Private bulk-copy helpers ----
 
 	/**
 	 * Create a PackedCollection wrapping a sub-matrix from a flat double array.
@@ -340,8 +369,8 @@ public class GRUCell implements Block {
 	/**
 	 * Concatenate two vectors into a new flat PackedCollection [a; b].
 	 *
-	 * @param a    first vector
-	 * @param b    second vector
+	 * @param a     first vector
+	 * @param b     second vector
 	 * @param sizeA number of elements in a
 	 * @param sizeB number of elements in b
 	 * @return concatenated PackedCollection of shape (sizeA + sizeB)

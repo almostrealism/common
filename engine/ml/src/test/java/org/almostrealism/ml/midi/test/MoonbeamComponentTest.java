@@ -33,6 +33,8 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Arrays;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -244,7 +246,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		}
 
 		System.out.println("[MoonbeamComponentTest] GRU decode tokens: "
-				+ java.util.Arrays.toString(tokens));
+				+ Arrays.toString(tokens));
 
 		long elapsed = System.currentTimeMillis() - start;
 		System.out.println("[MoonbeamComponentTest] testGruDecoderRealDims: "

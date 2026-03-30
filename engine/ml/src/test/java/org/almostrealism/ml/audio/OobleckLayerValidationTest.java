@@ -34,6 +34,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Random;
 
 /**
  * Layer-by-layer validation tests to identify where constant output pattern first appears.
@@ -1378,7 +1379,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 		// Create synthetic VARYING input - simulate what blocks 1-5 + Snake would produce
 		log("\nGenerating synthetic varying input with std ~300...");
 		PackedCollection input = new PackedCollection(batchSize, inputChannels, sequenceLength);
-		java.util.Random rand = new java.util.Random(42);
+		Random rand = new Random(42);
 		double inputMean = -22.94;  // Match blocks 1+2 output stats
 		double inputStd = 300.48;   // Match blocks 1+2 output stats
 		for (int c = 0; c < inputChannels; c++) {
@@ -1518,7 +1519,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 		// Create synthetic varying input matching blocks 1+2 output stats
 		log("\nGenerating synthetic varying input...");
 		PackedCollection input = new PackedCollection(batchSize, inChannels, inputLength);
-		java.util.Random rand = new java.util.Random(42);
+		Random rand = new Random(42);
 		double inputMean = -22.94;
 		double inputStd = 300.48;
 		for (int c = 0; c < inChannels; c++) {

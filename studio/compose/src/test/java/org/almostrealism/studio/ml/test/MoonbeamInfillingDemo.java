@@ -19,6 +19,7 @@ package org.almostrealism.studio.ml.test;
 import org.almostrealism.ml.midi.MidiAutoregressiveModel;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiFileReader;
+import org.almostrealism.ml.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
@@ -97,7 +98,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 		MidiTokenizer tokenizer = new MidiTokenizer();
 		MidiFileReader fileWriter = new MidiFileReader();
 
-		List<org.almostrealism.ml.midi.MidiNoteEvent> baselineEvents = generateCmajProgression();
+		List<MidiNoteEvent> baselineEvents = generateCmajProgression();
 
 		File baselineFile = new File(outputDir, "baseline-Cmaj-I-IV-V-I.mid");
 		fileWriter.write(baselineEvents, baselineFile);
@@ -125,8 +126,8 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 	 *
 	 * @return list of MIDI note events for the full progression
 	 */
-	private List<org.almostrealism.ml.midi.MidiNoteEvent> generateCmajProgression() {
-		List<org.almostrealism.ml.midi.MidiNoteEvent> events = new ArrayList<>();
+	private List<MidiNoteEvent> generateCmajProgression() {
+		List<MidiNoteEvent> events = new ArrayList<>();
 
 		int[][] chords = {
 			{60, 64, 67},  // C major (I) - C4, E4, G4
@@ -141,14 +142,14 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 			long measureOnset = measure * TICKS_PER_MEASURE;
 
 			for (int pitch : chords[measure]) {
-				events.add(new org.almostrealism.ml.midi.MidiNoteEvent(
+				events.add(new MidiNoteEvent(
 						pitch, measureOnset, TICKS_PER_MEASURE, 80, 0));
 			}
 
 			long beatDuration = TICKS_PER_MEASURE / BEATS_PER_MEASURE;
 			for (int beat = 0; beat < BEATS_PER_MEASURE; beat++) {
 				long noteOnset = measureOnset + beat * beatDuration;
-				events.add(new org.almostrealism.ml.midi.MidiNoteEvent(
+				events.add(new MidiNoteEvent(
 						melodyNotes[measure], noteOnset, beatDuration, 90, 1));
 			}
 		}
@@ -166,7 +167,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 	 */
 	private void generateRegionInfill(MoonbeamMidi model, MidiTokenizer tokenizer,
 									  MidiFileReader fileWriter, List<MidiCompoundToken> tokens,
-									  List<org.almostrealism.ml.midi.MidiNoteEvent> baselineEvents,
+									  List<MidiNoteEvent> baselineEvents,
 									  File outputDir, String filename) throws Exception {
 		long maskStart = TICKS_PER_MEASURE;
 		long maskEnd = 3 * TICKS_PER_MEASURE;
@@ -182,7 +183,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 		List<MidiCompoundToken> fillTokens = autoregressive.generateInfill(masked, MAX_FILL_TOKENS);
 		System.err.println("Region infill generated " + fillTokens.size() + " tokens");
 
-		List<org.almostrealism.ml.midi.MidiNoteEvent> result = assembleInfilledEvents(
+		List<MidiNoteEvent> result = assembleInfilledEvents(
 				tokens, baselineEvents, fillTokens, tokenizer, maskStart, maskEnd);
 
 		File outputFile = new File(outputDir, filename);
@@ -197,7 +198,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 	 */
 	private void generateMelodyInfill(MoonbeamMidi model, MidiTokenizer tokenizer,
 									  MidiFileReader fileWriter, List<MidiCompoundToken> tokens,
-									  List<org.almostrealism.ml.midi.MidiNoteEvent> baselineEvents,
+									  List<MidiNoteEvent> baselineEvents,
 									  File outputDir, String filename) throws Exception {
 		List<MidiCompoundToken> masked = maskInstrument(tokens, baselineEvents, 1);
 
@@ -209,15 +210,15 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 		List<MidiCompoundToken> fillTokens = autoregressive.generateInfill(masked, MAX_FILL_TOKENS);
 		System.err.println("Melody infill generated " + fillTokens.size() + " tokens");
 
-		List<org.almostrealism.ml.midi.MidiNoteEvent> chordEvents = new ArrayList<>();
-		for (org.almostrealism.ml.midi.MidiNoteEvent event : baselineEvents) {
+		List<MidiNoteEvent> chordEvents = new ArrayList<>();
+		for (MidiNoteEvent event : baselineEvents) {
 			if (event.getInstrument() != 1) {
 				chordEvents.add(event);
 			}
 		}
 
-		List<org.almostrealism.ml.midi.MidiNoteEvent> fillEvents = tokenizer.detokenize(fillTokens);
-		List<org.almostrealism.ml.midi.MidiNoteEvent> result = new ArrayList<>(chordEvents);
+		List<MidiNoteEvent> fillEvents = tokenizer.detokenize(fillTokens);
+		List<MidiNoteEvent> result = new ArrayList<>(chordEvents);
 		result.addAll(fillEvents);
 		result.sort(null);
 
@@ -233,7 +234,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 	 */
 	private void generateDenseRegionInfill(MoonbeamMidi model, MidiTokenizer tokenizer,
 										   MidiFileReader fileWriter, List<MidiCompoundToken> tokens,
-										   List<org.almostrealism.ml.midi.MidiNoteEvent> baselineEvents,
+										   List<MidiNoteEvent> baselineEvents,
 										   File outputDir, String filename) throws Exception {
 		long maskStart = 2 * TICKS_PER_MEASURE;
 		long maskEnd = 3 * TICKS_PER_MEASURE;
@@ -249,7 +250,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 		List<MidiCompoundToken> fillTokens = autoregressive.generateInfill(masked, MAX_FILL_TOKENS);
 		System.err.println("Dense region infill generated " + fillTokens.size() + " tokens");
 
-		List<org.almostrealism.ml.midi.MidiNoteEvent> result = assembleInfilledEvents(
+		List<MidiNoteEvent> result = assembleInfilledEvents(
 				tokens, baselineEvents, fillTokens, tokenizer, maskStart, maskEnd);
 
 		File outputFile = new File(outputDir, filename);
@@ -272,7 +273,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 	 * @return masked token sequence with fill markers
 	 */
 	private List<MidiCompoundToken> maskTimeRegion(List<MidiCompoundToken> tokens,
-												   List<org.almostrealism.ml.midi.MidiNoteEvent> events,
+												   List<MidiNoteEvent> events,
 												   long maskStartTicks, long maskEndTicks) {
 		List<MidiCompoundToken> result = new ArrayList<>();
 		boolean inMaskedRegion = false;
@@ -320,7 +321,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 	 * FILL_START/FILL_END region. Non-matching tokens are kept as context.</p>
 	 */
 	private List<MidiCompoundToken> maskInstrument(List<MidiCompoundToken> tokens,
-												   List<org.almostrealism.ml.midi.MidiNoteEvent> events,
+												   List<MidiNoteEvent> events,
 												   int targetInstrument) {
 		List<MidiCompoundToken> contextTokens = new ArrayList<>();
 		contextTokens.add(MidiCompoundToken.sos());
@@ -354,23 +355,23 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 	 * Assemble the final event list by keeping non-masked events from the
 	 * baseline and adding the infill-generated events.
 	 */
-	private List<org.almostrealism.ml.midi.MidiNoteEvent> assembleInfilledEvents(
+	private List<MidiNoteEvent> assembleInfilledEvents(
 			List<MidiCompoundToken> originalTokens,
-			List<org.almostrealism.ml.midi.MidiNoteEvent> originalEvents,
+			List<MidiNoteEvent> originalEvents,
 			List<MidiCompoundToken> fillTokens,
 			MidiTokenizer tokenizer,
 			long maskStart, long maskEnd) {
-		List<org.almostrealism.ml.midi.MidiNoteEvent> result = new ArrayList<>();
+		List<MidiNoteEvent> result = new ArrayList<>();
 
-		for (org.almostrealism.ml.midi.MidiNoteEvent event : originalEvents) {
+		for (MidiNoteEvent event : originalEvents) {
 			if (event.getOnset() < maskStart || event.getOnset() >= maskEnd) {
 				result.add(event);
 			}
 		}
 
-		List<org.almostrealism.ml.midi.MidiNoteEvent> fillEvents = tokenizer.detokenize(fillTokens);
-		for (org.almostrealism.ml.midi.MidiNoteEvent event : fillEvents) {
-			result.add(new org.almostrealism.ml.midi.MidiNoteEvent(
+		List<MidiNoteEvent> fillEvents = tokenizer.detokenize(fillTokens);
+		for (MidiNoteEvent event : fillEvents) {
+			result.add(new MidiNoteEvent(
 					clampPitch(event.getPitch()),
 					maskStart + event.getOnset(),
 					Math.max(1, event.getDuration()),
