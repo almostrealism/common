@@ -32,7 +32,7 @@ services:
     volumes:
       - workspaces:/workspace/project
       - ${SSH_KEY_DIR}:/home/agent/.ssh:ro
-      - ${MODELS_DIR:-/dev/null}:/models:ro
+      - ${MODELS_DIR:-/Users/Shared/models}:/models:ro
       - ${SAMPLES_DIR:-/dev/null}:/samples:ro
     environment:
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:?Run claude setup-token and set this}
