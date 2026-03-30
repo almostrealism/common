@@ -1295,22 +1295,22 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 					Properties p = new Properties();
 					p.setProperty("db.test", "true");
 					
-					io.flowtree.fs.OutputServer server =
-						new io.flowtree.fs.OutputServer(p);
+					OutputServer server =
+						new OutputServer(p);
 					
 					return "Started DBS.";
 				} else if (s[0].equals("create")) {
-					io.flowtree.fs.OutputServer server = 
-						io.flowtree.fs.OutputServer.getCurrentServer();
+					OutputServer server =
+						OutputServer.getCurrentServer();
 					if (server == null) return "No DBS running.";
-					
+
 					if (server.getDatabaseConnection().createOutputTable())
 						return "Created DB tables.";
 					else
 						return "Could not create DB tables.";
 				} else if (s[0].equals("add")) {
-					io.flowtree.fs.OutputServer server = 
-						io.flowtree.fs.OutputServer.getCurrentServer();
+					OutputServer server =
+						OutputServer.getCurrentServer();
 					if (server == null) return "No DBS running.";
 					
 					Object o = Class.forName(s[1]).newInstance();
@@ -1342,8 +1342,8 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 					return "Unknown DBS command: " + s[0] + "\nTry start, create, or add.";
 				}
 			} else if (c.startsWith("::dbnotify")) {
-				io.flowtree.fs.OutputServer server = 
-					io.flowtree.fs.OutputServer.getCurrentServer();
+				OutputServer server =
+					OutputServer.getCurrentServer();
 				if (server == null) return "No DBS running.";
 				
 				String[] s = FlowTreeCliServer.parseCommand(c);
@@ -1351,8 +1351,8 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 				
 				return "Output from " + s[0] + " passed to output handlers.";
 			} else if (c.startsWith("::dbupdate")) {
-				io.flowtree.fs.OutputServer dbs = 
-					io.flowtree.fs.OutputServer.getCurrentServer();
+				OutputServer dbs =
+					OutputServer.getCurrentServer();
 				if (dbs == null) return "No DBS running.";
 				
 				String[] s = FlowTreeCliServer.parseCommand(c);

@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.synth;
 
+import io.almostrealism.lifecycle.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;
 
@@ -210,8 +211,8 @@ public class ModulationRouter implements Temporal {
 	 */
 	public void reset() {
 		for (ModulationSource source : sources) {
-			if (source instanceof io.almostrealism.lifecycle.Lifecycle) {
-				((io.almostrealism.lifecycle.Lifecycle) source).reset();
+			if (source instanceof Lifecycle) {
+				((Lifecycle) source).reset();
 			}
 		}
 	}

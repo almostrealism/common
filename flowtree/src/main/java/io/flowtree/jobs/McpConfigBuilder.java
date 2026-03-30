@@ -70,6 +70,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
     private String arManagerUrl;
     private String arManagerToken;
     private Path workingDirectory;
+    private String pythonCommand = "python3";
 
     /**
      * Sets the ar-manager HTTP URL for centralized tool access.
@@ -96,6 +97,19 @@ public class McpConfigBuilder implements ConsoleFeatures {
      */
     public void setWorkingDirectory(Path workingDirectory) {
         this.workingDirectory = workingDirectory;
+    }
+
+    /**
+     * Sets the Python command used to launch project MCP servers.
+     *
+     * <p>Defaults to {@code "python3"}. When a managed venv is active,
+     * this should be set to the absolute path of the venv's python
+     * binary (e.g., {@code ~/.flowtree/venv/bin/python3}).</p>
+     *
+     * @param pythonCommand the python executable path or name
+     */
+    public void setPythonCommand(String pythonCommand) {
+        this.pythonCommand = pythonCommand;
     }
 
     /**
@@ -138,7 +152,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
         Map<String, String> projectServers = discoverProjectMcpServers();
         for (Map.Entry<String, String> entry : projectServers.entrySet()) {
             ObjectNode serverNode = mcpServers.putObject(entry.getKey());
-            serverNode.put("command", "python3");
+            serverNode.put("command", pythonCommand);
             ArrayNode argsArray = serverNode.putArray("args");
             argsArray.add(entry.getValue());
         }

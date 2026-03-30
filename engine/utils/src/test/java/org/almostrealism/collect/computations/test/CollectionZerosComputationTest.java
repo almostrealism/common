@@ -25,6 +25,8 @@ import org.almostrealism.collect.computations.SingleConstantComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Collections;
+
 /**
  * Test cases demonstrating usage patterns and behavior of {@link CollectionZerosComputation}.
  * These tests show how CollectionZerosComputation creates collections filled with zero values
@@ -169,7 +171,7 @@ public class CollectionZerosComputationTest extends TestSuiteBase {
 				new CollectionZerosComputation(new TraversalPolicy(5));
 
 		// Generate parallel process (should return self)
-		CollectionZerosComputation parallelProcess = (CollectionZerosComputation) zeros.generate(java.util.Collections.emptyList());
+		CollectionZerosComputation parallelProcess = (CollectionZerosComputation) zeros.generate(Collections.emptyList());
 
 		assertSame("Zero computation should serve as its own parallel process",
 				zeros, parallelProcess);

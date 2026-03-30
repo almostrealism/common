@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
 import org.almostrealism.io.JobOutput;
@@ -395,6 +396,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     private void configureMcpBuilder() {
         mcpConfigBuilder.setArManagerUrl(arManagerUrl);
         mcpConfigBuilder.setArManagerToken(arManagerToken);
+        mcpConfigBuilder.setPythonCommand(getPythonCommand());
         Path workDir = getWorkingDirectory() != null
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         mcpConfigBuilder.setWorkingDirectory(workDir);
@@ -724,7 +726,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         // Claude Code with --output-format json emits NDJSON: one JSON object
         // per line. Locate the result object (type=result) and extract from that.
-        String resultJson = io.flowtree.JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
+        String resultJson = JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
         if (resultJson == null) {
             resultJson = jsonOutput;
         }
@@ -1221,6 +1223,26 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("autoCreatePr", String.valueOf(autoCreatePr));
         }
 
+        /**
+         * Returns the Python requirements for the managed venv.
+         *
+         * @return pip requirements.txt content, or null
+         */
+        public String getPythonRequirements() {
+            return base64Decode(get("pyReqs"));
+        }
+
+        /**
+         * Sets the Python package requirements (pip requirements.txt content)
+         * that will be installed in a managed venv on the receiving node
+         * before the job executes.
+         *
+         * @param requirements the requirements.txt content
+         */
+        public void setPythonRequirements(String requirements) {
+            set("pyReqs", base64Encode(requirements));
+        }
+
         @Override
         public Job nextJob() {
             List<String> p = getPrompts();
@@ -1293,6 +1315,12 @@ public class ClaudeCodeJob extends GitManagedJob {
 
             // Enforcement mode
             job.setEnforceChanges(isEnforceChanges());
+
+            // Python environment requirements
+            String pyReqs = getPythonRequirements();
+            if (pyReqs != null) {
+                job.setPythonRequirements(pyReqs);
+            }
 
             // Required labels for Node routing
             for (Map.Entry<String, String> entry : getRequiredLabels().entrySet()) {

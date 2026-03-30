@@ -49,6 +49,7 @@ import org.almostrealism.studio.health.HealthComputationAdapter;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.persistence.MigrationClassLoader;
 import org.almostrealism.music.notes.NoteAudioChoice;
+import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.music.pattern.ChordProgressionManager;
 import org.almostrealism.music.pattern.PatternAudioBuffer;
@@ -78,6 +79,7 @@ import org.almostrealism.time.Temporal;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.Map;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -1072,16 +1074,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			ctx.setDestination(warmDest);
 			plm.updateDestination(ctx);
 
-			java.util.Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
+			Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
 					plm.getAllElementsByChoice(0.0, plm.getDuration());
 
-			for (java.util.Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
+			for (Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
 					elementsByChoice.entrySet()) {
 				NoteAudioChoice choice = entry.getKey();
 				List<PatternElement> elements = entry.getValue();
 
-				org.almostrealism.music.notes.NoteAudioContext audioContext =
-						new org.almostrealism.music.notes.NoteAudioContext(
+				NoteAudioContext audioContext =
+						new NoteAudioContext(
 								ChannelInfo.Voicing.MAIN,
 								ChannelInfo.StereoChannel.LEFT,
 								choice.getValidPatternNotes(),

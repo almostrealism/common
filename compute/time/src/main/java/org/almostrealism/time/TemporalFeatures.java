@@ -27,6 +27,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -1146,7 +1147,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 											 Producer<PackedCollection> powerSpectrum) {
 		PackedCollection filterbankMatrix = createMelFilterbankMatrix(fftSize, sampleRate, numMelBands, fMin, fMax);
 		TraversalPolicy outputShape = shape(numMelBands);
-		return org.almostrealism.algebra.MatrixFeatures.getInstance()
+		return MatrixFeatures.getInstance()
 				.matmul(cp(filterbankMatrix), powerSpectrum).reshape(outputShape);
 	}
 

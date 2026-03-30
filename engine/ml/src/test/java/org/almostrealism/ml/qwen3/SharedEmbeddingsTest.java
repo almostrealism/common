@@ -5,6 +5,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assume;
@@ -155,7 +156,7 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 		Qwen3 model = new Qwen3(config, stateDict, tokenizer);
 
 		// Get compiled model output shape
-		org.almostrealism.model.CompiledModel compiled = model.getCompiledModel();
+		CompiledModel compiled = model.getCompiledModel();
 
 		log("Model input shape: " + compiled.getInputShape());
 		log("Model output shape: " + compiled.getOutputShape());

@@ -31,7 +31,9 @@
         "im:read",
         "im:write",
         "channels:manage",
+        "channels:read",
         "channels:write.invites",
+        "groups:read",
         "groups:write",
         "groups:write.invites"
       ]

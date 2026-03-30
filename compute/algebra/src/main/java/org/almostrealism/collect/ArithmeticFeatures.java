@@ -18,6 +18,7 @@ package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.Absolute;
@@ -244,7 +245,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 
 		CollectionProducer p = CollectionFeatures.getInstance().compute("divide",
 				shape -> (args) ->
-						quotient(shape, Stream.of(args).skip(1).toArray(io.almostrealism.collect.TraversableExpression[]::new)),
+						quotient(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
 				(List<String> args) -> String.join(" / ", CollectionFeatures.getInstance().applyParentheses(args)), a, b);
 
 		return CollectionProducerComputationBase.assignDeltaAlternate(

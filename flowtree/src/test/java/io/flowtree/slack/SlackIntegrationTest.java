@@ -17,6 +17,7 @@
 package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.ClaudeCodeJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
@@ -26,12 +27,14 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -1134,7 +1137,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testSlackManifestIncludesSlashCommand() throws IOException {
         // Load manifest from classpath (it's a resource in the same module)
-        java.io.InputStream is = getClass().getResourceAsStream("/slack-app-manifest.json");
+        InputStream is = getClass().getResourceAsStream("/slack-app-manifest.json");
         assertNotNull("Manifest should be on classpath", is);
 
         String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
@@ -1155,7 +1158,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         try {
             // Seed jobs in the current week
             LocalDate today = LocalDate.now(ZoneOffset.UTC);
-            LocalDate monday = today.with(java.time.DayOfWeek.MONDAY);
+            LocalDate monday = today.with(DayOfWeek.MONDAY);
             Instant jobTime = monday.atStartOfDay(ZoneOffset.UTC).toInstant()
                 .plusSeconds(3600);
 
@@ -1278,16 +1281,16 @@ public class SlackIntegrationTest extends TestSuiteBase {
             + "\"cost_usd\":2.50,\"num_turns\":42,\"session_id\":\"sess-final\","
             + "\"subtype\":\"success\",\"is_error\":false}\n";
 
-        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
+        String result = JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
         assertNotNull("Should find the result line", result);
         assertTrue("Should contain the result type", result.contains("\"type\":\"result\""));
 
         // Verify extracting metrics from the result line yields session-level values
-        long durationMs = io.flowtree.JsonFieldExtractor.extractLong(result, "duration_ms");
-        long durationApiMs = io.flowtree.JsonFieldExtractor.extractLong(result, "duration_api_ms");
-        double costUsd = io.flowtree.JsonFieldExtractor.extractDouble(result, "cost_usd");
-        int numTurns = io.flowtree.JsonFieldExtractor.extractInt(result, "num_turns");
-        String sessionId = io.flowtree.JsonFieldExtractor.extractString(result, "session_id");
+        long durationMs = JsonFieldExtractor.extractLong(result, "duration_ms");
+        long durationApiMs = JsonFieldExtractor.extractLong(result, "duration_api_ms");
+        double costUsd = JsonFieldExtractor.extractDouble(result, "cost_usd");
+        int numTurns = JsonFieldExtractor.extractInt(result, "num_turns");
+        String sessionId = JsonFieldExtractor.extractString(result, "session_id");
 
         assertEquals("Should get session-level duration, not per-turn", 1800000, durationMs);
         assertEquals(1500000, durationApiMs);
@@ -1302,22 +1305,22 @@ public class SlackIntegrationTest extends TestSuiteBase {
         String ndjson = "{\"duration_ms\":4000}\n"
             + "{\"duration_ms\":90000,\"cost_usd\":1.0}\n";
 
-        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
+        String result = JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
         assertNotNull("Should fall back to last JSON object", result);
-        assertEquals(90000, io.flowtree.JsonFieldExtractor.extractLong(result, "duration_ms"));
+        assertEquals(90000, JsonFieldExtractor.extractLong(result, "duration_ms"));
     }
 
     @Test(timeout = 10000)
     public void testExtractLastJsonObjectNullInput() {
-        assertNull(io.flowtree.JsonFieldExtractor.extractLastJsonObject(null, "result"));
-        assertNull(io.flowtree.JsonFieldExtractor.extractLastJsonObject("", "result"));
+        assertNull(JsonFieldExtractor.extractLastJsonObject(null, "result"));
+        assertNull(JsonFieldExtractor.extractLastJsonObject("", "result"));
     }
 
     @Test(timeout = 10000)
     public void testExtractLastJsonObjectNullType() {
         // null type should return the very last JSON object
         String ndjson = "{\"a\":1}\n{\"b\":2}\n";
-        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, null);
+        String result = JsonFieldExtractor.extractLastJsonObject(ndjson, null);
         assertNotNull(result);
         assertTrue("Should be the last line", result.contains("\"b\""));
     }

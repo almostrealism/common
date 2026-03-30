@@ -1231,7 +1231,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	}
 	
 	public Message executeQuery(Query q, NodeProxy p, long timeout) throws IOException {
-		io.flowtree.fs.OutputServer dbs = io.flowtree.fs.OutputServer.getCurrentServer();
+		OutputServer dbs = OutputServer.getCurrentServer();
 		
 		StringBuffer result = new StringBuffer();
 		

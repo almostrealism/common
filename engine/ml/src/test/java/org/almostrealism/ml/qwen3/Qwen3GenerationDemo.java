@@ -4,6 +4,8 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Arrays;
+
 /**
  * Demo to see actual generation output from Qwen3 with the fixed tokenizer.
  */
@@ -43,7 +45,7 @@ public class Qwen3GenerationDemo extends TestSuiteBase {
 
             // Show tokenization
             int[] tokens = tokenizer.encode(prompt, false, false);
-            System.out.println("Tokens: " + java.util.Arrays.toString(tokens));
+            System.out.println("Tokens: " + Arrays.toString(tokens));
             System.out.println("\nGENERATED OUTPUT:");
             System.out.println(">>> ");
 

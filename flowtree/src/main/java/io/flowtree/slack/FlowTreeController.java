@@ -32,6 +32,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.util.SignalWireDeliveryProvider;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -387,6 +388,9 @@ public class FlowTreeController implements ConsoleFeatures {
         Properties flowtreeProps = new Properties();
         flowtreeProps.setProperty("server.port", String.valueOf(flowtreePort));
         flowtreeProps.setProperty("nodes.initial", "1");
+        flowtreeProps.setProperty("nodes.jobs.max", "100");
+        flowtreeProps.setProperty("nodes.mjp", "0.0");
+        flowtreeProps.setProperty("group.thread.sleep", "2000");
         flowtreeProps.setProperty("nodes.labels.role", "relay");
         flowtreeServer = new Server(flowtreeProps);
         flowtreeServer.start();
@@ -631,12 +635,12 @@ public class FlowTreeController implements ConsoleFeatures {
         String secretFile = System.getenv("AR_MANAGER_SHARED_SECRET_FILE");
         if (secretFile != null && !secretFile.isEmpty()) {
             try {
-                String secret = java.nio.file.Files.readString(
-                    java.nio.file.Path.of(secretFile), java.nio.charset.StandardCharsets.UTF_8).trim();
+                String secret = Files.readString(
+                    Path.of(secretFile), StandardCharsets.UTF_8).trim();
                 if (!secret.isEmpty()) {
                     return secret;
                 }
-            } catch (java.io.IOException e) {
+            } catch (IOException e) {
                 Console.root().warn("Failed to read shared secret file " + secretFile + ": " + e.getMessage());
             }
         }

@@ -20,6 +20,7 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.io.Closeable;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -115,7 +116,7 @@ public interface DiskStore<T> extends Closeable {
 	 *
 	 * @return an unmodifiable set of all record identifiers
 	 */
-	java.util.Set<String> allIds();
+	Set<String> allIds();
 
 	/**
 	 * Return the total number of records in the store.

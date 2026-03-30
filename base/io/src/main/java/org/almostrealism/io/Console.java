@@ -16,6 +16,7 @@
 
 package org.almostrealism.io;
 
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -196,7 +197,7 @@ public class Console {
 
 	/** Returns the timestamp prefix for console output lines. */
 	protected String pre() {
-		return "[" + format.format(java.time.LocalTime.now()) + "] ";
+		return "[" + format.format(LocalTime.now()) + "] ";
 	}
 
 	/** Applies output filters and manages the last-line tracking state. */

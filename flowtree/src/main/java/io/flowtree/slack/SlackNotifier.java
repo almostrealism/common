@@ -22,6 +22,9 @@ import com.slack.api.methods.SlackApiException;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
 import com.slack.api.methods.response.conversations.ConversationsCreateResponse;
 import com.slack.api.methods.response.conversations.ConversationsInviteResponse;
+import com.slack.api.methods.response.conversations.ConversationsListResponse;
+import com.slack.api.model.Conversation;
+import com.slack.api.model.ConversationType;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.io.Alert;
@@ -29,6 +32,8 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -177,11 +182,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             String cursor = null;
             do {
                 final String pageCursor = cursor;
-                com.slack.api.methods.response.conversations.ConversationsListResponse response =
+                ConversationsListResponse response =
                     client.conversationsList(req -> {
-                        req.types(java.util.Arrays.asList(
-                            com.slack.api.model.ConversationType.PRIVATE_CHANNEL,
-                            com.slack.api.model.ConversationType.PUBLIC_CHANNEL));
+                        req.types(Arrays.asList(
+                            ConversationType.PRIVATE_CHANNEL,
+                            ConversationType.PUBLIC_CHANNEL));
                         req.limit(200);
                         if (pageCursor != null) req.cursor(pageCursor);
                         return req;
@@ -192,7 +197,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                     return null;
                 }
 
-                for (com.slack.api.model.Conversation channel : response.getChannels()) {
+                for (Conversation channel : response.getChannels()) {
                     if (name.equals(channel.getName()) && channel.isMember()) {
                         String channelId = channel.getId();
                         log("Found existing channel '" + name + "' (" + channelId + ")");
@@ -818,7 +823,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             List<String> denied = event.getDeniedToolNames();
             if (!denied.isEmpty()) {
                 // Deduplicate and show unique denied tool names
-                List<String> unique = new java.util.ArrayList<>();
+                List<String> unique = new ArrayList<>();
                 for (String name : denied) {
                     if (!unique.contains(name)) unique.add(name);
                 }

@@ -35,6 +35,7 @@ Servers discover each other through explicit connection (host + port) or through
 - **[Coding Agent Integration](docs/coding-agent.md)** -- Execute Claude Code prompts as distributed jobs, with automatic git management for committing and pushing changes.
 - **[Slack Integration](docs/slack-integration.md)** -- Operate coding agents through Slack, with real-time status updates and bidirectional messaging via MCP tools. Includes dynamic workstream registration with auto-created private Slack channels.
 - **[CI Integration](docs/ci-integration.md)** -- Auto-resolve CI failures and implement plan goals via the verify-completion workflow, with workstream registration, prompt generation, and quality gates.
+- **[Node Relay and Job Routing](docs/node-relay.md)** -- How jobs move through the network: server vs. peer connections, the relay loop, label-based routing, and the controller's relay Node. **Read this before modifying Node, NodeGroup, or Connection.**
 - **[Agent Pool](docs/agent-pool.md)** -- Self-contained Docker setup for running a scalable pool of agent nodes. Includes automated build, OAuth token authentication, and one-command startup.
 - **[MCP Tools for Agent Jobs](../tools/mcp/README.md)** -- Detailed documentation on which MCP tools are available to coding agents, how they are delivered (centralized, pushed, or local), and how to configure `workstreams.yaml` to ensure cross-repo jobs have access to messaging, consultation, GitHub, and memory tools.
 

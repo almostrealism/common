@@ -3,6 +3,7 @@ package org.almostrealism.ml.qwen3;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.File;
 import java.util.Arrays;
 
 /**
@@ -131,7 +132,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 	@Test(timeout = 5000)
 	public void testRealTokenizerEncoding() throws Exception {
 		String tokenizerPath = "/workspace/project/common/ml/qwen3_weights/tokenizer.bin";
-		java.io.File f = new java.io.File(tokenizerPath);
+		File f = new File(tokenizerPath);
 		if (!f.exists()) {
 			System.out.println("Skipping: tokenizer.bin not found at " + tokenizerPath);
 			return;
