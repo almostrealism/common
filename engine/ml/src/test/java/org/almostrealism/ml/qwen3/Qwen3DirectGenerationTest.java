@@ -5,6 +5,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestDepth;
@@ -15,6 +16,7 @@ import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;

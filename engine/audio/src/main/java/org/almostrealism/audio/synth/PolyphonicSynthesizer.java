@@ -19,6 +19,7 @@ package org.almostrealism.audio.synth;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.filter.ADSREnvelope;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
+import org.almostrealism.audio.tone.KeyNumbering;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.KeyNumbering;
 import org.almostrealism.audio.tone.RelativeFrequencySet;

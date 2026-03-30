@@ -28,6 +28,7 @@ import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import io.almostrealism.code.Precision;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persist.assets.CollectionEncoder;
+import io.almostrealism.code.Precision;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;

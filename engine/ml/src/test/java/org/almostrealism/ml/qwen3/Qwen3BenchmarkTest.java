@@ -12,6 +12,7 @@ import org.almostrealism.util.TestUtils;
 import org.junit.Assume;
 import org.junit.Test;
 
+import org.almostrealism.model.CompiledModel;
 import java.util.ArrayList;
 import java.util.List;
 

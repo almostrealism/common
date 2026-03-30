@@ -38,6 +38,7 @@ import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.graph.temporal.WaveCell;
 import org.almostrealism.graph.temporal.WaveCellData;
 import org.almostrealism.hardware.OperationList;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
 import org.junit.Before;

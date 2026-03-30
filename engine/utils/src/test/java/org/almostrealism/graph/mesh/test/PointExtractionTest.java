@@ -22,6 +22,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.space.MeshData;
+import io.almostrealism.collect.Shape;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 

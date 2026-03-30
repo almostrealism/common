@@ -24,6 +24,8 @@ import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Arrays;
+
 import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;

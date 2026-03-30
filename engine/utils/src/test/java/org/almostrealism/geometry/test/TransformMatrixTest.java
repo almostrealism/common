@@ -10,6 +10,7 @@ import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.TransformMatrixFeatures;
+import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;

@@ -33,6 +33,12 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Collections;
+
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.color.ShaderContext;
+import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 
 /**
  * Simple rendering tests to verify the ray tracing pipeline can produce output.

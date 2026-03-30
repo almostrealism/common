@@ -27,6 +27,7 @@ import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.studio.discovery.PrototypeDiscovery;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
+import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;

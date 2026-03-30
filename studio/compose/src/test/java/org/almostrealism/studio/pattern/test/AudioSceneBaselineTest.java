@@ -30,6 +30,7 @@ import org.almostrealism.music.pattern.PatternElement;
 import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
 import org.junit.Test;
