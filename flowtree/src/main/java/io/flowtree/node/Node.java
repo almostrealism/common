@@ -1134,7 +1134,7 @@ public class Node implements Runnable, ThreadFactory {
 			this.relaySum += r;
 			this.relayDiv++;
 
-			r: if (js > this.minJobs && Math.random() < r) {
+			r: if ((isRelay ? js > 0 : js > this.minJobs) && Math.random() < r) {
 				Connection c;
 
 				if (Math.random() < this.parentalRelayP ||
