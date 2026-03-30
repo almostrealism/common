@@ -16,6 +16,8 @@
 
 package io.almostrealism.nfs;
 
+import java.io.InputStream;
+
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Graph;
 import io.almostrealism.resource.Permissions;
@@ -176,7 +178,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 		copy.setURI(destPath);
 		copy.getPermissions().update(source.getPermissions());
 
-		java.io.InputStream in = source.getInputStream();
+		InputStream in = source.getInputStream();
 		if (in != null) {
 			try {
 				byte[] data = in.readAllBytes();

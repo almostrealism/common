@@ -1019,15 +1019,22 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	public void iteration(Node n) {
-		double a = n.getActivityRating();
-		double s = n.getSleep() * (
-					(this.activitySleepC / (a + this.activitySleepO)) -
-					(this.peerActivitySleepC *
-					(Math.max(1.0 - n.getParent().getPeerActivityRatio(), 0.0)))
-					);
-		
-		n.setSleep((int) s);
-		
+		// Relay nodes should not adapt their sleep based on job
+		// activity — they never execute jobs, so the activity
+		// rating is meaningless and would cause sleep to grow
+		// unboundedly. Keep sleep at minSleep for fast relay.
+		if ("relay".equals(n.labels.get("role"))) {
+			n.setSleep((int) n.minSleep);
+		} else {
+			double a = n.getActivityRating();
+			double s = n.getSleep() * (
+						(this.activitySleepC / (a + this.activitySleepO)) -
+						(this.peerActivitySleepC *
+						(Math.max(1.0 - n.getParent().getPeerActivityRatio(), 0.0)))
+						);
+			n.setSleep((int) s);
+		}
+
 		synchronized (this.listeners) {
 			Iterator itr = this.listeners.iterator();
 			while (itr.hasNext()) ((ActivityListener)itr.next()).iteration(this);
@@ -1110,14 +1117,20 @@ public class Node implements Runnable, ThreadFactory {
 			r = 0.0;
 
 			int js = this.jobs.size();
+			boolean isRelay = "relay".equals(labels.get("role"));
 
-			if (js > this.minJobs)
-				r = this.relay;
-			else if (js > this.maxJobs)
-				r = this.relay * 2.0;
+			if (isRelay) {
+				// Relay nodes always relay when jobs are present
+				r = js > 0 ? 1.0 : 0.0;
+			} else {
+				if (js > this.minJobs)
+					r = this.relay;
+				else if (js > this.maxJobs)
+					r = this.relay * 2.0;
 
-			r *= ((double)js) / (this.maxJobs - 1.0);
-			r += this.peerRelayC * (((double)this.peers.size()) / this.maxPeers);
+				r *= ((double) js) / (this.maxJobs - 1.0);
+				r += this.peerRelayC * (((double) this.peers.size()) / this.maxPeers);
+			}
 
 			this.relaySum += r;
 			this.relayDiv++;

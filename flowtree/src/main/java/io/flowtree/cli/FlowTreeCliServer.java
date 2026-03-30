@@ -1295,22 +1295,22 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 					Properties p = new Properties();
 					p.setProperty("db.test", "true");
 					
-					io.flowtree.fs.OutputServer server =
-						new io.flowtree.fs.OutputServer(p);
+					OutputServer server =
+						new OutputServer(p);
 					
 					return "Started DBS.";
 				} else if (s[0].equals("create")) {
-					io.flowtree.fs.OutputServer server = 
-						io.flowtree.fs.OutputServer.getCurrentServer();
+					OutputServer server =
+						OutputServer.getCurrentServer();
 					if (server == null) return "No DBS running.";
-					
+
 					if (server.getDatabaseConnection().createOutputTable())
 						return "Created DB tables.";
 					else
 						return "Could not create DB tables.";
 				} else if (s[0].equals("add")) {
-					io.flowtree.fs.OutputServer server = 
-						io.flowtree.fs.OutputServer.getCurrentServer();
+					OutputServer server =
+						OutputServer.getCurrentServer();
 					if (server == null) return "No DBS running.";
 					
 					Object o = Class.forName(s[1]).newInstance();

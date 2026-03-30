@@ -389,6 +389,7 @@ public class FlowTreeController implements ConsoleFeatures {
         flowtreeProps.setProperty("nodes.initial", "1");
         flowtreeProps.setProperty("nodes.jobs.max", "100");
         flowtreeProps.setProperty("nodes.mjp", "0.0");
+        flowtreeProps.setProperty("group.thread.sleep", "2000");
         flowtreeProps.setProperty("nodes.labels.role", "relay");
         flowtreeServer = new Server(flowtreeProps);
         flowtreeServer.start();
