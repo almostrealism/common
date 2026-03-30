@@ -1465,8 +1465,9 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			} else if (type == Message.ConnectionRequest) {
 				try {
 					Node n = this.getLeastConnectedNode();
+					if (n == null) n = this.relayNode;
 					Connection c;
-					
+
 					if (n != null && n.getPeers().length < n.getMaxPeers() && !n.isConnected(p)) {
 						System.out.println("NodeGroup: Constructing connection...");
 						c = new Connection(n, p, remoteId);
