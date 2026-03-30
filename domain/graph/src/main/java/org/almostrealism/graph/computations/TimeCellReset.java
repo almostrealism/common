@@ -21,6 +21,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -145,7 +146,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 		String loopVar = "_reset_j";
 
 		// Create expressions using the loop variable as a StaticReference
-		Expression<Integer> jRef = new io.almostrealism.expression.StaticReference<>(Integer.class, loopVar);
+		Expression<Integer> jRef = new StaticReference<>(Integer.class, loopVar);
 
 		// Get the expressions for array access using the loop variable
 		String resetAtJ = getResets().valueAt(jRef).getSimpleExpression(getLanguage());

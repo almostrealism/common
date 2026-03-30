@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class EventDeliveryQueue<T extends AbstractEvent> implements ConsoleFeatures {
 	private final ConcurrentLinkedQueue<T> events;
@@ -36,7 +37,7 @@ public class EventDeliveryQueue<T extends AbstractEvent> implements ConsoleFeatu
 
 	public void start() {
 		executor.scheduleAtFixedRate(this::deliverAll, 10,
-				10, java.util.concurrent.TimeUnit.SECONDS);
+				10, TimeUnit.SECONDS);
 	}
 
 	public void addEvent(T e) {

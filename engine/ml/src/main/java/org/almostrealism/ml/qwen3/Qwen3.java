@@ -9,6 +9,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.StateDictionary;
+import CompiledModel;
 import org.almostrealism.model.Model;
 
 import java.io.IOException;
@@ -89,7 +90,7 @@ public class Qwen3 implements AttentionFeatures {
 
 	private AutoregressiveModel model;
 	private OperationProfileNode profile;
-	private org.almostrealism.model.CompiledModel compiledModel;
+	private CompiledModel compiledModel;
 	private PackedCollection position;
 
 	/**
@@ -272,7 +273,7 @@ public class Qwen3 implements AttentionFeatures {
 	/**
 	 * For testing: Get the compiled model to inspect raw logits.
 	 */
-	public org.almostrealism.model.CompiledModel getCompiledModel() {
+	public CompiledModel getCompiledModel() {
 		return compiledModel;
 	}
 
