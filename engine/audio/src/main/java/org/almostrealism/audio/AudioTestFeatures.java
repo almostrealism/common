@@ -29,6 +29,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Test utility interface providing helper methods for audio testing.
@@ -454,8 +457,8 @@ public interface AudioTestFeatures extends GeometryFeatures {
 	 */
 	final class TestWavFileHolder {
 		private static volatile File cachedFile;
-		private static final java.util.Map<String, File> namedFiles =
-				new java.util.concurrent.ConcurrentHashMap<>();
+		private static final Map<String, File> namedFiles =
+				new ConcurrentHashMap<>();
 
 		private TestWavFileHolder() {}
 
@@ -543,7 +546,7 @@ public interface AudioTestFeatures extends GeometryFeatures {
 				int validBits = 16;
 
 				double[][] buffer = new double[numChannels][numFrames];
-				java.util.Random rng = new java.util.Random(Double.doubleToLongBits(frequency));
+				Random rng = new Random(Double.doubleToLongBits(frequency));
 
 				double decayRate = 5.0 / durationSeconds;
 				double phaseIncrement = 2.0 * Math.PI * frequency / sampleRate;

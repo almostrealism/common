@@ -19,6 +19,7 @@ package org.almostrealism.audio.synth;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.filter.ADSREnvelope;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
+import org.almostrealism.audio.tone.KeyNumbering;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.RelativeFrequencySet;
 import org.almostrealism.collect.PackedCollection;
@@ -504,7 +505,7 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 						double semitoneOffset = lfoValue * vibratoDepth;
 						double pitchMultiplier = Math.pow(2.0, semitoneOffset / 12.0);
 						Frequency baseFreq = tuning.getTone(state.getMidiNote(),
-							org.almostrealism.audio.tone.KeyNumbering.MIDI);
+							KeyNumbering.MIDI);
 						voice.setFrequency(new Frequency(baseFreq.asHertz() * pitchMultiplier));
 					}
 				});

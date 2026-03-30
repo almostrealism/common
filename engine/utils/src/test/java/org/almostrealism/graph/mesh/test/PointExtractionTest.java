@@ -21,6 +21,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.space.MeshData;
+import io.almostrealism.collect.Shape;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -269,8 +270,8 @@ public class PointExtractionTest extends TestSuiteBase {
 
 		Producer<PackedCollection> rawP = p(reshaped);
 		log("rawP class: " + rawP.getClass().getSimpleName());
-		if (rawP instanceof io.almostrealism.collect.Shape) {
-			log("rawP shape: " + ((io.almostrealism.collect.Shape) rawP).getShape());
+		if (rawP instanceof Shape) {
+			log("rawP shape: " + ((Shape) rawP).getShape());
 		}
 		CollectionProducer cP = c(rawP);
 		log("cP class: " + cP.getClass().getSimpleName());

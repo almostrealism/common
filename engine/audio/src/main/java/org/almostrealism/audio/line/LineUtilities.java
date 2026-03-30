@@ -215,7 +215,7 @@ public class LineUtilities {
 		ByteBuffer buf = ByteBuffer.wrap(frameBytes);
 
 		if (!format.isBigEndian()) {
-			buf.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+			buf.order(ByteOrder.LITTLE_ENDIAN);
 		}
 
 		int bitRate = format.getSampleSizeInBits();
