@@ -22,6 +22,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
+import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.music.notes.PatternNote;
 import org.almostrealism.music.notes.PatternNoteAudio;
@@ -226,6 +227,27 @@ public class PatternElement implements CodeFeatures {
 		return getScaleTraversalStrategy()
 				.getNoteDestinations(this, melodic, offset,
 									context, audioContext);
+	}
+
+	/**
+	 * Converts this element's rendered notes to MIDI events.
+	 *
+	 * <p>Delegates to the {@link ScaleTraversalStrategy} to iterate through
+	 * repeats, resolve scale pitches, and produce {@link MidiNoteEvent}
+	 * objects with appropriate onset, duration, pitch, velocity, and
+	 * instrument values.</p>
+	 *
+	 * @param context    the audio scene context for timing and scale resolution
+	 * @param melodic    whether this element is melodic (pitched) or percussive
+	 * @param offset     the pattern repetition offset in measures
+	 * @param instrument MIDI instrument number (0-127, or 128 for drums)
+	 * @return list of MIDI note events produced by this element
+	 */
+	public List<MidiNoteEvent> toMidiEvents(AudioSceneContext context,
+											 boolean melodic, double offset,
+											 int instrument) {
+		return getScaleTraversalStrategy()
+				.toMidiEvents(this, melodic, offset, context, instrument);
 	}
 
 	/**

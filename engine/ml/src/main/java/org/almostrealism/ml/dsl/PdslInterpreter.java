@@ -45,6 +45,8 @@ import java.util.function.Function;
  *   <li>{@code rmsnorm(weights, epsilon)}</li>
  *   <li>{@code softmax()}, {@code silu()}, {@code relu()}, {@code gelu()},
  *       {@code sigmoid()}, {@code tanh_act()}</li>
+ *   <li>{@code slice(offset, size)} - extract a 1-D sub-range</li>
+ *   <li>{@code lerp(hidden_size)} - linear interpolation from [from|weight|to] input</li>
  *   <li>{@code reshape(shape)}</li>
  *   <li>{@code rope_rotation(shape, freq_cis, position)}</li>
  *   <li>{@code attention(...)}, {@code transformer(...)},
@@ -57,6 +59,7 @@ import java.util.function.Function;
  *   <li>{@code branch name { ... }} - parallel path</li>
  *   <li>{@code accum { ... }} - residual connection</li>
  *   <li>{@code product(blockA, blockB)} - element-wise multiply</li>
+ *   <li>{@code add_blocks(blockA, blockB)} - element-wise addition</li>
  * </ul>
  */
 public class PdslInterpreter {
@@ -222,6 +225,8 @@ public class PdslInterpreter {
 			interpretAccum((PdslNode.AccumStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ProductStatement) {
 			interpretProduct((PdslNode.ProductStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.AddBlocksStatement) {
+			interpretAddBlocks((PdslNode.AddBlocksStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ForStatement) {
 			PdslNode.ForStatement forStmt = (PdslNode.ForStatement) stmt;
 			int start = toInt(evaluateExpression(forStmt.getStart(), env));
@@ -287,6 +292,14 @@ public class PdslInterpreter {
 		Block left = expressionToBlock(prodStmt.getLeft(), shape, env);
 		Block right = expressionToBlock(prodStmt.getRight(), shape, env);
 		block.product(left, right);
+	}
+
+	private void interpretAddBlocks(PdslNode.AddBlocksStatement addStmt,
+									SequentialBlock block, Environment env) {
+		TraversalPolicy shape = block.getOutputShape();
+		Block left = expressionToBlock(addStmt.getLeft(), shape, env);
+		Block right = expressionToBlock(addStmt.getRight(), shape, env);
+		block.addBlocks(left, right);
 	}
 
 	// ---- Expression evaluation ----
@@ -420,6 +433,10 @@ public class PdslInterpreter {
 			case "silu": return callActivation("silu");
 			case "relu": return callActivation("relu");
 			case "gelu": return callActivation("gelu");
+			case "sigmoid": return callActivation("sigmoid");
+			case "tanh_act": return callActivation("tanh_act");
+			case "slice": return callSlice(args);
+			case "lerp": return callLerp(args);
 				case "reshape": return callReshape(args);
 			case "rope_rotation": return callRopeRotation(args);
 			case "attention": return callAttention(args);
@@ -466,9 +483,32 @@ public class PdslInterpreter {
 			case "silu": return FEATURES.silu();
 			case "relu": return FEATURES.relu();
 			case "gelu": return FEATURES.gelu();
+			case "sigmoid": return FEATURES.sigmoid();
+			case "tanh_act": return FEATURES.tanhActivation();
 			default:
 				throw new PdslParseException("Unknown activation: " + type);
 		}
+	}
+
+	private Object callSlice(List<Object> args) {
+		if (args.size() == 2) {
+			int offset = toInt(args.get(0));
+			int size = toInt(args.get(1));
+			return (Function<TraversalPolicy, Block>)
+					(inputShape -> FEATURES.subset(inputShape, FEATURES.shape(size), offset));
+		}
+		throw new PdslParseException(
+				"slice() expects 2 arguments (offset, size), got " + args.size());
+	}
+
+	private Object callLerp(List<Object> args) {
+		if (args.size() == 1) {
+			int hiddenSize = toInt(args.get(0));
+			return (Function<TraversalPolicy, Block>)
+					(inputShape -> FEATURES.lerpLayer(inputShape, hiddenSize));
+		}
+		throw new PdslParseException(
+				"lerp() expects 1 argument (hidden_size), got " + args.size());
 	}
 
 	private Object callReshape(List<Object> args) {

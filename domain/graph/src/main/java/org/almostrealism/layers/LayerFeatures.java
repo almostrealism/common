@@ -1186,6 +1186,38 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				requirements);
 	}
 
+	/**
+	 * Creates a linear-interpolation (lerp) block.
+	 * Expects a concatenated input of shape ({@code 3 * hiddenSize}) laid out as
+	 * {@code [from | weight | to]}, and computes:
+	 * <pre>output = from + weight * (to - from)</pre>
+	 * which equals {@code (1 - weight) * from + weight * to}.
+	 *
+	 * @param hiddenSize the size of each of the three input segments and the output
+	 * @return a factory that builds the lerp layer for any (3 * hiddenSize) input shape
+	 */
+	default Function<TraversalPolicy, Block> lerp(int hiddenSize) {
+		return inputShape -> lerpLayer(inputShape, hiddenSize);
+	}
+
+	/**
+	 * Builds a linear-interpolation layer for the given input shape.
+	 *
+	 * @param inputShape must have total size {@code 3 * hiddenSize}
+	 * @param hiddenSize size of the output and of each segment in the input
+	 * @return a CellularLayer computing {@code from + weight * (to - from)}
+	 */
+	default CellularLayer lerpLayer(TraversalPolicy inputShape, int hiddenSize) {
+		TraversalPolicy outputShape = shape(hiddenSize);
+		return layer("lerp", inputShape, outputShape, input -> {
+			CollectionProducer inp = c(input);
+			CollectionProducer from = subset(outputShape, inp, 0);
+			CollectionProducer weight = subset(outputShape, inp, hiddenSize);
+			CollectionProducer to = subset(outputShape, inp, 2 * hiddenSize);
+			return from.add(weight.multiply(to.subtract(from)));
+		});
+	}
+
 	default Function<TraversalPolicy, Block> residual(Function<TraversalPolicy, Block> block) {
 		return shape -> residual(block.apply(shape));
 	}

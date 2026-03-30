@@ -23,6 +23,7 @@ import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
+import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.music.notes.NoteSourceProvider;
@@ -34,6 +35,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedChromosome;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -233,6 +235,51 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 						channel, measures, melodic);
 		patterns.add(pattern);
 		return pattern;
+	}
+
+	/**
+	 * Exports all patterns as MIDI events for the full arrangement duration.
+	 *
+	 * @param context the audio scene context for timing and scale resolution
+	 * @return list of MIDI note events, sorted by onset
+	 */
+	public List<MidiNoteEvent> toMidiEvents(AudioSceneContext context) {
+		return toMidiEvents(context, 0.0, context.getMeasures());
+	}
+
+	/**
+	 * Exports all patterns in the time range {@code [start, end)} measures
+	 * as MIDI events.
+	 *
+	 * <p>Each {@link PatternLayerManager} repeats across the arrangement based
+	 * on its duration. This method iterates over all repetitions that overlap
+	 * with the requested range and collects their MIDI events.</p>
+	 *
+	 * @param context the audio scene context for timing and scale resolution
+	 * @param start   the start of the export range in measures (inclusive)
+	 * @param end     the end of the export range in measures (exclusive)
+	 * @return list of MIDI note events within the range, sorted by onset
+	 */
+	public List<MidiNoteEvent> toMidiEvents(AudioSceneContext context,
+											 double start, double end) {
+		List<MidiNoteEvent> events = new ArrayList<>();
+
+		for (PatternLayerManager pattern : patterns) {
+			double patternDuration = pattern.getDuration();
+			if (patternDuration <= 0) continue;
+
+			int firstRepetition = Math.max(0, (int) Math.floor(start / patternDuration));
+			int lastRepetition = (int) Math.ceil(end / patternDuration);
+
+			for (int rep = firstRepetition; rep < lastRepetition; rep++) {
+				double repStart = rep * patternDuration;
+				if (repStart + patternDuration <= start || repStart >= end) continue;
+				events.addAll(pattern.toMidiEvents(context, repStart));
+			}
+		}
+
+		Collections.sort(events);
+		return events;
 	}
 
 	public void clear() {

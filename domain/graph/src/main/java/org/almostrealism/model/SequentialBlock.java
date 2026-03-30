@@ -259,6 +259,47 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		}
 	}
 
+	public void addBlocks(Function<TraversalPolicy, ? extends Block> a,
+						  Function<TraversalPolicy, ? extends Block> b,
+						  ComputeRequirement... requirements) {
+		addBlocks(a.apply(getOutputShape()), b.apply(getOutputShape()), requirements);
+	}
+
+	public void addBlocks(Function<TraversalPolicy, ? extends Block> a, Block b,
+						  ComputeRequirement... requirements) {
+		addBlocks(a.apply(getOutputShape()), b, requirements);
+	}
+
+	/**
+	 * Applies two blocks to the same input and adds their outputs element-wise.
+	 * Both {@code a} and {@code b} receive the current sequential output as input.
+	 * The combined output replaces the current tail.
+	 *
+	 * @param a first block, transforms current input to some shape
+	 * @param b second block, transforms same current input to the same output shape as {@code a}
+	 * @param requirements optional compute requirements
+	 */
+	public void addBlocks(Block a, Block b, ComputeRequirement... requirements) {
+		if (a.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
+			throw new IllegalArgumentException();
+		if (b.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
+			throw new IllegalArgumentException();
+
+		if (enableComposites) {
+			// Branch b off the current output so it receives the same input as a
+			b = branch(b);
+
+			// Build a sub-block: apply a, then element-wise add b's output
+			SequentialBlock sum = new SequentialBlock(getOutputShape());
+			sum.add(a);
+			sum.add(accum(a.getOutputShape(), b, requirements));
+
+			add(sum);
+		} else {
+			add(accum(getOutputShape(), b.getForward(), requirements));
+		}
+	}
+
 	public void product(Function<TraversalPolicy, ? extends Block> a,
 						Function<TraversalPolicy, ? extends Block> b,
 						ComputeRequirement... requirements) {

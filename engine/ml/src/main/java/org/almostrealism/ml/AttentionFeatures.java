@@ -25,6 +25,7 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.ProjectionFactory;
+import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
@@ -884,6 +885,292 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	/**
+	 * Attention with per-head-group rotary embeddings (Multidimensional Relative Attention).
+	 *
+	 * <p>Unlike standard attention which applies a single RoPE uniformly to all heads,
+	 * MRA partitions heads into groups and applies per-group RoPE with different theta
+	 * values and attribute-derived position IDs. This is the key architectural novelty
+	 * of the Moonbeam MIDI Foundation Model.</p>
+	 *
+	 * <p>The flow is identical to standard attention except for the RoPE application:</p>
+	 * <ol>
+	 *   <li>Q/K projection (standard)</li>
+	 *   <li>Split Q/K into head groups along head dimension</li>
+	 *   <li>Apply per-group RoPE with the group's precomputed freqCis and position</li>
+	 *   <li>Concatenate rotated groups back</li>
+	 *   <li>Standard scaled dot-product attention (unchanged)</li>
+	 * </ol>
+	 *
+	 * @param heads total number of query attention heads
+	 * @param kvHeads number of key/value heads (for GQA)
+	 * @param rmsAttWeight pre-attention RMSNorm weights
+	 * @param wk key projection weights
+	 * @param wv value projection weights
+	 * @param wq query projection weights
+	 * @param wo output projection weights
+	 * @param headGroups per-head-group RoPE configuration (freqCis + position per group)
+	 * @param position sequential position for KV cache indexing and causal masking
+	 * @param epsilon RMSNorm epsilon
+	 * @param requirements compute requirements
+	 * @return attention block with MRA
+	 */
+	default Block attention(int heads, int kvHeads,
+							PackedCollection rmsAttWeight,
+							PackedCollection wk, PackedCollection wv,
+							PackedCollection wq, PackedCollection wo,
+							HeadGroupConfig[] headGroups,
+							Producer<PackedCollection> position,
+							double epsilon,
+							ComputeRequirement... requirements) {
+		int dim = rmsAttWeight.getShape().length(0);
+		int headSize = headGroups[0].freqCis.getShape().length(1) * 2;
+		int seqLen = headGroups[0].freqCis.getShape().length(0);
+		int kvDim = dim * kvHeads / heads;
+		int headsPerKvGroup = heads / kvHeads;
+		boolean useGQA = kvHeads != heads;
+		int numGroups = headGroups.length;
+
+		TraversalPolicy inputShape = shape(1, dim);
+		SequentialBlock attention = new SequentialBlock(inputShape);
+
+		PackedCollection keyCache = new PackedCollection(seqLen, heads, headSize);
+		PackedCollection valueCache = new PackedCollection(seqLen, heads, headSize);
+		keyCache.clear();
+		valueCache.clear();
+
+		attention.add(rmsnorm(inputShape, rmsAttWeight, epsilon, requirements));
+
+		SequentialBlock keys = attention.branch();
+		SequentialBlock values = attention.branch();
+
+		TraversalPolicy kvHeadShape = shape(kvHeads, headSize);
+
+		/* KEYS with per-group RoPE **/
+		keys.add(dense(wk));
+		int[] kvHeadsPerGroup = new int[numGroups];
+		for (int g = 0; g < numGroups; g++) {
+			kvHeadsPerGroup[g] = headGroups[g].headCount / headsPerKvGroup;
+		}
+		keys.add(reshapeToSplitHalfRope(kvDim, kvHeads, headSize));
+		keys.add(mraRopeRotation(kvHeads, headSize, kvHeadsPerGroup, headGroups, requirements));
+		keys.add(reshapeFromSplitHalfRope(kvHeads, headSize));
+		keys.add(reshape(kvHeadShape, shape(kvDim)));
+		if (useGQA) {
+			keys.add(reshape(shape(kvDim), shape(1, kvDim)));
+			keys.add(gqaExpand(kvDim, dim, kvHeads, heads, headSize, requirements));
+		} else {
+			keys.add(reshape(shape(kvDim), shape(1, dim)));
+		}
+		keys.andThen(into(keyCache.reshape(shape(seqLen, dim)), position));
+		/* ---- **/
+
+		/* VALUES (no RoPE, same as standard attention) **/
+		values.add(dense(wv));
+		if (useGQA) {
+			values.add(reshape(shape(kvDim), shape(1, kvDim)));
+			values.add(gqaExpand(kvDim, dim, kvHeads, heads, headSize, requirements));
+		} else {
+			values.add(reshape(shape(kvDim), shape(1, dim)));
+		}
+		values.andThen(into(valueCache.reshape(shape(seqLen, dim)), position));
+		/* ---- **/
+
+		/* QUERY with per-group RoPE **/
+		TraversalPolicy headShape = shape(heads, headSize);
+		TraversalPolicy attentionShape = shape(heads, seqLen).traverseEach();
+
+		int[] queryHeadsPerGroup = new int[numGroups];
+		for (int g = 0; g < numGroups; g++) {
+			queryHeadsPerGroup[g] = headGroups[g].headCount;
+		}
+
+		attention.add(dense(wq));
+		attention.add(reshapeToSplitHalfRope(dim, heads, headSize));
+		attention.add(mraRopeRotation(heads, headSize, queryHeadsPerGroup, headGroups, requirements));
+		attention.add(reshapeFromSplitHalfRope(heads, headSize));
+		attention.add(attentionKeysStandard(headShape, p(keyCache)));
+
+		CollectionProducer indices = integers(0, seqLen);
+		CollectionProducer maskRow =
+			greaterThan(indices, position, c(-10000.0), c(0.0), false);
+		CollectionProducer causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
+
+		attention.add(layer("causal_mask", attentionShape, attentionShape,
+		                   input -> add(input, causalMask),
+		                   requirements));
+
+		attention.add(softmax(attentionShape, true));
+		attention.add(attentionValuesStandard(attentionShape, p(valueCache)));
+		attention.add(dense(wo));
+
+		attention.reshape(inputShape);
+		/* ---- **/
+
+		return attention;
+	}
+
+	/**
+	 * Creates a layer that applies per-head-group rotary position embedding
+	 * for Multidimensional Relative Attention (MRA).
+	 *
+	 * <p>Unlike standard {@link RotationFeatures#ropeRotation}, which applies the same
+	 * rotation to all heads, this method partitions heads into groups and applies
+	 * per-group RoPE with different precomputed frequencies and position values.
+	 * All group frequency tables are combined into a single tensor, and per-head
+	 * position routing is handled via masked summation of group positions.</p>
+	 *
+	 * @param totalHeads total number of heads being rotated
+	 * @param headSize per-head dimension
+	 * @param headsInGroup number of heads per group for this call
+	 * @param headGroups per-group RoPE configuration
+	 * @param requirements compute requirements
+	 * @return layer applying MRA rotary embedding
+	 */
+	default CellularLayer mraRopeRotation(int totalHeads, int headSize,
+										  int[] headsInGroup,
+										  HeadGroupConfig[] headGroups,
+										  ComputeRequirement... requirements) {
+		int freqDim = headSize / 2;
+		int numGroups = headGroups.length;
+		TraversalPolicy inputShape = shape(totalHeads, freqDim, 2);
+		int totalHeadFreq = totalHeads * freqDim;
+		int weightsFreqSize = freqDim * 2;
+
+		int seqLen = headGroups[0].freqCis.getShape().length(0);
+		int weightsPerGroup = seqLen * weightsFreqSize;
+
+		// Stack all group freqCis into one tensor for unified index-based gathering
+		PackedCollection combinedFreqCis = new PackedCollection(numGroups * weightsPerGroup);
+		for (int g = 0; g < numGroups; g++) {
+			for (int i = 0; i < weightsPerGroup; i++) {
+				combinedFreqCis.setMem(g * weightsPerGroup + i, headGroups[g].freqCis.toDouble(i));
+			}
+		}
+
+		// Head-to-group mapping
+		int[] headToGroup = new int[totalHeads];
+		int headIdx = 0;
+		for (int g = 0; g < numGroups; g++) {
+			for (int h = 0; h < headsInGroup[g]; h++) {
+				headToGroup[headIdx++] = g;
+			}
+		}
+
+		// Group base offsets into combinedFreqCis
+		PackedCollection groupBaseOffsets = new PackedCollection(totalHeadFreq);
+		for (int h = 0; h < totalHeads; h++) {
+			int groupBase = headToGroup[h] * weightsPerGroup;
+			for (int f = 0; f < freqDim; f++) {
+				groupBaseOffsets.setMem(h * freqDim + f, groupBase);
+			}
+		}
+
+		// cos/sin relative index maps within a position's frequency row
+		PackedCollection cosRelIndexMap = new PackedCollection(totalHeadFreq);
+		PackedCollection sinRelIndexMap = new PackedCollection(totalHeadFreq);
+		for (int h = 0; h < totalHeads; h++) {
+			for (int f = 0; f < freqDim; f++) {
+				int idx = h * freqDim + f;
+				cosRelIndexMap.setMem(idx, f * 2);
+				sinRelIndexMap.setMem(idx, f * 2 + 1);
+			}
+		}
+
+		PackedCollection wfsSizeArray = new PackedCollection(totalHeadFreq);
+		for (int i = 0; i < totalHeadFreq; i++) {
+			wfsSizeArray.setMem(i, weightsFreqSize);
+		}
+
+		// Input index maps for x1/x2 gathering
+		PackedCollection x1IndexMap = new PackedCollection(totalHeadFreq);
+		PackedCollection x2IndexMap = new PackedCollection(totalHeadFreq);
+		for (int h = 0; h < totalHeads; h++) {
+			for (int f = 0; f < freqDim; f++) {
+				int idx = h * freqDim + f;
+				x1IndexMap.setMem(idx, h * freqDim * 2 + f * 2);
+				x2IndexMap.setMem(idx, h * freqDim * 2 + f * 2 + 1);
+			}
+		}
+
+		// Output interleaving maps
+		int outputSize = totalHeads * freqDim * 2;
+		PackedCollection outputSourceMap = new PackedCollection(outputSize);
+		PackedCollection componentMap = new PackedCollection(outputSize);
+		for (int i = 0; i < outputSize; i++) {
+			int h = i / (freqDim * 2);
+			int f = (i % (freqDim * 2)) / 2;
+			int comp = i % 2;
+			outputSourceMap.setMem(i, h * freqDim + f);
+			componentMap.setMem(i, comp);
+		}
+
+		// Per-group masks for position routing: mask_g[i] = 1.0 if head i belongs to group g
+		PackedCollection[] groupMasks = new PackedCollection[numGroups];
+		for (int g = 0; g < numGroups; g++) {
+			groupMasks[g] = new PackedCollection(totalHeadFreq);
+		}
+		headIdx = 0;
+		for (int g = 0; g < numGroups; g++) {
+			for (int h = 0; h < headsInGroup[g]; h++) {
+				for (int f = 0; f < freqDim; f++) {
+					groupMasks[g].setMem(headIdx * freqDim + f, 1.0);
+				}
+				headIdx++;
+			}
+		}
+
+		List<PackedCollection> captured = new ArrayList<>();
+		captured.add(combinedFreqCis);
+		captured.add(groupBaseOffsets);
+		captured.add(cosRelIndexMap);
+		captured.add(sinRelIndexMap);
+		captured.add(wfsSizeArray);
+		captured.add(x1IndexMap);
+		captured.add(x2IndexMap);
+		captured.add(outputSourceMap);
+		captured.add(componentMap);
+		for (PackedCollection mask : groupMasks) {
+			captured.add(mask);
+		}
+
+		return layer("mraRopeRotation", inputShape, inputShape, input -> {
+			// Build per-head position by summing group-masked position scalars
+			CollectionProducer perHeadPos = null;
+			for (int g = 0; g < numGroups; g++) {
+				CollectionProducer groupPos = c(headGroups[g].position);
+				CollectionProducer masked = c(p(groupMasks[g])).multiply(groupPos);
+				perHeadPos = (perHeadPos == null) ? masked : perHeadPos.add(masked);
+			}
+
+			CollectionProducer posOffset = perHeadPos.multiply(c(p(wfsSizeArray)));
+
+			// Absolute indices into combinedFreqCis
+			CollectionProducer cosIdx = c(p(groupBaseOffsets)).add(posOffset).add(c(p(cosRelIndexMap)));
+			CollectionProducer sinIdx = c(p(groupBaseOffsets)).add(posOffset).add(c(p(sinRelIndexMap)));
+
+			// Gather cos and sin values from combined frequency table
+			CollectionProducer cos = c(shape(totalHeadFreq), p(combinedFreqCis), cosIdx);
+			CollectionProducer sin = c(shape(totalHeadFreq), p(combinedFreqCis), sinIdx);
+
+			// Gather x1 and x2 from input
+			CollectionProducer x1 = c(shape(totalHeadFreq), input, p(x1IndexMap));
+			CollectionProducer x2 = c(shape(totalHeadFreq), input, p(x2IndexMap));
+
+			// Apply split-half rotation
+			CollectionProducer out1 = x1.multiply(cos).subtract(x2.multiply(sin));
+			CollectionProducer out2 = x2.multiply(cos).add(x1.multiply(sin));
+
+			// Interleave out1 and out2 to recreate (totalHeads, freqDim, 2) layout
+			CollectionProducer out1Vals = c(shape(outputSize), out1, p(outputSourceMap));
+			CollectionProducer out2Vals = c(shape(outputSize), out2, p(outputSourceMap));
+			CollectionProducer compVals = c(p(componentMap));
+			CollectionProducer result = greaterThan(compVals, c(0.5), out2Vals, out1Vals, true);
+
+			return result.reshape(inputShape);
+		}, captured, requirements);
+	}
+
+	/**
 	 * Creates a sequence-based multi-head attention block with fused QKV projection.
 	 *
 	 * <p>This implements full-sequence attention (not autoregressive) with:
@@ -1726,6 +2013,49 @@ public interface AttentionFeatures extends RotationFeatures {
 		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
 		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
 				bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon, requirements), requirements);
+		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
+		return transformer;
+	}
+
+	/**
+	 * Transformer layer with Multidimensional Relative Attention (MRA).
+	 *
+	 * <p>Combines MRA attention (per-head-group RoPE) with a standard SwiGLU
+	 * feed-forward block. This is the building block for the Moonbeam MIDI
+	 * transformer.</p>
+	 *
+	 * @param heads number of query attention heads
+	 * @param kvHeads number of key/value heads (for GQA)
+	 * @param rmsAttWeight pre-attention RMSNorm weights
+	 * @param wk key projection weights
+	 * @param wv value projection weights
+	 * @param wq query projection weights
+	 * @param wo output projection weights
+	 * @param headGroups per-head-group RoPE configuration
+	 * @param rmsFfnWeight pre-FFN RMSNorm weights
+	 * @param w1 FFN gate projection weights
+	 * @param w2 FFN down projection weights
+	 * @param w3 FFN up projection weights
+	 * @param position sequential position for KV cache and causal masking
+	 * @param epsilon RMSNorm epsilon
+	 * @param requirements compute requirements
+	 * @return transformer block with MRA attention
+	 */
+	default Block transformer(int heads, int kvHeads,
+							  PackedCollection rmsAttWeight,
+							  PackedCollection wk, PackedCollection wv,
+							  PackedCollection wq, PackedCollection wo,
+							  HeadGroupConfig[] headGroups,
+							  PackedCollection rmsFfnWeight,
+							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
+							  Producer<PackedCollection> position,
+							  double epsilon,
+							  ComputeRequirement... requirements) {
+		int dim = rmsAttWeight.getShape().length(0);
+
+		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
+		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				headGroups, position, epsilon, requirements), requirements);
 		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
 		return transformer;
 	}
