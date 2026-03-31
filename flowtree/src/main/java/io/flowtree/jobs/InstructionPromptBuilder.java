@@ -39,22 +39,76 @@ import java.util.List;
  */
 public class InstructionPromptBuilder {
 
+    /** The user's request text, wrapped between BEGIN/END markers in the output. */
     private String prompt;
+
+    /** Workstream URL; controls whether messaging sections are included. */
     private String workstreamUrl;
-    /** @deprecated GitHub tools are now always available via ar-manager. */
+
+    /**
+     * Whether the GitHub MCP server is enabled.
+     *
+     * @deprecated GitHub tools are now always available via ar-manager.
+     */
+    @Deprecated
     private boolean gitHubMcpEnabled;
+
+    /**
+     * When {@code true}, includes the test integrity policy section that
+     * prevents the agent from modifying test files that exist on the base branch.
+     */
     private boolean protectTestFiles;
+
+    /**
+     * When {@code true}, replaces the permissive "Non-Code Requests" and
+     * "Justifying No Code Changes" sections with a strict warning that code
+     * changes are required.
+     */
     private boolean enforceChanges;
+
+    /**
+     * Number of prior failed attempts. When greater than zero, a prominent
+     * retry warning is prepended above all other content.
+     */
     private int enforcementAttempt;
+
+    /** Base branch name used in merge conflict and test protection instructions. */
     private String baseBranch;
+
+    /**
+     * Target branch name; when set, enables git commit, branch awareness, and
+     * memory tool usage instructions.
+     */
     private String targetBranch;
+
+    /** Absolute path to the working directory shown to the agent. */
     private String workingDirectory;
+
+    /**
+     * Whether a merge attempt against the base branch produced unresolved
+     * conflicts that the agent must resolve.
+     */
     private boolean hasMergeConflicts;
+
+    /** List of file paths with merge conflicts (used when {@code hasMergeConflicts} is true). */
     private List<String> mergeConflictFiles;
+
+    /** Maximum cost budget in USD (0 or negative to omit the budget instruction). */
     private double maxBudgetUsd;
+
+    /** Maximum number of turns (0 or negative to omit the turns instruction). */
     private int maxTurns;
+
+    /** Task identifier included in the prompt footer for traceability. */
     private String taskId;
+
+    /** Relative path to a planning document the agent must read before starting. */
     private String planningDocument;
+
+    /**
+     * Description of a git tampering violation from a prior session.
+     * When set, a stern warning is prepended above all content.
+     */
     private String gitTamperingViolation;
 
     /**
@@ -84,6 +138,7 @@ public class InstructionPromptBuilder {
      *
      * @param gitHubMcpEnabled true if GitHub MCP tools are available
      * @return this builder for chaining
+     * @deprecated GitHub tools are now always available via ar-manager.
      */
     public InstructionPromptBuilder setGitHubMcpEnabled(boolean gitHubMcpEnabled) {
         this.gitHubMcpEnabled = gitHubMcpEnabled;

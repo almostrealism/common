@@ -120,9 +120,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit|/update)?"
     );
 
+    /** Slack notifier used to send job-status messages to Slack channels. */
     private final SlackNotifier notifier;
+    /** Maps tool names to the local filesystem paths of their definition files. */
     private final Map<String, Path> toolFiles = new HashMap<>();
+    /** Persistent store for per-job timing and throughput statistics. */
     private JobStatsStore statsStore;
+    /** Maps GitHub organisation names to their API access tokens. */
     private Map<String, String> githubOrgTokens = new HashMap<>();
 
     /** Tracks which jobs should have a PR auto-created on success. */
@@ -139,7 +143,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     private volatile boolean acceptAutomatedJobs = false;
 
+    /** Local FlowTree server used to submit jobs received via the HTTP API. */
     private Server server;
+    /** Slack listener that receives inbound messages and dispatches them to jobs. */
     private SlackListener listener;
 
     /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */

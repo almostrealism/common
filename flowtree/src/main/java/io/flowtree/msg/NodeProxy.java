@@ -57,77 +57,265 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
- * A NodeProxy object uses a Socket to enable communication between remote nodes.
- * 
+ * Socket-level transport for peer-to-peer communication between FlowTree nodes.
+ *
+ * <p>A {@code NodeProxy} wraps a single TCP {@link Socket} to a remote server and
+ * provides the following services:</p>
+ * <ul>
+ *   <li><strong>Framed object I/O</strong> — messages and queries are written to an
+ *       {@link ObjectOutputStream} preceded by a UTF header string
+ *       ({@link #msgHeader} or {@link #queryHeader}) that allows the reader thread
+ *       to construct the correct {@link Externalizable} type.</li>
+ *   <li><strong>Optional PBE encryption</strong> — when a password is supplied at
+ *       construction time, each payload is encrypted/decrypted with a
+ *       {@code PBEWithMD5AndDES} cipher via the inner {@link ByteWrapper} class
+ *       before it touches the stream.</li>
+ *   <li><strong>Outbound queuing</strong> — writes issued while the proxy is
+ *       reconnecting are buffered in {@link #queue} and flushed automatically once
+ *       the socket is re-established.</li>
+ *   <li><strong>Event dispatch</strong> — registered {@link EventListener}s are
+ *       notified of connect, disconnect, and message-arrival events from the
+ *       dedicated reader thread.</li>
+ *   <li><strong>Periodic ping</strong> — every {@link #pingFreq} messages the proxy
+ *       launches a background thread that measures round-trip latency and forwards
+ *       the local server's status to the peer.</li>
+ *   <li><strong>Auto-reconnect</strong> — up to three reconnection attempts are made
+ *       after stream corruption or EOF before the proxy gives up and fires a final
+ *       disconnect event.</li>
+ * </ul>
+ *
+ * <p>Instances are not created directly by application code; they are created by
+ * {@link io.flowtree.node.NodeGroup} when a new socket connection is accepted or
+ * established.</p>
+ *
  * @author Mike Murray
+ * @see Message
+ * @see Connection
+ * @see io.flowtree.node.NodeGroup
  */
 public class NodeProxy implements Proxy, Runnable {
+	/**
+	 * Milliseconds the reader thread sleeps between successive checks for incoming
+	 * data. Reducing this value increases responsiveness at the cost of CPU usage.
+	 */
 	public static int sleep = 100;
+
+	/**
+	 * Maximum time in milliseconds that a database query dispatched via
+	 * {@link #run()} will be allowed to execute on the remote server before it
+	 * is considered timed out.
+	 */
 	public static long queryTimeout = 900000;
+
+	/**
+	 * Logical service name used to identify this FlowTree cluster. Sent as part
+	 * of server-status messages so that heterogeneous clusters can be distinguished.
+	 */
 	public static String serviceName = "RINGS";
+
+	/**
+	 * UTF header string written before every serialised {@link Message} on the
+	 * output stream. The reader thread uses this to select the correct
+	 * {@link Externalizable} implementation for deserialisation.
+	 */
 	public static final String msgHeader = "msg";
+
+	/**
+	 * UTF header string written before every serialised
+	 * {@link io.almostrealism.db.Query} on the output stream.
+	 */
 	public static final String queryHeader = "query";
+
+	/** The JCE security provider used for PBE key and cipher operations. */
 	private final String securityProvider = "SunJCE";
+
+	/** PBE cipher algorithm name passed to {@link Cipher#getInstance}. */
 	private String cipherAlgorithm = "PBEWithMD5AndDES";
+
+	/**
+	 * Default PBE salt shared by all {@code NodeProxy} instances that do not
+	 * override it. Exposed as a public constant so that external tooling can
+	 * verify compatibility.
+	 */
 	public static final byte[] defaultSalt = {
 			(byte)0xc7, (byte)0x73, (byte)0x21, (byte)0x8c,
 			(byte)0x7e, (byte)0xc8, (byte)0xee, (byte)0x99
 	};
+
+	/** Instance-level PBE salt; matches {@link #defaultSalt} in this implementation. */
 	private final byte[] salt = {
 			(byte)0xc7, (byte)0x73, (byte)0x21, (byte)0x8c,
 			(byte)0x7e, (byte)0xc8, (byte)0xee, (byte)0x99
 	};
+
+	/**
+	 * Default PBE iteration count used when constructing the cipher. Higher values
+	 * increase the cost of brute-force attacks against the password.
+	 */
 	public static final int defaultCount = 20;
+
+	/** Instance-level PBE iteration count; matches {@link #defaultCount}. */
 	private final int count = 20;
-	
+
+	/**
+	 * Shared static decrypt cipher used by {@link ByteWrapper#ByteWrapper()} when
+	 * no cipher is provided explicitly. Populated by the first {@code NodeProxy}
+	 * that initialises a secure session.
+	 */
 	private static Cipher sInc;
-	
+
+	/**
+	 * Counter incremented for every message received; reset to {@code 1} after a
+	 * periodic ping is performed. Used to trigger the background ping every
+	 * {@link #pingFreq} messages.
+	 */
 	private int lastPing = 1;
+
+	/**
+	 * Number of messages between successive periodic pings. A ping is initiated
+	 * when {@code lastPing % pingFreq == 0}.
+	 */
 	private final int pingFreq = 40;
+
+	/**
+	 * Result of the most recent multi-ping round. Format:
+	 * {@code {min, max, avg, deviation, errorFlag}}, as returned by
+	 * {@link #ping(int, int, int)}. {@code null} until the first ping completes.
+	 */
 	private double[] pingStat;
+
+	/**
+	 * Background thread executing the periodic ping sequence, or {@code null}
+	 * when no ping is in progress.
+	 */
 	private Thread pingThread;
-	
+
+	/**
+	 * A typed envelope that holds a received or queued object together with the
+	 * receiver node ID it was addressed to.
+	 *
+	 * <p>Instances of this class live in the {@link NodeProxy#obj} inbox list and
+	 * the {@link NodeProxy#queue} outbound buffer. They let the proxy match
+	 * incoming objects to the correct waiting caller via
+	 * {@link NodeProxy#nextObject(int)} and {@link NodeProxy#waitFor(int, int)},
+	 * and replay queued sends after a reconnection via
+	 * {@link NodeProxy#flushQueue()}.</p>
+	 */
 	private class StoredObject {
+		/** The wrapped object ({@link Message} or {@link io.almostrealism.db.Query}). */
 		Object o;
+		/** The receiver node ID associated with this object. */
 		int id;
-		
+
+		/**
+		 * Constructs a {@code StoredObject} pairing an object with a receiver ID.
+		 *
+		 * @param o   The object to store.
+		 * @param id  The receiver node ID.
+		 */
 		public StoredObject(Object o, int id) {
 			this.o = o;
 			this.id = id;
 		}
-		
+
+		/**
+		 * @return  The stored object.
+		 */
 		public Object getObject() { return this.o; }
+
+		/**
+		 * @return  The receiver node ID associated with the stored object.
+		 */
 		public int getId() { return this.id; }
-		
+
+		/**
+		 * @return  A human-readable description for logging.
+		 */
 		public String toString() { return "StoredObject: " + this.getId() + " " + this.getObject(); }
 	}
-	
+
+	/**
+	 * {@link Externalizable} wrapper that encrypts or decrypts a byte array using
+	 * the configured PBE {@link Cipher}.
+	 *
+	 * <p>On write, the payload is padded to an 8-byte boundary (using
+	 * {@code (byte) -1} as the pad value) before encryption, so that the DES
+	 * block cipher's block-alignment requirement is always satisfied. On read,
+	 * the trailing {@code -1} bytes are stripped after decryption.</p>
+	 *
+	 * <p>This class is used exclusively by {@link NodeProxy#writeSecure} and the
+	 * reader loop in {@link NodeProxy#run()} when {@link NodeProxy#secure} is
+	 * {@code true}.</p>
+	 */
 	private static class ByteWrapper implements Externalizable {
+		/** Serial version UID required by {@link Externalizable}. */
 		private static final long serialVersionUID = 6512456536452755866L;
+
+		/** The cipher used to encrypt (on write) or decrypt (on read) the payload. */
 		private final transient Cipher c;
+
+		/** The raw byte payload, which may be modified in-place during padding/truncation. */
 		private byte[] b;
-		
+
+		/**
+		 * No-argument constructor that uses the shared static decrypt cipher
+		 * {@link NodeProxy#sInc}. Required by the {@link Externalizable} contract for
+		 * deserialisation.
+		 */
 		public ByteWrapper() { this(NodeProxy.sInc); }
+
+		/**
+		 * Constructs a {@code ByteWrapper} with the given cipher and no initial payload.
+		 *
+		 * @param c  The cipher to use for encryption or decryption.
+		 */
 		public ByteWrapper(Cipher c) { this.c = c; }
+
+		/**
+		 * Constructs a {@code ByteWrapper} ready to encrypt and write the given bytes.
+		 *
+		 * @param c  The cipher to use for encryption.
+		 * @param b  The plaintext payload to encrypt on write.
+		 */
 		public ByteWrapper(Cipher c, byte[] b) { this.c = c; this.b = b; }
+
+		/**
+		 * Replaces the current payload with the given byte array.
+		 *
+		 * @param b  The new payload bytes.
+		 */
 		public void setBytes(byte[] b) { this.b = b; }
+
+		/**
+		 * Returns the current payload bytes. After a read, this contains the
+		 * decrypted plaintext with any trailing pad bytes removed.
+		 *
+		 * @return  The plaintext payload.
+		 */
 		public byte[] getBytes() { return this.b; }
-		
+
+		/**
+		 * Pads the payload to an 8-byte boundary, encrypts it, and writes the
+		 * encrypted length followed by the encrypted bytes to {@code out}.
+		 *
+		 * @param out  The stream to write the encrypted data to.
+		 * @throws IOException  If an I/O error occurs while writing.
+		 */
 		public void writeExternal(ObjectOutput out) throws IOException {
 			try {
 				int div = 8 - (b.length % 8);
-				
+
 				if (div < 8) {
 					byte[] temp = this.b;
 					int l = temp.length;
 					this.b = new byte[l + div];
 					System.arraycopy(temp, 0, this.b, 0, l);
 					for (int i = l; i < this.b.length; i++) this.b[i] = -1;
-					
+
 					if (Message.dverbose)
 						System.out.println("NodeProxy.ByteWrapper: Padded message by " + div);
 				}
-				
+
 				byte[] b = this.c.doFinal(this.b);
 				out.writeInt(b.length);
 				out.write(b);
@@ -137,23 +325,31 @@ public class NodeProxy implements Proxy, Runnable {
 				System.out.println("NodeProxy.ByteWrapper: Bad padding (" + e.getMessage() + ")");
 			}
 		}
-		
+
+		/**
+		 * Reads an encrypted byte block from {@code in}, decrypts it, and strips
+		 * any trailing {@code -1} pad bytes, leaving the original plaintext payload
+		 * in {@link #b}.
+		 *
+		 * @param in  The stream to read the encrypted data from.
+		 * @throws IOException  If an I/O error occurs while reading.
+		 */
 		public void readExternal(ObjectInput in) throws IOException {
 			try {
 				if (this.b == null) this.b = new byte[in.readInt()];
 				in.readFully(this.b);
 				this.b = this.c.doFinal(this.b);
-				
+
 				int i;
 				i: for (i = 0; i < 8; i++) {
 					if (this.b[this.b.length - i - 1] != -1) break;
 				}
-				
+
 				if (i > 0) {
 					byte[] temp = new byte[this.b.length - i];
 					System.arraycopy(this.b, 0, temp, 0, temp.length);
 					this.b = temp;
-					
+
 					if (Message.dverbose)
 						System.out.println("NodeProxy.ByteWrapper: Truncated message by " + i);
 				}
@@ -164,47 +360,218 @@ public class NodeProxy implements Proxy, Runnable {
 			}
 		}
 	}
-	
+
+	/**
+	 * Callback interface for objects that want to be notified of connection
+	 * lifecycle events and incoming messages from a {@link NodeProxy}.
+	 *
+	 * <p>{@link Connection} and {@link io.flowtree.node.NodeGroup} are the primary
+	 * implementations. Multiple listeners may be registered on a single
+	 * {@code NodeProxy}; the proxy iterates them in registration order.</p>
+	 */
 	public interface EventListener {
+		/**
+		 * Called when the {@link NodeProxy} establishes or re-establishes its
+		 * socket connection to the remote peer.
+		 *
+		 * @param p  The connected {@link NodeProxy}.
+		 */
 		void connect(NodeProxy p);
+
+		/**
+		 * Called when the {@link NodeProxy} loses its socket connection to the
+		 * remote peer. The listener should clean up any state that depends on the
+		 * connection being alive.
+		 *
+		 * @param p  The disconnected {@link NodeProxy}.
+		 * @return   An implementation-defined integer; typically {@code 0}.
+		 */
 		int disconnect(NodeProxy p);
+
+		/**
+		 * Called by the {@link NodeProxy} reader thread each time a
+		 * {@link Message} arrives. The listener should return {@code true} if it
+		 * claimed and fully processed the message, or {@code false} to allow other
+		 * listeners to examine it. If no listener claims the message it is stored
+		 * in the proxy's inbox for later retrieval via {@link NodeProxy#nextObject}.
+		 *
+		 * @param m         The received message.
+		 * @param reciever  The node ID from the message's receiver field.
+		 * @return  {@code true} if this listener handled the message; {@code false}
+		 *          to pass it to the next listener.
+		 */
 		boolean recievedMessage(Message m, int reciever);
 	}
-	
+
+	/**
+	 * Milliseconds of silence on the input stream before the proxy attempts to
+	 * reconfirm the connection with a {@link Message#ConnectionConfirmation}.
+	 * Implemented as a null-read counter: each read-loop iteration that finds no
+	 * data increments {@link #nullCount} by one (where one count ≈ {@link #sleep}
+	 * milliseconds), so the effective timeout is {@code timeout * sleep} ms.
+	 */
 	private final int timeout = 20000;
+
+	/**
+	 * Maximum number of received objects that may be held in the inbox list
+	 * ({@link #obj}) at one time. When the limit is reached the oldest entry is
+	 * evicted to prevent unbounded memory growth.
+	 */
 	private final int maxStore = 100;
-	
+
+	/**
+	 * Human-readable label for this proxy, derived from the remote socket's
+	 * {@link InetAddress#toString()} at construction time. Used in log messages
+	 * and {@link #toString()}.
+	 */
 	private final String label;
-	
+
+	/** The underlying TCP socket connecting this JVM to the remote server. */
 	private Socket soc;
+
+	/**
+	 * Object input stream wrapping the socket's input, used by the reader thread
+	 * to receive messages and queries.
+	 */
 	private ObjectInputStream in;
-	private ObjectOutputStream out, fout;
-	private Cipher inc, outc;
-	
-	private boolean secure = true, connected, reset, useQueue = true;
-	private int mwait, owait;
-	private int resets, nullCount;
-	
-	private int totalMsgIn, currentMsgIn;
+
+	/**
+	 * Object output stream wrapping the socket's output, used by
+	 * {@link #writeObject} to send messages and queries.
+	 */
+	private ObjectOutputStream out;
+
+	/**
+	 * Optional duplicate output stream that mirrors every write to a local file
+	 * when {@link Message#verbose} is {@code true}. {@code null} in normal operation.
+	 */
+	private ObjectOutputStream fout;
+
+	/**
+	 * PBE decrypt cipher used to decrypt incoming {@link ByteWrapper}s,
+	 * or {@code null} when {@link #secure} is {@code false}.
+	 */
+	private Cipher inc;
+
+	/**
+	 * PBE encrypt cipher used to encrypt outgoing payloads before writing them
+	 * as {@link ByteWrapper}s, or {@code null} when {@link #secure} is
+	 * {@code false}.
+	 */
+	private Cipher outc;
+
+	/**
+	 * {@code true} when PBE encryption is active for this proxy (i.e. a password
+	 * was supplied at construction). {@code false} for plaintext connections.
+	 */
+	private boolean secure = true;
+
+	/**
+	 * {@code true} while the socket is open and the reader thread is running.
+	 * Set to {@code false} by {@link #close()} and by {@link #fireDisconnect()}.
+	 */
+	private boolean connected;
+
+	/**
+	 * When {@code true}, the reader loop will call {@link #reset()} on the next
+	 * iteration to re-establish the socket connection.
+	 */
+	private boolean reset;
+
+	/**
+	 * When {@code true}, calls to {@link #writeObject(Object, int)} enqueue the
+	 * object in {@link #queue} rather than writing it directly. Activated during
+	 * reconnection; cleared and flushed by {@link #flushQueue()}.
+	 */
+	private boolean useQueue = true;
+
+	/**
+	 * Count of callers currently blocked inside {@link #waitForMessage}. Used
+	 * only for diagnostic logging inside {@link #storeMessage}.
+	 */
+	private int mwait;
+
+	/**
+	 * Count of callers currently blocked inside {@link #waitFor}. Used only for
+	 * diagnostic logging.
+	 */
+	private int owait;
+
+	/**
+	 * Number of consecutive reset attempts made since the last successful stream
+	 * read. When this reaches 3 the reader loop exits and the socket is closed.
+	 */
+	private int resets;
+
+	/**
+	 * Number of consecutive read-loop iterations that found no data on the input
+	 * stream. When this exceeds {@link #timeout} a connection-confirm is sent to
+	 * verify the peer is still alive.
+	 */
+	private int nullCount;
+
+	/** Cumulative count of all messages received since this proxy was created. */
+	private int totalMsgIn;
+
+	/**
+	 * Count of messages received since the last call to {@link #getInputRate()}.
+	 * Reset to zero by that method.
+	 */
+	private int currentMsgIn;
+
+	/**
+	 * Wall-clock time (ms since epoch) of the last {@link #getInputRate()} call.
+	 * Used to compute the per-minute message rate.
+	 */
 	private long checkedMsgIn;
-	
+
+	/**
+	 * Inbox list of received {@link StoredObject} instances waiting to be
+	 * claimed by a caller via {@link #nextObject} or {@link #nextMessage}.
+	 * Access is synchronised on the list itself.
+	 */
 	private final List obj;
+
+	/**
+	 * List of registered {@link EventListener}s. Listeners are called on the
+	 * reader thread; modifications are guarded by {@code synchronized(listeners)}.
+	 */
 	private final List listeners;
+
+	/**
+	 * Outbound queue used to buffer writes that arrive while the proxy is
+	 * reconnecting. Flushed to the socket in order by {@link #flushQueue()}.
+	 */
 	private final List queue;
-	
-	private double jobtime, activity;
+
+	/**
+	 * Most recent job execution time (in seconds) reported by the remote peer
+	 * via a server-status message. Stored here so that higher layers can make
+	 * load-balancing decisions without a network round-trip.
+	 */
+	private double jobtime;
+
+	/**
+	 * Activity rating of the remote peer's node group, as last reported via a
+	 * server-status message. Higher values indicate heavier load.
+	 */
+	private double activity;
 	
 	/**
-	 * Constructs a new NodeProxy object using the specified Socket.
-	 * This starts a thread which will wait for data from the Socket.
-	 * 
-	 * @param s  Socket to use.
-	 * @throws IOException  If an IOException occurs while getting IO streams.
-	 * @throws NoSuchAlgorithmException 
-	 * @throws InvalidAlgorithmParameterException 
-	 * @throws NoSuchPaddingException 
-	 * @throws InvalidKeySpecException 
-	 * @throws InvalidKeyException 
+	 * Constructs a new {@code NodeProxy} for the given socket without encryption.
+	 * Equivalent to {@code NodeProxy(s, null, null, false)}.
+	 *
+	 * <p>This constructor obtains the socket's I/O streams, builds a
+	 * {@link ObjectOutputStream} / {@link ObjectInputStream} pair, and starts a
+	 * daemon reader thread that processes incoming data.</p>
+	 *
+	 * @param s  The connected {@link Socket} to the remote server.
+	 * @throws IOException                        If an I/O error occurs while wrapping the socket streams.
+	 * @throws NoSuchAlgorithmException           Not thrown by this overload (no cipher initialised).
+	 * @throws InvalidAlgorithmParameterException Not thrown by this overload.
+	 * @throws NoSuchPaddingException             Not thrown by this overload.
+	 * @throws InvalidKeySpecException            Not thrown by this overload.
+	 * @throws InvalidKeyException                Not thrown by this overload.
 	 */
 	public NodeProxy(Socket s) throws IOException,
 									NoSuchAlgorithmException,
@@ -214,7 +581,32 @@ public class NodeProxy implements Proxy, Runnable {
 									InvalidAlgorithmParameterException {
 		this(s, null, null, false);
 	}
-	
+
+	/**
+	 * Constructs a new {@code NodeProxy} for the given socket, optionally
+	 * enabling PBE encryption.
+	 *
+	 * <p>When {@code passwd} is non-null, both an encrypt and a decrypt
+	 * {@link Cipher} are initialised using {@code PBEWithMD5AndDES} (or the
+	 * algorithm specified by {@code cipher}). All subsequent writes are encrypted
+	 * by {@link ByteWrapper} and all reads are decrypted before dispatch.</p>
+	 *
+	 * <p>After stream setup a daemon reader thread is started under the current
+	 * {@link io.flowtree.node.Client}'s {@link Server#getThreadGroup() ThreadGroup},
+	 * if one is available.</p>
+	 *
+	 * @param s       The connected {@link Socket} to the remote server.
+	 * @param passwd  Password for PBE encryption, or {@code null} for plaintext.
+	 * @param cipher  PBE cipher algorithm name (e.g. {@code "PBEWithMD5AndDES"}),
+	 *                or {@code null} to use the default.
+	 * @param server  Reserved for future server-side initialisation; currently unused.
+	 * @throws IOException                        If an I/O error occurs while wrapping the socket streams.
+	 * @throws NoSuchAlgorithmException           If the requested cipher algorithm is not available.
+	 * @throws InvalidKeySpecException            If the password-based key specification is invalid.
+	 * @throws NoSuchPaddingException             If the requested padding scheme is not available.
+	 * @throws InvalidKeyException                If the secret key is inappropriate for the cipher.
+	 * @throws InvalidAlgorithmParameterException If the PBE parameter spec is invalid.
+	 */
 	public NodeProxy(Socket s, char[] passwd, String cipher, boolean server) throws IOException,
 									NoSuchAlgorithmException,
 									InvalidKeySpecException,
@@ -291,6 +683,15 @@ public class NodeProxy implements Proxy, Runnable {
 		t.start();
 	}
 
+	/**
+	 * Sends an object to the node with the given ID, honouring the current queue
+	 * state. Equivalent to {@code writeObject(o, id, this.useQueue)}.
+	 *
+	 * @param o   The {@link Message} or {@link io.almostrealism.db.Query} to send.
+	 * @param id  The receiver node ID to embed in the message header.
+	 * @throws IOException  If a socket error occurs and the queue is not active.
+	 * @see Proxy#writeObject(Object, int)
+	 */
 	@Override
 	public void writeObject(Object o, int id) throws IOException {
 		this.writeObject(o, id, this.useQueue);
@@ -462,6 +863,14 @@ public class NodeProxy implements Proxy, Runnable {
 		return new double[] {min, max, avg, div, error};
 	}
 	
+	/**
+	 * Encrypts the given byte array and writes it to the output stream as a
+	 * {@link ByteWrapper}. If a file-dump stream ({@link #fout}) is open, the
+	 * same encrypted wrapper is also mirrored there.
+	 *
+	 * @param b  The plaintext byte array to encrypt and send.
+	 * @throws IOException  If an I/O error occurs while writing to the stream.
+	 */
 	protected void writeSecure(byte[] b) throws IOException {
 		ByteWrapper bw = new ByteWrapper(this.outc, b);
 		bw.writeExternal(this.out);
@@ -610,6 +1019,17 @@ public class NodeProxy implements Proxy, Runnable {
 		return null;
 	}
 	
+	/**
+	 * Stores an unhandled message in the inbox list so that it can be retrieved
+	 * later by a caller waiting in {@link #waitFor} or {@link #waitForMessage}.
+	 *
+	 * <p>Messages are inserted at position 0 (most recent first) so that
+	 * {@link #nextObject} and {@link #nextMessage}, which scan from the tail,
+	 * find the oldest matching entry. If the inbox exceeds {@link #maxStore}
+	 * entries, the oldest entry at the end of the list is evicted.</p>
+	 *
+	 * @param m  The message to store in the inbox.
+	 */
 	protected void storeMessage(Message m) {
 		this.println("Storing message -- " + m, this.mwait > 0);
 		
@@ -619,6 +1039,14 @@ public class NodeProxy implements Proxy, Runnable {
 		}
 	}
 	
+	/**
+	 * Closes the input stream, output stream, and underlying socket, then marks
+	 * this proxy as disconnected. After this call {@link #isConnected()} returns
+	 * {@code false} and no further reads or writes are possible.
+	 *
+	 * <p>Any {@link IOException} thrown during stream or socket closure is caught
+	 * and logged; the disconnect state is always set regardless of errors.</p>
+	 */
 	public void close() {
 		try {
 			this.in.close();
@@ -635,6 +1063,13 @@ public class NodeProxy implements Proxy, Runnable {
 		this.connected = false;
 	}
 	
+	/**
+	 * Returns whether this proxy currently has an open socket connection to the
+	 * remote peer.
+	 *
+	 * @return  {@code true} if the socket is open and the reader thread is running;
+	 *          {@code false} after {@link #close()} or a disconnect event.
+	 */
 	public boolean isConnected() { return this.connected; }
 	
 	/**
@@ -657,13 +1092,25 @@ public class NodeProxy implements Proxy, Runnable {
 				(this.listeners.size() - 1) + " -- " + listener);
 	}
 	
+	/**
+	 * Returns the {@link InetAddress} of the remote host to which this proxy's
+	 * socket is connected.
+	 *
+	 * @return  The remote {@link InetAddress}, or {@code null} if the socket has
+	 *          been closed.
+	 */
 	public InetAddress getInetAddress() {
 		if (this.soc == null)
 			return null;
 		else
 			return this.soc.getInetAddress();
 	}
-	
+
+	/**
+	 * Returns the remote port number of this proxy's socket connection.
+	 *
+	 * @return  The remote port, or {@code -1} if the socket has been closed.
+	 */
 	public int getRemotePort() {
 		if (this.soc == null)
 			return -1;
@@ -686,16 +1133,56 @@ public class NodeProxy implements Proxy, Runnable {
 		return t;
 	}
 	
+	/**
+	 * Records the job execution time reported by the remote peer's last status
+	 * message. Used by higher-level load balancers to estimate the peer's capacity.
+	 *
+	 * @param t  Average job time in seconds as last reported by the remote peer.
+	 */
 	public void setJobTime(double t) { this.jobtime = t; }
+
+	/**
+	 * Returns the job execution time most recently reported by the remote peer.
+	 *
+	 * @return  Average job time in seconds, or {@code 0.0} if not yet reported.
+	 */
 	public double getJobTime() { return this.jobtime; }
-	
+
+	/**
+	 * Records the activity rating of the remote peer's node group, as reported
+	 * in the peer's last server-status message.
+	 *
+	 * @param a  Activity rating; higher values indicate heavier load.
+	 */
 	public void setActivityRating(double a) { this.activity = a; }
+
+	/**
+	 * Returns the activity rating of the remote peer's node group.
+	 *
+	 * @return  Activity rating as last reported, or {@code 0.0} if not yet set.
+	 * @see Connection#getActivityRating()
+	 */
 	public double getActivityRating() { return this.activity; }
-	
+
+	/**
+	 * Enables the outbound queue so that subsequent {@link #writeObject} calls
+	 * buffer their objects instead of writing directly to the socket. This is
+	 * called automatically at the start of disconnect and reconnect sequences
+	 * to prevent writes from racing with stream teardown.
+	 */
 	protected void activateQueue() {
 		this.useQueue = true;
 	}
-	
+
+	/**
+	 * Disables the outbound queue and flushes all buffered objects to the socket
+	 * in the order they were enqueued.
+	 *
+	 * <p>This method is called after a successful reconnection to deliver any
+	 * messages that were buffered during the disconnect window. If a write fails
+	 * during the flush, the error is logged and the remaining objects are still
+	 * attempted.</p>
+	 */
 	public void flushQueue() {
 		this.useQueue = false;
 		
@@ -716,6 +1203,14 @@ public class NodeProxy implements Proxy, Runnable {
 		}
 	}
 	
+	/**
+	 * Marks this proxy as connected, notifies all registered {@link EventListener}s
+	 * of the connection event, and then flushes the outbound queue.
+	 *
+	 * <p>Listeners are called on the thread that invokes this method. A snapshot
+	 * of the listener list is taken before iteration so that listeners which remove
+	 * themselves during the callback do not cause {@link java.util.ConcurrentModificationException}.</p>
+	 */
 	public void fireConnect() {
 		this.activateQueue();
 		this.connected = true;
@@ -729,6 +1224,15 @@ public class NodeProxy implements Proxy, Runnable {
 		this.flushQueue();
 	}
 	
+	/**
+	 * Marks this proxy as disconnected, notifies all registered
+	 * {@link EventListener}s of the disconnection, clears the listener list,
+	 * and flushes any queued outbound messages.
+	 *
+	 * <p>A warning is logged if none of the notified listeners was an instance
+	 * of {@link io.flowtree.node.NodeGroup}, since that typically indicates the
+	 * owning node group was not properly registered.</p>
+	 */
 	protected void fireDisconnect() {
 		this.activateQueue();
 		this.connected = false;
@@ -755,6 +1259,20 @@ public class NodeProxy implements Proxy, Runnable {
 		this.flushQueue();
 	}
 	
+	/**
+	 * Dispatches a received {@link Message} to all registered {@link EventListener}s
+	 * and, if no listener claims it, stores it in the inbox for later retrieval.
+	 *
+	 * <p>Ping messages ({@link Message#Ping}) whose sender is {@code -1} are
+	 * treated as incoming probes: instead of storing them, an echo reply is sent
+	 * back immediately with sender ID {@code -2}.</p>
+	 *
+	 * <p>Every {@link #pingFreq} messages a background thread is launched to perform
+	 * a multi-ping sequence and send the local server's status to the peer.</p>
+	 *
+	 * @param m         The received message to dispatch.
+	 * @param reciever  The receiver node ID encoded in the message header.
+	 */
 	protected void fireReceivedMessage(Message m, int reciever) {
 		this.activateQueue();
 		boolean store = true;
@@ -849,6 +1367,18 @@ public class NodeProxy implements Proxy, Runnable {
 		}
 	}
 	
+	/**
+	 * Attempts to re-establish the socket connection to the remote host after a
+	 * stream error. On the first call ({@code resets == 0}) a disconnect event is
+	 * fired; subsequent calls increment the reset counter. After a successful
+	 * reconnect, {@link #fireConnect()} is called to notify listeners and flush
+	 * the queue.
+	 *
+	 * <p>If reconnection fails (e.g. the remote host is unreachable) the caller's
+	 * reset loop will retry up to three times before giving up.</p>
+	 *
+	 * @throws IOException  If the new socket or its streams cannot be opened.
+	 */
 	protected void reset() throws IOException {
 		if (resets == 0) this.fireDisconnect();
 		
@@ -893,6 +1423,12 @@ public class NodeProxy implements Proxy, Runnable {
 		}
 	}
 
+	/**
+	 * Returns a hash code consistent with {@link #equals}: two proxies connected
+	 * to the same host and port will produce the same hash.
+	 *
+	 * @return  The sum of the remote {@link InetAddress} hash and the remote port number.
+	 */
 	@Override
 	public int hashCode() { return this.getInetAddress().hashCode() + this.getRemotePort(); }
 	
@@ -1024,24 +1560,64 @@ public class NodeProxy implements Proxy, Runnable {
 		System.out.println("NodeProxy: Thread ended");
 	}
 
+	/**
+	 * Prints a diagnostic message to standard output, prefixed with this proxy's
+	 * identity, without a trailing newline.
+	 *
+	 * @param msg  The message to print.
+	 */
 	public void print(String msg) {
 		System.out.print("NodeProxy (" + this + "): " + msg);
 	}
-	
+
+	/**
+	 * Conditionally prints a diagnostic message without a trailing newline.
+	 * The message is suppressed when {@code verbose} is {@code true} and
+	 * {@link Message#verbose} is {@code false}.
+	 *
+	 * @param msg      The message to print.
+	 * @param verbose  When {@code true}, only print if global verbose logging is enabled.
+	 */
 	public void print(String msg, boolean verbose) {
 		if (!verbose || Message.verbose)
 			System.out.print("NodeProxy (" + this + "): " + msg);
 	}
-	
+
+	/**
+	 * Prints a diagnostic message to standard output, prefixed with this proxy's
+	 * identity, with a trailing newline.
+	 *
+	 * @param msg  The message to print.
+	 */
 	public void println(String msg) {
 		System.out.println("NodeProxy (" + this + "): " + msg);
 	}
-	
+
+	/**
+	 * Conditionally prints a diagnostic message with a trailing newline.
+	 * The message is suppressed when {@code verbose} is {@code true} and
+	 * {@link Message#verbose} is {@code false}.
+	 *
+	 * @param msg      The message to print.
+	 * @param verbose  When {@code true}, only print if global verbose logging is enabled.
+	 */
 	public void println(String msg, boolean verbose) {
 		if (!verbose || Message.verbose)
 			System.out.println("NodeProxy (" + this + "): " + msg);
 	}
-	
+
+	/**
+	 * Conditionally prints a message with a trailing newline, with optional proxy
+	 * identity prefix.
+	 *
+	 * <p>When {@code ident} is {@code true}, delegates to {@link #println(String, boolean)}
+	 * so the proxy identity prefix is included. When {@code ident} is {@code false},
+	 * prints the raw message without prefix if {@code verbose} is satisfied.</p>
+	 *
+	 * @param msg      The message to print.
+	 * @param verbose  When {@code true}, only print if global verbose logging is enabled.
+	 * @param ident    When {@code true}, prepend the proxy identity prefix.
+	 */
 	public void println(String msg, boolean verbose, boolean ident) {
 		if (ident) {
 			this.println(msg, verbose);
@@ -1056,6 +1632,15 @@ public class NodeProxy implements Proxy, Runnable {
 	@Override
 	public String toString() { return this.toString(false); }
 	
+	/**
+	 * Returns a human-readable description of this proxy, optionally appending
+	 * the most recent ping statistics.
+	 *
+	 * @param showStat  When {@code true} and ping statistics are available,
+	 *                  appends {@code [min/max/avg]} latency data; appends
+	 *                  {@code [ERROR]} if the last ping sequence reported an error.
+	 * @return  A string identifying the remote host, with optional statistics.
+	 */
 	public String toString(boolean showStat) {
 		String s = this.label;
 		

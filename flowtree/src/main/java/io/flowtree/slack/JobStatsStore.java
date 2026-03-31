@@ -48,6 +48,7 @@ import java.util.Map;
  */
 public class JobStatsStore implements ConsoleFeatures {
 
+    /** DDL statement that creates the {@code job_timing} table if it does not yet exist. */
     private static final String CREATE_TABLE = ""
         + "CREATE TABLE IF NOT EXISTS job_timing ("
         + "    job_id         VARCHAR(255) PRIMARY KEY,"
@@ -72,6 +73,7 @@ public class JobStatsStore implements ConsoleFeatures {
         + "    error_message  VARCHAR(2000)"
         + ")";
 
+    /** DDL statement that creates an index on {@code (workstream_id, started_at)} for efficient queries. */
     private static final String CREATE_INDEX =
         "CREATE INDEX IF NOT EXISTS idx_timing_ws_started ON job_timing (workstream_id, started_at)";
 
@@ -91,10 +93,13 @@ public class JobStatsStore implements ConsoleFeatures {
         "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)"
     };
 
+    /** DML statement that removes stale {@code STARTED} rows older than a given cutoff timestamp. */
     private static final String CLEAN_ORPHANS =
         "DELETE FROM job_timing WHERE status = 'STARTED' AND started_at < ?";
 
+    /** Filesystem path to the HSQLDB database file (without extension). */
     private final String dbPath;
+    /** Active JDBC connection to the backing HSQLDB database. */
     private Connection connection;
 
     /**
@@ -545,6 +550,15 @@ public class JobStatsStore implements ConsoleFeatures {
         return result;
     }
 
+    /**
+     * Truncates a string to at most {@code maxLength} characters.
+     *
+     * @param s         the string to truncate, or {@code null}
+     * @param maxLength maximum number of characters to retain
+     * @return the original string if it is shorter than {@code maxLength},
+     *         its first {@code maxLength} characters otherwise, or
+     *         {@code null} if {@code s} is {@code null}
+     */
     private static String truncate(String s, int maxLength) {
         if (s == null) return null;
         return s.length() <= maxLength ? s : s.substring(0, maxLength);

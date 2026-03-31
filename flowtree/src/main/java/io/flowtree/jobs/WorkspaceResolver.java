@@ -39,6 +39,9 @@ public class WorkspaceResolver {
     /** Default fallback directory for workspace checkouts. */
     public static final String FALLBACK_WORKSPACE_DIR = "/tmp/flowtree-workspaces";
 
+    /**
+     * Private constructor — this is a utility class and cannot be instantiated.
+     */
     private WorkspaceResolver() {
         // Utility class -- not instantiable
     }

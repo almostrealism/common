@@ -37,6 +37,7 @@ import java.util.Map;
  */
 public final class JsonFieldExtractor {
 
+	/** Private constructor — all methods are static; this class is not instantiated. */
 	private JsonFieldExtractor() { }
 
 	/**

@@ -88,30 +88,47 @@ import java.util.function.BiConsumer;
  */
 public class FlowTreeController implements ConsoleFeatures {
 
+    /** Slack Bot User OAuth Token (xoxb-...) used for posting messages. */
     private final String botToken;
+    /** Slack App-level token (xapp-...) used for Socket Mode event delivery. */
     private final String appToken;
+    /** Posts job status updates and completion notifications to Slack channels. */
     private final SlackNotifier notifier;
+    /** Parses incoming Slack messages and slash commands into agent jobs. */
     private final SlackListener listener;
 
+    /** Guards against double-start; set to {@code true} on the first {@link #start()} call. */
     private final AtomicBoolean running;
+    /** The Bolt Slack application that registers event handlers. */
     private App app;
+    /** Maintains the persistent Socket Mode WebSocket connection to Slack. */
     private SocketModeApp socketModeApp;
+    /** Bot's own Slack user ID; used to suppress echoed messages from the bot itself. */
     private String botUserId;
 
+    /** The FlowTree server that accepts inbound agent connections and relays jobs. */
     private Server flowtreeServer;
+    /** Port the FlowTree server listens on for agent connections. */
     private int flowtreePort = Server.defaultPort;
 
+    /** The YAML config file currently loaded; used for hot-reload and persistence. */
     private File configFile;
+    /** The in-memory representation of the loaded YAML configuration. */
     private WorkstreamConfig loadedConfig;
 
+    /** HTTP API endpoint for programmatic job submission and agent communication. */
     private FlowTreeApiEndpoint apiEndpoint;
+    /** Desired port for the HTTP API endpoint; 0 for ephemeral assignment. */
     private int apiPort = FlowTreeApiEndpoint.DEFAULT_PORT;
+    /** Persistent store for per-workstream job statistics. */
     private JobStatsStore statsStore;
 
+    /** Managed MCP server subprocesses started by the controller (legacy, currently unused). */
     private List<Process> mcpProcesses = new ArrayList<>();
 
-    // For testing/simulation
+    /** Optional simulator callback used by tests to capture outgoing Slack messages. */
     private BiConsumer<String, String> eventSimulator;
+    /** True when tokens are absent and the controller runs without a live Slack connection. */
     private boolean simulationMode = false;
 
     /**
@@ -444,8 +461,20 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Registers Slack event handlers with the Bolt app, including
-     * the {@code /flowtree} slash command.
+     * Registers all Slack event handlers with the Bolt {@link App}.
+     *
+     * <p>Handlers registered here:</p>
+     * <ul>
+     *   <li>{@code /flowtree} slash command — dispatched to
+     *       {@link SlackListener#handleSlashCommand}</li>
+     *   <li>{@code app_mention} events — direct job submission via
+     *       {@link SlackListener#handleMessage}</li>
+     *   <li>{@code message} events in DM channels ({@code im} channel type) —
+     *       also dispatched to {@link SlackListener#handleMessage}</li>
+     * </ul>
+     *
+     * <p>The bot suppresses its own messages by comparing the event user ID to
+     * {@link #botUserId}.</p>
      */
     private void registerEventHandlers() {
         // Handle /flowtree slash command
@@ -512,15 +541,16 @@ public class FlowTreeController implements ConsoleFeatures {
      * port. The source file paths are resolved relative to the config file's
      * parent directory.</p>
      *
+     * <p><b>Deprecated:</b> Centralized MCP servers are no longer managed by the controller.
+     * ar-manager is the single centralized tool, running as a separate Docker service.
+     * This method is retained for reference but is not called during normal startup.</p>
+     *
      * @param config    the parsed workstream configuration
      * @param configDir the directory containing the YAML config file, used to
      *                  resolve relative source paths (may be null)
+     * @deprecated ar-manager replaces all centralized MCP servers
      */
-    /**
-     * @deprecated Centralized MCP servers are no longer managed by the controller.
-     *             ar-manager is the single centralized tool, running as a
-     *             separate Docker service.
-     */
+    @Deprecated
     private void startCentralizedMcpServers(WorkstreamConfig config, File configDir) {
         // No-op: ar-manager replaces all centralized MCP servers.
         // Agents access ar-manager over HTTP with HMAC temp tokens.
@@ -605,24 +635,6 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Registers pushed MCP tool files with the API endpoint and builds
-     * the pushed tools config JSON for passing to agents.
-     *
-     * <p>Each tool in the YAML {@code pushedTools} section is registered
-     * with the API endpoint for serving via {@code GET /api/tools/{name}}.
-     * Tool names are discovered from the Python source files so they can
-     * be included in the agent's allowed tools list.</p>
-     *
-     * <p>Must be called after {@link #startApiEndpoint()} since it requires
-     * the API endpoint reference and listening port.</p>
-     */
-    /**
-     * Resolves a tool source path, trying the config directory first,
-     * then falling back to the application directory. This supports
-     * container deployments where {@code /config} is a volume mount
-     * that hides files bundled into the image at {@code /app}.
-     */
-    /**
      * Loads the ar-manager shared secret from a file or environment variable.
      *
      * <p>Checks {@code AR_MANAGER_SHARED_SECRET_FILE} first (path to a file
@@ -647,6 +659,20 @@ public class FlowTreeController implements ConsoleFeatures {
         return System.getenv("AR_MANAGER_SHARED_SECRET");
     }
 
+    /**
+     * Resolves a tool source path, trying the config directory first then
+     * falling back to the application directory.
+     *
+     * <p>This supports container deployments where {@code /config} is a
+     * volume mount that hides files bundled into the image at {@code /app}.
+     * The fallback application directory is controlled by the
+     * {@code FLOWTREE_APP_DIR} environment variable (default {@code /app}).</p>
+     *
+     * @param source    the relative source path from the YAML configuration
+     * @param configDir the directory containing the loaded YAML config file,
+     *                  or {@code null} if no file was loaded
+     * @return the resolved {@link Path}; may not exist if neither location found
+     */
     private static Path resolveToolSource(String source, File configDir) {
         if (configDir != null) {
             Path configRelative = configDir.toPath().resolve(source);
@@ -670,6 +696,20 @@ public class FlowTreeController implements ConsoleFeatures {
         return Path.of(source);
     }
 
+    /**
+     * Registers pushed MCP tool files with the API endpoint and builds
+     * the pushed-tools configuration JSON for passing to agents.
+     *
+     * <p>Each tool in the YAML {@code pushedTools} section is registered
+     * with the API endpoint for serving via {@code GET /api/tools/{name}}.
+     * Tool names are discovered from the Python source files so they can
+     * be included in the per-job allowed-tools list. The resulting JSON
+     * is logged but is no longer actively used since ar-manager replaced
+     * pushed tools as the standard MCP integration.</p>
+     *
+     * <p>Must be called after {@link #startApiEndpoint()} since it requires
+     * the API endpoint reference and its resolved listening port.</p>
+     */
     private void registerPushedTools() {
         if (loadedConfig == null || apiEndpoint == null) return;
 
@@ -807,6 +847,11 @@ public class FlowTreeController implements ConsoleFeatures {
         }
     }
 
+    /**
+     * Logs a startup summary showing the FlowTree server port, HTTP API port,
+     * connected agent count, and per-workstream channel/branch information.
+     * Called after all services have been started successfully.
+     */
     private void printStartupSummary() {
         log("===========================================");
         if (flowtreeServer != null) {
@@ -909,7 +954,16 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Simple JSON field extraction (for basic parsing).
+     * Extracts the string value of a named field from a minimal JSON document.
+     *
+     * <p>This is a lightweight alternative to full JSON parsing used only
+     * to pull channel and text fields out of notification payloads in the
+     * test simulator callback. It does not handle escaped characters,
+     * nested objects, or arrays.</p>
+     *
+     * @param json  the JSON string to search
+     * @param field the field name to look up
+     * @return the string value, or {@code null} if the field is absent
      */
     private static String extractJsonField(String json, String field) {
         if (json == null) return null;
@@ -1045,6 +1099,13 @@ public class FlowTreeController implements ConsoleFeatures {
         Thread.currentThread().join();
     }
 
+    /**
+     * Prints CLI usage information to standard output and returns.
+     *
+     * <p>Called when {@code --help} or {@code -h} is passed on the command line,
+     * or when no workstream configuration is found. Lists all supported flags,
+     * environment variables, token resolution order, and example invocations.</p>
+     */
     private static void printUsage() {
         System.out.println("Usage: FlowTreeController [options]");
         System.out.println();

@@ -58,15 +58,20 @@ import java.util.Set;
  */
 public class GitHubTokenValidator implements ConsoleFeatures {
 
+	/** Base URL for all GitHub API calls. */
 	private static final String GITHUB_API = "https://api.github.com";
+	/** Shared Jackson mapper for parsing GitHub API JSON responses. */
 	private static final ObjectMapper mapper = new ObjectMapper();
 
 	/**
 	 * Represents the result of validating a single token.
 	 */
 	public static class TokenValidationResult {
+		/** Human-readable label identifying the token (e.g., "org:my-org"). */
 		private final String label;
+		/** Whether the token passed all validation checks. */
 		private final boolean valid;
+		/** Error messages describing each check that failed; empty when valid. */
 		private final List<String> errors;
 
 		/**
@@ -370,9 +375,17 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	 * Simple holder for a GitHub API response.
 	 */
 	static class GitHubResponse {
+		/** HTTP status code returned by the GitHub API. */
 		final int status;
+		/** Response body as a UTF-8 string; may be an error body for 4xx/5xx responses. */
 		final String body;
 
+		/**
+		 * Creates a new response holder.
+		 *
+		 * @param status the HTTP status code
+		 * @param body   the response body (UTF-8)
+		 */
 		GitHubResponse(int status, String body) {
 			this.status = status;
 			this.body = body;
@@ -380,12 +393,20 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	}
 
 	/**
-	 * Groups a label and set of repos for a single token.
+	 * Groups a display label with the set of "owner/repo" strings
+	 * that a single GitHub token must be able to access.
 	 */
 	private static class TokenContext {
+		/** Display label used in log messages and validation results. */
 		final String label;
+		/** Set of "owner/repo" strings the token must access, in insertion order. */
 		final Set<String> repos = new LinkedHashSet<>();
 
+		/**
+		 * Creates a context for the given display label.
+		 *
+		 * @param label the human-readable label for this token context
+		 */
 		TokenContext(String label) {
 			this.label = label;
 		}

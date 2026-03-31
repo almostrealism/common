@@ -57,16 +57,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     /** Maximum number of completed jobs to retain per workstream. */
     private static final int MAX_JOB_HISTORY = 100;
 
+    /** Slack Bot User OAuth Token (xoxb-...) used to authenticate API calls. */
     private final String botToken;
+    /** Slack SDK methods client used to post messages and update threads. */
     private final MethodsClient client;
+    /** Registry of configured workstreams, keyed by workstream ID. */
     private final Map<String, SlackWorkstream> workstreams;
+    /** Maps job ID to the Slack thread timestamp of its notification thread. */
     private final Map<String, String> jobThreadTs;
+    /** Stores the last {@link #MAX_JOB_HISTORY} completion events per workstream, keyed by workstream ID then job ID. */
     private final Map<String, Map<String, JobCompletionEvent>> jobHistory;
+    /** Flat index of all known {@link JobCompletionEvent} objects keyed by job ID. */
     private final Map<String, JobCompletionEvent> jobById;
+    /** Records the most recent job start time (epoch ms) for each workstream, used for rate-limiting. */
     private final Map<String, Long> lastJobStartTime;
+    /** Optional callback invoked with each Slack message text before it is sent. */
     private Consumer<String> messageCallback;
+    /** Persistent store for per-job timing and throughput statistics. */
     private JobStatsStore statsStore;
+    /** Slack user ID of the channel owner, used to filter direct messages. */
     private String channelOwnerUserId;
+    /** Default Slack channel ID used when no workstream-specific channel is configured. */
     private String defaultChannelId;
 
     /**
@@ -748,6 +759,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         Console.root().alert(new Alert(Alert.Severity.INFO, sb.toString()));
     }
 
+    /**
+     * Formats the Slack message text sent when a job is first submitted to the
+     * queue, including description, target branch, and job ID.
+     *
+     * @param event       the submission event
+     * @param workstream  the workstream the job belongs to
+     * @return            formatted Slack message string
+     */
     private String formatSubmittedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
         StringBuilder sb = new StringBuilder();
         sb.append(":outbox_tray: *Job submitted:* ");
@@ -765,6 +784,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         return sb.toString();
     }
 
+    /**
+     * Formats the Slack message text sent when a job transitions from queued to
+     * actively running.
+     *
+     * @param event       the started event
+     * @param workstream  the workstream the job belongs to
+     * @return            formatted Slack message string
+     */
     private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
         StringBuilder sb = new StringBuilder();
         sb.append(":arrows_counterclockwise: *Starting work:* ");
@@ -924,6 +951,13 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         return hours + "h " + remainingMinutes + "m";
     }
 
+    /**
+     * Escapes a string for safe inclusion in a JSON string literal, replacing
+     * backslash, double-quote, and common whitespace control characters.
+     *
+     * @param s  the string to escape, or {@code null}
+     * @return   the escaped string, or an empty string if {@code s} is {@code null}
+     */
     private static String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
@@ -933,6 +967,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 .replace("\t", "\\t");
     }
 
+    /**
+     * Truncates a string to at most {@code maxLength} characters. Returns an
+     * empty string rather than {@code null} when the input is {@code null}.
+     *
+     * @param s          the string to truncate
+     * @param maxLength  maximum number of characters to retain
+     * @return           the (possibly truncated) string, never {@code null}
+     */
     private static String truncate(String s, int maxLength) {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;

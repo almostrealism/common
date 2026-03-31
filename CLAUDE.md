@@ -97,6 +97,18 @@ Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. 
 
 Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
 
+## Rule 4: CONFIRM UNDERSTANDING BEFORE WRITING CODE
+
+After consulting and recalling, **restate the intended change in one sentence and wait for the user to confirm** before writing any code. This is not optional for behavioral changes to existing systems.
+
+The confirmation must describe *what* changes and *why* — not implementation details. Example:
+
+> "So the fix is: relay Node's `addJob` forwards to parent when `role:relay` is set, so jobs received from the network bypass the relay queue and go directly to the NodeGroup for routing."
+
+**Do not skip this step because the task seems obvious.** The most damaging failures happen on tasks that seem obvious. If the user says "yes" or "correct," write the code. If they correct you, you've saved multiple failed attempts.
+
+**Do not reason about downstream consequences the user did not raise.** If the user describes a specific behavioral change, implement exactly that. Concerns about loops, edge cases, or second-order effects are for the user to raise — not for you to preemptively solve by diverging from what was asked.
+
 ---
 
 # CODE RULES

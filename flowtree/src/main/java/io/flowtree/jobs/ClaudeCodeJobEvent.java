@@ -31,21 +31,29 @@ import java.util.List;
  */
 public class ClaudeCodeJobEvent extends JobCompletionEvent {
 
-    // Claude Code specific
+    /** The prompt that was submitted to Claude Code for this job. */
     private String prompt;
+    /** The session identifier assigned by Claude Code for this execution. */
     private String sessionId;
+    /** The process exit code returned by the Claude Code process. */
     private int exitCode;
 
-    // Timing information from Claude Code output
+    /** Total wall-clock duration of the Claude Code session in milliseconds. */
     private long durationMs;
+    /** Time spent in API calls during the Claude Code session, in milliseconds. */
     private long durationApiMs;
+    /** Total cost of the Claude Code session in US dollars. */
     private double costUsd;
+    /** Number of agentic turns taken during the Claude Code session. */
     private int numTurns;
 
-    // Session details from Claude Code output
+    /** Session subtype / stop reason reported by Claude Code (e.g. "success", "error_max_turns"). */
     private String subtype;
+    /** Whether Claude Code flagged the session as an error. */
     private boolean sessionIsError;
+    /** Number of tool-use permission denials recorded during the session. */
     private int permissionDenials;
+    /** Names of the tools that were denied during the session. */
     private List<String> deniedToolNames;
 
     /**
