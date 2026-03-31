@@ -66,6 +66,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private final Map<String, SlackWorkstream> workstreams;
     private final Map<String, String> jobThreadTs;
     private final Map<String, Map<String, JobCompletionEvent>> jobHistory;
+    private final Map<String, JobCompletionEvent> jobById;
     private final Map<String, Long> lastJobStartTime;
     private Consumer<String> messageCallback;
     private JobStatsStore statsStore;
@@ -82,6 +83,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         this.workstreams = new HashMap<>();
         this.jobThreadTs = new HashMap<>();
         this.jobHistory = new HashMap<>();
+        this.jobById = new ConcurrentHashMap<>();
         this.lastJobStartTime = new ConcurrentHashMap<>();
 
         if (botToken != null && !botToken.isEmpty()) {
@@ -252,6 +254,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     public void setStatsStore(JobStatsStore store) {
         this.statsStore = store;
+        if (store != null) {
+            loadJobHistoryFromStore(store);
+        }
+    }
+
+    /**
+     * Pre-populates the in-memory job caches from the persistent store so that
+     * recent jobs survive a controller restart.  Loads up to
+     * {@link #MAX_JOB_HISTORY} jobs per registered workstream.
+     */
+    private void loadJobHistoryFromStore(JobStatsStore store) {
+        for (String wsId : workstreams.keySet()) {
+            List<JobCompletionEvent> recent = store.getRecentJobs(wsId, MAX_JOB_HISTORY);
+            // getRecentJobs returns newest-first; put oldest-first into the LRU map
+            for (int i = recent.size() - 1; i >= 0; i--) {
+                JobCompletionEvent e = recent.get(i);
+                trackJob(wsId, e);
+            }
+        }
+        log("Loaded job history from persistent store for "
+                + workstreams.size() + " workstream(s)");
     }
 
     /**
@@ -434,13 +457,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         trackJob(workstreamId, event);
 
         if (statsStore != null) {
-            statsStore.recordJobCompleted(event.getJobId(),
-                workstreamId, event.getStatus().name(), event.getTimestamp(),
-                event.getDurationMs(), event.getDurationApiMs(),
-                event.getCostUsd(), event.getNumTurns(),
-                event.getSessionId(), event.getExitCode(),
-                event.getSubtype(), event.isSessionError(),
-                event.getPermissionDenials());
+            statsStore.recordJobCompleted(workstreamId, event);
         }
 
         String message = formatCompletedMessage(event, workstream);
@@ -643,6 +660,46 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 }
             });
         jobs.put(event.getJobId(), event);
+        jobById.put(event.getJobId(), event);
+    }
+
+    /**
+     * Returns a specific job event by its job ID, across all workstreams.
+     * Checks the persistent store first (when available), then falls back
+     * to the in-memory cache.
+     *
+     * @param jobId the job identifier
+     * @return the most recent event for that job, or null if not found
+     */
+    public JobCompletionEvent getJob(String jobId) {
+        if (jobId == null) return null;
+        if (statsStore != null) {
+            JobCompletionEvent persisted = statsStore.getJob(jobId);
+            if (persisted != null) return persisted;
+        }
+        return jobById.get(jobId);
+    }
+
+    /**
+     * Returns recent jobs for a workstream from the persistent store (newest first),
+     * falling back to the in-memory cache when the store is unavailable.
+     *
+     * @param workstreamId the workstream identifier
+     * @param limit        maximum number of jobs to return
+     * @return list of events, newest first
+     */
+    public List<JobCompletionEvent> getRecentJobs(String workstreamId, int limit) {
+        if (statsStore != null) {
+            return statsStore.getRecentJobs(workstreamId, limit);
+        }
+        // In-memory fallback: history is oldest-first; return newest-first slice
+        Map<String, JobCompletionEvent> history = jobHistory.get(workstreamId);
+        if (history == null) return Collections.emptyList();
+        List<JobCompletionEvent> all = new ArrayList<>(history.values());
+        int fromIndex = Math.max(0, all.size() - limit);
+        List<JobCompletionEvent> page = new ArrayList<>(all.subList(fromIndex, all.size()));
+        Collections.reverse(page);
+        return page;
     }
 
     /**
