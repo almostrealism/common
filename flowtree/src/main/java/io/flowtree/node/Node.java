@@ -75,12 +75,12 @@ import java.util.concurrent.ThreadFactory;
  * NodeGroup for re-routing rather than re-queuing to itself.</p>
  *
  * <h2>Relay Nodes</h2>
- * <p>A Node with the label {@code role:relay} never executes jobs.
- * The worker thread is not started on relay Nodes (the
- * {@link #addJob(Job)} method skips worker startup when
- * {@code role:relay} is set). Jobs accumulate in the queue and are
- * moved exclusively by the relay loop in the activity thread until a
- * capable peer connection becomes available.</p>
+ * <p>A Node with the label {@code role:relay} never executes jobs and never
+ * queues them locally. When {@link #addJob(Job)} is called on a relay Node,
+ * it immediately forwards the job to the parent {@link NodeGroup} for routing
+ * to a capable local worker. This prevents closed circuits where a job
+ * bounces between relay Nodes on different Servers without ever reaching an
+ * execution Node.</p>
  *
  * @author  Michael Murray
  * @see NodeGroup
@@ -897,7 +897,12 @@ public class Node implements Runnable, ThreadFactory {
 	/**
 	 * Adds the specified job to the queue stored by this node. If this node
 	 * is not currently working, this method will start the worker thread.
-	 * 
+	 *
+	 * <p>If this node has the {@code role:relay} label, the job is immediately
+	 * forwarded to the parent {@link NodeGroup} rather than queued locally.
+	 * This prevents relay Nodes from holding jobs that then get re-relayed to
+	 * peer relay Nodes on other Servers, forming a closed circuit.</p>
+	 *
 	 * @param j  Job to be added.
 	 * @return  The index in the queue of the job added.
 	 */
