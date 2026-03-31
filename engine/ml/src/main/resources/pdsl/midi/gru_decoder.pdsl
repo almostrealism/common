@@ -1,0 +1,102 @@
+// GRU Decoder computation from low-level primitives
+//
+// Defines ALL GRU computation for the Moonbeam MIDI decoder using the
+// Producer DSL. Loaded by GruDecoderPdslInferenceTest which binds
+// weights from a StateDictionary and orchestrates the 7-step decode loop.
+//
+// Architecture (per decode position):
+//   1. summary_proj: transformer hidden (hiddenSize) -> (decoderHiddenSize)
+//   2. gru_step x4 layers: autoregressively generates hidden states
+//   3. lm_head: last GRU hidden -> logits (decodeVocabSize)
+//
+// The 7-step sequential decode loop with argmax token selection and
+// embedding lookup cannot be expressed as a static computation graph
+// because each step's embedding input depends on the argmax of the
+// previous step's logits (data-dependent control flow). This loop is
+// orchestrated in GruDecoderPdslInferenceTest using the compiled Blocks
+// produced by this file.
+//
+// All neural-network math (matrix multiplies, activations, gating) lives
+// here. The test performs only data routing (range() views and concat).
+
+// ----- Summary Projection -----
+// Projects transformer hidden state to decoder hidden size.
+// Input: (hidden_size)
+// Output: (decoder_hidden_size)
+
+layer summary_proj(w: weight, b: weight) {
+    dense(w, b)
+}
+
+// ----- LM Head -----
+// Projects GRU hidden state to decode vocabulary logits.
+// Input: (decoder_hidden_size)
+// Output: (decode_vocab_size)
+
+layer lm_head(w: weight, b: weight) {
+    dense(w, b)
+}
+
+// ----- FC Out (optional intermediate projection) -----
+// Some model checkpoints include an intermediate projection after GRU.
+// Input: (decoder_hidden_size)
+// Output: (decoder_hidden_size)
+
+layer fc_out(w: weight, b: weight) {
+    dense(w, b)
+}
+
+// ----- GRU Gates -----
+// The four sub-computations of one GRU step.
+// All gates operate on a CONCATENATED input vector.
+// See gru_block.pdsl for detailed comments on the GRU equations.
+
+// r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)
+// Input: [x(input_size) | h(hidden_size)]
+// Output: r of shape (hidden_size)
+
+layer gru_r_gate(w_ir: weight, b_ir: weight, w_hr: weight, b_hr: weight,
+                 input_size: int, hidden_size: int) {
+    add_blocks(
+        { slice(0, input_size); dense(w_ir, b_ir) },
+        { slice(input_size, hidden_size); dense(w_hr, b_hr) }
+    )
+    sigmoid()
+}
+
+// z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)
+// Input: [x(input_size) | h(hidden_size)]
+// Output: z of shape (hidden_size)
+
+layer gru_z_gate(w_iz: weight, b_iz: weight, w_hz: weight, b_hz: weight,
+                 input_size: int, hidden_size: int) {
+    add_blocks(
+        { slice(0, input_size); dense(w_iz, b_iz) },
+        { slice(input_size, hidden_size); dense(w_hz, b_hz) }
+    )
+    sigmoid()
+}
+
+// n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))
+// Input: [x(input_size) | h(hidden_size) | r(hidden_size)]
+// Output: n of shape (hidden_size)
+//
+// The r input (at offset input_size + hidden_size) gates the h projection.
+
+layer gru_n_gate(w_in: weight, b_in: weight, w_hn: weight, b_hn: weight,
+                 input_size: int, hidden_size: int) {
+    add_blocks(
+        product({ slice(input_size + hidden_size, hidden_size) },
+                { slice(input_size, hidden_size); dense(w_hn, b_hn) }),
+        { slice(0, input_size); dense(w_in, b_in) }
+    )
+    tanh_act()
+}
+
+// h' = n + z * (h - n)  (linear interpolation between n and h, gated by z)
+// Input: [n(hidden_size) | z(hidden_size) | h(hidden_size)]
+// Output: h' of shape (hidden_size)
+
+layer gru_h_new(hidden_size: int) {
+    lerp(hidden_size)
+}
