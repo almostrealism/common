@@ -398,17 +398,14 @@ public class FlowTreeController implements ConsoleFeatures {
         log("===========================================");
 
         // Start FlowTree server for inbound agent connections.
-        // The controller runs one relay Node (nodes.initial=1) with a "role:relay"
-        // label so it never matches job requirements (e.g., platform:macos).
-        // This Node serves as a warehouse: jobs sit in its queue and get
-        // picked up by connected agent Nodes for execution.
+        // The controller runs zero worker nodes so the built-in relay Node is the
+        // sole connection point. Jobs submitted to the controller queue are routed
+        // to the relay Node and forwarded to connected agent Nodes for execution.
         Properties flowtreeProps = new Properties();
         flowtreeProps.setProperty("server.port", String.valueOf(flowtreePort));
-        flowtreeProps.setProperty("nodes.initial", "1");
+        flowtreeProps.setProperty("nodes.initial", "0");
         flowtreeProps.setProperty("nodes.jobs.max", "100");
-        flowtreeProps.setProperty("nodes.mjp", "0.0");
         flowtreeProps.setProperty("group.thread.sleep", "2000");
-        flowtreeProps.setProperty("nodes.labels.role", "relay");
         flowtreeServer = new Server(flowtreeProps);
         flowtreeServer.start();
         listener.setServer(flowtreeServer);
