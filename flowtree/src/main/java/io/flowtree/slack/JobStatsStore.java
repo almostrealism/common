@@ -16,6 +16,7 @@
 
 package io.flowtree.slack;
 
+import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.sql.Connection;
@@ -28,7 +29,10 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -61,7 +65,11 @@ public class JobStatsStore implements ConsoleFeatures {
         + "    description    VARCHAR(1000),"
         + "    subtype        VARCHAR(64),"
         + "    session_error  BOOLEAN,"
-        + "    permission_denials INTEGER"
+        + "    permission_denials INTEGER,"
+        + "    target_branch  VARCHAR(255),"
+        + "    commit_hash    VARCHAR(64),"
+        + "    pull_request_url VARCHAR(1000),"
+        + "    error_message  VARCHAR(2000)"
         + ")";
 
     private static final String CREATE_INDEX =
@@ -76,7 +84,11 @@ public class JobStatsStore implements ConsoleFeatures {
     private static final String[] SCHEMA_MIGRATIONS = {
         "ALTER TABLE job_timing ADD COLUMN subtype VARCHAR(64)",
         "ALTER TABLE job_timing ADD COLUMN session_error BOOLEAN",
-        "ALTER TABLE job_timing ADD COLUMN permission_denials INTEGER"
+        "ALTER TABLE job_timing ADD COLUMN permission_denials INTEGER",
+        "ALTER TABLE job_timing ADD COLUMN target_branch VARCHAR(255)",
+        "ALTER TABLE job_timing ADD COLUMN commit_hash VARCHAR(64)",
+        "ALTER TABLE job_timing ADD COLUMN pull_request_url VARCHAR(1000)",
+        "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)"
     };
 
     private static final String CLEAN_ORPHANS =
@@ -201,6 +213,10 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param subtype           session stop reason (e.g. "success", "error_max_turns")
      * @param sessionError      whether the session ended with an error
      * @param permissionDenials number of permission denials during the session
+     * @param targetBranch      the git branch targeted by the job, or null
+     * @param commitHash        the commit hash produced by the job, or null
+     * @param pullRequestUrl    the PR URL if one was created, or null
+     * @param errorMessage      the error message if the job failed, or null
      */
     public synchronized void recordJobCompleted(String jobId, String workstreamId,
                                                  String status,
@@ -209,7 +225,9 @@ public class JobStatsStore implements ConsoleFeatures {
                                                  int numTurns, String sessionId,
                                                  int exitCode, String subtype,
                                                  boolean sessionError,
-                                                 int permissionDenials) {
+                                                 int permissionDenials,
+                                                 String targetBranch, String commitHash,
+                                                 String pullRequestUrl, String errorMessage) {
         if (connection == null) return;
 
         // Compute wall_clock_ms in Java to avoid HSQLDB DATEDIFF compatibility issues
@@ -234,7 +252,8 @@ public class JobStatsStore implements ConsoleFeatures {
             + "wall_clock_ms = ?, "
             + "duration_ms = ?, duration_api_ms = ?, cost_usd = ?, "
             + "num_turns = ?, session_id = ?, exit_code = ?, "
-            + "subtype = ?, session_error = ?, permission_denials = ? "
+            + "subtype = ?, session_error = ?, permission_denials = ?, "
+            + "target_branch = ?, commit_hash = ?, pull_request_url = ?, error_message = ? "
             + "WHERE job_id = ?";
 
         try (PreparedStatement ps = connection.prepareStatement(updateSql)) {
@@ -250,7 +269,11 @@ public class JobStatsStore implements ConsoleFeatures {
             ps.setString(10, subtype);
             ps.setBoolean(11, sessionError);
             ps.setInt(12, permissionDenials);
-            ps.setString(13, jobId);
+            ps.setString(13, targetBranch);
+            ps.setString(14, commitHash);
+            ps.setString(15, pullRequestUrl);
+            ps.setString(16, truncate(errorMessage, 2000));
+            ps.setString(17, jobId);
 
             int updated = ps.executeUpdate();
             if (updated > 0) return;
@@ -264,8 +287,9 @@ public class JobStatsStore implements ConsoleFeatures {
         String insertSql = "INSERT INTO job_timing (job_id, workstream_id, status, "
             + "started_at, completed_at, wall_clock_ms, duration_ms, duration_api_ms, "
             + "cost_usd, num_turns, session_id, exit_code, "
-            + "subtype, session_error, permission_denials) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "subtype, session_error, permission_denials, "
+            + "target_branch, commit_hash, pull_request_url, error_message) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
             ps.setString(1, jobId);
@@ -283,10 +307,122 @@ public class JobStatsStore implements ConsoleFeatures {
             ps.setString(13, subtype);
             ps.setBoolean(14, sessionError);
             ps.setInt(15, permissionDenials);
+            ps.setString(16, targetBranch);
+            ps.setString(17, commitHash);
+            ps.setString(18, pullRequestUrl);
+            ps.setString(19, truncate(errorMessage, 2000));
             ps.executeUpdate();
         } catch (SQLException e) {
             warn("Failed to insert job completed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Convenience overload that records job completion from a {@link JobCompletionEvent}.
+     *
+     * @param workstreamId the workstream this job belongs to
+     * @param event        the completion event
+     */
+    public synchronized void recordJobCompleted(String workstreamId, JobCompletionEvent event) {
+        recordJobCompleted(
+            event.getJobId(), workstreamId, event.getStatus().name(),
+            event.getTimestamp(), event.getDurationMs(), event.getDurationApiMs(),
+            event.getCostUsd(), event.getNumTurns(), event.getSessionId(),
+            event.getExitCode(), event.getSubtype(), event.isSessionError(),
+            event.getPermissionDenials(),
+            event.getTargetBranch(), event.getCommitHash(),
+            event.getPullRequestUrl(), event.getErrorMessage());
+    }
+
+    /**
+     * Returns the most recent job events for a workstream, newest first.
+     *
+     * @param workstreamId the workstream identifier
+     * @param limit        maximum number of events to return
+     * @return list of events, or empty list if none found or store unavailable
+     */
+    public synchronized List<JobCompletionEvent> getRecentJobs(String workstreamId, int limit) {
+        if (connection == null) return Collections.emptyList();
+
+        String sql = "SELECT * FROM job_timing WHERE workstream_id = ? "
+            + "ORDER BY COALESCE(completed_at, started_at) DESC LIMIT ?";
+
+        List<JobCompletionEvent> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, workstreamId);
+            ps.setInt(2, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(rowToEvent(rs));
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query recent jobs: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Returns the most recent event for a specific job, or {@code null} if not found.
+     *
+     * @param jobId the job identifier
+     * @return the event, or null if the job is unknown or the store is unavailable
+     */
+    public synchronized JobCompletionEvent getJob(String jobId) {
+        if (connection == null) return null;
+
+        String sql = "SELECT * FROM job_timing WHERE job_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rowToEvent(rs);
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query job: " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Constructs a {@link JobCompletionEvent} from the current row of a ResultSet.
+     * Returns a best-effort reconstruction; Claude-specific fields default to zero/null.
+     */
+    private JobCompletionEvent rowToEvent(ResultSet rs) throws SQLException {
+        String jobId = rs.getString("job_id");
+        String statusStr = rs.getString("status");
+        String description = rs.getString("description");
+        String targetBranch = rs.getString("target_branch");
+        String commitHash = rs.getString("commit_hash");
+        String pullRequestUrl = rs.getString("pull_request_url");
+        String errorMessage = rs.getString("error_message");
+
+        JobCompletionEvent.Status status;
+        try {
+            status = JobCompletionEvent.Status.valueOf(statusStr);
+        } catch (IllegalArgumentException e) {
+            status = JobCompletionEvent.Status.STARTED;
+        }
+
+        JobCompletionEvent event;
+        if (status == JobCompletionEvent.Status.FAILED) {
+            event = JobCompletionEvent.failed(jobId, description, errorMessage, null);
+        } else if (status == JobCompletionEvent.Status.SUCCESS) {
+            event = JobCompletionEvent.success(jobId, description);
+        } else {
+            event = new JobCompletionEvent(jobId, status, description);
+        }
+
+        if (targetBranch != null || commitHash != null) {
+            event.withGitInfo(targetBranch, commitHash,
+                Collections.emptyList(), Collections.emptyList(), commitHash != null);
+        }
+        if (pullRequestUrl != null) {
+            event.withPullRequestUrl(pullRequestUrl);
+        }
+
+        return event;
     }
 
     /**

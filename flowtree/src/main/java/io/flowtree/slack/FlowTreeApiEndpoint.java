@@ -93,6 +93,10 @@ import javax.crypto.spec.SecretKeySpec;
  *       <td>Proxy a PUT request to the GitHub API</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td>
  *       <td>List all registered workstreams with capabilities</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td>
+ *       <td>List recent jobs for a workstream (newest first); optional {@code limit} query param</td></tr>
+ *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td>
+ *       <td>Look up a specific job event by ID</td></tr>
  *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td>
  *       <td>Check whether automated job submissions are accepted</td></tr>
  *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td>
@@ -261,6 +265,21 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
             return handleListWorkstreams();
+        }
+
+        if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/") && uri.endsWith("/jobs")) {
+            String workstreamId = uri.substring("/api/workstreams/".length(),
+                    uri.length() - "/jobs".length());
+            String limitParam = session.getParameters().getOrDefault("limit",
+                    List.of("10")).get(0);
+            int limit = 10;
+            try { limit = Integer.parseInt(limitParam); } catch (NumberFormatException ignored) { }
+            return handleListJobs(workstreamId, limit);
+        }
+
+        if (Method.GET.equals(method) && uri.startsWith("/api/jobs/")) {
+            String jobId = uri.substring("/api/jobs/".length());
+            return handleGetJob(jobId);
         }
 
         if ("/api/config/accept-automated-jobs".equals(uri)) {
@@ -1209,6 +1228,78 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      *
      * @return JSON response with an array of workstream summaries
      */
+    /**
+     * Serialises a {@link JobCompletionEvent} to a JSON object string.
+     *
+     * @param event the event to serialise
+     * @return JSON object string
+     */
+    private String jobEventToJson(JobCompletionEvent event) {
+        StringBuilder j = new StringBuilder();
+        j.append("{");
+        j.append("\"jobId\":\"").append(escapeJson(event.getJobId())).append("\"");
+        j.append(",\"status\":\"").append(event.getStatus().name()).append("\"");
+        j.append(",\"description\":\"").append(escapeJson(event.getDescription())).append("\"");
+        j.append(",\"timestamp\":\"").append(event.getTimestamp().toString()).append("\"");
+        if (event.getTargetBranch() != null) {
+            j.append(",\"targetBranch\":\"").append(escapeJson(event.getTargetBranch())).append("\"");
+        }
+        if (event.getCommitHash() != null) {
+            j.append(",\"commitHash\":\"").append(escapeJson(event.getCommitHash())).append("\"");
+        }
+        if (event.getPullRequestUrl() != null) {
+            j.append(",\"pullRequestUrl\":\"").append(escapeJson(event.getPullRequestUrl())).append("\"");
+        }
+        if (event.getErrorMessage() != null) {
+            j.append(",\"errorMessage\":\"").append(escapeJson(event.getErrorMessage())).append("\"");
+        }
+        if (event.getCostUsd() > 0) {
+            j.append(String.format(",\"costUsd\":%.4f", event.getCostUsd()));
+        }
+        j.append("}");
+        return j.toString();
+    }
+
+    /**
+     * Handles {@code GET /api/workstreams/{id}/jobs?limit=N}.
+     * Returns the most recent jobs for the workstream, newest first.
+     *
+     * @param workstreamId the workstream identifier
+     * @param limit        maximum number of jobs to return
+     * @return JSON array of job events
+     */
+    private Response handleListJobs(String workstreamId, int limit) {
+        List<JobCompletionEvent> page = notifier.getRecentJobs(workstreamId, limit);
+
+        StringBuilder json = new StringBuilder("[");
+        boolean first = true;
+        for (JobCompletionEvent event : page) {
+            if (!first) json.append(",");
+            first = false;
+            json.append(jobEventToJson(event));
+        }
+        json.append("]");
+
+        return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString());
+    }
+
+    /**
+     * Handles {@code GET /api/jobs/{jobId}}.
+     * Returns the most recent event for the specified job.
+     *
+     * @param jobId the job identifier
+     * @return JSON object for the job event, or 404 if not found
+     */
+    private Response handleGetJob(String jobId) {
+        JobCompletionEvent event = notifier.getJob(jobId);
+        if (event == null) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND,
+                    "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
+        }
+        return newFixedLengthResponse(Response.Status.OK,
+                "application/json", jobEventToJson(event));
+    }
+
     private Response handleListWorkstreams() {
         Map<String, SlackWorkstream> workstreams = notifier.getWorkstreams();
 
