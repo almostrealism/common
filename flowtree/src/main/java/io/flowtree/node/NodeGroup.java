@@ -1851,20 +1851,33 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			} else if (type == Message.ConnectionRequest) {
 				try {
 					Node n = this.getLeastConnectedNode();
+					if (n == null) n = this.relayNode;
 					Connection c;
 
-					if (n != null && n.getPeers().length < n.getMaxPeers() && !n.isConnected(p)) {
+					if (n == null) {
+						System.out.println("NodeGroup: ConnectionRequest rejected -- no available node (no workers, no relay)");
+						c = null;
+					} else if (n.getPeers().length >= n.getMaxPeers()) {
+						System.out.println("NodeGroup: ConnectionRequest rejected -- node " + n.getId() +
+								" at peer capacity (" + n.getPeers().length + "/" + n.getMaxPeers() + ")");
+						c = null;
+					} else if (n.isConnected(p)) {
+						if (Message.verbose) System.out.println("NodeGroup: ConnectionRequest rejected -- node " + n.getId() +
+								" already connected via proxy " + p);
+						c = null;
+					} else {
 						System.out.println("NodeGroup: Constructing connection...");
 						c = new Connection(n, p, remoteId);
-					} else {
-						c = null;
 					}
-					
+
 					if (c != null && n.connect(c)) {
 						Message response = new Message(Message.ConnectionConfirmation, n.getId(), p);
 						response.setString("true");
 						response.send(remoteId);
 					} else {
+						if (c != null) {
+							System.out.println("NodeGroup: ConnectionRequest rejected -- n.connect(c) returned false for node " + n.getId());
+						}
 						Message response = new Message(-1, -1, p);
 						response.setString("false");
 						response.send(remoteId);

@@ -1031,7 +1031,7 @@ public class NodeProxy implements Proxy, Runnable {
 	 * @param m  The message to store in the inbox.
 	 */
 	protected void storeMessage(Message m) {
-		this.println("Storing message -- " + m, this.mwait > 0);
+		this.println("Storing message -- " + m, true);
 		
 		synchronized (this.obj) {
 			this.obj.add(0, new StoredObject(m, m.getReceiver()));
