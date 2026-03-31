@@ -75,36 +75,64 @@ import java.util.Map;
  * @see GitManagedJob
  */
 public class ClaudeCodeJob extends GitManagedJob {
+    /** Sentinel string used to delimit multiple prompts in the serialized wire format. */
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
+    /** Default comma-separated list of tools permitted for Claude Code sessions. */
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
 
+    /** The prompt submitted to Claude Code for this job. */
     private String prompt;
+    /** Short human-readable description of this job, used in status messages. */
     private String description;
+    /** Comma-separated list of tool names that Claude Code is permitted to invoke. */
     private String allowedTools;
+    /** Maximum number of agentic turns Claude Code may take before being stopped. */
     private int maxTurns;
+    /** Maximum spend budget for this job in US dollars; negative disables the limit. */
     private double maxBudgetUsd;
+    /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
     private String arManagerUrl;
+    /** Bearer token for authenticating against the ar-manager service. */
     private String arManagerToken;
+    /** Optional planning document text injected into the Claude Code system prompt. */
     private String planningDocument;
+    /** GitHub organisation name used to look up API tokens for PR creation. */
     private String githubOrg;
+    /** Whether the job must produce at least one staged file change to succeed. */
     private boolean enforceChanges;
+    /** Number of times enforcement has been re-attempted after an empty commit. */
     private int enforcementAttempt;
+    /** Description of a git-tampering rule violation detected during this job. */
     private String gitTamperingViolation;
 
+    /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
+    /** Helper that downloads managed tool definitions referenced by the MCP config. */
     private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
+    /** JSON mapper used to parse structured output from Claude Code. */
     private static final ObjectMapper outputMapper = new ObjectMapper();
 
+    /** The Claude Code session identifier assigned during execution. */
     private String sessionId;
+    /** Raw text output produced by the Claude Code process. */
     private String output;
+    /** Exit code returned by the Claude Code process. */
     private int exitCode;
+    /** Total wall-clock duration of the Claude Code session in milliseconds. */
     private long durationMs;
+    /** Time spent in API calls during the Claude Code session, in milliseconds. */
     private long durationApiMs;
+    /** Total cost of the Claude Code session in US dollars. */
     private double costUsd;
+    /** Number of agentic turns taken during the Claude Code session. */
     private int numTurns;
+    /** Session subtype / stop reason reported by Claude Code (e.g. "success"). */
     private String subtype;
+    /** Whether Claude Code flagged the session result as an error. */
     private boolean isError;
+    /** Number of tool-use permission denials recorded during the session. */
     private int permissionDenials;
+    /** Names of the tools that were denied during the session. */
     private List<String> deniedToolNames;
 
     /**
@@ -186,10 +214,20 @@ public class ClaudeCodeJob extends GitManagedJob {
         return String.format("%,d character prompt", prompt.length());
     }
 
+    /**
+     * Returns the prompt submitted to Claude Code for this job.
+     *
+     * @return the prompt string
+     */
     public String getPrompt() {
         return prompt;
     }
 
+    /**
+     * Sets the prompt to submit to Claude Code for this job.
+     *
+     * @param prompt  the prompt text
+     */
     public void setPrompt(String prompt) {
         this.prompt = prompt;
     }
@@ -212,26 +250,56 @@ public class ClaudeCodeJob extends GitManagedJob {
         this.description = description;
     }
 
+    /**
+     * Returns the comma-separated list of tools Claude Code is permitted to invoke.
+     *
+     * @return the allowed tools string
+     */
     public String getAllowedTools() {
         return allowedTools;
     }
 
+    /**
+     * Sets the comma-separated list of tools Claude Code is permitted to invoke.
+     *
+     * @param allowedTools  the tool names, comma-separated
+     */
     public void setAllowedTools(String allowedTools) {
         this.allowedTools = allowedTools;
     }
 
+    /**
+     * Returns the maximum number of agentic turns Claude Code may take.
+     *
+     * @return the turn limit
+     */
     public int getMaxTurns() {
         return maxTurns;
     }
 
+    /**
+     * Sets the maximum number of agentic turns Claude Code may take before being stopped.
+     *
+     * @param maxTurns  the turn limit
+     */
     public void setMaxTurns(int maxTurns) {
         this.maxTurns = maxTurns;
     }
 
+    /**
+     * Returns the maximum spend budget for this job in US dollars.
+     *
+     * @return the budget cap in USD
+     */
     public double getMaxBudgetUsd() {
         return maxBudgetUsd;
     }
 
+    /**
+     * Sets the maximum spend budget for this job in US dollars.
+     *
+     * @param maxBudgetUsd  the budget cap in USD; negative values disable the limit
+     */
     public void setMaxBudgetUsd(double maxBudgetUsd) {
         this.maxBudgetUsd = maxBudgetUsd;
     }
@@ -791,6 +859,14 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
     }
 
+    /**
+     * Returns the text value of a JSON field, or {@code null} if the field is
+     * absent or not a text node.
+     *
+     * @param node   the parent JSON object node
+     * @param field  the field name to look up
+     * @return       the string value, or {@code null}
+     */
     private static String getTextOrNull(JsonNode node, String field) {
         JsonNode child = node.get(field);
         return (child != null && child.isTextual()) ? child.asText() : null;
@@ -858,10 +934,22 @@ public class ClaudeCodeJob extends GitManagedJob {
      * Output record for ClaudeCodeJob results.
      */
     public static class ClaudeCodeJobOutput extends JobOutput {
+        /** The prompt that was submitted to Claude Code for this job. */
         private final String prompt;
+        /** The session identifier assigned by Claude Code. */
         private final String sessionId;
+        /** The process exit code returned by the Claude Code process. */
         private final int exitCode;
 
+        /**
+         * Constructs a new {@link ClaudeCodeJobOutput}.
+         *
+         * @param taskId     the task identifier
+         * @param prompt     the prompt submitted to Claude Code
+         * @param output     the raw text output produced by Claude Code
+         * @param sessionId  the Claude Code session identifier
+         * @param exitCode   the process exit code
+         */
         public ClaudeCodeJobOutput(String taskId, String prompt, String output, String sessionId, int exitCode) {
             super(taskId, "", "", output);
             this.prompt = prompt;
@@ -869,10 +957,32 @@ public class ClaudeCodeJob extends GitManagedJob {
             this.exitCode = exitCode;
         }
 
+        /**
+         * Returns the prompt that was submitted to Claude Code.
+         *
+         * @return the prompt string
+         */
         public String getPrompt() { return prompt; }
+
+        /**
+         * Returns the Claude Code session identifier.
+         *
+         * @return the session ID
+         */
         public String getSessionId() { return sessionId; }
+
+        /**
+         * Returns the process exit code returned by Claude Code.
+         *
+         * @return the exit code (0 typically indicates success)
+         */
         public int getExitCode() { return exitCode; }
 
+        /**
+         * Returns a human-readable summary of this output record.
+         *
+         * @return a string including the task ID, exit code, and session ID
+         */
         @Override
         public String toString() {
             return "ClaudeCodeJobOutput{taskId=" + getTaskId() + ", exitCode=" + exitCode +
@@ -888,15 +998,25 @@ public class ClaudeCodeJob extends GitManagedJob {
      * it becomes idle and can pick up the next job.</p>
      */
     public static class Factory extends AbstractJobFactory {
+        /** Cached decoded list of prompts; populated lazily from the serialized properties. */
         private List<String> prompts;
+        /** Short human-readable description for jobs created by this factory. */
         private String description;
+        /** Index of the next prompt to be dispatched as a job. */
         private int index;
+        /** Comma-separated list of tools Claude Code is permitted to invoke. */
         private String allowedTools = DEFAULT_TOOLS;
+        /** Maximum number of agentic turns Claude Code may take per job. */
         private int maxTurns = 50;
+        /** Maximum spend budget per job in US dollars. */
         private double maxBudgetUsd = 10.0;
+        /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
         private String arManagerUrl;
+        /** Bearer token for authenticating against the ar-manager service. */
         private String arManagerToken;
+        /** Optional planning document text to inject into the Claude Code system prompt. */
         private String planningDocument;
+        /** Whether jobs created by this factory must produce at least one staged file change. */
         private boolean enforceChanges;
 
         /**
@@ -914,6 +1034,13 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("push", String.valueOf(true));
         }
 
+        /**
+         * Returns the stable task identifier for this factory. The ID is
+         * persisted in the serialized properties map so that it survives
+         * wire serialisation and deserialisation.
+         *
+         * @return the factory's task ID
+         */
         @Override
         public String getTaskId() {
             String stored = get("factoryTaskId");
@@ -943,11 +1070,23 @@ public class ClaudeCodeJob extends GitManagedJob {
             setPrompts(prompts.toArray(new String[0]));
         }
 
+        /**
+         * Sets the list of prompts for this factory by encoding and persisting
+         * them to the serialized properties map.
+         *
+         * @param prompts  the prompts to encode and store
+         */
         public void setPrompts(String... prompts) {
             String code = String.join(PROMPT_SEPARATOR, prompts);
             set("prompts", base64Encode(code));
         }
 
+        /**
+         * Returns the list of prompts configured for this factory, decoding
+         * them from the serialized properties map on the first access.
+         *
+         * @return the list of prompts; never {@code null}
+         */
         public List<String> getPrompts() {
             if (prompts == null) {
                 String code = base64Decode(get("prompts"));
@@ -976,10 +1115,20 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("desc", base64Encode(description));
         }
 
+        /**
+         * Returns the comma-separated list of tools Claude Code is permitted to invoke.
+         *
+         * @return the allowed tools string
+         */
         public String getAllowedTools() {
             return allowedTools;
         }
 
+        /**
+         * Sets the comma-separated list of tools Claude Code is permitted to invoke.
+         *
+         * @param allowedTools  the tool names, comma-separated
+         */
         public void setAllowedTools(String allowedTools) {
             this.allowedTools = allowedTools;
             set("tools", allowedTools);
@@ -994,6 +1143,11 @@ public class ClaudeCodeJob extends GitManagedJob {
             return base64Decode(get("workDir"));
         }
 
+        /**
+         * Sets the working directory for jobs created by this factory.
+         *
+         * @param workingDirectory  absolute path to the working directory
+         */
         public void setWorkingDirectory(String workingDirectory) {
             set("workDir", base64Encode(workingDirectory));
         }
@@ -1031,19 +1185,39 @@ public class ClaudeCodeJob extends GitManagedJob {
             set("defaultWsPath", base64Encode(defaultWorkspacePath));
         }
 
+        /**
+         * Returns the maximum number of agentic turns Claude Code may take per job.
+         *
+         * @return the turn limit
+         */
         public int getMaxTurns() {
             return maxTurns;
         }
 
+        /**
+         * Sets the maximum number of agentic turns Claude Code may take per job.
+         *
+         * @param maxTurns  the turn limit
+         */
         public void setMaxTurns(int maxTurns) {
             this.maxTurns = maxTurns;
             set("maxTurns", String.valueOf(maxTurns));
         }
 
+        /**
+         * Returns the maximum spend budget per job in US dollars.
+         *
+         * @return the budget cap in USD
+         */
         public double getMaxBudgetUsd() {
             return maxBudgetUsd;
         }
 
+        /**
+         * Sets the maximum spend budget per job in US dollars.
+         *
+         * @param maxBudgetUsd  the budget cap in USD; negative values disable the limit
+         */
         public void setMaxBudgetUsd(double maxBudgetUsd) {
             this.maxBudgetUsd = maxBudgetUsd;
             set("maxBudget", String.valueOf(maxBudgetUsd));
@@ -1090,6 +1264,12 @@ public class ClaudeCodeJob extends GitManagedJob {
             return Boolean.parseBoolean(get("push"));
         }
 
+        /**
+         * Sets whether jobs produced by this factory should push their commits
+         * to the remote origin.
+         *
+         * @param pushToOrigin  {@code true} to push, {@code false} to commit locally only
+         */
         public void setPushToOrigin(boolean pushToOrigin) {
             set("push", String.valueOf(pushToOrigin));
         }

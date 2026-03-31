@@ -1209,6 +1209,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
     }
 
+    /**
+     * Escapes a string for safe inclusion in a JSON string literal.
+     *
+     * @param s  the string to escape, or {@code null}
+     * @return   the escaped string, or an empty string if {@code s} is {@code null}
+     */
     private static String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
@@ -1217,6 +1223,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .replace("\r", "\\r");
     }
 
+    /**
+     * Truncates a string to at most {@code maxLength} characters, appending
+     * {@code "..."} when the string is shortened.
+     *
+     * @param s          the string to truncate, or {@code null}
+     * @param maxLength  maximum number of characters to retain (including ellipsis)
+     * @return           the (possibly truncated) string, never {@code null}
+     */
     private static String truncate(String s, int maxLength) {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;
@@ -1306,6 +1320,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 "application/json", jobEventToJson(event));
     }
 
+    /**
+     * Handles {@code GET /api/workstreams}. Returns a JSON array of all
+     * registered workstreams with their configuration and capabilities.
+     *
+     * @return an HTTP 200 response containing a JSON array of workstream objects
+     */
     private Response handleListWorkstreams() {
         Map<String, SlackWorkstream> workstreams = notifier.getWorkstreams();
 
@@ -1578,11 +1598,23 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * when the job completes successfully.
      */
     private static class AutoPrContext {
+        /** URL of the git repository for which a pull request should be created. */
         final String repoUrl;
+        /** Base branch against which the pull request will be opened. */
         final String baseBranch;
+        /** GitHub organisation name, used to look up the API access token. */
         final String githubOrg;
+        /** Human-readable description of the job, used as the PR title/body. */
         final String description;
 
+        /**
+         * Constructs a new {@link AutoPrContext}.
+         *
+         * @param repoUrl     URL of the git repository
+         * @param baseBranch  base branch for the pull request
+         * @param githubOrg   GitHub organisation name
+         * @param description human-readable job description
+         */
         AutoPrContext(String repoUrl, String baseBranch, String githubOrg, String description) {
             this.repoUrl = repoUrl;
             this.baseBranch = baseBranch;

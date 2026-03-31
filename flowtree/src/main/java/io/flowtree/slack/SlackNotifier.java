@@ -800,6 +800,15 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         return sb.toString();
     }
 
+    /**
+     * Formats the Slack message text sent when a job completes (either
+     * successfully or with a failure), including status, file count, commit
+     * hash, cost, and error details as applicable.
+     *
+     * @param event       the completion event
+     * @param workstream  the workstream the job belongs to
+     * @return            formatted Slack message string
+     */
     private String formatCompletedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
         StringBuilder sb = new StringBuilder();
 
