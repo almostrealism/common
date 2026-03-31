@@ -164,6 +164,7 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
             Files.writeString(reqFile, pythonRequirements, StandardCharsets.UTF_8);
 
             String pip = venvPath.resolve("bin").resolve("pip3").toAbsolutePath().toString();
+            runProcess(pip, "install", "--upgrade", "pip");
             runProcess(pip, "install", "--no-cache-dir", "-r", reqFile.toAbsolutePath().toString());
 
             // Record the hash so subsequent jobs skip reinstall
