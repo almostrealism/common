@@ -22,6 +22,8 @@ import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.ml.dsl.PdslParseException;
 import org.almostrealism.model.Block;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -71,6 +73,15 @@ public class GRUBlock {
 	final Block zGateBlock;
 	final Block nGateBlock;
 	final Block hNewBlock;
+
+	/**
+	 * Lazily-compiled models for the four GRU sub-computations.
+	 * Initialized on the first call to {@link #ensureCompiled()}.
+	 */
+	private volatile CompiledModel rGateModel;
+	private volatile CompiledModel zGateModel;
+	private volatile CompiledModel nGateModel;
+	private volatile CompiledModel hNewModel;
 
 	/**
 	 * Create a GRU block with the given stacked weight tensors.
@@ -182,4 +193,45 @@ public class GRUBlock {
 		return loader.buildLayer(program, "gru_h_new",
 				new TraversalPolicy(3 * hiddenSize), args);
 	}
+
+	// ---- Compiled model access ----
+
+	/**
+	 * Lazily compile all four GRU gate blocks into {@link CompiledModel} instances.
+	 *
+	 * <p>Thread-safe via double-checked locking on {@link #rGateModel}.</p>
+	 */
+	public void ensureCompiled() {
+		if (rGateModel != null) return;
+		synchronized (this) {
+			if (rGateModel != null) return;
+			Model rModel = new Model(new TraversalPolicy(inputSize + hiddenSize));
+			rModel.add(rGateBlock);
+			rGateModel = rModel.compile(false);
+
+			Model zModel = new Model(new TraversalPolicy(inputSize + hiddenSize));
+			zModel.add(zGateBlock);
+			zGateModel = zModel.compile(false);
+
+			Model nModel = new Model(new TraversalPolicy(inputSize + 2 * hiddenSize));
+			nModel.add(nGateBlock);
+			nGateModel = nModel.compile(false);
+
+			Model hModel = new Model(new TraversalPolicy(3 * hiddenSize));
+			hModel.add(hNewBlock);
+			hNewModel = hModel.compile(false);
+		}
+	}
+
+	/** Returns the compiled reset-gate model (call {@link #ensureCompiled()} first). */
+	public CompiledModel getRGateModel() { return rGateModel; }
+
+	/** Returns the compiled update-gate model (call {@link #ensureCompiled()} first). */
+	public CompiledModel getZGateModel() { return zGateModel; }
+
+	/** Returns the compiled candidate-gate model (call {@link #ensureCompiled()} first). */
+	public CompiledModel getNGateModel() { return nGateModel; }
+
+	/** Returns the compiled hidden-update model (call {@link #ensureCompiled()} first). */
+	public CompiledModel getHNewModel() { return hNewModel; }
 }
