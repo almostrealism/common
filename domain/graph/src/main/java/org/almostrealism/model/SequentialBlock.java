@@ -259,19 +259,19 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		}
 	}
 
-	public void addBlocks(Function<TraversalPolicy, ? extends Block> a,
+	public void andThenAccum(Function<TraversalPolicy, ? extends Block> a,
 						  Function<TraversalPolicy, ? extends Block> b,
 						  ComputeRequirement... requirements) {
-		addBlocks(a.apply(getOutputShape()), b.apply(getOutputShape()), requirements);
+		andThenAccum(a.apply(getOutputShape()), b.apply(getOutputShape()), requirements);
 	}
 
-	public void addBlocks(Function<TraversalPolicy, ? extends Block> a, Block b,
+	public void andThenAccum(Function<TraversalPolicy, ? extends Block> a, Block b,
 						  ComputeRequirement... requirements) {
-		addBlocks(a.apply(getOutputShape()), b, requirements);
+		andThenAccum(a.apply(getOutputShape()), b, requirements);
 	}
 
 	/**
-	 * Applies two blocks to the same input and adds their outputs element-wise.
+	 * Applies two blocks to the same input and accumulates their outputs element-wise.
 	 * Both {@code a} and {@code b} receive the current sequential output as input.
 	 * The combined output replaces the current tail.
 	 *
@@ -279,7 +279,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	 * @param b second block, transforms same current input to the same output shape as {@code a}
 	 * @param requirements optional compute requirements
 	 */
-	public void addBlocks(Block a, Block b, ComputeRequirement... requirements) {
+	public void andThenAccum(Block a, Block b, ComputeRequirement... requirements) {
 		if (a.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
 		if (b.getInputShape().getTotalSize() != getOutputShape().getTotalSize())

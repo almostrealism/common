@@ -23,6 +23,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.stats.DistributionFeatures;
 
+import java.util.Arrays;
+import java.util.Random;
 import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -244,6 +246,83 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 			softmax.into(logit).evaluate(logit);
 			return sample(logit, vocabSize);
 		}
+	}
+
+	/**
+	 * Sample a token from logits using temperature scaling and nucleus (top-p) filtering.
+	 *
+	 * <p>When temperature is 0 or random is null, uses greedy argmax.
+	 * Otherwise applies temperature scaling, optional nucleus filtering, and categorical sampling.</p>
+	 *
+	 * @param logits      logit collection of shape (vocabSize)
+	 * @param vocabSize   number of entries to consider
+	 * @param temperature scaling factor (0 = greedy argmax)
+	 * @param topP        nucleus sampling threshold (1.0 = no filtering)
+	 * @param random      random number generator (null = greedy)
+	 * @return selected token index
+	 */
+	public static int sampleToken(PackedCollection logits, int vocabSize,
+								   double temperature, double topP, Random random) {
+		if (temperature <= 0.0 || random == null) {
+			int maxIdx = 0;
+			double maxVal = logits.toDouble(0);
+			for (int i = 1; i < vocabSize; i++) {
+				double val = logits.toDouble(i);
+				if (val > maxVal) {
+					maxVal = val;
+					maxIdx = i;
+				}
+			}
+			return maxIdx;
+		}
+
+		double[] probs = new double[vocabSize];
+		double maxLogit = Double.NEGATIVE_INFINITY;
+		for (int i = 0; i < vocabSize; i++) {
+			probs[i] = logits.toDouble(i) / temperature;
+			if (probs[i] > maxLogit) maxLogit = probs[i];
+		}
+
+		double sum = 0.0;
+		for (int i = 0; i < vocabSize; i++) {
+			probs[i] = Math.exp(probs[i] - maxLogit);
+			sum += probs[i];
+		}
+		for (int i = 0; i < vocabSize; i++) {
+			probs[i] /= sum;
+		}
+
+		if (topP < 1.0) {
+			Integer[] indices = new Integer[vocabSize];
+			for (int i = 0; i < vocabSize; i++) indices[i] = i;
+			Arrays.sort(indices, (a, b) -> Double.compare(probs[b], probs[a]));
+
+			double cumProb = 0.0;
+			double topSum = 0.0;
+			int cutoff = vocabSize;
+			for (int i = 0; i < vocabSize; i++) {
+				cumProb += probs[indices[i]];
+				topSum += probs[indices[i]];
+				if (cumProb >= topP) {
+					cutoff = i + 1;
+					break;
+				}
+			}
+			for (int i = cutoff; i < vocabSize; i++) {
+				probs[indices[i]] = 0.0;
+			}
+			for (int i = 0; i < vocabSize; i++) {
+				probs[i] /= topSum;
+			}
+		}
+
+		double r = random.nextDouble();
+		double cumulative = 0.0;
+		for (int i = 0; i < vocabSize; i++) {
+			cumulative += probs[i];
+			if (r < cumulative) return i;
+		}
+		return vocabSize - 1;
 	}
 
 	/**

@@ -300,7 +300,7 @@ public class PdslInterpreter {
 		TraversalPolicy shape = block.getOutputShape();
 		Block left = expressionToBlock(addStmt.getLeft(), shape, env);
 		Block right = expressionToBlock(addStmt.getRight(), shape, env);
-		block.addBlocks(left, right);
+		block.andThenAccum(left, right);
 	}
 
 	// ---- Expression evaluation ----
@@ -485,7 +485,7 @@ public class PdslInterpreter {
 			case "relu": return FEATURES.relu();
 			case "gelu": return FEATURES.gelu();
 			case "sigmoid": return FEATURES.sigmoid();
-			case "tanh_act": return FEATURES.tanhActivation();
+			case "tanh_act": return FEATURES.tanh();
 			default:
 				throw new PdslParseException("Unknown activation: " + type);
 		}

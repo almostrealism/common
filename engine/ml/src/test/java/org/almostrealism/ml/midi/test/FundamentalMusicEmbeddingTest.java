@@ -40,7 +40,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	public void testFmeOutputShape() {
 		int dim = 320;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(199999.0, dim);
-		PackedCollection output = fme.embed(42);
+		PackedCollection output = fme.embed(42).evaluate();
 
 		assertEquals("FME output should have dim elements",
 				dim, output.getShape().getTotalSize());
@@ -53,7 +53,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	public void testSinusoidalEncodingRange() {
 		int dim = 64;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(1031.0, dim);
-		PackedCollection encoding = fme.encodeSinusoidal(100);
+		PackedCollection encoding = fme.encodeSinusoidal(100).evaluate();
 
 		for (int i = 0; i < dim; i++) {
 			double value = encoding.toDouble(i);
@@ -70,8 +70,8 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		int dim = 64;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(19.0, dim);
 
-		PackedCollection enc1 = fme.encodeSinusoidal(0);
-		PackedCollection enc2 = fme.encodeSinusoidal(5);
+		PackedCollection enc1 = fme.encodeSinusoidal(0).evaluate();
+		PackedCollection enc2 = fme.encodeSinusoidal(5).evaluate();
 
 		boolean anyDifferent = false;
 		for (int i = 0; i < dim; i++) {
@@ -110,7 +110,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
 
 		MidiCompoundToken token = new MidiCompoundToken(100, 50, 5, 0, 0, 80);
-		PackedCollection output = embedding.embed(token);
+		PackedCollection output = embedding.embed(token).evaluate();
 
 		assertEquals("Compound embedding output should be hiddenSize",
 				config.hiddenSize, output.getShape().getTotalSize());
@@ -129,7 +129,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
 
-		PackedCollection sosEmb = embedding.embed(MidiCompoundToken.sos());
+		PackedCollection sosEmb = embedding.embed(MidiCompoundToken.sos()).evaluate();
 		assertEquals("SOS embedding should be hiddenSize",
 				config.hiddenSize, sosEmb.getShape().getTotalSize());
 		for (int i = 0; i < config.hiddenSize; i++) {
@@ -137,7 +137,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 					Double.isNaN(sosEmb.toDouble(i)));
 		}
 
-		PackedCollection eosEmb = embedding.embed(MidiCompoundToken.eos());
+		PackedCollection eosEmb = embedding.embed(MidiCompoundToken.eos()).evaluate();
 		assertEquals("EOS embedding should be hiddenSize",
 				config.hiddenSize, eosEmb.getShape().getTotalSize());
 		for (int i = 0; i < config.hiddenSize; i++) {
@@ -179,7 +179,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
 
-		PackedCollection padEmb = embedding.embed(MidiCompoundToken.pad());
+		PackedCollection padEmb = embedding.embed(MidiCompoundToken.pad()).evaluate();
 		assertEquals("PAD embedding should be hiddenSize",
 				config.hiddenSize, padEmb.getShape().getTotalSize());
 
@@ -203,7 +203,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 				MidiCompoundToken.eos()
 		);
 
-		PackedCollection result = embedding.embedSequence(tokens);
+		PackedCollection result = embedding.embedSequence(tokens).evaluate();
 		assertEquals("Sequence embedding rows",
 				tokens.size() * config.hiddenSize,
 				result.getShape().getTotalSize());
@@ -223,11 +223,11 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		MidiCompoundToken token2 = MidiCompoundToken.pad();
 
 		List<MidiCompoundToken> tokens = Arrays.asList(token0, token1, token2);
-		PackedCollection sequenceResult = embedding.embedSequence(tokens);
+		PackedCollection sequenceResult = embedding.embedSequence(tokens).evaluate();
 
-		PackedCollection emb0 = embedding.embed(token0);
-		PackedCollection emb1 = embedding.embed(token1);
-		PackedCollection emb2 = embedding.embed(token2);
+		PackedCollection emb0 = embedding.embed(token0).evaluate();
+		PackedCollection emb1 = embedding.embed(token1).evaluate();
+		PackedCollection emb2 = embedding.embed(token2).evaluate();
 
 		int hidden = config.hiddenSize;
 		for (int i = 0; i < hidden; i++) {
@@ -248,8 +248,8 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		int dim = 64;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(1031.0, dim);
 
-		PackedCollection first = fme.embed(42);
-		PackedCollection second = fme.embed(42);
+		PackedCollection first = fme.embed(42).evaluate();
+		PackedCollection second = fme.embed(42).evaluate();
 
 		for (int i = 0; i < dim; i++) {
 			assertEquals("Embedding should be deterministic at index " + i,

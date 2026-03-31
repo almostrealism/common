@@ -19,6 +19,7 @@ package org.almostrealism.ml.midi.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
+import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.GRUBlock;
@@ -449,7 +450,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 		Set<Integer> sampledTokens = new HashSet<>();
 		Random random = new Random(42);
 		for (int trial = 0; trial < 100; trial++) {
-			int token = GRUDecoder.sampleFromLogits(logits, vocabSize, 1.0, 0.9, random);
+			int token = AutoregressiveModel.sampleToken(logits, vocabSize, 1.0, 0.9, random);
 			sampledTokens.add(token);
 		}
 

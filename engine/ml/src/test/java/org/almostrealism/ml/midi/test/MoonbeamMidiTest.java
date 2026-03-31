@@ -374,7 +374,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		h.setMem(0, 0.5);
 		h.setMem(1, -0.5);
 
-		PackedCollection hNew = GRUDecoder.gruStep(cell, x, h);
+		PackedCollection hNew = gruStep(cell, x, h);
 
 		Assert.assertEquals("Output size", 2, hNew.getShape().getTotalSize());
 
@@ -426,7 +426,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		PackedCollection h = new PackedCollection(1);
 		h.setMem(0, 3.0);
 
-		PackedCollection hNew = GRUDecoder.gruStep(cell, x, h);
+		PackedCollection hNew = gruStep(cell, x, h);
 
 		// With z ≈ sigmoid(10) ≈ 1.0, h' ≈ z * h ≈ h
 		Assert.assertEquals("With high update gate, h' should be close to h",
@@ -476,6 +476,57 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		int lastVocab = config.vocabSizes[5]; // velocity vocab
 		Assert.assertEquals("Last offset + last vocab = decodeVocabSize",
 				config.decodeVocabSize, lastOffset + lastVocab);
+	}
+
+	/**
+	 * Run one GRU layer step in plain Java for unit testing.
+	 *
+	 * @param block GRU weight holder
+	 * @param x     input vector
+	 * @param h     previous hidden state
+	 * @return new hidden state
+	 */
+	private static PackedCollection gruStep(GRUBlock block, PackedCollection x, PackedCollection h) {
+		int dh = h.getShape().getTotalSize();
+		int inputSize = x.getShape().getTotalSize();
+		double[] xArr = x.toArray(0, inputSize);
+		double[] hArr = h.toArray(0, dh);
+		double[] wIr = block.wIr.toArray(0, dh * inputSize);
+		double[] bIr = block.bIr.toArray(0, dh);
+		double[] wHr = block.wHr.toArray(0, dh * dh);
+		double[] bHr = block.bHr.toArray(0, dh);
+		double[] wIz = block.wIz.toArray(0, dh * inputSize);
+		double[] bIz = block.bIz.toArray(0, dh);
+		double[] wHz = block.wHz.toArray(0, dh * dh);
+		double[] bHz = block.bHz.toArray(0, dh);
+		double[] wIn = block.wIn.toArray(0, dh * inputSize);
+		double[] bIn = block.bIn.toArray(0, dh);
+		double[] wHn = block.wHn.toArray(0, dh * dh);
+		double[] bHn = block.bHn.toArray(0, dh);
+		double[] hNew = new double[dh];
+		for (int i = 0; i < dh; i++) {
+			double rGate = bIr[i] + bHr[i];
+			double zGate = bIz[i] + bHz[i];
+			double nGateIh = bIn[i];
+			double nGateHh = bHn[i];
+			for (int j = 0; j < inputSize; j++) {
+				rGate += wIr[i * inputSize + j] * xArr[j];
+				zGate += wIz[i * inputSize + j] * xArr[j];
+				nGateIh += wIn[i * inputSize + j] * xArr[j];
+			}
+			for (int j = 0; j < dh; j++) {
+				rGate += wHr[i * dh + j] * hArr[j];
+				zGate += wHz[i * dh + j] * hArr[j];
+				nGateHh += wHn[i * dh + j] * hArr[j];
+			}
+			double r = 1.0 / (1.0 + Math.exp(-rGate));
+			double z = 1.0 / (1.0 + Math.exp(-zGate));
+			double n = Math.tanh(nGateIh + r * nGateHh);
+			hNew[i] = (1.0 - z) * n + z * hArr[i];
+		}
+		PackedCollection result = new PackedCollection(dh);
+		result.setMem(0, hNew, 0, dh);
+		return result;
 	}
 
 	/**

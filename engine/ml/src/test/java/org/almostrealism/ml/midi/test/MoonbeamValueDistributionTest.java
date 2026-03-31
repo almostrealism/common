@@ -18,11 +18,13 @@ package org.almostrealism.ml.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -158,8 +160,10 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	 * BEFORE argmax, revealing whether the lm_head projection produces
 	 * logits in a reasonable range or if they are exploding.</p>
 	 */
-	@Test(timeout = 60_000)
+	@Test
+	@TestDepth(2)
 	public void testGruDecoderLogitDistribution() {
+		if (skipLongTests) return;
 		System.out.println("\n=== Test 2: GRU Decoder Logit Distribution ===\n");
 
 		int decoderHidden = REAL_CONFIG.decoderHiddenSize;
@@ -206,7 +210,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	/* ================================================================ */
 
 	/**
-	 * Verify that the sampling implementation in {@link GRUDecoder#sampleFromLogits}
+	 * Verify that the sampling implementation in {@link AutoregressiveModel#sampleToken}
 	 * correctly applies softmax and produces varied token indices.
 	 *
 	 * <p>Tests with uniform logits (should produce uniform sampling) and
@@ -229,7 +233,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		Random samplingRng = new Random(42);
 
 		for (int i = 0; i < numSamples; i++) {
-			int token = GRUDecoder.sampleFromLogits(uniformLogits, vocabSize,
+			int token = AutoregressiveModel.sampleToken(uniformLogits, vocabSize,
 					1.0, 1.0, samplingRng);
 			int bin = Math.min(token / binSize, 9);
 			histogram[bin]++;
@@ -255,7 +259,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		int spikeCount = 0;
 		samplingRng = new Random(42);
 		for (int i = 0; i < numSamples; i++) {
-			int token = GRUDecoder.sampleFromLogits(spikeLogits, vocabSize,
+			int token = AutoregressiveModel.sampleToken(spikeLogits, vocabSize,
 					1.0, 1.0, samplingRng);
 			if (token == 100) spikeCount++;
 		}
@@ -300,8 +304,10 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	 * the decoder will produce garbage. This test prints all expected vs actual
 	 * shapes for the decoder components.</p>
 	 */
-	@Test(timeout = 10_000)
+	@Test
+	@TestDepth(2)
 	public void testWeightShapeVerification() {
+		if (skipLongTests) return;
 		System.out.println("\n=== Test 4: Weight Shape Verification ===\n");
 
 		int hidden = REAL_CONFIG.hiddenSize;           // 1920
@@ -421,7 +427,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
 			PackedCollection layerInput = x;
 			for (int l = 0; l < layers.length; l++) {
-				h[l] = GRUDecoder.gruStep(layers[l], layerInput, h[l]);
+				h[l] = gruStep(layers[l], layerInput, h[l]);
 				layerInput = h[l];
 			}
 
@@ -553,8 +559,10 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	 *
 	 * <p>Tests both greedy (argmax) and sampling decode paths.</p>
 	 */
-	@Test(timeout = 60_000)
+	@Test
+	@TestDepth(2)
 	public void testDecodedAttributeRangeValidation() {
+		if (skipLongTests) return;
 		System.out.println("\n=== Test 7: Decoded Attribute Range Validation ===\n");
 
 		int hidden = REAL_CONFIG.hiddenSize;
@@ -715,7 +723,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
 			PackedCollection layerInput = x;
 			for (int l = 0; l < cells.length; l++) {
-				h[l] = GRUDecoder.gruStep(cells[l], layerInput, h[l]);
+				h[l] = gruStep(cells[l], layerInput, h[l]);
 				layerInput = h[l];
 			}
 
@@ -846,6 +854,72 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		}
 		collection.setMem(0, data, 0, size);
 		return collection;
+	}
+
+	/**
+	 * Run one GRU layer step in plain Java for diagnostic purposes.
+	 *
+	 * <p>Computes: r = σ(W_ir·x + b_ir + W_hr·h + b_hr),
+	 * z = σ(W_iz·x + b_iz + W_hz·h + b_hz),
+	 * n = tanh(W_in·x + b_in + r*(W_hn·h + b_hn)),
+	 * h_new = (1-z)*n + z*h.</p>
+	 *
+	 * @param block      GRU weight holder
+	 * @param x          input vector of shape (inputSize)
+	 * @param h          previous hidden state of shape (hiddenSize)
+	 * @return new hidden state of shape (hiddenSize)
+	 */
+	private static PackedCollection gruStep(GRUBlock block, PackedCollection x, PackedCollection h) {
+		int dh = h.getShape().getTotalSize();
+		int inputSize = x.getShape().getTotalSize();
+
+		double[] xArr = x.toArray(0, inputSize);
+		double[] hArr = h.toArray(0, dh);
+
+		double[] wIr = block.wIr.toArray(0, dh * inputSize);
+		double[] bIr = block.bIr.toArray(0, dh);
+		double[] wHr = block.wHr.toArray(0, dh * dh);
+		double[] bHr = block.bHr.toArray(0, dh);
+
+		double[] wIz = block.wIz.toArray(0, dh * inputSize);
+		double[] bIz = block.bIz.toArray(0, dh);
+		double[] wHz = block.wHz.toArray(0, dh * dh);
+		double[] bHz = block.bHz.toArray(0, dh);
+
+		double[] wIn = block.wIn.toArray(0, dh * inputSize);
+		double[] bIn = block.bIn.toArray(0, dh);
+		double[] wHn = block.wHn.toArray(0, dh * dh);
+		double[] bHn = block.bHn.toArray(0, dh);
+
+		double[] r = new double[dh];
+		double[] z = new double[dh];
+		double[] n = new double[dh];
+		double[] hNew = new double[dh];
+
+		for (int i = 0; i < dh; i++) {
+			double rGate = bIr[i] + bHr[i];
+			double zGate = bIz[i] + bHz[i];
+			double nGateIh = bIn[i];
+			double nGateHh = bHn[i];
+			for (int j = 0; j < inputSize; j++) {
+				rGate += wIr[i * inputSize + j] * xArr[j];
+				zGate += wIz[i * inputSize + j] * xArr[j];
+				nGateIh += wIn[i * inputSize + j] * xArr[j];
+			}
+			for (int j = 0; j < dh; j++) {
+				rGate += wHr[i * dh + j] * hArr[j];
+				zGate += wHz[i * dh + j] * hArr[j];
+				nGateHh += wHn[i * dh + j] * hArr[j];
+			}
+			r[i] = 1.0 / (1.0 + Math.exp(-rGate));
+			z[i] = 1.0 / (1.0 + Math.exp(-zGate));
+			n[i] = Math.tanh(nGateIh + r[i] * nGateHh);
+			hNew[i] = (1.0 - z[i]) * n[i] + z[i] * hArr[i];
+		}
+
+		PackedCollection result = new PackedCollection(dh);
+		result.setMem(0, hNew, 0, dh);
+		return result;
 	}
 
 	/**

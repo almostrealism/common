@@ -17,28 +17,29 @@
 package org.almostrealism.ml.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.dsl.PdslLoader;
-import org.almostrealism.ml.dsl.PdslNode;
-import org.almostrealism.ml.dsl.PdslParseException;
-import org.almostrealism.model.Block;
+import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Random;
 
 /**
- * GRU decoder constants and vocabulary layout utilities for compound MIDI
- * token generation.
+ * GRU decoder for compound MIDI token generation.
  *
- * <p>All GRU computation is defined in {@code /pdsl/midi/gru_decoder.pdsl}.
- * Use {@code GruDecoderPdslInferenceTest} to run end-to-end inference via the
- * PDSL pipeline.</p>
+ * <p>All GRU neural-network math is expressed as a single {@link CompiledModel}
+ * decode-step model built in {@link #ensureCompiled()}. One forward pass of that
+ * model covers all GRU layers, the optional {@code fc_out} projection, and the
+ * {@code lm_head}, taking input {@code [x | h0 | ... | hL]} and producing
+ * {@code [h0' | ... | hL' | logits]}.</p>
+ *
+ * <p>The {@code summary_proj} (transformer hidden to initial decoder hidden) is
+ * expressed as a {@link CollectionProducer} computation at the start of each
+ * decode call and is evaluated once per note to initialise the hidden states.
+ * All per-token work runs through the single compiled model.</p>
  *
  * <h2>Decode Vocabulary Layout</h2>
  * <table>
@@ -53,7 +54,7 @@ import java.util.Random;
  *   <tr><td>6</td><td>velocity</td><td>8357</td><td>130</td></tr>
  * </table>
  */
-public class GRUDecoder {
+public class GRUDecoder implements LayerFeatures {
 
 	/** Number of output tokens generated per position by the GRU decoder. */
 	public static final int TOKENS_PER_NOTE = 7;
@@ -70,20 +71,17 @@ public class GRUDecoder {
 	private final int[] vocabOffsets;
 	private final int[] vocabSizesPerStep;
 
-	/** Classpath resource path for the GRU decoder PDSL definition. */
-	private static final String GRU_DECODER_PDSL_RESOURCE = "/pdsl/midi/gru_decoder.pdsl";
-
-	/** Lazily-compiled PDSL summary projection model. */
-	private volatile CompiledModel summaryPdslModel;
-
-	/** Lazily-compiled PDSL lm_head model. */
-	private volatile CompiledModel lmHeadPdslModel;
-
-	/** Lazily-compiled PDSL fc_out model (null when checkpoint has no fc_out). */
-	private volatile CompiledModel fcOutPdslModel;
-
-	/** Flag to indicate PDSL compilation has completed. */
-	private volatile boolean pdslCompiled;
+	/**
+	 * The single compiled decode-step model.
+	 *
+	 * <p>Input shape: {@code (1 + numLayers) * decoderHiddenSize}
+	 * ({@code [x | h0 | ... | hL]}).
+	 * Output shape: {@code numLayers * decoderHiddenSize + decodeVocabSize}
+	 * ({@code [h0' | ... | hL' | logits]}).</p>
+	 *
+	 * <p>Lazily initialised by {@link #ensureCompiled()} on first use.</p>
+	 */
+	private volatile CompiledModel decodeStepModel;
 
 	/**
 	 * Create a GRU decoder with explicit weights.
@@ -138,24 +136,24 @@ public class GRUDecoder {
 	/**
 	 * Decode GRU output tokens from a transformer hidden state using greedy argmax.
 	 *
-	 * <p>All GRU neural-network math is performed by PDSL-compiled blocks loaded
-	 * from {@value GRU_DECODER_PDSL_RESOURCE}. The only Java code here is the
-	 * argmax token selection and data routing between steps.</p>
+	 * <p>All GRU neural-network math is performed by the single compiled decode-step
+	 * model. The only Java code here is the argmax token selection and data routing
+	 * between steps.</p>
 	 *
 	 * @param transformerHidden transformer output hidden state, shape (hiddenSize)
 	 * @return array of {@link #TOKENS_PER_NOTE} token indices in the flat decode vocabulary
 	 */
 	public int[] decode(PackedCollection transformerHidden) {
-		ensurePdslCompiled();
+		ensureCompiled();
 		return runGruDecode(transformerHidden, 0.0, 1.0, null);
 	}
 
 	/**
 	 * Decode GRU output tokens with temperature and top-p sampling.
 	 *
-	 * <p>All GRU neural-network math is performed by PDSL-compiled blocks loaded
-	 * from {@value GRU_DECODER_PDSL_RESOURCE}. The only Java code here is the
-	 * token selection (argmax or nucleus sampling) and data routing between steps.</p>
+	 * <p>All GRU neural-network math is performed by the single compiled decode-step
+	 * model. The only Java code here is the token selection and data routing
+	 * between steps.</p>
 	 *
 	 * @param transformerHidden transformer output hidden state, shape (hiddenSize)
 	 * @param temperature       sampling temperature (0 = greedy argmax)
@@ -165,7 +163,7 @@ public class GRUDecoder {
 	 */
 	public int[] decode(PackedCollection transformerHidden, double temperature,
 						double topP, Random random) {
-		ensurePdslCompiled();
+		ensureCompiled();
 		return runGruDecode(transformerHidden, temperature, topP, random);
 	}
 
@@ -230,180 +228,125 @@ public class GRUDecoder {
 	/** Returns the vocabulary size for each decode step. */
 	public int[] getVocabSizesPerStep() { return vocabSizesPerStep.clone(); }
 
-	/**
-	 * Execute one GRU step using the PDSL-compiled blocks in a {@link GRUBlock}.
-	 *
-	 * <p>All gate computations (reset, update, candidate, hidden-update) are
-	 * performed by PDSL-compiled models. The only Java code is the vector
-	 * concatenation for input preparation.</p>
-	 *
-	 * @param block the GRU block providing weights and compiled PDSL gate models
-	 * @param x     input vector, shape (inputSize)
-	 * @param h     previous hidden state, shape (hiddenSize)
-	 * @return new hidden state h', shape (hiddenSize)
-	 */
-	public static PackedCollection gruStep(GRUBlock block,
-										   PackedCollection x, PackedCollection h) {
-		block.ensureCompiled();
-		int is = block.getInputSize();
-		int hs = block.getHiddenSize();
-
-		// [x | h] for reset and update gates
-		PackedCollection xh = concat(x, is, h, hs);
-		PackedCollection r = block.getRGateModel().forward(xh);
-		PackedCollection z = block.getZGateModel().forward(xh);
-
-		// [x | h | r] for candidate gate
-		PackedCollection xhr = concatThree(x, h, r, is, hs, hs);
-		PackedCollection n = block.getNGateModel().forward(xhr);
-
-		// [n | z | h] for hidden-state update (lerp)
-		PackedCollection nzh = concatThree(n, z, h, hs, hs, hs);
-		return block.getHNewModel().forward(nzh);
-	}
-
-	/**
-	 * Sample a token from logits using temperature scaling and nucleus (top-p) sampling.
-	 *
-	 * <p>This is token-selection code: it reads the PDSL-computed logits and applies
-	 * standard sampling heuristics to choose a token index.</p>
-	 *
-	 * @param logits      logit collection of shape (vocabSize)
-	 * @param vocabSize   number of entries to consider
-	 * @param temperature scaling factor (0 = greedy argmax)
-	 * @param topP        nucleus sampling threshold (1.0 = no filtering)
-	 * @param random      random number generator
-	 * @return selected token index
-	 */
-	public static int sampleFromLogits(PackedCollection logits, int vocabSize,
-										double temperature, double topP, Random random) {
-		if (temperature <= 0.0 || random == null) {
-			return argmax(logits, vocabSize);
-		}
-
-		// Read logits and apply temperature scaling
-		double[] probs = new double[vocabSize];
-		double maxLogit = Double.NEGATIVE_INFINITY;
-		for (int i = 0; i < vocabSize; i++) {
-			probs[i] = logits.toDouble(i) / temperature;
-			if (probs[i] > maxLogit) maxLogit = probs[i];
-		}
-
-		// Numerically stable softmax
-		double sum = 0.0;
-		for (int i = 0; i < vocabSize; i++) {
-			probs[i] = Math.exp(probs[i] - maxLogit);
-			sum += probs[i];
-		}
-		for (int i = 0; i < vocabSize; i++) {
-			probs[i] /= sum;
-		}
-
-		// Nucleus (top-p) filtering
-		if (topP < 1.0) {
-			Integer[] indices = new Integer[vocabSize];
-			for (int i = 0; i < vocabSize; i++) indices[i] = i;
-			Arrays.sort(indices, (a, b) -> Double.compare(probs[b], probs[a]));
-
-			double cumProb = 0.0;
-			double topSum = 0.0;
-			int cutoff = vocabSize;
-			for (int i = 0; i < vocabSize; i++) {
-				cumProb += probs[indices[i]];
-				topSum += probs[indices[i]];
-				if (cumProb >= topP) {
-					cutoff = i + 1;
-					break;
-				}
-			}
-			for (int i = cutoff; i < vocabSize; i++) {
-				probs[indices[i]] = 0.0;
-			}
-			// Renormalize over the kept tokens
-			for (int i = 0; i < vocabSize; i++) {
-				probs[i] /= topSum;
-			}
-		}
-
-		// Categorical sample
-		double r = random.nextDouble();
-		double cumulative = 0.0;
-		for (int i = 0; i < vocabSize; i++) {
-			cumulative += probs[i];
-			if (r < cumulative) return i;
-		}
-		return vocabSize - 1;
-	}
-
 	// -----------------------------------------------------------------------
-	//  PDSL compilation
+	//  Model compilation
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Lazily compile all PDSL blocks needed for the decode loop.
+	 * Build and compile the decode-step {@link Model}.
 	 *
-	 * <p>Loads {@value GRU_DECODER_PDSL_RESOURCE} for the summary projection and
-	 * lm_head, and delegates GRU gate compilation to each {@link GRUBlock}.</p>
+	 * <p>The model uses one {@link CellularLayer} per GRU layer plus a final
+	 * {@code lm_head} layer, all added to a single {@link Model} in sequence.
+	 * State is threaded through as a flat vector of shape
+	 * {@code (1 + numLayers) * decoderHiddenSize}: slot 0 holds the current
+	 * input {@code x} (updated to {@code hNew} after each GRU layer) and
+	 * slots {@code 1..numLayers} hold the per-layer hidden states
+	 * {@code h0..hL} from the previous time step.  Each GRU block is compiled
+	 * independently, preventing the symbolic expression-tree explosion that
+	 * occurs when all layers are chained inside a single lambda.</p>
+	 *
+	 * <p>Thread-safe via double-checked locking on {@link #decodeStepModel}.</p>
 	 */
-	private void ensurePdslCompiled() {
-		if (pdslCompiled) return;
+	private void ensureCompiled() {
+		if (decodeStepModel != null) return;
 		synchronized (this) {
-			if (pdslCompiled) return;
+			if (decodeStepModel != null) return;
 
-			PdslNode.Program program = loadPdslProgram(GRU_DECODER_PDSL_RESOURCE);
-			PdslLoader loader = new PdslLoader();
+			final int dh = config.decoderHiddenSize;
+			final int numLayers = layers.length;
+			// State layout: [x | h0 | h1 | ... | hL]  (slot 0 = x, slot l+1 = h_l)
+			final int stateSize = (1 + numLayers) * dh;
+			// Output layout: [h0' | h1' | ... | hL' | logits]
+			final int outputSize = numLayers * dh + config.decodeVocabSize;
 
-			// summary_proj: (hiddenSize) -> (decoderHiddenSize)
-			Map<String, Object> summaryArgs = new HashMap<>();
-			summaryArgs.put("w", summaryWeight);
-			summaryArgs.put("b", summaryBias);
-			Block summaryBlock = loader.buildLayer(program, "summary_proj",
-					new TraversalPolicy(config.hiddenSize), summaryArgs);
-			Model summaryModel = new Model(new TraversalPolicy(config.hiddenSize));
-			summaryModel.add(summaryBlock);
-			summaryPdslModel = summaryModel.compile(false);
+			Model model = new Model(shape(stateSize));
 
-			// lm_head: (decoderHiddenSize) -> (decodeVocabSize)
-			Map<String, Object> lmArgs = new HashMap<>();
-			lmArgs.put("w", lmHeadWeight);
-			lmArgs.put("b", lmHeadBias);
-			Block lmBlock = loader.buildLayer(program, "lm_head",
-					new TraversalPolicy(config.decoderHiddenSize), lmArgs);
-			Model lmModel = new Model(new TraversalPolicy(config.decoderHiddenSize));
-			lmModel.add(lmBlock);
-			lmHeadPdslModel = lmModel.compile(false);
+			// One CellularLayer per GRU layer — each compiled independently to
+			// prevent symbolic substitution across layers for large hidden sizes.
+			for (int l = 0; l < numLayers; l++) {
+				final int layerIdx = l;
+				CellularLayer gruLayer = layer("gru_layer_" + l,
+						shape(stateSize), shape(stateSize), input -> {
+					GRUBlock block = layers[layerIdx];
+					// x = current layer input (slot 0); hl = hidden from last step (slot layerIdx+1)
+					CollectionProducer x = c(input).subset(shape(dh), 0).reshape(shape(dh));
+					CollectionProducer hl = c(input).subset(shape(dh), (layerIdx + 1) * dh)
+							.reshape(shape(dh));
 
-			// fc_out (optional): (decoderHiddenSize) -> (decoderHiddenSize)
-			if (fcOutWeight != null) {
-				Map<String, Object> fcArgs = new HashMap<>();
-				fcArgs.put("w", fcOutWeight);
-				fcArgs.put("b", fcOutBias);
-				Block fcBlock = loader.buildLayer(program, "fc_out",
-						new TraversalPolicy(config.decoderHiddenSize), fcArgs);
-				Model fcModel = new Model(new TraversalPolicy(config.decoderHiddenSize));
-				fcModel.add(fcBlock);
-				fcOutPdslModel = fcModel.compile(false);
+					// Reset gate: r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)
+					CollectionProducer r = sigmoid(
+							add(add(matmul(p(block.wIr), x), c(block.bIr)),
+								add(matmul(p(block.wHr), hl), c(block.bHr))));
+
+					// Update gate: z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)
+					CollectionProducer z = sigmoid(
+							add(add(matmul(p(block.wIz), x), c(block.bIz)),
+								add(matmul(p(block.wHz), hl), c(block.bHz))));
+
+					// Candidate gate: n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))
+					CollectionProducer n = tanh(
+							add(add(matmul(p(block.wIn), x), c(block.bIn)),
+								r.multiply(add(matmul(p(block.wHn), hl), c(block.bHn)))));
+
+					// Hidden state update: hNew = (1 - z) * n + z * h
+					CollectionProducer hNew = add(
+							c(1.0).subtract(z).multiply(n),
+							z.multiply(hl)).reshape(shape(dh));
+
+					// Propagate state: update slot 0 (x for next layer) and slot layerIdx+1 (h_l')
+					CollectionProducer[] stateParts = new CollectionProducer[1 + numLayers];
+					stateParts[0] = hNew;
+					for (int s = 1; s <= numLayers; s++) {
+						stateParts[s] = (s == layerIdx + 1)
+								? hNew
+								: c(input).subset(shape(dh), s * dh).reshape(shape(dh));
+					}
+					return concat(stateParts).reshape(shape(stateSize));
+				});
+				model.add(gruLayer);
 			}
 
-			// GRU gate blocks: compiled lazily in each GRUBlock
-			for (GRUBlock layer : layers) {
-				layer.ensureCompiled();
-			}
+			// lm_head block: reads last GRU output from slot 0, emits [h0'|...|hL'|logits]
+			CellularLayer lmHeadLayer = layer("lm_head",
+					shape(stateSize), shape(outputSize), input -> {
+				CollectionProducer lmIn = c(input).subset(shape(dh), 0).reshape(shape(dh));
 
-			pdslCompiled = true;
+				// Optional fc_out projection
+				if (fcOutWeight != null) {
+					lmIn = add(matmul(p(fcOutWeight), lmIn), c(fcOutBias)).reshape(shape(dh));
+				}
+
+				// lm_head: project to decode vocabulary logits
+				CollectionProducer logits = add(matmul(p(lmHeadWeight), lmIn), c(lmHeadBias))
+						.reshape(shape(config.decodeVocabSize));
+
+				// Output [h0'|h1'|...|hL'|logits]: hidden slots are at state positions 1..numLayers
+				CollectionProducer[] parts = new CollectionProducer[numLayers + 1];
+				for (int l = 0; l < numLayers; l++) {
+					parts[l] = c(input).subset(shape(dh), (l + 1) * dh).reshape(shape(dh));
+				}
+				parts[numLayers] = logits;
+				return concat(parts).reshape(shape(outputSize));
+			});
+			model.add(lmHeadLayer);
+
+			this.decodeStepModel = model.compile(false);
 		}
 	}
 
 	// -----------------------------------------------------------------------
-	//  Core decode loop (all neural-network math via PDSL)
+	//  Core decode loop
 	// -----------------------------------------------------------------------
 
 	/**
 	 * Run the autoregressive GRU decode loop.
 	 *
-	 * <p>All gate computations use PDSL-compiled blocks. The only Java
-	 * logic here is vector concatenation for input preparation, token selection
-	 * (argmax or nucleus sampling), and embedding lookup.</p>
+	 * <p>Before the loop: applies {@code summary_proj} as a {@link CollectionProducer}
+	 * computation and evaluates once per note to produce the initial decoder hidden state.
+	 * Inside the loop: assembles the state vector via {@code PackedCollection.setMem}
+	 * (data routing only), executes the single compiled decode-step model, extracts
+	 * new hidden states and logits from the output, and delegates token selection to
+	 * {@link AutoregressiveModel#sampleToken}.</p>
 	 *
 	 * @param transformerHidden transformer hidden state, shape (hiddenSize)
 	 * @param temperature       sampling temperature (0 = greedy)
@@ -413,55 +356,48 @@ public class GRUDecoder {
 	 */
 	private int[] runGruDecode(PackedCollection transformerHidden,
 								double temperature, double topP, Random random) {
-		int dh = config.decoderHiddenSize;
-		int numLayers = layers.length;
+		final int dh = config.decoderHiddenSize;
+		final int numLayers = layers.length;
+		final int inputSize = (1 + numLayers) * dh;
 
-		// Summary projection via PDSL: transformer hidden -> decoder hidden
-		PackedCollection initialHidden = summaryPdslModel.forward(transformerHidden);
+		// One-time initialisation: summary projection before the decode loop.
+		// summary_proj = W_s @ transformerHidden + b_s
+		PackedCollection initialHidden =
+				add(matmul(p(summaryWeight), cp(transformerHidden)), c(summaryBias)).evaluate();
 
-		// Initialize per-layer hidden states (all from summary projection output)
+		// Initialise all per-layer hidden states from the summary projection
 		PackedCollection[] h = new PackedCollection[numLayers];
 		for (int l = 0; l < numLayers; l++) {
 			h[l] = initialHidden.range(new TraversalPolicy(dh), 0);
 		}
 
-		// SOS output token embedding (index 0) as initial decoder input
+		// Initial decoder input: SOS embedding (token index 0), zero-copy view
 		PackedCollection x = decoderEmbedding.range(new TraversalPolicy(dh), 0);
 
 		int[] outputTokens = new int[TOKENS_PER_NOTE];
+		PackedCollection state = new PackedCollection(new TraversalPolicy(inputSize));
 
 		for (int step = 0; step < TOKENS_PER_NOTE; step++) {
-			// Forward through all GRU layers via PDSL
+			// Assemble state vector [x | h0 | ... | hL] - data routing only
+			state.setMem(0, x, 0, dh);
 			for (int l = 0; l < numLayers; l++) {
-				GRUBlock block = layers[l];
-
-				// Concatenate [x | h[l]] for reset and update gates
-				PackedCollection xh = concat(x, dh, h[l], dh);
-				PackedCollection r = block.getRGateModel().forward(xh);
-				PackedCollection z = block.getZGateModel().forward(xh);
-
-				// Concatenate [x | h[l] | r] for candidate gate
-				PackedCollection xhr = concatThree(x, h[l], r, dh, dh, dh);
-				PackedCollection n = block.getNGateModel().forward(xhr);
-
-				// Concatenate [n | z | h[l]] for hidden-state update (lerp)
-				PackedCollection nzh = concatThree(n, z, h[l], dh, dh, dh);
-				h[l] = block.getHNewModel().forward(nzh);
-
-				// Pass this layer's output as input to the next
-				x = h[l];
+				state.setMem((l + 1) * dh, h[l], 0, dh);
 			}
 
-			// Optional fc_out projection before lm_head
-			PackedCollection lmInput = (fcOutPdslModel != null)
-					? fcOutPdslModel.forward(h[numLayers - 1])
-					: h[numLayers - 1];
+			// Single compiled model forward pass
+			PackedCollection output = decodeStepModel.forward(state);
 
-			// lm_head: project to decode vocabulary logits via PDSL
-			PackedCollection logits = lmHeadPdslModel.forward(lmInput);
+			// Extract new hidden states from output [h0' | ... | hL' | logits]
+			for (int l = 0; l < numLayers; l++) {
+				h[l] = output.range(new TraversalPolicy(dh), l * dh);
+			}
 
-			// Token selection (argmax or nucleus sampling) — the one allowed Java step
-			int token = sampleFromLogits(logits, config.decodeVocabSize,
+			// Extract logits from tail of output
+			PackedCollection logits = output.range(
+					new TraversalPolicy(config.decodeVocabSize), numLayers * dh);
+
+			// Token selection delegated to AutoregressiveModel
+			int token = AutoregressiveModel.sampleToken(logits, config.decodeVocabSize,
 					temperature, topP, random);
 			outputTokens[step] = token;
 
@@ -472,90 +408,4 @@ public class GRUDecoder {
 		return outputTokens;
 	}
 
-	// -----------------------------------------------------------------------
-	//  Data-routing helpers (concatenation, argmax) — no neural-network math
-	// -----------------------------------------------------------------------
-
-	/**
-	 * Concatenate two vectors into a new {@link PackedCollection}.
-	 *
-	 * @param a     first vector
-	 * @param sizeA number of elements in {@code a}
-	 * @param b     second vector
-	 * @param sizeB number of elements in {@code b}
-	 * @return new collection {@code [a | b]}
-	 */
-	private static PackedCollection concat(PackedCollection a, int sizeA,
-											PackedCollection b, int sizeB) {
-		PackedCollection result = new PackedCollection(sizeA + sizeB);
-		result.setMem(0, a, 0, sizeA);
-		result.setMem(sizeA, b, 0, sizeB);
-		return result;
-	}
-
-	/**
-	 * Concatenate three vectors into a new {@link PackedCollection}.
-	 *
-	 * @param a     first vector
-	 * @param b     second vector
-	 * @param c     third vector
-	 * @param sizeA number of elements in {@code a}
-	 * @param sizeB number of elements in {@code b}
-	 * @param sizeC number of elements in {@code c}
-	 * @return new collection {@code [a | b | c]}
-	 */
-	private static PackedCollection concatThree(PackedCollection a, PackedCollection b,
-												  PackedCollection c,
-												  int sizeA, int sizeB, int sizeC) {
-		PackedCollection result = new PackedCollection(sizeA + sizeB + sizeC);
-		result.setMem(0, a, 0, sizeA);
-		result.setMem(sizeA, b, 0, sizeB);
-		result.setMem(sizeA + sizeB, c, 0, sizeC);
-		return result;
-	}
-
-	/**
-	 * Find the index of the maximum value in a collection (greedy argmax).
-	 *
-	 * @param collection logit collection
-	 * @param size       number of elements to consider
-	 * @return index of the maximum element
-	 */
-	private static int argmax(PackedCollection collection, int size) {
-		int maxIdx = 0;
-		double maxVal = collection.toDouble(0);
-		for (int i = 1; i < size; i++) {
-			double val = collection.toDouble(i);
-			if (val > maxVal) {
-				maxVal = val;
-				maxIdx = i;
-			}
-		}
-		return maxIdx;
-	}
-
-	// -----------------------------------------------------------------------
-	//  PDSL loading helper
-	// -----------------------------------------------------------------------
-
-	/**
-	 * Load and parse a PDSL program from the classpath.
-	 *
-	 * @param resource classpath resource path
-	 * @return parsed PDSL program
-	 * @throws PdslParseException if the resource is missing or cannot be parsed
-	 */
-	private static PdslNode.Program loadPdslProgram(String resource) {
-		try (InputStream is = GRUDecoder.class.getResourceAsStream(resource)) {
-			if (is == null) {
-				throw new PdslParseException(
-						"PDSL resource not found on classpath: " + resource);
-			}
-			PdslLoader loader = new PdslLoader();
-			return loader.parse(new String(is.readAllBytes()));
-		} catch (IOException e) {
-			throw new PdslParseException(
-					"Failed to load PDSL from " + resource, e);
-		}
-	}
 }

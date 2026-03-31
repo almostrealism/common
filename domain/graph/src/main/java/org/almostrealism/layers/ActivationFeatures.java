@@ -223,11 +223,11 @@ public interface ActivationFeatures extends GeometryFeatures {
 	 * @param requirements Optional compute requirements
 	 * @return Function that creates a Tanh activation layer for any input shape
 	 */
-	default Function<TraversalPolicy, CellularLayer> tanhActivation(ComputeRequirement... requirements) {
-		return shape -> tanhActivation(shape, requirements);
+	default Function<TraversalPolicy, CellularLayer> tanh(ComputeRequirement... requirements) {
+		return shape -> tanh(shape, requirements);
 	}
 
-	default CellularLayer tanhActivation(TraversalPolicy shape, ComputeRequirement... requirements) {
+	default CellularLayer tanh(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("tanh", shape, shape,
 				input -> tanh(traverseEach(input)), requirements);
 	}

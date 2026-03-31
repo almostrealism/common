@@ -154,16 +154,17 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	}
 
 	/**
-	 * Embed a single compound token into a hidden-size vector.
+	 * Embed a single compound token into a hidden-size vector, returning a
+	 * {@link CollectionProducer} pipeline for further composition.
 	 *
 	 * <p>For normal tokens, each attribute is embedded independently and the
 	 * results are concatenated. For special tokens (SOS/EOS), the
 	 * supplementary embedding + MLP is used instead.</p>
 	 *
 	 * @param token the compound token to embed
-	 * @return PackedCollection of shape (hiddenSize,) containing the embedding
+	 * @return CollectionProducer of shape (hiddenSize,) producing the embedding
 	 */
-	public PackedCollection embed(MidiCompoundToken token) {
+	public CollectionProducer embed(MidiCompoundToken token) {
 		int hidden = config.hiddenSize;
 
 		if (token.isSOS()) {
@@ -175,99 +176,69 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 		} else if (token.isFillEnd()) {
 			return embedSupplementary(1);
 		} else if (token.isPAD()) {
-			return new PackedCollection(new TraversalPolicy(hidden));
+			return cp(new PackedCollection(new TraversalPolicy(hidden)));
 		}
 
-		int dim = config.embeddingDim;
 		int[] values = token.toArray();
-		PackedCollection result = new PackedCollection(new TraversalPolicy(hidden));
-
+		int dim = config.embeddingDim;
+		CollectionProducer[] attrEmbs = new CollectionProducer[MoonbeamConfig.NUM_ATTRIBUTES];
 		for (int attr = 0; attr < MoonbeamConfig.NUM_ATTRIBUTES; attr++) {
-			PackedCollection attrEmb;
 			if (attr == INSTRUMENT_INDEX) {
-				attrEmb = embedInstrument(values[attr]);
+				attrEmbs[attr] = embedInstrument(values[attr]).reshape(shape(dim));
 			} else {
-				attrEmb = fmeEmbeddings[attr].embed(values[attr]);
+				attrEmbs[attr] = fmeEmbeddings[attr].embed(values[attr]).reshape(shape(dim));
 			}
-
-			int offset = attr * dim;
-			double[] attrData = attrEmb.toArray(0, dim);
-			result.setMem(offset, attrData, 0, dim);
 		}
-
-		return result;
+		return concat(attrEmbs).reshape(shape(hidden));
 	}
 
 	/**
-	 * Embed a sequence of compound tokens.
+	 * Embed a sequence of compound tokens, returning a {@link CollectionProducer}
+	 * of shape (seqLen, hiddenSize).
 	 *
 	 * @param tokens the token sequence
-	 * @return PackedCollection of shape (seqLen, hiddenSize)
+	 * @return CollectionProducer of shape (seqLen, hiddenSize)
 	 */
-	public PackedCollection embedSequence(List<MidiCompoundToken> tokens) {
+	public CollectionProducer embedSequence(List<MidiCompoundToken> tokens) {
 		int hidden = config.hiddenSize;
-		PackedCollection result = new PackedCollection(
-				new TraversalPolicy(tokens.size(), hidden));
-
+		CollectionProducer[] embeddings = new CollectionProducer[tokens.size()];
 		for (int t = 0; t < tokens.size(); t++) {
-			PackedCollection tokenEmb = embed(tokens.get(t));
-			int offset = t * hidden;
-			for (int j = 0; j < hidden; j++) {
-				result.setMem(offset + j, tokenEmb.toDouble(j));
-			}
+			embeddings[t] = embed(tokens.get(t));
 		}
-
-		return result;
+		return concat(embeddings).reshape(shape(tokens.size(), hidden));
 	}
 
 	/**
-	 * Embed an instrument value using standard lookup embedding.
+	 * Embed an instrument value using standard lookup embedding, returning a
+	 * {@link CollectionProducer} of shape (embeddingDim,).
 	 */
-	private PackedCollection embedInstrument(int instrumentId) {
+	private CollectionProducer embedInstrument(int instrumentId) {
 		int dim = config.embeddingDim;
-		PackedCollection result = new PackedCollection(new TraversalPolicy(dim));
-		int offset = instrumentId * dim;
-		double[] slice = instrumentEmbedding.toArray(offset, dim);
-		result.setMem(0, slice, 0, dim);
-		return result;
+		return cp(instrumentEmbedding.range(shape(dim), instrumentId * dim));
 	}
 
 	/**
-	 * Embed a special token (SOS or EOS) using the supplementary embedding + MLP.
+	 * Embed a special token (SOS or EOS) using the supplementary embedding + MLP,
+	 * returning a {@link CollectionProducer} of shape (hiddenSize,).
 	 *
-	 * <p>Pipeline: lookup -> Linear -> GELU -> Linear</p>
+	 * <p>Pipeline: lookup -&gt; Linear -&gt; GELU -&gt; Linear</p>
 	 */
-	private PackedCollection embedSupplementary(int tokenIndex) {
+	private CollectionProducer embedSupplementary(int tokenIndex) {
 		int hidden = config.hiddenSize;
-
-		PackedCollection lookup = new PackedCollection(new TraversalPolicy(hidden));
-		int offset = tokenIndex * hidden;
-		double[] slice = supplementaryEmbedding.toArray(offset, hidden);
-		lookup.setMem(0, slice, 0, hidden);
-
 		int intermediate = supplementaryMlpIntermediateSize;
 
-		CollectionProducer mlp0Out = add(matmul(p(supplementaryMlp0Weight), p(lookup)),
+		CollectionProducer lookup = cp(supplementaryEmbedding.range(shape(hidden), tokenIndex * hidden));
+
+		CollectionProducer mlp0Out = add(matmul(p(supplementaryMlp0Weight), lookup),
 				c(supplementaryMlp0Bias));
 
-		double[] mlp0Data = mlp0Out.evaluate().toArray(0, intermediate);
-		double[] geluData = new double[intermediate];
-		for (int i = 0; i < intermediate; i++) {
-			geluData[i] = gelu(mlp0Data[i]);
-		}
-		PackedCollection geluOut = new PackedCollection(new TraversalPolicy(intermediate));
-		geluOut.setMem(0, geluData, 0, intermediate);
+		// GELU activation: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+		CollectionProducer geluArg = mlp0Out.multiply(c(Math.sqrt(2.0 / Math.PI)))
+				.multiply(c(1.0).add(mlp0Out.multiply(mlp0Out).multiply(mlp0Out).multiply(c(0.044715))));
+		CollectionProducer geluOut = mlp0Out.multiply(c(0.5)).multiply(c(1.0).add(tanh(geluArg)));
 
-		CollectionProducer mlp2Out = add(matmul(p(supplementaryMlp2Weight), p(geluOut)),
-				c(supplementaryMlp2Bias));
-		return mlp2Out.evaluate();
-	}
-
-	/**
-	 * GELU activation function (approximate).
-	 */
-	private static double gelu(double x) {
-		return 0.5 * x * (1.0 + Math.tanh(Math.sqrt(2.0 / Math.PI) * (x + 0.044715 * x * x * x)));
+		return add(matmul(p(supplementaryMlp2Weight), geluOut), c(supplementaryMlp2Bias))
+				.reshape(shape(hidden));
 	}
 
 	/** Returns the FME embedding for the given attribute index. */

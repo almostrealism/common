@@ -65,20 +65,20 @@ public class MoonbeamInferenceTest extends TestSuiteBase {
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(stateDict, config);
 
 		// Embed SOS token
-		PackedCollection sosEmb = embedding.embed(MidiCompoundToken.sos());
+		PackedCollection sosEmb = embedding.embed(MidiCompoundToken.sos()).evaluate();
 		Assert.assertEquals("SOS embedding should be hiddenSize",
 				config.hiddenSize, sosEmb.getMemLength());
 		assertNotAllZeros(sosEmb, "SOS embedding");
 
 		// Embed a normal token (middle C, quarter note, piano, medium velocity)
 		MidiCompoundToken normalToken = new MidiCompoundToken(100, 50, 5, 0, 0, 64);
-		PackedCollection normalEmb = embedding.embed(normalToken);
+		PackedCollection normalEmb = embedding.embed(normalToken).evaluate();
 		Assert.assertEquals("Normal embedding should be hiddenSize",
 				config.hiddenSize, normalEmb.getMemLength());
 		assertNotAllZeros(normalEmb, "Normal token embedding");
 
 		// Embed EOS token
-		PackedCollection eosEmb = embedding.embed(MidiCompoundToken.eos());
+		PackedCollection eosEmb = embedding.embed(MidiCompoundToken.eos()).evaluate();
 		assertNotAllZeros(eosEmb, "EOS embedding");
 
 		// SOS and EOS should produce different embeddings

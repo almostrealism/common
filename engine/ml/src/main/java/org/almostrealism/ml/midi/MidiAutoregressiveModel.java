@@ -397,7 +397,7 @@ public class MidiAutoregressiveModel {
 	 * Embed a compound token into a (1, hiddenSize) collection for transformer input.
 	 */
 	private PackedCollection embedToken(MidiCompoundToken token) {
-		PackedCollection emb = embedding.embed(token);
+		PackedCollection emb = embedding.embed(token).evaluate();
 		int hidden = config.hiddenSize;
 		PackedCollection input = new PackedCollection(new TraversalPolicy(1, hidden));
 		double[] data = emb.toArray(0, hidden);

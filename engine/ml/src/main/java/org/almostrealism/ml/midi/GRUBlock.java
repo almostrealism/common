@@ -22,8 +22,6 @@ import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.ml.dsl.PdslParseException;
 import org.almostrealism.model.Block;
-import org.almostrealism.model.CompiledModel;
-import org.almostrealism.model.Model;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,8 +39,9 @@ import java.util.Map;
  * <p>Weight sub-matrices are zero-copy views into the stacked PyTorch weight
  * tensors, obtained via {@link PackedCollection#range(TraversalPolicy, int)}.</p>
  *
- * <p>This class does not perform any computation. It only holds weight references
- * and uncompiled {@link Block} objects produced by the PDSL loader.</p>
+ * <p>This class does not perform any computation and does not compile any models.
+ * All four gate {@link Block} objects are assembled into the caller's single
+ * {@link org.almostrealism.model.Model} by {@link GRUDecoder}.</p>
  *
  * <h2>Weight Conventions</h2>
  * <ul>
@@ -61,27 +60,19 @@ public class GRUBlock {
 	private final int hiddenSize;
 
 	/** Zero-copy weight views via {@link PackedCollection#range(TraversalPolicy, int)}. */
-	final PackedCollection wIr, bIr, wHr, bHr;  // reset gate
-	final PackedCollection wIz, bIz, wHz, bHz;  // update gate
-	final PackedCollection wIn, bIn, wHn, bHn;  // candidate gate
+	public final PackedCollection wIr, bIr, wHr, bHr;  // reset gate
+	public final PackedCollection wIz, bIz, wHz, bHz;  // update gate
+	public final PackedCollection wIn, bIn, wHn, bHn;  // candidate gate
 
 	/**
 	 * Uncompiled DSL sub-blocks, one per GRU sub-computation.
 	 * Loaded from {@code gru_block.pdsl} at construction time.
+	 * These are assembled into the single decode-step model by {@link GRUDecoder}.
 	 */
 	final Block rGateBlock;
 	final Block zGateBlock;
 	final Block nGateBlock;
 	final Block hNewBlock;
-
-	/**
-	 * Lazily-compiled models for the four GRU sub-computations.
-	 * Initialized on the first call to {@link #ensureCompiled()}.
-	 */
-	private volatile CompiledModel rGateModel;
-	private volatile CompiledModel zGateModel;
-	private volatile CompiledModel nGateModel;
-	private volatile CompiledModel hNewModel;
 
 	/**
 	 * Create a GRU block with the given stacked weight tensors.
@@ -193,45 +184,4 @@ public class GRUBlock {
 		return loader.buildLayer(program, "gru_h_new",
 				new TraversalPolicy(3 * hiddenSize), args);
 	}
-
-	// ---- Compiled model access ----
-
-	/**
-	 * Lazily compile all four GRU gate blocks into {@link CompiledModel} instances.
-	 *
-	 * <p>Thread-safe via double-checked locking on {@link #rGateModel}.</p>
-	 */
-	public void ensureCompiled() {
-		if (rGateModel != null) return;
-		synchronized (this) {
-			if (rGateModel != null) return;
-			Model rModel = new Model(new TraversalPolicy(inputSize + hiddenSize));
-			rModel.add(rGateBlock);
-			rGateModel = rModel.compile(false);
-
-			Model zModel = new Model(new TraversalPolicy(inputSize + hiddenSize));
-			zModel.add(zGateBlock);
-			zGateModel = zModel.compile(false);
-
-			Model nModel = new Model(new TraversalPolicy(inputSize + 2 * hiddenSize));
-			nModel.add(nGateBlock);
-			nGateModel = nModel.compile(false);
-
-			Model hModel = new Model(new TraversalPolicy(3 * hiddenSize));
-			hModel.add(hNewBlock);
-			hNewModel = hModel.compile(false);
-		}
-	}
-
-	/** Returns the compiled reset-gate model (call {@link #ensureCompiled()} first). */
-	public CompiledModel getRGateModel() { return rGateModel; }
-
-	/** Returns the compiled update-gate model (call {@link #ensureCompiled()} first). */
-	public CompiledModel getZGateModel() { return zGateModel; }
-
-	/** Returns the compiled candidate-gate model (call {@link #ensureCompiled()} first). */
-	public CompiledModel getNGateModel() { return nGateModel; }
-
-	/** Returns the compiled hidden-update model (call {@link #ensureCompiled()} first). */
-	public CompiledModel getHNewModel() { return hNewModel; }
 }

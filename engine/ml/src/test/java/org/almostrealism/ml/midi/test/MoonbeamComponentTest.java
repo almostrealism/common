@@ -78,7 +78,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(base, dim);
 
 		long computeStart = System.currentTimeMillis();
-		PackedCollection result = fme.embed(42);
+		PackedCollection result = fme.embed(42).evaluate();
 		long computeTime = System.currentTimeMillis() - computeStart;
 
 		Assert.assertNotNull("FME result should not be null", result);
@@ -113,7 +113,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		MidiCompoundToken token = new MidiCompoundToken(100, 50, 5, 7, 0, 80);
 
 		long computeStart = System.currentTimeMillis();
-		PackedCollection result = embedding.embed(token);
+		PackedCollection result = embedding.embed(token).evaluate();
 		long computeTime = System.currentTimeMillis() - computeStart;
 
 		Assert.assertNotNull("Embedding result should not be null", result);
