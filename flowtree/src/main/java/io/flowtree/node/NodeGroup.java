@@ -1851,7 +1851,6 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			} else if (type == Message.ConnectionRequest) {
 				try {
 					Node n = this.getLeastConnectedNode();
-					if (n == null) n = this.relayNode;
 					Connection c;
 
 					if (n != null && n.getPeers().length < n.getMaxPeers() && !n.isConnected(p)) {
@@ -1866,9 +1865,9 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 						response.setString("true");
 						response.send(remoteId);
 					} else {
-					//	Message response = new Message(-1, -1, p);
-					//	response.setString("false");
-					//	response.send(remoteId);
+						Message response = new Message(-1, -1, p);
+						response.setString("false");
+						response.send(remoteId);
 					}
 				} catch (IOException ioe) {
 					System.out.println("NodeGroup: " + ioe);

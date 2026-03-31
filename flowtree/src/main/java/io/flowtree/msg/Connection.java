@@ -296,7 +296,16 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 										+ dis);
 				}
 				
-				this.node.addJob(this.node.getJobFactory().createJob(md));
+				Job received = this.node.getJobFactory().createJob(md);
+				if ("relay".equals(this.node.getLabels().get("role"))
+						&& this.node.getParent() != null) {
+					// Relay nodes must not queue network-received jobs locally.
+					// Forward to the parent NodeGroup so routeJob() can route
+					// to a capable execution node, preventing relay-to-relay circuits.
+					this.node.getParent().addJob(received);
+				} else {
+					this.node.addJob(received);
+				}
 			} else if (m.getType() == Message.ConnectionConfirmation) {
 				if (m.getData() == null) {
 					Message response = new Message(Message.ConnectionConfirmation,
