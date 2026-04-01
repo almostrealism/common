@@ -215,6 +215,9 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     /** HEAD commit hash recorded just before doWork() starts. */
     private String preWorkHeadHash;
 
+    /** Set of local branch names that existed just before doWork() starts. */
+    private Set<String> preWorkBranches;
+
     /** Whether git tampering was detected after doWork(). */
     private boolean gitTamperingDetected = false;
 
@@ -378,6 +381,8 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             if (targetBranch != null && !targetBranch.isEmpty()) {
                 preWorkHeadHash = executeGitWithOutput("rev-parse", "HEAD").trim();
                 log("Pre-work HEAD: " + preWorkHeadHash.substring(0, Math.min(7, preWorkHeadHash.length())));
+                preWorkBranches = new HashSet<>(Arrays.asList(
+                        executeGitWithOutput("branch", "--list", "--format=%(refname:short)").split("\n")));
             }
 
             // Perform the actual work
@@ -854,10 +859,22 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         }
 
         // Check 2: Were any commits created on the current branch?
-        // rev-list returns commits reachable from HEAD but not from the
-        // pre-work hash.  Any output means new commits were made.
-        String newCommits = executeGitWithOutput(
-            "rev-list", preWorkHeadHash + "..HEAD", "--count").trim();
+        // Count commits reachable from HEAD but not from preWorkHeadHash and
+        // not already on origin/targetBranch.  Excluding origin means commits
+        // the agent pulled from remote (pre-existing history) are not flagged —
+        // only commits the agent created locally that aren't on the remote count.
+        executeGit("fetch", "origin", "--quiet");
+        boolean remoteRefExists = executeGit("show-ref", "--verify", "--quiet",
+                "refs/remotes/origin/" + targetBranch) == 0;
+        String newCommits;
+        if (remoteRefExists) {
+            newCommits = executeGitWithOutput("rev-list", "HEAD",
+                "--not", preWorkHeadHash, "refs/remotes/origin/" + targetBranch,
+                "--count").trim();
+        } else {
+            newCommits = executeGitWithOutput(
+                "rev-list", preWorkHeadHash + "..HEAD", "--count").trim();
+        }
         int commitCount = 0;
         try {
             commitCount = Integer.parseInt(newCommits);
@@ -878,22 +895,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             }
         }
 
-        // Check 3: Were any new local branches created?
-        // List all local branches and check for any that don't match
-        // the target branch or the original branch
+        // Check 3: Were any new local branches created during the session?
+        // Compare against the pre-work snapshot so pre-existing branches
+        // checked out before the job started are not flagged.
         String branchOutput = executeGitWithOutput("branch", "--list", "--format=%(refname:short)");
         List<String> newBranches = new ArrayList<>();
         for (String branch : branchOutput.split("\n")) {
             String trimmed = branch.trim();
-            if (!trimmed.isEmpty()
-                    && !trimmed.equals(targetBranch)
-                    && !trimmed.equals(originalBranch)
-                    && !trimmed.equals(baseBranch)) {
-                // This could be a pre-existing branch, but in a container workspace
-                // where prepareWorkingDirectory controls the branch state, any
-                // unexpected local branch is suspicious.  We log but don't treat
-                // it as a hard violation — commits and branch switches are the
-                // real problems.
+            if (!trimmed.isEmpty() && !preWorkBranches.contains(trimmed)) {
                 newBranches.add(trimmed);
             }
         }
