@@ -479,11 +479,14 @@ public class ClaudeCodeJob extends GitManagedJob {
     protected void doWork() {
         executeSingleRun();
 
-        // Enforcement loop: when enforceChanges is enabled and the agent
-        // produced no file changes, restart the session with an escalating
-        // counter so the agent cannot simply declare "no fix needed."
-        if (enforceChanges) {
-            while (enforcementAttempt < MAX_ENFORCEMENT_RETRIES && !hasUncommittedChanges()) {
+        // Enforcement loop: when enforceChanges is enabled and the agent produced no
+        // file changes, restart the session.  Git integrity violations are a completely
+        // separate concern -- if the agent committed (HEAD moved), exit immediately and
+        // let the tampering-detection path in GitManagedJob.run() handle it.
+        if (enforceChanges && !hasAgentCommitted()) {
+            while (enforcementAttempt < MAX_ENFORCEMENT_RETRIES
+                    && !hasUncommittedChanges()
+                    && !hasAgentCommitted()) {
                 enforcementAttempt++;
                 log("Enforcement loop: attempt " + enforcementAttempt
                     + " produced no changes -- restarting (attempt "
@@ -491,7 +494,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 executeSingleRun();
             }
 
-            if (!hasUncommittedChanges()) {
+            if (!hasUncommittedChanges() && !hasAgentCommitted()) {
                 warn("Enforcement loop: exhausted " + MAX_ENFORCEMENT_RETRIES
                     + " retries without producing changes");
             }

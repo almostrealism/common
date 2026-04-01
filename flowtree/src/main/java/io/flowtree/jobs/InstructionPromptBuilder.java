@@ -363,19 +363,17 @@ public class InstructionPromptBuilder {
         // restarted because a previous attempt produced no code changes.
         if (enforcementAttempt > 0) {
             sb.append("## !! SESSION RESTARTED -- ATTEMPT ").append(enforcementAttempt + 1).append(" !!\n\n");
-            sb.append("You have refused to investigate and fix the test failures ");
-            sb.append(enforcementAttempt).append(" time");
+            sb.append("This job was submitted because CI was failing on this branch. ");
+            sb.append("Your previous ").append(enforcementAttempt).append(" session");
             if (enforcementAttempt > 1) sb.append("s");
-            sb.append(". If you claim that you do not have to reproduce the test failure, ");
-            sb.append("this session will restart. Your only option to exit this loop is ");
-            sb.append("to investigate and fix the failure or to run the failing CI command ");
-            sb.append("(not an individual test, not some alternative you invent that you ");
-            sb.append("think is similar enough to the CI command to count -- the exact ");
-            sb.append("CI command) and show that it actually succeeds. Because you have ");
-            sb.append("done neither of these things, your session has been restarted.\n\n");
-            sb.append("Previous sessions ended without producing any code changes. This ");
-            sb.append("is NOT acceptable. The tests fail on this branch and pass on master. ");
-            sb.append("You MUST fix the production code.\n\n");
+            sb.append(" ended without producing any code changes.\n\n");
+            sb.append("You MUST investigate the current CI status and produce code changes. ");
+            sb.append("Run the failing CI command (via the MCP test runner, using the exact ");
+            sb.append("CI command — not an individual test, not an alternative you invented) ");
+            sb.append("to determine what is failing. Then fix the production code. ");
+            sb.append("Leave the changes uncommitted — the harness commits them.\n\n");
+            sb.append("Simply stating that you do not see a problem, or that tests seem to ");
+            sb.append("pass in your view, is not acceptable. Produce code changes.\n\n");
             sb.append("---\n\n");
         }
 
@@ -406,13 +404,14 @@ public class InstructionPromptBuilder {
             if (enforceChanges) {
                 // When changes are enforced, replace the permissive sections with
                 // a strict message that removes the "no changes needed" escape hatch.
-                sb.append("## Code Changes Are REQUIRED\n");
-                sb.append("This task requires you to produce code changes. You are fixing test ");
-                sb.append("failures that your branch introduced. Exiting without code changes ");
-                sb.append("is NOT acceptable and will cause this session to be restarted. ");
-                sb.append("If you believe the tests already pass, you MUST prove it by running ");
-                sb.append("the full CI command (using the MCP test runner, not individual test ");
-                sb.append("methods) and showing that the entire module test suite passes.\n\n");
+                sb.append("## Code Changes Are Required\n");
+                sb.append("This task was submitted because CI was failing on this branch. ");
+                sb.append("You MUST produce code changes. Run the failing CI command ");
+                sb.append("(via the MCP test runner — the exact CI command, not an individual ");
+                sb.append("test or an alternative you invented) to determine what is failing, ");
+                sb.append("then fix the production code. Leave the changes uncommitted — the ");
+                sb.append("harness commits them. Do NOT commit yourself.\n\n");
+                sb.append("Exiting without code changes will cause this session to be restarted.\n\n");
             } else {
                 sb.append("## Non-Code Requests\n");
                 sb.append("If the user's request does not require code changes (e.g., a question about ");
@@ -464,24 +463,26 @@ public class InstructionPromptBuilder {
         // Merge conflict instructions -- when the base branch has diverged
         if (hasMergeConflicts) {
             sb.append("## Merge Conflicts\n");
-            sb.append("IMPORTANT: The base branch (origin/").append(baseBranch);
-            sb.append(") has diverged from your working branch (").append(targetBranch);
-            sb.append(") and a merge attempt produced conflicts. ");
-            sb.append("The merge was aborted so your working directory is clean, ");
-            sb.append("but you MUST resolve these conflicts as part of your work.\n\n");
-            sb.append("To resolve:\n");
-            sb.append("1. Run `git merge origin/").append(baseBranch).append("`\n");
-            sb.append("2. Resolve the conflicts in the following files:\n");
+            sb.append("IMPORTANT: A merge from origin/").append(baseBranch);
+            sb.append(" into your branch (").append(targetBranch);
+            sb.append(") is ALREADY IN PROGRESS. Do NOT run `git merge` — the merge ");
+            sb.append("has already been started and is waiting for conflict resolution.\n\n");
+            sb.append("The following files have conflict markers that you MUST resolve:\n");
             if (mergeConflictFiles != null) {
                 for (String file : mergeConflictFiles) {
                     sb.append("   - `").append(file).append("`\n");
                 }
             }
-            sb.append("3. After resolving all conflicts, stage the resolved files with `git add`\n");
-            sb.append("4. Complete the merge with `git commit --no-edit`\n");
-            sb.append("5. Then proceed with the user's requested work\n\n");
-            sb.append("Do NOT skip conflict resolution. The merge must be completed before ");
-            sb.append("any other changes are made.\n\n");
+            sb.append("\nTo resolve:\n");
+            sb.append("1. Open each conflicted file and remove the conflict markers ");
+            sb.append("(`<<<<<<<`, `=======`, `>>>>>>>`) by choosing the correct content.\n");
+            sb.append("2. Stage each resolved file with `git add <file>`.\n");
+            sb.append("3. Do NOT run `git commit` — the harness will create the merge ");
+            sb.append("commit automatically after you finish.\n");
+            sb.append("4. Then proceed with the user's requested work.\n\n");
+            sb.append("Do NOT skip conflict resolution. Do NOT run `git merge --abort`. ");
+            sb.append("Do NOT run `git commit`. The merge must be completed by resolving ");
+            sb.append("all conflict markers and staging the files.\n\n");
         }
 
         // Remote branch context -- user instructions always refer to remote branches
