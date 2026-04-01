@@ -20,6 +20,8 @@ if _MANAGER_DIR not in sys.path:
 # Suppress startup prints during import
 with patch.dict(os.environ, {"AR_CONTROLLER_URL": "http://test:7780"}):
     import server
+    import github as github_module
+    import pipeline as pipeline_module
 
 
 def _grant_all_scopes():
@@ -329,11 +331,11 @@ class TestWorkstreamUpdateConfig(unittest.TestCase):
 
 class TestProjectCreateBranch(unittest.TestCase):
 
-    @patch.object(server, "_github_request")
+    @patch.object(pipeline_module, "_github_request")
     def test_dispatch_default_repo(self, mock_gh):
         _grant_all_scopes()
         mock_gh.return_value = {"ok": True, "status": 204}
-        result = server.project_create_branch(plan_title="my-feature")
+        result = pipeline_module.project_create_branch(plan_title="my-feature")
         mock_gh.assert_called_once()
         call_path = mock_gh.call_args[0][1]
         self.assertIn("almostrealism/common", call_path)
@@ -341,18 +343,18 @@ class TestProjectCreateBranch(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(result["triggered"])
 
-    @patch.object(server, "_github_request")
+    @patch.object(pipeline_module, "_github_request")
     def test_dispatch_explicit_repo(self, mock_gh):
         _grant_all_scopes()
         mock_gh.return_value = {"status": 204}
-        result = server.project_create_branch(
+        result = pipeline_module.project_create_branch(
             repo_url="https://github.com/myorg/myrepo")
         call_path = mock_gh.call_args[0][1]
         self.assertIn("myorg/myrepo", call_path)
         self.assertTrue(result["ok"])
 
-    @patch.object(server, "_find_workstream")
-    @patch.object(server, "_github_request")
+    @patch.object(pipeline_module, "_find_workstream")
+    @patch.object(pipeline_module, "_github_request")
     def test_dispatch_from_workstream(self, mock_gh, mock_find):
         _grant_all_scopes()
         mock_find.return_value = {
@@ -360,36 +362,36 @@ class TestProjectCreateBranch(unittest.TestCase):
             "baseBranch": "main",
         }
         mock_gh.return_value = {"status": 204}
-        result = server.project_create_branch(workstream_id="ws-test")
+        result = pipeline_module.project_create_branch(workstream_id="ws-test")
         payload = mock_gh.call_args[0][2]
         self.assertEqual(payload["ref"], "main")
         self.assertTrue(result["ok"])
 
-    @patch.object(server, "_find_workstream")
+    @patch.object(pipeline_module, "_find_workstream")
     def test_workstream_not_found(self, mock_find):
         _grant_all_scopes()
         mock_find.return_value = None
-        result = server.project_create_branch(workstream_id="ws-bad")
+        result = pipeline_module.project_create_branch(workstream_id="ws-bad")
         self.assertFalse(result["ok"])
         self.assertIn("not found", result["error"])
 
-    @patch.object(server, "_github_request")
+    @patch.object(pipeline_module, "_github_request")
     def test_workflow_failure(self, mock_gh):
         _grant_all_scopes()
         mock_gh.return_value = {"ok": False, "error": "Not Found"}
-        result = server.project_create_branch()
+        result = pipeline_module.project_create_branch()
         self.assertIn("next_steps", result)
 
     def test_requires_pipeline_scope(self):
         _grant_scopes("read", "write")
         with self.assertRaises(PermissionError):
-            server.project_create_branch()
+            pipeline_module.project_create_branch()
 
 
 class TestProjectVerifyBranch(unittest.TestCase):
 
-    @patch.object(server, "_find_workstream")
-    @patch.object(server, "_github_request")
+    @patch.object(pipeline_module, "_find_workstream")
+    @patch.object(pipeline_module, "_github_request")
     def test_dispatch_verify(self, mock_gh, mock_find):
         _grant_all_scopes()
         mock_find.return_value = {
@@ -398,15 +400,15 @@ class TestProjectVerifyBranch(unittest.TestCase):
             "baseBranch": "master",
         }
         mock_gh.return_value = {"status": 204}
-        result = server.project_verify_branch(workstream_id="ws-test")
+        result = pipeline_module.project_verify_branch(workstream_id="ws-test")
         call_path = mock_gh.call_args[0][1]
         self.assertIn("verify-completion.yaml", call_path)
         payload = mock_gh.call_args[0][2]
         self.assertEqual(payload["ref"], "feature/x")
         self.assertTrue(result["ok"])
 
-    @patch.object(server, "_find_workstream")
-    @patch.object(server, "_github_request")
+    @patch.object(pipeline_module, "_find_workstream")
+    @patch.object(pipeline_module, "_github_request")
     def test_custom_branch(self, mock_gh, mock_find):
         _grant_all_scopes()
         mock_find.return_value = {
@@ -414,31 +416,31 @@ class TestProjectVerifyBranch(unittest.TestCase):
             "defaultBranch": "feature/x",
         }
         mock_gh.return_value = {"status": 204}
-        server.project_verify_branch(
+        pipeline_module.project_verify_branch(
             workstream_id="ws-test", branch="feature/custom")
         payload = mock_gh.call_args[0][2]
         self.assertEqual(payload["ref"], "feature/custom")
 
-    @patch.object(server, "_find_workstream")
+    @patch.object(pipeline_module, "_find_workstream")
     def test_missing_repo_url(self, mock_find):
         _grant_all_scopes()
         mock_find.return_value = {"defaultBranch": "feature/x"}
-        result = server.project_verify_branch(workstream_id="ws-test")
+        result = pipeline_module.project_verify_branch(workstream_id="ws-test")
         self.assertFalse(result["ok"])
 
-    @patch.object(server, "_find_workstream")
+    @patch.object(pipeline_module, "_find_workstream")
     def test_workstream_not_found(self, mock_find):
         _grant_all_scopes()
         mock_find.return_value = None
-        result = server.project_verify_branch(workstream_id="ws-bad")
+        result = pipeline_module.project_verify_branch(workstream_id="ws-bad")
         self.assertFalse(result["ok"])
         self.assertIn("not found", result["error"])
 
 
 class TestProjectCommitPlan(unittest.TestCase):
 
-    @patch.object(server, "_find_workstream")
-    @patch.object(server, "_github_request")
+    @patch.object(pipeline_module, "_find_workstream")
+    @patch.object(pipeline_module, "_github_request")
     def test_commit_plan(self, mock_gh, mock_find):
         _grant_all_scopes()
         mock_find.return_value = {
@@ -449,7 +451,7 @@ class TestProjectCommitPlan(unittest.TestCase):
             {"sha": "abc123"},  # GET existing file
             {"content": {"sha": "new"}, "commit": {"sha": "def456"}},  # PUT
         ]
-        result = server.project_commit_plan(
+        result = pipeline_module.project_commit_plan(
             workstream_id="ws-test",
             content="# Plan\nDo stuff",
             path="docs/plans/PLAN.md",
@@ -458,8 +460,8 @@ class TestProjectCommitPlan(unittest.TestCase):
         self.assertEqual(result["path"], "docs/plans/PLAN.md")
         self.assertEqual(result["commit_sha"], "def456")
 
-    @patch.object(server, "_find_workstream")
-    @patch.object(server, "_github_request")
+    @patch.object(pipeline_module, "_find_workstream")
+    @patch.object(pipeline_module, "_github_request")
     def test_auto_generates_path(self, mock_gh, mock_find):
         _grant_all_scopes()
         mock_find.return_value = {
@@ -470,34 +472,34 @@ class TestProjectCommitPlan(unittest.TestCase):
             {},  # GET existing (not found)
             {"content": {"sha": "new"}, "commit": {"sha": "abc"}},
         ]
-        result = server.project_commit_plan(
+        result = pipeline_module.project_commit_plan(
             workstream_id="ws-test", content="# Plan")
         self.assertTrue(result["ok"])
         self.assertIn("PLAN-", result["path"])
         self.assertIn("feature-my-plan", result["path"])
 
-    @patch.object(server, "_find_workstream")
+    @patch.object(pipeline_module, "_find_workstream")
     def test_path_traversal_blocked(self, mock_find):
         _grant_all_scopes()
         mock_find.return_value = {
             "repoUrl": "https://github.com/org/repo",
             "defaultBranch": "feature/x",
         }
-        result = server.project_commit_plan(
+        result = pipeline_module.project_commit_plan(
             workstream_id="ws-test",
             content="# Plan",
             path="../../../etc/passwd",
         )
         self.assertFalse(result["ok"])
 
-    @patch.object(server, "_find_workstream")
+    @patch.object(pipeline_module, "_find_workstream")
     def test_sensitive_path_blocked(self, mock_find):
         _grant_all_scopes()
         mock_find.return_value = {
             "repoUrl": "https://github.com/org/repo",
             "defaultBranch": "feature/x",
         }
-        result = server.project_commit_plan(
+        result = pipeline_module.project_commit_plan(
             workstream_id="ws-test",
             content="# Plan",
             path=".github/workflows/evil.yaml",
@@ -506,7 +508,7 @@ class TestProjectCommitPlan(unittest.TestCase):
 
     def test_rejects_oversized_content(self):
         _grant_all_scopes()
-        result = server.project_commit_plan(
+        result = pipeline_module.project_commit_plan(
             workstream_id="ws-test", content="x" * 100_001)
         self.assertFalse(result["ok"])
         self.assertIn("maximum length", result["error"])
@@ -514,8 +516,8 @@ class TestProjectCommitPlan(unittest.TestCase):
 
 class TestProjectReadPlan(unittest.TestCase):
 
-    @patch.object(server, "_find_workstream")
-    @patch.object(server, "_github_request")
+    @patch.object(pipeline_module, "_find_workstream")
+    @patch.object(pipeline_module, "_github_request")
     def test_read_plan(self, mock_gh, mock_find):
         _grant_all_scopes()
         import base64
@@ -530,34 +532,34 @@ class TestProjectReadPlan(unittest.TestCase):
             "encoding": "base64",
             "sha": "abc123",
         }
-        result = server.project_read_plan(workstream_id="ws-test")
+        result = pipeline_module.project_read_plan(workstream_id="ws-test")
         self.assertTrue(result["ok"])
         self.assertEqual(result["content"], "# My Plan")
         self.assertEqual(result["path"], "docs/plans/PLAN.md")
 
-    @patch.object(server, "_find_workstream")
+    @patch.object(pipeline_module, "_find_workstream")
     def test_no_planning_document(self, mock_find):
         _grant_all_scopes()
         mock_find.return_value = {
             "repoUrl": "https://github.com/org/repo",
             "defaultBranch": "feature/x",
         }
-        result = server.project_read_plan(workstream_id="ws-test")
+        result = pipeline_module.project_read_plan(workstream_id="ws-test")
         self.assertFalse(result["ok"])
         self.assertIn("planning document", result["error"])
 
-    @patch.object(server, "_find_workstream")
+    @patch.object(pipeline_module, "_find_workstream")
     def test_workstream_not_found(self, mock_find):
         _grant_all_scopes()
         mock_find.return_value = None
-        result = server.project_read_plan(workstream_id="ws-bad")
+        result = pipeline_module.project_read_plan(workstream_id="ws-bad")
         self.assertFalse(result["ok"])
         self.assertIn("not found", result["error"])
 
     def test_requires_read_scope(self):
         _grant_scopes("write")
         with self.assertRaises(PermissionError):
-            server.project_read_plan(workstream_id="ws-test")
+            pipeline_module.project_read_plan(workstream_id="ws-test")
 
 
 # -----------------------------------------------------------------------
@@ -825,19 +827,23 @@ class TestScopeEnforcement(unittest.TestCase):
 class TestExtractOwnerRepo(unittest.TestCase):
 
     def test_https_url(self):
-        result = server._extract_owner_repo("https://github.com/org/repo")
+        from github import _extract_owner_repo
+        result = _extract_owner_repo("https://github.com/org/repo")
         self.assertEqual(result, ("org", "repo"))
 
     def test_https_url_with_git_suffix(self):
-        result = server._extract_owner_repo("https://github.com/org/repo.git")
+        from github import _extract_owner_repo
+        result = _extract_owner_repo("https://github.com/org/repo.git")
         self.assertEqual(result, ("org", "repo"))
 
     def test_ssh_url(self):
-        result = server._extract_owner_repo("git@github.com:org/repo.git")
+        from github import _extract_owner_repo
+        result = _extract_owner_repo("git@github.com:org/repo.git")
         self.assertEqual(result, ("org", "repo"))
 
     def test_invalid_url(self):
-        result = server._extract_owner_repo("not-a-url")
+        from github import _extract_owner_repo
+        result = _extract_owner_repo("not-a-url")
         self.assertIsNone(result)
 
 
@@ -862,13 +868,15 @@ class TestToolRegistration(unittest.TestCase):
         self.assertIn("controller_update_config", tools)
 
     def test_expected_tool_count(self):
-        """Verify all 15 tools are registered."""
+        """Verify all tools are registered."""
         tools = server.mcp._tool_manager._tools
         expected = {
             "controller_health",
             "controller_update_config",
             "workstream_list",
             "workstream_get_status",
+            "workstream_list_jobs",
+            "workstream_get_job",
             "workstream_submit_task",
             "workstream_register",
             "workstream_update_config",
@@ -879,12 +887,191 @@ class TestToolRegistration(unittest.TestCase):
             "memory_recall",
             "memory_branch_context",
             "memory_store",
+            "send_message",
+            "github_pr_find",
+            "github_pr_review_comments",
+            "github_pr_conversation",
+            "github_pr_reply",
+            "github_list_open_prs",
+            "github_create_pr",
         }
         registered = set(tools.keys())
         missing = expected - registered
         extra = registered - expected
         self.assertFalse(missing, f"Missing tools: {missing}")
         self.assertFalse(extra, f"Unexpected tools: {extra}")
+
+
+# -----------------------------------------------------------------------
+# GitHub PR tools
+# -----------------------------------------------------------------------
+
+import github as github_module
+
+
+class TestGithubPrReviewComments(unittest.TestCase):
+    """Tests for github_pr_review_comments (GraphQL-based, paginated)."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _make_graphql_response(self, threads, has_next=False, cursor="abc"):
+        """Build a mock GraphQL response for reviewThreads."""
+        return {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "pageInfo": {
+                                "hasNextPage": has_next,
+                                "endCursor": cursor,
+                            },
+                            "nodes": threads,
+                        }
+                    }
+                }
+            }
+        }
+
+    def _make_thread(self, resolved, comments):
+        """Build a reviewThread node."""
+        return {
+            "isResolved": resolved,
+            "comments": {
+                "nodes": [
+                    {
+                        "databaseId": c.get("id", 1),
+                        "path": c.get("path", "file.py"),
+                        "line": c.get("line", 10),
+                        "originalLine": c.get("originalLine"),
+                        "body": c.get("body", "fix this"),
+                        "author": {"login": c.get("user", "reviewer")},
+                        "createdAt": c.get("createdAt", "2026-01-01T00:00:00Z"),
+                    }
+                    for c in comments
+                ]
+            },
+        }
+
+    @patch.object(github_module, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(github_module, "_github_graphql_request")
+    def test_returns_unresolved_comments(self, mock_gql, mock_repo):
+        unresolved = self._make_thread(False, [
+            {"id": 101, "body": "please fix", "user": "alice",
+             "createdAt": "2026-03-01T10:00:00Z"},
+        ])
+        resolved = self._make_thread(True, [
+            {"id": 102, "body": "looks good", "user": "bob",
+             "createdAt": "2026-03-02T10:00:00Z"},
+        ])
+        mock_gql.return_value = self._make_graphql_response(
+            [unresolved, resolved], has_next=False)
+
+        result = github_module.github_pr_review_comments(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["comments"][0]["id"], 101)
+        self.assertEqual(result["comments"][0]["body"], "please fix")
+        self.assertEqual(result["comments"][0]["user"], "alice")
+        self.assertIsNone(result["comments"][0]["in_reply_to_id"])
+
+    @patch.object(github_module, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(github_module, "_github_graphql_request")
+    def test_paginates_through_multiple_pages(self, mock_gql, mock_repo):
+        page1_thread = self._make_thread(False, [
+            {"id": 1, "body": "page1", "createdAt": "2026-01-01T00:00:00Z"},
+        ])
+        page2_thread = self._make_thread(False, [
+            {"id": 2, "body": "page2", "createdAt": "2026-02-01T00:00:00Z"},
+        ])
+        mock_gql.side_effect = [
+            self._make_graphql_response([page1_thread], has_next=True, cursor="c1"),
+            self._make_graphql_response([page2_thread], has_next=False),
+        ]
+
+        result = github_module.github_pr_review_comments(pr_number=10)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 2)
+        # Should be sorted descending by createdAt
+        self.assertEqual(result["comments"][0]["id"], 2)
+        self.assertEqual(result["comments"][1]["id"], 1)
+        # Verify pagination: two calls with correct cursors
+        self.assertEqual(mock_gql.call_count, 2)
+        first_vars = mock_gql.call_args_list[0][0][1]
+        self.assertIsNone(first_vars["cursor"])
+        second_vars = mock_gql.call_args_list[1][0][1]
+        self.assertEqual(second_vars["cursor"], "c1")
+
+    @patch.object(github_module, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(github_module, "_github_graphql_request")
+    def test_empty_when_all_resolved(self, mock_gql, mock_repo):
+        resolved = self._make_thread(True, [
+            {"id": 1, "body": "done"},
+        ])
+        mock_gql.return_value = self._make_graphql_response(
+            [resolved], has_next=False)
+
+        result = github_module.github_pr_review_comments(pr_number=5)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 0)
+        self.assertEqual(result["comments"], [])
+
+    @patch.object(github_module, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(github_module, "_github_graphql_request")
+    def test_caps_at_50_comments(self, mock_gql, mock_repo):
+        comments = [
+            {"id": i, "body": f"comment {i}",
+             "createdAt": f"2026-01-{i+1:02d}T00:00:00Z"}
+            for i in range(60)
+        ]
+        thread = self._make_thread(False, comments)
+        mock_gql.return_value = self._make_graphql_response(
+            [thread], has_next=False)
+
+        result = github_module.github_pr_review_comments(pr_number=1)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 50)
+
+    @patch.object(github_module, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(github_module, "_github_graphql_request")
+    def test_graphql_error_returns_error(self, mock_gql, mock_repo):
+        mock_gql.return_value = {
+            "errors": [{"message": "Field 'foo' doesn't exist"}]
+        }
+
+        result = github_module.github_pr_review_comments(pr_number=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("foo", result["error"])
+
+    @patch.object(github_module, "_resolve_github_repo",
+                  return_value=("", "", "", {"ok": False, "error": "no repo"}))
+    def test_repo_resolution_error(self, mock_repo):
+        result = github_module.github_pr_review_comments(pr_number=1)
+        self.assertFalse(result["ok"])
+        self.assertIn("no repo", result["error"])
+
+    def test_requires_read_scope(self):
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            github_module.github_pr_review_comments(pr_number=1)
+
+    @patch.object(github_module, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(github_module, "_github_graphql_request")
+    def test_uses_line_fallback_to_originalLine(self, mock_gql, mock_repo):
+        thread = self._make_thread(False, [
+            {"id": 1, "line": None, "originalLine": 42, "body": "outdated"},
+        ])
+        mock_gql.return_value = self._make_graphql_response(
+            [thread], has_next=False)
+
+        result = github_module.github_pr_review_comments(pr_number=1)
+        self.assertEqual(result["comments"][0]["line"], 42)
 
 
 if __name__ == "__main__":
