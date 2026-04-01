@@ -15,15 +15,15 @@
  */
 
 /**
- * Integration layer between Apache Airflow and the FlowTree workflow engine.
+ * FlowTree node types that run jobs on a fixed time schedule.
  *
- * <p>Classes in this package expose a lightweight Jetty HTTP endpoint (default
- * port 7070) that Airflow (or any HTTP client) can use to submit shell commands
- * as FlowTree {@link io.flowtree.job.Job} instances. The
- * {@link io.flowtree.airflow.AirflowJobFactory} owns the singleton endpoint and
- * enqueues {@link io.flowtree.airflow.AirflowJob} objects that are subsequently
- * dispatched to FlowTree worker nodes for execution.
+ * <p>{@link io.flowtree.scheduler.ScheduledJobNode} extends
+ * {@link io.flowtree.node.Node} with a {@link java.util.concurrent.ScheduledThreadPoolExecutor}
+ * so that jobs implementing the
+ * {@link io.flowtree.scheduler.ScheduledJobNode.FixedRate} marker interface
+ * are executed at their declared frequency rather than being drawn from the
+ * ordinary work queue.
  *
  * @author  Michael Murray
  */
-package io.flowtree.airflow;
+package io.flowtree.scheduler;

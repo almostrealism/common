@@ -32,8 +32,11 @@ import java.util.Enumeration;
  * @author Mike Murray
  */
 public class NetworkTreeNode implements MutableTreeNode {
+	/** Display label shown in the Swing tree for this node. */
 	private String label;
+	/** The FlowTree {@link Node} that this tree node represents. */
 	private Node node;
+	/** Parent tree node, or {@code null} if this is the root. */
 	private NetworkTreeNode parent;
 	
 	/**

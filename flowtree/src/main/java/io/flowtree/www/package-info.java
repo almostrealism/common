@@ -15,15 +15,20 @@
  */
 
 /**
- * Integration layer between Apache Airflow and the FlowTree workflow engine.
+ * FlowTree node types that embed HTTP servers alongside their job-queue
+ * participation.
  *
- * <p>Classes in this package expose a lightweight Jetty HTTP endpoint (default
- * port 7070) that Airflow (or any HTTP client) can use to submit shell commands
- * as FlowTree {@link io.flowtree.job.Job} instances. The
- * {@link io.flowtree.airflow.AirflowJobFactory} owns the singleton endpoint and
- * enqueues {@link io.flowtree.airflow.AirflowJob} objects that are subsequently
- * dispatched to FlowTree worker nodes for execution.
+ * <p>Both node types in this package extend {@link io.flowtree.node.Node}
+ * with zero initial jobs and zero max-peers to act as purely HTTP-serving
+ * participants:
+ * <ul>
+ *   <li>{@link io.flowtree.www.TomcatNode} — embeds Apache Tomcat, enabling
+ *       servlet and Java EE web-application hosting within the FlowTree
+ *       process.</li>
+ *   <li>{@link io.flowtree.www.WebServerNode} — embeds NanoHTTPD's
+ *       {@code SimpleWebServer} for lightweight static-file serving.</li>
+ * </ul>
  *
  * @author  Michael Murray
  */
-package io.flowtree.airflow;
+package io.flowtree.www;

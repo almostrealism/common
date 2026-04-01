@@ -48,11 +48,21 @@ import java.util.regex.Pattern;
  */
 public class McpToolDiscovery {
 
+    /** Matches a Python {@code def function_name(} line to extract the function name. */
     private static final Pattern FUNC_DEF_PATTERN = Pattern.compile("def\\s+(\\w+)\\s*\\(");
+
+    /** Matches an inline {@code Tool(name="tool_name")} constructor. */
     private static final Pattern TOOL_NAME_INLINE_PATTERN =
         Pattern.compile("Tool\\s*\\(\\s*name\\s*=\\s*\"([^\"]+)\"");
+
+    /**
+     * Matches a {@code name = "tool_name"} line that appears on its own line
+     * inside a multi-line {@code Tool(...)} constructor.
+     */
     private static final Pattern TOOL_NAME_SEPARATE_PATTERN =
         Pattern.compile("^\\s*name\\s*=\\s*\"([^\"]+)\"");
+
+    /** Matches a {@code .tool()(varname)} dynamic registration call. */
     private static final Pattern DYNAMIC_TOOL_CALL_PATTERN =
         Pattern.compile("\\.tool\\(\\)\\(\\w+\\)");
 

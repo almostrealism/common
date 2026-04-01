@@ -26,11 +26,42 @@ import org.jboss.aesh.console.command.invocation.CommandInvocation;
 
 import java.util.List;
 
+/**
+ * An Æsh {@link Command} that opens a new JDBC data-source connection and
+ * registers it with the application-wide {@link DatabasePools}. The command is
+ * exposed as {@code open} in the FlowTree CLI.
+ *
+ * <p>Usage: {@code open <uri> <user> <password>}
+ * <ul>
+ *   <li>{@code uri}      — JDBC connection URI (e.g. {@code jdbc:mysql://host/db})</li>
+ *   <li>{@code user}     — database user name</li>
+ *   <li>{@code password} — database password</li>
+ * </ul>
+ *
+ * <p>If fewer than three arguments are supplied the command prints a usage
+ * message and returns {@link CommandResult#FAILURE}.
+ *
+ * @author  Michael Murray
+ */
 @CommandDefinition(name="open", description = "Introduce a data source")
 public class OpenConnection implements Command {
+
+	/** Positional arguments provided to the {@code open} command. */
 	@Arguments
 	List<String> params;
 
+	/**
+	 * Executes the open-connection command. Validates that at least three
+	 * arguments are present, then delegates to
+	 * {@link DatabasePools#open(String, String, String)} with the URI, user,
+	 * and password.
+	 *
+	 * @param invocation the command invocation context used for output
+	 * @return {@link CommandResult#SUCCESS} if the connection was opened, or
+	 *         {@link CommandResult#FAILURE} if arguments are missing
+	 * @throws CommandException     if the command framework encounters an error
+	 * @throws InterruptedException if the thread is interrupted during execution
+	 */
 	@Override
 	public CommandResult execute(CommandInvocation invocation) throws CommandException, InterruptedException {
 		if (params == null || params.size() < 3) {

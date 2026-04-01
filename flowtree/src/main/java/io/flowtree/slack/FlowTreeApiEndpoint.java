@@ -123,9 +123,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit|/update)?"
     );
 
+    /** Slack notifier used to send job-status messages to Slack channels. */
     private final SlackNotifier notifier;
+    /** Maps tool names to the local filesystem paths of their definition files. */
     private final Map<String, Path> toolFiles = new HashMap<>();
+    /** Persistent store for per-job timing and throughput statistics. */
     private JobStatsStore statsStore;
+    /** Maps GitHub organisation names to their API access tokens. */
     private Map<String, String> githubOrgTokens = new HashMap<>();
 
     /** Tracks which jobs should have a PR auto-created on success. */
@@ -142,7 +146,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     private volatile boolean acceptAutomatedJobs = false;
 
+    /** Local FlowTree server used to submit jobs received via the HTTP API. */
     private Server server;
+    /** Slack listener that receives inbound messages and dispatches them to jobs. */
     private SlackListener listener;
 
     /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */
@@ -1206,6 +1212,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
     }
 
+    /**
+     * Escapes a string for safe inclusion in a JSON string literal.
+     *
+     * @param s  the string to escape, or {@code null}
+     * @return   the escaped string, or an empty string if {@code s} is {@code null}
+     */
     private static String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
@@ -1214,6 +1226,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .replace("\r", "\\r");
     }
 
+    /**
+     * Truncates a string to at most {@code maxLength} characters, appending
+     * {@code "..."} when the string is shortened.
+     *
+     * @param s          the string to truncate, or {@code null}
+     * @param maxLength  maximum number of characters to retain (including ellipsis)
+     * @return           the (possibly truncated) string, never {@code null}
+     */
     private static String truncate(String s, int maxLength) {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;
@@ -1303,6 +1323,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 "application/json", jobEventToJson(event));
     }
 
+    /**
+     * Handles {@code GET /api/workstreams}. Returns a JSON array of all
+     * registered workstreams with their configuration and capabilities.
+     *
+     * @return an HTTP 200 response containing a JSON array of workstream objects
+     */
     private Response handleListWorkstreams() {
         Map<String, SlackWorkstream> workstreams = notifier.getWorkstreams();
 
@@ -1575,11 +1601,23 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * when the job completes successfully.
      */
     private static class AutoPrContext {
+        /** URL of the git repository for which a pull request should be created. */
         final String repoUrl;
+        /** Base branch against which the pull request will be opened. */
         final String baseBranch;
+        /** GitHub organisation name, used to look up the API access token. */
         final String githubOrg;
+        /** Human-readable description of the job, used as the PR title/body. */
         final String description;
 
+        /**
+         * Constructs a new {@link AutoPrContext}.
+         *
+         * @param repoUrl     URL of the git repository
+         * @param baseBranch  base branch for the pull request
+         * @param githubOrg   GitHub organisation name
+         * @param description human-readable job description
+         */
         AutoPrContext(String repoUrl, String baseBranch, String githubOrg, String description) {
             this.repoUrl = repoUrl;
             this.baseBranch = baseBranch;

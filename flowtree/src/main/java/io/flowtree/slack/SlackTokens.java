@@ -52,7 +52,9 @@ public class SlackTokens {
 	/** Default file name looked up in the current working directory. */
 	public static final String DEFAULT_FILENAME = "slack-tokens.json";
 
+	/** The Slack Bot User OAuth Token used for posting messages (xoxb-...). */
 	private String botToken;
+	/** The Slack App-level token used for Socket Mode event delivery (xapp-...). */
 	private String appToken;
 
 	/** No-arg constructor for Jackson deserialization. */

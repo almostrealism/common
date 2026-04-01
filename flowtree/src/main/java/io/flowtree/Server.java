@@ -86,28 +86,82 @@ import java.util.concurrent.CompletableFuture;
  * @author  Michael Murrays
  */
 public class Server implements JobFactory, Runnable, ConsoleFeatures {
+	/**
+	 * Provides a mechanism for loading {@link Resource} objects by URI, optionally
+	 * excluding a particular host from consideration. Implementations are registered
+	 * with the {@link ResourceServer} and consulted when a resource request arrives.
+	 */
 	public interface ResourceProvider {
+		/**
+		 * Loads the resource identified by the given URI.
+		 *
+		 * @param uri  URI identifying the resource to load.
+		 * @return  The loaded {@link Resource}, or {@code null} if this provider cannot
+		 *          satisfy the request.
+		 */
 		Resource loadResource(String uri);
+
+		/**
+		 * Loads the resource identified by the given URI, excluding responses that
+		 * originate from the specified host.
+		 *
+		 * @param uri      URI identifying the resource to load.
+		 * @param exclude  Hostname to exclude when resolving the resource.
+		 * @return  The loaded {@link Resource}, or {@code null} if this provider cannot
+		 *          satisfy the request.
+		 */
 		Resource loadResource(String uri, String exclude);
 	}
 	
 
+	/** Shared set of {@link ResourceProvider} instances consulted when serving resource requests. */
 	protected static Set providers = new HashSet();
 	
+	/**
+	 * A lightweight TCP server that listens for resource requests and dispatches
+	 * each accepted connection to a {@link ResourceServerThread} for fulfillment.
+	 * Registered {@link ResourceProvider} instances are queried in turn until one
+	 * can satisfy the requested URI.
+	 */
 	private class ResourceServer implements Runnable {
+		/** Default port on which the resource server listens for incoming connections. */
 		public static final int defaultPort = 7767;
-		
+
+		/** Server socket that accepts incoming resource-request connections. */
 		private final ServerSocket serv;
+
+		/** Flag indicating that the accept loop should terminate. */
 		private boolean end = false;
-		
+
+		/**
+		 * Constructs a {@link ResourceServer} bound to the {@link #defaultPort}.
+		 *
+		 * @throws IOException  If the server socket cannot be opened.
+		 */
 		public ResourceServer() throws IOException { this(defaultPort); }
-		
+
+		/**
+		 * Constructs a {@link ResourceServer} bound to the specified port.
+		 *
+		 * @param port  Port number to listen on.
+		 * @throws IOException  If the server socket cannot be opened.
+		 */
 		public ResourceServer(int port) throws IOException {
 			this.serv = new ServerSocket(port);
 		}
-		
+
+		/**
+		 * Signals the accept loop to stop accepting new connections.
+		 */
 		public void end() { this.end = true; }
-		
+
+		/**
+		 * Returns a {@code resource://} URI that remote peers can use to request
+		 * the resource at the given path from this server.
+		 *
+		 * @param uri  Path component of the resource URI.
+		 * @return  A fully-qualified {@code resource://} URI string.
+		 */
 		public String getUri(String uri) {
 			Server.this.log("ResourceServer: Received request for " + uri);
 			
@@ -117,8 +171,18 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 					ENTRY_SEPARATOR + this.serv.getLocalPort() + uri;
 		}
 		
+		/**
+		 * Registers an additional {@link ResourceProvider} that will be consulted
+		 * when handling incoming resource requests.
+		 *
+		 * @param p  The provider to register.
+		 */
 		public void addProvider(ResourceProvider p) { providers.add(p); }
 
+		/**
+		 * Runs the accept loop, blocking on the server socket and spawning a new
+		 * {@link ResourceServerThread} for each accepted connection.
+		 */
 		@Override
 		public void run() {
 			Server.this.log("ResourceServer: Awaiting connections.");
@@ -137,11 +201,28 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		}
 	}
 	
+	/**
+	 * Handles a single resource request on its own thread.  After reading the requested
+	 * URI from the client, the thread checks the server-side cache and then each registered
+	 * {@link ResourceProvider} in turn.  If a matching {@link Resource} is found it is
+	 * transmitted over the connection; otherwise a {@code -1} sentinel is written.
+	 */
 	protected class ResourceServerThread extends Thread implements Runnable {
+		/** IO streams for communicating with the requesting client. */
 		private final IOStreams io;
-		
+
+		/**
+		 * Constructs a {@link ResourceServerThread} that will fulfil a request over the
+		 * given IO streams.
+		 *
+		 * @param io  The IO streams wrapping the accepted client socket.
+		 */
 		public ResourceServerThread(IOStreams io) { this.io = io; }
-		
+
+		/**
+		 * Reads the requested URI, resolves the resource through the cache and registered
+		 * providers, and writes the result back to the client.
+		 */
 		public void run() {
 			try {
 				int hi = io.host.lastIndexOf("/");
@@ -205,39 +286,78 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		}
 	}
 	
+	/** Default TCP port on which the server listens for incoming peer connections. */
 	public static final int defaultPort = 7766;
-	
+
+	/** Thread priority constant for high-importance server threads. */
 	public static final int HIGH_PRIORITY = 1;
+
+	/** Thread priority constant for moderately-important server threads such as the resource server. */
 	public static final int MODERATE_PRIORITY = 2;
+
+	/** Thread priority constant for low-importance threads such as the network accept loop. */
 	public static final int LOW_PRIORITY = 4;
-	
+
+	/** When {@code true}, verbose logging is emitted for resource requests and transfers. */
 	public static boolean resourceVerbose = true;
-	
+
+	/** Maximum number of resources to retain in the in-memory cache. */
 	private int maxCache = 10;
+
+	/**
+	 * Optional directory path used to persist cache entries to local storage.
+	 * {@code null} if cache logging is disabled.
+	 */
 	private final String logCache;
+
+	/** In-memory resource cache keyed by URI. */
 	private final Map cache;
+
+	/** Index mapping URI prefixes to redirect targets for resource look-ups. */
 	private final Map cIndex;
+	/** Keyed collection of objects to include in the server status log output. Values are the display titles. */
 	private final Map logItems;
+
+	/** URIs currently being loaded, used to prevent duplicate concurrent load operations. */
 	private final List loading;
 
+	/** Login handlers (e.g. AWS Cognito) used to authenticate users. */
 	private final List<Login> logins;
-	
+
+	/** The {@link NodeGroup} that manages the local compute nodes and peer connections. */
 	private final NodeGroup group;
+
+	/** Server socket that accepts incoming peer connections. {@code null} when the port is disabled. */
 	private ServerSocket socket;
+
+	/** Optional embedded resource server that serves cached resources to remote peers. */
 	private ResourceServer rserver;
 
+	/** A {@link CompletableFuture} that can be used to observe the lifetime of this server. */
 	private CompletableFuture<Void> future;
-	
+
+	/** Optional override for the local hostname returned by {@link #getLocalSocketAddress()}. */
 	private String hostname;
+
+	/** Wall-clock time (milliseconds) when this server was constructed. */
 	private final long startTime;
-	
+
+	/** Job priority value associated with this server when treated as a {@link io.flowtree.job.JobFactory}. */
 	private double p;
-	
+
+	/** Flag that signals the accept loop to stop. */
 	private boolean stop;
+
+	/** Thread group that owns all server-managed threads. */
 	private final ThreadGroup threads;
+
+	/** The main accept-loop thread. */
 	private final Thread thread;
+
+	/** The resource server thread, or {@code null} if the resource server is disabled. */
 	private Thread rthread;
-	
+
+	/** Optional Swing label that displays the last status message. */
 	private JLabel label;
 	
 	/**
@@ -426,6 +546,12 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		if (s != null) this.startWritingStatus(s, sl, slr);
 	}
 	
+	/**
+	 * Applies all key-value pairs in the given {@link Properties} object to this
+	 * server by delegating to {@link #setParam(String, String)} for each entry.
+	 *
+	 * @param p  Properties whose entries will be applied.
+	 */
 	public void setParam(Properties p) {
 		Iterator itr = p.entrySet().iterator();
 		while (itr.hasNext()) {
@@ -433,7 +559,19 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 			this.setParam((String) e.getKey(), (String) e.getValue());
 		}
 	}
-	
+
+	/**
+	 * Applies a single named configuration parameter to this server or to the
+	 * underlying {@link NodeGroup}.  Recognised parameter names include
+	 * {@code db.verbose}, {@code server.hostname}, {@code server.resource.verbose},
+	 * {@code server.resource.io.verbose}, {@code servers.output.host},
+	 * {@code servers.output.port}, and any name starting with {@code resource://}.
+	 *
+	 * @param name   Parameter name.
+	 * @param value  Parameter value.
+	 * @return  {@code true} if the parameter was recognised and applied,
+	 *          {@code false} otherwise.
+	 */
 	public boolean setParam(String name, String value) {
 		if (this.group.setParam(name, value)) {
 			//
@@ -470,12 +608,28 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return true;
 	}
 	
+	/**
+	 * Opens an HTTP connection to the specified URI and returns an {@link IOStreams}
+	 * instance whose input stream is backed by the response body.
+	 *
+	 * @param uri  Full HTTP URL to open.
+	 * @return  An {@link IOStreams} with its input stream connected to the URI.
+	 * @throws IOException  If the connection cannot be established.
+	 */
 	public static IOStreams getHttpIOStreams(String uri) throws IOException {
 		IOStreams io = new IOStreams();
 		io.in = new DataInputStream(new URL(uri).openStream());
 		return io;
 	}
-	
+
+	/**
+	 * Returns a named object from this server or its underlying {@link NodeGroup}.
+	 * The special key {@code "server"} returns this {@link Server} instance itself;
+	 * all other keys are delegated to {@link NodeGroup#getObject(String)}.
+	 *
+	 * @param key  Name of the object to retrieve.
+	 * @return  The object associated with the given key, or {@code null} if not found.
+	 */
 	public Object getObject(String key) {
 		if (key.equals("server")) {
 			return this;
@@ -489,6 +643,12 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 */
 	public NodeGroup getNodeGroup() { return this.group; }
 	
+	/**
+	 * Returns the collection of {@link Node} instances managed by the underlying
+	 * {@link NodeGroup}.
+	 *
+	 * @return  A live {@link Collection} of {@link Node} objects.
+	 */
 	protected Collection<Node> nodes() { return this.group.nodes(); }
 	
 	/**
@@ -658,8 +818,19 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		this.displayMessage("Stopped");
 	}
 	
+	/**
+	 * Returns the {@link ThreadGroup} that owns all threads managed by this server.
+	 *
+	 * @return  The server's {@link ThreadGroup}.
+	 */
 	public ThreadGroup getThreadGroup() { return this.threads; }
-	
+
+	/**
+	 * Returns the names of all currently active threads in the server's
+	 * {@link ThreadGroup}.
+	 *
+	 * @return  An array of thread name strings.
+	 */
 	public String[] getThreadList() {
 		Thread[] list = new Thread[this.threads.activeCount()];
 		int j = threads.enumerate(list);
@@ -681,6 +852,15 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 */
 	public void addLogItem(String title, Object o) { this.logItems.put(o, title); }
 	
+	/**
+	 * Starts a background thread that periodically writes a status HTML file and
+	 * activity/sleep graphs. Also starts the {@link NodeGroup} activity monitor.
+	 *
+	 * @param file   Base path for status output files (e.g. {@code "/var/log/server"}).
+	 *               The HTML file will be written to {@code file + "-stat.html"}.
+	 * @param sleep  Interval between writes, in seconds.
+	 * @param r      Number of monitor samples taken per {@code sleep} interval.
+	 */
 	public void startWritingStatus(final String file, final int sleep, int r) {
 		Server.this.getNodeGroup().startMonitor(Server.MODERATE_PRIORITY, (1000 * sleep) / r);
 		
@@ -708,6 +888,15 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		t.start();
 	}
 	
+	/**
+	 * Writes the current server status as an HTML file and, if a
+	 * {@link ResourceDistributionTask} is active, also uploads the status to the
+	 * distributed file system.
+	 *
+	 * @param file   Base path for the output file. The HTML file is written to
+	 *               {@code file + "-stat.html"}.
+	 * @throws IOException  If writing the status file fails.
+	 */
 	public void writeStatus(String file) throws IOException {
 		PrintStream p = new PrintStream(new FileOutputStream(file + "-stat.html"));
 		this.printStatus(p);
@@ -734,12 +923,20 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		}
 	}
 	
+	/**
+	 * Adds a {@link JobFactory} task to the underlying {@link NodeGroup}. If the task also
+	 * implements {@link ResourceProvider} and a resource server is running, the task is
+	 * additionally registered as a resource provider.
+	 *
+	 * @param task  The {@link JobFactory} to add.
+	 * @return  {@code true} if the task was successfully added to the group.
+	 */
 	public boolean addTask(JobFactory task) {
 		if (this.rserver != null && task instanceof ResourceProvider) {
 			this.addResourceProvider((ResourceProvider) task);
 			log("Added resource provider " + task);
 		}
-		
+
 		return this.group.addTask(task);
 	}
 
@@ -908,22 +1105,48 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return this.group.getPeerActivityRatio();
 	}
 	
+	/**
+	 * Constructs a {@link Message} of type {@link Message#ServerStatus} containing
+	 * the current average job time and activity rating of this server's node group.
+	 *
+	 * @return  A {@link Message} encoding the server status.
+	 * @throws IOException  If an IO error occurs while building the message.
+	 */
 	public Message getStatusMessage() throws IOException {
 
 		String stat = "jobtime:" +
 				this.group.getAverageJobTime() +
 				";activity:" +
 				this.group.getAverageActivityRating();
-		
+
 		Message m = new Message(Message.ServerStatus, -1);
 		m.setString(stat);
-		
+
 		return m;
 	}
-	
+
+	/**
+	 * Sets the maximum number of resources to retain in the in-memory cache.
+	 *
+	 * @param max  Maximum cache size.
+	 */
 	public void setMaxCache(int max) { this.maxCache = max; }
+
+	/**
+	 * Returns the maximum number of resources retained in the in-memory cache.
+	 *
+	 * @return  Maximum cache size.
+	 */
 	public int getMaxCache() { return this.maxCache; }
-	
+
+	/**
+	 * Retrieves a resource from the cache by URI.  If the resource is currently
+	 * being loaded by another thread, this method blocks with an exponential
+	 * back-off until the load completes and the entry appears in the cache.
+	 *
+	 * @param uri  URI of the resource to look up.
+	 * @return  The cached resource object, or {@code null} if the URI is not in the cache.
+	 */
 	public Object loadFromCache(String uri) {
 		Object s = null;
 
@@ -964,6 +1187,12 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		}
 	}
 	
+	/**
+	 * Returns {@code true} if the in-memory cache contains an entry for the given URI.
+	 *
+	 * @param uri  URI to test.
+	 * @return  {@code true} if the URI is cached, {@code false} otherwise.
+	 */
 	public boolean cacheContains(String uri) { return this.cache.containsKey(uri); }
 	
 	/**
@@ -978,8 +1207,22 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return ResourceDistributionTask.getCurrentTask().getOutputStream(uri);
 	}
 	
+	/**
+	 * Registers the given {@link ResourceProvider} with the embedded resource server
+	 * so that it will be consulted when handling incoming resource requests.
+	 *
+	 * @param p  The provider to register.
+	 */
 	public void addResourceProvider(ResourceProvider p) { this.rserver.addProvider(p); }
-	
+
+	/**
+	 * Returns {@code true} if the given URI represents a directory in the distributed
+	 * file system managed by the current {@link ResourceDistributionTask}.
+	 *
+	 * @param uri  URI to test.
+	 * @return  {@code true} if the URI is a directory, {@code false} if not or if no
+	 *          distribution task is active.
+	 */
 	public boolean isDirectory(String uri) {
 		ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
 		if (t == null)
@@ -987,7 +1230,15 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		else
 			return t.isDirectory(uri);
 	}
-	
+
+	/**
+	 * Returns the child URIs of the given directory URI in the distributed file system
+	 * managed by the current {@link ResourceDistributionTask}.
+	 *
+	 * @param uri  URI of the directory to list.
+	 * @return  An array of child URI strings, or {@code null} if no distribution task
+	 *          is active or the URI does not represent a directory.
+	 */
 	public String[] getChildren(String uri) {
 		ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
 		if (t == null)
@@ -996,23 +1247,41 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 			return t.getChildren(uri);
 	}
 	
+	/**
+	 * Loads the resource identified by the given URI via the distributed file system.
+	 * The resource stream is obtained from a connected peer and the result is cached.
+	 *
+	 * @param uri  URI of the resource to load.
+	 * @return  The loaded {@link Resource}.
+	 * @throws IOException  If an IO error occurs while loading the resource.
+	 */
 	public Resource loadResource(String uri) throws IOException {
 		IOStreams io = this.getResourceStream(uri, null);
 		Resource res = ResourceDistributionTask.getCurrentTask().getResource(uri);
 		if (res == null) res = DistributedResource.createDistributedResource(uri);
 		return this.loadResourceFromIO(res, io, false);
-		
-		
+
+
 //		return this.loadResource(uri, false);
 	}
-	
+
+	/**
+	 * Loads the resource identified by the given URI from the distributed file system,
+	 * optionally falling back to the local filesystem.
+	 *
+	 * @param uri       URI of the resource to load.
+	 * @param tryLocal  If {@code true} and the resource is not found remotely, attempts
+	 *                  to load it from the local filesystem via its URI.
+	 * @return  The loaded {@link Resource}, or {@code null} if not found and
+	 *          {@code tryLocal} is {@code false}.
+	 */
 	public Resource loadResource(String uri, boolean tryLocal) {
 		Resource res = ResourceDistributionTask.getCurrentTask().getResource(uri);
 		if (res != null) return res;
 		if (!tryLocal) return null;
-		
+
 		res = new LocalResource(uri);
-		
+
 		try {
 			return this.loadResource(res);
 		} catch (IOException e) {
@@ -1021,15 +1290,41 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 			return null;
 		}
 	}
-	
+
+	/**
+	 * Loads the given {@link Resource}, checking the cache first and fetching from
+	 * a remote peer if necessary. The result is added to the cache.
+	 *
+	 * @param r  The resource descriptor to load.
+	 * @return  The loaded {@link Resource}.
+	 * @throws IOException  If an IO error occurs while loading the resource.
+	 */
 	public Resource loadResource(Resource r) throws IOException {
 		return this.loadResource(r, null, false);
 	}
-	
+
+	/**
+	 * Loads the given {@link Resource}, optionally skipping the cache.
+	 *
+	 * @param r        The resource descriptor to load.
+	 * @param noCache  If {@code true}, the loaded resource will not be stored in the cache.
+	 * @return  The loaded {@link Resource}.
+	 * @throws IOException  If an IO error occurs while loading the resource.
+	 */
 	public Resource loadResource(Resource r, boolean noCache) throws IOException {
 		return this.loadResource(r, null, noCache);
 	}
-	
+
+	/**
+	 * Loads the given {@link Resource}, excluding a specific host when searching for the
+	 * resource stream among connected peers.
+	 *
+	 * @param r        The resource descriptor to load.
+	 * @param exclude  Hostname of a peer to skip when querying for the resource stream.
+	 * @param noCache  If {@code true}, the loaded resource will not be stored in the cache.
+	 * @return  The loaded {@link Resource}, or {@code null} if already in progress.
+	 * @throws IOException  If an IO error occurs while loading the resource.
+	 */
 	public Resource loadResource(Resource r, String exclude, boolean noCache)
 						throws IOException {
 		if (r instanceof DistributedResource && this.loading.contains(r.getURI()))
@@ -1044,6 +1339,18 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return this.loadResourceFromIO(r, io, noCache);
 	}
 	
+	/**
+	 * Loads a resource using the provided {@link IOStreams}, or from the resource's own
+	 * URI if the streams are {@code null}. After loading, the resource is optionally
+	 * placed in the in-memory cache and persisted to the log-cache directory.
+	 *
+	 * @param r        The resource descriptor to populate.
+	 * @param io       IO streams to read the resource data from, or {@code null} to load
+	 *                 directly from the resource's URI.
+	 * @param noCache  If {@code true}, the loaded resource will not be stored in the cache.
+	 * @return  The loaded {@link Resource}.
+	 * @throws IOException  If an IO error occurs while loading the resource.
+	 */
 	protected Resource loadResourceFromIO(Resource r, IOStreams io, boolean noCache) throws IOException {
 		if (io != null) {
 			r.load(io);
@@ -1083,14 +1390,43 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return r;
 	}
 	
+	/**
+	 * Loads the full image at the given URI and returns it as an {@link RGB} array.
+	 *
+	 * @param uri  URI of the image to load.
+	 * @return  A two-dimensional {@link RGB} array containing the image data, or
+	 *          {@code null} if the image could not be loaded.
+	 */
 	public RGB[][] loadImage(String uri) {
 		return this.loadImage(uri, 0, 0, 0, 0, false, false);
 	}
-	
+
+	/**
+	 * Loads the image at the given URI, optionally suppressing the return value.
+	 * This can be used to pre-populate the cache without the overhead of converting
+	 * image data to an {@link RGB} array.
+	 *
+	 * @param uri       URI of the image to load.
+	 * @param noReturn  If {@code true}, loads the image into the cache but returns
+	 *                  {@code null} instead of the pixel data.
+	 * @return  A two-dimensional {@link RGB} array, or {@code null} if loading fails
+	 *          or {@code noReturn} is {@code true}.
+	 */
 	public RGB[][] loadImage(String uri, boolean noReturn) {
 		return this.loadImage(uri, 0, 0, 0, 0, noReturn, false);
 	}
-	
+
+	/**
+	 * Loads a rectangular sub-region of the image at the given URI.
+	 *
+	 * @param uri  URI of the image to load.
+	 * @param x    X offset of the sub-region within the image.
+	 * @param y    Y offset of the sub-region within the image.
+	 * @param w    Width of the sub-region in pixels.
+	 * @param h    Height of the sub-region in pixels.
+	 * @return  A two-dimensional {@link RGB} array for the requested sub-region, or
+	 *          {@code null} if the image could not be loaded.
+	 */
 	public RGB[][] loadImage(String uri, int x, int y, int w, int h) {
 		return this.loadImage(uri, x, y, w, h, false, false);
 	}
@@ -1144,26 +1480,42 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	}
 
 	
+	/**
+	 * Queries all connected peers for a resource stream matching the given URI.
+	 *
+	 * @param uri  URI of the resource to request.
+	 * @return  An open {@link IOStreams} from the first peer that has the resource,
+	 *          or {@code null} if no peer can satisfy the request.
+	 */
 	public IOStreams getResourceStream(String uri) {
 		return this.getResourceStream(uri, null);
 	}
-	
+
+	/**
+	 * Queries all connected peers (except the excluded host) for a resource stream
+	 * matching the given URI.
+	 *
+	 * @param uri      URI of the resource to request.
+	 * @param exclude  Hostname of the peer to skip, or {@code null} to query all peers.
+	 * @return  An open {@link IOStreams} from the first qualifying peer, or {@code null}
+	 *          if no peer can satisfy the request.
+	 */
 	public IOStreams getResourceStream(String uri, String exclude) {
 		IOStreams io = null;
-		
+
 		NodeProxy[] p = this.getNodeGroup().getServers();
-		
+
 		i: for (int i = 0; i < p.length; i++) {
 			String ad = p[i].toString();
 			int adi = ad.lastIndexOf("/");
 			if (adi > 0) ad = ad.substring(adi + 1);
 			if (ad.equals(exclude)) continue i;
-			
+
 			try {
 				Message m = new Message(Message.ResourceRequest, -2, p[i]);
 				m.setString(uri);
 				String s = (String) m.send(-1);
-				
+
 				if (s != null) {
 					io = this.parseResourceUri(s);
 					if (io != null) return io;
@@ -1173,10 +1525,21 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 									ioe.getMessage() + ")");
 			}
 		}
-		
+
 		return io;
 	}
-	
+
+	/**
+	 * Opens a direct TCP connection to a resource server at the specified host and port
+	 * and requests the resource at the given URI path.
+	 *
+	 * @param host  Hostname or IP address of the resource server.
+	 * @param port  Port number of the resource server.
+	 * @param uri   URI path of the resource to request.
+	 * @return  An open {@link IOStreams} if the server has the resource, or {@code null}
+	 *          if the host is localhost/empty or the server reports the resource is absent.
+	 * @throws IOException  If a network error occurs while connecting or communicating.
+	 */
 	public IOStreams getResourceStream(String host, int port, String uri) throws IOException {
 		if (host == null || host.equals("") || host.equals("localhost"))
 			return null;
@@ -1199,37 +1562,83 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 			return null;
 	}
 	
+	/**
+	 * Parses a {@code resource://} URI and opens an {@link IOStreams} connection to the
+	 * resource server it refers to.  The URI format is:
+	 * {@code resource://<host>[<ENTRY_SEPARATOR><port>]/<path>}.
+	 *
+	 * @param uri  A {@code resource://} URI as returned by {@link ResourceServer#getUri(String)}.
+	 * @return  An open {@link IOStreams} connected to the resource server, or {@code null}
+	 *          if the server does not have the resource.
+	 * @throws IOException  If a network error occurs.
+	 */
 	public IOStreams parseResourceUri(String uri) throws IOException {
 		int index = uri.indexOf("/", 11);
-		
+
 		String serv = uri.substring(11, index);
 		String host = serv;
 		int port = ResourceServer.defaultPort;
-		
+
 		if (serv.contains(ENTRY_SEPARATOR)) {
 			int cindex = serv.indexOf(ENTRY_SEPARATOR);
 			host = serv.substring(0, cindex);
 			port = Integer.parseInt(serv.substring(cindex + ENTRY_SEPARATOR.length()));
 		}
-		
+
 		return this.getResourceStream(host, port, uri.substring(index + 1));
 	}
-	
+
+	/**
+	 * Returns a {@code resource://} URI for the given resource path that remote peers
+	 * can use to request the resource from the embedded {@link ResourceServer}.
+	 *
+	 * @param uri  Path component of the resource.
+	 * @return  A fully-qualified {@code resource://} URI, or {@code null} if no resource
+	 *          server is running.
+	 */
 	public String getResourceUri(String uri) {
 		if (this.rserver == null)
 			return null;
 		else
 			return this.rserver.getUri(uri);
 	}
-	
+
+	/**
+	 * Executes the given {@link Query} locally and, if the query's relay count is
+	 * greater than zero, relays it to all connected peers. Uses the default query timeout.
+	 *
+	 * @param q  The query to execute.
+	 * @return  A {@link Message} containing the aggregated query result string.
+	 * @throws IOException  If an IO error occurs while relaying the query.
+	 */
 	public Message executeQuery(Query q) throws IOException {
 		return executeQuery(q, NodeProxy.queryTimeout);
 	}
-	
+
+	/**
+	 * Executes the given {@link Query} locally and, if the query's relay count is
+	 * greater than zero, relays it to all connected peers using the specified timeout.
+	 *
+	 * @param q        The query to execute.
+	 * @param timeout  Maximum time in milliseconds to wait for each peer's response.
+	 * @return  A {@link Message} containing the aggregated query result string.
+	 * @throws IOException  If an IO error occurs while relaying the query.
+	 */
 	public Message executeQuery(Query q, long timeout) throws IOException {
 		return executeQuery(q, null, timeout);
 	}
-	
+
+	/**
+	 * Executes the given {@link Query} against the local output server and optionally
+	 * relays it to all connected peers except the one that originated the query.
+	 *
+	 * @param q        The query to execute.
+	 * @param p        The peer {@link NodeProxy} that sent the query (excluded from relay),
+	 *                 or {@code null} to relay to all peers.
+	 * @param timeout  Maximum time in milliseconds to wait for each peer's response.
+	 * @return  A {@link Message} containing the aggregated query result string.
+	 * @throws IOException  If an IO error occurs while relaying the query.
+	 */
 	public Message executeQuery(Query q, NodeProxy p, long timeout) throws IOException {
 		OutputServer dbs = OutputServer.getCurrentServer();
 		
@@ -1285,10 +1694,25 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return m;
 	}
 
+	/**
+	 * Starts a {@link ResourceDistributionTask} with default concurrency settings
+	 * (10 jobs, 10-second sleep interval) if one is not already running.
+	 *
+	 * @param server  The {@link OutputServer} to distribute resources through.
+	 * @return  The active (possibly pre-existing) {@link ResourceDistributionTask}.
+	 */
 	public ResourceDistributionTask startResourceDist(OutputServer server) {
 		return startResourceDist(server, 10, 10000);
 	}
 
+	/**
+	 * Starts a {@link ResourceDistributionTask} if one is not already running.
+	 *
+	 * @param server  The {@link OutputServer} to distribute resources through.
+	 * @param jobs    Maximum number of concurrent distribution jobs.
+	 * @param jsleep  Sleep interval between distribution cycles, in milliseconds.
+	 * @return  The active (possibly pre-existing) {@link ResourceDistributionTask}.
+	 */
 	public ResourceDistributionTask startResourceDist(OutputServer server, int jobs, int jsleep) {
 		if (ResourceDistributionTask.getCurrentTask() != null) return ResourceDistributionTask.getCurrentTask();
 		ResourceDistributionTask rtask = new ResourceDistributionTask(server, jobs, jsleep);
@@ -1296,7 +1720,12 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		log("Added task " + rtask);
 		return rtask;
 	}
-	
+
+	/**
+	 * Runs the connection accept loop. Blocks on the server socket and hands each
+	 * accepted connection to the {@link NodeGroup} for peer registration. The loop
+	 * exits when {@link #stop()} is called.
+	 */
 	public void run() {
 		if (socket == null) return;
 
@@ -1395,9 +1824,28 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		return j;
 	}
 	
+	/**
+	 * Sets the job priority for this server when it is treated as a
+	 * {@link io.flowtree.job.JobFactory}.
+	 *
+	 * @param p  Priority value to assign.
+	 */
 	public void setPriority(double p) { this.p = p; }
+
+	/**
+	 * Returns the job priority for this server when it is treated as a
+	 * {@link io.flowtree.job.JobFactory}.
+	 *
+	 * @return  The current priority value.
+	 */
 	public double getPriority() { return this.p; }
 
+	/**
+	 * Returns the {@link CompletableFuture} associated with this server's lifetime,
+	 * allowing callers to be notified when the server completes.
+	 *
+	 * @return  The server's {@link CompletableFuture}, or {@code null} if not set.
+	 */
 	@Override
 	public CompletableFuture<Void> getCompletableFuture() { return future; }
 

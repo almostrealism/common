@@ -120,9 +120,16 @@ if (jobs.size() > minJobs && random < relayProbability) {
 The relay probability increases with queue depth. Peer selection is
 optionally weighted by activity rating (less active peers are
 preferred). The relayed job arrives at the remote `NodeGroup` via
-`recievedMessage()`, which hands it to `getLeastActiveNode().addJob()`.
+`recievedMessage()`, which calls `routeJob()`. `routeJob()` finds a
+matching worker Node via `findNodeForJob()` and routes directly to it;
+if no local Node matches, the job is placed on the relay Node.
 
-On the remote (agent) side, the Node's worker picks up the job,
+**Critical:** the relay Node's queue is fed exclusively by local
+worker Nodes (via `parent.addJob()` from the worker thread when labels
+do not match). Jobs arriving from the network must never re-enter the
+relay Node's queue — see [Relay-to-Relay Circuits](#relay-to-relay-circuits).
+
+On the remote (agent) side, the worker Node picks up the job,
 checks labels, finds a match, and executes it.
 
 ### 5. Complete Flow Diagram
@@ -135,7 +142,8 @@ server.addTask(factory)
   ▼
 NodeGroup run loop
   factory.nextJob() → Job
-  getLeastActiveNode() → relay Node
+  routeJob(job)
+    findNodeForJob() → relay Node (no label match)
   relayNode.addJob(job)
   │
   ▼
@@ -145,9 +153,10 @@ relay Node (worker thread not started)
   ▼
 relay Node activity thread
   jobs.size() > minJobs? YES
-  getRandomPeer() → Connection
+  getRandomPeer() → Connection to agent Node
   peer.sendJob(job) ─────────────────→ NodeGroup.recievedMessage()
-                                          getLeastActiveNode() → agent Node
+                                          routeJob(job)
+                                            findNodeForJob() → agent Node
                                           agentNode.addJob(job)
                                           │
                                           ▼
@@ -212,13 +221,46 @@ Each `Job` can declare required labels via `getRequiredLabels()`.
 
 ### Important Invariant
 
-**Jobs are never filtered at the queue level.** Any Node accepts any
-job into its queue via `addJob()`. On relay Nodes, the worker thread
-is never started, so jobs remain in the queue for the activity
-thread's relay loop to forward them. On execution Nodes, the worker
-pulls and runs jobs directly.
+**Relay Nodes do not execute jobs and do not queue jobs received from
+the network.** When a relay Node's `addJob()` is called with a job
+that arrived from the network, it immediately forwards to the parent
+NodeGroup rather than queuing locally. This is intentional: the relay
+Node's queue is exclusively for jobs coming from local worker Nodes
+that could not satisfy the job's label requirements. Execution Nodes
+pull from their own queue and run jobs directly.
 
 ## Common Pitfalls
+
+### Relay-to-Relay Circuits
+
+The relay loop sends jobs to a randomly selected peer via
+`Connection.sendJob()`. If that peer is another relay Node (e.g. on a
+controller Server that has no execution Nodes), the job ends up in
+that relay Node's queue and will eventually be relayed back — creating
+a closed circuit where the job bounces between relay Nodes indefinitely
+without ever reaching an execution Node.
+
+**The rule:** a relay Node's queue must only be fed by local worker
+Nodes. When a relay Node receives a job from the network (i.e., its
+`addJob()` is invoked as a result of an incoming `Message.Job`), it
+must forward the job to its parent NodeGroup immediately. The parent
+NodeGroup routes it to a local worker via `routeJob()`, where it will
+be executed if a matching Node exists.
+
+The correct flow for network-received jobs on a relay Node is:
+```
+peer.sendJob(job)
+  → NodeGroup.recievedMessage()
+  → routeJob(job)
+  → findNodeForJob() → null (no local match)
+  → relayNode.addJob(job)
+  → relay Node detects network origin → parent.addJob(job)   ← forward up
+  → NodeGroup routes to execution Node
+```
+
+This breaks the circuit: the job is handled by the NodeGroup (which
+can route it to any local worker) rather than re-entering the relay
+loop that sent it here in the first place.
 
 ### Do Not Bypass the Relay Mechanism
 

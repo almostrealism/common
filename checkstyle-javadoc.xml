@@ -4,45 +4,61 @@
         "https://checkstyle.org/dtds/configuration_1_3.dtd">
 
 <!--
-    Javadoc documentation enforcement for CI pipeline.
+    Javadoc documentation enforcement for the flowtree and flowtreeapi modules.
 
-    Requires Javadoc on public annotation types and on public methods
-    exceeding 100 lines. Activated via the "javadoc-check" Maven profile:
+    Requires Javadoc on every class, interface, enum, annotation, constructor,
+    method, and field — including private members.  This is intentional: the
+    flowtree networking and job-execution subsystems have historically been
+    modified without sufficient understanding of their design contracts, leading
+    to ad-hoc "special case" fixes.  Comprehensive documentation is the
+    primary defence against that pattern.
 
-        mvn checkstyle:check -Pjavadoc-check
+    Activated in the default build of flowtree and flowtreeapi via the
+    <build> section in each module's pom.xml.  All other modules continue
+    to use the optional "-Pjavadoc-check" profile.
 
-    This configuration is NOT part of the default build to avoid slowing
-    down local development. It runs as a separate step in the GitHub
-    Actions pipeline, out of the critical path.
+    Rules applied:
+      - MissingJavadocType    : every type declaration needs a Javadoc comment
+      - MissingJavadocMethod  : every method and constructor needs a Javadoc comment
+      - JavadocVariable       : every field needs a Javadoc comment
+      - JavadocPackage        : every package needs a package-info.java with Javadoc
 -->
 <module name="Checker">
     <property name="charset" value="UTF-8"/>
     <property name="severity" value="error"/>
-
-    <!-- Only check main source files, not test sources -->
     <property name="fileExtensions" value="java"/>
 
     <!-- Exclude auto-generated source files -->
     <module name="BeforeExecutionExclusionFileFilter">
-        <property name="fileNamePattern"
-                  value="[/\\]generated[/\\]"/>
+        <property name="fileNamePattern" value="[/\\]generated[/\\]"/>
     </module>
 
+    <!-- Require package-info.java with a Javadoc comment for every package -->
+    <module name="JavadocPackage"/>
+
     <module name="TreeWalker">
-        <!-- Require Javadoc on public interfaces and annotations -->
+
+        <!-- Every type declaration (class, interface, enum, annotation, record)
+             must have a Javadoc comment, including private and package-private types. -->
         <module name="MissingJavadocType">
-            <property name="scope" value="public"/>
-            <property name="tokens" value="ANNOTATION_DEF"/>
+            <property name="scope" value="private"/>
         </module>
 
-        <!-- Require Javadoc on public methods with 100+ lines.
-             Short methods are often self-documenting; longer methods
-             benefit from a Javadoc summary of purpose and parameters. -->
+        <!-- Every method and constructor must have a Javadoc comment,
+             including private helpers.  Property-style getters and setters
+             are NOT exempt: they must also document the field they access. -->
         <module name="MissingJavadocMethod">
-            <property name="scope" value="public"/>
-            <property name="allowMissingPropertyJavadoc" value="true"/>
-            <property name="minLineCount" value="100"/>
-            <property name="tokens" value="METHOD_DEF"/>
+            <property name="scope" value="private"/>
+            <property name="allowMissingPropertyJavadoc" value="false"/>
+            <property name="minLineCount" value="-1"/>
+            <property name="tokens" value="METHOD_DEF, CTOR_DEF, ANNOTATION_FIELD_DEF"/>
         </module>
+
+        <!-- Every field (including private constants and instance variables)
+             must have a Javadoc comment. -->
+        <module name="JavadocVariable">
+            <property name="scope" value="private"/>
+        </module>
+
     </module>
 </module>

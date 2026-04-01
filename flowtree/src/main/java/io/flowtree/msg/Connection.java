@@ -49,18 +49,32 @@ import java.io.IOException;
  * @see <a href="../docs/node-relay.md">Node Relay and Job Routing</a>
  */
 public class Connection implements Runnable, NodeProxy.EventListener {
+	/** The local {@link Node} that owns this connection and receives incoming jobs. */
 	private final Node node;
+
+	/**
+	 * The {@link NodeProxy} through which messages to the remote node are sent.
+	 * Replaced by {@link #connect(NodeProxy)} after a reconnect, or set to
+	 * {@code null} by {@link #disconnect(NodeProxy)} when the link is lost.
+	 */
 	private NodeProxy proxy;
-	
+
+	/** The integer ID of the remote node this connection communicates with. */
 	private final int id;
 	
 	/**
-	 * Constructs a new Connection object.
-	 * 
-	 * @param node  Local node.
-	 * @param p  NodeProxy to remote server.
-	 * @param id  Unique id of remote node.
-	 * @throws IOException
+	 * Constructs a Connection from {@code node} to a specific remote node identified
+	 * by {@code id} on the server reachable through {@code p}.
+	 *
+	 * <p>The constructor only records the parameters and logs a diagnostic line;
+	 * it does not register event listeners or begin sending messages. Call
+	 * {@link #start()} after construction to activate the connection.</p>
+	 *
+	 * @param node  The local {@link Node} that owns this connection.
+	 * @param p     The {@link NodeProxy} wrapping the socket to the remote server.
+	 * @param id    The integer ID of the target node on the remote server.
+	 * @throws IOException  Declared for API compatibility; not thrown by this
+	 *                      constructor but may be thrown by subclasses.
 	 */
 	public Connection(Node node, NodeProxy p, int id) throws IOException {
 		System.out.println("Constructing connection from [" + node +
@@ -74,7 +88,12 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	}
 	
 	/**
-	 * Adds this Connection object as an event listener to the NodeProxy object stored.
+	 * Activates this connection by registering it as an
+	 * {@link NodeProxy.EventListener} on the underlying {@link NodeProxy}.
+	 *
+	 * <p>Once started, the connection receives connect, disconnect, and
+	 * message-arrival callbacks from the proxy's reader thread. This method
+	 * must be called after construction before any messages can be processed.</p>
 	 */
 	public void start() { this.proxy.addEventListener(this); }
 	
@@ -145,6 +164,15 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 		return b != null && b.booleanValue();
 	}
 	
+	/**
+	 * No-op implementation of {@link Runnable#run()}.
+	 *
+	 * <p>The active message-handling logic that previously lived here has been
+	 * superseded by the event-listener model: incoming messages are now delivered
+	 * to {@link #recievedMessage(Message, int)} by the {@link NodeProxy}'s reader
+	 * thread. This method is retained to satisfy the {@link Runnable} contract but
+	 * performs no work.</p>
+	 */
 	public void run() {
 //		loop: while (true) {
 //			try {
@@ -191,6 +219,11 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	}
 	
 	/**
+	 * Called by the {@link NodeProxy} when the underlying socket reconnects after
+	 * a reset. Updates the stored proxy reference so that subsequent
+	 * {@link #sendMessage} and {@link #sendJob} calls use the new connection.
+	 *
+	 * @param p  The newly connected {@link NodeProxy}.
 	 * @see NodeProxy.EventListener#connect(NodeProxy)
 	 */
 	public void connect(NodeProxy p) {
@@ -199,18 +232,46 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	}
 
 	/**
+	 * Called by the {@link NodeProxy} when the underlying socket is lost.
+	 * Deregisters this listener from the proxy, nulls the proxy reference, and
+	 * delegates to {@link Node#disconnect(Connection)} so the owning node can
+	 * remove this connection from its active peer set.
+	 *
+	 * @param p  The {@link NodeProxy} that has disconnected.
+	 * @return   The value returned by {@link Node#disconnect(Connection)}, typically
+	 *           {@code 0} to indicate the disconnect was handled.
 	 * @see NodeProxy.EventListener#disconnect(NodeProxy)
-	 * @return  0.
 	 */
 	public int disconnect(NodeProxy p) {
 		System.out.println(this + ": Disconnected from " + p);
 		p.removeEventListener(this);
 		this.proxy = null;
-		
+
 		return this.node.disconnect(this);
 	}
 
 	/**
+	 * Handles a message delivered by the {@link NodeProxy} reader thread.
+	 *
+	 * <p>This method returns {@code false} immediately (yielding to other
+	 * listeners) if the receiver does not match the local node's ID or if the
+	 * sender does not match this connection's remote node ID. Otherwise it
+	 * dispatches on message type:</p>
+	 * <ul>
+	 *   <li>{@link Message#Job} — decodes the payload via the local node's
+	 *       {@link io.flowtree.job.JobFactory} and enqueues the resulting job.</li>
+	 *   <li>{@link Message#ConnectionConfirmation} — if the payload is
+	 *       {@code null}, sends a confirmation reply with {@code "true"}.</li>
+	 *   <li>{@link Message#Kill} — extracts task ID and relay count from the
+	 *       payload and forwards the kill signal via
+	 *       {@link Node#sendKill(String, int)}.</li>
+	 * </ul>
+	 *
+	 * @param m         The message received from the remote peer.
+	 * @param reciever  The node ID encoded in the message's receiver field.
+	 * @return  {@code true} if this connection claimed and processed the message;
+	 *          {@code false} if the message was not addressed to this connection
+	 *          or if a processing error occurred.
 	 * @see NodeProxy.EventListener#recievedMessage(Message, int)
 	 */
 	public boolean recievedMessage(Message m, int reciever) {
@@ -235,7 +296,16 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 										+ dis);
 				}
 				
-				this.node.addJob(this.node.getJobFactory().createJob(md));
+				Job received = this.node.getJobFactory().createJob(md);
+				if ("relay".equals(this.node.getLabels().get("role"))
+						&& this.node.getParent() != null) {
+					// Relay nodes must not queue network-received jobs locally.
+					// Forward to the parent NodeGroup so routeJob() can route
+					// to a capable execution node, preventing relay-to-relay circuits.
+					this.node.getParent().addJob(received);
+				} else {
+					this.node.addJob(received);
+				}
 			} else if (m.getType() == Message.ConnectionConfirmation) {
 				if (m.getData() == null) {
 					Message response = new Message(Message.ConnectionConfirmation,
@@ -268,10 +338,31 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 		return true;
 	}
 	
+	/**
+	 * Logs a finalisation notice when this object is garbage-collected.
+	 * Useful for diagnosing connection lifecycle issues during development.
+	 */
 	protected void finalize() { System.out.println("Finalizing " + this); }
-	
+
+	/**
+	 * Returns a brief human-readable description of this connection without
+	 * ping statistics. Equivalent to {@code toString(false)}.
+	 *
+	 * @return  A string of the form {@code "Connection from <localNode> to remote node <id> (<proxy>)"}.
+	 */
 	public String toString() { return this.toString(false); }
-	
+
+	/**
+	 * Returns a human-readable description of this connection, optionally
+	 * including the underlying proxy's ping statistics.
+	 *
+	 * @param showStat  When {@code true}, the proxy's
+	 *                  {@link NodeProxy#toString(boolean)} is called with
+	 *                  {@code true}, appending {@code [min/max/avg]} latency
+	 *                  data to the string.
+	 * @return  A string identifying the local node name, the remote node ID,
+	 *          and a representation of the backing proxy.
+	 */
 	public String toString(boolean showStat) {
 
 		String b = "Connection from " +

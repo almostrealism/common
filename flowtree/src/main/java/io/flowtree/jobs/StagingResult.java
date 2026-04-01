@@ -36,7 +36,13 @@ import java.util.List;
  */
 public final class StagingResult {
 
+    /** Files that passed all guardrails, eligible for {@code git add}. */
     private final List<String> stagedFiles;
+
+    /**
+     * Files that were blocked, each with an appended reason in the format
+     * {@code "filename (reason)"}.
+     */
     private final List<String> skippedFiles;
 
     /**
@@ -70,6 +76,12 @@ public final class StagingResult {
         return skippedFiles;
     }
 
+    /**
+     * Returns a string representation showing staged and skipped counts
+     * as well as the full file lists.
+     *
+     * @return a summary string
+     */
     @Override
     public String toString() {
         return "StagingResult{" +

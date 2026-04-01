@@ -50,6 +50,7 @@ import java.util.Optional;
  */
 public class PullRequestDetector implements ConsoleFeatures {
 
+    /** Jackson mapper for parsing GitHub API JSON responses. */
     private final ObjectMapper objectMapper;
 
     /**

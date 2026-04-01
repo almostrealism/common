@@ -45,6 +45,7 @@ import java.security.spec.InvalidKeySpecException;
  * @author Mike Murray
  */
 public class NetworkClient {
+	/** Active socket connection to the FlowTree CLI server. */
 	private final Connection c;
 
 	/**

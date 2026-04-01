@@ -22,13 +22,34 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * @author  Michael Murray
+ * A composite {@link JobFactory} that aggregates multiple {@link JobFactory}
+ * instances into a single logical task.
  *
+ * <p>{@link HybridJobFactory} extends {@link HashSet}{@code <JobFactory>} so
+ * that constituent factories can be added and removed using the standard
+ * {@link java.util.Set} API. The key behavioural difference from a single factory
+ * is that {@link #getCompletableFuture()} returns a combined future that completes
+ * only after every member factory's future completes.</p>
+ *
+ * <p>Note: Most methods in this class are stubs pending full implementation.
+ * In particular, {@link #nextJob()}, {@link #createJob(String)},
+ * {@link #set(String, String)}, {@link #encode()}, {@link #getName()},
+ * {@link #getCompleteness()}, {@link #isComplete()}, {@link #setPriority(double)},
+ * and {@link #getPriority()} are not yet implemented and return default/null values.</p>
+ *
+ * @author  Michael Murray
+ * @see JobFactory
  */
 public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory {
 
 	/**
-	 * @see io.flowtree.job.JobFactory#getTaskId()
+	 * Returns the task ID for this composite factory.
+	 *
+	 * <p>This implementation is a stub and always returns an empty string.
+	 * A future implementation should derive a composite ID from the member
+	 * factories or assign one explicitly.</p>
+	 *
+	 * @return an empty string (stub implementation)
 	 */
 	@Override
 	public String getTaskId() {
@@ -37,7 +58,13 @@ public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory 
 	}
 
 	/**
-	 * @see io.flowtree.job.JobFactory#nextJob()
+	 * Returns the next job from this composite factory's queue.
+	 *
+	 * <p>This implementation is a stub and always returns {@code null}.
+	 * A future implementation should delegate to the appropriate member
+	 * factory to retrieve the next available job.</p>
+	 *
+	 * @return {@code null} (stub implementation)
 	 */
 	@Override
 	public Job nextJob() {
@@ -46,7 +73,15 @@ public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory 
 	}
 
 	/**
-	 * @see io.flowtree.job.JobFactory#createJob(java.lang.String)
+	 * Creates a {@link Job} from the given encoded string.
+	 *
+	 * <p>This implementation is a stub and always returns {@code null}.
+	 * A future implementation should determine which member factory owns
+	 * the encoded job and delegate to that factory's
+	 * {@link JobFactory#createJob(String)}.</p>
+	 *
+	 * @param data the encoded job string
+	 * @return {@code null} (stub implementation)
 	 */
 	@Override
 	public Job createJob(String data) {
@@ -55,7 +90,14 @@ public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory 
 	}
 
 	/**
-	 * @see io.flowtree.job.JobFactory#set(java.lang.String, java.lang.String)
+	 * Sets a property on this composite factory.
+	 *
+	 * <p>This implementation is a stub and performs no action.
+	 * A future implementation should propagate the property to all member
+	 * factories or store it for serialization purposes.</p>
+	 *
+	 * @param key   the property key
+	 * @param value the property value
 	 */
 	@Override
 	public void set(String key, String value) {
@@ -64,7 +106,13 @@ public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory 
 	}
 
 	/**
-	 * @see io.flowtree.job.JobFactory#encode()
+	 * Encodes this composite factory as a string for network transmission.
+	 *
+	 * <p>This implementation is a stub and always returns {@code null}.
+	 * A future implementation should encode the class name and all member
+	 * factories' encoded representations.</p>
+	 *
+	 * @return {@code null} (stub implementation)
 	 */
 	@Override
 	public String encode() {
@@ -73,7 +121,13 @@ public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory 
 	}
 
 	/**
-	 * @see io.flowtree.job.JobFactory#getName()
+	 * Returns the human-readable name of this composite task.
+	 *
+	 * <p>This implementation is a stub and always returns {@code null}.
+	 * A future implementation should derive or aggregate a name from the
+	 * member factories.</p>
+	 *
+	 * @return {@code null} (stub implementation)
 	 */
 	@Override
 	public String getName() {
@@ -82,7 +136,13 @@ public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory 
 	}
 
 	/**
-	 * @see io.flowtree.job.JobFactory#getCompleteness()
+	 * Returns the overall completion fraction for this composite task.
+	 *
+	 * <p>This implementation is a stub and always returns {@code 0}.
+	 * A future implementation should aggregate the completeness values of all
+	 * member factories, for example by computing their average.</p>
+	 *
+	 * @return {@code 0} (stub implementation)
 	 */
 	@Override
 	public double getCompleteness() {
@@ -91,7 +151,13 @@ public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory 
 	}
 
 	/**
-	 * @see io.flowtree.job.JobFactory#isComplete()
+	 * Returns whether this composite factory has finished producing jobs.
+	 *
+	 * <p>This implementation is a stub and always returns {@code false}.
+	 * A future implementation should return {@code true} only when all
+	 * member factories report completion.</p>
+	 *
+	 * @return {@code false} (stub implementation)
 	 */
 	@Override
 	public boolean isComplete() {
@@ -100,7 +166,13 @@ public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory 
 	}
 
 	/**
-	 * @see io.flowtree.job.JobFactory#setPriority(double)
+	 * Sets the scheduling priority of this composite task.
+	 *
+	 * <p>This implementation is a stub and performs no action.
+	 * A future implementation should propagate the priority to all
+	 * member factories.</p>
+	 *
+	 * @param p the new priority value
 	 */
 	@Override
 	public void setPriority(double p) {
@@ -109,7 +181,13 @@ public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory 
 	}
 
 	/**
-	 * @see io.flowtree.job.JobFactory#getPriority()
+	 * Returns the scheduling priority of this composite task.
+	 *
+	 * <p>This implementation is a stub and always returns {@code 0}.
+	 * A future implementation should derive a meaningful priority from
+	 * the member factories.</p>
+	 *
+	 * @return {@code 0} (stub implementation)
 	 */
 	@Override
 	public double getPriority() {
@@ -117,6 +195,16 @@ public class HybridJobFactory extends HashSet<JobFactory> implements JobFactory 
 		return 0;
 	}
 
+	/**
+	 * Returns a {@link CompletableFuture} that completes when every member factory's
+	 * future has completed.
+	 *
+	 * <p>Each member factory's {@link JobFactory#getCompletableFuture()} is collected
+	 * and passed to {@link CompletableFuture#allOf(CompletableFuture[])} so that the
+	 * returned future is satisfied only after all constituent tasks finish.</p>
+	 *
+	 * @return a future that completes when all member factories are done
+	 */
 	@Override
 	public CompletableFuture<Void> getCompletableFuture() {
 		List<CompletableFuture> futures = new ArrayList<>();
