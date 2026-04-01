@@ -95,12 +95,11 @@ public class HeadGroupConfig {
 	 */
 	public static PackedCollection computeFreqCis(double theta, int headDim, int maxSeqLen) {
 		int freqDim = headDim / 2;
-		double[] invFreqs = FundamentalMusicEmbedding.computeInvFreqs(theta, headDim);
 
 		PackedCollection freqCis = new PackedCollection(maxSeqLen, freqDim, 2);
 		for (int pos = 0; pos < maxSeqLen; pos++) {
 			for (int f = 0; f < freqDim; f++) {
-				double angle = pos * invFreqs[f];
+				double angle = pos * (1.0 / Math.pow(theta, (2.0 * f) / headDim));
 				int idx = (pos * freqDim + f) * 2;
 				freqCis.setMem(idx, Math.cos(angle));
 				freqCis.setMem(idx + 1, Math.sin(angle));

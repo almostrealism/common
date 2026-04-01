@@ -62,8 +62,8 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 	/** The embedding output dimension. */
 	private final int dim;
 
-	/** Precomputed inverse frequency values as a PackedCollection, shape (dim/2,). */
-	private final PackedCollection invFreqsCollection;
+	/** Precomputed inverse frequency values as a CollectionProducer, shape (dim/2,). */
+	private final CollectionProducer invFreqs;
 
 	/** Learned linear projection weight, shape (dim, dim). */
 	private final PackedCollection linearWeight;
@@ -92,7 +92,7 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 		this.linearWeight = linearWeight;
 		this.linearBias = linearBias;
 		this.translationBias = translationBias;
-		this.invFreqsCollection = buildInvFreqsCollection(base, dim);
+		this.invFreqs = computeInvFreqs(base, dim);
 	}
 
 	/**
@@ -104,7 +104,7 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 	public FundamentalMusicEmbedding(double base, int dim) {
 		this.base = base;
 		this.dim = dim;
-		this.invFreqsCollection = buildInvFreqsCollection(base, dim);
+		this.invFreqs = computeInvFreqs(base, dim);
 		this.linearWeight = new PackedCollection(new TraversalPolicy(dim, dim));
 		this.linearBias = new PackedCollection(new TraversalPolicy(dim));
 		this.translationBias = new PackedCollection(new TraversalPolicy(1));
@@ -122,7 +122,7 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 	 */
 	public CollectionProducer embed(int value) {
 		CollectionProducer sincos = encodeSinusoidal(value);
-		return add(matmul(p(linearWeight), sincos), c(linearBias));
+		return add(matmul(cp(linearWeight), sincos), cp(linearBias));
 	}
 
 	/**
@@ -135,11 +135,10 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 	 * @return CollectionProducer of shape (dim,) producing the sin/cos encoding
 	 */
 	public CollectionProducer encodeSinusoidal(int value) {
-		double bias = translationBias.toDouble(0);
-		double biasedValue = value + bias;
+		CollectionProducer biasedValue = cp(translationBias).add(c((double) value));
 
 		// angles = invFreqs * biasedValue, shape (dim/2,)
-		CollectionProducer angles = cp(invFreqsCollection).multiply(c(biasedValue));
+		CollectionProducer angles = invFreqs.multiply(biasedValue);
 		CollectionProducer sins = sin(angles);
 		CollectionProducer coss = cos(angles);
 
@@ -161,46 +160,31 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 	public double getBase() { return base; }
 
 	/** Returns the linear projection weight. */
-	public PackedCollection getLinearWeight() { return linearWeight; }
+	public CollectionProducer getLinearWeight() { return cp(linearWeight); }
 
 	/** Returns the linear projection bias. */
-	public PackedCollection getLinearBias() { return linearBias; }
+	public CollectionProducer getLinearBias() { return cp(linearBias); }
 
 	/** Returns the translation bias. */
-	public PackedCollection getTranslationBias() { return translationBias; }
+	public CollectionProducer getTranslationBias() { return cp(translationBias); }
 
 	/**
-	 * Compute inverse frequency values for the sinusoidal encoding.
+	 * Compute inverse frequency values for the sinusoidal encoding as a
+	 * {@link CollectionProducer} constant, shape (dim/2,).
 	 *
 	 * <p>This is the same formula used in {@code RotationFeatures.computeRopeFreqs()}:
 	 * {@code invFreq[i] = 1.0 / base^(2*i / dim)}.</p>
 	 *
 	 * @param base the frequency base
 	 * @param dim  the embedding dimension
-	 * @return array of dim/2 inverse frequency values
+	 * @return CollectionProducer of shape (dim/2,) containing inverse frequency values
 	 */
-	public static double[] computeInvFreqs(double base, int dim) {
+	public CollectionProducer computeInvFreqs(double base, int dim) {
 		int halfDim = dim / 2;
 		double[] freqs = new double[halfDim];
 		for (int i = 0; i < halfDim; i++) {
 			freqs[i] = 1.0 / Math.pow(base, (2.0 * i) / dim);
 		}
-		return freqs;
-	}
-
-	/**
-	 * Build a {@link PackedCollection} of inverse frequency values for
-	 * use in Producer-based sinusoidal encoding.
-	 *
-	 * @param base the frequency base
-	 * @param dim  the embedding dimension
-	 * @return PackedCollection of shape (dim/2,) containing inverse frequency values
-	 */
-	private static PackedCollection buildInvFreqsCollection(double base, int dim) {
-		double[] freqs = computeInvFreqs(base, dim);
-		int halfDim = freqs.length;
-		PackedCollection col = new PackedCollection(new TraversalPolicy(halfDim));
-		col.setMem(0, freqs, 0, halfDim);
-		return col;
+		return c(shape(halfDim), freqs);
 	}
 }
