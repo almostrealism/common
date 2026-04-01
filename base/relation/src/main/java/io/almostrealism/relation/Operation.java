@@ -128,8 +128,14 @@ public interface Operation extends Process<Process<?, ?>, Runnable>, Supplier<Ru
 	 * underlying operation while maintaining its own identity.</p>
 	 */
 	class IsolatedProcess implements Process<Process<?, ?>, Runnable> {
+		/** The wrapped operation whose children and get() results are delegated to. */
 		private Operation op;
 
+		/**
+		 * Creates an isolated process wrapping the given operation.
+		 *
+		 * @param op the operation to delegate to
+		 */
 		private IsolatedProcess(Operation op) {
 			this.op = op;
 		}

@@ -34,5 +34,8 @@ package org.almostrealism.music.pattern;
  * @author Michael Murray
  */
 public enum PatternDirection {
-	FORWARD, BACKWARD
+	/** Normal forward playback direction. */
+	FORWARD,
+	/** Reverse playback direction. */
+	BACKWARD
 }

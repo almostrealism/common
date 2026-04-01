@@ -21,7 +21,28 @@ import io.almostrealism.expression.Expression;
 
 import java.util.function.Function;
 
+/**
+ * A {@link UniformConditionalExpression} that applies a filter function to each element
+ * based on a boolean condition.
+ *
+ * <p>For each index, the condition is evaluated on the raw element value. When {@code positive}
+ * is {@code true}, the filter is applied to elements where the condition holds and the original
+ * value is kept where it does not. When {@code positive} is {@code false}, the roles are
+ * reversed: the original value is kept where the condition holds and the filter is applied
+ * elsewhere.</p>
+ */
 public class ConditionalFilterExpression extends UniformConditionalExpression {
+	/**
+	 * Creates a conditional filter expression.
+	 *
+	 * @param name      a descriptive name for this expression
+	 * @param shape     the output shape
+	 * @param condition the boolean condition evaluated on each element value
+	 * @param filter    the transformation applied to elements that pass (or fail) the condition
+	 * @param positive  {@code true} to apply the filter where the condition is true;
+	 *                  {@code false} to apply it where the condition is false
+	 * @param input     the input operand expression
+	 */
 	public ConditionalFilterExpression(String name, TraversalPolicy shape,
 									   Function<Expression<?>, Expression<Boolean>> condition,
 									   Function<Expression<?>, Expression<?>> filter,
@@ -34,6 +55,13 @@ public class ConditionalFilterExpression extends UniformConditionalExpression {
 				input);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Currently delegates to the parent implementation. A future version should
+	 * return a {@code ConditionalFilterExpression} that propagates the condition through
+	 * the delta of both the filtered and unfiltered branches.</p>
+	 */
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		// TODO  This should return a ConditionalFilterExpression

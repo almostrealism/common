@@ -44,6 +44,7 @@ package io.almostrealism.frames;
  * @author  Michael Murray
  */
 public class SpatialFrame {
+	/** The two predicates positioned spatially, where {@code a} is closer than {@code b}. */
 	private Predicate a, b;
 
 	/**

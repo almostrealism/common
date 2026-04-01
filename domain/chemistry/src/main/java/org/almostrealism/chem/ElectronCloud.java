@@ -22,15 +22,33 @@ import org.almostrealism.algebra.Vector;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-// TODO  I'm not sure how this should interact with the parent class
-//       To be honest, I'm not quite sure what the parent class does
+/**
+ * An absorber that models the collective electron cloud of an alloy material,
+ * delegating photon absorption and emission to the valence electron layer.
+ * <p>
+ * Incoming photons are first offered to the {@link Valence} model. If a valence
+ * electron absorbs the photon, the superclass {@link HarmonicAbsorber} is also
+ * notified. Photons emitted during valence-electron de-excitation are queued
+ * and returned on subsequent {@link #getEmitEnergy()} calls.
+ * </p>
+ */
 public class ElectronCloud extends HarmonicAbsorber {
+    /** Queue of photons pending emission from valence electron de-excitation. */
     private final Queue<Photon> toEmit = new ConcurrentLinkedQueue<Photon>();
 
+    /** The valence-electron model used for photon absorption and emission decisions. */
     private Valence valence;
 
+	/** Default constructor for bean deserialization. */
     public ElectronCloud() { }
 
+	/**
+	 * Constructs an electron cloud for the given alloy material, creating the specified
+	 * number of atom samples in the {@link Valence} model.
+	 *
+	 * @param material  the alloy material whose electron cloud this represents
+	 * @param samples   number of atom samples to use in the valence model
+	 */
     public ElectronCloud(Alloy material, int samples) {
         this.valence = new Valence(material, samples);
     }

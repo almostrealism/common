@@ -180,6 +180,14 @@ public interface Algebraic extends Computable {
 		return equals(other);
 	}
 
+	/**
+	 * Returns the constant scalar value of this transformation if it uniformly scales
+	 * all components by the same amount, or empty if no such scalar exists.
+	 *
+	 * <p>The default implementation returns {@link OptionalDouble#empty()}.</p>
+	 *
+	 * @return the constant scalar value, or empty if not a scalar transformation
+	 */
 	default OptionalDouble getConstant() {
 		return OptionalDouble.empty();
 	}
@@ -248,6 +256,15 @@ public interface Algebraic extends Computable {
 		return ((Algebraic) value).getDiagonalScalar(width);
 	}
 
+	/**
+	 * Static utility method to retrieve the constant scalar factor from an arbitrary value.
+	 * Performs type checking before delegating to {@link #getConstant()}.
+	 *
+	 * @param <T>   the type of the value to check
+	 * @param value the value to check; may be any type
+	 * @return the constant scalar if the value is {@link Algebraic} and has a uniform scaling;
+	 *         {@link OptionalDouble#empty()} otherwise
+	 */
 	static <T> OptionalDouble getConstant(T value) {
 		if (!(value instanceof Algebraic)) {
 			return OptionalDouble.empty();

@@ -174,15 +174,26 @@ import java.util.stream.Collectors;
  * @see DefaultLatchSemaphore
  */
 public class NativeExecution extends HardwareOperator {
+	/** If true, kernel execution is dispatched to the thread pool; if false, it runs synchronously. */
 	public static boolean enableExecutor = true;
 
+	/** Metric tracking dimension mask computation time for JNI kernel invocations. */
 	public static TimingMetric dimMaskMetric = Hardware.console.timing("dimMask");
 
+	/** Shared thread pool sized to the available CPU parallelism for concurrent kernel execution. */
 	private static ExecutorService executor = Executors.newFixedThreadPool(KernelPreferences.getCpuParallelism());
 
+	/** The native instruction set providing access to the compiled JNI function. */
 	private NativeInstructionSet inst;
+	/** Number of {@link io.almostrealism.code.MemoryData} arguments expected by the native function. */
 	private int argCount;
 
+	/**
+	 * Creates a native execution operator backed by a compiled JNI instruction set.
+	 *
+	 * @param inst The {@link NativeInstructionSet} providing the compiled native function
+	 * @param argCount Number of memory arguments expected by the native function
+	 */
 	protected NativeExecution(NativeInstructionSet inst, int argCount) {
 		this.inst = inst;
 		this.argCount = argCount;

@@ -28,13 +28,35 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Audio node representing a complete audio scene, with per-channel child nodes
+ * filtered by an optional channel list. Supports time-range filtering of pattern
+ * elements for sub-scene views.
+ */
 public class SceneAudioNode implements NoteAudioNode, Nameable, ConsoleFeatures {
-	private String key, name;
+	/** Unique key identifying this scene node. */
+	private String key;
+
+	/** Human-readable name of this scene node. */
+	private String name;
+
+	/** The audio scene this node represents. */
 	private AudioScene<?> scene;
+
+	/** Per-channel child audio nodes. */
 	private List<NoteAudioNode> children;
 
+	/** Creates an empty scene node with no scene or children. */
 	public SceneAudioNode() { }
 
+	/**
+	 * Creates a scene node for the given scene, exposing the specified channels.
+	 *
+	 * @param key      unique key for this node
+	 * @param name     display name for this node
+	 * @param scene    the audio scene to represent
+	 * @param channels the channel indices to expose, or {@code null} for all channels
+	 */
 	public SceneAudioNode(String key, String name, AudioScene<?> scene, List<Integer> channels) {
 		setKey(key);
 		setName(name);
@@ -52,6 +74,13 @@ public class SceneAudioNode implements NoteAudioNode, Nameable, ConsoleFeatures 
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Filters child channel nodes to include only pattern elements within the given
+	 * time range.
+	 *
+	 * @param start range start in measures (inclusive)
+	 * @param end   range end in measures (exclusive)
+	 */
 	public void setRange(double start, double end) {
 		if (scene == null) {
 			warn("Scene not available for adjusting range");

@@ -28,13 +28,21 @@ import java.util.Stack;
  * @author  Michael Murray
  */
 public class GeometryStack extends BasicGeometry {
+	/** Stack of accumulated geometry transformations; {@code this} is always at the bottom. */
 	private final Stack<BasicGeometry> stack;
-	
+
+	/** Constructs a new {@link GeometryStack} with {@code this} as the base entry. */
 	public GeometryStack() {
 		stack = new Stack<>();
 		stack.push(this);
 	}
 	
+	/**
+	 * Removes the most recently pushed {@link BasicGeometry} and subtracts its
+	 * transform contribution from the accumulated state.
+	 *
+	 * @throws java.util.EmptyStackException if only the base entry remains
+	 */
 	public void pop() {
 		if (stack.peek() == this)
 			throw new EmptyStackException();
@@ -53,6 +61,12 @@ public class GeometryStack extends BasicGeometry {
 		this.transformCurrent = false;
 	}
 	
+	/**
+	 * Pushes a {@link BasicGeometry} onto the stack and accumulates its transform
+	 * (location, size, scale, rotation) into the current state.
+	 *
+	 * @param g the geometry whose transform should be accumulated
+	 */
 	public void push(BasicGeometry g) {
 		this.stack.push(g);
 		

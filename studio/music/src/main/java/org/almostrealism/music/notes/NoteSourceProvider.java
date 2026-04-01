@@ -18,6 +18,20 @@ package org.almostrealism.music.notes;
 
 import java.util.List;
 
+/**
+ * Provides {@link NoteAudioSource} instances by identifier.
+ *
+ * <p>Used to resolve note audio sources by their unique string ID during
+ * pattern system configuration and rendering.</p>
+ *
+ * @see NoteAudioSource
+ */
 public interface NoteSourceProvider {
+	/**
+	 * Returns the list of audio sources associated with the given identifier.
+	 *
+	 * @param id the unique identifier of the audio source
+	 * @return the list of matching audio sources, or an empty list if none
+	 */
 	List<NoteAudioSource> getSource(String id);
 }

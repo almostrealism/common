@@ -41,25 +41,64 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/**
+ * Population-based optimizer for audio scene parameters. Extends {@link PopulationOptimizer}
+ * to drive iterative evolutionary optimization cycles that produce WAV audio output evaluated
+ * by an {@link AudioHealthScore} health metric.
+ *
+ * <p>Each optimization run reads the current population from a JSON file, executes one or more
+ * breeding and health-evaluation cycles, and writes the updated population back to disk. Optionally
+ * WAV and stem files are written alongside each health computation for offline analysis.</p>
+ *
+ * @param <O> the temporal type evaluated during each optimization cycle
+ */
 public class AudioPopulationOptimizer<O extends Temporal> extends
 		PopulationOptimizer<PackedCollection, PackedCollection, O, AudioHealthScore>
 		implements Runnable, Destroyable {
+	/** Directory where generated WAV health-check files are written. Defaults to the local {@code health/} destination. */
 	public static String outputDir = SystemUtils.getProperty("AR_AUDIO_OUTPUT", SystemUtils.getLocalDestination("health"));
 
+	/** When {@code true}, a WAV file is generated for each health-check iteration. */
 	public static final boolean enableWavOutput = true;
+
+	/** When {@code true}, per-channel stem WAV files are also written during health checks. */
 	public static boolean enableStemOutput = true;
+
+	/** When {@code true}, each optimization cycle runs inside an isolated data context. */
 	public static boolean enableIsolatedContext = false;
+
+	/** When {@code true}, {@link System#gc()} is called explicitly after each cycle. */
 	public static boolean enableExplicitGc = false;
 
+	/** Path to the JSON file used for population persistence. */
 	private final String file;
+
+	/** Total number of optimization iterations to execute per {@link #run()} invocation. */
 	private int tot;
+
+	/** Monotonically increasing counter used to uniquely name generated output files. */
 	private final AtomicInteger count;
 
+	/** MD5-based prefix string that groups output files from the same breeding generation. */
 	private String outputPrefix;
 
+	/** Optional callback invoked at the start of each optimization cycle. */
 	private Runnable cycleListener;
+
+	/** Optional callback invoked after each optimization cycle completes. */
 	private Runnable completionListener;
 
+	/**
+	 * Constructs an optimizer using the default {@link StableDurationHealthComputation}
+	 * configured for the given number of stem channels.
+	 *
+	 * @param stemCount        the number of audio channels evaluated by the health computation
+	 * @param children         function that builds a {@link Population} from a list of genomes
+	 * @param breeder          supplier of the {@link GenomeBreeder} used to produce offspring
+	 * @param generator        supplier of a genome supplier for generating new individuals
+	 * @param file             path to the JSON population persistence file
+	 * @param iterationsPerRun the number of optimization cycles to execute per {@link #run()} call
+	 */
 	public AudioPopulationOptimizer(int stemCount, Function<List<Genome<PackedCollection>>, Population> children,
 									Supplier<GenomeBreeder<PackedCollection>> breeder,
 									Supplier<Supplier<Genome<PackedCollection>>> generator,
@@ -67,6 +106,16 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		this(() -> healthComputation(stemCount), children, breeder, generator, file, iterationsPerRun);
 	}
 
+	/**
+	 * Constructs an optimizer with an explicitly supplied health computation.
+	 *
+	 * @param health           supplier of the health computation used to evaluate each individual
+	 * @param children         function that builds a {@link Population} from a list of genomes
+	 * @param breeder          supplier of the {@link GenomeBreeder} used to produce offspring
+	 * @param generator        supplier of a genome supplier for generating new individuals
+	 * @param file             path to the JSON population persistence file
+	 * @param iterationsPerRun the number of optimization cycles to execute per {@link #run()} call
+	 */
 	public AudioPopulationOptimizer(Supplier<HealthComputation<O, AudioHealthScore>> health,
 									Function<List<Genome<PackedCollection>>, Population> children,
 									Supplier<GenomeBreeder<PackedCollection>> breeder,
@@ -78,6 +127,11 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		this.count = new AtomicInteger();
 	}
 
+	/**
+	 * Initializes output file suppliers on the health computation so that each iteration
+	 * writes to a uniquely named WAV file. When stem output is enabled, per-stem file
+	 * suppliers are also configured.
+	 */
 	public void init() {
 		if (enableWavOutput) {
 			File d = new File(outputDir);
@@ -93,16 +147,37 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		}
 	}
 
+	/**
+	 * Sets the number of optimization iterations to execute per {@link #run()} call.
+	 *
+	 * @param tot the new iteration count
+	 */
 	public void setIterationsPerRun(int tot) { this.tot = tot; }
 
+	/**
+	 * Registers a callback that is invoked at the start of each optimization cycle.
+	 *
+	 * @param r the cycle listener runnable
+	 */
 	public void setCycleListener(Runnable r) {
 		this.cycleListener = r;
 	}
 
+	/**
+	 * Registers a callback that is invoked after each optimization cycle completes.
+	 *
+	 * @param r the completion listener runnable
+	 */
 	public void setCompletionListener(Runnable r) {
 		this.completionListener = r;
 	}
 
+	/**
+	 * Reads genome data from the population persistence file and sets the current population.
+	 * If the file does not exist an empty population is used instead.
+	 *
+	 * @throws FileNotFoundException if the persistence file path is invalid
+	 */
 	public void readPopulation() throws FileNotFoundException {
 		List<Genome<PackedCollection>> loaded;
 
@@ -167,6 +242,9 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		outputPrefix = generatePrefix();
 	}
 
+	/**
+	 * Serializes the current population to the configured JSON persistence file.
+	 */
 	public void storePopulation() {
 		try {
 			((AudioScenePopulation) getPopulation()).store(new FileOutputStream(file));
@@ -176,6 +254,12 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		}
 	}
 
+	/**
+	 * Generates a unique MD5-based prefix string derived from the current time, used to
+	 * group output WAV files produced within the same breeding generation.
+	 *
+	 * @return an MD5 hex string derived from the current system time
+	 */
 	protected String generatePrefix() {
 		return DigestUtils.md5Hex(String.valueOf(System.currentTimeMillis()));
 	}
@@ -185,6 +269,14 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		resetHealth();
 	}
 
+	/**
+	 * Creates a default {@link HealthComputation} backed by a {@link StableDurationHealthComputation}
+	 * configured to evaluate the given number of audio channels.
+	 *
+	 * @param <O>      the temporal type to evaluate
+	 * @param channels the number of audio channels to assess
+	 * @return a health computation suitable for use with this optimizer
+	 */
 	public static <O extends Temporal> HealthComputation<O, AudioHealthScore> healthComputation(int channels) {
 		return (HealthComputation<O, AudioHealthScore>) new StableDurationHealthComputation(channels, true);
 	}

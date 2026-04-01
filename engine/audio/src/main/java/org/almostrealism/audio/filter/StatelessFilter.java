@@ -32,10 +32,26 @@ import org.almostrealism.collect.PackedCollection;
  * @see VolumeEnvelopeExtraction
  */
 public interface StatelessFilter {
+	/**
+	 * Applies this filter to the given input audio and returns the filtered output as a producer.
+	 *
+	 * @param buffer the buffer configuration (sample rate and frame count)
+	 * @param params filter parameter values
+	 * @param input  the input audio data
+	 * @return a producer yielding the filtered audio
+	 */
 	Producer<PackedCollection> filter(BufferDetails buffer,
 										   Producer<PackedCollection> params,
 										   Producer<PackedCollection> input);
 
+	/**
+	 * Wraps this stateless filter in an {@link AudioProcessor} that assigns the filtered
+	 * output into the destination buffer.
+	 *
+	 * @param buffer the buffer configuration (sample rate and frame count)
+	 * @param params filter parameter values
+	 * @return an AudioProcessor that applies this filter using the given configuration
+	 */
 	default AudioProcessor toAudioProcessor(BufferDetails buffer,
 											Producer<PackedCollection> params) {
 		return (destination, source) -> Ops.o().a(destination, filter(buffer, params, source));

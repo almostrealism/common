@@ -31,7 +31,9 @@ import java.util.List;
  */
 public class SentencePieceTokenizer implements Tokenizer {
 
+	/** The underlying DJL SentencePiece tokenizer used for encoding and decoding. */
 	private final SpTokenizer tokenizer;
+	/** Vocabulary built from the loaded SentencePiece model, used for token-id lookups. */
 	private final SpVocabulary vocabulary;
 
 	/**

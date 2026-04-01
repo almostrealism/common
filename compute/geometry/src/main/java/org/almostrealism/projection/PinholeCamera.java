@@ -43,7 +43,10 @@ import org.almostrealism.collect.CollectionProducer;
  * @author  Michael Murray
  */
 public class PinholeCamera extends OrthographicCamera implements ProjectionFeatures {
+  	/** The distance from the camera location to the projection plane. */
   	private double focalLength = 1.0;
+
+  	/** The amount of directional blur applied to each ray for depth-of-field effects. */
   	private double blur = 0.0;
 
 	/** Constructs a {@link PinholeCamera} with all default values as described above. */
@@ -113,6 +116,12 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 		return new double [] { getHorizontalFOV(), getVerticalFOV() };
 	}
 
+	/**
+	 * Returns the horizontal field of view in radians, computed from the projection width
+	 * and focal length.
+	 *
+	 * @return the horizontal field of view in radians
+	 */
 	public double getHorizontalFOV() {
 		return 2.0 * Math.atan(super.getProjectionWidth() / (2.0 * this.focalLength));
 	}
@@ -129,12 +138,29 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 		setProjectionWidth(aspect * getProjectionHeight());
 	}
 
+	/**
+	 * Returns the vertical field of view in radians, computed from the projection height
+	 * and focal length.
+	 *
+	 * @return the vertical field of view in radians
+	 */
 	public double getVerticalFOV() {
 		return 2.0 * Math.atan(super.getProjectionHeight() / (2.0 * this.focalLength));
 	}
-	
+
+	/**
+	 * Sets the amount of directional blur applied to each generated ray.
+	 * A value of 0.0 produces sharp rays with no depth-of-field blur.
+	 *
+	 * @param blur the blur amount
+	 */
 	public void setBlur(double blur) { this.blur = blur; }
-	
+
+	/**
+	 * Returns the blur amount applied to each generated ray.
+	 *
+	 * @return the blur amount
+	 */
 	public double getBlur() { return this.blur; }
 	
 	/**
@@ -156,6 +182,12 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 										blur, focalLength, u, v, w);
 	}
 	
+	/**
+	 * Returns a string representation of this camera including location, view direction,
+	 * and projection dimensions.
+	 *
+	 * @return a descriptive string for this PinholeCamera
+	 */
 	public String toString() {
 		return "PinholeCamera - " +
 				getLocation() + " " +

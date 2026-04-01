@@ -16,8 +16,15 @@
 
 package org.almostrealism.studio.stream;
 
+/**
+ * Configuration data transferred from a DAW client to the server when establishing
+ * a shared-memory audio connection.
+ */
 public class SharedPlayerConfig {
+	/** File system path for the shared memory region. */
 	private String location;
+
+	/** Unique stream key used to identify this connection. */
 	private String stream;
 
 	public String getLocation() { return location; }

@@ -193,6 +193,15 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 				requirements));
 	}
 
+	/**
+	 * Appends an enumerate layer that partitions the output into tiles of the given shape,
+	 * producing a leading count dimension.
+	 *
+	 * @param shape        the tile shape to enumerate over
+	 * @param requirements optional compute requirements for the layer
+	 * @return a new block with the enumerate layer appended
+	 * @throws IllegalArgumentException if the current output size is not divisible by the tile size
+	 */
 	default Block enumerate(TraversalPolicy shape, ComputeRequirement... requirements) {
 		if (getOutputShape().getTotalSize() % shape.getTotalSize() != 0) {
 			throw new IllegalArgumentException();
@@ -305,10 +314,27 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 		return next;
 	}
 
+	/**
+	 * Appends a block produced by a shape-to-block factory function,
+	 * passing this block's output shape as the input.
+	 *
+	 * @param <T>  the block type produced by the factory
+	 * @param next a factory that accepts a shape and returns the next block
+	 * @return the newly appended block
+	 */
 	default <T extends Block> Block andThen(Function<TraversalPolicy, T> next) {
 		return andThen(next.apply(getOutputShape()));
 	}
 
+	/**
+	 * Connects a {@link Receptor} to this block's forward cell output.
+	 * If the forward cell already has a receptor, the new receptor is chained after it.
+	 * Note: this variant may not support backpropagation.
+	 *
+	 * @param <T>  the receptor type
+	 * @param next the receptor to attach
+	 * @return the attached receptor
+	 */
 	default <T extends Receptor<PackedCollection>> T andThen(T next) {
 		if (Layer.propagationWarnings)
 			warn("andThen(" + next + ") may not support backpropagation");
@@ -323,6 +349,14 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 		return next;
 	}
 
+	/**
+	 * Connects a {@link CollectionReceptor} targeting {@code destination} to this block's
+	 * forward output. If a receptor is already present, the new one is chained after it.
+	 * Note: this variant may not support backpropagation.
+	 *
+	 * @param destination the collection to copy output into after each forward pass
+	 * @return the newly created {@link CollectionReceptor}
+	 */
 	default CollectionReceptor andThen(PackedCollection destination) {
 		if (Layer.propagationWarnings)
 			warn("andThen(" + destination + ") may not support backpropagation");

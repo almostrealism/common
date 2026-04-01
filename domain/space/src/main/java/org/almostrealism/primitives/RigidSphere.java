@@ -30,17 +30,32 @@ import java.awt.*;
 
 
 /**
+ * A sphere that participates in rigid-body simulation, provides particle-group vertices
+ * for rendering, and optionally acts as a spherical area light.
+ *
  * @author  Michael Murray
  */
 public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, SurfaceLight {
+	/** The current rigid-body simulation state (position, velocity, inertia, forces). */
 	private final State state;
-	
+
+	/** Optional {@link SphericalLight} placed at the sphere surface, or {@code null} if disabled. */
 	private SphericalLight light;
-	
+
+	/** Number of samples along each angular axis when computing particle vertices. */
 	private final int radialSample;
+
+	/** World-space vertex positions arranged on the sphere surface for particle rendering. */
 	private final double[][] vertices;
-	
-	private TransformMatrix rotateXMatrix, rotateYMatrix, rotateZMatrix;
+
+	/** Rotation matrix around the X axis derived from the current orientation. */
+	private TransformMatrix rotateXMatrix;
+
+	/** Rotation matrix around the Y axis derived from the current orientation. */
+	private TransformMatrix rotateYMatrix;
+
+	/** Rotation matrix around the Z axis derived from the current orientation. */
+	private TransformMatrix rotateZMatrix;
 	
 	/**
 	 * Constructs a new Sphere object using (0.0, 0.0, 0.0) for all vector values
@@ -82,13 +97,23 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 																			{0.0, 0.0, 0.0, 1.0}}), e);
 	}
 	
+	/**
+	 * Sets the radius of this sphere and updates the inertia tensor and vertex positions.
+	 *
+	 * @param radius the new radius value
+	 */
 	public void setRadius(double radius) {
 		super.setSize(radius);
 		this.updateModel();
 	}
 	
+	/** Returns the radius of this sphere. */
 	public double getRadius() { return super.getSize(); }
-	
+
+	/**
+	 * Updates the inertia tensor, rotation matrices, vertex positions, and
+	 * associated light location/size to reflect the current state.
+	 */
 	public void updateModel() {
 		double r = super.getSize();
 		double a = (2.0 / 5.0) * this.state.mass * r * r;
@@ -114,6 +139,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 		this.updateVertices();
 	}
 	
+	/** Recomputes the particle-group vertex positions based on the current state and radius. */
 	public void updateVertices() {
 		for (int i = 0; i < this.radialSample; i++) {
 			double theta = 2 * Math.PI * i / this.radialSample;
@@ -151,6 +177,12 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 		}
 	}
 	
+	/**
+	 * Computes the contact point and normal between this sphere and the given rigid body.
+	 *
+	 * @param b the other rigid body to test against
+	 * @return a two-element array {@code {contactPoint, normal}} if intersecting, or an empty array
+	 */
 	public Vector[] intersect(RigidBody b) {
 		double r = super.getSize();
 		
@@ -210,6 +242,11 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 		throw new UnsupportedOperationException();
 	}
 	
+	/**
+	 * Enables or disables the built-in {@link SphericalLight} for this sphere.
+	 *
+	 * @param on {@code true} to create and attach a spherical light; {@code false} to remove it
+	 */
 	public void setLighting(boolean on) {
 		if (on) {
 			this.light = new SphericalLight();

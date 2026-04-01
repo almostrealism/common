@@ -40,20 +40,51 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+/**
+ * An NFS4 {@link VirtualFileSystem} implementation backed by a {@link Graph} of
+ * {@link Resource} objects.
+ *
+ * <p>This file system uses a {@link SearchEngine} to resolve paths to resources,
+ * a {@link Factory} to create new resources, a {@link DirectoryNotifier} to handle
+ * directory creation, and a {@link DeletionNotifier} to handle deletions.
+ * Permissions are mapped bidirectionally between Unix-style octal mode bits and
+ * the {@link io.almostrealism.resource.Permissions} model.</p>
+ *
+ * @param <T> The type of {@link Resource} created by this file system's factory
+ */
 public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
+	/** One kilobyte, in bytes. */
 	public static final long KB = 1024;
+	/** One megabyte, in bytes. */
 	public static final long MB = 1024 * KB;
+	/** One gigabyte, in bytes. */
 	public static final long GB = 1024 * MB;
+	/** Total reported file system space: 1 petabyte. */
 	public static final long TOTAL_SPACE = 1024L * 1024L * GB; // 1 petabtyte
+	/** Total reported file count: 6 GB of address space assuming file names are at most 2 KB. */
 	public static final long TOTAL_FILES = 6L * GB / (2L * KB); // 6 GB of FS address space assuming
-															    // file names are at most 2KB
+																    // file names are at most 2KB
 
+	/** The resource graph used to track nodes and edges. */
 	private final Graph<Resource> graph;
+	/** Factory used to construct new resource instances. */
 	private final Factory<T> factory;
+	/** Search engine for resolving paths to resources. */
 	private final SearchEngine search;
+	/** Notifier called when a new directory is created. */
 	private final DirectoryNotifier dir;
+	/** Notifier called when a resource is deleted. */
 	private final DeletionNotifier del;
-	
+
+	/**
+	 * Constructs a {@link GraphFileSystem} backed by the supplied graph and services.
+	 *
+	 * @param graph   The resource graph for node tracking
+	 * @param factory Factory for creating new resources
+	 * @param e       Search engine for resolving paths to resources
+	 * @param dir     Notifier for directory creation events
+	 * @param del     Notifier for deletion events
+	 */
 	public GraphFileSystem(Graph<Resource> graph, Factory<T> factory, SearchEngine e,
 						   DirectoryNotifier dir, DeletionNotifier del) {
 		this.graph = graph;
@@ -62,7 +93,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 		this.dir = dir;
 		this.del = del;
 	}
-	
+
 	@Override
 	public int access(Subject subject, Inode inode, int mode) throws IOException {
 		System.out.println("GraphFileSystem: Access " + inode);
@@ -117,7 +148,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 			// Resources that don't exist are directories
 			return new Inode(new FileHandle.FileHandleBuilder().build(p.getBytes()));
 		}
-		
+
 		return new ResourceInode(r);
 	}
 
@@ -311,6 +342,12 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Converts a Unix-style octal mode integer to a {@link Permissions} object.
+	 *
+	 * @param m The Unix mode bits (e.g., {@code 0755})
+	 * @return A {@link Permissions} object representing the equivalent access settings
+	 */
 	protected static Permissions getPermissionsForMode(int m) {
 		int mask = 7;
 		int umask = mask << 6;
@@ -325,6 +362,12 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 								getSettingForMode(o));
 	}
 
+	/**
+	 * Converts a {@link Permissions} object to a Unix-style octal mode integer.
+	 *
+	 * @param p The permissions to convert
+	 * @return The Unix mode bits encoding the user, group, and other settings
+	 */
 	protected static int getModeForPermissions(Permissions p) {
 		int u = 0, g = 0, o = 0;
 
@@ -335,6 +378,12 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 		return (u << 6) + (g << 3) + o;
 	}
 
+	/**
+	 * Maps a {@link Permissions.Setting} enum value to its Unix mode bit equivalent (0–7).
+	 *
+	 * @param s The permission setting to convert
+	 * @return The corresponding Unix mode bits
+	 */
 	private static int getModeForSetting(Permissions.Setting s) {
 		switch (s) {
 			case EMPTY:
@@ -358,6 +407,12 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 		return 0;
 	}
 
+	/**
+	 * Maps a Unix mode bit value (0–7) to its {@link Permissions.Setting} equivalent.
+	 *
+	 * @param m The Unix mode bits (0–7)
+	 * @return The corresponding {@link Permissions.Setting}
+	 */
 	private static Permissions.Setting getSettingForMode(int m) {
 		switch (m) {
 			case 0:
@@ -381,10 +436,28 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 		return Permissions.Setting.EMPTY;
 	}
 
+	/**
+	 * Extracts the path string from an {@link Inode} by decoding its file ID bytes.
+	 *
+	 * @param n The inode whose path to extract
+	 * @return The path string encoded in the inode's file handle
+	 */
 	private static String path(Inode n) { return path(n.getFileId()); }
 
+	/**
+	 * Decodes a byte array file ID to a path string.
+	 *
+	 * @param id The raw file handle bytes
+	 * @return The path string
+	 */
 	private static String path(byte[] id) { return new String(id); }
 
+	/**
+	 * Extracts the file name from a full URI path by taking the substring after the last slash.
+	 *
+	 * @param uri The full URI path of the resource
+	 * @return The file name portion of the URI
+	 */
 	private static String nameForUri(String uri) {
 		return uri.substring(uri.lastIndexOf("/") + 1);
 	}

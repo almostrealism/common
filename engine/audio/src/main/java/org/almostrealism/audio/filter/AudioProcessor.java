@@ -35,9 +35,23 @@ import java.util.function.Supplier;
  * @see EnvelopeProcessor
  */
 public interface AudioProcessor extends Lifecycle {
+	/**
+	 * Returns an operation that processes {@code source} audio and writes the result to {@code destination}.
+	 *
+	 * @param destination producer for the output buffer that receives processed audio
+	 * @param source      producer for the input audio data
+	 * @return a Supplier of Runnable that performs the processing when invoked
+	 */
 	Supplier<Runnable> process(Producer<PackedCollection> destination,
 							   Producer<PackedCollection> source);
 
+	/**
+	 * Creates an AudioProcessor that replays the specified channel of the given WaveData.
+	 *
+	 * @param data    the WaveData containing the source audio
+	 * @param channel the channel index to read from
+	 * @return an AudioProcessor that plays back the specified channel
+	 */
 	static AudioProcessor fromWave(WaveData data, int channel) {
 		PackedCollection position = new PackedCollection(1);
 

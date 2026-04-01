@@ -27,5 +27,10 @@ package org.almostrealism.audio.tone;
  * @see DefaultKeyboardTuning
  */
 public interface KeyboardTuned {
+	/**
+	 * Sets the keyboard tuning system for this component.
+	 *
+	 * @param tuning the tuning system to use for frequency lookup
+	 */
 	void setTuning(KeyboardTuning tuning);
 }

@@ -34,17 +34,40 @@ import org.almostrealism.heredity.IdentityFactor;
  */
 public class AutomatedPitchNoteAudio extends StatelessSourceNoteAudioAdapter {
 
+	/** The factor that maps an automation level to a frequency value. */
 	private final Factor<PackedCollection> frequency;
 
+	/**
+	 * Creates an {@code AutomatedPitchNoteAudio} with the given source and duration.
+	 *
+	 * @param source   the stateless audio source
+	 * @param duration the note duration in seconds
+	 */
 	public AutomatedPitchNoteAudio(StatelessSource source, double duration) {
 		this(source, new BufferDetails(OutputLine.sampleRate, duration));
 	}
 
+	/**
+	 * Creates an {@code AutomatedPitchNoteAudio} with the given source and buffer details,
+	 * using an identity parameter factor and a default frequency range of 30-17500 Hz.
+	 *
+	 * @param source the stateless audio source
+	 * @param buffer the buffer configuration
+	 */
 	public AutomatedPitchNoteAudio(StatelessSource source,
 								   BufferDetails buffer) {
 		this(source, buffer, new IdentityFactor<>(), 30, 17500);
 	}
 
+	/**
+	 * Creates an {@code AutomatedPitchNoteAudio} with a linear frequency mapping.
+	 *
+	 * @param source       the stateless audio source
+	 * @param buffer       the buffer configuration
+	 * @param params       the parameter factor
+	 * @param minFrequency the minimum frequency in Hz
+	 * @param maxFrequency the maximum frequency in Hz
+	 */
 	public AutomatedPitchNoteAudio(StatelessSource source,
 								   BufferDetails buffer,
 								   Factor<PackedCollection> params,
@@ -55,6 +78,14 @@ public class AutomatedPitchNoteAudio extends StatelessSourceNoteAudioAdapter {
 								o.multiply(level, o.c(maxFrequency - minFrequency)))));
 	}
 
+	/**
+	 * Creates an {@code AutomatedPitchNoteAudio} with an explicit frequency factor.
+	 *
+	 * @param source    the stateless audio source
+	 * @param buffer    the buffer configuration
+	 * @param params    the parameter factor
+	 * @param frequency the factor that maps automation level to frequency
+	 */
 	public AutomatedPitchNoteAudio(StatelessSource source,
 								   BufferDetails buffer,
 								   Factor<PackedCollection> params,

@@ -591,10 +591,22 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		return toFloatArray(0, getMemLength());
 	}
 
+	/**
+	 * Returns a string representation of a slice of this memory as a bracketed array.
+	 *
+	 * @param offset Starting element index
+	 * @param length Number of elements to include
+	 * @return String in the format {@code [e0, e1, ..., eN]}
+	 */
 	default String toArrayString(int offset, int length) {
 		return Arrays.toString(toArray(offset, length));
 	}
 
+	/**
+	 * Returns a string representation of all elements in this memory as a bracketed array.
+	 *
+	 * @return String in the format {@code [e0, e1, ..., eN]}
+	 */
 	default String toArrayString() {
 		return Arrays.toString(toArray());
 	}

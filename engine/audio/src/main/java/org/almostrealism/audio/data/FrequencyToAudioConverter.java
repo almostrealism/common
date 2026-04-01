@@ -37,6 +37,7 @@ import java.util.Random;
  */
 public class FrequencyToAudioConverter implements TemporalFeatures {
 
+	/** Random number generator used for phase initialization during synthesis. */
 	private final Random random;
 
 	/**

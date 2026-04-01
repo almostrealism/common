@@ -18,6 +18,25 @@ package org.almostrealism.nio;
 
 import io.almostrealism.code.Memory;
 
+/**
+ * Strategy interface for copying data from a foreign {@link io.almostrealism.code.Memory} type into a {@link NativeBuffer}.
+ *
+ * <p>Implementations are registered with {@link NativeBufferMemoryProvider} to handle cross-type
+ * memory writes without requiring the caller to know the source memory's concrete type.</p>
+ *
+ * @param <T> Foreign memory type to read from
+ * @see NativeBufferMemoryProvider#registerAdapter(Class, NativeBufferWriter)
+ */
 public interface NativeBufferWriter<T extends Memory> {
+	/**
+	 * Copies {@code length} elements from {@code source} starting at {@code srcOffset}
+	 * into {@code mem} starting at {@code offset}.
+	 *
+	 * @param mem       Destination native buffer
+	 * @param offset    Destination element offset
+	 * @param source    Source memory
+	 * @param srcOffset Source element offset
+	 * @param length    Number of elements to copy
+	 */
 	void setMem(NativeBuffer mem, int offset, T source, int srcOffset, int length);
 }

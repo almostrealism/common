@@ -38,25 +38,63 @@ import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Manages per-channel effects processing including adjustable delay lines, feedback,
+ * and optional high-pass/low-pass filtering. Effect parameters are driven by
+ * chromosomes to support genetic algorithm optimisation.
+ */
 public class EfxManager implements CellFeatures {
+	/** When {@code false}, all effects are bypassed and audio passes through unchanged. */
 	public static boolean enableEfx = true;
+
+	/** When {@code false}, automation is not applied to effect parameters. */
 	public static boolean enableAutomation = true;
+
+	/** Maximum wet level in [0, 1] applied to delay output. */
 	public static double maxWet = 0.5;
+
+	/** Maximum feedback level in [0, 1] applied to the delay feedback path. */
 	public static double maxFeedback = 0.5;
+
+	/** FIR filter order used for the frequency-selective effect filters. */
 	public static int filterOrder = 40;
 
+	/** Automation manager used to modulate effect parameters over time. */
 	private final AutomationManager automation;
 
+	/** Source chromosome from which effect gene segments are allocated. */
 	private final ProjectedChromosome chromosome;
+
+	/** Per-channel delay time genes (as beat multiples). */
 	private Chromosome<PackedCollection> delayTimes;
+
+	/** Per-channel delay level genes (wet, feedback, filter decision, cutoff). */
 	private Chromosome<PackedCollection> delayLevels;
+
+	/** Per-channel delay automation genes. */
 	private Chromosome<PackedCollection> delayAutomation;
+
+	/** Number of audio channels being managed. */
 	private final int channels;
+
+	/** Indices of channels that receive wet (effects) processing. */
 	private List<Integer> wetChannels;
 
+	/** Supplier returning the current beat duration in seconds. */
 	private final DoubleSupplier beatDuration;
+
+	/** Audio sample rate. */
 	private final int sampleRate;
 
+	/**
+	 * Creates an effects manager.
+	 *
+	 * @param chromosome  the chromosome from which effect genes are allocated
+	 * @param channels    the number of audio channels
+	 * @param automation  the automation manager providing time-varying modulation
+	 * @param beatDuration supplier returning the current beat duration in seconds
+	 * @param sampleRate  the audio sample rate
+	 */
 	public EfxManager(ProjectedChromosome chromosome, int channels,
 					  AutomationManager automation,
 					  DoubleSupplier beatDuration, int sampleRate) {
@@ -73,6 +111,10 @@ public class EfxManager implements CellFeatures {
 		init();
 	}
 
+	/**
+	 * Initialises the delay time, level, and automation chromosomes by allocating
+	 * gene segments from the projected chromosome.
+	 */
 	protected void init() {
 		double[] choices = IntStream.range(0, 5)
 				.mapToDouble(i -> Math.pow(2, i - 2))
@@ -101,7 +143,10 @@ public class EfxManager implements CellFeatures {
 		}).collect(Collectors.toList()));
 	}
 
+	/** Consolidated buffer for all filter destinations; {@code null} if not pre-allocated. */
 	private PackedCollection consolidatedFilterBuffer;
+
+	/** Next available slot index within the consolidated filter buffer. */
 	private int filterBufferIndex;
 
 	/**
@@ -143,7 +188,14 @@ public class EfxManager implements CellFeatures {
 		}
 	}
 
+	/** Returns the list of channel indices that receive wet effects processing. */
 	public List<Integer> getWetChannels() { return wetChannels; }
+
+	/**
+	 * Sets the list of channel indices that should receive wet effects processing.
+	 *
+	 * @param wetChannels list of zero-based channel indices
+	 */
 	public void setWetChannels(List<Integer> wetChannels) { this.wetChannels = wetChannels; }
 
 	/**
@@ -197,6 +249,13 @@ public class EfxManager implements CellFeatures {
 		return cells;
 	}
 
+	/**
+	 * Creates WaveCells for the given audio producer using an internal looping clock.
+	 *
+	 * @param audio         the audio producer
+	 * @param totalDuration total duration in seconds for the internal clock loop
+	 * @return CellList containing WaveCells
+	 */
 	protected CellList createCells(Producer<PackedCollection> audio, double totalDuration) {
 		return createCells(audio, totalDuration, null);
 	}
@@ -228,6 +287,15 @@ public class EfxManager implements CellFeatures {
 		}
 	}
 
+	/**
+	 * Applies a per-channel filter to the given audio producer and adds any required
+	 * setup operations to the provided list.
+	 *
+	 * @param channel the channel info identifying which filter parameters to use
+	 * @param audio   the input audio producer
+	 * @param setup   the operation list to accumulate setup steps
+	 * @return the filtered audio producer
+	 */
 	protected Producer<PackedCollection> applyFilter(ChannelInfo channel, Producer<PackedCollection> audio, OperationList setup) {
 		int size = shape(audio).getTotalSize();
 		PackedCollection destination;

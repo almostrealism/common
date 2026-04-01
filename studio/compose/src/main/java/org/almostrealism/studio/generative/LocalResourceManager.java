@@ -23,10 +23,23 @@ import org.almostrealism.util.ProcessFeatures;
 
 import java.io.File;
 
+/**
+ * File-system-backed implementation of {@link GenerationResourceManager} that stores
+ * model files and generated audio in local directories.
+ */
 public class LocalResourceManager implements GenerationResourceManager, ProcessFeatures {
+	/** Directory containing persisted model files. */
 	private final File models;
+
+	/** Directory containing persisted audio files. */
 	private final File audio;
 
+	/**
+	 * Creates a local resource manager.
+	 *
+	 * @param models directory for model storage
+	 * @param audio  directory for audio storage
+	 */
 	public LocalResourceManager(File models, File audio) {
 		this.models = models;
 		this.audio = audio;

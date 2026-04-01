@@ -77,9 +77,16 @@ import org.almostrealism.ml.DiffusionTrainingDataset;
  */
 public class AudioLatentDataset implements Dataset<PackedCollection>, CollectionFeatures, ConsoleFeatures {
 
+	/** Pre-encoded latent representations, one per audio segment. */
 	private final List<PackedCollection> latents;
+
+	/** Number of latent channels produced by the encoder (typically 64). */
 	private final int latentChannels;
+
+	/** Sequence length of each latent tensor. */
 	private final int latentLength;
+
+	/** Random number generator used for dataset shuffling. */
 	private final Random random;
 
 	/**
@@ -200,6 +207,16 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 		return new AudioLatentDataset(latents, 64, encoderOutputLength);
 	}
 
+	/**
+	 * Encodes a single audio file into a list of fixed-length latent segments.
+	 *
+	 * @param audioFile      path to the WAV file to encode
+	 * @param encoder        the compiled encoder model
+	 * @param segmentSamples number of audio samples per segment
+	 * @param sampleRate     the audio sample rate
+	 * @return the list of encoded latent tensors, one per segment
+	 * @throws IOException if the audio file cannot be read
+	 */
 	private static List<PackedCollection> encodeAudioFile(Path audioFile,
 														  CompiledModel encoder,
 														  int segmentSamples,

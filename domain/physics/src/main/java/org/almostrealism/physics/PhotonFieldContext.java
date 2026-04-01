@@ -55,7 +55,10 @@ import java.util.Collection;
  * @see Absorber
  */
 public class PhotonFieldContext<T extends PhotonField, F extends Absorber> extends ShaderContext {
+	/** The photon field associated with this shading context. */
 	private T field;
+
+	/** The absorber (film) that captures photons in this shading context. */
 	private F film;
 
 	/**

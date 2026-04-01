@@ -16,6 +16,16 @@
 
 package io.almostrealism.nfs;
 
+/**
+ * Listener interface for receiving notifications when a new directory is created
+ * in the virtual file system.
+ */
 public interface DirectoryNotifier {
+	/**
+	 * Called when a new directory is created at the specified path.
+	 *
+	 * @param path The path of the newly created directory
+	 * @return {@code true} if the directory was successfully created, {@code false} otherwise
+	 */
 	boolean newDirectory(String path);
 }

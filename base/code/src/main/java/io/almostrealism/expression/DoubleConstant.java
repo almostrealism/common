@@ -27,9 +27,23 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/**
+ * A constant {@link Double} expression node that holds a literal floating-point value.
+ *
+ * <p>Renders to the language-specific representation of the value via
+ * {@link io.almostrealism.lang.LanguageOperations#getPrecision()}. The value is
+ * also exposed as an {@link java.util.OptionalDouble} and a {@link io.almostrealism.sequence.KernelSeries}
+ * with constant periodicity.</p>
+ */
 public class DoubleConstant extends Constant<Double> {
+	/** The literal double value held by this constant. */
 	private double value;
 
+	/**
+	 * Constructs a constant expression for the given double value.
+	 *
+	 * @param value the literal floating-point value
+	 */
 	public DoubleConstant(Double value) {
 		super(Double.class);
 		this.value = value;

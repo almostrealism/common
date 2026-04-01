@@ -36,14 +36,25 @@ import java.util.List;
 
 /** A {@link Polynomial} represents a 3d polynomial surface. */
 public class Polynomial extends AbstractSurface {
+	/** Maximum ray-march distance at which intersections are reported. */
 	private static final double maxIntersectionDistance = 100.0;
+
+	/** Default interval width used when numerically searching for polynomial roots. */
 	private static final double defaultZerosInterval = 0.5;
+
+	/** Default recursion depth for the numerical root-finding algorithm. */
 	private static final int defaultZerosRecursions = 4;
-  
+
+	/** The terms that make up this polynomial surface equation. */
 	private PolynomialTerm[] terms;
 
+	/** Partial derivative of this polynomial with respect to X (computed lazily). */
 	private Polynomial dx;
+
+	/** Partial derivative of this polynomial with respect to Y (computed lazily). */
 	private Polynomial dy;
+
+	/** Partial derivative of this polynomial with respect to Z (computed lazily). */
 	private Polynomial dz;
 
 	/** Constructs a new Polynomial object with no terms. */

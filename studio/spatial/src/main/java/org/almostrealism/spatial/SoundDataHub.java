@@ -71,10 +71,16 @@ import java.util.concurrent.Executors;
  * @see SoundDataListener
  */
 public class SoundDataHub implements ConsoleFeatures {
+	/** Shared single-threaded executor for asynchronous listener notifications. */
 	private static ExecutorService executor = Executors.newSingleThreadExecutor();
+
+	/** The singleton hub instance, created lazily by {@link #getCurrent()}. */
 	private static SoundDataHub current;
 
+	/** The registered listeners for sound data events. */
 	private List<SoundDataListener> listeners;
+
+	/** The most recently set play mode, or {@code null} if not set. */
 	private SoundDataListener.PlayMode lastMode;
 
 	/**

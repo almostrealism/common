@@ -57,8 +57,13 @@ public class VAEBottleneck implements LayerFeatures {
 	/** Latent dimension (mean or logvar individually). */
 	private static final int LATENT_DIM = 64;
 
+	/** Block that extracts the mean (first {@value #LATENT_DIM} channels) from encoder output. */
 	private final Block bottleneck;
+
+	/** Batch size this bottleneck was configured for. */
 	private final int batchSize;
+
+	/** Latent sequence length this bottleneck was configured for. */
 	private final int seqLength;
 
 	/**
@@ -73,6 +78,14 @@ public class VAEBottleneck implements LayerFeatures {
 		this.bottleneck = buildBottleneck(batchSize, seqLength);
 	}
 
+	/**
+	 * Builds the bottleneck block, which extracts the mean component (first {@value #LATENT_DIM}
+	 * channels) from the {@value #ENCODER_DIM}-channel encoder output for deterministic inference.
+	 *
+	 * @param batchSize Batch size
+	 * @param seqLength Latent sequence length
+	 * @return The bottleneck block
+	 */
 	private Block buildBottleneck(int batchSize, int seqLength) {
 		TraversalPolicy inputShape = shape(batchSize, ENCODER_DIM, seqLength);
 		TraversalPolicy outputShape = shape(batchSize, LATENT_DIM, seqLength);

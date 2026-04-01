@@ -51,10 +51,16 @@ import java.util.stream.Collectors;
  */
 public abstract class GenomicTimeseries extends FrequencyTimeseriesAdapter implements SpatialGenomic {
 
+	/** The genome containing model or evolutionary algorithm parameters (not serialized). */
 	private transient Genome<PackedCollection> genome;
+
+	/** The delegate adapter providing frequency visualization from loaded wave details. */
 	private FrequencyTimeseriesAdapter delegate;
+
+	/** Placeholder timeseries used when detailed wave data is unavailable. */
 	private PlaceholderTimeseries placeholder;
 
+	/** The associated audio scene node for this timeseries. */
 	private SceneAudioNode node;
 
 	/**

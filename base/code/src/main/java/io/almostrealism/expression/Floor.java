@@ -24,7 +24,18 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/**
+ * A floor expression that rounds its operand down to the nearest integer.
+ *
+ * <p>Generates code of the form {@code floor(input)}. When the operand has a statically
+ * known double value, the floor result is embedded directly in the generated literal.</p>
+ */
 public class Floor extends Expression<Double> {
+	/**
+	 * Constructs a floor expression for the given operand.
+	 *
+	 * @param input the expression whose value is to be floored
+	 */
 	public Floor(Expression<Double> input) {
 		super(Double.class, input);
 	}
@@ -76,6 +87,12 @@ public class Floor extends Expression<Double> {
 		return new Floor((Expression<Double>) children.get(0));
 	}
 
+	/**
+	 * Creates a floor expression for the given operand.
+	 *
+	 * @param in the expression to floor
+	 * @return a new {@link Floor} expression
+	 */
 	public static Expression of(Expression in) {
 		return new Floor(in);
 	}

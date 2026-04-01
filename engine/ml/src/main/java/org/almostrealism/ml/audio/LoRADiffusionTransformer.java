@@ -77,7 +77,10 @@ import java.util.Map;
  */
 public class LoRADiffusionTransformer extends DiffusionTransformer implements AttentionFeatures, LowRankAdapterSupport {
 
+	/** Configuration for the LoRA adapters (rank, alpha, and which projections to adapt). */
 	private final AdapterConfig adapterConfig;
+
+	/** All LoRA linear layers registered with this model, in insertion order. */
 	private final List<LoRALinear> loraLayers;
 
 	/**

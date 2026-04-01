@@ -31,15 +31,31 @@ import org.almostrealism.color.computations.GeneratedColorProducer;
  */
 // TODO  ColorProducers should be allowed to be specified in place of RGB values.
 public class StripeTexture implements Texture {
+  /** Constant identifying the X axis as the direction perpendicular to stripes. */
   public static final int XAxis = 0;
+
+  /** Constant identifying the Y axis as the direction perpendicular to stripes. */
   public static final int YAxis = 1;
+
+  /** Constant identifying the Z axis as the direction perpendicular to stripes. */
   public static final int ZAxis = 2;
 
+  /** The width of each stripe period in world-space units along the selected axis. */
   private double stripeWidth;
+
+  /** When {@code true}, stripes blend smoothly using a sine function; otherwise they have hard edges. */
   private boolean smooth;
+
+  /** The axis perpendicular to which stripes are drawn (XAxis, YAxis, or ZAxis). */
   private int axis;
+
+  /** The first stripe color (applied when the sine-based test is positive). */
   private RGB color1;
+
+  /** The second stripe color (applied when the sine-based test is negative or zero). */
   private RGB color2;
+
+  /** A phase offset added to the stripe position calculation. */
   private double offset;
 
 	/**

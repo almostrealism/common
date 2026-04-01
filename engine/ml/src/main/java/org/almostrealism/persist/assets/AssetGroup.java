@@ -62,6 +62,7 @@ import java.util.stream.Stream;
  * @see org.almostrealism.ml.StateDictionary
  */
 public class AssetGroup {
+	/** Assets that make up this group. */
 	private List<Asset> assets;
 
 	/**

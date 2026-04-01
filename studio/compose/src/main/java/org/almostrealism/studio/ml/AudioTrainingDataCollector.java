@@ -94,6 +94,7 @@ import java.util.stream.Stream;
  */
 public class AudioTrainingDataCollector implements CollectionFeatures, ConsoleFeatures {
 
+	/** Random number generator used for shuffling samples and stochastic augmentation. */
 	private final Random random;
 
 	/**

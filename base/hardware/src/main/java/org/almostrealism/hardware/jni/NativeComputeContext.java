@@ -119,11 +119,20 @@ import org.almostrealism.hardware.metal.MetalMemoryProvider;
  * @see CJNIPrintWriter
  */
 public class NativeComputeContext extends AbstractComputeContext<NativeDataContext> {
+	/** If true, log detailed information about each kernel compilation and invocation. */
 	public static boolean enableVerbose = false;
+	/** Cumulative count of all JNI kernel invocations performed by all context instances. */
 	protected static long totalInvocations = 0;
 
+	/** The native compiler used to generate and compile C source code for each delivered scope. */
 	private NativeCompiler compiler;
 
+	/**
+	 * Creates a native compute context backed by the given data context and compiler.
+	 *
+	 * @param dc The {@link NativeDataContext} providing memory and precision configuration
+	 * @param compiler The {@link NativeCompiler} that compiles delivered scopes to shared libraries
+	 */
 	public NativeComputeContext(NativeDataContext dc, NativeCompiler compiler) {
 		super(dc);
 		this.compiler = compiler;

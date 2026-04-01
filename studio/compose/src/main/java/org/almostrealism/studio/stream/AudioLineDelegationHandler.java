@@ -43,7 +43,10 @@ import java.util.Objects;
  * </ul>
  */
 public class AudioLineDelegationHandler implements HttpAudioHandler, ConsoleFeatures {
+	/** The delegated audio line whose output delegate is updated on each DAW connection. */
 	private final DelegatedAudioLine line;
+
+	/** The unified player config, or {@code null} for legacy single-line configurations. */
 	private final StreamingAudioPlayer playerConfig;
 
 	/**

@@ -68,6 +68,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	public static boolean enableFastQueue = false;
 
+	/** Standard Metal Shading Language includes prepended to every compiled kernel. */
 	private static String includes = "#include <metal_stdlib>\n" +
 									"using metal::min;\n" +
 									"using metal::max;\n" +
@@ -83,12 +84,17 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 									"using metal::tan;\n" +
 									"using metal::tanh;\n";
 
+	/** The primary Metal device used for kernel compilation and execution. */
 	private MTLDevice mainDevice;
+	/** The main command queue for serialized GPU command submission. */
 	private MTLCommandQueue queue;
+	/** An optional second command queue for parallel ("fast") execution when {@link #enableFastQueue} is true. */
 	private MTLCommandQueue fastQueue;
 
+	/** Runner that serializes Metal command submission and manages pre-allocated argument buffers. */
 	private MetalCommandRunner runner;
 
+	/** Cache of compiled instruction sets, keyed by name and signature, to avoid redundant compilation. */
 	private Map<String, MetalOperatorMap> instructionSets;
 
 	/**
@@ -258,6 +264,17 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	@Override
 	public Console console() { return Hardware.console; }
 
+	/**
+	 * Returns the cache key for an instruction set, using the signature when reuse is enabled.
+	 *
+	 * <p>When {@link ScopeSettings#enableInstructionSetReuse} is true and a signature is available,
+	 * the signature is used as the key so that structurally identical scopes share compiled programs.
+	 * Otherwise the scope name is used.</p>
+	 *
+	 * @param name Scope name used as fallback key
+	 * @param signature Optional structural signature for deduplication
+	 * @return Cache key for the instruction set map
+	 */
 	protected static String key(String name, String signature) {
 		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
 			return signature;

@@ -58,14 +58,20 @@ public class MetalOperator extends HardwareOperator {
 	 */
 	public static boolean enableDispatchThreadgroups = false;
 
+	/** Cumulative count of all Metal kernel invocations across all operator instances. */
 	private static long totalInvocations;
 
+	/** The compute context that owns this operator and provides the command runner. */
 	private final MetalComputeContext context;
+	/** The compiled Metal program containing the kernel function for this operator. */
 	private final MetalProgram prog;
+	/** Display name for this operator, used in logging and profiling output. */
 	private final String name;
 
+	/** Number of {@link MTLBuffer} arguments expected by the kernel function. */
 	private final int argCount;
 
+	/** The Metal compute pipeline state wrapping the compiled kernel function. */
 	private MTLComputePipelineState kernel;
 
 	/**

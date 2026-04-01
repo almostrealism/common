@@ -115,32 +115,77 @@ import java.util.stream.IntStream;
  * @see DelegatedAudioLine for streaming/DAW integration
  */
 public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
+	/**
+	 * When {@code true}, a single shared {@link TimeCell} drives all sample channels;
+	 * when {@code false}, each channel tracks time independently via its own clock.
+	 */
 	public static boolean enableUnifiedClock = false;
 
+	/** Audio sample rate in Hz shared across all channels. */
 	private final int sampleRate;
+
+	/** Number of frames in the shared audio buffer per channel. */
 	private final int bufferFrames;
 
+	/** Flat packed buffer holding raw PCM data for all player channels. */
 	private final PackedCollection raw;
+
+	/** Listeners notified of the current playback time at regular monitoring intervals. */
 	private final List<DoubleConsumer> timeListeners;
 
+	/** Multi-channel sample mixer that combines individual channel {@link WaveCell} outputs. */
 	private final SampleMixer mixer;
+
+	/** Master clock providing the current sample frame position for all channels. */
 	private TimeCell clock;
+
+	/** Per-channel amplitude control collections; one scalar per channel. */
 	private PackedCollection[] level;
+
+	/** Per-channel loop duration in seconds; controls when each channel wraps. */
 	private PackedCollection[] loopDuration;
+
+	/** The active audio output line for passthrough level control; may be {@code null}. */
 	private AudioLine outputLine;
 
+	/** Per-channel flag indicating whether audio data has been loaded. */
 	private final boolean[] loaded;
+
+	/** Per-channel mute state; a muted channel outputs silence regardless of volume. */
 	private final boolean[] muted;
+
+	/** Per-channel volume levels applied when computing output amplitude. */
 	private final double[] volume;
+
+	/** Per-channel playback durations in seconds, used for loop and seek bounds. */
 	private final double[] playbackDuration;
+
+	/** Per-channel original sample durations in seconds as loaded from source data. */
 	private final double[] sampleDuration;
+
+	/** Passthrough level for monitoring input through the output line. */
 	private double passthrough;
+
+	/** {@code true} while the player is in the playing state. */
 	private boolean playing;
 
+	/** Interval in milliseconds between time-listener notifications. */
 	private long waitTime;
+
+	/** Background thread that periodically notifies time listeners. */
 	private Thread monitor;
+
+	/** Set to {@code true} to terminate the monitor thread on {@link #destroy()}. */
 	private boolean stopped;
 
+	/**
+	 * Creates a new {@code BufferedAudioPlayer} with the specified number of player channels,
+	 * sample rate, and buffer size.
+	 *
+	 * @param playerCount  the number of independent audio channels to mix
+	 * @param sampleRate   the audio sample rate in Hz (e.g., 44100)
+	 * @param bufferFrames the number of frames in the shared PCM buffer per channel
+	 */
 	public BufferedAudioPlayer(int playerCount, int sampleRate, int bufferFrames) {
 		super();
 		this.bufferFrames = bufferFrames;
@@ -161,6 +206,11 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		this.mixer = new SampleMixer(playerCount);
 	}
 
+	/**
+	 * Initializes the {@link SampleMixer} by constructing a {@link WaveCell} for each channel
+	 * and setting up per-channel amplitude controls. Also initializes the master clock
+	 * and sets the initial volume to 1.0. Must be called before audio delivery begins.
+	 */
 	protected void initMixer() {
 		level = new PackedCollection[mixer.getChannelCount()];
 
@@ -182,6 +232,11 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/**
+	 * Starts the background monitor thread that periodically notifies registered time
+	 * listeners of the current playback position. Has no effect if the monitor thread
+	 * has already been started.
+	 */
 	protected void initMonitor() {
 		if (monitor == null) {
 			monitor = new Thread(() -> {
@@ -201,26 +256,65 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/**
+	 * Returns the {@link SampleMixer} used to combine all channel outputs.
+	 *
+	 * @return the sample mixer
+	 */
 	public SampleMixer getMixer() { return mixer; }
 
+	/**
+	 * Returns the master {@link TimeCell} tracking the current sample frame position.
+	 *
+	 * @return the master clock, or {@code null} if the player has not yet been delivered
+	 *         to an output line
+	 */
 	public TimeCell getClock() { return clock; }
 
+	/**
+	 * Returns a {@link WaveData} view into the raw PCM buffer for the specified player channel.
+	 *
+	 * @param player the zero-based channel index
+	 * @return a {@link WaveData} wrapping this channel's slice of the shared buffer
+	 */
 	public WaveData getData(int player) {
 		return new WaveData(raw.range(shape(bufferFrames), player * bufferFrames).traverseEach(), sampleRate);
 	}
 
+	/**
+	 * Loads audio data from the specified file path into the given player channel.
+	 * Resets the channel buffer and updates level controls.
+	 *
+	 * @param player the zero-based channel index to load into
+	 * @param file   the path to the WAV file to load
+	 */
 	public synchronized void load(int player, String file) {
 		update(player, file);
 		updateLevel();
 		initMonitor();
 	}
 
+	/**
+	 * Loads audio data from the provided {@link WaveData} into the given player channel.
+	 * Resets the channel buffer and updates level controls.
+	 *
+	 * @param player the zero-based channel index to load into
+	 * @param data   the {@link WaveData} source; if {@code null} the channel is cleared
+	 */
 	public synchronized void load(int player, WaveData data) {
 		update(player, data);
 		updateLevel();
 		initMonitor();
 	}
 
+	/**
+	 * Records the playback duration for a channel based on the number of frames loaded,
+	 * clamped to the buffer size, and marks the channel as loaded.
+	 *
+	 * @param player     the zero-based channel index
+	 * @param frameCount the number of frames available in the source data
+	 * @return the number of frames that will actually be used (clamped to buffer size)
+	 */
 	private int updateDuration(int player, int frameCount) {
 		int frames = Math.min(frameCount, bufferFrames);
 		loaded[player] = true;
@@ -229,12 +323,26 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		return frames;
 	}
 
+	/**
+	 * Clears the channel buffer and updates the duration for the specified player channel.
+	 *
+	 * @param player     the zero-based channel index
+	 * @param frameCount the number of source frames to accommodate
+	 * @return the number of frames that will be used after clamping
+	 */
 	private int resetPlayer(int player, int frameCount) {
 		int frames = updateDuration(player, frameCount);
 		getData(player).getData().clear();
 		return frames;
 	}
 
+	/**
+	 * Copies audio data from the given {@link WaveData} source into the specified channel buffer.
+	 * If {@code source} is {@code null} the channel is cleared.
+	 *
+	 * @param player the zero-based channel index
+	 * @param source the source wave data, or {@code null} to clear the channel
+	 */
 	protected void update(int player, WaveData source) {
 		if (source == null) {
 			clear(player);
@@ -251,6 +359,13 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/**
+	 * Reads a WAV file and copies its PCM data into the specified channel buffer.
+	 * If {@code file} is {@code null} the channel is cleared.
+	 *
+	 * @param player the zero-based channel index
+	 * @param file   the path to the WAV file to load, or {@code null} to clear
+	 */
 	protected void update(int player, String file) {
 		if (file == null) {
 			clear(player);
@@ -278,11 +393,21 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/**
+	 * Marks the specified channel as unloaded and resets its playback duration to zero.
+	 *
+	 * @param player the zero-based channel index to clear
+	 */
 	protected void clear(int player) {
 		loaded[player] = false;
 		playbackDuration[player] = 0.0;
 	}
 
+	/**
+	 * Recalculates and applies amplitude and loop-duration values for all channels based
+	 * on the current playing state, mute flags, and per-channel volume settings. Also
+	 * updates the passthrough level on the output line if one is configured.
+	 */
 	protected void updateLevel() {
 		if (clock == null) return;
 
@@ -297,10 +422,23 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/**
+	 * Directly writes an amplitude value into the per-channel level buffer.
+	 *
+	 * @param c the zero-based channel index
+	 * @param v the amplitude value to set
+	 */
 	protected void setLevel(int c, double v) {
 		level[c].setMem(0, v);
 	}
 
+	/**
+	 * Sets the loop duration for the specified channel. When the unified clock is enabled,
+	 * the master clock reset point is updated accordingly.
+	 *
+	 * @param c        the zero-based channel index
+	 * @param duration the loop duration in seconds
+	 */
 	protected void setLoopDuration(int c, double duration) {
 		loopDuration[c].setMem(duration);
 
@@ -309,15 +447,39 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 	}
 
+	/**
+	 * Delivers audio output to the specified {@link OutputLine}, creating and returning a
+	 * new {@link BufferedOutputScheduler}. The caller is responsible for starting and
+	 * managing the scheduler lifecycle.
+	 *
+	 * @param out the output line to receive the mixed audio
+	 * @return a new {@link BufferedOutputScheduler} connected to this player's pipeline
+	 */
 	public BufferedOutputScheduler deliver(OutputLine out) {
 		return deliver(out, null);
 	}
 
 
+	/**
+	 * Delivers audio output to the specified {@link AudioLine}, optionally recording from
+	 * an additional input record line. Returns a new {@link BufferedOutputScheduler}.
+	 *
+	 * @param main        the primary audio output line
+	 * @param inputRecord an optional line for input recording; may be {@code null}
+	 * @return a new {@link BufferedOutputScheduler} connected to this player's pipeline
+	 */
 	public BufferedOutputScheduler deliver(AudioLine main, OutputLine inputRecord) {
 		return deliver((BufferedAudio) main, inputRecord);
 	}
 
+	/**
+	 * Internal delivery implementation. Initializes the mixer on first call, constructs the
+	 * audio processing pipeline, and wraps it in a {@link BufferedOutputScheduler}.
+	 *
+	 * @param out    the buffered audio output
+	 * @param record an optional recording output line; may be {@code null}
+	 * @return a new {@link BufferedOutputScheduler}
+	 */
 	private BufferedOutputScheduler deliver(BufferedAudio out, OutputLine record) {
 		if (out.getSampleRate() != sampleRate) {
 			throw new UnsupportedOperationException();
@@ -390,26 +552,65 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 	@Override
 	public double getVolume() { return volume[0]; }
 
+	/**
+	 * Sets the mute state for the specified player channel. A muted channel produces silence
+	 * regardless of its volume setting.
+	 *
+	 * @param player the zero-based channel index
+	 * @param muted  {@code true} to mute the channel, {@code false} to unmute
+	 */
 	public void setMuted(int player, boolean muted) {
 		this.muted[player] = muted;
 		updateLevel();
 	}
 
+	/**
+	 * Overrides the playback duration for the specified channel. This affects loop
+	 * boundaries and seek clamping.
+	 *
+	 * @param player   the zero-based channel index
+	 * @param duration the new playback duration in seconds
+	 */
 	public void setPlaybackDuration(int player, double duration) {
 		this.playbackDuration[player] = duration;
 		updateLevel();
 	}
 
+	/**
+	 * Returns the current playback duration for the specified channel in seconds.
+	 *
+	 * @param player the zero-based channel index
+	 * @return the playback duration in seconds
+	 */
 	public double getPlaybackDuration(int player) {
 		return playbackDuration[player];
 	}
 
+	/**
+	 * Returns the original duration of the loaded sample for the specified channel in seconds,
+	 * as determined at load time before any override via {@link #setPlaybackDuration}.
+	 *
+	 * @param player the zero-based channel index
+	 * @return the sample duration in seconds
+	 */
 	public double getSampleDuration(int player) {
 		return sampleDuration[player];
 	}
 
+	/**
+	 * Returns the current sample frame position from the master clock.
+	 *
+	 * @return the current frame as a double
+	 */
 	protected double getFrame() { return clock.getFrame(); }
 
+	/**
+	 * Seeks all channels to the specified sample frame position. When the unified clock
+	 * is enabled, the master clock is updated directly; otherwise each channel's clock
+	 * is updated through the mixer.
+	 *
+	 * @param frame the target sample frame position
+	 */
 	protected void setFrame(double frame) {
 		if (enableUnifiedClock) {
 			clock.setFrame(frame);

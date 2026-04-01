@@ -34,6 +34,7 @@ package org.almostrealism.hardware.metal;
  * @see MTLCommandBuffer
  */
 public class MTLCommandQueue extends MTLObject {
+	/** The Metal device that owns and created this command queue. */
 	private MTLDevice device;
 
 	/**

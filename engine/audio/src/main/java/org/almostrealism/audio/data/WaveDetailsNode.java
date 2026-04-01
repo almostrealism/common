@@ -161,6 +161,12 @@ public class WaveDetailsNode implements Tree<WaveDetailsNode> {
 		this.excludedIdentifiers = excludedIdentifiers;
 	}
 
+	/**
+	 * Creates a WaveDetailsNode derived from an existing node with a different set of excluded identifiers.
+	 *
+	 * @param existing            the node to copy configuration from
+	 * @param excludedIdentifiers identifiers to exclude from this node's details and children
+	 */
 	protected WaveDetailsNode(WaveDetailsNode existing, Set<String> excludedIdentifiers) {
 		this.library = existing.library;
 		this.childLimit = existing.childLimit;
@@ -240,6 +246,13 @@ public class WaveDetailsNode implements Tree<WaveDetailsNode> {
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Returns the resource path for the given identifier, or {@code null} if the provider
+	 * is not a {@link FileWaveDataProvider}.
+	 *
+	 * @param identifier the content identifier to resolve
+	 * @return the file path for the identifier, or {@code null}
+	 */
 	protected String pathForIdentifier(String identifier) {
 		WaveDataProvider provider = library.find(identifier);
 		if (provider instanceof FileWaveDataProvider) {

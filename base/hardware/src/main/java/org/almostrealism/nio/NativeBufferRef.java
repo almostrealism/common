@@ -37,8 +37,11 @@ import java.util.function.Consumer;
  * @see NativeBuffer
  */
 public class NativeBufferRef extends NativeRef<NativeBuffer> {
+	/** Root byte buffer cached for post-GC shared memory unmapping. */
 	private final ByteBuffer rootBuffer;
+	/** Shared memory path cached for post-GC cleanup, or null if not shared. */
 	private final String sharedLocation;
+	/** Deallocation listeners cached from the buffer for post-GC notification. */
 	private final List<Consumer<NativeBuffer>> deallocationListeners;
 
 	/**

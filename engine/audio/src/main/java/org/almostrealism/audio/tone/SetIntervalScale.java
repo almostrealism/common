@@ -57,27 +57,76 @@ package org.almostrealism.audio.tone;
  * @see KeyPosition
  */
 public class SetIntervalScale<T extends KeyPosition<T>> implements Scale<T> {
+	/** The root note from which the scale intervals are applied. */
 	private T root;
+	/** The number of times to repeat the interval pattern (one repetition per octave for typical scales). */
 	private int repetitions;
+	/** The semitone intervals between consecutive notes in the scale pattern. */
 	private int[] intervals;
 
+	/** Creates an empty SetIntervalScale suitable for bean-style initialization. */
 	public SetIntervalScale() { }
 
+	/**
+	 * Creates a SetIntervalScale with the given root, repetition count, and interval pattern.
+	 *
+	 * @param root        the root note of the scale
+	 * @param repetitions the number of times to repeat the interval pattern
+	 * @param intervals   the semitone intervals between adjacent notes
+	 */
 	public SetIntervalScale(T root, int repetitions, int... intervals) {
 		this.root = root;
 		this.repetitions = repetitions;
 		this.intervals = intervals;
 	}
 
+	/**
+	 * Returns the root note of this scale.
+	 *
+	 * @return the root note
+	 */
 	public T getRoot() { return root; }
+
+	/**
+	 * Sets the root note of this scale.
+	 *
+	 * @param root the new root note
+	 */
 	public void setRoot(T root) { this.root = root; }
 
+	/**
+	 * Sets the root note by name, resolving it using WesternChromatic naming.
+	 *
+	 * @param root the note name (e.g., "C4", "A4")
+	 */
 	public void setRoot(String root) { setRoot((T) WesternChromatic.valueOf(root)); }
 
+	/**
+	 * Returns the number of times the interval pattern is repeated.
+	 *
+	 * @return the repetition count
+	 */
 	public int getRepetitions() { return repetitions; }
+
+	/**
+	 * Sets the number of times the interval pattern is repeated.
+	 *
+	 * @param repetitions the new repetition count
+	 */
 	public void setRepetitions(int repetitions) { this.repetitions = repetitions; }
 
+	/**
+	 * Returns the semitone intervals between adjacent notes in the scale pattern.
+	 *
+	 * @return the interval array
+	 */
 	public int[] getIntervals() { return intervals; }
+
+	/**
+	 * Sets the semitone intervals between adjacent notes in the scale pattern.
+	 *
+	 * @param intervals the new interval array
+	 */
 	public void setIntervals(int[] intervals) { this.intervals = intervals; }
 
 	@Override

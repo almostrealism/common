@@ -81,13 +81,28 @@ import java.util.function.Supplier;
 public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		implements Temporal, Lifecycle, CollectionFeatures {
 
+	/** The number of {@link #tick()} calls that constitute one full batch render. */
 	private final int batchSize;
+
+	/** The number of elements in the output buffer. */
 	private final int outputSize;
+
+	/** The output buffer that accumulates one batch of rendered audio. */
 	private final PackedCollection output;
+
+	/** A single-element collection used as a frame counter across the batch. */
 	private final PackedCollection batchCounter;
+
+	/** An optional callback invoked with the current frame number after each tick. */
 	private IntConsumer frameCallback;
+
+	/** Cached compiled render operation produced during {@link #setup()}. */
 	private Runnable cachedRender;
+
+	/** Cached compiled advance operation that increments the batch counter. */
 	private Runnable cachedAdvance;
+
+	/** The running count of ticks since the last render, used to detect batch boundaries. */
 	private int tickCount;
 
 	/**

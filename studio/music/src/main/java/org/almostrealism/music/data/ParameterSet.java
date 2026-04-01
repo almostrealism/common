@@ -21,45 +21,81 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.Gene;
 
+/**
+ * A three-dimensional parameter vector used to evaluate {@link ParameterFunction}s.
+ *
+ * <p>Each {@code ParameterSet} holds three scalar values (x, y, z) in the range [0, 1]
+ * that serve as inputs to the sinusoidal parameterization functions in the pattern system.
+ * Parameter sets are derived from genetic chromosomes during pattern generation.</p>
+ *
+ * @see ParameterFunction
+ * @see MultipleParameterFunction
+ */
 public class ParameterSet {
+	/** The three parameter values (x, y, z). */
 	private double x, y, z;
 
+	/** Creates a {@code ParameterSet} with all-zero values. */
 	public ParameterSet() { }
 
+	/**
+	 * Creates a {@code ParameterSet} with the given values.
+	 *
+	 * @param x the x parameter value
+	 * @param y the y parameter value
+	 * @param z the z parameter value
+	 */
 	public ParameterSet(double x, double y, double z) {
 		this.x = x;
 		this.y = y;
 		this.z = z;
 	}
 
+	/** Returns the x parameter value. */
 	public double getX() {
 		return x;
 	}
 
+	/** Sets the x parameter value. */
 	public void setX(double x) {
 		this.x = x;
 	}
 
+	/** Returns the y parameter value. */
 	public double getY() {
 		return y;
 	}
 
+	/** Sets the y parameter value. */
 	public void setY(double y) {
 		this.y = y;
 	}
 
+	/** Returns the z parameter value. */
 	public double getZ() {
 		return z;
 	}
 
+	/** Sets the z parameter value. */
 	public void setZ(double z) {
 		this.z = z;
 	}
 
+	/**
+	 * Creates a {@code ParameterSet} with uniformly random values in [0, 1].
+	 *
+	 * @return a new randomly initialized instance
+	 */
 	public static ParameterSet random() {
 		return new ParameterSet(Math.random(), Math.random(), Math.random());
 	}
 
+	/**
+	 * Creates a {@code ParameterSet} from the first three values of a genetic gene.
+	 *
+	 * @param gene the gene to extract parameter values from
+	 * @return a new instance with values from the gene
+	 */
 	public static ParameterSet fromGene(Gene<PackedCollection> gene) {
 		CollectionProducer one =
 				CollectionFeatures.getInstance().c(1.0);

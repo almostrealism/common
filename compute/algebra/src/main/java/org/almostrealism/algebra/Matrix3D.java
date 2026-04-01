@@ -32,9 +32,16 @@ package org.almostrealism.algebra;
  */
 @Deprecated
 public class Matrix3D {
+	/** The floating-point 3D matrix data, used when {@link #integer} is false. */
 	protected double[][][] matrix;
+
+	/** The integer 3D matrix data, used when {@link #integer} is true. */
 	protected int[][][] intMatrix;
+
+	/** The X, Y, Z dimensions of this matrix. */
 	protected int x, y, z;
+
+	/** True if this matrix stores integer values, false if it stores doubles. */
 	protected boolean integer;
 	
 	/**

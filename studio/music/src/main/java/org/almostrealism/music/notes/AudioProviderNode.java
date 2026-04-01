@@ -24,21 +24,55 @@ import org.almostrealism.audio.data.WaveDataProvider;
 import java.util.ArrayList;
 import java.util.Collection;
 
+/**
+ * A leaf {@link NoteAudioNode} that wraps an audio file provider reference.
+ *
+ * <p>Stores the name and identifier of the underlying wave data provider, along with
+ * optional delegate-offset information for split providers. Factory methods convert
+ * {@link WaveDataProvider} and {@link org.almostrealism.audio.notes.NoteAudioProvider}
+ * instances into nodes suitable for use in the note audio tree.</p>
+ *
+ * @see NoteAudioNode
+ */
 public class AudioProviderNode implements NoteAudioNode {
+	/** Human-readable name of this node, typically derived from the provider key. */
 	private String name;
+
+	/** Unique identifier for this node, derived from the provider. */
 	private String identifier;
+
+	/** Whether this node delegates to a sub-range of a parent provider. */
 	private boolean delegate;
+
+	/** Sample offset into the delegate provider's data. */
 	private int delegateOffset;
+
+	/** Number of samples in this node's sub-range. */
 	private int length;
 
+	/** Creates an uninitialized {@code AudioProviderNode}. */
 	public AudioProviderNode() { }
 
+	/**
+	 * Creates a non-delegate {@code AudioProviderNode} with the given name and identifier.
+	 *
+	 * @param name       the human-readable name
+	 * @param identifier the unique identifier
+	 */
 	protected AudioProviderNode(String name, String identifier) {
 		this.name = name;
 		this.identifier = identifier;
 		this.delegate = false;
 	}
 
+	/**
+	 * Creates a delegate {@code AudioProviderNode} with the given name, identifier, offset, and length.
+	 *
+	 * @param name           the human-readable name
+	 * @param identifier     the unique identifier
+	 * @param delegateOffset the sample offset into the parent provider
+	 * @param length         the number of samples in this node
+	 */
 	protected AudioProviderNode(String name, String identifier, int delegateOffset, int length) {
 		this.name = name;
 		this.identifier = identifier;
@@ -72,6 +106,12 @@ public class AudioProviderNode implements NoteAudioNode {
 		return new ArrayList<>();
 	}
 
+	/**
+	 * Creates an {@code AudioProviderNode} from a {@link WaveDataProvider}, if supported.
+	 *
+	 * @param provider the wave data provider
+	 * @return the node, or null if the provider type is not supported
+	 */
 	public static AudioProviderNode create(WaveDataProvider provider) {
 		if (provider instanceof FileWaveDataProvider) {
 			return new AudioProviderNode(provider.getKey(), provider.getIdentifier());
@@ -85,6 +125,12 @@ public class AudioProviderNode implements NoteAudioNode {
 		}
 	}
 
+	/**
+	 * Creates an {@code AudioProviderNode} from a {@link NoteAudioProvider}.
+	 *
+	 * @param note the note audio provider
+	 * @return the node, or null if the underlying provider type is not supported
+	 */
 	public static AudioProviderNode create(NoteAudioProvider note) {
 		return create(note.getProvider());
 	}

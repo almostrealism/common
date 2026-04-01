@@ -74,23 +74,48 @@ import java.util.function.Supplier;
  */
 public class PolyphonicSynthesizer extends SummationCell implements Setup {
 
+	/** Voice allocator that manages voice assignment and stealing across the voice pool. */
 	private final VoiceAllocator allocator;
+
+	/** Pool of AudioSynthesizer voices; each may be active or idle. */
 	private final List<AudioSynthesizer> voices;
 
 	// Shared configuration
+	/** Keyboard tuning system for MIDI-note-to-frequency conversion, shared across all voices. */
 	private KeyboardTuning tuning;
+
+	/** Relative frequency set defining partials for each oscillator voice. */
 	private RelativeFrequencySet tones;
+
+	/** Waveform type applied to all oscillators in every voice. */
 	private AudioSynthesizer.OscillatorType oscillatorType;
+
+	/** Amplitude envelope parameters (attack, decay, sustain, release) applied to all voices. */
 	private double ampAttack, ampDecay, ampSustain, ampRelease;
+
+	/** Filter cutoff frequency in Hz and resonance Q factor applied to all voices. */
 	private double filterCutoff, filterResonance;
+
+	/** Depth of filter envelope modulation in Hz applied to all voices. */
 	private double filterEnvAmount;
+
+	/** Filter envelope parameters (attack, decay, sustain, release) applied to all voices. */
 	private double filterAttack, filterDecay, filterSustain, filterRelease;
+
+	/** True when the filter is enabled on all voices. */
 	private boolean filterEnabled;
 
 	// Modulation
+	/** LFO for pitch vibrato modulation; null if vibrato is not active. */
 	private LFO vibratoLFO;
+
+	/** Vibrato modulation depth in semitones. */
 	private double vibratoDepth;  // In semitones
+
+	/** LFO for amplitude tremolo modulation; null if tremolo is not active. */
 	private LFO tremoloLFO;
+
+	/** Tremolo modulation depth as a fraction of amplitude (0–1). */
 	private double tremoloDepth;  // 0-1 amplitude modulation
 
 	/**

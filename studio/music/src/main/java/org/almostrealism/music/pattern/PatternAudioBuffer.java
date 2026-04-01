@@ -79,11 +79,22 @@ import java.util.function.Supplier;
  */
 public class PatternAudioBuffer implements Setup, CollectionFeatures {
 
+	/** The pattern system manager containing patterns to render. */
 	private final PatternSystemManager patterns;
+
+	/** Supplier for the audio scene context. */
 	private final Supplier<AudioSceneContext> contextSupplier;
+
+	/** The channel information (index, voicing, stereo channel). */
 	private final ChannelInfo channel;
+
+	/** Supplier providing the current absolute frame position. */
 	private final IntSupplier currentFrame;
+
+	/** The number of frames per buffer. */
 	private final int bufferSize;
+
+	/** The output buffer receiving rendered audio. */
 	private final PackedCollection outputBuffer;
 
 	/**

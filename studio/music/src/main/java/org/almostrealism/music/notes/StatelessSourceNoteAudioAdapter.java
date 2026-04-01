@@ -37,9 +37,13 @@ import java.util.function.DoubleFunction;
  * @author  Michael Murray
  */
 public abstract class StatelessSourceNoteAudioAdapter implements PatternNoteAudio, CodeFeatures {
+	/** The underlying stateless audio source used to generate note output. */
 	private final StatelessSource source;
 
+	/** Buffer configuration specifying the sample rate and duration. */
 	private final BufferDetails buffer;
+
+	/** Factor used to derive parameter values from the automation level. */
 	private final Factor<PackedCollection> params;
 
 	/**

@@ -80,10 +80,19 @@ public class ModulationSlot {
 		CUSTOM
 	}
 
+	/** The modulation source that produces the modulation signal. */
 	private final ModulationSource source;
+
+	/** The synthesis parameter controlled by this slot. */
 	private final Destination destination;
+
+	/** Modulation depth scaling factor applied to the source signal. */
 	private double depth;
+
+	/** Static offset added to the modulation signal before it is applied. */
 	private double offset;
+
+	/** When false, the modulation signal is not applied to the destination. */
 	private boolean enabled;
 
 	/**

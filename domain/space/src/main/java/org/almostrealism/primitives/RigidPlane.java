@@ -26,13 +26,25 @@ import java.awt.*;
 
 
 /**
+ * An infinite physical plane that participates in rigid-body simulation,
+ * providing collision detection against {@link RigidSphere} objects.
+ *
  * @author  Michael Murray
  */
 public class RigidPlane extends Plane implements RigidBody {
+	/** The current rigid-body simulation state (position, velocity, forces). */
 	private final State state;
-	
-	private TransformMatrix rotateXMatrix, rotateYMatrix, rotateZMatrix;
 
+	/** Rotation matrix around the X axis derived from the current orientation. */
+	private TransformMatrix rotateXMatrix;
+
+	/** Rotation matrix around the Y axis derived from the current orientation. */
+	private TransformMatrix rotateYMatrix;
+
+	/** Rotation matrix around the Z axis derived from the current orientation. */
+	private TransformMatrix rotateZMatrix;
+
+	/** Constructs a default {@link RigidPlane} at the origin with zero velocity and unit mass. */
 	public RigidPlane() {
 		this(new Vector(0.0, 0.0, 0.0),
 				new Vector(0.0, 0.0, 0.0),
@@ -109,5 +121,6 @@ public class RigidPlane extends Plane implements RigidBody {
 		super.setLocation(this.state.x);
 	}
 	
+	/** Returns the current rigid-body simulation state. */
 	public State getState() { return this.state; }
 }

@@ -143,8 +143,11 @@ import java.util.stream.Stream;
  * @see FileWaveDataProviderTree
  */
 public class AudioLibrary implements ConsoleFeatures {
+	/** Priority level for background processing tasks. */
 	public static double BACKGROUND_PRIORITY = 0.0;
+	/** Default priority level for standard analysis jobs. */
 	public static double DEFAULT_PRIORITY = 0.5;
+	/** High priority level for urgent or user-triggered jobs. */
 	public static double HIGH_PRIORITY = 1.0;
 
 	/** Default maximum number of {@link WaveDetails} held in the in-memory cache. */
@@ -185,8 +188,11 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	private final Set<String> persistentIdentifiers;
 
+	/** Factory for computing WaveDetails for each audio file. */
 	private final WaveDetailsFactory factory;
+	/** Queue of pending analysis jobs, ordered by priority. */
 	private final PriorityBlockingQueue<WaveDetailsJob> queue;
+	/** Total number of jobs submitted since the last reset. */
 	private int totalJobs;
 
 	/**
@@ -205,8 +211,11 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	private Function<String, WaveDetails> detailsLoader;
 
+	/** Listener notified with progress [0.0, 1.0] as analysis jobs complete. */
 	private DoubleConsumer progressListener;
+	/** Listener notified when an analysis job throws an exception. */
 	private Consumer<Exception> errorListener;
+	/** Thread pool for running analysis jobs in the background. */
 	private SuspendableThreadPoolExecutor executor;
 
 	/**
@@ -221,10 +230,22 @@ public class AudioLibrary implements ConsoleFeatures {
 	/** Persisted prototype index loaded from protobuf at startup. */
 	private volatile PrototypeIndexData prototypeIndex;
 
+	/**
+	 * Creates an AudioLibrary rooted at the given directory.
+	 *
+	 * @param root       the directory containing audio files
+	 * @param sampleRate the target sample rate for analysis
+	 */
 	public AudioLibrary(File root, int sampleRate) {
 		this(new FileWaveDataProviderNode(root), sampleRate);
 	}
 
+	/**
+	 * Creates an AudioLibrary from a file provider tree without a details store.
+	 *
+	 * @param root       the file provider tree providing access to audio files
+	 * @param sampleRate the target sample rate for analysis
+	 */
 	public AudioLibrary(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root, int sampleRate) {
 		this(root, sampleRate, null);
 	}
@@ -261,6 +282,9 @@ public class AudioLibrary implements ConsoleFeatures {
 		start();
 	}
 
+	/**
+	 * Starts the background analysis executor if it is not already running.
+	 */
 	public void start() {
 		if (executor != null) return;
 
@@ -269,16 +293,28 @@ public class AudioLibrary implements ConsoleFeatures {
 		executor.setPriority(job -> ((WaveDetailsJob) job).getPriority());
 	}
 
+	/**
+	 * Returns true if background analysis is paused (priority threshold at HIGH_PRIORITY or higher).
+	 *
+	 * @return true if paused
+	 */
 	public boolean isPaused() {
 		return executor == null || executor.getPriorityThreshold() >= HIGH_PRIORITY;
 	}
 
+	/**
+	 * Pauses background analysis by setting the priority threshold to HIGH_PRIORITY,
+	 * which blocks all standard and background jobs.
+	 */
 	public void pause() {
 		if (executor != null) {
 			executor.setPriorityThreshold(HIGH_PRIORITY);
 		}
 	}
 
+	/**
+	 * Resumes all suspended background analysis tasks.
+	 */
 	public void resume() {
 		executor.resumeAllTasks();
 	}
@@ -318,22 +354,59 @@ public class AudioLibrary implements ConsoleFeatures {
 		this.prototypeIndex = prototypeIndex;
 	}
 
+	/**
+	 * Returns the file provider tree that this library is rooted in.
+	 *
+	 * @return the file provider tree
+	 */
 	public FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> getRoot() {
 		return root;
 	}
 
+	/**
+	 * Returns the target sample rate for audio analysis.
+	 *
+	 * @return the sample rate in Hz
+	 */
 	public int getSampleRate() { return sampleRate; }
 
+	/**
+	 * Returns the progress listener, or null if none is set.
+	 *
+	 * @return the progress listener
+	 */
 	public DoubleConsumer getProgressListener() { return progressListener; }
+
+	/**
+	 * Sets a listener that receives progress updates [0.0, 1.0] as analysis completes.
+	 *
+	 * @param progressListener the progress listener, or null to remove
+	 */
 	public void setProgressListener(DoubleConsumer progressListener) {
 		this.progressListener = progressListener;
 	}
 
+	/**
+	 * Returns the error listener, or null if none is set.
+	 *
+	 * @return the error listener
+	 */
 	public Consumer<Exception> getErrorListener() { return errorListener; }
+
+	/**
+	 * Sets a listener that receives exceptions thrown by analysis jobs.
+	 *
+	 * @param errorListener the error listener, or null to remove
+	 */
 	public void setErrorListener(Consumer<Exception> errorListener) {
 		this.errorListener = errorListener;
 	}
 
+	/**
+	 * Returns the WaveDetailsFactory used to compute audio analysis for each file.
+	 *
+	 * @return the WaveDetailsFactory
+	 */
 	public WaveDetailsFactory getWaveDetailsFactory() { return factory; }
 
 	/**
@@ -527,38 +600,100 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns the WaveDetails for the given file key if immediately available.
+	 *
+	 * @param key the file path or key to look up
+	 * @return an Optional containing the WaveDetails, or empty if not yet computed
+	 */
 	public Optional<WaveDetails> getDetailsNow(String key) {
 		return getDetailsNow(new FileWaveDataProvider(key));
 	}
 
+	/**
+	 * Returns the WaveDetails for the given file key if immediately available, with persistence control.
+	 *
+	 * @param key        the file path or key to look up
+	 * @param persistent if true, marks the details as persistent
+	 * @return an Optional containing the WaveDetails, or empty if not yet computed
+	 */
 	public Optional<WaveDetails> getDetailsNow(String key, boolean persistent) {
 		return getDetailsNow(new FileWaveDataProvider(key), persistent);
 	}
 
+	/**
+	 * Returns the WaveDetails for the given provider if immediately available.
+	 *
+	 * @param provider the audio data provider to look up
+	 * @return an Optional containing the WaveDetails, or empty if not yet computed
+	 */
 	public Optional<WaveDetails> getDetailsNow(WaveDataProvider provider) {
 		return getDetailsNow(provider, false);
 	}
 
+	/**
+	 * Returns the WaveDetails for the given provider if immediately available, with persistence control.
+	 *
+	 * @param provider   the audio data provider to look up
+	 * @param persistent if true, marks the details as persistent
+	 * @return an Optional containing the WaveDetails, or empty if not yet computed
+	 */
 	public Optional<WaveDetails> getDetailsNow(WaveDataProvider provider, boolean persistent) {
 		return Optional.ofNullable(getDetails(provider, persistent, DEFAULT_PRIORITY).getNow(null));
 	}
 
+	/**
+	 * Blocks until WaveDetails are available for the given file key, with persistence control.
+	 *
+	 * @param key        the file path or key to look up
+	 * @param persistent if true, marks the details as persistent
+	 * @return the WaveDetails for the given key
+	 */
 	public WaveDetails getDetailsAwait(String key, boolean persistent) {
 		return getDetailsAwait(new FileWaveDataProvider(key), persistent);
 	}
 
+	/**
+	 * Blocks until WaveDetails are available for the given provider.
+	 *
+	 * @param provider the audio data provider to look up
+	 * @return the WaveDetails for the given provider
+	 */
 	public WaveDetails getDetailsAwait(WaveDataProvider provider) {
 		return getDetailsAwait(provider, false);
 	}
 
+	/**
+	 * Blocks until WaveDetails are available for the given provider, with a timeout.
+	 *
+	 * @param provider the audio data provider to look up
+	 * @param timeout  the maximum number of seconds to wait
+	 * @return the WaveDetails for the given provider
+	 */
 	public WaveDetails getDetailsAwait(WaveDataProvider provider, long timeout) {
 		return getDetailsAwait(provider, false, OptionalLong.of(timeout));
 	}
 
+	/**
+	 * Blocks until WaveDetails are available for the given provider, with persistence control.
+	 *
+	 * @param provider   the audio data provider to look up
+	 * @param persistent if true, marks the details as persistent
+	 * @return the WaveDetails for the given provider
+	 */
 	public WaveDetails getDetailsAwait(WaveDataProvider provider, boolean persistent) {
 		return getDetailsAwait(provider, persistent, OptionalLong.empty());
 	}
 
+	/**
+	 * Blocks until WaveDetails are available for the given provider, with optional timeout and persistence control.
+	 *
+	 * @param provider   the audio data provider to look up
+	 * @param persistent if true, marks the details as persistent
+	 * @param timeout    an optional timeout in seconds; empty means wait indefinitely
+	 * @return the WaveDetails for the given provider, or null if interrupted
+	 * @throws RuntimeException wrapping TimeoutException or ExecutionException on failure
+	 */
 	public WaveDetails getDetailsAwait(WaveDataProvider provider, boolean persistent, OptionalLong timeout) {
 		try {
 			CompletableFuture<WaveDetails> future = getDetails(provider, persistent, HIGH_PRIORITY);
@@ -576,10 +711,24 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Retrieves WaveDetails for the given file path asynchronously, delivering results to a consumer.
+	 *
+	 * @param file     the file path to look up
+	 * @param consumer the consumer to receive the WaveDetails when available
+	 * @param priority if true, uses HIGH_PRIORITY; otherwise DEFAULT_PRIORITY
+	 */
 	public void getDetails(String file, Consumer<WaveDetails> consumer, boolean priority) {
 		getDetails(new FileWaveDataProvider(file), consumer, priority);
 	}
 
+	/**
+	 * Retrieves WaveDetails for the given provider asynchronously, delivering results to a consumer.
+	 *
+	 * @param provider the audio data provider to look up
+	 * @param consumer the consumer to receive the WaveDetails when available
+	 * @param priority if true, uses HIGH_PRIORITY; otherwise DEFAULT_PRIORITY
+	 */
 	public void getDetails(WaveDataProvider provider, Consumer<WaveDetails> consumer, boolean priority) {
 		getDetails(provider, false, priority ? HIGH_PRIORITY : DEFAULT_PRIORITY).thenAccept(consumer);
 	}
@@ -673,6 +822,12 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns true if the given WaveDetails has both frequency data and feature data populated.
+	 *
+	 * @param details the WaveDetails to check
+	 * @return true if complete (both freqData and featureData are non-null)
+	 */
 	public boolean isComplete(WaveDetails details) {
 		return details != null &&
 				details.getFreqData() != null &&
@@ -739,14 +894,32 @@ public class AudioLibrary implements ConsoleFeatures {
 		return result;
 	}
 
+	/**
+	 * Computes and returns similarity scores for the audio file at the given key.
+	 *
+	 * @param key the file path or identifier key
+	 * @return a map from other sample identifiers to similarity scores
+	 */
 	public Map<String, Double> getSimilarities(String key) {
 		return getSimilarities(new FileWaveDataProvider(key));
 	}
 
+	/**
+	 * Computes and returns similarity scores for the given WaveDetails.
+	 *
+	 * @param details the WaveDetails to compute similarities for
+	 * @return a map from other sample identifiers to similarity scores
+	 */
 	public Map<String, Double> getSimilarities(WaveDetails details) {
 		return computeSimilarities(details).getSimilarities();
 	}
 
+	/**
+	 * Computes and returns similarity scores for the audio provided by the given provider.
+	 *
+	 * @param provider the audio data provider to compute similarities for
+	 * @return a map from other sample identifiers to similarity scores
+	 */
 	public Map<String, Double> getSimilarities(WaveDataProvider provider) {
 		return computeSimilarities(getDetailsAwait(provider, false)).getSimilarities();
 	}
@@ -762,6 +935,12 @@ public class AudioLibrary implements ConsoleFeatures {
 		detailsCache.forEach((key, d) -> d.getSimilarities().clear());
 	}
 
+	/**
+	 * Processes a WaveDetailsJob by computing details for the job's target provider.
+	 *
+	 * @param job the job to process
+	 * @return the computed WaveDetails, or null if the job target is null or computation fails
+	 */
 	protected WaveDetails processJob(WaveDetailsJob job) {
 		if (job == null || job.getTarget() == null) return null;
 
@@ -829,10 +1008,24 @@ public class AudioLibrary implements ConsoleFeatures {
 		return future;
 	}
 
+	/**
+	 * Creates and submits a WaveDetailsJob for the given provider.
+	 *
+	 * @param provider   the audio data provider to analyze
+	 * @param persistent if true, marks the resulting details as persistent
+	 * @param priority   the job priority (e.g., HIGH_PRIORITY or DEFAULT_PRIORITY)
+	 * @return the submitted job
+	 */
 	protected WaveDetailsJob submitJob(WaveDataProvider provider, boolean persistent, double priority) {
 		return submitJob(new WaveDetailsJob(this::processJob, provider, persistent, priority));
 	}
 
+	/**
+	 * Submits a WaveDetailsJob to the analysis executor.
+	 *
+	 * @param job the job to submit
+	 * @return the submitted job
+	 */
 	protected WaveDetailsJob submitJob(WaveDetailsJob job) {
 		if (job.getTarget() != null) {
 			identifiers.computeIfAbsent(job.getTarget().getKey(), k -> job.getTarget().getIdentifier());
@@ -843,6 +1036,11 @@ public class AudioLibrary implements ConsoleFeatures {
 		return job;
 	}
 
+	/**
+	 * Returns the current analysis progress as a value between 0.0 (no work done) and 1.0 (complete).
+	 *
+	 * @return the progress fraction
+	 */
 	public double getProgress() {
 		int totalJobs = getTotalJobs();
 		int queueSize = getPendingJobs();
@@ -860,13 +1058,24 @@ public class AudioLibrary implements ConsoleFeatures {
 		return progress;
 	}
 
+	/**
+	 * Notifies the progress listener with the current analysis progress.
+	 */
 	protected void reportProgress() {
 		if (progressListener == null) return;
 		progressListener.accept(getProgress());
 	}
 
+	/**
+	 * Stops the background analysis executor with a default 5-second timeout.
+	 */
 	public void stop() { stop(5); }
 
+	/**
+	 * Stops the background analysis executor, waiting up to the given number of seconds.
+	 *
+	 * @param timeout the maximum number of seconds to wait for shutdown
+	 */
 	public void stop(int timeout) {
 		try {
 			queue.clear();
@@ -886,6 +1095,14 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Computes WaveDetails for the given provider, optionally updating an existing instance.
+	 *
+	 * @param provider   the audio data provider to analyze
+	 * @param existing   an existing WaveDetails to update, or null to create a new one
+	 * @param persistent if true, marks the resulting details as persistent
+	 * @return the computed WaveDetails
+	 */
 	protected WaveDetails computeDetails(WaveDataProvider provider, WaveDetails existing, boolean persistent) {
 		WaveDetails details = factory.forProvider(provider, existing);
 		details.setPersistent((existing != null && existing.isPersistent()) || persistent);
@@ -991,6 +1208,16 @@ public class AudioLibrary implements ConsoleFeatures {
 		return computation.compute();
 	}
 
+	/**
+	 * Scans the file tree for audio files that have not yet been analyzed and submits
+	 * background jobs to compute their WaveDetails.
+	 *
+	 * <p>Returns a CompletableFuture that completes when all queued analysis jobs
+	 * have finished. Callers should use {@link #awaitRefresh()} to wait for the
+	 * result before depending on stable similarity data.</p>
+	 *
+	 * @return a CompletableFuture that completes when the refresh is done
+	 */
 	public CompletableFuture<Void> refresh() {
 		try {
 			CompletableFuture<Void> future = new CompletableFuture<>();

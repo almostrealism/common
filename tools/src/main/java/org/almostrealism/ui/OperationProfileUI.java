@@ -87,9 +87,13 @@ public class OperationProfileUI {
 	 */
 	public static boolean enableJavaFx = true;
 
+	/** Scroll pane wrapping the text area that displays node information. */
 	private JScrollPane textScroll;
+	/** Text area that displays timing and metadata for the currently selected profile node. */
 	private JTextArea textArea;
+	/** All tree components managed by this UI, used for synchronized selection updates. */
 	private List<JTree> trees;
+	/** Guard flag to prevent recursive selection-change callbacks across synchronized trees. */
 	private boolean updatingSelection;
 
 	/**

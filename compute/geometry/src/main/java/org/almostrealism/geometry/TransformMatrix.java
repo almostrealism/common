@@ -35,8 +35,13 @@ import java.util.function.BiFunction;
  * some static methods that generate certain useful matrices.
  */
 public class TransformMatrix extends PackedCollection implements TransformMatrixFeatures, RayFeatures {
+	/** Transform type flag indicating the vector represents a 3D location (includes translation). */
 	public static final int TRANSFORM_AS_LOCATION = 1;
+
+	/** Transform type flag indicating the vector represents an offset or direction (excludes translation). */
 	public static final int TRANSFORM_AS_OFFSET = 2;
+
+	/** Transform type flag indicating the vector represents a surface normal (uses inverse-transpose). */
 	public static final int TRANSFORM_AS_NORMAL = 4;
 
   	/** The data for the identity matrix. */
@@ -45,11 +50,20 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 											{0.0, 0.0, 1.0, 0.0},
 											{0.0, 0.0, 0.0, 1.0}};
 
+	/** Cached inverse of this matrix, computed on demand by {@link #calculateInverse()}. */
 	private TransformMatrix inverseMatrix;
+
+	/** Cached inverse-transpose of this matrix, used for transforming surface normals. */
 	private TransformMatrix inverseTranspose;
+
+	/** Cached transpose of this matrix, computed on demand by {@link #transpose()}. */
 	private TransformMatrix transposeMatrix;
 
-	private boolean inverted, isIdentity;
+	/** True if {@link #calculateInverse()} has been called since the last matrix modification. */
+	private boolean inverted;
+
+	/** True if this matrix contains the identity values. */
+	private boolean isIdentity;
 
 	/**
 	 * Constructs a {@link TransformMatrix} that by default contains the data for a 4 X 4 identity matrix.
@@ -58,6 +72,13 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		this(true, null, 0);
 	}
 
+	/**
+	 * Constructs a TransformMatrix that shares memory with the given delegate at the specified offset.
+	 * Determines whether the delegated data represents an identity matrix.
+	 *
+	 * @param delegate       the backing memory data store
+	 * @param delegateOffset the element offset into the delegate
+	 */
 	public TransformMatrix(MemoryData delegate, int delegateOffset) {
 		this(false, delegate, delegateOffset);
 
@@ -66,6 +87,13 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		this.inverted = false;
 	}
 
+	/**
+	 * Private constructor used by the public constructors to initialize memory layout.
+	 *
+	 * @param identity       if true, initializes the matrix to the 4x4 identity
+	 * @param delegate       the backing memory data store, or null for a new allocation
+	 * @param delegateOffset the element offset into the delegate
+	 */
 	private TransformMatrix(boolean identity, MemoryData delegate, int delegateOffset) {
 		super(new TraversalPolicy(16), 0, delegate, delegateOffset);
 
@@ -77,6 +105,12 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	/** Returns true if this matrix is the identity matrix. */
 	public boolean isIdentity() { return this.isIdentity; }
 
+	/**
+	 * Returns true if the current matrix data equals the 4x4 identity matrix
+	 * within a tolerance of 1e-10 per element.
+	 *
+	 * @return true if this matrix is effectively the identity
+	 */
 	private boolean isIdentityMatrix() {
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
@@ -182,6 +216,15 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	@Override
 	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
+	/**
+	 * Applies this transform matrix to a vector producer using the specified transform type.
+	 * If this matrix is the identity, the input vector is returned unchanged.
+	 *
+	 * @param vector the input 3D vector producer
+	 * @param type   one of {@link #TRANSFORM_AS_LOCATION}, {@link #TRANSFORM_AS_OFFSET}, or {@link #TRANSFORM_AS_NORMAL}
+	 * @return a producer for the transformed vector
+	 * @throws IllegalArgumentException if {@code type} is not a recognized transform type
+	 */
 	public Producer<PackedCollection> transform(Producer<PackedCollection> vector, int type) {
 		if (this.isIdentity) return vector;
 
@@ -197,6 +240,16 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		}
 	}
 
+	/**
+	 * Applies this transform matrix to the given 3D coordinates using the specified transform type.
+	 * This is a convenience overload that operates on raw coordinate values rather than producers.
+	 *
+	 * @param x    the x coordinate
+	 * @param y    the y coordinate
+	 * @param z    the z coordinate
+	 * @param type one of {@link #TRANSFORM_AS_LOCATION}, {@link #TRANSFORM_AS_OFFSET}, or {@link #TRANSFORM_AS_NORMAL}
+	 * @return the transformed coordinates as a 3-element double array
+	 */
 	public double[] transform(double x, double y, double z, int type) {
 		if (this.isIdentity) return new double[] {x, y, z};
 
@@ -239,6 +292,13 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		return Vector.view(transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate());
 	}
 
+	/**
+	 * Applies this transform matrix to the given ray producer, transforming both
+	 * the origin (as a location) and the direction (as an offset).
+	 *
+	 * @param ray the ray producer to transform
+	 * @return a producer for the transformed ray
+	 */
 	public CollectionProducer transform(Producer<?> ray) {
 		return RayFeatures.getInstance().transform(this, ray);
 	}
@@ -367,6 +427,11 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	@Override
 	public int getMemLength() { return 16; }
 
+	/**
+	 * Returns the 16 matrix values as a flat double array in row-major order.
+	 *
+	 * @return a 16-element array containing the matrix data
+	 */
 	public double[] toArray() {
 		double[] m = new double[16];
 		getMem(0, m, 0, 16);
@@ -387,11 +452,25 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		return data;
 	}
 
+	/**
+	 * Creates a {@link PackedCollection} bank large enough to hold the specified number of
+	 * TransformMatrix instances. Each element in the bank is a TransformMatrix view into
+	 * the underlying flat storage.
+	 *
+	 * @param count the number of TransformMatrix slots to allocate
+	 * @return a PackedCollection with shape (count, 16)
+	 */
 	public static PackedCollection bank(int count) {
 		return new PackedCollection(new TraversalPolicy(count, 16), 1, delegateSpec ->
 				new TransformMatrix(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
+	/**
+	 * Returns a postprocessor function that wraps raw memory data as a TransformMatrix view.
+	 * Used to convert output buffers into typed TransformMatrix instances after evaluation.
+	 *
+	 * @return a BiFunction mapping (MemoryData, offset) to a TransformMatrix
+	 */
 	public static BiFunction<MemoryData, Integer, TransformMatrix> postprocessor() {
 		return (output, offset) -> new TransformMatrix(false, output, offset);
 	}
@@ -514,6 +593,14 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		return rotateTransform;
 	}
 
+	/**
+	 * Generates a TransformMatrix that rotates vectors counterclockwise around the specified
+	 * arbitrary axis by the given angle (in radians), using the Rodrigues rotation formula.
+	 *
+	 * @param angle the rotation angle in radians
+	 * @param v     the rotation axis (will be normalized internally)
+	 * @return a TransformMatrix representing the rotation
+	 */
 	public static TransformMatrix createRotateMatrix(double angle, Vector v) {
 		v = v.clone();
 		v.normalize();

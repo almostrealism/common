@@ -26,7 +26,17 @@ package org.almostrealism.projection;
  * @author  Michael Murray
  */
 public class ThinLensCamera extends PinholeCamera {
-	private double focalLength, radius, width, height;
+	/** The focal length of the lens (distance from lens to the plane of sharpest focus). */
+	private double focalLength;
+
+	/** The radius of the circular lens aperture used for depth-of-field sampling. */
+	private double radius;
+
+	/** The intrinsic projection width before the thin-lens magnification factor is applied. */
+	private double width;
+
+	/** The intrinsic projection height before the thin-lens magnification factor is applied. */
+	private double height;
 
 	/**
 	 * Constructs a new ThinLensCamera object.
@@ -40,6 +50,10 @@ public class ThinLensCamera extends PinholeCamera {
 		this.setLensRadius(this.getFocalLength() / 10);
 	}
 	
+	/**
+	 * Recomputes and applies the effective projection dimensions to the parent {@link PinholeCamera}
+	 * using the thin-lens magnification factor derived from the focus distance and focal length.
+	 */
 	protected void updateProjectionDimensions() {
 		double u = (super.getFocalLength() - this.focalLength) / this.focalLength;
 		super.setProjectionDimensions(this.width * u, this.height * u);

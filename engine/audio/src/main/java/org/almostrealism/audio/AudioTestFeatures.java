@@ -456,12 +456,21 @@ public interface AudioTestFeatures extends GeometryFeatures {
 	 * across all tests in the same JVM.
 	 */
 	final class TestWavFileHolder {
+		/** Lazily initialized default test WAV file shared across all tests in the JVM. */
 		private static volatile File cachedFile;
+
+		/** Cache of named test WAV files keyed by their descriptive name. */
 		private static final Map<String, File> namedFiles =
 				new ConcurrentHashMap<>();
 
+		/** Prevents instantiation; all members are static. */
 		private TestWavFileHolder() {}
 
+		/**
+		 * Returns the shared default test WAV file, creating it on first access.
+		 *
+		 * @return the default test WAV file (440 Hz, 2 seconds)
+		 */
 		static File getTestWavFile() {
 			if (cachedFile == null) {
 				synchronized (TestWavFileHolder.class) {
@@ -484,6 +493,14 @@ public interface AudioTestFeatures extends GeometryFeatures {
 							: createMelodicWavFile(frequency, durationSeconds));
 		}
 
+		/**
+		 * Creates a test WAV file with the given frequency and duration.
+		 * Delegates to {@link #createMelodicWavFile(double, double)}.
+		 *
+		 * @param frequency       tone frequency in Hz
+		 * @param durationSeconds duration in seconds (must be &lt;= 5)
+		 * @return the created WAV file
+		 */
 		static File createTestWavFile(double frequency, double durationSeconds) {
 			return createMelodicWavFile(frequency, durationSeconds);
 		}

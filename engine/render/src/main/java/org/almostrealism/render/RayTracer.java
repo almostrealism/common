@@ -44,22 +44,47 @@ import java.util.concurrent.Future;
  * @see RayIntersectionEngine
  */
 public class RayTracer {
+	/** When true, each ray trace is submitted to the thread pool for parallel execution. */
 	public static boolean enableThreadPool = false;
 
+	/** The executor service used when thread pool mode is enabled. */
 	private ExecutorService pool;
+	/** Counter used to generate unique names for RayTracer worker threads. */
 	private static long threadCount = 0;
 
+	/** The underlying rendering engine that performs the actual ray tracing computation. */
 	private Engine engine;
-	
+
+	/**
+	 * Constructs a {@link RayTracer} with the given engine and a default fixed thread pool of 10 threads.
+	 *
+	 * @param engine The rendering engine to delegate ray tracing to
+	 */
 	public RayTracer(Engine engine) {
 		this(engine, Executors.newFixedThreadPool(10, r -> new Thread(r, "RayTracer Thread " + (threadCount++))));
 	}
 
+	/**
+	 * Constructs a {@link RayTracer} with the given engine and a custom executor service.
+	 *
+	 * @param engine The rendering engine to delegate ray tracing to
+	 * @param pool   The executor service used when thread pool mode is enabled
+	 */
 	public RayTracer(Engine engine, ExecutorService pool) {
 		this.engine = engine;
 		this.pool = pool;
 	}
 
+	/**
+	 * Traces the given ray through the scene using the configured engine.
+	 *
+	 * <p>If {@link #enableThreadPool} is true, the trace is submitted to the thread pool and
+	 * the returned {@link Future} may complete asynchronously. Otherwise, the trace is performed
+	 * synchronously and the future completes immediately.</p>
+	 *
+	 * @param r The ray to trace
+	 * @return A future that completes with a producer for the traced color
+	 */
 	public Future<Producer<PackedCollection>> trace(Producer<Ray> r) {
 		if (enableThreadPool) {
 			Callable<Producer<PackedCollection>> c = () -> engine.trace(r);

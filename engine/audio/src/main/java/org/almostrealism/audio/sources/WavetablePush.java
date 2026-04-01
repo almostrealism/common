@@ -35,8 +35,18 @@ import org.almostrealism.hardware.OperationComputationAdapter;
  * @see WavetableCell
  */
 public class WavetablePush extends OperationComputationAdapter<PackedCollection> implements ExpressionFeatures {
+	/** Number of samples in the wavetable used for interpolation. */
 	private final int tableSize;
 
+	/**
+	 * Creates a WavetablePush computation that reads from the given wavetable.
+	 *
+	 * @param data      sine wave cell data providing wave position and amplitude state
+	 * @param envelope  producer yielding the amplitude envelope value
+	 * @param wavetable the wavetable data to index into
+	 * @param tableSize number of samples in the wavetable
+	 * @param output    the output buffer that receives the computed sample
+	 */
 	public WavetablePush(SineWaveCellData data, Producer<PackedCollection> envelope,
 						 PackedCollection wavetable, int tableSize, PackedCollection output) {
 		super(Ops.o().p(output),

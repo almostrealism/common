@@ -84,9 +84,26 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 	 */
 	public static final int MAX_RAY_STEPS = 30;
 
+	/** The distance estimator used to determine proximity to implicit surfaces during ray marching. */
 	private DistanceEstimator estimator;
+	/** The set of shaders applied at intersection points found by ray marching. */
 	private ShaderSet shaders;
 
+	/**
+	 * Constructs a {@link DistanceEstimationLightingEngine} for the given ray, surface, and lighting.
+	 *
+	 * <p><b>Note:</b> The ray marching intersection producer is currently disabled (TODO).
+	 * The super-constructor receives {@code null} for the intersection field.</p>
+	 *
+	 * @param ray            The ray to march along
+	 * @param surface        The primary surface being evaluated
+	 * @param otherSurfaces  All other surfaces in the scene (for shadow/occlusion)
+	 * @param light          The primary light source
+	 * @param otherLights    All other light sources in the scene
+	 * @param p              The shader context for lighting parameters
+	 * @param estimator      The signed distance function (SDF) evaluator
+	 * @param shaders        The shaders to apply at intersection points
+	 */
 	public DistanceEstimationLightingEngine(Evaluable<Ray> ray, Curve<PackedCollection> surface,
 											Collection<? extends Curve<PackedCollection>> otherSurfaces,
 											Light light, Iterable<Light> otherLights,
@@ -147,7 +164,9 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 	 */
 	public static class Locus extends ArrayList<Producer<PackedCollection>>
 			implements ContinuousField, Callable<Producer<PackedCollection>>, Shadable, CodeFeatures {
+		/** The shaders used to compute surface color at this intersection point. */
 		private ShaderSet shaders;
+		/** The shader context providing light and surface information for shading. */
 		private ShaderContext params;
 
 		/**

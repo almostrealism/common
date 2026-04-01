@@ -42,14 +42,28 @@ import org.almostrealism.collect.PackedCollection;
  * @see BufferedOutputScheduler for scheduled output management
  */
 public class BufferOutputLine implements OutputLine {
+	/** The underlying audio storage buffer. */
 	private final PackedCollection buffer;
+
+	/** Total capacity of the buffer in frames. */
 	private final int bufferSize;
+
+	/** Audio sample rate in Hz used for timing calculations. */
 	private final int sampleRate;
 
+	/** Current write position within the buffer in frames. */
 	private int writePosition;
+
+	/** Total number of frames written since the line became active. */
 	private long totalFramesWritten;
+
+	/** System nanosecond timestamp recorded when the line first became active. */
 	private long startTimeNanos;
+
+	/** True after the first write call; used to initialize the start timestamp. */
 	private boolean active;
+
+	/** When true, the write position wraps around to the beginning instead of stopping at capacity. */
 	private boolean circular;
 
 	/**

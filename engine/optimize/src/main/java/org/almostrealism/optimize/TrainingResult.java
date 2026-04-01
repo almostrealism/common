@@ -31,12 +31,25 @@ import java.util.List;
  */
 public class TrainingResult {
 
+	/** Training loss value recorded at the end of each epoch. */
 	private final List<Double> trainLossHistory;
+
+	/** Validation loss value recorded at the end of each epoch; empty when no validation set was used. */
 	private final List<Double> validationLossHistory;
+
+	/** Total number of training steps (batches) processed across all epochs. */
 	private final int totalSteps;
+
+	/** Index of the epoch that achieved the lowest validation loss. */
 	private final int bestEpoch;
+
+	/** The lowest validation loss achieved during training. */
 	private final double bestValidationLoss;
+
+	/** Wall-clock duration of the entire training run. */
 	private final Duration trainingTime;
+
+	/** Whether training was halted early by the early-stopping criterion. */
 	private final boolean earlyStopped;
 
 	/**
@@ -183,6 +196,12 @@ public class TrainingResult {
 		);
 	}
 
+	/**
+	 * Formats a duration as a human-readable string (e.g., "2h 3m 15s").
+	 *
+	 * @param duration the duration to format
+	 * @return a compact string representation of the duration
+	 */
 	private String formatDuration(Duration duration) {
 		long hours = duration.toHours();
 		long minutes = duration.toMinutesPart();

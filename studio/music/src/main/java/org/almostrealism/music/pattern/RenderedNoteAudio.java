@@ -57,9 +57,16 @@ import java.util.function.IntFunction;
  * @author Michael Murray
  */
 public class RenderedNoteAudio {
+	/** The absolute frame offset in the arrangement. */
 	private int offset;
+
+	/** The estimated frame count; 0 means no estimate available. */
 	private int expectedFrameCount;
+
+	/** The PackedCollection used to pass the start frame offset to producers. */
 	private PackedCollection offsetArg;
+
+	/** Factory that creates audio producers for a given sample rate. */
 	private IntFunction<Producer<PackedCollection>> producerFactory;
 
 	/**
@@ -78,10 +85,12 @@ public class RenderedNoteAudio {
 		this.expectedFrameCount = expectedFrameCount;
 	}
 
+	/** Returns the absolute frame offset in the arrangement. */
 	public int getOffset() {
 		return offset;
 	}
 
+	/** Sets the absolute frame offset. */
 	public void setOffset(int offset) {
 		this.offset = offset;
 	}
@@ -97,6 +106,7 @@ public class RenderedNoteAudio {
 		return expectedFrameCount;
 	}
 
+	/** Sets the estimated frame count. */
 	public void setExpectedFrameCount(int expectedFrameCount) {
 		this.expectedFrameCount = expectedFrameCount;
 	}
@@ -116,6 +126,7 @@ public class RenderedNoteAudio {
 		return offsetArg;
 	}
 
+	/** Sets the caller-owned PackedCollection used to pass the start frame offset to producers. */
 	public void setOffsetArg(PackedCollection offsetArg) {
 		this.offsetArg = offsetArg;
 	}

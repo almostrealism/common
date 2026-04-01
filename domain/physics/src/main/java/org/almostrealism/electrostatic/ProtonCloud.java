@@ -37,8 +37,13 @@ import org.almostrealism.physics.Absorber;
  * @author Mike Murray
  */
 public abstract class ProtonCloud implements Absorber, PotentialMap {
+	/**
+	 * Coulomb constant used in potential calculations.
+	 * Defaults to 1.0, which normalizes the potential units to match the charge units.
+	 */
 	public static double k = 1.0;
-	
+
+	/** The charge value for this proton cloud, in units where -1.0 is the electron charge. */
 	private double charge = 1.0;
 	
 	/**

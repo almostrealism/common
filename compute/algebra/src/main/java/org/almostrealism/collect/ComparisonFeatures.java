@@ -91,11 +91,31 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 				a, b, trueValue, falseValue);
 	}
 
+	/**
+	 * Returns the true value where {@code a > b}, the false value elsewhere.
+	 *
+	 * @param a          the left-hand operand collection
+	 * @param b          the right-hand operand collection
+	 * @param trueValue  the value returned where the condition holds
+	 * @param falseValue the value returned where the condition does not hold
+	 * @return a producer for the conditional result
+	 */
 	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
 													  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return greaterThanConditional(a, b, trueValue, falseValue, false);
 	}
 
+	/**
+	 * Returns the true value where {@code a > b} (or {@code a >= b} if {@code includeEqual} is true),
+	 * the false value elsewhere.
+	 *
+	 * @param a            the left-hand operand collection
+	 * @param b            the right-hand operand collection
+	 * @param trueValue    the value returned where the condition holds
+	 * @param falseValue   the value returned where the condition does not hold
+	 * @param includeEqual if true, the condition also includes equality (i.e., {@code >=})
+	 * @return a producer for the conditional result
+	 */
 	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
 													  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 													  boolean includeEqual) {
@@ -114,11 +134,31 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 				a, b, trueValue, falseValue);
 	}
 
+	/**
+	 * Returns the true value where {@code a < b}, the false value elsewhere.
+	 *
+	 * @param a          the left-hand operand collection
+	 * @param b          the right-hand operand collection
+	 * @param trueValue  the value returned where the condition holds
+	 * @param falseValue the value returned where the condition does not hold
+	 * @return a producer for the conditional result
+	 */
 	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
 										Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return lessThan(a, b, trueValue, falseValue, false);
 	}
 
+	/**
+	 * Returns the true value where {@code a < b} (or {@code a <= b} if {@code includeEqual} is true),
+	 * the false value elsewhere.
+	 *
+	 * @param a            the left-hand operand collection
+	 * @param b            the right-hand operand collection
+	 * @param trueValue    the value returned where the condition holds
+	 * @param falseValue   the value returned where the condition does not hold
+	 * @param includeEqual if true, the condition also includes equality (i.e., {@code <=})
+	 * @return a producer for the conditional result
+	 */
 	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
 										Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 										boolean includeEqual) {
@@ -203,7 +243,17 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 		return and(a, b, c(1.0), c(0.0));
 	}
 
-	// Required for internal use
+	/**
+	 * Internal utility method for constructing comparison computations.
+	 * Implementations must provide the logic for determining the output shape
+	 * and constructing the computation kernel from the provided producers.
+	 *
+	 * @param <P>         the specific computation type produced
+	 * @param processor   a function that takes the output shape and list of input producers and returns a computation
+	 * @param description an optional function for describing the operation (may be null)
+	 * @param arguments   the input producer arguments to the computation
+	 * @return a CollectionProducer wrapping the computation
+	 */
 	<P extends Producer<PackedCollection>> CollectionProducer compute(BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor,
 																	  Function<List<String>, String> description, Producer<PackedCollection>... arguments);
 }

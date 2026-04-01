@@ -45,35 +45,85 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Factory that creates {@link DefaultChannelSectionFactory.Section} instances for each
+ * pattern channel within a scene section. Each section applies volume rise-fall envelopes,
+ * optional low-pass filtering, and sample-repeat scheduling driven by chromosome genes.
+ */
 public class DefaultChannelSectionFactory implements Setup, Destroyable,
 						CellFeatures, EnvelopeFeatures, OptimizeFactorFeatures {
+	/** When {@code true}, a volume rise-fall envelope is applied to each channel section. */
 	public static boolean enableVolumeRiseFall = true;
+
+	/** When {@code true}, a low-pass filter envelope is applied to wet channels. */
 	public static boolean enableFilter = true;
 
+	/** Maximum frequency rise value for the low-pass filter envelope, in Hz. */
 	public static double MAX_FILTER_RISE = 18000;
 
+	/** Candidate sample-repeat durations in beats. */
 	public static final double[] repeatChoices = new double[] { 8, 16, 32 };
 
+	/** Time cell driving the clock used by wave cells and envelope computations. */
 	private TimeCell clock;
+
+	/** GPU-resident buffer holding the current section duration in seconds. */
 	private PackedCollection duration;
 
+	/** Per-channel volume rise-fall gene values. */
 	private final Chromosome<PackedCollection> volume;
+
+	/** Per-channel volume exponent gene values. */
 	private final Chromosome<PackedCollection> volumeExp;
+
+	/** Per-channel low-pass filter rise-fall gene values. */
 	private final Chromosome<PackedCollection> lowPassFilter;
+
+	/** Per-channel low-pass filter exponent gene values. */
 	private final Chromosome<PackedCollection> lowPassFilterExp;
+
+	/** Per-channel sample repeat duration genes (chosen from {@link #repeatChoices}). */
 	private final Chromosome<PackedCollection> simpleDuration;
+
+	/** Per-channel repeat speed-up duration genes. */
 	private final Chromosome<PackedCollection> simpleDurationSpeedUp;
 
+	/** Index of the next channel section to be created. */
 	private int channel;
+
+	/** Total number of pattern channels. */
 	private final int channels;
+
+	/** Predicate indicating which channels receive wet (filter) processing. */
 	private final IntPredicate wetChannels;
+
+	/** Predicate indicating which channels use looping repeats. */
 	private final IntPredicate repeatChannels;
 
+	/** Supplier providing the current tempo frequency. */
 	private final Supplier<Frequency> tempo;
+
+	/** Supplier providing the current measure duration in seconds. */
 	private final DoubleSupplier measureDuration;
+
+	/** Length of each section in measures. */
 	private final int length;
+
+	/** Audio sample rate. */
 	private final int sampleRate;
 
+	/**
+	 * Creates a default channel section factory.
+	 *
+	 * @param chromosome      chromosome from which gene segments are allocated
+	 * @param channels        number of pattern channels
+	 * @param wetChannels     predicate identifying channels that receive wet processing
+	 * @param repeatChannels  predicate identifying channels that use looping repeats
+	 * @param tempo           supplier of the current tempo
+	 * @param measureDuration supplier of the current measure duration in seconds
+	 * @param length          section length in measures
+	 * @param sampleRate      audio sample rate
+	 */
 	public DefaultChannelSectionFactory(ProjectedChromosome chromosome, int channels,
 										IntPredicate wetChannels, IntPredicate repeatChannels,
 										Supplier<Frequency> tempo, DoubleSupplier measureDuration,
@@ -135,6 +185,13 @@ public class DefaultChannelSectionFactory implements Setup, Destroyable,
 		}).collect(Collectors.toList()));
 	}
 
+	/**
+	 * Creates the next channel section at the given measure position.
+	 *
+	 * @param position the starting measure position of the section
+	 * @return the created channel section
+	 * @throws IllegalArgumentException if all channels have already been created
+	 */
 	public Section createSection(int position) {
 		if (channel >= channels)
 			throw new IllegalArgumentException();
@@ -162,14 +219,37 @@ public class DefaultChannelSectionFactory implements Setup, Destroyable,
 	@Override
 	public Console console() { return CellFeatures.console; }
 
+	/**
+	 * A channel section produced by this factory. Processes audio by applying
+	 * volume and filter envelopes and optional sample-repeat scheduling.
+	 */
 	public class Section implements ChannelSection {
-		private int position, length;
+		/** Starting measure position of this section. */
+		private int position;
+
+		/** Length of this section in measures. */
+		private int length;
+
+		/** Pattern channel index this section is responsible for. */
 		private int channel;
+
+		/** Total number of audio samples for this section's duration. */
 		private int samples;
+
+		/** Destroyable resources held by this section. */
 		private List<Destroyable> dependencies;
 
+		/** Creates an empty section; fields must be set before use. */
 		public Section() { }
 
+		/**
+		 * Creates a section with the specified position, length, channel, and frame count.
+		 *
+		 * @param position the start position in measures
+		 * @param length   the length in measures
+		 * @param channel  the zero-based pattern channel index
+		 * @param samples  total number of audio samples for this section
+		 */
 		protected Section(int position, int length,
 						  int channel, int samples) {
 			this.position = position;

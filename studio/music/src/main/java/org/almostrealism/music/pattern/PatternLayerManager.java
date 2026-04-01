@@ -114,39 +114,72 @@ import java.util.stream.Stream;
  * @author Michael Murray
  */
 public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
+	/** Number of genes in the envelope automation chromosome per layer. */
 	public static int AUTOMATION_GENE_LENGTH = 6;
+	/** Maximum number of layers supported per pattern. */
 	public static int MAX_LAYERS = 32;
 
+	/** Whether warning log messages are enabled. */
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_PATTERN_WARNINGS").orElse(false);
+	/** Whether verbose log messages are enabled. */
 	public static boolean enableLogging = SystemUtils.isEnabled("AR_PATTERN_LOGGING").orElse(false);
 
+	/** The audio channel index for this pattern. */
 	private int channel;
+	/** The duration of this pattern in measures. */
 	private double duration;
+	/** The current layer scale (updated during layer generation). */
 	private double scale;
 
+	/** Whether this pattern is melodic (true) or percussive (false). */
 	private boolean melodic;
+	/** The depth of scale traversal for melodic patterns. */
 	private int scaleTraversalDepth;
+	/** The minimum layer scale in measures. */
 	private double minLayerScale;
+	/** The scale traversal strategy (CHORD or SEQUENCE). */
 	private ScaleTraversalStrategy scaleTraversalStrategy;
 
+	/** Adjustment factor applied to seed bias based on active layer count. */
 	private double seedBiasAdjustment;
 
+	/** Supplier of percussive note audio choices. */
 	private final Supplier<List<NoteAudioChoice>> percChoices;
+	/** Supplier of melodic note audio choices. */
 	private final Supplier<List<NoteAudioChoice>> melodicChoices;
+	/** Chromosome controlling note selection per layer. */
 	private Chromosome<PackedCollection> layerChoiceChromosome;
+	/** Chromosome controlling envelope automation per layer. */
 	private Chromosome<PackedCollection> envelopeAutomationChromosome;
 
+	/** Parameter function used to select which note choice to use. */
 	private ParameterFunction noteSelection;
+	/** Position function used to determine section activity. */
 	private ParameterizedPositionFunction activeSelection;
+	/** Factory used to generate pattern elements. */
 	private PatternElementFactory elementFactory;
 
+	/** The root pattern layers forming the first level of the hierarchy. */
 	private final List<PatternLayer> roots;
+	/** The parameter sets for each active layer. */
 	private final List<ParameterSet> layerParams;
+	/** The current number of active layers. */
 	private int layerCount;
 
+	/** Map from channel info to destination buffer for each channel. */
 	private Map<ChannelInfo, PackedCollection> destination;
+	/** Cache for note audio across buffer ticks. */
 	private final NoteAudioCache noteAudioCache = new NoteAudioCache();
 
+	/**
+	 * Creates a {@code PatternLayerManager} from a flat list of choices.
+	 *
+	 * @param choices    the available note audio choices
+	 * @param chromosome the projected chromosome for parameter generation
+	 * @param channel    the channel index
+	 * @param measures   the pattern duration in measures
+	 * @param melodic    whether the pattern is melodic
+	 */
 	public PatternLayerManager(List<NoteAudioChoice> choices,
 							   ProjectedChromosome chromosome,
 							   int channel, double measures, boolean melodic) {
@@ -154,6 +187,16 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				chromosome, channel, measures, melodic);
 	}
 
+	/**
+	 * Creates a {@code PatternLayerManager} with separate suppliers for percussive and melodic choices.
+	 *
+	 * @param percChoices    supplier of percussive note audio choices
+	 * @param melodicChoices supplier of melodic note audio choices
+	 * @param chromosome     the projected chromosome for parameter generation
+	 * @param channel        the channel index
+	 * @param measures       the pattern duration in measures
+	 * @param melodic        whether the pattern is melodic
+	 */
 	public PatternLayerManager(Supplier<List<NoteAudioChoice>> percChoices,
 							   Supplier<List<NoteAudioChoice>> melodicChoices,
 							   ProjectedChromosome chromosome,
@@ -174,6 +217,11 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		init(chromosome);
 	}
 
+	/**
+	 * Initializes the chromosomes and element factory from the given projected chromosome.
+	 *
+	 * @param chromosome the projected chromosome
+	 */
 	public void init(ProjectedChromosome chromosome) {
 		noteSelection = ParameterFunction.random();
 		activeSelection = ParameterizedPositionFunction.random();
@@ -187,8 +235,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				.collect(Collectors.toList()));
 	}
 
+	/** Returns the destination buffer map, keyed by channel info. */
 	public Map<ChannelInfo, PackedCollection> getDestination() { return destination; }
 
+	/**
+	 * Updates the destination buffer map from the given audio scene context.
+	 *
+	 * @param context the audio scene context containing channels and destination buffer
+	 */
 	public void updateDestination(AudioSceneContext context) {
 		if (context.getChannels() == null) return;
 
@@ -205,58 +259,86 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		});
 	}
 
+	/** Returns the active note audio choices based on this pattern's melodic mode. */
 	public List<NoteAudioChoice> getChoices() {
 		return melodic ? melodicChoices.get() : percChoices.get();
 	}
 
+	/**
+	 * Returns a stream of note audio choices filtered by channel and scale traversal depth.
+	 *
+	 * @return stream of applicable note audio choices
+	 */
 	public Stream<NoteAudioChoice> choices() {
 		return getChoices().stream()
 				.filter(c -> c.getChannels() == null || c.getChannels().contains(channel))
 				.filter(c -> scaleTraversalDepth <= c.getMaxScaleTraversalDepth());
 	}
 
+	/** Returns the channel index for this pattern. */
 	public int getChannel() { return channel; }
+	/** Sets the channel index for this pattern. */
 	public void setChannel(int channel) { this.channel = channel; }
 
+	/** Sets the pattern duration in measures. */
 	public void setDuration(double measures) { duration = measures; }
+	/** Returns the pattern duration in measures. */
 	public double getDuration() { return duration; }
 
+	/** Returns the scale traversal depth for melodic patterns. */
 	public int getScaleTraversalDepth() { return scaleTraversalDepth; }
+	/** Sets the scale traversal depth for melodic patterns. */
 	public void setScaleTraversalDepth(int scaleTraversalDepth) { this.scaleTraversalDepth = scaleTraversalDepth; }
 
+	/** Returns the minimum layer scale in measures. */
 	public double getMinLayerScale() { return minLayerScale; }
+	/** Sets the minimum layer scale in measures. */
 	public void setMinLayerScale(double minLayerScale) { this.minLayerScale = minLayerScale; }
 
+	/** Sets whether this pattern is melodic. */
 	public void setMelodic(boolean melodic) {
 		this.melodic = melodic;
 	}
 
+	/** Returns whether this pattern is melodic. */
 	public boolean isMelodic() { return melodic; }
 
+	/** Returns the scale traversal strategy (CHORD or SEQUENCE). */
 	public ScaleTraversalStrategy getScaleTraversalStrategy() {
 		return scaleTraversalStrategy;
 	}
 
+	/** Sets the scale traversal strategy (CHORD or SEQUENCE). */
 	public void setScaleTraversalStrategy(ScaleTraversalStrategy scaleTraversalStrategy) {
 		this.scaleTraversalStrategy = scaleTraversalStrategy;
 	}
 
+	/** Returns the seed bias adjustment factor. */
 	public double getSeedBiasAdjustment() {
 		return seedBiasAdjustment;
 	}
 
+	/** Sets the seed bias adjustment factor. */
 	public void setSeedBiasAdjustment(double seedBiasAdjustment) {
 		this.seedBiasAdjustment = seedBiasAdjustment;
 	}
 
+	/** Returns the pattern element factory. */
 	public PatternElementFactory getElementFactory() {
 		return elementFactory;
 	}
 
+	/** Sets the pattern element factory. */
 	public void setElementFactory(PatternElementFactory elementFactory) {
 		this.elementFactory = elementFactory;
 	}
 
+	/**
+	 * Selects a seed {@link PatternLayerSeeds} for the given parameter set.
+	 *
+	 * @param params the parameter set
+	 * @return the selected seeds, or null if no valid seed choices exist
+	 */
 	public PatternLayerSeeds getSeeds(ParameterSet params) {
 		List<PatternLayerSeeds> options = choices()
 				.filter(NoteAudioChoice::isSeed)
@@ -271,12 +353,26 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		return options.get((int) (options.size() * c));
 	}
 
+	/**
+	 * Returns all pattern elements in {@code [start, end)}, grouped by note audio choice.
+	 *
+	 * @param start inclusive start position in measures
+	 * @param end   exclusive end position in measures
+	 * @return map from choice to elements within the range
+	 */
 	public Map<NoteAudioChoice, List<PatternElement>> getAllElementsByChoice(double start, double end) {
 		Map<NoteAudioChoice, List<PatternElement>> result = new HashMap<>();
 		roots.forEach(l -> l.putAllElementsByChoice(result, start, end));
 		return result;
 	}
 
+	/**
+	 * Returns a flat list of all pattern elements in {@code [start, end)}.
+	 *
+	 * @param start inclusive start position in measures
+	 * @param end   exclusive end position in measures
+	 * @return list of elements within the range
+	 */
 	public List<PatternElement> getAllElements(double start, double end) {
 		return roots.stream()
 				.map(l -> l.getAllElements(start, end))
@@ -284,6 +380,11 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Returns a {@link Settings} snapshot of this manager's current configuration.
+	 *
+	 * @return the current settings
+	 */
 	public Settings getSettings() {
 		Settings settings = new Settings();
 		settings.setChannel(channel);
@@ -299,6 +400,11 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		return settings;
 	}
 
+	/**
+	 * Applies a {@link Settings} snapshot to this manager.
+	 *
+	 * @param settings the settings to apply
+	 */
 	public void setSettings(Settings settings) {
 		channel = settings.getChannel();
 		duration = settings.getDuration();
@@ -319,13 +425,21 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		setLayerCount(settings.getLayerCount());
 	}
 
+	/** Decrements the scale (doubles it), moving to a coarser granularity. */
 	protected void decrement() { scale *= 2; }
+	/** Increments the scale (halves it), moving to a finer granularity. */
 	protected void increment() {
 		scale /= 2;
 	}
 
+	/** Returns the number of root pattern layers. */
 	public int rootCount() { return roots.size(); }
 
+	/**
+	 * Returns the maximum depth of the layer hierarchy across all roots.
+	 *
+	 * @return the layer hierarchy depth, or 0 if there are no roots
+	 */
 	public int depth() {
 		if (rootCount() <= 0) return 0;
 		return roots.stream()
@@ -333,10 +447,17 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				.max(Integer::compareTo).orElse(0);
 	}
 
+	/** Returns the current number of active layers. */
 	public int getLayerCount() {
 		return layerCount;
 	}
 
+	/**
+	 * Sets the number of active layers, refreshing the pattern if the count changes.
+	 *
+	 * @param count the new layer count
+	 * @throws IllegalArgumentException if count is negative
+	 */
 	public void setLayerCount(int count) {
 		if (count < 0) throw new IllegalArgumentException(count + " is not a valid number of layers");
 		if (count == getLayerCount()) return;
@@ -345,10 +466,20 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		refresh();
 	}
 
+	/**
+	 * Adds a layer using the given gene for parameter extraction.
+	 *
+	 * @param gene the gene providing layer parameters
+	 */
 	public void layer(Gene<PackedCollection> gene) {
 		layer(ParameterSet.fromGene(gene));
 	}
 
+	/**
+	 * Adds a layer using the given parameter set.
+	 *
+	 * @param params the parameter set for this layer
+	 */
 	protected void layer(ParameterSet params) {
 		Gene<PackedCollection> automationGene = envelopeAutomationChromosome.valueAt(depth());
 		PackedCollection automationParams =
@@ -405,6 +536,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		increment();
 	}
 
+	/** Removes the most recently added layer from the hierarchy. */
 	public void removeLayer() {
 		layerParams.remove(layerParams.size() - 1);
 		decrement();
@@ -418,10 +550,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		roots.forEach(layer -> layer.getLastParent().setChild(null));
 	}
 
+	/** Removes all layers from the hierarchy. */
 	public void clear() {
 		while (depth() > 0) removeLayer();
 	}
 
+	/** Refreshes the pattern by clearing and regenerating all layers. */
 	public void refresh() {
 		clear();
 		if (layerParams.size() != depth())
@@ -431,6 +565,13 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		IntStream.range(0, layerCount).forEach(i -> layer(layerChoiceChromosome.valueAt(i)));
 	}
 
+	/**
+	 * Chooses a note audio choice for the given scale and parameters.
+	 *
+	 * @param scale  the current layer scale in measures
+	 * @param params the parameter set
+	 * @return the selected choice, or null if no valid choices exist
+	 */
 	public NoteAudioChoice choose(double scale, ParameterSet params) {
 		List<NoteAudioChoice> options = choices()
 				.filter(c -> scale >= c.getMinScale())
@@ -570,6 +711,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		});
 	}
 
+	/**
+	 * Returns the position of the next note after the given position.
+	 *
+	 * @param position the current position in measures
+	 * @return the position of the next note, or the pattern duration if none found
+	 */
 	public double nextNotePosition(double position) {
 		return getAllElements(position, duration).stream()
 				.map(PatternElement::getPositions)
@@ -579,53 +726,91 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				.min().orElse(duration);
 	}
 
+	/**
+	 * Serializable snapshot of a {@link PatternLayerManager}'s configuration.
+	 */
 	public static class Settings {
+		/** The channel index for this pattern. */
 		private int channel;
+		/** The pattern duration in measures. */
 		private double duration;
+		/** The scale traversal strategy. */
 		private ScaleTraversalStrategy scaleTraversalStrategy;
+		/** The scale traversal depth. */
 		private int scaleTraversalDepth;
+		/** The minimum layer scale in measures. */
 		private double minLayerScale;
+		/** Whether this pattern is melodic. */
 		private boolean melodic;
+		/** The number of active layers. */
 		private int layerCount;
 
+		/** The parameter function for note/factory selection. */
 		private ParameterFunction factorySelection;
+		/** The position function for section activity selection. */
 		private ParameterizedPositionFunction activeSelection;
+		/** The element factory configuration. */
 		private PatternElementFactory elementFactory;
 
+		/** Returns the channel index. */
 		public int getChannel() { return channel; }
+		/** Sets the channel index. */
 		public void setChannel(int channel) { this.channel = channel; }
 
+		/** Returns the pattern duration in measures. */
 		public double getDuration() { return duration; }
+		/** Sets the pattern duration in measures. */
 		public void setDuration(double duration) { this.duration = duration; }
 
+		/** Returns the scale traversal strategy. */
 		public ScaleTraversalStrategy getScaleTraversalStrategy() { return scaleTraversalStrategy; }
+		/** Sets the scale traversal strategy. */
 		public void setScaleTraversalStrategy(ScaleTraversalStrategy scaleTraversalStrategy) { this.scaleTraversalStrategy = scaleTraversalStrategy; }
 
+		/** Returns the scale traversal depth. */
 		public int getScaleTraversalDepth() { return scaleTraversalDepth; }
+		/** Sets the scale traversal depth. */
 		public void setScaleTraversalDepth(int scaleTraversalDepth) { this.scaleTraversalDepth = scaleTraversalDepth; }
 
+		/** Returns the minimum layer scale in measures. */
 		public double getMinLayerScale() { return minLayerScale; }
+		/** Sets the minimum layer scale in measures. */
 		public void setMinLayerScale(double minLayerScale) { this.minLayerScale = minLayerScale; }
 
+		/** Returns whether this pattern is melodic. */
 		public boolean isMelodic() { return melodic; }
+		/** Sets whether this pattern is melodic. */
 		public void setMelodic(boolean melodic) { this.melodic = melodic; }
 
+		/** Returns the factory selection parameter function. */
 		public ParameterFunction getFactorySelection() { return factorySelection; }
+		/** Sets the factory selection parameter function. */
 		public void setFactorySelection(ParameterFunction factorySelection) { this.factorySelection = factorySelection; }
 
+		/** Returns the active selection position function. */
 		public ParameterizedPositionFunction getActiveSelection() { return activeSelection; }
+		/** Sets the active selection position function. */
 		public void setActiveSelection(ParameterizedPositionFunction activeSelection) { this.activeSelection = activeSelection; }
 
+		/** Returns the element factory. */
 		public PatternElementFactory getElementFactory() { return elementFactory; }
+		/** Sets the element factory. */
 		public void setElementFactory(PatternElementFactory elementFactory) { this.elementFactory = elementFactory; }
 
+		/**
+		 * Sets the layer count from a list of parameter sets (for legacy deserialization).
+		 *
+		 * @param layers the list of layer parameter sets
+		 */
 		public void setLayers(List<ParameterSet> layers) {
 			if (layers != null) {
 				this.layerCount = layers.size();
 			}
 		}
 
+		/** Sets the number of active layers. */
 		public void setLayerCount(int layerCount) { this.layerCount = layerCount; }
+		/** Returns the number of active layers. */
 		public int getLayerCount() { return layerCount; }
 	}
 }

@@ -117,9 +117,17 @@ import java.lang.ref.ReferenceQueue;
  * @see RAM
  */
 public class NativeRef<T extends RAM> extends MemoryReference<T> {
+	/** Native pointer address of the tracked memory block, cached for post-GC access. */
 	private long address;
+	/** Size of the tracked memory block in bytes, cached for post-GC access. */
 	private long size;
 
+	/**
+	 * Creates a native reference for the given RAM instance and enqueues it with the given queue.
+	 *
+	 * @param ref   RAM instance to track
+	 * @param queue Reference queue that receives this reference after GC
+	 */
 	public NativeRef(T ref, ReferenceQueue<? super T> queue) {
 		super(ref, queue);
 		this.address = ref.getContainerPointer();

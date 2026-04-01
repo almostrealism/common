@@ -34,8 +34,17 @@ import org.almostrealism.graph.temporal.BaseAudioData;
  * @see ValueSequenceComputation
  */
 public class ValueSequencePush extends ValueSequenceComputation implements CodeFeatures {
+	/** Switch expression that selects the active value producer based on sequence position. */
 	private final Switch choice;
 
+	/**
+	 * Creates a repeating ValueSequencePush that selects among the given choices.
+	 *
+	 * @param data           audio state data for wave position tracking
+	 * @param durationFrames duration of each step in frames
+	 * @param output         output buffer that receives the selected value
+	 * @param choices        value producers, one per step in the sequence
+	 */
 	public ValueSequencePush(BaseAudioData data,
 							 Producer<PackedCollection> durationFrames,
 							 PackedCollection output,
@@ -43,6 +52,15 @@ public class ValueSequencePush extends ValueSequenceComputation implements CodeF
 		this(data, durationFrames, output, true, choices);
 	}
 
+	/**
+	 * Creates a ValueSequencePush with configurable repeat behavior.
+	 *
+	 * @param data           audio state data for wave position tracking
+	 * @param durationFrames duration of each step in frames
+	 * @param output         output buffer that receives the selected value
+	 * @param repeat         whether the sequence repeats after the last step
+	 * @param choices        value producers, one per step in the sequence
+	 */
 	public ValueSequencePush(BaseAudioData data,
 							 Producer<PackedCollection> durationFrames,
 							 PackedCollection output, boolean repeat,

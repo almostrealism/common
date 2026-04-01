@@ -193,6 +193,14 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 		return l;
 	}
 
+	/**
+	 * Combines the given surface with all surfaces from the iterator into a single list.
+	 *
+	 * @param surface       the primary surface to include
+	 * @param otherSurfaces an iterator of additional surfaces to include
+	 * @return a list containing all other surfaces followed by the primary surface
+	 * @deprecated This method does not belong on Scene; assemble lists at the call site instead.
+	 */
 	@Deprecated
 	public static List<Curve<PackedCollection>> combineSurfaces(Curve<PackedCollection> surface,
 										Iterator<Curve<PackedCollection>> otherSurfaces) {
@@ -202,6 +210,14 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 		return allSurfaces;
 	}
 
+	/**
+	 * Combines the given surface with all surfaces from the iterable into a single list.
+	 *
+	 * @param surface       the primary surface to include
+	 * @param otherSurfaces an iterable of additional surfaces to include
+	 * @return a list containing all other surfaces followed by the primary surface
+	 * @deprecated This method does not belong on Scene; assemble lists at the call site instead.
+	 */
 	@Deprecated
 	public static List<Curve<PackedCollection>> combineSurfaces(Curve<PackedCollection> surface, Iterable<? extends Curve<PackedCollection>> otherSurfaces) {
 		List<Curve<PackedCollection>> allSurfaces = new ArrayList<>();

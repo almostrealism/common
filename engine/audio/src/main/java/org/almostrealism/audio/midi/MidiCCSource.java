@@ -48,20 +48,41 @@ public class MidiCCSource implements ModulationSource, CodeFeatures {
 	 * Curve types for CC value scaling.
 	 */
 	public enum CurveType {
+		/** Output scales linearly with the MIDI CC value. */
 		LINEAR,
+		/** Output scales exponentially, emphasizing changes at low CC values. */
 		EXPONENTIAL,
+		/** Output scales logarithmically, emphasizing changes at high CC values. */
 		LOGARITHMIC,
+		/** Output follows an S-shaped curve for smooth transitions near center and extremes. */
 		S_CURVE
 	}
 
+	/** The MIDI CC controller number (0–127) this source responds to. */
 	private final int ccNumber;
+
+	/** Thread-safe holder for the most recently received raw MIDI CC value (0–127). */
 	private final AtomicInteger rawValue;
+
+	/** Single-element PackedCollection holding the current scaled and smoothed output value. */
 	private final PackedCollection output;
+
+	/** The current smoothed output value in the [minValue, maxValue] range. */
 	private volatile double smoothedValue;
+
+	/** Minimum output value produced when the CC is at 0. */
 	private double minValue;
+
+	/** Maximum output value produced when the CC is at 127. */
 	private double maxValue;
+
+	/** Curve applied to the normalized CC value before output scaling. */
 	private CurveType curve;
+
+	/** Smoothing coefficient in [0, 1]; 0 = no smoothing, values approaching 1 = heavy smoothing. */
 	private double smoothing;
+
+	/** When true, the center CC value (64) maps to 0.0 output with negative range below center. */
 	private boolean bipolar;
 
 	/**

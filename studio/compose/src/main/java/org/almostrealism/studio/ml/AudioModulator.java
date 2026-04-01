@@ -33,9 +33,13 @@ import java.util.Random;
  * loading audio samples and generating interpolated variations.
  */
 public class AudioModulator implements AutoCloseable, CodeFeatures {
+	/** Default latent interpolation dimension. */
 	public static final int DIM = 8;
 
+	/** The underlying audio composer that performs latent interpolation. */
 	private final AudioComposer composer;
+
+	/** Target audio duration in seconds, capped by the autoencoder's maximum. */
 	private double audioDuration;
 
 	/**
@@ -69,19 +73,43 @@ public class AudioModulator implements AutoCloseable, CodeFeatures {
 		audioDuration = composer.getMaximumAudioDuration();
 	}
 
+	/** Returns the target audio output duration in seconds. */
 	public double getAudioDuration() { return audioDuration; }
+
+	/**
+	 * Sets the target audio output duration in seconds, capped by the autoencoder maximum.
+	 *
+	 * @param seconds the desired duration
+	 */
 	public void setAudioDuration(double seconds) {
 		this.audioDuration = Math.min(composer.getMaximumAudioDuration(), seconds);
 	}
 
+	/**
+	 * Encodes and adds the given raw audio as a composable source.
+	 *
+	 * @param audio the raw audio samples to encode and add
+	 */
 	public void addAudio(PackedCollection audio) {
 		composer.addAudio(cp(audio));
 	}
 
+	/**
+	 * Adds pre-encoded latent features directly as a composable source.
+	 *
+	 * @param features the pre-encoded feature collection to add
+	 */
 	public void addFeatures(PackedCollection features) {
 		composer.addSource(cp(features));
 	}
 
+	/**
+	 * Projects the given position vector through the latent composition, returning
+	 * stereo audio samples shaped {@code [2, finalSamples]}.
+	 *
+	 * @param position the interpolation position vector
+	 * @return stereo audio data as a packed collection
+	 */
 	public PackedCollection project(PackedCollection position) {
 		try (PackedCollection result = composer.getResultant(cp(position)).evaluate()) {
 			double[] data = result.toArray();
@@ -99,10 +127,22 @@ public class AudioModulator implements AutoCloseable, CodeFeatures {
 		}
 	}
 
+	/**
+	 * Generates audio from the given position vector and saves it to the named file.
+	 *
+	 * @param position    the interpolation position vector
+	 * @param destination the output file path
+	 */
 	public void generateAudio(PackedCollection position, String destination) {
 		generateAudio(position, new File(destination));
 	}
 
+	/**
+	 * Generates audio from the given position vector and saves it to the given file.
+	 *
+	 * @param position    the interpolation position vector
+	 * @param destination the output file
+	 */
 	public void generateAudio(PackedCollection position, File destination) {
 		PackedCollection result = project(position);
 		WaveData out = new WaveData(result, (int) composer.getSampleRate());

@@ -34,29 +34,63 @@ import java.util.Map;
 import java.util.Set;
 
 /**
+ * JDBC-backed persistence layer for storing and querying {@link JobOutput} and
+ * binary blob data in an output table.
+ *
+ * <p>On construction, a JDBC driver is loaded and a connection established to the target
+ * database. Prepared statements for common operations (insert, select, delete, update) are
+ * compiled once and reused. Multiple {@link OutputHandler} and {@link QueryHandler} instances
+ * may be registered; each receives a copy of every store or query request.</p>
+ *
+ * <p>Column name constants (e.g., {@link #toaColumn}, {@link #dataColumn}) are used consistently
+ * across all SQL statements to avoid hard-coded string literals.</p>
+ *
  * @author  Michael Murray
  */
 public class DatabaseConnection {
+	/** The bytea type name used by PostgreSQL for binary data columns. */
 	public static final String postgresBytea = "bytea";
+	/** The bytea type name used by HSQLDB for binary data columns. */
 	public static final String hsqldbBytea = "blob"; // "binary";
+	/** The current bytea type name used in DDL statements; defaults to the PostgreSQL value. */
 	public static String bytea = "bytea";
 
+	/** Name of the user name column in the users table. */
 	public static final String usrColumn = "usr";
-	
+
+	/** Name of the time-of-arrival column. */
 	public static final String toaColumn = "toa";
+	/** Name of the binary data column. */
 	public static final String dataColumn = "data";
+	/** Name of the URI column. */
 	public static final String uriColumn = "uri";
+	/** Name of the integer index column. */
 	public static final String indexColumn = "ind";
+	/** Name of the reference count column. */
 	public static final String refColumn = "refs";
+	/** Name of the duplication count column. */
 	public static final String dupColumn = "dups";
+	/** Name of the user ID column. */
 	public static final String uidColumn = "usrid";
+	/** Name of the task ID column. */
 	public static final String tidColumn = "tid";
 
+	/** When {@code true}, logs SQL statements and query results to standard output. */
 	public static boolean verbose = false;
-	
+
+	/**
+	 * Default {@link OutputHandler} implementation that inserts a {@link JobOutput} into
+	 * the output table using the connection's pre-compiled {@code storeOutput} statement.
+	 */
 	protected class DefaultOutputHandler implements OutputHandler {
+		/** The target output table name. */
 		private final String table;
-		
+
+		/**
+		 * Constructs a handler that stores output in the specified table.
+		 *
+		 * @param table The name of the output table
+		 */
 		public DefaultOutputHandler(String table) { this.table = table; }
 
 		@Override
@@ -76,6 +110,13 @@ public class DatabaseConnection {
 		}
 	}
 	
+	/**
+	 * Default {@link QueryHandler} implementation that executes a {@link Query} against
+	 * the database and returns results as a {@link Hashtable}.
+	 *
+	 * <p>If the query has a {@link Query.ResultHandler} set, each row is delivered to it
+	 * instead of being accumulated in the hashtable.</p>
+	 */
 	protected class DefaultQueryHandler implements QueryHandler {
 		@Override
 		public Hashtable executeQuery(Query q) {
@@ -174,16 +215,26 @@ public class DatabaseConnection {
 		}
 	}
 	
+	/** Name of the database table holding user accounts. */
 	private final String userTable = "users";
+	/** Name of the primary output table used for all insert and query operations. */
 	private final String outputTable;
+	/** The active JDBC connection to the database. */
 	private Connection db;
+	/** Pre-compiled statements for common operations: select all, binary insert, store output,
+	 *  select user, delete by URI, delete by index, delete by TOA, update duplication, config job. */
 	private PreparedStatement selectAll, binaryInsert, storeOutput, selectUser,
 								deleteUri, deleteIndex, deleteToa, updateDup, configJob;
-	
+
+	/** Registered output handlers notified on every {@link #storeOutput} call. */
 	private final Set<OutputHandler> outputHandlers;
+	/** Registered query handlers notified on every {@link #executeQuery} call. */
 	private final Set<QueryHandler> queryHandlers;
+	/** Cumulative count of job outputs received and count since last {@link #getThroughput()} call. */
 	private int totalRecieved, currentRecieved;
+	/** Sum of job execution times for all received outputs. */
 	private long totalJobTime;
+	/** Timestamp of the last {@link #getThroughput()} call and of the first received output. */
 	private long lastChecked, firstRecieved;
 	
 	/**
@@ -348,6 +399,11 @@ public class DatabaseConnection {
 		}
 	}
 	
+	/**
+	 * Returns the name of the output table used by this connection.
+	 *
+	 * @return The output table name
+	 */
 	public String getTable() { return this.outputTable; }
 	
 	/**
@@ -378,6 +434,12 @@ public class DatabaseConnection {
 	 */
 	public boolean removeQueryHandler(QueryHandler h) { return this.queryHandlers.remove(h); }
 	
+	/**
+	 * Creates the output table in the database with the standard column schema.
+	 *
+	 * @return {@code true} if the table was created successfully
+	 * @throws SQLException If the SQL statement fails (e.g., if the table already exists)
+	 */
 	public boolean createOutputTable() throws SQLException {
 		try (Statement s = this.db.createStatement()) {
 			s.executeUpdate("CREATE TABLE " + this.outputTable +
@@ -402,6 +464,12 @@ public class DatabaseConnection {
 		return true;
 	}
 	
+	/**
+	 * Creates the user accounts table in the database.
+	 *
+	 * @return {@code true} if the table was created; currently always returns {@code false} (not yet implemented)
+	 * @throws SQLException If the SQL statement fails
+	 */
 	public boolean createUserTable() throws SQLException {
 		// TODO  Add createUserTable
 		
@@ -437,6 +505,12 @@ public class DatabaseConnection {
 		}
 	}
 
+	/**
+	 * Iterates a hashtable of time-to-output entries and stores each one.
+	 *
+	 * @param h A hashtable mapping time-of-arrival strings to output strings
+	 * @deprecated The purpose of this method is unclear and it may be removed.
+	 */
 	// TODO  It is unclear what this is for
 	@Deprecated
 	public void storeOutput(Hashtable h) {
@@ -478,6 +552,15 @@ public class DatabaseConnection {
 		outputHandlers.forEach(oh -> oh.storeOutput(time, uid, o));
 	}
 	
+	/**
+	 * Inserts a binary blob into the output table, keyed by URI and index.
+	 *
+	 * @param time  The current time in milliseconds (stored in the TOA column)
+	 * @param data  The binary data to store
+	 * @param uri   The URI key identifying this blob
+	 * @param index The integer index for this entry
+	 * @return {@code true} if the insert succeeded, {@code false} on error or if unprepared
+	 */
 	public boolean storeOutput(long time, byte[] data, String uri, int index) {
 		if (this.binaryInsert == null) return false;
 		
@@ -585,6 +668,12 @@ public class DatabaseConnection {
 		return result;
 	}
 	
+	/**
+	 * Updates the duplication count for the row identified by the given time-of-arrival.
+	 *
+	 * @param toa The time-of-arrival key identifying the row to update
+	 * @param dup The new duplication count value
+	 */
 	public void updateDuplication(long toa, int dup) {
 		if (DatabaseConnection.verbose) {
 			System.out.println("DatabaseConnection (" + this.outputTable +
@@ -604,6 +693,14 @@ public class DatabaseConnection {
 		}
 	}
 	
+	/**
+	 * Populates a {@link KeyValueStore} with the URI, index, and binary data fields
+	 * from the row whose TOA matches the given value.
+	 *
+	 * @param j   The key-value store to populate
+	 * @param toa The time-of-arrival key identifying the row to read
+	 * @return {@code true} if a matching row was found and the store was populated
+	 */
 	public boolean configureProperties(KeyValueStore j, long toa) {
 		try {
 			synchronized (this.configJob) {
@@ -632,6 +729,11 @@ public class DatabaseConnection {
 		}
 	}
 	
+	/**
+	 * Deletes all rows from the output table whose URI column matches the given value.
+	 *
+	 * @param uri The URI whose rows are to be deleted
+	 */
 	public void deleteUri(String uri) {
 		try {
 			synchronized (this.deleteUri) {
@@ -649,6 +751,13 @@ public class DatabaseConnection {
 		}
 	}
 	
+	/**
+	 * Deletes the row from the output table matching the given URI and index.
+	 *
+	 * @param uri   The URI identifying the row
+	 * @param index The index identifying the row
+	 * @return {@code true} if the deletion succeeded, {@code false} on error or if unprepared
+	 */
 	public boolean deleteIndex(String uri, int index) {
 		if (this.deleteIndex == null) return false;
 		
@@ -673,6 +782,11 @@ public class DatabaseConnection {
 		return false;
 	}
 	
+	/**
+	 * Deletes the row from the output table whose time-of-arrival matches the given value.
+	 *
+	 * @param toa The time-of-arrival value identifying the row to delete
+	 */
 	public void deleteToa(long toa) {
 		try {
 			synchronized (this.deleteToa) {
@@ -690,6 +804,13 @@ public class DatabaseConnection {
 		}
 	}
 	
+	/**
+	 * Escapes single-quote characters in a string by doubling them, making it safe for
+	 * embedding in a SQL string literal.
+	 *
+	 * @param s The string to escape
+	 * @return The escaped string with all {@code '} replaced by {@code ''}
+	 */
 	public static String prepareString(String s) {
 		int index = 0;
 		
@@ -701,10 +822,20 @@ public class DatabaseConnection {
 		return s;
 	}
 	
+	/**
+	 * Returns the average job execution time in milliseconds across all received outputs.
+	 *
+	 * @return Total job time divided by total outputs received
+	 */
 	public double getTotalAverageJobTime() {
 		return this.totalJobTime / ((double)this.totalRecieved);
 	}
 	
+	/**
+	 * Returns the average throughput in outputs per minute since the first output was received.
+	 *
+	 * @return Total outputs received divided by minutes elapsed since the first output
+	 */
 	public double getTotalAverageThroughput() {
 		long time = System.currentTimeMillis();
 		double d = (time - this.firstRecieved) / 60000.0;

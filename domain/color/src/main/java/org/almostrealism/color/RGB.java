@@ -75,14 +75,50 @@ import java.util.function.BiFunction;
  * @author Michael Murray
  */
 public class RGB extends PackedCollection implements Externalizable, Cloneable {
+	/**
+	 * Internal storage interface for RGB channel data.
+	 *
+	 * <p>Implementations handle the underlying memory representation of the three
+	 * color channels (red, green, blue) and provide arithmetic operations used by
+	 * the enclosing {@link RGB} class for in-place modifications.
+	 */
 	protected interface Data extends MemoryData {
+		/**
+		 * Adds the given value to the channel at index {@code i}.
+		 *
+		 * @param i the channel index (0=red, 1=green, 2=blue)
+		 * @param r the value to add
+		 */
 		void add(int i, double r);
+
+		/**
+		 * Multiplies the channel at index {@code i} by the given scale factor.
+		 *
+		 * @param i the channel index (0=red, 1=green, 2=blue)
+		 * @param r the scale factor to apply
+		 */
 		void scale(int i, double r);
 
+		/** Returns the sum of all three channel values. */
 		double sum();
+
+		/**
+		 * Writes the channel data to the given output stream.
+		 *
+		 * @param out the output stream to write to
+		 * @throws IOException if an I/O error occurs
+		 */
 		void write(ObjectOutput out) throws IOException;
+
+		/**
+		 * Reads the channel data from the given input stream.
+		 *
+		 * @param in the input stream to read from
+		 * @throws IOException if an I/O error occurs
+		 */
 		void read(ObjectInput in) throws IOException;
-		
+
+		/** Returns the shape of the stored color data as a traversal policy. */
 		TraversalPolicy getShape();
 	}
 
@@ -110,7 +146,10 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 //		}
 //	}
 	
+  /** Nibble mask used for extracting 4-bit groups when encoding color channel values as characters. */
   public static final long byteMask = 15;
+
+  /** The default color depth (bits) for newly created RGB objects. */
   public static int defaultDepth = 192;
 
   /** Threshold below which two color channel values are considered equal. */
@@ -118,9 +157,14 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 
   /** Bucket size for hashCode rounding, must be larger than EPSILON. */
   private static final double HASH_BUCKET = 1.0 / 64.0;
-  
+
+  /** The color depth in bits used by this RGB instance. */
   private int colorDepth = RGB.defaultDepth;
+
+  /** Gamma correction value, currently unused in the active code path. */
   private double gamma = 0.75;
+
+  /** The underlying storage implementation for the three channel values. */
   private Data data;
 
 	/**
@@ -153,6 +197,15 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 		this(model, r, g, b, true);
 	}
 
+	/**
+	 * Internal constructor that optionally skips initialization of the memory data.
+	 *
+	 * @param model  the color depth model (e.g., 192 for 192-bit)
+	 * @param r      the red channel value
+	 * @param g      the green channel value
+	 * @param b      the blue channel value
+	 * @param init   when {@code true}, the channel values are written to memory immediately
+	 */
 	private RGB(int model, double r, double g, double b, boolean init) {
 		super(RGB.shape());
 		this.initColorModule(model);
@@ -246,10 +299,29 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 		initColorModule(192, delegate, delegateOffset);
 	}
 
+	/**
+	 * Initialises the color module using the given depth model and no delegate memory.
+	 *
+	 * @param model the color depth model (e.g., 192 for 192-bit)
+	 */
 	private void initColorModule(int model) {
 		initColorModule(model, null, 0);
 	}
 
+	/**
+	 * Initialises the color module, optionally binding this RGB to a region of an existing
+	 * {@link MemoryData} buffer.
+	 *
+	 * <p>Supported models:</p>
+	 * <ul>
+	 *   <li>192 — full 192-bit precision via {@link RGBData192}</li>
+	 *   <li>48  — not currently available (throws {@link RuntimeException})</li>
+	 * </ul>
+	 *
+	 * @param model           the color depth model
+	 * @param delegate        the backing memory buffer, or {@code null} to allocate new memory
+	 * @param delegateOffset  the offset within the delegate where this RGB's data starts
+	 */
 	private void initColorModule(int model, MemoryData delegate, int delegateOffset) {
 		if (model == 192) {
 			if (delegate == null) {
@@ -268,6 +340,13 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 		this.colorDepth = model;
 	}
 	
+	/**
+	 * Applies an intensity factor to a single color channel during wavelength-to-RGB conversion.
+	 *
+	 * @param c the raw channel value derived from the wavelength mapping
+	 * @param f the intensity correction factor (0.0–1.0), reduced near spectrum edges
+	 * @return the adjusted channel value
+	 */
 	private double adjust(double c, double f) {
 		return c * f;
 //		if (c == 0.0)
@@ -276,6 +355,12 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 //			return Math.pow(c * f, this.gamma);
 	}
 
+	/**
+	 * Returns the {@link TraversalPolicy} shape of this RGB object's backing memory,
+	 * delegating to the underlying {@link #data} module.
+	 *
+	 * @return the shape of the backing data
+	 */
 	@Override
 	public TraversalPolicy getShape() {
 		return data.getShape();
@@ -573,6 +658,14 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 		return new RGB(r, g, b);
 	}
 	
+	/**
+	 * Encodes this RGB color as a 48-character array suitable for compact text serialization.
+	 *
+	 * <p>Each channel (red, green, blue) is encoded as 16 characters using 4-bit nibble groups
+	 * of the raw IEEE 754 double bit representation, offset by 32 for printable characters.</p>
+	 *
+	 * @return a 48-element char array containing the encoded color data
+	 */
 	public char[] encode() {
 		long lr = Double.doubleToRawLongBits(this.getRed());
 		long lg = Double.doubleToRawLongBits(this.getGreen());
@@ -590,8 +683,25 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 		return data;
 	}
 	
+	/**
+	 * Decodes an RGB color from a character array produced by {@link #encode()}.
+	 *
+	 * @param data the 48-element encoded character array
+	 * @return the decoded {@link RGB} color
+	 */
 	public static RGB decode(char data[]) { return RGB.decode(data, 0); }
-	
+
+	/**
+	 * Decodes an RGB color from a character array starting at the given index.
+	 *
+	 * <p>Reads 48 characters starting from {@code index}, interpreting them as
+	 * three IEEE 754 double values (16 characters each) in the format produced
+	 * by {@link #encode()}.</p>
+	 *
+	 * @param data  the character array containing encoded data
+	 * @param index the starting index within the array
+	 * @return the decoded {@link RGB} color
+	 */
 	public static RGB decode(char data[], int index) {
 		long lr = 0, lg = 0, lb = 0;
 		

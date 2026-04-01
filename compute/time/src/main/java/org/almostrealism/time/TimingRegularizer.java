@@ -185,8 +185,11 @@ import java.util.Queue;
  * @author Michael Murray
  */
 public class TimingRegularizer {
+	/** The target tick duration in nanoseconds that the regularizer aims to maintain. */
 	private final long standardDuration;
+	/** Sliding window of the most recently observed tick durations, used to compute adaptive corrections. */
 	private final Queue<Long> recentDurations;
+	/** Maximum number of recent durations retained in the sliding window. */
 	private final int maxRecentDurations = 3;
 
 	/**

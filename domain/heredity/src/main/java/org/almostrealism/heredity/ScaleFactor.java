@@ -51,6 +51,7 @@ import java.util.Optional;
  * @see Factor
  */
 public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, CollectionFeatures {
+	/** The scalar multiplier applied to the input collection during factor evaluation. */
 	private PackedCollection scale;
 
 	/**

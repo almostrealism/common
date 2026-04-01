@@ -102,19 +102,36 @@ import java.util.stream.IntStream;
  * @see org.almostrealism.hardware.AcceleratedOperation
  */
 public class KernelTraversalOperationGenerator implements KernelTraversalProvider, Destroyable, ConsoleFeatures {
+	/** If true, traversal operation generation is enabled; set to false to disable code generation. */
 	public static boolean enableGeneration = true;
+	/** If true, verbose diagnostic output is emitted during traversal code generation. */
 	public static boolean enableVerbose = false;
+	/** Default maximum number of lookup table entries generated per traversal operation. */
 	public static int defaultMaxEntries = 128;
+	/** Minimum number of child expressions required before generating a traversal operation. */
 	public static int minimumChildren = 16;
 
+	/** Language operations used for generating kernel traversal expressions. */
 	private LanguageOperations lang;
 
+	/** Maximum number of traversal operations that can be generated. */
 	private int count;
+	/** If true, the count is fixed and cannot grow dynamically. */
 	private boolean fixed;
+	/** Factory for creating array variables from producers during traversal code generation. */
 	private Function<Producer<?>, ArrayVariable<?>> variableFactory;
+	/** Map from operation key to generated traversal operations. */
 	private Map<String, KernelTraversalOperation> operations;
+	/** Map from variable key to generated array variables. */
 	private Map<String, ArrayVariable> variables;
 
+	/**
+	 * Creates a generator with the given count, fixedness, and variable factory.
+	 *
+	 * @param count           Maximum number of traversal operations
+	 * @param fixed           If true, the count is fixed
+	 * @param variableFactory Factory for creating array variables from producers
+	 */
 	protected KernelTraversalOperationGenerator(int count, boolean fixed, Function<Producer<?>, ArrayVariable<?>> variableFactory) {
 		this.lang = new LanguageOperationsStub();
 		this.count = count;

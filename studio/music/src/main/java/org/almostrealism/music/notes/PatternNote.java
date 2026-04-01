@@ -77,24 +77,42 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class PatternNote extends PatternNoteAudioAdapter {
+	/** Shared aggregator used to combine multiple audio layers into a single note. */
 	private static final NoteAudioSourceAggregator layerAggregator;
 
 	static {
 		layerAggregator = new NoteAudioSourceAggregator();
 	}
 
+	/** The delegate note audio used in delegate mode. */
 	private PatternNoteAudio delegate;
+
+	/** The filter applied to the delegate in delegate mode. */
 	private NoteAudioFilter filter;
 
+	/** The list of layers combined in layer mode. */
 	private List<PatternNoteAudio> layers;
+
+	/** The aggregation choice value passed to the layer aggregator. */
 	private double aggregationChoice;
 
+	/** Creates an uninitialized {@code PatternNote}. */
 	public PatternNote() { }
 
+	/**
+	 * Creates a {@code PatternNote} in layer mode with the given layers.
+	 *
+	 * @param layers the list of layers to combine
+	 */
 	public PatternNote(List<PatternNoteAudio> layers) {
 		this.layers = layers;
 	}
 
+	/**
+	 * Creates a {@code PatternNote} in layer mode using the given audio selection values.
+	 *
+	 * @param noteAudioSelections the selection values for each layer
+	 */
 	public PatternNote(double... noteAudioSelections) {
 		this(new ArrayList<>());
 
@@ -103,27 +121,48 @@ public class PatternNote extends PatternNoteAudioAdapter {
 		}
 	}
 
+	/**
+	 * Creates a {@code PatternNote} in delegate mode wrapping the given delegate with a filter.
+	 *
+	 * @param delegate the underlying note audio
+	 * @param filter   the audio filter to apply
+	 */
 	public PatternNote(PatternNoteAudio delegate, NoteAudioFilter filter) {
 		this.delegate = delegate;
 		this.filter = filter;
 	}
 
+	/**
+	 * Adds a layer using the given audio selection value.
+	 *
+	 * @param noteAudioSelection the selection value for the new layer
+	 */
 	public void addLayer(double noteAudioSelection) {
 		layers.add(new PatternNoteAudioChoice(noteAudioSelection));
 	}
 
+	/** Returns the list of layers in layer mode. */
 	public List<PatternNoteAudio> getLayers() {
 		return layers;
 	}
 
+	/** Returns the aggregation choice value. */
 	public double getAggregationChoice() {
 		return aggregationChoice;
 	}
 
+	/** Sets the aggregation choice value. */
 	public void setAggregationChoice(double aggregationChoice) {
 		this.aggregationChoice = aggregationChoice;
 	}
 
+	/**
+	 * Returns the list of audio providers for the given target and selection function.
+	 *
+	 * @param target         the key position target
+	 * @param audioSelection function mapping a double to a {@link PatternNoteAudio}
+	 * @return the list of providers
+	 */
 	public List<PatternNoteAudio> getProviders(KeyPosition<?> target, DoubleFunction<PatternNoteAudio> audioSelection) {
 		if (delegate instanceof PatternNote)
 			return ((PatternNote) delegate).getProviders(target, audioSelection);
@@ -134,6 +173,11 @@ public class PatternNote extends PatternNoteAudioAdapter {
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Propagates the keyboard tuning to all layers or the delegate.
+	 *
+	 * @param tuning the keyboard tuning to apply
+	 */
 	public void setTuning(KeyboardTuning tuning) {
 		if (delegate == null) {
 			layers.forEach(l -> {

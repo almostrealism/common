@@ -64,8 +64,10 @@ public class RayFieldFactory implements CodeFeatures {
      */
     public enum RayDistribution { UNIFORM, RANDOM }
 
+    /** Singleton instance of this factory. */
     private static RayFieldFactory INSTANCE;
 
+    /** Private constructor enforcing the singleton pattern. */
     private RayFieldFactory() {}
 
     /**

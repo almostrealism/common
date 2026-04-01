@@ -27,8 +27,11 @@ import org.almostrealism.hardware.mem.RAM;
  * @see MTLBuffer
  */
 public class MetalMemory extends RAM {
+	/** The underlying Metal buffer providing GPU-accessible storage for this memory region. */
 	private final MTLBuffer mem;
+	/** Size of this memory region in bytes. */
 	private final long size;
+	/** The memory provider responsible for allocating and deallocating this memory. */
 	private final MetalMemoryProvider provider;
 
 	/**

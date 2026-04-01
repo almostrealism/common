@@ -71,15 +71,31 @@ import java.util.Properties;
  * @see AlertDeliveryProvider
  */
 public class SignalWireDeliveryProvider implements AlertDeliveryProvider, ConsoleFeatures {
+	/** Maximum number of SMS messages allowed per JVM session to prevent runaway charges. */
 	private static final int maxMessages = 30;
+
+	/** Running count of SMS messages sent in the current session. */
 	private static int totalMessages;
 
+	/** The singleton default provider loaded from the properties file, or {@code null} if not loaded. */
 	private static SignalWireDeliveryProvider defaultProvider;
 
+	/** The SignalWire space name (subdomain of {@code signalwire.com}). */
 	private String space;
+
+	/** The SignalWire project ID used for API authentication. */
 	private String projectId;
+
+	/** The SignalWire API token used for authentication. */
 	private String token;
-	private String fromNumber, toNumber;
+
+	/** The sender phone number in E.164 format. */
+	private String fromNumber;
+
+	/** The recipient phone number in E.164 format. */
+	private String toNumber;
+
+	/** Optional prefix prepended to all outgoing alert messages. */
 	private String alertPrefix;
 
 	/**

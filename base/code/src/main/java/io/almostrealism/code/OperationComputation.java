@@ -23,15 +23,51 @@ import io.almostrealism.relation.Operation;
 
 import java.util.Collection;
 
+/**
+ * A {@link Computation} that also implements {@link Operation}, representing a computation
+ * whose result is consumed for its side effects (i.e., a void-valued computation).
+ *
+ * <p>{@code OperationComputation} bridges the {@link Computation} model (which owns a
+ * {@link io.almostrealism.scope.Scope} and can be compiled) with the {@link Operation}
+ * model (which produces a {@link Runnable} for side-effectful execution). The
+ * {@link #isolate()} method wraps this computation in an {@link IsolatedProcess} to
+ * break expression embedding and allow separate evaluation.</p>
+ *
+ * @param <T> the output type (typically {@code Void} for side-effect computations)
+ *
+ * @see Computation
+ * @see Operation
+ * @see io.almostrealism.compute.Process
+ */
 public interface OperationComputation<T> extends Computation<T>, Operation {
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Wraps this computation in an {@link IsolatedProcess} to isolate expression embedding.
+	 *
+	 * @return an isolated process wrapping this computation
+	 */
 	@Override
 	default Process<Process<?, ?>, Runnable> isolate() {
 		return new IsolatedProcess(this);
 	}
 
+	/**
+	 * A process wrapper that isolates an {@link Operation} from the surrounding expression graph.
+	 *
+	 * <p>This class is the mechanism by which expression embedding is broken — wrapping an
+	 * operation in {@code IsolatedProcess} prevents the optimizer from inlining the operation's
+	 * expression tree into its callers.</p>
+	 */
 	class IsolatedProcess implements Process<Process<?, ?>, Runnable>, OperationInfo {
+		/** The wrapped operation. */
 		private Operation op;
 
+		/**
+		 * Creates an isolated process wrapping the given operation.
+		 *
+		 * @param op the operation to isolate
+		 */
 		private IsolatedProcess(Operation op) {
 			this.op = op;
 		}

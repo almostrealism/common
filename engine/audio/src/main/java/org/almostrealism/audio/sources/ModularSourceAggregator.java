@@ -37,15 +37,29 @@ import java.util.stream.IntStream;
  * @see VolumeRescalingSourceAggregator
  */
 public class ModularSourceAggregator implements SourceAggregator, CodeFeatures {
+	/** Running counter used to assign a unique index to each instance for diagnostic purposes. */
 	private static long count = 0;
 
+	/** Declared types for each input slot; determines how each source is routed. */
 	private final InputType[] inputs;
 
+	/** Aggregator for summing SOURCE-type inputs into a combined audio signal. */
 	private final SummingSourceAggregator sum;
+
+	/** Aggregator that applies frequency-domain (EQ) rescaling using FREQUENCY-type inputs. */
 	private final FrequencyRescalingSourceAggregator eqAdjust;
+
+	/** Aggregator that applies volume scaling using VOLUME_ENVELOPE-type inputs. */
 	private final VolumeRescalingSourceAggregator volumeAdjust;
+
+	/** Unique index assigned at construction time, used for diagnostic logging. */
 	private final long index;
 
+	/**
+	 * Creates a ModularSourceAggregator with the specified input type declarations.
+	 *
+	 * @param inputs declared type for each input slot; length must match the number of sources passed to {@link #aggregate}
+	 */
 	public ModularSourceAggregator(InputType... inputs) {
 		this.inputs = inputs;
 		this.sum = new SummingSourceAggregator();
@@ -82,6 +96,13 @@ public class ModularSourceAggregator implements SourceAggregator, CodeFeatures {
 		return out;
 	}
 
+	/**
+	 * Filters the given sources array to those whose declared input type matches the specified type.
+	 *
+	 * @param type    the input type to extract
+	 * @param sources the full source array to filter
+	 * @return a new array containing only the sources whose corresponding declared type matches
+	 */
 	protected Producer<PackedCollection>[] extractInputs(InputType type, Producer<PackedCollection>... sources) {
 		int index = 0;
 		int tot = Math.toIntExact(IntStream.range(0, sources.length)
@@ -100,7 +121,15 @@ public class ModularSourceAggregator implements SourceAggregator, CodeFeatures {
 	@Override
 	public Console console() { return CellFeatures.console; }
 
+	/** Declares how a given input slot is interpreted during aggregation. */
 	public enum InputType {
-		SOURCE, FREQUENCY, FREQUENCY_ENVELOPE, VOLUME_ENVELOPE
+		/** A raw audio signal to be summed with other audio sources. */
+		SOURCE,
+		/** A frequency-domain (EQ) signal for rescaling the summed audio. */
+		FREQUENCY,
+		/** A frequency envelope signal (reserved for future use). */
+		FREQUENCY_ENVELOPE,
+		/** A volume envelope signal for amplitude scaling of the summed audio. */
+		VOLUME_ENVELOPE
 	}
 }

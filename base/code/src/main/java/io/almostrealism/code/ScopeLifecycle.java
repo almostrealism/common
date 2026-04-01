@@ -70,6 +70,13 @@ public interface ScopeLifecycle {
 	 */
 	default void resetArguments() { }
 
+	/**
+	 * Calls {@link #prepareArguments(ArgumentMap)} on every element in the stream that implements
+	 * {@link ScopeLifecycle}, ignoring non-lifecycle objects.
+	 *
+	 * @param potentialLifecycles a stream of objects that may implement ScopeLifecycle
+	 * @param map the argument map to pass to each lifecycle component
+	 */
 	static void prepareArguments(Stream<?> potentialLifecycles, ArgumentMap map) {
 		potentialLifecycles
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
@@ -77,6 +84,14 @@ public interface ScopeLifecycle {
 				.forEach(sl -> sl.prepareArguments(map));
 	}
 
+	/**
+	 * Calls {@link #prepareScope(ScopeInputManager, KernelStructureContext)} on every element
+	 * in the stream that implements {@link ScopeLifecycle}, ignoring non-lifecycle objects.
+	 *
+	 * @param potentialLifecycles a stream of objects that may implement ScopeLifecycle
+	 * @param manager the scope input manager to pass to each lifecycle component
+	 * @param context the kernel structure context to pass to each lifecycle component
+	 */
 	static void prepareScope(Stream<?> potentialLifecycles, ScopeInputManager manager, KernelStructureContext context) {
 		potentialLifecycles
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
@@ -84,6 +99,12 @@ public interface ScopeLifecycle {
 				.forEach(sl -> sl.prepareScope(manager, context));
 	}
 
+	/**
+	 * Calls {@link #resetArguments()} on every element in the stream that implements
+	 * {@link ScopeLifecycle}, ignoring non-lifecycle objects.
+	 *
+	 * @param potentialLifecycles a stream of objects that may implement ScopeLifecycle
+	 */
 	static void resetArguments(Stream<?> potentialLifecycles) {
 		potentialLifecycles
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)

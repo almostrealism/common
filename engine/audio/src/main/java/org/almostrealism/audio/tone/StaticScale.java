@@ -51,14 +51,34 @@ import java.util.List;
  * @see WesternChromatic
  */
 public class StaticScale<T extends KeyPosition> implements Scale<T> {
+	/** The ordered list of key positions in this scale. */
 	private List<T> notes;
 
+	/** Creates an empty StaticScale suitable for bean-style initialization. */
 	public StaticScale() { }
 
+	/**
+	 * Creates a StaticScale from an array of key positions.
+	 *
+	 * @param notes the notes to include in the scale
+	 */
 	public StaticScale(T[] notes) { setNotes(List.of(notes)); }
 
+	/**
+	 * Returns the ordered list of notes in this scale.
+	 *
+	 * @return the list of key positions
+	 */
 	public List<T> getNotes() { return notes; }
 
+	/**
+	 * Sets the notes for this scale.
+	 *
+	 * <p>Supports deserialization: if the list contains {@link String} elements,
+	 * they are automatically converted to {@link WesternChromatic} values by name.</p>
+	 *
+	 * @param notes the list of key positions or String note names
+	 */
 	public void setNotes(List<T> notes) {
 		this.notes = new ArrayList<>();
 
@@ -77,6 +97,7 @@ public class StaticScale<T extends KeyPosition> implements Scale<T> {
 		return notes.size();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public T valueAt(int pos) {
 		return notes.get(pos);

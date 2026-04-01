@@ -25,7 +25,19 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/**
+ * A sine expression applied to a single operand.
+ *
+ * <p>Generates code of the form {@code sin(input)}. The upper bound is always 1 since
+ * {@code |sin(x)| <= 1}. If the operand is a constant, the value is folded at factory time.
+ * The derivative is {@code cos(input) * d(input)}.</p>
+ */
 public class Sine extends Expression<Double> {
+	/**
+	 * Constructs a sine expression for the given operand.
+	 *
+	 * @param input the angle operand
+	 */
 	protected Sine(Expression<Double> input) {
 		super(Double.class, input);
 	}
@@ -67,6 +79,12 @@ public class Sine extends Expression<Double> {
 		return product(target.getShape(), List.of(childDelta, cofactor));
 	}
 
+	/**
+	 * Creates a sine expression, folding constants where possible.
+	 *
+	 * @param input the angle operand
+	 * @return a constant if the input is a known constant, otherwise a {@link Sine}
+	 */
 	public static Expression<Double> of(Expression<Double> input) {
 		OptionalDouble d = input.doubleValue();
 

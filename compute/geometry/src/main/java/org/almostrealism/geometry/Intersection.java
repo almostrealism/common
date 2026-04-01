@@ -43,7 +43,10 @@ public class Intersection implements DimensionAware {
 	 */
 	public static final double e = 0.00000001;
 
+	/** The 3D intersection point in world space. */
 	private final Producer<PackedCollection> point;
+
+	/** The parametric distance along the ray from the origin to this intersection. */
 	private final Producer<PackedCollection> distance;
 
 	/**

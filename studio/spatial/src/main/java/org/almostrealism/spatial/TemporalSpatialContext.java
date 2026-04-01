@@ -71,9 +71,16 @@ public class TemporalSpatialContext implements ConsoleFeatures {
 	 */
 	public static double MAX_ZOOM = 1000;
 
+	/** Whether to map frequency to the Y-axis ({@code true}) or channel ({@code false}). */
 	private boolean spatialFrequency;
+
+	/** Whether zoom scaling is applied to the time axis. */
 	private boolean zoom;
+
+	/** The total duration of the content being visualized, in seconds. */
 	private double duration;
+
+	/** Supplier for the time scaling factor applied to the X-axis. */
 	private DoubleSupplier temporalScale;
 
 	/**

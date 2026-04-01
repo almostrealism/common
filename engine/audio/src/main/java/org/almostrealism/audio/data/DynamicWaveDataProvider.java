@@ -33,14 +33,32 @@ import java.util.function.Supplier;
  * @see WaveData
  */
 public class DynamicWaveDataProvider extends WaveDataProviderAdapter implements Setup {
+	/** Unique identifier for this provider. */
 	private final String identifier;
+
+	/** The destination WaveData instance that holds the audio. */
 	private final WaveData destination;
+
+	/** Optional setup operations to run before the audio data is accessed. */
 	private final Supplier<Runnable> setup;
 
+	/**
+	 * Creates a DynamicWaveDataProvider with no additional setup operations.
+	 *
+	 * @param identifier unique identifier for this provider
+	 * @param destination the WaveData holding the audio content
+	 */
 	public DynamicWaveDataProvider(String identifier, WaveData destination) {
 		this(identifier, destination, new OperationList());
 	}
 
+	/**
+	 * Creates a DynamicWaveDataProvider with the given setup supplier.
+	 *
+	 * @param identifier  unique identifier for this provider
+	 * @param destination the WaveData holding the audio content
+	 * @param setup       setup operations to run before the data is accessed
+	 */
 	public DynamicWaveDataProvider(String identifier, WaveData destination, Supplier<Runnable> setup) {
 		this.identifier = identifier;
 		this.destination = destination;

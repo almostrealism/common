@@ -84,11 +84,22 @@ import java.io.IOException;
  */
 public class OobleckAutoEncoder implements LayerFeatures {
 
+	/** Encoder sub-model that compresses stereo audio to a 128-channel latent. */
 	private final OobleckEncoder encoder;
+
+	/** VAE bottleneck that extracts the 64-channel mean from the 128-channel encoder output. */
 	private final VAEBottleneck bottleneck;
+
+	/** Decoder sub-model that reconstructs stereo audio from the 64-channel latent. */
 	private final OobleckDecoder decoder;
+
+	/** Assembled encoder + bottleneck + decoder as a single {@link Block}. */
 	private final Block autoencoder;
+
+	/** Batch size this autoencoder was configured for. */
 	private final int batchSize;
+
+	/** Input audio sequence length this autoencoder was configured for. */
 	private final int inputLength;
 
 	/**
@@ -131,6 +142,11 @@ public class OobleckAutoEncoder implements LayerFeatures {
 		return new OobleckAutoEncoder(stateDict, batchSize, seqLength);
 	}
 
+	/**
+	 * Assembles the encoder, VAE bottleneck, and decoder into a single sequential block.
+	 *
+	 * @return The complete autoencoder block
+	 */
 	private Block buildAutoencoder() {
 		TraversalPolicy inputShape = shape(batchSize, 2, inputLength);
 		SequentialBlock block = new SequentialBlock(inputShape);

@@ -92,7 +92,9 @@ import java.util.List;
  */
 public class KernelTraversalOperation<T extends MemoryData> extends ProducerComputationBase<T, T>
 		implements MemoryDataComputation<T>, ExpressionFeatures {
+	/** Ordered list of expression values comprising the traversal lookup table. */
 	private List<Expression> expressions;
+	/** Destination producer that allocates output memory sized to the expression list. */
 	private MemoryDataDestinationProducer destination;
 
 	/**

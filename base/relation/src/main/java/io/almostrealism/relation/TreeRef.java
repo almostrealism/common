@@ -47,6 +47,7 @@ import java.util.stream.Collectors;
  * @author Michael Murray
  */
 public class TreeRef<T extends Tree> implements Tree<T> {
+	/** The delegated tree that this reference wraps. */
 	private Tree<?> tree;
 
 	/**

@@ -48,6 +48,11 @@ import org.jocl.cl_event;
  */
 public class OpenCLLanguageOperations extends CLanguageOperations {
 
+	/**
+	 * Creates OpenCL language operations for the given precision.
+	 *
+	 * @param precision Numeric precision for generated kernel code
+	 */
 	public OpenCLLanguageOperations(Precision precision) {
 		super(precision, false, false);
 	}

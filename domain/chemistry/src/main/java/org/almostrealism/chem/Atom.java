@@ -66,7 +66,10 @@ import java.util.List;
  * @see Electron
  */
 public class Atom {
+	/** The number of protons in the nucleus, equal to the atomic number. */
 	private int protons;
+
+	/** The electron shells of this atom, stored as an unmodifiable list ordered by energy level. */
 	private List<Shell> shells;
 	
 	/**

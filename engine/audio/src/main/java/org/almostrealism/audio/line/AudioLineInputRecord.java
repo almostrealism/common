@@ -35,9 +35,18 @@ import org.almostrealism.time.TemporalRunner;
  * @see OutputLine
  */
 public class AudioLineInputRecord implements AudioLineOperation, CellFeatures {
+	/** The wrapped audio operation that receives and processes the input. */
 	private final AudioLineOperation operation;
+
+	/** The output line that records a copy of the input audio. */
 	private final OutputLine record;
 
+	/**
+	 * Creates an AudioLineInputRecord that records input to the given line before processing.
+	 *
+	 * @param operation the audio processing operation to wrap
+	 * @param record    the output line to record input audio to
+	 */
 	public AudioLineInputRecord(AudioLineOperation operation, OutputLine record) {
 		this.operation = operation;
 		this.record = record;

@@ -23,22 +23,49 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.DoubleFunction;
 
+/**
+ * A {@link PatternNoteAudio} that delegates to a {@link PatternNoteAudio} selected
+ * by a floating-point selection value via a {@link java.util.function.DoubleFunction}.
+ *
+ * <p>The {@code noteAudioSelection} value is passed to an audio selection function at
+ * render time to pick the concrete {@link PatternNoteAudio} delegate. Equality is
+ * compared with fixed-precision integer scaling to avoid floating-point issues.</p>
+ *
+ * @see PatternNoteAudio
+ */
 public class PatternNoteAudioChoice implements PatternNoteAudio {
+	/** Scaling factor used when comparing {@code noteAudioSelection} values for equality. */
 	public static final long selectionComparisonGranularity = (long) 1e10;
 
+	/** The selection value passed to the audio selection function to pick the delegate. */
 	private double noteAudioSelection;
 
+	/** Creates a {@code PatternNoteAudioChoice} with a selection value of 0.0. */
 	public PatternNoteAudioChoice() { this(0.0); }
 
+	/**
+	 * Creates a {@code PatternNoteAudioChoice} with the given selection value.
+	 *
+	 * @param noteAudioSelection the selection value
+	 */
 	public PatternNoteAudioChoice(double noteAudioSelection) {
 		setNoteAudioSelection(noteAudioSelection);
 	}
 
+	/** Returns the selection value used to pick the delegate. */
 	public double getNoteAudioSelection() { return noteAudioSelection; }
+
+	/** Sets the selection value used to pick the delegate. */
 	public void setNoteAudioSelection(double noteAudioSelection) {
 		this.noteAudioSelection = noteAudioSelection;
 	}
 
+	/**
+	 * Returns the delegate selected by the given audio selection function.
+	 *
+	 * @param audioSelection the function mapping the selection value to a {@link PatternNoteAudio}
+	 * @return the selected delegate
+	 */
 	public PatternNoteAudio getDelegate(DoubleFunction<PatternNoteAudio> audioSelection) {
 		return audioSelection.apply(getNoteAudioSelection());
 	}

@@ -29,13 +29,27 @@ import java.util.function.Supplier;
  */
 @Deprecated
 public class WaveDataProviderList implements Setup {
+	/** Additional setup operations to run before the providers' own setup. */
 	private final Supplier<Runnable> setup;
+
+	/** The list of wave data providers managed by this list. */
 	private final List<WaveDataProvider> providers;
 
+	/**
+	 * Creates a WaveDataProviderList with no additional setup operations.
+	 *
+	 * @param providers the list of providers to manage
+	 */
 	public WaveDataProviderList(List<WaveDataProvider> providers) {
 		this(providers, new OperationList());
 	}
 
+	/**
+	 * Creates a WaveDataProviderList with the given providers and setup supplier.
+	 *
+	 * @param providers the list of providers to manage
+	 * @param setup     additional setup operations to run before provider setup
+	 */
 	public WaveDataProviderList(List<WaveDataProvider> providers, Supplier<Runnable> setup) {
 		this.providers = providers;
 		this.setup = setup;
@@ -49,6 +63,11 @@ public class WaveDataProviderList implements Setup {
 		return setup;
 	}
 
+	/**
+	 * Returns the list of wave data providers managed by this instance.
+	 *
+	 * @return the list of providers
+	 */
 	public List<WaveDataProvider> getProviders() {
 		return providers;
 	}

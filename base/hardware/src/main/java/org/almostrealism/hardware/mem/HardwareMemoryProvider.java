@@ -171,19 +171,28 @@ import java.util.stream.Stream;
  * @see MemoryProvider
  */
 public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryProvider<T>, ConsoleFeatures {
+	/** If true, deallocation is deferred to a background queue rather than happening synchronously. */
 	public static boolean queueDeallocation = false;
 
+	/** Thread-local factory for generating human-readable names for allocated memory regions. */
 	protected static ThreadLocal<IntFunction<String>> memoryName;
 
 	static {
 		memoryName = new ThreadLocal<>();
 	}
 
+	/** Tracks all currently allocated memory blocks by their native pointer. */
 	private ConcurrentHashMap<Long, NativeRef<T>> allocated;
+	/** Priority queue of memory blocks pending deallocation, ordered by size (largest first). */
 	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
+	/** Reference queue populated by the GC when tracked {@link RAM} objects become unreachable. */
 	private ReferenceQueue<T> referenceQueue;
+	/** True while this provider is being destroyed; suppresses further allocations and error logging. */
 	private volatile boolean destroying;
 
+	/**
+	 * Initializes allocation tracking and starts the background deallocation threads.
+	 */
 	public HardwareMemoryProvider() {
 		this.allocated = new ConcurrentHashMap<>();
 		this.deallocationQueue = new PriorityBlockingQueue<>(100, Comparator.comparing(NativeRef<T>::getSize).reversed());
@@ -226,18 +235,31 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		deallocationProcess.start();
 	}
 
+	/** Returns the reference queue used to receive GC notifications for collected {@link RAM} objects. */
 	protected ReferenceQueue<T> getReferenceQueue() { return referenceQueue; }
 
+	/** Returns the deallocation queue where blocks are placed pending background release. */
 	protected PriorityBlockingQueue<NativeRef<T>> getDeallocationQueue() { return deallocationQueue; }
 
+	/**
+	 * Returns all currently allocated memory blocks, sorted by size in descending order.
+	 *
+	 * @return List of native references for all allocated blocks
+	 */
 	protected List<NativeRef<T>> getAllocated() {
 		return allocated.values().stream()
 				.sorted(Comparator.comparing(NativeRef<T>::getSize).reversed())
 				.toList();
 	}
 
+	/** Returns the number of memory blocks currently allocated and tracked by this provider. */
 	public int getAllocatedCount() { return allocated.size(); }
 
+	/**
+	 * Deallocates the given memory block immediately, or logs a warning if it cannot be found.
+	 *
+	 * @param mem The memory block to deallocate
+	 */
 	private void deallocateNow(T mem) {
 		if (allocated == null) {
 			warn("Cannot deallocate " + mem + " as the provider has been destroyed");
@@ -256,6 +278,14 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		deallocateNow(ref);
 	}
 
+	/**
+	 * Deallocates a memory block identified by its native reference.
+	 *
+	 * <p>If the {@link KernelMemoryGuard} indicates the block is still in use, it is
+	 * re-queued for later deallocation rather than being released immediately.</p>
+	 *
+	 * @param ref Native reference to the memory block to deallocate
+	 */
 	private void deallocateNow(NativeRef<T> ref) {
 		try {
 			Hardware hw = Hardware.getLocalHardware();
@@ -277,10 +307,23 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		}
 	}
 
+	/**
+	 * Creates a new {@link NativeRef} for the given memory block and registers it with the reference queue.
+	 *
+	 * @param ram The memory block to create a reference for
+	 * @return New native reference tracking the memory block's lifecycle
+	 */
 	protected NativeRef<T> nativeRef(T ram) {
 		return new NativeRef<>(ram, getReferenceQueue());
 	}
 
+	/**
+	 * Returns the native reference for the given memory block, validating that it belongs to this provider.
+	 *
+	 * @param ram Memory block to look up
+	 * @return Native reference for the memory block
+	 * @throws IllegalArgumentException if the RAM does not belong to this provider
+	 */
 	protected NativeRef<T> getNativeRef(T ram) {
 		if (ram.getProvider() != this)
 			throw new IllegalArgumentException("RAM does not belong to this provider");
@@ -288,6 +331,16 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		return allocated.get(ram.getContainerPointer());
 	}
 
+	/**
+	 * Registers the given memory block as allocated and returns it.
+	 *
+	 * <p>Creates a {@link NativeRef} and stores it in the allocation map. Warns if the block
+	 * is already tracked (duplicate allocation).</p>
+	 *
+	 * @param ram The newly allocated memory block to register
+	 * @return The same {@code ram} instance
+	 * @throws IllegalStateException if this provider is being destroyed
+	 */
 	protected T allocated(T ram) {
 		if (destroying) {
 			throw new IllegalStateException("Cannot allocate " + ram + " as the provider is being destroyed");
@@ -307,6 +360,14 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		return ram;
 	}
 
+	/**
+	 * Frees the native resources associated with the given native reference.
+	 *
+	 * <p>Concrete subclasses implement this to release backend-specific resources
+	 * (e.g., OpenCL buffers, Metal allocations, or JNI direct buffers).</p>
+	 *
+	 * @param ref Native reference identifying the memory block to free
+	 */
 	protected abstract void deallocate(NativeRef<T> ref);
 
 	@Override
@@ -321,10 +382,28 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		}
 	}
 
+	/**
+	 * Returns the thread-local memory name factory, or null if none has been set.
+	 *
+	 * @return Current memory naming function for this thread
+	 */
 	protected IntFunction<String> getMemoryName() {
 		return memoryName.get();
 	}
 
+	/**
+	 * Executes a callable within a named memory allocation context.
+	 *
+	 * <p>Sets the thread-local memory name factory for the duration of the call, then
+	 * restores the previous value. Use this to annotate allocations with readable names
+	 * for profiling and debugging.</p>
+	 *
+	 * @param <V> Return type of the callable
+	 * @param name Function mapping allocation size to a human-readable name
+	 * @param exec Callable to execute within the named context
+	 * @return Value returned by {@code exec}
+	 * @throws RuntimeException if {@code exec} throws a checked exception
+	 */
 	public <V> V sharedMemory(IntFunction<String> name, Callable<V> exec) {
 		IntFunction<String> currentName = memoryName.get();
 		IntFunction<String> nextName = name;

@@ -58,8 +58,10 @@ import java.util.stream.IntStream;
  * @see KeyboardTuning
  */
 public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAudioProvider>, SamplingFeatures {
+	/** When true, logs audio cache size statistics to the console. */
 	public static boolean enableVerbose = false;
 
+	/** LRU cache for resampled audio data, bounded to 200 entries and cleared on low-memory conditions. */
 	private static final CacheManager<PackedCollection> audioCache = new CacheManager<>();
 
 	static {
@@ -89,23 +91,54 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		});
 	}
 
+	/** Source of raw audio data; may be a file, memory buffer, or any other provider. */
 	private WaveDataProvider provider;
 
+	/** Keyboard tuning used to compute frequency ratios for pitch shifting. */
 	private KeyboardTuning tuning;
+
+	/** The key position of the source audio at its natural (unshifted) pitch. */
 	private KeyPosition<?> root;
+
+	/** Source audio tempo in beats per minute, used for BPM-aligned splitting; null if not applicable. */
 	private Double bpm;
+
+	/** Output sample rate in Hz; resampled data is produced at this rate. */
 	private final int sampleRate;
 
+	/** Cache mapping (target pitch, channel) pairs to their resampled audio producers. */
 	private final Map<NoteAudioKey, Producer<PackedCollection>> notes;
 
+	/**
+	 * Creates a NoteAudioProvider at the default sample rate with no BPM or tuning.
+	 *
+	 * @param provider source of audio data
+	 * @param root     key position of the audio at its natural pitch
+	 */
 	public NoteAudioProvider(WaveDataProvider provider, KeyPosition<?> root) {
 		this(provider, root, null);
 	}
 
+	/**
+	 * Creates a NoteAudioProvider at the default sample rate with the given BPM.
+	 *
+	 * @param provider source of audio data
+	 * @param root     key position of the audio at its natural pitch
+	 * @param bpm      source tempo in BPM for beat-aligned splitting, or null
+	 */
 	public NoteAudioProvider(WaveDataProvider provider, KeyPosition<?> root, Double bpm) {
 		this(provider, root, bpm, OutputLine.sampleRate, null);
 	}
 
+	/**
+	 * Creates a NoteAudioProvider with full control over all parameters.
+	 *
+	 * @param provider   source of audio data
+	 * @param root       key position of the audio at its natural pitch
+	 * @param bpm        source tempo in BPM for beat-aligned splitting, or null
+	 * @param sampleRate output sample rate in Hz
+	 * @param tuning     keyboard tuning for frequency ratio computation, or null for default
+	 */
 	public NoteAudioProvider(WaveDataProvider provider, KeyPosition<?> root,
 							 Double bpm, int sampleRate, KeyboardTuning tuning) {
 		this.provider = provider;
@@ -116,13 +149,34 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		this.notes = new HashMap<>();
 	}
 
+	/** Returns the audio data provider. */
 	public WaveDataProvider getProvider() { return provider; }
+
+	/**
+	 * Replaces the audio data provider.
+	 *
+	 * @param provider new provider to use
+	 */
 	public void setProvider(WaveDataProvider provider) { this.provider = provider; }
 
+	/** Returns the key position corresponding to the audio at its natural (unshifted) pitch. */
 	public KeyPosition<?> getRoot() { return root; }
+
+	/**
+	 * Sets the key position of the audio at its natural pitch.
+	 *
+	 * @param root the root key position
+	 */
 	public void setRoot(KeyPosition<?> root) { this.root = root; }
 
+	/** Returns the source tempo in BPM, or null if not configured. */
 	public Double getBpm() { return bpm; }
+
+	/**
+	 * Sets the source tempo in BPM used for beat-aligned splitting.
+	 *
+	 * @param bpm tempo in beats per minute, or null to disable
+	 */
 	public void setBpm(Double bpm) { this.bpm = bpm; }
 
 	@Override
@@ -133,6 +187,7 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		}
 	}
 
+	/** Returns the keyboard tuning system used for frequency ratio computation. */
 	public KeyboardTuning getTuning() { return tuning; }
 
 	@Override
@@ -146,6 +201,12 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		return provider.getDuration(r);
 	}
 
+	/**
+	 * Returns the shape (frame count) of the resampled audio for the given note key.
+	 *
+	 * @param key the (target pitch, channel) key
+	 * @return the traversal policy describing the shape of the audio data
+	 */
 	public TraversalPolicy getShape(NoteAudioKey key) {
 		double r = tuning.getTone(key.getPosition()).asHertz() / tuning.getTone(getRoot()).asHertz();
 		return new TraversalPolicy(provider.getCount(r, sampleRate)).traverse(1);
@@ -166,6 +227,12 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		return notes.get(key);
 	}
 
+	/**
+	 * Returns a Producer that evaluates to the resampled audio for the given note key.
+	 *
+	 * @param key the (target pitch, channel) key identifying the audio to compute
+	 * @return a lazy producer that performs pitch-shifted resampling on evaluation
+	 */
 	protected Producer<PackedCollection> computeAudio(NoteAudioKey key) {
 		return () -> args -> {
 			double r = key.getPosition() == null ? 1.0 :
@@ -174,6 +241,11 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		};
 	}
 
+	/**
+	 * Returns the raw WaveData from the underlying provider at its native sample rate.
+	 *
+	 * @return WaveData, or null if no provider is set
+	 */
 	public WaveData getWaveData() {
 		return provider == null ? null : provider.get();
 	}
@@ -197,6 +269,16 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		return valid;
 	}
 
+	/**
+	 * Splits this provider into sequential segments of the specified beat duration.
+	 *
+	 * <p>Requires {@link #getBpm()} to be set. The audio is divided into fixed-length
+	 * segments aligned to beat boundaries, each returned as an independent NoteAudioProvider.</p>
+	 *
+	 * @param durationBeats length of each segment in beats
+	 * @return list of NoteAudioProvider instances for each segment in order
+	 * @throws IllegalArgumentException if BPM has not been set
+	 */
 	public List<NoteAudioProvider> split(double durationBeats) {
 		if (getBpm() == null)
 			throw new IllegalArgumentException();
@@ -220,22 +302,56 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		return CellFeatures.console;
 	}
 
+	/**
+	 * Creates a NoteAudioProvider for a file at the default root note (C1).
+	 *
+	 * @param source path to the audio file
+	 * @return a new NoteAudioProvider
+	 */
 	public static NoteAudioProvider create(String source) {
 		return create(source, WesternChromatic.C1);
 	}
 
+	/**
+	 * Creates a NoteAudioProvider for a file at the specified root note.
+	 *
+	 * @param source path to the audio file
+	 * @param root   key position of the audio at its natural pitch
+	 * @return a new NoteAudioProvider
+	 */
 	public static NoteAudioProvider create(String source, KeyPosition root) {
 		return new NoteAudioProvider(new FileWaveDataProvider(source), root);
 	}
 
+	/**
+	 * Creates a NoteAudioProvider for a file with a specific root note and tuning system.
+	 *
+	 * @param source path to the audio file
+	 * @param root   key position of the audio at its natural pitch
+	 * @param tuning keyboard tuning for frequency ratio computation
+	 * @return a new NoteAudioProvider
+	 */
 	public static NoteAudioProvider create(String source, KeyPosition root, KeyboardTuning tuning) {
 		return new NoteAudioProvider(new FileWaveDataProvider(source), root, null, OutputLine.sampleRate, tuning);
 	}
 
+	/**
+	 * Creates a NoteAudioProvider from an audio supplier at the default root note (C1).
+	 *
+	 * @param audioSupplier supplier that returns a PackedCollection of audio samples
+	 * @return a new NoteAudioProvider
+	 */
 	public static NoteAudioProvider create(Supplier<PackedCollection> audioSupplier) {
 		return create(audioSupplier, WesternChromatic.C1);
 	}
 
+	/**
+	 * Creates a NoteAudioProvider from an audio supplier at the specified root note.
+	 *
+	 * @param audioSupplier supplier that returns a PackedCollection of audio samples
+	 * @param root          key position of the audio at its natural pitch
+	 * @return a new NoteAudioProvider
+	 */
 	public static NoteAudioProvider create(Supplier<PackedCollection> audioSupplier, KeyPosition root) {
 		return new NoteAudioProvider(new SupplierWaveDataProvider(KeyUtils.generateKey(), audioSupplier, OutputLine.sampleRate), root);
 	}

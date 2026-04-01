@@ -35,13 +35,31 @@ import java.util.ArrayList;
  * @author  Michael Murray
  */
 public class SnellAbsorber implements Absorber, VectorFeatures {
+	/** The 3D volume within which photon absorption occurs. */
 	private Volume<?> volume;
+
+	/** The simulation clock used to synchronize absorption and emission timing. */
 	private Clock clock;
+
+	/** Queue of pending photon data arrays, each holding position, direction, and energy. */
 	private final ArrayList<Object[]> queue = new ArrayList<>();
+
+	/** Refraction indices for the two media at the interface: {@code n[0]} is the incident medium,
+	 *  {@code n[1]} is the refracting medium. */
 	private final double[] n = {0, 0}; // Refraction values for mediums
-		
-	// Upon absorption energy of incoming rays is added to the Queue as an array
-	// with important information, like angle and energy, so that conservation is correct.
+
+	/**
+	 * Absorbs a photon at the given position and direction if it is inside the configured volume.
+	 * <p>
+	 * The position, direction, and energy are stored in the internal queue for processing
+	 * during the emit phase, where Snell's law is applied to compute the refracted direction.
+	 * </p>
+	 *
+	 * @param Position   the position of the incoming photon
+	 * @param Direction  the direction of travel of the incoming photon
+	 * @param Energy     the energy of the incoming photon
+	 * @return           {@code true} if the position is inside the volume and the photon was queued
+	 */
 	public boolean absorb(Vector Position, Vector Direction, double Energy) {
 		if (!this.volume.inside(v(Position))) return false;
 		

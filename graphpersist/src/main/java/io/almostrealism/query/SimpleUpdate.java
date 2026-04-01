@@ -25,16 +25,50 @@ import java.util.Map;
  *
  * @author  Michael Murray
  */
+/**
+ * Abstract update that maintains a mapping from SQL column names to POJO field names,
+ * enabling entity field values to be reflectively mapped to SQL update parameters.
+ *
+ * @param <D> The database type
+ * @param <K> The argument (key) type
+ * @param <V> The entity type being updated
+ *
+ * @author  Michael Murray
+ */
 public abstract class SimpleUpdate<D, K, V> implements Update<D, K, V>, Iterable<Map.Entry> {
+	/** Map from SQL column names to entity field names. */
 	private final Hashtable map = new Hashtable<>();
 
+	/** The SQL update string executed by this update. */
 	protected String query;
-	
+
+	/**
+	 * Constructs a {@link SimpleUpdate} with the given SQL string.
+	 *
+	 * @param q The SQL update string
+	 */
 	public SimpleUpdate(String q) { query = q; }
 
+	/**
+	 * Registers a mapping from a SQL column name to an entity field name.
+	 *
+	 * @param column    The SQL column name
+	 * @param fieldName The entity field name to read the value from
+	 */
 	public void put(String column, String fieldName) { map.put(column, fieldName); }
 
+	/**
+	 * Returns the entity field name mapped to the given column name.
+	 *
+	 * @param name The SQL column name to look up
+	 * @return The mapped entity field name, or {@code null} if not registered
+	 */
 	public String get(String name) { return (String) map.get(name); }
-	
+
+	/**
+	 * Returns an iterator over the column-to-field mapping entries.
+	 *
+	 * @return An iterator of {@link Map.Entry} items
+	 */
 	public Iterator<Map.Entry> iterator() { return map.entrySet().iterator(); }
 }

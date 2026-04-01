@@ -25,13 +25,23 @@ import org.almostrealism.collect.PackedCollection;
  * @see BiquadFilterCell
  */
 public class DefaultBiquadFilterData implements BiquadFilterData {
+	/** The PackedCollection holding all filter state and coefficient slots. */
 	private final PackedCollection storage;
 
+	/**
+	 * Creates a DefaultBiquadFilterData with freshly allocated storage.
+	 */
 	public DefaultBiquadFilterData() {
 		this.storage = new PackedCollection(SIZE);
 		resetState();
 	}
 
+	/**
+	 * Creates a DefaultBiquadFilterData backed by a slice of the given delegate collection.
+	 *
+	 * @param delegate the parent PackedCollection
+	 * @param offset   element offset within the delegate
+	 */
 	public DefaultBiquadFilterData(PackedCollection delegate, int offset) {
 		this.storage = delegate.range(shape(SIZE), offset);
 		resetState();

@@ -85,7 +85,10 @@ import java.util.List;
 public class InputStub<T extends PackedCollection> implements CollectionProducer,
 														ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>>,
 														Algebraic, OperationInfo {
+	/** The operation metadata used to identify this stub when matching inputs during differentiation. */
 	private final OperationMetadata metadata;
+
+	/** The original producer that this stub wraps and stands in for during differentiation. */
 	private final Producer<T> producer;
 
 	/**
@@ -109,6 +112,13 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 		prepareMetadata();
 	}
 
+	/**
+	 * Wraps the given description to indicate that it refers to a stub input.
+	 *
+	 * @param description the original description to extend
+	 * @param brief       if true, produces a compact label; if false, uses the class name
+	 * @return the extended description string
+	 */
 	protected String extendDescription(String description, boolean brief) {
 		if (brief) {
 			return "stub(" + description + ")";
@@ -117,6 +127,10 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 		}
 	}
 
+	/**
+	 * Updates the metadata of this stub to reflect the wrapped producer's display name
+	 * and description, forming a parent-child relationship in operation metadata.
+	 */
 	protected void prepareMetadata() {
 		if (producer instanceof OperationInfo) {
 			OperationMetadata child = ((OperationInfo) producer).getMetadata();

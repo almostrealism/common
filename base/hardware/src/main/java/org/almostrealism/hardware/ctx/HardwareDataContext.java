@@ -89,9 +89,12 @@ import java.util.function.IntFunction;
  * @see HardwareMemoryProvider
  */
 public abstract class HardwareDataContext implements DataContext<MemoryData>, ConsoleFeatures {
+	/** Human-readable name of this data context, used for identification and logging. */
 	private final String name;
+	/** Maximum number of bytes that may be reserved in this context at one time. */
 	private final long maxReservation;
 
+	/** Shared memory provider used for cross-backend data transfer, lazily initialized. */
 	private MemoryProvider<? extends RAM> sharedRam;
 
 	/**

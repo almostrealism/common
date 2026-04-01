@@ -155,6 +155,16 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		}
 	}
 
+	/**
+	 * Creates a {@link Provider} that wraps an existing supplier and applies a transformation function
+	 * to its output. If the supplier is a {@link CollectionProvider}, the result is also a CollectionProvider.
+	 *
+	 * @param <T>  the return type of the provider
+	 * @param <V>  the type produced by the source supplier
+	 * @param ev   the source supplier
+	 * @param func a transformation function applied to the supplier's output
+	 * @return a Provider that applies {@code func} to the result of {@code ev}
+	 */
 	default <T, V> Provider<PackedCollection> p(Supplier<V> ev, Function<V, T> func) {
 		if (ev instanceof CollectionProvider) {
 			return new CollectionProvider(null) {
@@ -235,6 +245,14 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		}
 	}
 
+	/**
+	 * Wraps an existing {@link Evaluable} as a {@link CollectionProducer} with the specified shape.
+	 * The evaluable's {@code evaluate()} method will be called to produce the collection value.
+	 *
+	 * @param shape the shape describing the structure of the produced collection
+	 * @param ev    the evaluable that produces the collection data
+	 * @return a CollectionProducer with the given shape backed by the evaluable
+	 */
 	default CollectionProducer c(TraversalPolicy shape, Evaluable<PackedCollection> ev) {
 		CollectionCreationFeatures self = this;
 		return CollectionFeatures.getInstance().c(new CollectionProducerBase<PackedCollection, CollectionProducer>() {
@@ -368,14 +386,60 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		return new DynamicCollectionProducer(shape, function, false, true, argument, args);
 	}
 
+	/**
+	 * Creates a producer for a collection of uniformly-distributed random values in [0, 1)
+	 * with the specified dimensions.
+	 *
+	 * @param dims the dimensions of the random collection
+	 * @return a Random producer with uniform distribution
+	 */
 	default Random rand(int... dims) { return rand(shape(dims)); }
+
+	/**
+	 * Creates a producer for a collection of uniformly-distributed random values in [0, 1)
+	 * with the specified shape.
+	 *
+	 * @param shape the shape of the random collection
+	 * @return a Random producer with uniform distribution
+	 */
 	default Random rand(TraversalPolicy shape) { return new Random(shape); }
+
+	/**
+	 * Creates a producer for uniformly-distributed random values using the given source.
+	 *
+	 * @param shape  the shape of the random collection
+	 * @param source the Java Random source to use for reproducibility
+	 * @return a Random producer with uniform distribution using the given source
+	 */
 	default Random rand(TraversalPolicy shape, java.util.Random source) {
 		return new Random(shape, false, source);
 	}
 
+	/**
+	 * Creates a producer for standard normal (mean=0, std=1) random values
+	 * with the specified dimensions.
+	 *
+	 * @param dims the dimensions of the random collection
+	 * @return a Random producer with standard normal distribution
+	 */
 	default Random randn(int... dims) { return randn(shape(dims)); }
+
+	/**
+	 * Creates a producer for standard normal (mean=0, std=1) random values
+	 * with the specified shape.
+	 *
+	 * @param shape the shape of the random collection
+	 * @return a Random producer with standard normal distribution
+	 */
 	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
+
+	/**
+	 * Creates a producer for standard normal random values using the given source.
+	 *
+	 * @param shape  the shape of the random collection
+	 * @param source the Java Random source to use, or null for the default source
+	 * @return a Random producer with standard normal distribution using the given source
+	 */
 	default Random randn(TraversalPolicy shape, java.util.Random source) {
 		if (source != null) {
 			return new Random(shape, true, source);
@@ -384,10 +448,29 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		return new Random(shape, true);
 	}
 
+	/**
+	 * Creates a producer for normally-distributed random values with the specified mean and
+	 * standard deviation, using the default random source.
+	 *
+	 * @param shape the shape of the random collection
+	 * @param mean  the mean of the normal distribution
+	 * @param std   the standard deviation of the normal distribution
+	 * @return a CollectionProducer for normally-distributed random values
+	 */
 	default CollectionProducer randn(TraversalPolicy shape, double mean, double std) {
 		return randn(shape, mean, std, null);
 	}
 
+	/**
+	 * Creates a producer for normally-distributed random values with the specified mean,
+	 * standard deviation, and random source.
+	 *
+	 * @param shape  the shape of the random collection
+	 * @param mean   the mean of the normal distribution
+	 * @param std    the standard deviation of the normal distribution
+	 * @param source the Java Random source to use, or null for the default source
+	 * @return a CollectionProducer for normally-distributed random values
+	 */
 	default CollectionProducer randn(TraversalPolicy shape, double mean, double std, java.util.Random source) {
 		if (mean == 0.0 && std == 1.0) {
 			return randn(shape, source);
@@ -400,16 +483,40 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		}
 	}
 
+	/**
+	 * Creates a producer for an ascending sequence of integers starting at 0,
+	 * using the kernel index as the element value (element i = i).
+	 *
+	 * @return an arithmetic sequence producer starting at 0
+	 */
 	default CollectionProducerComputation integers() {
 		return new ArithmeticSequenceComputation(0);
 	}
 
+	/**
+	 * Creates a producer for an ascending sequence of integers from {@code from} (inclusive)
+	 * to {@code to} (exclusive).
+	 *
+	 * @param from the starting integer value (inclusive)
+	 * @param to   the ending integer value (exclusive)
+	 * @return an arithmetic sequence producer containing integers from {@code from} to {@code to - 1}
+	 */
 	default CollectionProducerComputation integers(int from, int to) {
 		int len = to - from;
 		TraversalPolicy shape = shape(len).traverseEach();
 		return new ArithmeticSequenceComputation(shape, from);
 	}
 
+	/**
+	 * Creates a producer for a linearly spaced sequence of {@code steps} values
+	 * from {@code start} (inclusive) to {@code end} (inclusive).
+	 *
+	 * @param start the first value in the sequence
+	 * @param end   the last value in the sequence
+	 * @param steps the total number of values in the sequence (must be at least 2)
+	 * @return a CollectionProducer for the linear sequence
+	 * @throws IllegalArgumentException if steps is less than 2
+	 */
 	default CollectionProducer linear(double start, double end, int steps) {
 		if (steps < 2) {
 			throw new IllegalArgumentException();

@@ -67,9 +67,19 @@ import java.util.stream.IntStream;
  * @see TimeCellReset
  */
 public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, CodeFeatures {
+	/** The downstream receptor that receives the current time value on each tick. */
 	private Receptor r;
+
+	/** A {@link Pair} holding the current frame counter and step size. */
 	private Pair time;
-	private Producer<PackedCollection> initial, loopDuration;
+
+	/** Producer for the initial frame value, used when the counter is first reset. */
+	private Producer<PackedCollection> initial;
+
+	/** Producer for the loop duration; when set, the counter wraps at this value. */
+	private Producer<PackedCollection> loopDuration;
+
+	/** Collection of conditional reset values; each entry triggers a reset when the frame matches. */
 	private PackedCollection resets;
 
 	/**

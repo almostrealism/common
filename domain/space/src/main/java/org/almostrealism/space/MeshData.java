@@ -69,6 +69,7 @@ public class MeshData extends PackedCollection {
 	 */
 	public static boolean enablePartialKernel = true;
 
+	/** Temporary buffer for per-triangle intersection distances during kernel evaluation. */
 	private final PackedCollection distances;
 
 	/**

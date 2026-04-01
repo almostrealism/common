@@ -43,15 +43,30 @@ import org.almostrealism.collect.PackedCollection;
  * @see ADSREnvelope
  */
 public interface ADSREnvelopeData extends CodeFeatures {
+	/** Total number of memory slots used by the envelope state. */
 	int SIZE = 10;
 
-	// Phase constants
+	/** Phase constant: envelope is idle (not running). */
 	int PHASE_IDLE = 0;
+
+	/** Phase constant: envelope is in the attack phase (ramping up). */
 	int PHASE_ATTACK = 1;
+
+	/** Phase constant: envelope is in the decay phase (ramping down to sustain). */
 	int PHASE_DECAY = 2;
+
+	/** Phase constant: envelope is holding at the sustain level. */
 	int PHASE_SUSTAIN = 3;
+
+	/** Phase constant: envelope is in the release phase (ramping to zero). */
 	int PHASE_RELEASE = 4;
 
+	/**
+	 * Returns the memory slot at the given index for direct access.
+	 *
+	 * @param index slot index (0–{@value #SIZE}-1)
+	 * @return the PackedCollection at that slot
+	 */
 	PackedCollection get(int index);
 
 	default PackedCollection attackTime() { return get(0); }

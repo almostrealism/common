@@ -187,6 +187,14 @@ public class DynamicIndexProjectionProducerComputation
 		return projectIndex(getTraversableArguments(index), index);
 	}
 
+	/**
+	 * Projects the output index to the corresponding input index using the provided traversable arguments.
+	 * Applies the configured index expression function with the given arguments and index.
+	 *
+	 * @param args the traversable expressions representing the input arguments
+	 * @param index the output index expression to project
+	 * @return the projected input index expression
+	 */
 	protected Expression<?> projectIndex(TraversableExpression[] args, Expression<?> index) {
 		return indexExpression.apply(args, index);
 	}

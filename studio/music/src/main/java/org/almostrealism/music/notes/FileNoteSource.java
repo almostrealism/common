@@ -24,19 +24,45 @@ import org.almostrealism.audio.tone.WesternChromatic;
 
 import java.util.List;
 
+/**
+ * A {@link NoteAudioSource} backed by a single audio file.
+ *
+ * <p>Loads the file lazily on the first call to {@link #getNotes()}, creating a
+ * {@link NoteAudioProvider} for the specified root key position.</p>
+ *
+ * @see NoteAudioSource
+ */
 public class FileNoteSource implements NoteAudioSource {
+	/** The path to the source audio file. */
 	private String source;
+
+	/** The root key position for this audio source. */
 	private KeyPosition<?> root;
+
+	/** The keyboard tuning applied to the note provider. */
 	private KeyboardTuning tuning;
 
+	/** The lazily-initialized note provider. */
 	private NoteAudioProvider note;
 
+	/** Creates a {@code FileNoteSource} with a null source file. */
 	public FileNoteSource() { this(null); }
 
+	/**
+	 * Creates a {@code FileNoteSource} for the given file with default root key {@code C1}.
+	 *
+	 * @param sourceFile path to the audio file
+	 */
 	public FileNoteSource(String sourceFile) {
 		this(sourceFile, WesternChromatic.C1);
 	}
 
+	/**
+	 * Creates a {@code FileNoteSource} for the given file and root key position.
+	 *
+	 * @param sourceFile path to the audio file
+	 * @param root       the root key position
+	 */
 	public FileNoteSource(String sourceFile, KeyPosition<?> root) {
 		this.source = sourceFile;
 		this.root = root;
@@ -58,6 +84,12 @@ public class FileNoteSource implements NoteAudioSource {
 	public KeyPosition<?> getRoot() { return root; }
 	public void setRoot(KeyPosition<?> root) { this.root = root; }
 
+	/**
+	 * Returns a singleton list containing the note provider for this file,
+	 * creating it lazily if needed.
+	 *
+	 * @return list with the single note provider
+	 */
 	public List<NoteAudio> getNotes() {
 		if (note == null) {
 			note = NoteAudioProvider.create(source, root);

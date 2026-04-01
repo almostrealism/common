@@ -22,6 +22,12 @@ import javax.swing.*;
  * @author  Michael Murray
  */
 public class Icons {
+	/**
+	 * Loads an {@link ImageIcon} from the given internal classpath URI.
+	 *
+	 * @param internalURI the classpath-relative URI of the icon image
+	 * @return an {@link ImageIcon} loaded from the specified URI
+	 */
 	public static ImageIcon loadImageIcon(String internalURI) {
 		return new ImageIcon(ImageIcon.class.getResource(internalURI));
 	}

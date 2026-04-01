@@ -16,8 +16,33 @@
 
 package org.almostrealism.music.grains;
 
+/**
+ * Configuration for random grain generation within a {@link GrainSet}.
+ *
+ * <p>Defines the minimum and maximum bounds for the three grain parameters:
+ * position within the source, duration, and playback rate. Grains generated
+ * via {@link GrainSet#addGrain(GrainGenerationSettings)} will have uniformly
+ * random values within these ranges.</p>
+ *
+ * @see GrainSet
+ * @see Grain
+ */
 public class GrainGenerationSettings {
-	public double grainPositionMin = 0, grainPositionMax = 1;
-	public double grainDurationMin = 0.05, grainDurationMax = 0.2;
-	public double playbackRateMin = 0.25, playbackRateMax = 4.0;
+	/** Minimum grain start position within the source, as a fraction [0, 1]. */
+	public double grainPositionMin = 0;
+
+	/** Maximum grain start position within the source, as a fraction [0, 1]. */
+	public double grainPositionMax = 1;
+
+	/** Minimum grain duration in seconds. */
+	public double grainDurationMin = 0.05;
+
+	/** Maximum grain duration in seconds. */
+	public double grainDurationMax = 0.2;
+
+	/** Minimum playback rate (1.0 = normal speed). */
+	public double playbackRateMin = 0.25;
+
+	/** Maximum playback rate. */
+	public double playbackRateMax = 4.0;
 }

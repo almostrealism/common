@@ -69,39 +69,69 @@ import java.util.stream.Collectors;
  * @author Michael Murray
  */
 public class PatternLayer {
+	/** The audio choice associated with this layer. */
 	private NoteAudioChoice choice;
+
+	/** The list of pattern elements in this layer. */
 	private List<PatternElement> elements;
+
+	/** The optional child layer chained to this one. */
 	private PatternLayer child;
 
+	/** Creates an empty {@code PatternLayer} with no choice and an empty element list. */
 	public PatternLayer() { this(null, new ArrayList<>()); }
 
+	/**
+	 * Creates a {@code PatternLayer} with the given choice and elements.
+	 *
+	 * @param choice   the audio choice for this layer
+	 * @param elements the list of pattern elements
+	 */
 	public PatternLayer(NoteAudioChoice choice, List<PatternElement> elements) {
 		this.choice = choice;
 		this.elements = elements;
 	}
 
+	/** Returns the audio choice for this layer. */
 	public NoteAudioChoice getChoice() {
 		return choice;
 	}
 
+	/** Sets the audio choice for this layer. */
 	public void setChoice(NoteAudioChoice node) {
 		this.choice = node;
 	}
 
+	/** Returns the full list of pattern elements. */
 	public List<PatternElement> getElements() {
 		return elements;
 	}
 
+	/** Sets the list of pattern elements. */
 	public void setElements(List<PatternElement> elements) {
 		this.elements = elements;
 	}
 
+	/**
+	 * Returns elements whose position falls within {@code [start, end)}.
+	 *
+	 * @param start the inclusive start position
+	 * @param end   the exclusive end position
+	 * @return the filtered list of elements
+	 */
 	public List<PatternElement> getElements(double start, double end) {
 		return elements.stream()
 				.filter(e -> e.getPosition() >= start && e.getPosition() < end)
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Adds all elements in {@code [start, end)} to the given map, keyed by choice.
+	 *
+	 * @param result the map to populate
+	 * @param start  the inclusive start position
+	 * @param end    the exclusive end position
+	 */
 	public void putAllElementsByChoice(Map<NoteAudioChoice, List<PatternElement>> result,
 									   double start, double end) {
 		if (elements == null || elements.isEmpty()) return;
@@ -115,6 +145,13 @@ public class PatternLayer {
 			child.putAllElementsByChoice(result, start, end);
 	}
 
+	/**
+	 * Returns all elements from this layer and all child layers within {@code [start, end)}.
+	 *
+	 * @param start the inclusive start position
+	 * @param end   the exclusive end position
+	 * @return a combined list of elements from this layer and all descendants
+	 */
 	public List<PatternElement> getAllElements(double start, double end) {
 		List<PatternElement> result = new ArrayList<>();
 		result.addAll(getElements(start, end));
@@ -123,34 +160,67 @@ public class PatternLayer {
 		return result;
 	}
 
+	/**
+	 * Sets the automation parameters on all elements in this layer.
+	 *
+	 * @param parameters the automation parameter collection
+	 */
 	public void setAutomationParameters(PackedCollection parameters) {
 		getElements().forEach(e -> e.setAutomationParameters(parameters));
 	}
 
+	/** Returns the child layer, or {@code null} if none. */
 	public PatternLayer getChild() { return child; }
 
+	/** Sets the child layer. */
 	public void setChild(PatternLayer child) { this.child = child; }
 
+	/**
+	 * Returns the tail of the chain (the last layer with no child).
+	 *
+	 * @return the tail layer
+	 */
 	public PatternLayer getTail() {
 		if (child == null) return this;
 		return child.getTail();
 	}
 
+	/**
+	 * Returns the last parent in the chain (the layer whose child is the tail).
+	 *
+	 * @return the last parent, or {@code null} if there is no child
+	 */
 	public PatternLayer getLastParent() {
 		if (child == null) return null;
 		if (child.getChild() == null) return this;
 		return child.getLastParent();
 	}
 
+	/**
+	 * Returns the total depth of this chain (number of layers including this one).
+	 *
+	 * @return the chain depth
+	 */
 	public int depth() {
 		if (child == null) return 1;
 		return child.depth() + 1;
 	}
 
+	/**
+	 * Removes elements outside {@code [0, duration)}.
+	 *
+	 * @param duration the maximum allowed position (exclusive)
+	 */
 	public void trim(double duration) {
 		trim(0.0, duration);
 	}
 
+	/**
+	 * Removes elements whose position falls outside {@code [start, end)}.
+	 *
+	 * @param start the inclusive start position
+	 * @param end   the exclusive end position
+	 */
 	public void trim(double start, double end) {
 		Iterator<PatternElement> itr = elements.iterator();
 		while (itr.hasNext()) {

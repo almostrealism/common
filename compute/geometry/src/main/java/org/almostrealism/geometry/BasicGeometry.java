@@ -33,21 +33,49 @@ import org.almostrealism.io.DecodePostProcessing;
  */
 public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostProcessing, VectorFeatures, TransformMatrixFeatures {
 	// TODO  Make these private
+	/** The location of this geometry in 3D world space. */
 	public Vector location;
+
+	/** The uniform scaling factor applied to this geometry. */
 	public double size;
 
+	/** The per-axis scale vector, combining the individual axis scale factors. */
 	public Vector scale = new Vector(UnityVector.getEvaluable().evaluate().clone(), 0);
-	public double rotateX, rotateY, rotateZ;
 
+	/** The rotation angle around the X axis, in radians. */
+	public double rotateX;
+
+	/** The rotation angle around the Y axis, in radians. */
+	public double rotateY;
+
+	/** The rotation angle around the Z axis, in radians. */
+	public double rotateZ;
+
+	/** Additional transform matrices applied after the built-in location/scale/rotation transforms. */
 	private TransformMatrix[] transforms;
-	private TransformMatrix transform, completeTransform;
+
+	/** The combined transform from the {@link #transforms} array (excluding scale/rotation). */
+	private TransformMatrix transform;
+
+	/** The complete transform including location, scale, rotation, and any additional transforms. */
+	private TransformMatrix completeTransform;
+
+	/** True if the cached transform matrices are up-to-date with the current parameters. */
 	protected boolean transformCurrent;
-	
+
+	/**
+	 * Constructs a {@link BasicGeometry} at the origin with identity scale and zero rotation.
+	 */
 	public BasicGeometry() {
 		this(new Vector(ZeroVector.getEvaluable().evaluate(), 0));
 		transformCurrent = true;
 	}
 	
+	/**
+	 * Constructs a {@link BasicGeometry} at the specified location with identity scale and zero rotation.
+	 *
+	 * @param location the initial position in 3D world space
+	 */
 	public BasicGeometry(Vector location) {
 		this.setTransforms(new TransformMatrix[0]);
 		

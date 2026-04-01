@@ -61,10 +61,22 @@ public interface AudioAttentionConditioner extends Destroyable {
 	 * cross-attention input, cross-attention mask, and global conditioning.
 	 */
 	class ConditionerOutput {
+		/** Cross-attention input tensor, typically the output of a text encoder such as T5. */
 		private final PackedCollection crossAttentionInput;
+
+		/** Cross-attention mask tensor used to ignore padding tokens during attention. */
 		private final PackedCollection crossAttentionMask;
+
+		/** Global conditioning vector providing duration and style context. */
 		private final PackedCollection globalCond;
 
+		/**
+		 * Constructs a conditioning output container.
+		 *
+		 * @param crossAttentionInput Cross-attention input tensor (text encoder output)
+		 * @param crossAttentionMask  Cross-attention mask for padding tokens
+		 * @param globalCond          Global conditioning vector
+		 */
 		public ConditionerOutput(PackedCollection crossAttentionInput,
 								 PackedCollection crossAttentionMask,
 								 PackedCollection globalCond) {

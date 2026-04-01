@@ -46,44 +46,95 @@ import java.util.stream.Collectors;
  * @author  Michael Murray
  */
 public class StableDurationHealthComputation extends SilenceDurationHealthComputation implements CellFeatures {
+	/** When {@code true}, rendered audio is written to disk after each evaluation. */
 	public static boolean enableOutput = true;
+
+	/** When {@code true}, evaluations are aborted if the timeout threshold is exceeded. */
 	public static boolean enableTimeout = false;
+
+	/** When {@code true}, the operation profile is saved to disk periodically. */
 	public static boolean enableProfileAutosave = false;
 
+	/** Optional profile node used to collect kernel execution statistics. */
 	public static OperationProfile profile;
-	private static long totalGeneratedFrames, totalGenerationTime;
 
+	/** Cumulative total audio frames generated across all evaluations. */
+	private static long totalGeneratedFrames;
+
+	/** Cumulative total generation time in milliseconds across all evaluations. */
+	private static long totalGenerationTime;
+
+	/** Maximum allowed evaluation wall-clock time in milliseconds. */
 	private static final long timeout = 40 * 60 * 1000L;
+
+	/** Interval in milliseconds at which the timeout thread checks for expiry. */
 	private static final long timeoutInterval = 5000;
 
+	/** Maximum evaluation duration in frames (may be reduced via {@link #setMaxDuration}). */
 	private long max = standardDurationFrames;
+
+	/** Number of frames advanced per iteration of the evaluation loop. */
 	private int iter;
 
+	/** Flag set by the silence listener when excessive silence is detected. */
 	private boolean encounteredSilence;
 
+	/** Temporal runner that drives the evaluation loop efficiently. */
 	private TemporalRunner runner;
 
+	/** Background thread that monitors the wall-clock timeout. */
 	private Thread timeoutTrigger;
+
+	/** Set to {@code true} to request the timeout thread to stop. */
 	private boolean endTimeoutTrigger;
-	private long startTime, iterStart;
+
+	/** Wall-clock time at which the current evaluation began. */
+	private long startTime;
+
+	/** Wall-clock time at the start of the most recent batch iteration. */
+	private long iterStart;
+
+	/** GPU-resident abort flag; set to 1.0 to interrupt the evaluation loop. */
 	private PackedCollection abortFlag;
 
+	/**
+	 * Creates a stereo stable-duration computation with the default 6-second silence limit.
+	 *
+	 * @param channels the number of pattern channels (stems)
+	 */
 	public StableDurationHealthComputation(int channels) {
 		this(channels, true);
 	}
 
+	/**
+	 * Creates a stable-duration computation with the default 6-second silence limit.
+	 *
+	 * @param channels the number of pattern channels (stems)
+	 * @param stereo   {@code true} to enable stereo wave output
+	 */
 	public StableDurationHealthComputation(int channels, boolean stereo) {
 		super(channels, stereo, 6);
 		addSilenceListener(() -> encounteredSilence = true);
 		setBatchSize(TemporalRunner.enableOptimization ? 1 : (OutputLine.sampleRate / 2));
 	}
 
+	/**
+	 * Sets the number of audio frames advanced per evaluation loop iteration.
+	 *
+	 * @param iter frames per iteration
+	 */
 	public void setBatchSize(int iter) {
 		this.iter = iter;
 	}
 
+	/**
+	 * Sets the maximum evaluation duration.
+	 *
+	 * @param sec maximum duration in seconds
+	 */
 	public void setMaxDuration(long sec) { this.max = (int) (sec * OutputLine.sampleRate); }
 
+	/** {@inheritDoc} */
 	public void setTarget(TemporalCellular target) {
 		if (getTarget() == null) {
 			super.setTarget(target);
@@ -96,6 +147,10 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		}
 	}
 
+	/**
+	 * Starts the background timeout-trigger thread. If a previous thread has not yet
+	 * terminated, this method waits briefly for it before proceeding.
+	 */
 	protected void startTimeoutTrigger() {
 		if (timeoutTrigger != null) {
 			try {
@@ -143,11 +198,15 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		timeoutTrigger.start();
 	}
 
+	/** Signals the timeout trigger thread to stop and clears the abort flag. */
 	protected void endTimeoutTrigger() {
 		endTimeoutTrigger = true;
 		abortFlag.setMem(0, 0.0);
 	}
 
+	/**
+	 * Returns {@code true} if the wall-clock timeout has been exceeded.
+	 */
 	protected boolean isTimeout() {
 		return enableTimeout && System.currentTimeMillis() - startTime > timeout;
 	}
@@ -299,30 +358,52 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	@Override
 	public Console console() { return console; }
 
+	/**
+	 * Accumulates generation statistics for throughput reporting.
+	 *
+	 * @param generatedFrames number of audio frames rendered in this evaluation
+	 * @param generationTime  wall-clock time in milliseconds for this evaluation
+	 */
 	public static void recordGenerationTime(long generatedFrames, long generationTime) {
 		totalGeneratedFrames += generatedFrames;
 		totalGenerationTime += generationTime;
 	}
 
+	/**
+	 * Returns the average generation time per second of audio, computed across all
+	 * evaluations recorded via {@link #recordGenerationTime}.
+	 *
+	 * @return seconds of generation time per second of audio, or 0 if no data
+	 */
 	public static double getGenerationTimePerSecond() {
 		double seconds = totalGeneratedFrames / (double) OutputLine.sampleRate;
 		double generationTime = totalGenerationTime / 1000.0;
 		return seconds == 0 ? 0 : (generationTime / seconds);
 	}
 
-
+	/**
+	 * Collects audio amplitude samples and provides statistics about when the
+	 * average amplitude is first reached.
+	 */
 	private class AverageAmplitude implements Consumer<PackedCollection> {
+		/** The collected amplitude samples. */
 		private final List<PackedCollection> values = new ArrayList<>();
 
+		/** {@inheritDoc} */
 		@Override
 		public void accept(PackedCollection s) {
 			values.add(s);
 		}
 
+		/** Returns the mean absolute amplitude across all collected samples. */
 		public double average() {
 			return values.stream().mapToDouble(v -> v.toDouble(0)).map(Math::abs).average().orElse(0.0);
 		}
 
+		/**
+		 * Returns the index of the first sample that meets or exceeds the average
+		 * amplitude, or -1 if all samples are below average.
+		 */
 		public int framesUntilAverage() {
 			double avg = average();
 			for (int i = 0; i < values.size(); i++) {

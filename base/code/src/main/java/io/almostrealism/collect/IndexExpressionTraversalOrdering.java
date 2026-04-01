@@ -18,17 +18,36 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 
+/**
+ * A {@link TraversalOrdering} that reads physical positions from a {@link TraversableExpression}.
+ *
+ * <p>Each logical index is passed to the backing expression's {@code getValueAt} and the result
+ * is cast to an integer. This allows arbitrary runtime index mappings to be used as traversal
+ * orderings, for example when the mapping is stored in a collection that is evaluated lazily.</p>
+ */
 public class IndexExpressionTraversalOrdering implements TraversalOrdering {
+	/** The expression that maps logical indices to physical positions. */
 	private final TraversableExpression<?> indices;
 
+	/**
+	 * Creates an ordering backed by the given index expression.
+	 *
+	 * @param indices the expression that supplies physical positions for each logical index
+	 */
 	public IndexExpressionTraversalOrdering(TraversableExpression<?> indices) {
 		this.indices = indices;
 	}
 
+	/**
+	 * Returns the backing index expression.
+	 *
+	 * @return the traversable expression supplying index values
+	 */
 	public TraversableExpression<?> getIndices() {
 		return indices;
 	}
 
+	/** {@inheritDoc} Returns {@code indices.getValueAt(idx).toInt()}. */
 	@Override
 	public Expression<Integer> indexOf(Expression<Integer> idx) {
 		return indices.getValueAt(idx).toInt();

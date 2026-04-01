@@ -20,6 +20,11 @@
       - MissingJavadocMethod : every method and constructor needs a Javadoc comment
       - JavadocVariable      : every field needs a Javadoc comment
       - RegexpSinglelineJava : prohibits use of 'var' and '@SuppressWarnings'
+      - RegexpSinglelineJava : prohibits System.out/err and e.printStackTrace().
+                               Use Console.root() or implement ConsoleFeatures instead.
+                               191 legacy files are suppressed via checkstyle-suppressions.xml
+                               and must be migrated over time.  New files may not be added
+                               to the suppression list.
 -->
 <module name="Checker">
     <property name="charset" value="UTF-8"/>
@@ -53,6 +58,791 @@
         <property name="checks" value="FileLength"/>
         <property name="files" value="AttentionFeatures\.java"/>
     </module>
+    <!-- LayerFeatures.java grew past 1800 lines when Javadoc was added;
+         tracked by scripts/check-exempt-file-lengths.sh -->
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="LayerFeatures\.java"/>
+    </module>
+    <!-- AudioScene.java grew past 1800 lines when Javadoc was added;
+         tracked by scripts/check-exempt-file-lengths.sh -->
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="AudioScene\.java"/>
+    </module>
+
+    <!-- Console.java is the logging system itself — it must write to System.out/err
+         directly to deliver output.  The DirectSystemOut rule is suppressed for it. -->
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Console\.java"/>
+    </module>
+
+    <!-- Baseline suppressions for DirectSystemOut: files using System.out/err or
+         printStackTrace() when the rule was introduced.
+         Remove entries as files are migrated to Console / ConsoleFeatures.
+         DO NOT add new entries — new files must comply from day one. -->
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AbsorberHashSet\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AbsorptionPlane\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AbstractComputeContext\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AbstractSurface\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AcceleratedComputationEvaluable\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AcceleratedTimeSeries\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AirflowJob\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Animation\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ArrayColorBuffer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Asset\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AssetInfoProvider\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AudioLatentDataset\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AudioLibrary\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AudioLibraryDataWriter\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AudioPopulationOptimizer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AudioScene\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AudioServer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AudioSharedMemory\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AutoregressiveModel\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="AveragedVectorMap2D96Bit\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="BasicDelayCell\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="BasicGeometry\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="BlendingShader\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="BufferedOutputControl\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Bytes\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CCMappingManager\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CLComputeContext\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CLDataContext\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CLMemoryProvider\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CLOperator\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CLOperatorMap\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CLProgram\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CPrintWriter\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CacheManager\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CascadingQuery\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CellAdapter\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CellFeatures\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Chart\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ChordProgressionManager\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Chromosome\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ClaudeCodeClient\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Client\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CodePolicyViolationDetector\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CollectionFeatures\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CollectionMinusComputation\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CompilationTimingListener\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ComputationScopeCompiler\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ConcatenatedResource\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Connection\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="CursorPair\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="DatabaseConnection\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="DatabasePools\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="DefaultComputer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="DefaultPhotonField\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="DelayNetwork\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="DistanceEstimationLightingEngine\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="DistributedResource\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="DuplicateCodeDetector\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Electrons\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Encryptor\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Expression\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ExternalComputeContext\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ExternalInstructionSet\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ExternalProcessJob\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="FileWaveDataProviderFilter\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="FileWaveDataProviderNode\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="FlowTreeCli\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="FlowTreeCliServer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="FlowTreeController\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="FourierTransform\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Frequency\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="FrequencyToAudioConverter\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="GraphFileSystem\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="GraphPersist\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="GraphicsConverter\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="GridSequencer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Hardware\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="HardwareEvaluable\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="HardwareException\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="HardwareMemoryProvider\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="HardwareOperator\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="HarmonicAbsorber\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="HealthCallable\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="HeapAnalyzer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="HighlightShader\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="HttpCommandServer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ImageCanvas\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ImageResource\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ImageTexture\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="InstallRepository\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Interpolate\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="JavaFileGenerator\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="JobOutput\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="KMSEngine\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="LSystem\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="LibraryDestination\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="LightingEngine\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="LightingEngineAggregator\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="LineUtilities\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Llama2\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="LocalResourceManager\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="MemoryBankAdapter\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="MemoryDataCopy\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="MercuryXenonLamp\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Mesh\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Message\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="MetalComputeContext\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="MetalDataContext\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="MetalOperatorMap\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="MetricBase\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="MidiDeviceManager\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="MidiInputConnection\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Mod\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ModelOptimizer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="MultiOrderFilter\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="NativeCompiler\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="NativeDataContext\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="NativeInstructionSet\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Node\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="NodeGroup\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="NodeGroupMessageHandler\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="NodeGroupNodeConfig\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="NodeGroupStatusRenderer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="NodeProxy\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="NodeProxyByteWrapper\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="OperationInfo\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="OperationList\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="OperationProfileNode\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="OperationProfileNodeInfo\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="OperationProfileUI\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="OperationTimingListener\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Output\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="OutputFeatures\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="OutputServer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="PackedCollection\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="PairFeatures\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ParallelProcess\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ParallelismTargetOptimization\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="PatternLayerManager\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="PopulationOptimizer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="PriorityQueue\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ProcessFeatures\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ProfileAnalyzerCLI\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ProfileData\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="PrototypeDiscovery\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Query\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Qwen3\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Qwen3Tokenizer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="RAM\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="RandomPeerJoin\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="RankedChoiceEvaluable\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="RayTracedScene\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="RefractionShader\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ResourceDistributionTask\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="RigidBody\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="RigidPlane\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="Scale\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ScopeInstructionsManager\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ScopeSettings\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ScpDownloader\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SendTaskDialog\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ShaderContext\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="ShapeFeatures\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SignalWireDeliveryProvider\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SilenceDurationHealthComputation\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SimpleEventServer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SnellAbsorber\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SoundData\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SoundDataHub\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SoundDataListener\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SpatialDataHub\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SpectralLineDiagram\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="StableDurationHealthComputation\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="StateDictionary\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SubsetTraversalExpression\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SubsetTraversalIndexMapping\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SuperSampler\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SurfaceGroup\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="SystemUtils\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="TemporalScalar\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="TestFeatures\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="TestTimeoutEnforcementScanner\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="TimeSeries\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="TimingRegularizer\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="TraversalPolicy\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="URLImageSource\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="WaveData\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="WaveOutput\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="WesternScales\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="id" value="DirectSystemOut"/>
+        <property name="files" value="package-info\.java"/>
+    </module>
+
 
     <!-- Require package-info.java with a Javadoc comment for every package -->
     <module name="JavadocPackage"/>
@@ -79,6 +869,25 @@
              must have a Javadoc comment. -->
         <module name="JavadocVariable">
             <property name="scope" value="private"/>
+        </module>
+
+        <!-- Prohibit direct System.out / System.err access.
+             Use Console.root() or implement ConsoleFeatures and call log() / warn().
+             Legacy files are suppressed in checkstyle-suppressions.xml. -->
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="DirectSystemOut"/>
+            <property name="format" value="System\.(out|err)\."/>
+            <property name="message" value="Use Console.root() or ConsoleFeatures instead of System.out/err. See base/io/README.md."/>
+            <property name="ignoreComments" value="true"/>
+        </module>
+
+        <!-- Prohibit e.printStackTrace() which writes directly to stderr.
+             Use Console.root().alert(message, exception) instead. -->
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="DirectSystemOut"/>
+            <property name="format" value="\bprintStackTrace\(\)"/>
+            <property name="message" value="Use Console.root().alert(message, exception) instead of printStackTrace(). See base/io/README.md."/>
+            <property name="ignoreComments" value="true"/>
         </module>
 
         <!-- Prohibit use of 'var' keyword - always use explicit types -->

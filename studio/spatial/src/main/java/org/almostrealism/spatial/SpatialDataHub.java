@@ -46,9 +46,13 @@ import java.util.List;
  * @see SpatialTimeseries
  */
 public class SpatialDataHub {
+	/** The singleton hub instance, created lazily by {@link #getCurrent()}. */
 	private static SpatialDataHub current;
 
+	/** The registered listeners for data publication and scan events. */
 	private List<SpatialDataListener> dataListeners;
+
+	/** The registered listeners for timeseries selection events. */
 	private List<SpatialSelectionListener> selectionListeners;
 
 	/**

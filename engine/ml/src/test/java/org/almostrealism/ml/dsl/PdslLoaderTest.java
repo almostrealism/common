@@ -23,6 +23,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -260,67 +263,27 @@ public class PdslLoaderTest extends TestSuiteBase {
 		Assert.assertEquals(7.0, (Double) config.get("y"), 0.001);
 	}
 
+	/**
+	 * Load the PDSL test fixture from the classpath resource.
+	 *
+	 * <p>The fixture lives at {@code src/test/resources/pdsl/test_layers.pdsl}
+	 * and uses hardcoded dimensions matching the {@link #DIM} constant used by
+	 * these tests.  Keeping the source in a {@code .pdsl} file (rather than
+	 * Java string literals) lets it be syntax-highlighted, validated
+	 * independently, and avoids triggering the {@code check-pdsl-in-strings}
+	 * build rule.
+	 *
+	 * @return the PDSL source text
+	 */
 	private String loadPdslSource() {
-		return "// SwiGLU Feed-Forward Network\n"
-				+ "layer swiglu_ffn(\n"
-				+ "    norm_weights: weight,\n"
-				+ "    w1: weight,\n"
-				+ "    w2: weight,\n"
-				+ "    w3: weight,\n"
-				+ "    epsilon: float\n"
-				+ ") -> [1, " + DIM + "] {\n"
-				+ "    rmsnorm(norm_weights, epsilon)\n"
-				+ "    product(\n"
-				+ "        { dense(w1); silu() },\n"
-				+ "        { dense(w3) }\n"
-				+ "    )\n"
-				+ "    dense(w2)\n"
-				+ "}\n"
-				+ "\n"
-				+ "// Transformer Block with residual connections\n"
-				+ "layer transformer_block(\n"
-				+ "    heads: int,\n"
-				+ "    kv_heads: int,\n"
-				+ "    rms_att_weight: weight,\n"
-				+ "    wq: weight,\n"
-				+ "    wk: weight,\n"
-				+ "    wv: weight,\n"
-				+ "    wo: weight,\n"
-				+ "    freq_cis: weight,\n"
-				+ "    position: scalar,\n"
-				+ "    rms_ffn_weight: weight,\n"
-				+ "    w1: weight,\n"
-				+ "    w2: weight,\n"
-				+ "    w3: weight,\n"
-				+ "    epsilon: float\n"
-				+ ") -> [1, " + DIM + "] {\n"
-				+ "    accum {\n"
-				+ "        attention(heads, rms_att_weight,\n"
-				+ "                  wk, wv, wq, wo,\n"
-				+ "                  freq_cis, position)\n"
-				+ "    }\n"
-				+ "    accum {\n"
-				+ "        swiglu_ffn(rms_ffn_weight, w1, w2, w3, epsilon)\n"
-				+ "    }\n"
-				+ "}\n"
-				+ "\n"
-				+ "// Simple dense + activation\n"
-				+ "layer dense_relu(\n"
-				+ "    weights: weight,\n"
-				+ "    biases: weight\n"
-				+ ") -> [1, " + DIM + "] {\n"
-				+ "    dense(weights, biases)\n"
-				+ "    relu()\n"
-				+ "}\n"
-				+ "\n"
-				+ "// Norm + projection\n"
-				+ "layer normed_projection(\n"
-				+ "    norm_weights: weight,\n"
-				+ "    proj_weights: weight,\n"
-				+ "    epsilon: float\n"
-				+ ") -> [1, " + DIM + "] {\n"
-				+ "    rmsnorm(norm_weights, epsilon)\n"
-				+ "    dense(proj_weights)\n"
-				+ "}\n";
+		try (InputStream is = getClass().getResourceAsStream("/pdsl/test_layers.pdsl")) {
+			if (is == null) {
+				throw new IllegalStateException(
+						"Test resource not found: /pdsl/test_layers.pdsl");
+			}
+			return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			throw new IllegalStateException("Failed to load PDSL test fixture", e);
+		}
 	}
 }

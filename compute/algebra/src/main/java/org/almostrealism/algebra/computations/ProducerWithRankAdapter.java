@@ -68,7 +68,10 @@ import java.util.stream.Stream;
  * @see ProducerWithRank
  */
 public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, PackedCollection>, ScopeLifecycle, Shape<T> {
+	/** The wrapped producer that generates the main value, or {@code this} for self-referencing subclasses. */
 	private final Producer<T> p;
+
+	/** The producer for the rank value used to compare and select among multiple candidates. */
 	private final Producer<PackedCollection> rank;
 
 	/**

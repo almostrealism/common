@@ -77,6 +77,7 @@ import org.junit.runners.model.Statement;
  * @see TestUtils#shouldRunInCurrentGroup(String)
  */
 public class TestDepthRule implements MethodRule {
+	/** The depth level against which {@code @TestDepth} annotations are compared. */
 	private final int currentDepth;
 
 	/**
@@ -146,6 +147,12 @@ public class TestDepthRule implements MethodRule {
 		return base;
 	}
 
+	/**
+	 * Returns a {@link Statement} that always skips the test with the specified reason.
+	 *
+	 * @param reason  the human-readable skip reason passed to {@code Assume.assumeTrue}
+	 * @return        a statement that unconditionally calls {@code Assume.assumeTrue(reason, false)}
+	 */
 	private Statement skipStatement(String reason) {
 		return new Statement() {
 			@Override
