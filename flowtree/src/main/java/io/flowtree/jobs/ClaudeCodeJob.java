@@ -17,7 +17,6 @@
 package io.flowtree.jobs;
 
 import io.flowtree.JsonFieldExtractor;
-import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.util.KeyUtils;
@@ -35,7 +34,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 
 /**
@@ -73,6 +71,7 @@ import java.util.Map;
  *
  * @author Michael Murray
  * @see GitManagedJob
+ * @see ClaudeCodeJobFactory
  */
 public class ClaudeCodeJob extends GitManagedJob {
     /** Sentinel string used to delimit multiple prompts in the serialized wire format. */
@@ -515,9 +514,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         // about the violation and the consequences of repeating it.
         executeSingleRun();
 
-        // Clear the violation so it doesn't persist into further retries
-        // (onGitTampering won't be called again — the caller handles the
-        // second-chance logic).
+        // Clear the violation so it doesn't persist into further retries.
         gitTamperingViolation = null;
 
         return true;
@@ -592,9 +589,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             }
 
             // Set resolved workstream URL for MCP servers (ar-messages, ar-github).
-            // resolveWorkstreamUrl() replaces the 0.0.0.0 placeholder with the
-            // actual controller host from FLOWTREE_ROOT_HOST, which is required
-            // when the agent runs in a Docker container.
             String wsUrl = resolveWorkstreamUrl();
             if (wsUrl != null && !wsUrl.isEmpty()) {
                 pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
@@ -746,15 +740,15 @@ public class ClaudeCodeJob extends GitManagedJob {
         pb.redirectErrorStream(true);
         GitOperations.augmentPath(pb);
         Process p = pb.start();
-        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        String auditOutput = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = p.waitFor();
 
         if (code == 2) {
             // Exit code 2 = violations found
-            warn("Test-hiding violations detected - aborting commit:\n" + output);
+            warn("Test-hiding violations detected - aborting commit:\n" + auditOutput);
             return false;
         } else if (code != 0) {
-            warn("detect-test-hiding.sh exited with code " + code + ": " + output);
+            warn("detect-test-hiding.sh exited with code " + code + ": " + auditOutput);
             // Non-violation error (code 1 = bad args); don't block on script bugs
         }
 
@@ -801,6 +795,9 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Resolves a path relative to the working directory.
+     *
+     * @param filename the path relative to the working directory
+     * @return the resolved {@link Path}
      */
     private Path resolveWorkingPath(String filename) {
         String workDir = getWorkingDirectory();
@@ -934,7 +931,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Output record for ClaudeCodeJob results.
+     * Output record produced by a completed {@link ClaudeCodeJob}.
      */
     public static class ClaudeCodeJobOutput extends JobOutput {
         /** The prompt that was submitted to Claude Code for this job. */
@@ -953,7 +950,8 @@ public class ClaudeCodeJob extends GitManagedJob {
          * @param sessionId  the Claude Code session identifier
          * @param exitCode   the process exit code
          */
-        public ClaudeCodeJobOutput(String taskId, String prompt, String output, String sessionId, int exitCode) {
+        public ClaudeCodeJobOutput(String taskId, String prompt, String output,
+                                   String sessionId, int exitCode) {
             super(taskId, "", "", output);
             this.prompt = prompt;
             this.sessionId = sessionId;
@@ -994,606 +992,31 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Factory for producing {@link ClaudeCodeJob} instances from a list of prompts.
+     * Backward-compatible alias for {@link ClaudeCodeJobFactory}.
      *
-     * <p>Each prompt becomes a separate job, allowing the Flowtree system to
-     * distribute prompts across multiple nodes. When a node finishes a prompt,
-     * it becomes idle and can pick up the next job.</p>
+     * <p>New code should reference {@link ClaudeCodeJobFactory} directly.
+     * This subclass exists so that existing call sites using
+     * {@code new ClaudeCodeJob.Factory(...)} and serialized wire-format
+     * strings containing {@code ClaudeCodeJob$Factory} continue to work.</p>
      */
-    public static class Factory extends AbstractJobFactory {
-        /** Cached decoded list of prompts; populated lazily from the serialized properties. */
-        private List<String> prompts;
-        /** Short human-readable description for jobs created by this factory. */
-        private String description;
-        /** Index of the next prompt to be dispatched as a job. */
-        private int index;
-        /** Comma-separated list of tools Claude Code is permitted to invoke. */
-        private String allowedTools = DEFAULT_TOOLS;
-        /** Maximum number of agentic turns Claude Code may take per job. */
-        private int maxTurns = 50;
-        /** Maximum spend budget per job in US dollars. */
-        private double maxBudgetUsd = 10.0;
-        /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
-        private String arManagerUrl;
-        /** Bearer token for authenticating against the ar-manager service. */
-        private String arManagerToken;
-        /** Optional planning document text to inject into the Claude Code system prompt. */
-        private String planningDocument;
-        /** Whether jobs created by this factory must produce at least one staged file change. */
-        private boolean enforceChanges;
-
+    public static class Factory extends ClaudeCodeJobFactory {
         /**
          * Default constructor for deserialization.
          */
-        public Factory() {
-            super(KeyUtils.generateKey());
-            // Persist taskId in properties so it survives wire serialization.
-            // AbstractJobFactory.encode() does NOT serialize the taskId field,
-            // so without this the deserialized factory would get a new random ID.
-            set("factoryTaskId", super.getTaskId());
-
-            // Store default for pushToOrigin so isPushToOrigin() returns true
-            // even before setPushToOrigin() is explicitly called.
-            set("push", String.valueOf(true));
-        }
-
-        /**
-         * Returns the stable task identifier for this factory. The ID is
-         * persisted in the serialized properties map so that it survives
-         * wire serialisation and deserialisation.
-         *
-         * @return the factory's task ID
-         */
-        @Override
-        public String getTaskId() {
-            String stored = get("factoryTaskId");
-            return stored != null ? stored : super.getTaskId();
-        }
+        public Factory() { super(); }
 
         /**
          * Creates a factory with the specified prompts.
          *
          * @param prompts the prompts to process
          */
-        public Factory(String... prompts) {
-            this();
-            if (prompts.length > 0) {
-                setPrompts(prompts);
-            }
-        }
+        public Factory(String... prompts) { super(prompts); }
 
         /**
          * Creates a factory with the specified prompts list.
-         * Use this when you have an existing list of prompts.
          *
          * @param prompts the list of prompts to process
          */
-        public Factory(List<String> prompts) {
-            this();
-            setPrompts(prompts.toArray(new String[0]));
-        }
-
-        /**
-         * Sets the list of prompts for this factory by encoding and persisting
-         * them to the serialized properties map.
-         *
-         * @param prompts  the prompts to encode and store
-         */
-        public void setPrompts(String... prompts) {
-            String code = String.join(PROMPT_SEPARATOR, prompts);
-            set("prompts", base64Encode(code));
-        }
-
-        /**
-         * Returns the list of prompts configured for this factory, decoding
-         * them from the serialized properties map on the first access.
-         *
-         * @return the list of prompts; never {@code null}
-         */
-        public List<String> getPrompts() {
-            if (prompts == null) {
-                String code = base64Decode(get("prompts"));
-                prompts = code == null ? new ArrayList<>() : new ArrayList<>(List.of(code.split(PROMPT_SEPARATOR)));
-            }
-            return prompts;
-        }
-
-        /**
-         * Returns the short description for jobs created by this factory.
-         */
-        public String getDescription() {
-            if (description == null) {
-                description = base64Decode(get("desc"));
-            }
-            return description;
-        }
-
-        /**
-         * Sets a short human-readable description for jobs created by this factory.
-         *
-         * @param description a concise label (e.g., "Resolve test failures")
-         */
-        public void setDescription(String description) {
-            this.description = description;
-            set("desc", base64Encode(description));
-        }
-
-        /**
-         * Returns the comma-separated list of tools Claude Code is permitted to invoke.
-         *
-         * @return the allowed tools string
-         */
-        public String getAllowedTools() {
-            return allowedTools;
-        }
-
-        /**
-         * Sets the comma-separated list of tools Claude Code is permitted to invoke.
-         *
-         * @param allowedTools  the tool names, comma-separated
-         */
-        public void setAllowedTools(String allowedTools) {
-            this.allowedTools = allowedTools;
-            set("tools", allowedTools);
-        }
-
-        /**
-         * Returns the working directory for jobs created by this factory.
-         * Reads from the serialized properties map, using the same key
-         * and encoding as {@link GitManagedJob}.
-         */
-        public String getWorkingDirectory() {
-            return base64Decode(get("workDir"));
-        }
-
-        /**
-         * Sets the working directory for jobs created by this factory.
-         *
-         * @param workingDirectory  absolute path to the working directory
-         */
-        public void setWorkingDirectory(String workingDirectory) {
-            set("workDir", base64Encode(workingDirectory));
-        }
-
-        /**
-         * Returns the git repository URL for automatic checkout.
-         */
-        public String getRepoUrl() {
-            return base64Decode(get("repoUrl"));
-        }
-
-        /**
-         * Sets the git repository URL. When set, the agent will clone
-         * this repo if no working directory is specified.
-         *
-         * @param repoUrl the git clone URL
-         */
-        public void setRepoUrl(String repoUrl) {
-            set("repoUrl", base64Encode(repoUrl));
-        }
-
-        /**
-         * Returns the default workspace path for repo checkouts.
-         */
-        public String getDefaultWorkspacePath() {
-            return base64Decode(get("defaultWsPath"));
-        }
-
-        /**
-         * Sets the default workspace path for repo checkouts.
-         *
-         * @param defaultWorkspacePath the absolute path for repo checkouts
-         */
-        public void setDefaultWorkspacePath(String defaultWorkspacePath) {
-            set("defaultWsPath", base64Encode(defaultWorkspacePath));
-        }
-
-        /**
-         * Returns the maximum number of agentic turns Claude Code may take per job.
-         *
-         * @return the turn limit
-         */
-        public int getMaxTurns() {
-            return maxTurns;
-        }
-
-        /**
-         * Sets the maximum number of agentic turns Claude Code may take per job.
-         *
-         * @param maxTurns  the turn limit
-         */
-        public void setMaxTurns(int maxTurns) {
-            this.maxTurns = maxTurns;
-            set("maxTurns", String.valueOf(maxTurns));
-        }
-
-        /**
-         * Returns the maximum spend budget per job in US dollars.
-         *
-         * @return the budget cap in USD
-         */
-        public double getMaxBudgetUsd() {
-            return maxBudgetUsd;
-        }
-
-        /**
-         * Sets the maximum spend budget per job in US dollars.
-         *
-         * @param maxBudgetUsd  the budget cap in USD; negative values disable the limit
-         */
-        public void setMaxBudgetUsd(double maxBudgetUsd) {
-            this.maxBudgetUsd = maxBudgetUsd;
-            set("maxBudget", String.valueOf(maxBudgetUsd));
-        }
-
-        /**
-         * Returns the target branch for git operations.
-         */
-        public String getTargetBranch() {
-            return base64Decode(get("branch"));
-        }
-
-        /**
-         * Sets the target branch for git operations.
-         * When set, each job will commit and push its changes to this branch.
-         *
-         * @param targetBranch the branch name (e.g., "feature/my-work")
-         */
-        public void setTargetBranch(String targetBranch) {
-            set("branch", base64Encode(targetBranch));
-        }
-
-        /**
-         * Returns the base branch for new branch creation.
-         */
-        public String getBaseBranch() {
-            return base64Decode(get("baseBranch"));
-        }
-
-        /**
-         * Sets the base branch used as the starting point when the target
-         * branch does not yet exist. Defaults to {@code "master"}.
-         *
-         * @param baseBranch the branch name to base new branches on
-         */
-        public void setBaseBranch(String baseBranch) {
-            set("baseBranch", base64Encode(baseBranch));
-        }
-
-        /**
-         * Returns whether to push commits to origin. Defaults to {@code true}.
-         */
-        public boolean isPushToOrigin() {
-            return Boolean.parseBoolean(get("push"));
-        }
-
-        /**
-         * Sets whether jobs produced by this factory should push their commits
-         * to the remote origin.
-         *
-         * @param pushToOrigin  {@code true} to push, {@code false} to commit locally only
-         */
-        public void setPushToOrigin(boolean pushToOrigin) {
-            set("push", String.valueOf(pushToOrigin));
-        }
-
-        /**
-         * Returns the git user name for commits.
-         */
-        public String getGitUserName() {
-            return base64Decode(get("gitUserName"));
-        }
-
-        /**
-         * Sets the git user name for commits made by jobs from this factory.
-         *
-         * @param gitUserName the name to use in git commits
-         */
-        public void setGitUserName(String gitUserName) {
-            set("gitUserName", base64Encode(gitUserName));
-        }
-
-        /**
-         * Returns the git user email for commits.
-         */
-        public String getGitUserEmail() {
-            return base64Decode(get("gitUserEmail"));
-        }
-
-        /**
-         * Sets the git user email for commits made by jobs from this factory.
-         *
-         * @param gitUserEmail the email to use in git commits
-         */
-        public void setGitUserEmail(String gitUserEmail) {
-            set("gitUserEmail", base64Encode(gitUserEmail));
-        }
-
-        /**
-         * Returns the workstream URL for jobs created by this factory.
-         */
-        public String getWorkstreamUrl() {
-            return base64Decode(get("workstreamUrl"));
-        }
-
-        /**
-         * Sets the workstream URL for jobs created by this factory.
-         * This single URL is used for both status reporting and
-         * messaging (by appending {@code /messages}).
-         *
-         * @param workstreamUrl the controller URL for the workstream
-         */
-        public void setWorkstreamUrl(String workstreamUrl) {
-            set("workstreamUrl", base64Encode(workstreamUrl));
-        }
-
-        /** Returns the ar-manager HTTP URL. */
-        public String getArManagerUrl() {
-            return arManagerUrl;
-        }
-
-        /**
-         * Sets the ar-manager HTTP URL for agent jobs.
-         *
-         * @param arManagerUrl the ar-manager service URL
-         */
-        public void setArManagerUrl(String arManagerUrl) {
-            this.arManagerUrl = arManagerUrl;
-            set("arManagerUrl", base64Encode(arManagerUrl));
-        }
-
-        /** Returns the ar-manager auth token. */
-        public String getArManagerToken() {
-            return arManagerToken;
-        }
-
-        /**
-         * Sets the HMAC temporary auth token for ar-manager.
-         *
-         * @param arManagerToken the bearer token
-         */
-        public void setArManagerToken(String arManagerToken) {
-            this.arManagerToken = arManagerToken;
-            set("arManagerToken", base64Encode(arManagerToken));
-        }
-
-        /**
-         * Returns the planning document path for jobs.
-         */
-        public String getPlanningDocument() {
-            return planningDocument;
-        }
-
-        /**
-         * Sets the planning document path for jobs created by this factory.
-         *
-         * @param planningDocument path relative to the working directory
-         */
-        public void setPlanningDocument(String planningDocument) {
-            this.planningDocument = planningDocument;
-            set("planDoc", base64Encode(planningDocument));
-        }
-
-        /**
-         * Returns whether test file protection is enabled for jobs.
-         */
-        public boolean isProtectTestFiles() {
-            return "true".equals(get("protectTests"));
-        }
-
-        /**
-         * Sets whether to protect test files that exist on the base branch.
-         *
-         * @param protectTestFiles true to block staging of existing test/CI files
-         */
-        public void setProtectTestFiles(boolean protectTestFiles) {
-            set("protectTests", String.valueOf(protectTestFiles));
-        }
-
-        /**
-         * Returns whether enforcement mode is enabled for jobs.
-         * When enabled, jobs will loop until code changes are produced.
-         */
-        public boolean isEnforceChanges() {
-            return "true".equals(get("enforceChanges"));
-        }
-
-        /**
-         * Sets whether enforcement mode is enabled for jobs.
-         * When enabled, the agent session restarts with escalating warnings
-         * if it finishes without producing any code changes.
-         *
-         * @param enforceChanges true to require code changes for completion
-         */
-        public void setEnforceChanges(boolean enforceChanges) {
-            this.enforceChanges = enforceChanges;
-            set("enforceChanges", String.valueOf(enforceChanges));
-        }
-
-
-        /**
-         * Returns whether a pull request should be automatically created
-         * upon successful job completion.
-         */
-        public boolean isAutoCreatePr() {
-            return "true".equals(get("autoCreatePr"));
-        }
-
-        /**
-         * Sets whether to automatically create a GitHub pull request when
-         * the job completes successfully. The controller will create the PR
-         * using the GitHub token associated with the workstream's organization.
-         *
-         * @param autoCreatePr true to auto-create a PR on success
-         */
-        public void setAutoCreatePr(boolean autoCreatePr) {
-            set("autoCreatePr", String.valueOf(autoCreatePr));
-        }
-
-        /**
-         * Returns the Python requirements for the managed venv.
-         *
-         * @return pip requirements.txt content, or null
-         */
-        public String getPythonRequirements() {
-            return base64Decode(get("pyReqs"));
-        }
-
-        /**
-         * Sets the Python package requirements (pip requirements.txt content)
-         * that will be installed in a managed venv on the receiving node
-         * before the job executes.
-         *
-         * @param requirements the requirements.txt content
-         */
-        public void setPythonRequirements(String requirements) {
-            set("pyReqs", base64Encode(requirements));
-        }
-
-        @Override
-        public Job nextJob() {
-            List<String> p = getPrompts();
-            if (index >= p.size()) return null;
-
-            String workingDirectory = getWorkingDirectory();
-            String repoUrl = getRepoUrl();
-            String defaultWorkspacePath = getDefaultWorkspacePath();
-            String targetBranch = getTargetBranch();
-            String baseBranch = getBaseBranch();
-            String gitUserName = getGitUserName();
-            String gitUserEmail = getGitUserEmail();
-            String workstreamUrl = getWorkstreamUrl();
-
-            ClaudeCodeJob job = new ClaudeCodeJob(getTaskId(), p.get(index++));
-            job.setAllowedTools(allowedTools);
-            job.setWorkingDirectory(workingDirectory);
-            job.setMaxTurns(maxTurns);
-            job.setMaxBudgetUsd(maxBudgetUsd);
-
-            // Description for notifications
-            String desc = getDescription();
-            if (desc != null) {
-                job.setDescription(desc);
-            }
-
-            // Repository URL for automatic checkout
-            if (repoUrl != null) {
-                job.setRepoUrl(repoUrl);
-            }
-            if (defaultWorkspacePath != null) {
-                job.setDefaultWorkspacePath(defaultWorkspacePath);
-            }
-
-            // Git management settings
-            if (targetBranch != null) {
-                job.setTargetBranch(targetBranch);
-                job.setPushToOrigin(isPushToOrigin());
-            }
-            if (baseBranch != null) {
-                job.setBaseBranch(baseBranch);
-            }
-            if (gitUserName != null) {
-                job.setGitUserName(gitUserName);
-            }
-            if (gitUserEmail != null) {
-                job.setGitUserEmail(gitUserEmail);
-            }
-
-            // Workstream URL (status reporting + messaging)
-            if (workstreamUrl != null) {
-                job.setWorkstreamUrl(workstreamUrl);
-            }
-
-            // ar-manager config
-            if (arManagerUrl != null) {
-                job.setArManagerUrl(arManagerUrl);
-            }
-            if (arManagerToken != null) {
-                job.setArManagerToken(arManagerToken);
-            }
-
-            // Planning document
-            if (planningDocument != null) {
-                job.setPlanningDocument(planningDocument);
-            }
-
-            // Test file protection
-            job.setProtectTestFiles(isProtectTestFiles());
-
-            // Enforcement mode
-            job.setEnforceChanges(isEnforceChanges());
-
-            // Python environment requirements
-            String pyReqs = getPythonRequirements();
-            if (pyReqs != null) {
-                job.setPythonRequirements(pyReqs);
-            }
-
-            // Required labels for Node routing
-            for (Map.Entry<String, String> entry : getRequiredLabels().entrySet()) {
-                job.setRequiredLabel(entry.getKey(), entry.getValue());
-            }
-
-            return job;
-        }
-
-        @Override
-        public Job createJob(String data) {
-            return null; // Not used - jobs created via nextJob()
-        }
-
-        @Override
-        public double getCompleteness() {
-            List<String> p = getPrompts();
-            return p.isEmpty() ? 1.0 : index / (double) p.size();
-        }
-
-        /**
-         * Deserializes a property from the wire format.
-         *
-         * <p>Git-related properties (workDir, repoUrl, branch, etc.) are
-         * stored directly in the {@link AbstractJobFactory} properties map
-         * and decoded on read by the corresponding getter methods.  This
-         * avoids duplicating the decode logic that also exists in
-         * {@link GitManagedJob#set(String, String)}.</p>
-         */
-        @Override
-        public void set(String key, String value) {
-            super.set(key, value);
-
-            switch (key) {
-                case "tools":
-                    this.allowedTools = value;
-                    break;
-                case "maxTurns":
-                    this.maxTurns = Integer.parseInt(value);
-                    break;
-                case "maxBudget":
-                    this.maxBudgetUsd = Double.parseDouble(value);
-                    break;
-                case "arManagerUrl":
-                    this.arManagerUrl = base64Decode(value);
-                    break;
-                case "arManagerToken":
-                    this.arManagerToken = base64Decode(value);
-                    break;
-                case "planDoc":
-                    this.planningDocument = base64Decode(value);
-                    break;
-                case "enforceChanges":
-                    this.enforceChanges = Boolean.parseBoolean(value);
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        @Override
-        public String toString() {
-            return "ClaudeCodeJob.Factory[prompts=" + getPrompts().size() +
-                   ", tools=" + allowedTools +
-                   ", branch=" + getTargetBranch() +
-                   ", completeness=" + getCompleteness() + "]";
-        }
+        public Factory(List<String> prompts) { super(prompts); }
     }
 }

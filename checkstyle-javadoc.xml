@@ -33,6 +33,16 @@
         <property name="fileNamePattern" value="[/\\]generated[/\\]"/>
     </module>
 
+    <!-- Cap Java source files at 1500 lines.  Files larger than this are a
+         sign that a class is doing too much and should be split into focused
+         collaborators.  The limit is intentionally generous enough to
+         accommodate well-documented classes with many configuration properties,
+         but strict enough to prevent the kind of 2000+ line monoliths that
+         become impossible to edit safely. -->
+    <module name="FileLength">
+        <property name="max" value="1500"/>
+    </module>
+
     <!-- Require package-info.java with a Javadoc comment for every package -->
     <module name="JavadocPackage"/>
 

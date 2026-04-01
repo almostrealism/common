@@ -47,6 +47,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.function.Consumer;
 
 /**
  * A {@link Node} represents a member of the distributed network
@@ -172,34 +173,12 @@ public class Node implements Runnable, ThreadFactory {
 	private final double parentalSleepP = 0.0;
 
 	/**
-	 * Listener interface for monitoring the activity state of a {@link Node}.
-	 * Implementations are notified at the end of each activity iteration and
-	 * whenever the node transitions between working, idle, and isolated states.
+	 * Backward-compatible alias for {@link NodeActivityListener}.
+	 * All method declarations live in the parent interface; this alias exists
+	 * solely so that pre-existing {@code implements Node.ActivityListener} and
+	 * {@code Node.ActivityListener} type references continue to compile.
 	 */
-	public interface ActivityListener {
-		/**
-		 * Called at the end of each activity-thread iteration for the given node.
-		 *
-		 * @param n the node that completed an iteration
-		 */
-		void iteration(Node n);
-
-		/**
-		 * Called when the node's worker thread begins executing a job.
-		 */
-		void startedWorking();
-
-		/**
-		 * Called when the node's worker thread finishes executing a job.
-		 */
-		void stoppedWorking();
-
-		/**
-		 * Called when the node detects it has no peer connections and cannot
-		 * relay jobs to any other part of the network.
-		 */
-		void becameIsolated();
-	}
+	public interface ActivityListener extends NodeActivityListener { }
 	
 	/** The {@link NodeGroup} that owns and coordinates this node. May be {@code null} for standalone nodes (which do not execute jobs). */
 	protected NodeGroup parent;
@@ -370,30 +349,15 @@ public class Node implements Runnable, ThreadFactory {
 	}
 
 	/**
-	 * Returns true if this Node's labels satisfy the given requirements.
-	 * An empty requirements map is satisfied unless this Node has the
-	 * {@code role:relay} label, which marks it as a queue-only Node
-	 * that never executes jobs.
+	 * Returns {@code true} if this node's capability labels satisfy the given
+	 * requirements.  Relay nodes (role=relay) always return {@code false}.
+	 * Delegates to {@link NodeLabelMatcher#satisfies}.
 	 *
 	 * @param requirements the required label key-value pairs
-	 * @return true if every requirement is matched by this Node's labels
+	 * @return true if every requirement is matched by this node's labels
 	 */
 	public boolean satisfies(Map<String, String> requirements) {
-		// Relay nodes never execute jobs — they only queue and forward
-		if ("relay".equals(labels.get("role"))) {
-			return false;
-		}
-
-		if (requirements == null || requirements.isEmpty()) {
-			return true;
-		}
-		for (Map.Entry<String, String> entry : requirements.entrySet()) {
-			String value = labels.get(entry.getKey());
-			if (value == null || !value.equals(entry.getValue())) {
-				return false;
-			}
-		}
-		return true;
+		return NodeLabelMatcher.satisfies(labels, requirements);
 	}
 
 	/**
@@ -678,8 +642,7 @@ public class Node implements Runnable, ThreadFactory {
 			return (Connection[])this.peers.toArray(new Connection[0]);
 		}
 	}
-	
-	
+
 	/**
 	 * Returns an internal object by name.  Supported keys are:
 	 * <ul>
@@ -1237,7 +1200,7 @@ public class Node implements Runnable, ThreadFactory {
 		
 		buf.append("<p>");
 		buf.append("Sleep time: ");
-		buf.append(Node.formatTime(this.sleep));
+		buf.append(NodeTimeFormatter.format(this.sleep));
 		buf.append(nl);
 		
 		if (this.isAlive())
@@ -1258,7 +1221,7 @@ public class Node implements Runnable, ThreadFactory {
 			comP = this.totalComTime / up;
 		}
 		
-		buf.append("Worked for " + Node.formatTime(this.totalWorkTime));
+		buf.append("Worked for " + NodeTimeFormatter.format(this.totalWorkTime));
 		if (workP > 0.0) {
 			buf.append(" (");
 			buf.append(pFormat.format(workP));
@@ -1275,7 +1238,7 @@ public class Node implements Runnable, ThreadFactory {
 			buf.append(nl);
 		}
 		
-		buf.append("Communicated for " + Node.formatTime(this.totalComTime));
+		buf.append("Communicated for " + NodeTimeFormatter.format(this.totalComTime));
 		if (comP > 0.0) {
 			buf.append(" (");
 			buf.append(pFormat.format(comP));
@@ -1387,74 +1350,31 @@ public class Node implements Runnable, ThreadFactory {
 	}
 
 	/**
-	 * Notifies all registered {@link ActivityListener}s that this node's worker
-	 * thread has begun executing a job, then propagates the event to the parent
-	 * {@link NodeGroup} if one exists.
-	 */
-	public void startedWorking() {
-		synchronized (this.listeners) {
-			Iterator itr = this.listeners.iterator();
-			while (itr.hasNext()) ((ActivityListener)itr.next()).startedWorking();
-
-			if (this.parent != null) this.parent.startedWorking();
-		}
-	}
-
-	/**
-	 * Notifies all registered {@link ActivityListener}s that this node's worker
-	 * thread has finished executing a job, then propagates the event to the parent
-	 * {@link NodeGroup} if one exists.
-	 */
-	public void stoppedWorking() {
-		synchronized (this.listeners) {
-			Iterator itr = this.listeners.iterator();
-			while (itr.hasNext()) ((ActivityListener)itr.next()).stoppedWorking();
-
-			if (this.parent != null) this.parent.stoppedWorking();
-		}
-	}
-
-	/**
-	 * Notifies all registered {@link ActivityListener}s that this node has no
-	 * remaining peer connections and is isolated from the network, then propagates
-	 * the event to the parent {@link NodeGroup} if one exists.
-	 */
-	public void becameIsolated() {
-		synchronized (this.listeners) {
-			Iterator itr = this.listeners.iterator();
-			while (itr.hasNext()) ((ActivityListener)itr.next()).becameIsolated();
-
-			if (this.parent != null) this.parent.becameIsolated();
-		}
-	}
-	
-	/**
-	 * Formats a duration in milliseconds as a human-readable string of the form
-	 * {@code "M minutes and S.SSS seconds (N)"}, omitting the minutes component
-	 * when the duration is less than one minute.
+	 * Applies {@code action} to every registered {@link ActivityListener} and
+	 * optionally to the parent {@link NodeGroup} (which also implements
+	 * {@link ActivityListener}).  Callers hold no lock before this call;
+	 * synchronization on {@link #listeners} is acquired inside.
 	 *
-	 * @param msec the duration to format, in milliseconds
-	 * @return the formatted time string
+	 * @param action   the notification to deliver to each listener
+	 * @param notifyParent whether to also notify the parent group
 	 */
-	public static String formatTime(double msec) {
-		int min = (int) Math.floor(msec / 60000);
-		double sec = Math.floor(msec % 60000);
-		sec = sec / 1000.0;
-		
-		StringBuffer b = new StringBuffer();
-		
-		if (min > 0) {
-			b.append(min);
-			b.append(" minutes and ");
+	private void notifyListeners(Consumer<ActivityListener> action,
+								 boolean notifyParent) {
+		synchronized (this.listeners) {
+			Iterator itr = this.listeners.iterator();
+			while (itr.hasNext()) action.accept((ActivityListener) itr.next());
+			if (notifyParent && this.parent != null) action.accept(this.parent);
 		}
-		
-		b.append(sec);
-		b.append(" seconds (");
-		b.append(msec);
-		b.append(")");
-		
-		return b.toString();
 	}
+
+	/** Notifies all {@link ActivityListener}s that the worker thread has started. */
+	public void startedWorking() { notifyListeners(ActivityListener::startedWorking, true); }
+
+	/** Notifies all {@link ActivityListener}s that the worker thread has stopped. */
+	public void stoppedWorking() { notifyListeners(ActivityListener::stoppedWorking, true); }
+
+	/** Notifies all {@link ActivityListener}s that this node has become isolated. */
+	public void becameIsolated() { notifyListeners(ActivityListener::becameIsolated, true); }
 	
 	/**
 	 * Entry point for the activity thread.  On each iteration the thread:
