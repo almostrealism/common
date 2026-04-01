@@ -90,9 +90,6 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	/** Supplementary MLP second layer bias, shape (hiddenSize,). */
 	private final PackedCollection supplementaryMlp2Bias;
 
-	/** Supplementary MLP intermediate size (may differ from hiddenSize). */
-	private final int supplementaryMlpIntermediateSize;
-
 	/**
 	 * Create a CompoundMidiEmbedding from a {@link StateDictionary}.
 	 *
@@ -121,7 +118,6 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 		this.supplementaryMlp0Bias = stateDict.get("supplementary_mlp.0.bias");
 		this.supplementaryMlp2Weight = stateDict.get("supplementary_mlp.2.weight");
 		this.supplementaryMlp2Bias = stateDict.get("supplementary_mlp.2.bias");
-		this.supplementaryMlpIntermediateSize = supplementaryMlp0Bias.getMemLength();
 	}
 
 	/**
@@ -150,7 +146,6 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 		this.supplementaryMlp0Bias = new PackedCollection(new TraversalPolicy(mlpIntermediate));
 		this.supplementaryMlp2Weight = new PackedCollection(new TraversalPolicy(hidden, mlpIntermediate));
 		this.supplementaryMlp2Bias = new PackedCollection(new TraversalPolicy(hidden));
-		this.supplementaryMlpIntermediateSize = mlpIntermediate;
 	}
 
 	/**
@@ -176,7 +171,7 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 		} else if (token.isFillEnd()) {
 			return embedSupplementary(1);
 		} else if (token.isPAD()) {
-			return cp(new PackedCollection(new TraversalPolicy(hidden)));
+			return zeros(shape(hidden));
 		}
 
 		int[] values = token.toArray();
@@ -214,7 +209,7 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 */
 	private CollectionProducer embedInstrument(int instrumentId) {
 		int dim = config.embeddingDim;
-		return cp(instrumentEmbedding.range(shape(dim), instrumentId * dim));
+		return cp(instrumentEmbedding).subset(shape(1, dim), instrumentId, 0).reshape(shape(dim));
 	}
 
 	/**
@@ -225,19 +220,19 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 */
 	private CollectionProducer embedSupplementary(int tokenIndex) {
 		int hidden = config.hiddenSize;
-		int intermediate = supplementaryMlpIntermediateSize;
 
-		CollectionProducer lookup = cp(supplementaryEmbedding.range(shape(hidden), tokenIndex * hidden));
+		CollectionProducer lookup = cp(supplementaryEmbedding)
+				.subset(shape(1, hidden), tokenIndex, 0).reshape(shape(hidden));
 
-		CollectionProducer mlp0Out = add(matmul(p(supplementaryMlp0Weight), lookup),
-				c(supplementaryMlp0Bias));
+		CollectionProducer mlp0Out = add(matmul(cp(supplementaryMlp0Weight), lookup),
+				cp(supplementaryMlp0Bias));
 
 		// GELU activation: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
 		CollectionProducer geluArg = mlp0Out.multiply(c(Math.sqrt(2.0 / Math.PI)))
 				.multiply(c(1.0).add(mlp0Out.multiply(mlp0Out).multiply(mlp0Out).multiply(c(0.044715))));
 		CollectionProducer geluOut = mlp0Out.multiply(c(0.5)).multiply(c(1.0).add(tanh(geluArg)));
 
-		return add(matmul(p(supplementaryMlp2Weight), geluOut), c(supplementaryMlp2Bias))
+		return add(matmul(cp(supplementaryMlp2Weight), geluOut), cp(supplementaryMlp2Bias))
 				.reshape(shape(hidden));
 	}
 
@@ -247,7 +242,7 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	}
 
 	/** Returns the instrument embedding weight. */
-	public PackedCollection getInstrumentEmbedding() { return instrumentEmbedding; }
+	public CollectionProducer getInstrumentEmbedding() { return cp(instrumentEmbedding); }
 
 	/** Returns the model configuration. */
 	public MoonbeamConfig getConfig() { return config; }
