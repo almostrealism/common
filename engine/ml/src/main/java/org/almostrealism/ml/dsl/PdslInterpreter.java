@@ -60,7 +60,7 @@ import java.util.function.Function;
  *   <li>{@code branch name { ... }} - parallel path</li>
  *   <li>{@code accum { ... }} - residual connection</li>
  *   <li>{@code product(blockA, blockB)} - element-wise multiply</li>
- *   <li>{@code add_blocks(blockA, blockB)} - element-wise addition</li>
+ *   <li>{@code accum_blocks(blockA, blockB)} - element-wise addition</li>
  * </ul>
  */
 public class PdslInterpreter {
@@ -226,8 +226,8 @@ public class PdslInterpreter {
 			interpretAccum((PdslNode.AccumStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ProductStatement) {
 			interpretProduct((PdslNode.ProductStatement) stmt, block, env);
-		} else if (stmt instanceof PdslNode.AddBlocksStatement) {
-			interpretAddBlocks((PdslNode.AddBlocksStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.AccumBlocksStatement) {
+			interpretAccumBlocks((PdslNode.AccumBlocksStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ConcatBlocksStatement) {
 			interpretConcatBlocks((PdslNode.ConcatBlocksStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ForStatement) {
@@ -297,12 +297,12 @@ public class PdslInterpreter {
 		block.product(left, right);
 	}
 
-	private void interpretAddBlocks(PdslNode.AddBlocksStatement addStmt,
-									SequentialBlock block, Environment env) {
+	private void interpretAccumBlocks(PdslNode.AccumBlocksStatement accumStmt,
+									  SequentialBlock block, Environment env) {
 		TraversalPolicy shape = block.getOutputShape();
-		Block left = expressionToBlock(addStmt.getLeft(), shape, env);
-		Block right = expressionToBlock(addStmt.getRight(), shape, env);
-		block.andThenAccum(left, right);
+		Block left = expressionToBlock(accumStmt.getLeft(), shape, env);
+		Block right = expressionToBlock(accumStmt.getRight(), shape, env);
+		block.accum(left, right);
 	}
 
 	private void interpretConcatBlocks(PdslNode.ConcatBlocksStatement concatStmt,

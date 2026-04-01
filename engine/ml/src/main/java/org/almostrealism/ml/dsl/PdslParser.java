@@ -223,7 +223,7 @@ public class PdslParser {
 			case BRANCH: return parseBranchStatement();
 			case ACCUM: return parseAccumStatement();
 			case PRODUCT: return parseProductStatement();
-			case ADD_BLOCKS: return parseAddBlocksStatement();
+			case ACCUM_BLOCKS: return parseAccumBlocksStatement();
 			case CONCAT_BLOCKS: return parseConcatBlocksStatement();
 			case FOR: return parseForStatement();
 			default: return parseExpressionStatement();
@@ -286,14 +286,14 @@ public class PdslParser {
 		return new PdslNode.ProductStatement(left, right, kw.getLine(), kw.getColumn());
 	}
 
-	private PdslNode.AddBlocksStatement parseAddBlocksStatement() {
-		PdslToken kw = consume(PdslToken.Type.ADD_BLOCKS);
+	private PdslNode.AccumBlocksStatement parseAccumBlocksStatement() {
+		PdslToken kw = consume(PdslToken.Type.ACCUM_BLOCKS);
 		consume(PdslToken.Type.LPAREN);
 		PdslNode.Expression left = parseBlockArg();
 		consume(PdslToken.Type.COMMA);
 		PdslNode.Expression right = parseBlockArg();
 		consume(PdslToken.Type.RPAREN);
-		return new PdslNode.AddBlocksStatement(left, right, kw.getLine(), kw.getColumn());
+		return new PdslNode.AccumBlocksStatement(left, right, kw.getLine(), kw.getColumn());
 	}
 
 	private PdslNode.ConcatBlocksStatement parseConcatBlocksStatement() {
@@ -312,7 +312,7 @@ public class PdslParser {
 	/**
 	 * Parse an argument that can be an inline block {@code { ... }},
 	 * a nested {@code product(...)} statement (wrapped in a synthetic inline block),
-	 * a nested {@code add_blocks(...)} statement (wrapped in a synthetic inline block),
+	 * a nested {@code accum_blocks(...)} statement (wrapped in a synthetic inline block),
 	 * or a plain expression.
 	 */
 	private PdslNode.Expression parseBlockArg() {
@@ -329,11 +329,11 @@ public class PdslParser {
 			List<PdslNode.Statement> body = new ArrayList<>();
 			body.add(productStmt);
 			return new PdslNode.InlineBlock(body, line, col);
-		} else if (check(PdslToken.Type.ADD_BLOCKS)) {
-			// Wrap an add_blocks statement inside a synthetic inline block
+		} else if (check(PdslToken.Type.ACCUM_BLOCKS)) {
+			// Wrap an accum_blocks statement inside a synthetic inline block
 			int line = peek().getLine();
 			int col = peek().getColumn();
-			PdslNode.AddBlocksStatement addStmt = parseAddBlocksStatement();
+			PdslNode.AccumBlocksStatement addStmt = parseAccumBlocksStatement();
 			List<PdslNode.Statement> body = new ArrayList<>();
 			body.add(addStmt);
 			return new PdslNode.InlineBlock(body, line, col);

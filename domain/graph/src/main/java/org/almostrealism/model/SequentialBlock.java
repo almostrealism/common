@@ -259,15 +259,15 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		}
 	}
 
-	public void andThenAccum(Function<TraversalPolicy, ? extends Block> a,
-						  Function<TraversalPolicy, ? extends Block> b,
-						  ComputeRequirement... requirements) {
-		andThenAccum(a.apply(getOutputShape()), b.apply(getOutputShape()), requirements);
+	public void accum(Function<TraversalPolicy, ? extends Block> a,
+					  Function<TraversalPolicy, ? extends Block> b,
+					  ComputeRequirement... requirements) {
+		accum(a.apply(getOutputShape()), b.apply(getOutputShape()), requirements);
 	}
 
-	public void andThenAccum(Function<TraversalPolicy, ? extends Block> a, Block b,
-						  ComputeRequirement... requirements) {
-		andThenAccum(a.apply(getOutputShape()), b, requirements);
+	public void accum(Function<TraversalPolicy, ? extends Block> a, Block b,
+					  ComputeRequirement... requirements) {
+		accum(a.apply(getOutputShape()), b, requirements);
 	}
 
 	/**
@@ -279,7 +279,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	 * @param b second block, transforms same current input to the same output shape as {@code a}
 	 * @param requirements optional compute requirements
 	 */
-	public void andThenAccum(Block a, Block b, ComputeRequirement... requirements) {
+	public void accum(Block a, Block b, ComputeRequirement... requirements) {
 		if (a.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
 		if (b.getInputShape().getTotalSize() != getOutputShape().getTotalSize())

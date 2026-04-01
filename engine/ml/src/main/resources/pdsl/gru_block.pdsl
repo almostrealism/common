@@ -21,7 +21,7 @@
 
 layer gru_r_gate(w_ir: weight, b_ir: weight, w_hr: weight, b_hr: weight,
                  input_size: int, hidden_size: int) {
-    add_blocks(
+    accum_blocks(
         { slice(0, input_size); dense(w_ir, b_ir) },
         { slice(input_size, hidden_size); dense(w_hr, b_hr) }
     )
@@ -35,7 +35,7 @@ layer gru_r_gate(w_ir: weight, b_ir: weight, w_hr: weight, b_hr: weight,
 
 layer gru_z_gate(w_iz: weight, b_iz: weight, w_hz: weight, b_hz: weight,
                  input_size: int, hidden_size: int) {
-    add_blocks(
+    accum_blocks(
         { slice(0, input_size); dense(w_iz, b_iz) },
         { slice(input_size, hidden_size); dense(w_hz, b_hz) }
     )
@@ -54,7 +54,7 @@ layer gru_z_gate(w_iz: weight, b_iz: weight, w_hz: weight, b_hz: weight,
 
 layer gru_n_gate(w_in: weight, b_in: weight, w_hn: weight, b_hn: weight,
                  input_size: int, hidden_size: int) {
-    add_blocks(
+    accum_blocks(
         product({ slice(input_size + hidden_size, hidden_size) },
                 { slice(input_size, hidden_size); dense(w_hn, b_hn) }),
         { slice(0, input_size); dense(w_in, b_in) }
