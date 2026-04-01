@@ -394,6 +394,17 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                         executeGitWithOutput("branch", "--list", "--format=%(refname:short)").split("\n")));
             }
 
+            // Prepare execution environment (Python venv, etc.)
+            prepareEnvironment();
+
+            // Record pre-work HEAD so we can detect unauthorized commits
+            if (targetBranch != null && !targetBranch.isEmpty()) {
+                preWorkHeadHash = executeGitWithOutput("rev-parse", "HEAD").trim();
+                log("Pre-work HEAD: " + preWorkHeadHash.substring(0, Math.min(7, preWorkHeadHash.length())));
+                preWorkBranches = new HashSet<>(Arrays.asList(
+                        executeGitWithOutput("branch", "--list", "--format=%(refname:short)").split("\n")));
+            }
+
             // Perform the actual work
             doWork();
 
