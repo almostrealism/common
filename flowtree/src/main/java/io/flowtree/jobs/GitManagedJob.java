@@ -605,11 +605,11 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                     : String.join(", ", conflictFiles.subList(0, 10))
                         + " (+" + (conflictFiles.size() - 10) + " more)"));
 
-            // Abort the merge so the working directory is clean for the agent.
-            // The agent will be told about the conflicts and instructed to
-            // perform the merge itself after understanding the changes.
-            executeGit("merge", "--abort");
-            log("Merge aborted -- agent will be instructed to resolve conflicts");
+            // Leave the merge in progress so the agent resolves the conflict
+            // markers in place.  Aborting and re-running the merge caused
+            // handleGitOperations to commit all of master's cleanly-merged
+            // changes as a regular commit (instead of a proper merge commit).
+            log("Merge left in conflicted state -- agent will resolve conflict markers in place");
         }
     }
 
@@ -1027,28 +1027,59 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             throw new RuntimeException(msg);
         }
 
-        // Unstage everything the agent may have staged via `git add`.
-        // This ensures ALL files pass through our guardrails below before
-        // being committed — the agent's own staging is not trusted.
-        executeGit("reset", "HEAD");
+        // Check if a merge is in progress — synchronizeWithBaseBranch leaves the
+        // repo in this state when conflicts are detected so the agent can resolve
+        // the markers in place and produce a proper merge commit.  We must NOT
+        // run `git reset HEAD` in this case because that aborts the merge and
+        // causes all of master's changes to appear as plain diffs in the commit.
+        boolean mergeInProgress = !executeGitWithOutput(
+                "rev-parse", "--verify", "--quiet", "MERGE_HEAD").trim().isEmpty();
 
-        // Find and filter changed files
-        List<String> changedFiles = findChangedFiles();
-        if (changedFiles.isEmpty()) {
-            log("No changes to commit");
-            gitOperationsSuccessful = true;
-            return;
+        if (mergeInProgress) {
+            log("Merge in progress -- will commit as merge commit");
+
+            // Verify the agent resolved every conflict
+            String unmerged = executeGitWithOutput("ls-files", "--unmerged").trim();
+            if (!unmerged.isEmpty()) {
+                throw new RuntimeException(
+                    "Unresolved merge conflicts remain after agent run -- cannot commit:\n" + unmerged);
+            }
+
+            // Stage any additional working-tree changes the agent made through
+            // guardrails, but do NOT reset HEAD (that would abort the merge).
+            List<String> changed = findChangedFiles();
+            if (!changed.isEmpty()) {
+                stageFiles(changed);
+            }
+
+            // There may be staged merge content even if the agent made no extra changes
+            if (executeGitWithOutput("diff", "--name-only", "--cached").trim().isEmpty()) {
+                log("No changes to commit");
+                gitOperationsSuccessful = true;
+                return;
+            }
+        } else {
+            // Unstage everything the agent may have staged via `git add`.
+            // This ensures ALL files pass through our guardrails below before
+            // being committed — the agent's own staging is not trusted.
+            executeGit("reset", "HEAD");
+
+            List<String> changedFiles = findChangedFiles();
+            if (changedFiles.isEmpty()) {
+                log("No changes to commit");
+                gitOperationsSuccessful = true;
+                return;
+            }
+
+            stageFiles(changedFiles);
+            if (stagedFiles.isEmpty()) {
+                log("No files passed guardrails, nothing to commit");
+                gitOperationsSuccessful = true;
+                return;
+            }
         }
 
-        // Stage files (with guardrails)
-        stageFiles(changedFiles);
-        if (stagedFiles.isEmpty()) {
-            log("No files passed guardrails, nothing to commit");
-            gitOperationsSuccessful = true;
-            return;
-        }
-
-        // Commit
+        // Commit (merge commit if MERGE_HEAD is present, regular commit otherwise)
         if (!commit()) {
             throw new RuntimeException("Git commit failed after staging " + stagedFiles.size() + " files");
         }

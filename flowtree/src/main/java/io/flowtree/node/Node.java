@@ -1525,6 +1525,7 @@ public class Node implements Runnable, ThreadFactory {
 					(c = this.getRandomPeer()) == null) {
 					if (this.parent != null) {
 						Job j = this.nextJob();
+						if (j == null) break r;
 						this.displayMessage("Relaying job " + j
 							+ " to parent NodeGroup");
 						this.parent.addJob(j);
@@ -1538,8 +1539,9 @@ public class Node implements Runnable, ThreadFactory {
 						Job j = this.nextJob();
 
 						if (j != null) {
+							String jobId = j.getTaskId();
 							this.displayMessage("Relaying job "
-								+ j.getTaskId()
+								+ (jobId != null ? jobId : j.getClass().getSimpleName())
 								+ " to peer " + c);
 							c.sendJob(j);
 							this.totalRelay++;
