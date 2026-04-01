@@ -228,6 +228,8 @@ public class PdslInterpreter {
 			interpretProduct((PdslNode.ProductStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.AddBlocksStatement) {
 			interpretAddBlocks((PdslNode.AddBlocksStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.ConcatBlocksStatement) {
+			interpretConcatBlocks((PdslNode.ConcatBlocksStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ForStatement) {
 			PdslNode.ForStatement forStmt = (PdslNode.ForStatement) stmt;
 			int start = toInt(evaluateExpression(forStmt.getStart(), env));
@@ -301,6 +303,16 @@ public class PdslInterpreter {
 		Block left = expressionToBlock(addStmt.getLeft(), shape, env);
 		Block right = expressionToBlock(addStmt.getRight(), shape, env);
 		block.andThenAccum(left, right);
+	}
+
+	private void interpretConcatBlocks(PdslNode.ConcatBlocksStatement concatStmt,
+										SequentialBlock block, Environment env) {
+		TraversalPolicy inputShape = block.getOutputShape();
+		List<Block> subBlocks = new ArrayList<>();
+		for (PdslNode.Expression expr : concatStmt.getBlocks()) {
+			subBlocks.add(expressionToBlock(expr, inputShape, env));
+		}
+		block.add(FEATURES.concatCells(inputShape, subBlocks));
 	}
 
 	// ---- Expression evaluation ----

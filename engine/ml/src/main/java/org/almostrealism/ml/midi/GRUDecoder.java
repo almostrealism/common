@@ -16,7 +16,6 @@
 
 package org.almostrealism.ml.midi;
 
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.CellularLayer;
@@ -275,18 +274,18 @@ public class GRUDecoder implements LayerFeatures {
 
 					// Reset gate: r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)
 					CollectionProducer r = sigmoid(
-							add(add(matmul(p(block.wIr), x), c(block.bIr)),
-								add(matmul(p(block.wHr), hl), c(block.bHr))));
+							add(add(matmul(cp(block.wIr), x), cp(block.bIr)),
+								add(matmul(cp(block.wHr), hl), cp(block.bHr))));
 
 					// Update gate: z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)
 					CollectionProducer z = sigmoid(
-							add(add(matmul(p(block.wIz), x), c(block.bIz)),
-								add(matmul(p(block.wHz), hl), c(block.bHz))));
+							add(add(matmul(cp(block.wIz), x), cp(block.bIz)),
+								add(matmul(cp(block.wHz), hl), cp(block.bHz))));
 
 					// Candidate gate: n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))
 					CollectionProducer n = tanh(
-							add(add(matmul(p(block.wIn), x), c(block.bIn)),
-								r.multiply(add(matmul(p(block.wHn), hl), c(block.bHn)))));
+							add(add(matmul(cp(block.wIn), x), cp(block.bIn)),
+								r.multiply(add(matmul(cp(block.wHn), hl), cp(block.bHn)))));
 
 					// Hidden state update: hNew = (1 - z) * n + z * h
 					CollectionProducer hNew = add(
@@ -313,11 +312,11 @@ public class GRUDecoder implements LayerFeatures {
 
 				// Optional fc_out projection
 				if (fcOutWeight != null) {
-					lmIn = add(matmul(p(fcOutWeight), lmIn), c(fcOutBias)).reshape(shape(dh));
+					lmIn = add(matmul(cp(fcOutWeight), lmIn), cp(fcOutBias)).reshape(shape(dh));
 				}
 
 				// lm_head: project to decode vocabulary logits
-				CollectionProducer logits = add(matmul(p(lmHeadWeight), lmIn), c(lmHeadBias))
+				CollectionProducer logits = add(matmul(cp(lmHeadWeight), lmIn), cp(lmHeadBias))
 						.reshape(shape(config.decodeVocabSize));
 
 				// Output [h0'|h1'|...|hL'|logits]: hidden slots are at state positions 1..numLayers
@@ -341,11 +340,11 @@ public class GRUDecoder implements LayerFeatures {
 	/**
 	 * Run the autoregressive GRU decode loop.
 	 *
-	 * <p>Before the loop: applies {@code summary_proj} as a {@link CollectionProducer}
-	 * computation and evaluates once per note to produce the initial decoder hidden state.
-	 * Inside the loop: assembles the state vector via {@code PackedCollection.setMem}
-	 * (data routing only), executes the single compiled decode-step model, extracts
-	 * new hidden states and logits from the output, and delegates token selection to
+	 * <p>Before the loop: evaluates {@code summary_proj} once per note as a
+	 * {@link CollectionProducer} computation to produce the initial decoder hidden state.
+	 * Inside the loop: assembles the state vector from current producers, executes the
+	 * single compiled decode-step model, extracts new hidden states and logits using
+	 * producer subset operations, and delegates token selection to
 	 * {@link AutoregressiveModel#sampleToken}.</p>
 	 *
 	 * @param transformerHidden transformer hidden state, shape (hiddenSize)
@@ -363,46 +362,47 @@ public class GRUDecoder implements LayerFeatures {
 		// One-time initialisation: summary projection before the decode loop.
 		// summary_proj = W_s @ transformerHidden + b_s
 		PackedCollection initialHidden =
-				add(matmul(p(summaryWeight), cp(transformerHidden)), c(summaryBias)).evaluate();
+				add(matmul(cp(summaryWeight), cp(transformerHidden)), cp(summaryBias)).evaluate();
 
 		// Initialise all per-layer hidden states from the summary projection
 		PackedCollection[] h = new PackedCollection[numLayers];
 		for (int l = 0; l < numLayers; l++) {
-			h[l] = initialHidden.range(new TraversalPolicy(dh), 0);
+			h[l] = initialHidden;
 		}
 
-		// Initial decoder input: SOS embedding (token index 0), zero-copy view
-		PackedCollection x = decoderEmbedding.range(new TraversalPolicy(dh), 0);
+		// Initial decoder input: SOS embedding (token index 0)
+		PackedCollection x = cp(decoderEmbedding).subset(shape(1, dh), 0, 0).reshape(shape(dh)).evaluate();
 
 		int[] outputTokens = new int[TOKENS_PER_NOTE];
-		PackedCollection state = new PackedCollection(new TraversalPolicy(inputSize));
 
 		for (int step = 0; step < TOKENS_PER_NOTE; step++) {
-			// Assemble state vector [x | h0 | ... | hL] - data routing only
-			state.setMem(0, x, 0, dh);
+			// Assemble state vector [x | h0 | ... | hL] using producer concat
+			CollectionProducer[] stateParts = new CollectionProducer[1 + numLayers];
+			stateParts[0] = cp(x).reshape(shape(dh));
 			for (int l = 0; l < numLayers; l++) {
-				state.setMem((l + 1) * dh, h[l], 0, dh);
+				stateParts[l + 1] = cp(h[l]).reshape(shape(dh));
 			}
+			PackedCollection state = concat(stateParts).reshape(shape(inputSize)).evaluate();
 
 			// Single compiled model forward pass
 			PackedCollection output = decodeStepModel.forward(state);
 
 			// Extract new hidden states from output [h0' | ... | hL' | logits]
 			for (int l = 0; l < numLayers; l++) {
-				h[l] = output.range(new TraversalPolicy(dh), l * dh);
+				h[l] = cp(output).subset(shape(dh), l * dh).evaluate();
 			}
 
 			// Extract logits from tail of output
-			PackedCollection logits = output.range(
-					new TraversalPolicy(config.decodeVocabSize), numLayers * dh);
+			PackedCollection logits = cp(output)
+					.subset(shape(config.decodeVocabSize), numLayers * dh).evaluate();
 
 			// Token selection delegated to AutoregressiveModel
 			int token = AutoregressiveModel.sampleToken(logits, config.decodeVocabSize,
 					temperature, topP, random);
 			outputTokens[step] = token;
 
-			// Embedding lookup for next step input (zero-copy range view)
-			x = decoderEmbedding.range(new TraversalPolicy(dh), token * dh);
+			// Embedding lookup for next step input
+			x = cp(decoderEmbedding).subset(shape(1, dh), token, 0).reshape(shape(dh)).evaluate();
 		}
 
 		return outputTokens;

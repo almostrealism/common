@@ -224,6 +224,7 @@ public class PdslParser {
 			case ACCUM: return parseAccumStatement();
 			case PRODUCT: return parseProductStatement();
 			case ADD_BLOCKS: return parseAddBlocksStatement();
+			case CONCAT_BLOCKS: return parseConcatBlocksStatement();
 			case FOR: return parseForStatement();
 			default: return parseExpressionStatement();
 		}
@@ -295,6 +296,19 @@ public class PdslParser {
 		return new PdslNode.AddBlocksStatement(left, right, kw.getLine(), kw.getColumn());
 	}
 
+	private PdslNode.ConcatBlocksStatement parseConcatBlocksStatement() {
+		PdslToken kw = consume(PdslToken.Type.CONCAT_BLOCKS);
+		consume(PdslToken.Type.LPAREN);
+		List<PdslNode.Expression> blocks = new ArrayList<>();
+		blocks.add(parseBlockArg());
+		while (check(PdslToken.Type.COMMA)) {
+			consume(PdslToken.Type.COMMA);
+			blocks.add(parseBlockArg());
+		}
+		consume(PdslToken.Type.RPAREN);
+		return new PdslNode.ConcatBlocksStatement(blocks, kw.getLine(), kw.getColumn());
+	}
+
 	/**
 	 * Parse an argument that can be an inline block {@code { ... }},
 	 * a nested {@code product(...)} statement (wrapped in a synthetic inline block),
@@ -322,6 +336,14 @@ public class PdslParser {
 			PdslNode.AddBlocksStatement addStmt = parseAddBlocksStatement();
 			List<PdslNode.Statement> body = new ArrayList<>();
 			body.add(addStmt);
+			return new PdslNode.InlineBlock(body, line, col);
+		} else if (check(PdslToken.Type.CONCAT_BLOCKS)) {
+			// Wrap a concat_blocks statement inside a synthetic inline block
+			int line = peek().getLine();
+			int col = peek().getColumn();
+			PdslNode.ConcatBlocksStatement concatStmt = parseConcatBlocksStatement();
+			List<PdslNode.Statement> body = new ArrayList<>();
+			body.add(concatStmt);
 			return new PdslNode.InlineBlock(body, line, col);
 		}
 		return parseExpression();

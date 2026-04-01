@@ -235,6 +235,22 @@ public abstract class PdslNode {
 	}
 
 	/**
+	 * ConcatBlocks statement: concatenation of N sub-block outputs.
+	 * All sub-blocks receive the same input; their outputs are concatenated in order.
+	 * {@code concat_blocks(blockA, blockB, ...)}
+	 */
+	public static class ConcatBlocksStatement extends Statement {
+		private final List<Expression> blocks;
+
+		public ConcatBlocksStatement(List<Expression> blocks, int line, int column) {
+			super(line, column);
+			this.blocks = blocks;
+		}
+
+		public List<Expression> getBlocks() { return blocks; }
+	}
+
+	/**
 	 * AddBlocks statement: element-wise addition of two sub-block outputs.
 	 * Both sub-blocks receive the same input; their outputs are summed.
 	 * {@code add_blocks(blockA, blockB)}

@@ -1173,6 +1173,52 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}), null, requirements);
 	}
 
+	/**
+	 * Apply each of the given blocks to the same input and concatenate their outputs.
+	 * The output shape is automatically computed as the sum of each block's output size.
+	 *
+	 * <p>Each block receives the layer's input independently, its output is captured via
+	 * {@link Cell.CaptureReceptor}, and all captured outputs are concatenated in order
+	 * to form the final output.</p>
+	 *
+	 * @param inputShape the input tensor shape
+	 * @param blocks     the sub-blocks to apply in parallel and concatenate
+	 * @param requirements optional compute requirements
+	 * @return a CellularLayer whose output is the concatenation of all block outputs
+	 */
+	default CellularLayer concatCells(TraversalPolicy inputShape,
+									  List<Block> blocks,
+									  ComputeRequirement... requirements) {
+		int totalSize = 0;
+		for (Block b : blocks) totalSize += b.getOutputShape().getTotalSize();
+		TraversalPolicy outputShape = shape(totalSize);
+
+		return layer("concat_blocks", inputShape, outputShape, Cell.of((input, next) -> {
+			List<Cell.CaptureReceptor<PackedCollection>> receptors = new ArrayList<>();
+			for (Block b : blocks) {
+				Cell.CaptureReceptor<PackedCollection> receptor = new Cell.CaptureReceptor<>();
+				b.getForward().setReceptor(receptor);
+				receptors.add(receptor);
+			}
+
+			OperationList ops = new OperationList("concat_blocks");
+			for (Block b : blocks) {
+				ops.add(b.getForward().push(input));
+			}
+
+			if (next != null) {
+				CollectionProducer[] parts = new CollectionProducer[blocks.size()];
+				for (int i = 0; i < blocks.size(); i++) {
+					parts[i] = c(receptors.get(i).getReceipt())
+							.reshape(blocks.get(i).getOutputShape());
+				}
+				ops.add(next.push(concat(parts).reshape(outputShape)));
+			}
+
+			return ops;
+		}), null, requirements);
+	}
+
 	default Function<TraversalPolicy, CellularLayer> product(CellularPropagation<PackedCollection> aux,
 								  							 ComputeRequirement... requirements) {
 		return shape -> product(shape, aux, requirements);
