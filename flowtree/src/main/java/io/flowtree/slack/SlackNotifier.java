@@ -22,6 +22,9 @@ import com.slack.api.methods.SlackApiException;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
 import com.slack.api.methods.response.conversations.ConversationsCreateResponse;
 import com.slack.api.methods.response.conversations.ConversationsInviteResponse;
+import com.slack.api.methods.response.conversations.ConversationsListResponse;
+import com.slack.api.model.Conversation;
+import com.slack.api.model.ConversationType;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.io.Alert;
@@ -29,6 +32,8 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -52,15 +57,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     /** Maximum number of completed jobs to retain per workstream. */
     private static final int MAX_JOB_HISTORY = 100;
 
+    /** Slack Bot User OAuth Token (xoxb-...) used to authenticate API calls. */
     private final String botToken;
+    /** Slack SDK methods client used to post messages and update threads. */
     private final MethodsClient client;
+    /** Registry of configured workstreams, keyed by workstream ID. */
     private final Map<String, SlackWorkstream> workstreams;
+    /** Maps job ID to the Slack thread timestamp of its notification thread. */
     private final Map<String, String> jobThreadTs;
+    /** Stores the last {@link #MAX_JOB_HISTORY} completion events per workstream, keyed by workstream ID then job ID. */
     private final Map<String, Map<String, JobCompletionEvent>> jobHistory;
+    /** Flat index of all known {@link JobCompletionEvent} objects keyed by job ID. */
+    private final Map<String, JobCompletionEvent> jobById;
+    /** Records the most recent job start time (epoch ms) for each workstream, used for rate-limiting. */
     private final Map<String, Long> lastJobStartTime;
+    /** Optional callback invoked with each Slack message text before it is sent. */
     private Consumer<String> messageCallback;
+    /** Persistent store for per-job timing and throughput statistics. */
     private JobStatsStore statsStore;
+    /** Slack user ID of the channel owner, used to filter direct messages. */
     private String channelOwnerUserId;
+    /** Default Slack channel ID used when no workstream-specific channel is configured. */
     private String defaultChannelId;
 
     /**
@@ -73,6 +90,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         this.workstreams = new HashMap<>();
         this.jobThreadTs = new HashMap<>();
         this.jobHistory = new HashMap<>();
+        this.jobById = new ConcurrentHashMap<>();
         this.lastJobStartTime = new ConcurrentHashMap<>();
 
         if (botToken != null && !botToken.isEmpty()) {
@@ -177,11 +195,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             String cursor = null;
             do {
                 final String pageCursor = cursor;
-                com.slack.api.methods.response.conversations.ConversationsListResponse response =
+                ConversationsListResponse response =
                     client.conversationsList(req -> {
-                        req.types(java.util.Arrays.asList(
-                            com.slack.api.model.ConversationType.PRIVATE_CHANNEL,
-                            com.slack.api.model.ConversationType.PUBLIC_CHANNEL));
+                        req.types(Arrays.asList(
+                            ConversationType.PRIVATE_CHANNEL,
+                            ConversationType.PUBLIC_CHANNEL));
                         req.limit(200);
                         if (pageCursor != null) req.cursor(pageCursor);
                         return req;
@@ -192,7 +210,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                     return null;
                 }
 
-                for (com.slack.api.model.Conversation channel : response.getChannels()) {
+                for (Conversation channel : response.getChannels()) {
                     if (name.equals(channel.getName()) && channel.isMember()) {
                         String channelId = channel.getId();
                         log("Found existing channel '" + name + "' (" + channelId + ")");
@@ -243,6 +261,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     public void setStatsStore(JobStatsStore store) {
         this.statsStore = store;
+        if (store != null) {
+            loadJobHistoryFromStore(store);
+        }
+    }
+
+    /**
+     * Pre-populates the in-memory job caches from the persistent store so that
+     * recent jobs survive a controller restart.  Loads up to
+     * {@link #MAX_JOB_HISTORY} jobs per registered workstream.
+     */
+    private void loadJobHistoryFromStore(JobStatsStore store) {
+        for (String wsId : workstreams.keySet()) {
+            List<JobCompletionEvent> recent = store.getRecentJobs(wsId, MAX_JOB_HISTORY);
+            // getRecentJobs returns newest-first; put oldest-first into the LRU map
+            for (int i = recent.size() - 1; i >= 0; i--) {
+                JobCompletionEvent e = recent.get(i);
+                trackJob(wsId, e);
+            }
+        }
+        log("Loaded job history from persistent store for "
+                + workstreams.size() + " workstream(s)");
     }
 
     /**
@@ -425,13 +464,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         trackJob(workstreamId, event);
 
         if (statsStore != null) {
-            statsStore.recordJobCompleted(event.getJobId(),
-                workstreamId, event.getStatus().name(), event.getTimestamp(),
-                event.getDurationMs(), event.getDurationApiMs(),
-                event.getCostUsd(), event.getNumTurns(),
-                event.getSessionId(), event.getExitCode(),
-                event.getSubtype(), event.isSessionError(),
-                event.getPermissionDenials());
+            statsStore.recordJobCompleted(workstreamId, event);
         }
 
         String message = formatCompletedMessage(event, workstream);
@@ -634,6 +667,46 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 }
             });
         jobs.put(event.getJobId(), event);
+        jobById.put(event.getJobId(), event);
+    }
+
+    /**
+     * Returns a specific job event by its job ID, across all workstreams.
+     * Checks the persistent store first (when available), then falls back
+     * to the in-memory cache.
+     *
+     * @param jobId the job identifier
+     * @return the most recent event for that job, or null if not found
+     */
+    public JobCompletionEvent getJob(String jobId) {
+        if (jobId == null) return null;
+        if (statsStore != null) {
+            JobCompletionEvent persisted = statsStore.getJob(jobId);
+            if (persisted != null) return persisted;
+        }
+        return jobById.get(jobId);
+    }
+
+    /**
+     * Returns recent jobs for a workstream from the persistent store (newest first),
+     * falling back to the in-memory cache when the store is unavailable.
+     *
+     * @param workstreamId the workstream identifier
+     * @param limit        maximum number of jobs to return
+     * @return list of events, newest first
+     */
+    public List<JobCompletionEvent> getRecentJobs(String workstreamId, int limit) {
+        if (statsStore != null) {
+            return statsStore.getRecentJobs(workstreamId, limit);
+        }
+        // In-memory fallback: history is oldest-first; return newest-first slice
+        Map<String, JobCompletionEvent> history = jobHistory.get(workstreamId);
+        if (history == null) return Collections.emptyList();
+        List<JobCompletionEvent> all = new ArrayList<>(history.values());
+        int fromIndex = Math.max(0, all.size() - limit);
+        List<JobCompletionEvent> page = new ArrayList<>(all.subList(fromIndex, all.size()));
+        Collections.reverse(page);
+        return page;
     }
 
     /**
@@ -686,6 +759,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         Console.root().alert(new Alert(Alert.Severity.INFO, sb.toString()));
     }
 
+    /**
+     * Formats the Slack message text sent when a job is first submitted to the
+     * queue, including description, target branch, and job ID.
+     *
+     * @param event       the submission event
+     * @param workstream  the workstream the job belongs to
+     * @return            formatted Slack message string
+     */
     private String formatSubmittedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
         StringBuilder sb = new StringBuilder();
         sb.append(":outbox_tray: *Job submitted:* ");
@@ -703,6 +784,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         return sb.toString();
     }
 
+    /**
+     * Formats the Slack message text sent when a job transitions from queued to
+     * actively running.
+     *
+     * @param event       the started event
+     * @param workstream  the workstream the job belongs to
+     * @return            formatted Slack message string
+     */
     private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
         StringBuilder sb = new StringBuilder();
         sb.append(":arrows_counterclockwise: *Starting work:* ");
@@ -711,6 +800,15 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         return sb.toString();
     }
 
+    /**
+     * Formats the Slack message text sent when a job completes (either
+     * successfully or with a failure), including status, file count, commit
+     * hash, cost, and error details as applicable.
+     *
+     * @param event       the completion event
+     * @param workstream  the workstream the job belongs to
+     * @return            formatted Slack message string
+     */
     private String formatCompletedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
         StringBuilder sb = new StringBuilder();
 
@@ -818,7 +916,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             List<String> denied = event.getDeniedToolNames();
             if (!denied.isEmpty()) {
                 // Deduplicate and show unique denied tool names
-                List<String> unique = new java.util.ArrayList<>();
+                List<String> unique = new ArrayList<>();
                 for (String name : denied) {
                     if (!unique.contains(name)) unique.add(name);
                 }
@@ -862,6 +960,13 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         return hours + "h " + remainingMinutes + "m";
     }
 
+    /**
+     * Escapes a string for safe inclusion in a JSON string literal, replacing
+     * backslash, double-quote, and common whitespace control characters.
+     *
+     * @param s  the string to escape, or {@code null}
+     * @return   the escaped string, or an empty string if {@code s} is {@code null}
+     */
     private static String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
@@ -871,6 +976,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 .replace("\t", "\\t");
     }
 
+    /**
+     * Truncates a string to at most {@code maxLength} characters. Returns an
+     * empty string rather than {@code null} when the input is {@code null}.
+     *
+     * @param s          the string to truncate
+     * @param maxLength  maximum number of characters to retain
+     * @return           the (possibly truncated) string, never {@code null}
+     */
     private static String truncate(String s, int maxLength) {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;

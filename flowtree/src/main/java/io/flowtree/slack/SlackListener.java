@@ -71,30 +71,48 @@ public class SlackListener implements ConsoleFeatures {
         void respond(String text) throws IOException;
     }
 
-    /** Pattern to extract prompt from mentions: @bot /task prompt or @bot prompt */
+    /**
+     * Pattern to extract the user's prompt from an app-mention message.
+     * Strips the bot mention and optional {@code /task} prefix.
+     * Capture group 1 is the raw prompt text.
+     */
     private static final Pattern MENTION_PATTERN = Pattern.compile(
         "<@[A-Z0-9]+>\\s*(?:/task\\s+)?(.+)",
         Pattern.DOTALL | Pattern.CASE_INSENSITIVE
     );
 
-    /** Pattern for command messages: /command args */
+    /**
+     * Pattern to detect in-message commands of the form {@code /command [args]}.
+     * Group 1 is the command name; group 2 (optional) is the argument string.
+     */
     private static final Pattern COMMAND_PATTERN = Pattern.compile(
         "^/(\\w+)(?:\\s+(.*))?$",
         Pattern.DOTALL
     );
 
+    /** Maps Slack channel ID to the registered workstream for that channel. */
     private final Map<String, SlackWorkstream> channelToWorkstream;
+    /** Posts status and completion messages back to Slack. */
     private final SlackNotifier notifier;
 
+    /** FlowTree server that accepts inbound agent connections and queues jobs. */
     private Server server;
+    /** Callback invoked when a message arrives from an unrecognised channel, triggering a config reload. */
     private Runnable configReloader;
+    /** Round-robin counter for selecting agent endpoints (legacy, currently unused with inbound model). */
     private int nextAgent = 0;
+    /** Port the HTTP API endpoint is listening on; set after endpoint startup. */
     private int apiPort;
+    /** HTTP base URL of the ar-manager service used for HMAC token generation. */
     private String arManagerUrl;
+    /** Shared secret used to generate temporary HMAC auth tokens for ar-manager. */
     private String arManagerSharedSecret;
+    /** Global fallback path for repository checkouts when no workingDirectory is set. */
     private String defaultWorkspacePath;
 
+    /** In-memory model of the YAML config, used to persist workstream changes to disk. */
     private WorkstreamConfig workstreamConfig;
+    /** The YAML config file to write when workstream settings change at runtime. */
     private File configFile;
 
     /**
@@ -275,7 +293,19 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Handles a slash command or in-message command.
+     * Dispatches an in-message command to the appropriate handler.
+     *
+     * <p>Recognized commands: {@code status}, {@code cancel}, {@code task},
+     * {@code do}, {@code run}. Commands with a prompt argument ({@code task},
+     * {@code do}, {@code run}) immediately submit a job. Unknown commands
+     * are logged and ignored.</p>
+     *
+     * @param workstream the workstream associated with the channel
+     * @param command    the command name (without the leading slash)
+     * @param args       any arguments following the command name, or {@code null}
+     * @param messageTs  the triggering message timestamp (for threading)
+     * @param threadTs   the existing thread timestamp, or {@code null} if top-level
+     * @return {@code true} if the command was handled (even if no job was submitted)
      */
     private boolean handleCommand(SlackWorkstream workstream, String command, String args, String messageTs, String threadTs) {
         switch (command.toLowerCase()) {
@@ -304,7 +334,11 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Handles the /status command.
+     * Handles the in-message {@code /status} command.
+     * Posts a public message to the workstream channel with the channel name,
+     * number of connected agents, and current default branch.
+     *
+     * @param workstream the workstream whose status to report
      */
     private void handleStatusCommand(SlackWorkstream workstream) {
         int connectedAgents = server != null ? server.getNodeGroup().getServers().length : 0;
@@ -322,7 +356,11 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Handles the /cancel command.
+     * Handles the in-message {@code /cancel} command.
+     * Currently posts a placeholder message; job cancellation is not yet implemented.
+     *
+     * @param workstream the workstream where the command was issued
+     * @param jobId      the job ID to cancel, or {@code null} for the current job
      */
     private void handleCancelCommand(SlackWorkstream workstream, String jobId) {
         // TODO: Implement job cancellation
@@ -339,7 +377,9 @@ public class SlackListener implements ConsoleFeatures {
      * @param threadTs   the existing thread timestamp (non-null if already in a thread)
      */
     private boolean submitJob(SlackWorkstream workstream, String prompt, String messageTs, String threadTs) {
-        return submitJob(workstream, prompt, messageTs, threadTs, Collections.emptyMap());
+        Map<String, String> labels = workstream.getRequiredLabels();
+        return submitJob(workstream, prompt, messageTs, threadTs,
+                labels != null ? labels : Collections.emptyMap());
     }
 
     /**
@@ -458,11 +498,11 @@ public class SlackListener implements ConsoleFeatures {
 
         notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent, replyTo);
 
-        // Round-robin to connected agents
-        int index = nextAgent++ % peers.length;
-        server.sendTask(factory, index);
+        // Queue locally — the NodeGroup relay mechanism distributes
+        // the job to a Node whose labels match the job's requirements
+        server.addTask(factory);
 
-        log("Submitted job to agent " + index + ": " + factory.getTaskId());
+        log("Submitted job: " + factory.getTaskId());
         return true;
     }
 
@@ -616,6 +656,12 @@ public class SlackListener implements ConsoleFeatures {
     /**
      * Returns {@code true} if the value looks like a git remote URL
      * rather than a local filesystem path.
+     *
+     * <p>Checks for the {@code https://}, {@code http://}, and {@code git@}
+     * prefixes that distinguish remote URLs from local directory paths.</p>
+     *
+     * @param value the string to test
+     * @return {@code true} if {@code value} appears to be a git remote URL
      */
     private static boolean isGitUrl(String value) {
         return value.startsWith("https://") || value.startsWith("http://") || value.startsWith("git@");
@@ -623,7 +669,14 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Handles {@code /flowtree info}. Displays the full workstream
-     * configuration for the current channel.
+     * configuration for the current channel as an ephemeral message.
+     *
+     * <p>Shows workstream ID, channel binding, working directory or repo URL,
+     * branch settings, push policy, allowed tools, budget, and git identity.</p>
+     *
+     * @param channelId the Slack channel ID where the command was invoked
+     * @param ctx       the responder for sending the ephemeral reply
+     * @throws IOException if the response cannot be sent
      */
     private void handleInfoCommand(String channelId, SlashCommandResponder ctx) throws IOException {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
@@ -663,7 +716,12 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Handles {@code /flowtree status}. Shows agent and connection status.
+     * Handles {@code /flowtree status}. Shows the number of connected agents
+     * and the configured branch for the current channel's workstream.
+     *
+     * @param channelId the Slack channel ID where the command was invoked
+     * @param ctx       the responder for sending the ephemeral reply
+     * @throws IOException if the response cannot be sent
      */
     private void handleSlashStatusCommand(String channelId, SlashCommandResponder ctx) throws IOException {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
@@ -688,8 +746,15 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Handles {@code /flowtree task <prompt>}. Submits a task to an agent.
-     * This command posts a public message (visible to the channel) since
-     * the team should see that a task was submitted.
+     *
+     * <p>This command posts an ephemeral acknowledgement to the invoking user
+     * if the task is submitted successfully. If no workstream is configured
+     * for the channel, an error is returned.</p>
+     *
+     * @param channelId the Slack channel ID where the command was invoked
+     * @param args      the prompt text that follows the command
+     * @param ctx       the responder for sending the ephemeral reply
+     * @throws IOException if the response cannot be sent
      */
     private void handleSlashTaskCommand(String channelId, String args, SlashCommandResponder ctx) throws IOException {
         if (args == null || args.trim().isEmpty()) {
@@ -712,7 +777,15 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Handles {@code /flowtree cancel [job-id]}. Cancels a running job.
-     * Posts a public message since the team should see cancellations.
+     *
+     * <p>Job cancellation is not yet implemented; this method posts a
+     * placeholder message. When implemented, it will post a public message
+     * so the whole team can see that a job was cancelled.</p>
+     *
+     * @param channelId the Slack channel ID where the command was invoked
+     * @param args      the optional job ID to cancel
+     * @param ctx       the responder for sending the reply
+     * @throws IOException if the response cannot be sent
      */
     private void handleSlashCancelCommand(String channelId, String args, SlashCommandResponder ctx) throws IOException {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
@@ -728,6 +801,15 @@ public class SlackListener implements ConsoleFeatures {
     /**
      * Handles {@code /flowtree config [key] [value]}. Views or updates
      * workstream settings at runtime.
+     *
+     * <p>Without arguments, lists all current settings. With a key only,
+     * shows the current value. With both key and value, updates the setting
+     * and persists the change to the YAML config file.</p>
+     *
+     * @param channelId the Slack channel ID where the command was invoked
+     * @param args      the optional {@code key} or {@code key value} arguments
+     * @param ctx       the responder for sending the ephemeral reply
+     * @throws IOException if the response cannot be sent
      */
     private void handleSlashConfigCommand(String channelId, String args, SlashCommandResponder ctx) throws IOException {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
@@ -785,7 +867,13 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Handles {@code /flowtree jobs}. Lists recent jobs for the workstream.
+     * Handles {@code /flowtree jobs}. Lists up to 10 recent jobs for the
+     * current channel's workstream, showing job ID, status emoji, and
+     * a truncated description.
+     *
+     * @param channelId the Slack channel ID where the command was invoked
+     * @param ctx       the responder for sending the ephemeral reply
+     * @throws IOException if the response cannot be sent
      */
     private void handleSlashJobsCommand(String channelId, SlashCommandResponder ctx) throws IOException {
         SlackWorkstream ws = channelToWorkstream.get(channelId);
@@ -839,7 +927,14 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Returns the value of a workstream configuration key.
+     * Returns the current string value of a named workstream configuration key.
+     *
+     * <p>Returns {@code "(not set)"} for optional fields that have not been
+     * assigned, and {@code null} if the key is not recognized.</p>
+     *
+     * @param ws  the workstream to read from
+     * @param key the setting name (e.g., {@code "maxBudgetUsd"}, {@code "defaultBranch"})
+     * @return the string representation of the current value, or {@code null} if unknown
      */
     private String getConfigValue(SlackWorkstream ws, String key) {
         switch (key) {
@@ -862,8 +957,18 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Sets a workstream configuration value. Returns an error message
-     * if the key is unknown or non-modifiable, or null on success.
+     * Applies a new value to a named workstream configuration key.
+     *
+     * <p>Read-only keys ({@code workstreamId}, {@code channelId},
+     * {@code channelName}) return an error message. Numeric keys
+     * ({@code maxBudgetUsd}, {@code maxTurns}) return an error if the
+     * value cannot be parsed. The caller is responsible for persisting
+     * the change to YAML after a successful update.</p>
+     *
+     * @param ws    the workstream to update
+     * @param key   the setting name
+     * @param value the new value as a string
+     * @return an error message if the update failed, or {@code null} on success
      */
     private String setConfigValue(SlackWorkstream ws, String key, String value) {
         switch (key) {
@@ -999,7 +1104,16 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Formats a week's statistics for Slack display.
+     * Formats a week's statistics as a Slack mrkdwn block for display.
+     *
+     * <p>Outputs a header line with the label and date range, followed by
+     * total wall-clock time, job counts by status, total USD cost, and
+     * total agent turns.</p>
+     *
+     * @param label     display label for the block (e.g., "This Week")
+     * @param weekStart the Monday that begins this week
+     * @param stats     the aggregated statistics for the week
+     * @return a formatted mrkdwn string ready for posting to Slack
      */
     private String formatWeeklyStats(String label, LocalDate weekStart,
                                       JobStatsStore.WeeklyStats stats) {
@@ -1021,6 +1135,12 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Formats a duration in milliseconds as a human-readable string.
+     *
+     * <p>Returns {@code "0m"} for non-positive values, {@code "Xm"} for
+     * durations under one hour, and {@code "Xh Ym"} for longer durations.</p>
+     *
+     * @param ms the duration in milliseconds
+     * @return a human-readable duration string
      */
     private static String formatDuration(long ms) {
         if (ms <= 0) return "0m";
@@ -1034,8 +1154,13 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Persists the current workstream configuration to the YAML file.
-     * If no config file was loaded, changes are runtime-only.
+     * Persists the current in-memory workstream state back to the YAML config file.
+     *
+     * <p>Syncs all {@link #channelToWorkstream} entries into the {@link #workstreamConfig}
+     * model via {@link WorkstreamConfig#syncFromWorkstreams} and then writes the
+     * updated config to {@link #configFile}. If either is {@code null} (e.g., when
+     * the controller was configured programmatically without a file), changes
+     * are runtime-only and a warning is logged.</p>
      */
     void persistConfig() {
         if (workstreamConfig == null || configFile == null) {
@@ -1054,6 +1179,15 @@ public class SlackListener implements ConsoleFeatures {
         }
     }
 
+    /**
+     * Truncates a string to at most {@code maxLength} characters, appending
+     * {@code "..."} if the string was shortened. Returns an empty string for
+     * {@code null} input.
+     *
+     * @param s         the string to truncate (may be {@code null})
+     * @param maxLength the maximum length of the returned string, inclusive of the ellipsis
+     * @return the (possibly truncated) string, never {@code null}
+     */
     private static String truncate(String s, int maxLength) {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;
@@ -1089,7 +1223,9 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Returns all registered workstreams.
+     * Returns a snapshot of all registered workstreams, keyed by channel ID.
+     *
+     * @return a new map containing all channel-to-workstream mappings
      */
     public Map<String, SlackWorkstream> getWorkstreams() {
         return new HashMap<>(channelToWorkstream);

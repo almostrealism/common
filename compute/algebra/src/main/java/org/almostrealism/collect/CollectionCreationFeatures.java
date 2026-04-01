@@ -36,6 +36,7 @@ import org.almostrealism.collect.computations.SingleConstantComputation;
 
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 /**
@@ -154,7 +155,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		}
 	}
 
-	default <T, V> Provider<PackedCollection> p(java.util.function.Supplier<V> ev, Function<V, T> func) {
+	default <T, V> Provider<PackedCollection> p(Supplier<V> ev, Function<V, T> func) {
 		if (ev instanceof CollectionProvider) {
 			return new CollectionProvider(null) {
 				@Override

@@ -36,10 +36,14 @@ import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Tests for {@link AudioLibrary} cache behavior introduced on the
@@ -334,7 +338,7 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 		library.include(d2);
 
 		// This should not throw ClassCastException
-		java.util.concurrent.CompletableFuture<Void> future =
+		CompletableFuture<Void> future =
 				library.submitSimilarityJobs(null);
 		future.join();
 
@@ -356,10 +360,10 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 			library.include(d);
 		}
 
-		java.util.List<String> messages = java.util.Collections.synchronizedList(
-				new java.util.ArrayList<>());
+		List<String> messages = Collections.synchronizedList(
+				new ArrayList<>());
 
-		java.util.concurrent.CompletableFuture<Void> future =
+		CompletableFuture<Void> future =
 				library.submitSimilarityJobs(messages::add);
 		future.join();
 
@@ -584,7 +588,7 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 			library.include(createCompleteDetails("member-" + i));
 		}
 
-		List<String> allMembers = new java.util.ArrayList<>();
+		List<String> allMembers = new ArrayList<>();
 		for (int i = 0; i < 20; i++) {
 			allMembers.add("member-" + i);
 		}
@@ -611,7 +615,7 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 			library.include(createCompleteDetails("grow-" + i));
 		}
 
-		List<String> indexedMembers = new java.util.ArrayList<>();
+		List<String> indexedMembers = new ArrayList<>();
 		for (int i = 0; i < 10; i++) {
 			indexedMembers.add("grow-" + i);
 		}
@@ -709,7 +713,7 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 		Assert.assertTrue("Should find at least 2 neighbors",
 				neighbors.size() >= 2);
 
-		Set<String> neighborIds = new java.util.HashSet<>();
+		Set<String> neighborIds = new HashSet<>();
 		for (WaveDetailsStore.NeighborResult n : neighbors) {
 			neighborIds.add(n.identifier());
 			Assert.assertTrue("Similarity should be between 0 and 1",

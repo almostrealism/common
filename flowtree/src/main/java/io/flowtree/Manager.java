@@ -25,7 +25,23 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
+/**
+ * Bootstrap entry point that reads a {@code control.sh} script, partitions it
+ * into shell-command tasks at {@code #!} boundaries, and submits the resulting
+ * {@link io.flowtree.jobs.ExternalProcessJob.Factory} to a FlowTree
+ * {@link Server} for distributed execution.
+ *
+ * @author  Michael Murray
+ */
 public class Manager {
+    /**
+     * Reads {@code control.sh} from the working directory, builds an
+     * {@link io.flowtree.jobs.ExternalProcessJob.Factory} from the contained
+     * command groups, and starts a {@link Server} to distribute the work.
+     *
+     * @param args  command-line arguments (unused)
+     * @throws IOException if {@code control.sh} cannot be read
+     */
     public static void main(String[] args) throws IOException {
         List<String> commands = new ArrayList<>();
         List<List<String>> tasks = new ArrayList<>();

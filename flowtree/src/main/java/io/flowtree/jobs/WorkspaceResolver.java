@@ -40,6 +40,9 @@ public class WorkspaceResolver {
     public static final String FALLBACK_WORKSPACE_DIR =
         System.getProperty("java.io.tmpdir") + "/flowtree-workspaces";
 
+    /**
+     * Private constructor — this is a utility class and cannot be instantiated.
+     */
     private WorkspaceResolver() {
         // Utility class -- not instantiable
     }

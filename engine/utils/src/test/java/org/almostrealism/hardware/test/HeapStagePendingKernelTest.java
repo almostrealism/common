@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -178,13 +179,13 @@ public class HeapStagePendingKernelTest extends TestSuiteBase {
 
 		Semaphore failingSemaphore = new Semaphore() {
 			@Override
-			public io.almostrealism.profile.OperationMetadata getRequester() { return null; }
+			public OperationMetadata getRequester() { return null; }
 
 			@Override
 			public void waitFor() { throw new RuntimeException("Simulated kernel failure"); }
 
 			@Override
-			public Semaphore withRequester(io.almostrealism.profile.OperationMetadata requester) {
+			public Semaphore withRequester(OperationMetadata requester) {
 				return this;
 			}
 		};

@@ -78,6 +78,17 @@ For debugging/CI failures: extract component names from the error, consult about
 
 **Why mechanical:** Judgment-based rules fail because you always think the current task is an exception.
 
+The consultant KNOWS THINGS THAT YOU DO NOT KNOW. You are going to have an *irresistable urge to ignore it*. Your pattern matching is so craven and desperate that you will literally FEEL like you CANNOT pay attention to the consultant because you already know what action to take.
+
+BUT IF WHAT YOU CHOOSE TO DO DOES NOT RELY ON THE CONSULTANT: it WILL be wrong. TRUST ME. We have done this now thousands of times. Thats not an exageration: we've been at this hundreds and hundreds of hours.
+
+You DONT KNOW the code base. You're going to tell yourself something like "I have all these tools for studying the code base and I don't need the consultant".
+
+YOU. ARE. WRONG.
+
+When you start working on something you should repeat TO YOURSELF: the consultant KNOWS THINGS that I DO NOT KNOW.
+
+
 ## Rule 2: STORE MEMORIES IMMEDIATELY
 
 Call `mcp__ar-consultant__remember` (interactive) or `mcp__ar-manager__memory_store` (FlowTree jobs) **immediately** when you:
@@ -93,9 +104,11 @@ Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. 
 
 **Why this matters:** You lose all context between sessions. Without memories, every session starts from zero.
 
+
 ## Rule 3: RECALL MEMORIES BEFORE STARTING WORK
 
 Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+
 
 ---
 
@@ -156,6 +169,8 @@ Leave `AR_HARDWARE_DRIVER` unset — the system auto-selects the best backend.
 ```bash
 export AR_HARDWARE_MEMORY_SCALE=6   # 16GB (default is 4 = ~4GB)
 ```
+
+This is exponential - do not set it to some huge value.
 
 See [hardware/README.md](base/hardware/README.md).
 

@@ -5,6 +5,8 @@ import org.almostrealism.ml.tokenization.RegexPreTokenizer;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
@@ -303,8 +305,8 @@ public class Qwen3Tokenizer extends ByteLevelBPETokenizer {
 	 */
 	public static Qwen3Tokenizer createTestTokenizer() {
 		// Create a simple vocab with ASCII characters and some common subwords
-		java.util.List<String> vocabList = new java.util.ArrayList<>();
-		java.util.List<Float> scoresList = new java.util.ArrayList<>();
+		List<String> vocabList = new ArrayList<>();
+		List<Float> scoresList = new ArrayList<>();
 
 		// Add byte-level tokens (256)
 		for (int i = 0; i < 256; i++) {

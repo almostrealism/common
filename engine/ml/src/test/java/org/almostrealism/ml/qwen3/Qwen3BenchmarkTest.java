@@ -11,6 +11,7 @@ import org.almostrealism.util.TestUtils;
 import org.junit.Assume;
 import org.junit.Test;
 
+import org.almostrealism.model.CompiledModel;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -101,7 +102,7 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 		log("");
 
 		// Get components for direct token generation
-		org.almostrealism.model.CompiledModel compiledModel = model.getCompiledModel();
+		CompiledModel compiledModel = model.getCompiledModel();
 		PackedCollection embeddings = model.getTokenEmbeddings();
 		PackedCollection position = model.getPosition();
 		int dim = config.dim;

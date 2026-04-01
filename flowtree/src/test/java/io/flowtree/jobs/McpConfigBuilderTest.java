@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -92,7 +93,7 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 			assertTrue("Config should contain my-server", config.contains("my-server"));
 		} finally {
 			Files.walk(tempDir)
-					.sorted(java.util.Comparator.reverseOrder())
+					.sorted(Comparator.reverseOrder())
 					.forEach(p -> {
 						try { Files.deleteIfExists(p); } catch (IOException ignored) { }
 					});
@@ -159,7 +160,7 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 			// (only the HTTP entry from setArManagerUrl is used)
 		} finally {
 			Files.walk(tempDir)
-					.sorted(java.util.Comparator.reverseOrder())
+					.sorted(Comparator.reverseOrder())
 					.forEach(p -> {
 						try { Files.deleteIfExists(p); } catch (IOException ignored) { }
 					});

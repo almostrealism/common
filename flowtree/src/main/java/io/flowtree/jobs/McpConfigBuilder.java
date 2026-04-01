@@ -65,11 +65,20 @@ public class McpConfigBuilder implements ConsoleFeatures {
         "mcp__ar-manager__workstream_get_status," +
         "mcp__ar-manager__controller_health";
 
+    /** Shared Jackson mapper for serializing the MCP config JSON. */
     private static final ObjectMapper mapper = new ObjectMapper();
 
+    /** ar-manager service URL (e.g., {@code "http://ar-manager:8010"}). */
     private String arManagerUrl;
+
+    /** Temporary HMAC bearer token for ar-manager authentication. */
     private String arManagerToken;
+
+    /** Project working directory used to locate {@code .mcp.json}. */
     private Path workingDirectory;
+
+    /** Python executable used to launch stdio MCP servers (default: {@code "python3"}). */
+    private String pythonCommand = "python3";
 
     /**
      * Sets the ar-manager HTTP URL for centralized tool access.
@@ -96,6 +105,19 @@ public class McpConfigBuilder implements ConsoleFeatures {
      */
     public void setWorkingDirectory(Path workingDirectory) {
         this.workingDirectory = workingDirectory;
+    }
+
+    /**
+     * Sets the Python command used to launch project MCP servers.
+     *
+     * <p>Defaults to {@code "python3"}. When a managed venv is active,
+     * this should be set to the absolute path of the venv's python
+     * binary (e.g., {@code ~/.flowtree/venv/bin/python3}).</p>
+     *
+     * @param pythonCommand the python executable path or name
+     */
+    public void setPythonCommand(String pythonCommand) {
+        this.pythonCommand = pythonCommand;
     }
 
     /**
@@ -138,7 +160,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
         Map<String, String> projectServers = discoverProjectMcpServers();
         for (Map.Entry<String, String> entry : projectServers.entrySet()) {
             ObjectNode serverNode = mcpServers.putObject(entry.getKey());
-            serverNode.put("command", "python3");
+            serverNode.put("command", pythonCommand);
             ArrayNode argsArray = serverNode.putArray("args");
             argsArray.add(entry.getValue());
         }

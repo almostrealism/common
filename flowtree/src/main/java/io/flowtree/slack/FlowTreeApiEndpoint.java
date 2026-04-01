@@ -17,6 +17,7 @@
 package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.ClaudeCodeJobEvent;
@@ -38,11 +39,14 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * HTTP API endpoint for FlowTree orchestration.
@@ -89,6 +93,10 @@ import java.util.regex.Pattern;
  *       <td>Proxy a PUT request to the GitHub API</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td>
  *       <td>List all registered workstreams with capabilities</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td>
+ *       <td>List recent jobs for a workstream (newest first); optional {@code limit} query param</td></tr>
+ *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td>
+ *       <td>Look up a specific job event by ID</td></tr>
  *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td>
  *       <td>Check whether automated job submissions are accepted</td></tr>
  *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td>
@@ -112,9 +120,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit|/update)?"
     );
 
+    /** Slack notifier used to send job-status messages to Slack channels. */
     private final SlackNotifier notifier;
+    /** Maps tool names to the local filesystem paths of their definition files. */
     private final Map<String, Path> toolFiles = new HashMap<>();
+    /** Persistent store for per-job timing and throughput statistics. */
     private JobStatsStore statsStore;
+    /** Maps GitHub organisation names to their API access tokens. */
     private Map<String, String> githubOrgTokens = new HashMap<>();
 
     /** Tracks which jobs should have a PR auto-created on success. */
@@ -131,7 +143,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     private volatile boolean acceptAutomatedJobs = false;
 
+    /** Local FlowTree server used to submit jobs received via the HTTP API. */
     private Server server;
+    /** Slack listener that receives inbound messages and dispatches them to jobs. */
     private SlackListener listener;
 
     /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */
@@ -257,6 +271,21 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
             return handleListWorkstreams();
+        }
+
+        if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/") && uri.endsWith("/jobs")) {
+            String workstreamId = uri.substring("/api/workstreams/".length(),
+                    uri.length() - "/jobs".length());
+            String limitParam = session.getParameters().getOrDefault("limit",
+                    List.of("10")).get(0);
+            int limit = 10;
+            try { limit = Integer.parseInt(limitParam); } catch (NumberFormatException ignored) { }
+            return handleListJobs(workstreamId, limit);
+        }
+
+        if (Method.GET.equals(method) && uri.startsWith("/api/jobs/")) {
+            String jobId = uri.substring("/api/jobs/".length());
+            return handleGetJob(jobId);
         }
 
         if ("/api/config/accept-automated-jobs".equals(uri)) {
@@ -529,6 +558,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String repoUrl = extractJsonField(body, "repoUrl");
         String planningDocument = extractJsonField(body, "planningDocument");
         String channelName = extractJsonField(body, "channelName");
+        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
 
         // Check for an existing workstream with the same branch and repo
         SlackWorkstream existing = notifier.findWorkstreamByBranchAndRepo(defaultBranch, repoUrl);
@@ -570,6 +600,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (planningDocument != null && !planningDocument.isEmpty()) {
             workstream.setPlanningDocument(planningDocument);
+        }
+
+        if (!requiredLabels.isEmpty()) {
+            workstream.setRequiredLabels(requiredLabels);
         }
 
         workstream.setPushToOrigin(true);
@@ -626,6 +660,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String baseBranch = extractJsonField(body, "baseBranch");
         String repoUrl = extractJsonField(body, "repoUrl");
         String planningDocument = extractJsonField(body, "planningDocument");
+        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
 
         if (channelId != null && !channelId.isEmpty()) {
             workstream.setChannelId(channelId);
@@ -644,6 +679,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
         if (planningDocument != null && !planningDocument.isEmpty()) {
             workstream.setPlanningDocument(planningDocument);
+        }
+        if (!requiredLabels.isEmpty()) {
+            workstream.setRequiredLabels(requiredLabels);
         }
 
         if (listener != null) {
@@ -775,8 +813,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             if (channelId != null) {
                 workstream.setChannelId(channelId);
                 log("Channel resolved for workstream " + workstreamId + ": " + channelId);
-                // Persist to YAML so we don't retry on every submission
+                // Re-register so channelToWorkstream picks up the new channelId,
+                // then persist so the YAML reflects it too.
                 if (listener != null) {
+                    listener.registerWorkstream(workstream);
                     listener.persistConfig();
                 }
             }
@@ -890,8 +930,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setEnforceChanges(true);
         }
 
-        // Required labels for Node routing (e.g., {"platform": "macos"})
+        // Required labels for Node routing (e.g., {"platform": "macos"}).
+        // Job-level labels take precedence; fall back to workstream-level defaults when absent.
         Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
+        if (requiredLabels.isEmpty() && workstream.getRequiredLabels() != null
+                && !workstream.getRequiredLabels().isEmpty()) {
+            requiredLabels = workstream.getRequiredLabels();
+        }
         for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
             factory.setRequiredLabel(entry.getKey(), entry.getValue());
         }
@@ -931,11 +976,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
         notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent);
 
-        // Round-robin to connected agents
-        int index = peers.length > 1 ? (int) (System.currentTimeMillis() % peers.length) : 0;
-        server.sendTask(factory, index);
+        // Queue locally — the NodeGroup relay mechanism distributes
+        // the job to a Node whose labels match the job's requirements
+        server.addTask(factory);
 
-        log("Submitted job via API: " + factory.getTaskId() + " to agent " + index);
+        log("Submitted job via API: " + factory.getTaskId());
 
         String json = "{\"ok\":true,\"jobId\":\"" + factory.getTaskId()
             + "\",\"workstreamId\":\"" + workstreamId + "\"}";
@@ -1100,49 +1145,49 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractString(String, String)}.
      */
     static String extractJsonField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractString(json, field);
+        return JsonFieldExtractor.extractString(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractBoolean(String, String)}.
      */
     static boolean extractJsonBooleanField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractBoolean(json, field);
+        return JsonFieldExtractor.extractBoolean(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractInt(String, String)}.
      */
     static int extractJsonIntField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractInt(json, field);
+        return JsonFieldExtractor.extractInt(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractLong(String, String)}.
      */
     static long extractJsonLongField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractLong(json, field);
+        return JsonFieldExtractor.extractLong(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractDouble(String, String)}.
      */
     static double extractJsonDoubleField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractDouble(json, field);
+        return JsonFieldExtractor.extractDouble(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractStringArray(String, String)}.
      */
     static List<String> extractJsonArrayField(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractStringArray(json, field);
+        return JsonFieldExtractor.extractStringArray(json, field);
     }
 
     /**
      * Delegates to {@link io.flowtree.JsonFieldExtractor#extractStringObject(String, String)}.
      */
     static Map<String, String> extractJsonObjectFields(String json, String field) {
-        return io.flowtree.JsonFieldExtractor.extractStringObject(json, field);
+        return JsonFieldExtractor.extractStringObject(json, field);
     }
 
     /**
@@ -1166,16 +1211,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String payload = workstreamId + ":" + jobId + ":" + expiry;
 
         try {
-            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
-            mac.init(new javax.crypto.spec.SecretKeySpec(
-                sharedSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(
+                sharedSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             byte[] hmacBytes = mac.doFinal(
-                payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                payload.getBytes(StandardCharsets.UTF_8));
 
-            String hmacB64 = java.util.Base64.getUrlEncoder().withoutPadding()
+            String hmacB64 = Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(hmacBytes);
-            String payloadB64 = java.util.Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            String payloadB64 = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(payload.getBytes(StandardCharsets.UTF_8));
 
             return "armt_tmp_" + hmacB64 + ":" + payloadB64;
         } catch (Exception e) {
@@ -1183,6 +1228,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
     }
 
+    /**
+     * Escapes a string for safe inclusion in a JSON string literal.
+     *
+     * @param s  the string to escape, or {@code null}
+     * @return   the escaped string, or an empty string if {@code s} is {@code null}
+     */
     private static String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
@@ -1191,6 +1242,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .replace("\r", "\\r");
     }
 
+    /**
+     * Truncates a string to at most {@code maxLength} characters, appending
+     * {@code "..."} when the string is shortened.
+     *
+     * @param s          the string to truncate, or {@code null}
+     * @param maxLength  maximum number of characters to retain (including ellipsis)
+     * @return           the (possibly truncated) string, never {@code null}
+     */
     private static String truncate(String s, int maxLength) {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;
@@ -1207,6 +1266,84 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * pipeline operations (requires {@code repoUrl}).</p>
      *
      * @return JSON response with an array of workstream summaries
+     */
+    /**
+     * Serialises a {@link JobCompletionEvent} to a JSON object string.
+     *
+     * @param event the event to serialise
+     * @return JSON object string
+     */
+    private String jobEventToJson(JobCompletionEvent event) {
+        StringBuilder j = new StringBuilder();
+        j.append("{");
+        j.append("\"jobId\":\"").append(escapeJson(event.getJobId())).append("\"");
+        j.append(",\"status\":\"").append(event.getStatus().name()).append("\"");
+        j.append(",\"description\":\"").append(escapeJson(event.getDescription())).append("\"");
+        j.append(",\"timestamp\":\"").append(event.getTimestamp().toString()).append("\"");
+        if (event.getTargetBranch() != null) {
+            j.append(",\"targetBranch\":\"").append(escapeJson(event.getTargetBranch())).append("\"");
+        }
+        if (event.getCommitHash() != null) {
+            j.append(",\"commitHash\":\"").append(escapeJson(event.getCommitHash())).append("\"");
+        }
+        if (event.getPullRequestUrl() != null) {
+            j.append(",\"pullRequestUrl\":\"").append(escapeJson(event.getPullRequestUrl())).append("\"");
+        }
+        if (event.getErrorMessage() != null) {
+            j.append(",\"errorMessage\":\"").append(escapeJson(event.getErrorMessage())).append("\"");
+        }
+        if (event.getCostUsd() > 0) {
+            j.append(String.format(",\"costUsd\":%.4f", event.getCostUsd()));
+        }
+        j.append("}");
+        return j.toString();
+    }
+
+    /**
+     * Handles {@code GET /api/workstreams/{id}/jobs?limit=N}.
+     * Returns the most recent jobs for the workstream, newest first.
+     *
+     * @param workstreamId the workstream identifier
+     * @param limit        maximum number of jobs to return
+     * @return JSON array of job events
+     */
+    private Response handleListJobs(String workstreamId, int limit) {
+        List<JobCompletionEvent> page = notifier.getRecentJobs(workstreamId, limit);
+
+        StringBuilder json = new StringBuilder("[");
+        boolean first = true;
+        for (JobCompletionEvent event : page) {
+            if (!first) json.append(",");
+            first = false;
+            json.append(jobEventToJson(event));
+        }
+        json.append("]");
+
+        return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString());
+    }
+
+    /**
+     * Handles {@code GET /api/jobs/{jobId}}.
+     * Returns the most recent event for the specified job.
+     *
+     * @param jobId the job identifier
+     * @return JSON object for the job event, or 404 if not found
+     */
+    private Response handleGetJob(String jobId) {
+        JobCompletionEvent event = notifier.getJob(jobId);
+        if (event == null) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND,
+                    "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
+        }
+        return newFixedLengthResponse(Response.Status.OK,
+                "application/json", jobEventToJson(event));
+    }
+
+    /**
+     * Handles {@code GET /api/workstreams}. Returns a JSON array of all
+     * registered workstreams with their configuration and capabilities.
+     *
+     * @return an HTTP 200 response containing a JSON array of workstream objects
      */
     private Response handleListWorkstreams() {
         Map<String, SlackWorkstream> workstreams = notifier.getWorkstreams();
@@ -1480,11 +1617,23 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * when the job completes successfully.
      */
     private static class AutoPrContext {
+        /** URL of the git repository for which a pull request should be created. */
         final String repoUrl;
+        /** Base branch against which the pull request will be opened. */
         final String baseBranch;
+        /** GitHub organisation name, used to look up the API access token. */
         final String githubOrg;
+        /** Human-readable description of the job, used as the PR title/body. */
         final String description;
 
+        /**
+         * Constructs a new {@link AutoPrContext}.
+         *
+         * @param repoUrl     URL of the git repository
+         * @param baseBranch  base branch for the pull request
+         * @param githubOrg   GitHub organisation name
+         * @param description human-readable job description
+         */
         AutoPrContext(String repoUrl, String baseBranch, String githubOrg, String description) {
             this.repoUrl = repoUrl;
             this.baseBranch = baseBranch;

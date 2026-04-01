@@ -85,7 +85,7 @@ import java.util.function.Consumer;
  *
  * @author Michael Murray
  */
-public abstract class GitManagedJob implements Job, ConsoleFeatures {
+public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /** Default maximum file size to commit (1 MB). */
     public static final long DEFAULT_MAX_FILE_SIZE = 1024 * 1024;
@@ -113,48 +113,140 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     public static final String WORKING_DIRECTORY_PROPERTY = "flowtree.workingDirectory";
 
     // ---- Identity and branch configuration ----
+
+    /** Unique identifier for this job, used in log messages and completion events. */
     private String taskId;
+
+    /**
+     * The git branch to which changes are committed and pushed.
+     * When null or empty, all git operations are skipped.
+     */
     private String targetBranch;
+
+    /**
+     * The branch used as the starting point when the target branch does not yet
+     * exist. Defaults to {@code "master"}.
+     */
     private String baseBranch = "master";
+
+    /** The branch that was active when the job started, recorded before any checkout. */
     private String originalBranch;
 
     // ---- Repository and workspace paths ----
+
+    /**
+     * Optional git remote URL. When set and {@link #workingDirectory} is null,
+     * the repository is cloned automatically before work begins.
+     */
     private String repoUrl;
+
+    /**
+     * Absolute path to the local repository root where git commands are executed.
+     * Resolved from {@link #repoUrl} if not specified explicitly.
+     */
     private String workingDirectory;
+
+    /**
+     * Parent directory under which repository checkouts are placed when
+     * {@link #repoUrl} is set but no explicit {@link #workingDirectory} is provided.
+     */
     private String defaultWorkspacePath;
+    /** Dependent repository URLs to clone alongside the primary repo. */
     private List<String> dependentRepos;
+    /** Resolved filesystem paths for dependent repos after cloning. */
     private List<String> dependentRepoPaths = new ArrayList<>();
 
     // ---- Git operation flags ----
+
+    /** When true (default), commits are pushed to the {@code origin} remote. */
     private boolean pushToOrigin = true;
+
+    /** When true (default), the target branch is created if it does not exist. */
     private boolean createBranchIfMissing = true;
+
+    /** When true, git operations are logged but not executed. */
     private boolean dryRun = false;
+
+    /** Set to true after all git operations (stage, commit, push) succeed. */
     private boolean gitOperationsSuccessful = false;
 
     // ---- File staging configuration ----
+
+    /** Maximum size in bytes for a file to be eligible for staging. */
     private long maxFileSizeBytes = DEFAULT_MAX_FILE_SIZE;
+
+    /** Glob patterns for files that are never staged, seeded from {@link GitJobConfig}. */
     private Set<String> excludedPatterns = new HashSet<>(DEFAULT_EXCLUDED_PATTERNS);
+
+    /** Additional exclusion patterns supplied by the subclass or operator. */
     private Set<String> additionalExcludedPatterns = new HashSet<>();
+
+    /**
+     * When true, any file matched by {@link #PROTECTED_PATH_PATTERNS} that also
+     * exists on the base branch is blocked from being staged.
+     */
     private boolean protectTestFiles = false;
+
+    /** Files that were successfully staged during the current run. */
     private List<String> stagedFiles = new ArrayList<>();
+
+    /** Files that were skipped during staging, with a reason appended to each entry. */
     private List<String> skippedFiles = new ArrayList<>();
 
     // ---- Commit and PR state ----
+
+    /** Full SHA-1 hash of the commit created by this job, or null if no commit was made. */
     private String commitHash;
+
+    /** URL of an open pull request for the target branch, detected after push. */
     private String pullRequestUrl;
+
+    /** Git author/committer name passed via {@code -c user.name=...} on the commit command. */
     private String gitUserName;
+
+    /** Git author/committer email passed via {@code -c user.email=...} on the commit command. */
     private String gitUserEmail;
 
     // ---- Merge conflict state ----
+
+    /** True if a merge conflict was detected when synchronizing with the base branch. */
     private boolean mergeConflictsDetected = false;
+
+    /** Paths of files that were in a conflicted state during base-branch synchronization. */
     private List<String> conflictFiles = new ArrayList<>();
 
+    // ---- Git tampering detection state ----
+
+    /** HEAD commit hash recorded just before doWork() starts. */
+    private String preWorkHeadHash;
+
+    /** Set of local branch names that existed just before doWork() starts. */
+    private Set<String> preWorkBranches;
+
+    /** Whether git tampering was detected after doWork(). */
+    private boolean gitTamperingDetected = false;
+
+    /** Human-readable description of what tampering was detected. */
+    private String tamperingDescription;
+
     // ---- Label-based routing requirements ----
+
+    /**
+     * Node labels that must be present for a FlowTree node to execute this job.
+     * Keys and values are arbitrary strings matched against node label maps.
+     */
     private final Map<String, String> requiredLabels = new LinkedHashMap<>();
 
+    /** Receives {@link JobOutput} events streamed from the job while it runs. */
     private Consumer<JobOutput> outputConsumer;
+
+    /** Completed when {@link #run()} returns, allowing callers to await termination. */
     private final CompletableFuture<Void> future = new CompletableFuture<>();
 
+    /**
+     * Controller URL used for posting job status events and sending messages.
+     * Follows the pattern {@code http://controller/api/workstreams/{id}/jobs/{jobId}}.
+     */
     private String workstreamUrl;
 
     /**
@@ -182,6 +274,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         requiredLabels.put(key, value);
     }
 
+    /**
+     * Returns an unmodifiable view of the labels that a FlowTree node must
+     * possess in order to accept and execute this job. Label matching is
+     * performed by the node before the job is added to its queue.
+     *
+     * @return unmodifiable map of required label key-value pairs
+     */
     @Override
     public Map<String, String> getRequiredLabels() {
         return Collections.unmodifiableMap(requiredLabels);
@@ -206,6 +305,26 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
+     * Called when git tampering is detected after {@link #doWork()}.
+     *
+     * <p>The default implementation logs a warning and returns {@code false}
+     * (no retry). Subclasses like {@link ClaudeCodeJob} override this to
+     * restart the agent session with a violation warning, giving the agent
+     * one chance to redo its work without tampering.</p>
+     *
+     * <p>When this method returns {@code true}, the caller will re-run
+     * tampering detection. If tampering persists, all changes are
+     * destroyed with no further retries.</p>
+     *
+     * @return true if the subclass restarted the work and wants re-evaluation
+     */
+    protected boolean onGitTampering() {
+        warn("Git tampering detected but no restart handler configured -- "
+            + "proceeding with reverted state");
+        return false;
+    }
+
+    /**
      * Returns the commit message for changes made by this job.
      * Subclasses should override to provide a descriptive message.
      *
@@ -215,6 +334,20 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return "Changes from job: " + getTaskString();
     }
 
+    /**
+     * Executes the full job lifecycle: environment setup, optional repo clone,
+     * working-directory preparation, pre-work HEAD snapshot, the subclass work
+     * ({@link #doWork()}), git-tampering detection and remediation,
+     * change validation, and finally the git operations (stage, commit, push).
+     *
+     * <p>This method is {@code final}: subclasses customise behaviour by
+     * overriding {@link #doWork()}, {@link #validateChanges()},
+     * {@link #onGitTampering()}, and {@link #getCommitMessage()}.</p>
+     *
+     * <p>Regardless of success or failure, {@link #fireJobCompleted(Exception)}
+     * is called in the {@code finally} block and the {@link #future} is
+     * completed so that waiters are always unblocked.</p>
+     */
     @Override
     public final void run() {
         Exception error = null;
@@ -250,11 +383,46 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
                 prepareDependentReposBranches();
             }
 
+            // Prepare execution environment (Python venv, etc.)
+            prepareEnvironment();
+
+            // Record pre-work HEAD so we can detect unauthorized commits
+            if (targetBranch != null && !targetBranch.isEmpty()) {
+                preWorkHeadHash = executeGitWithOutput("rev-parse", "HEAD").trim();
+                log("Pre-work HEAD: " + preWorkHeadHash.substring(0, Math.min(7, preWorkHeadHash.length())));
+                preWorkBranches = new HashSet<>(Arrays.asList(
+                        executeGitWithOutput("branch", "--list", "--format=%(refname:short)").split("\n")));
+            }
+
             // Perform the actual work
             doWork();
 
             // Handle git operations if a target branch is specified
             if (targetBranch != null && !targetBranch.isEmpty()) {
+                // Detect and handle git tampering.  If the agent switched
+                // branches, created commits, or otherwise mutated the repo,
+                // revert to the pre-work state and allow the subclass to
+                // retry the session with a stern warning.
+                detectGitTampering();
+
+                if (gitTamperingDetected) {
+                    revertGitTampering();
+
+                    // Give the subclass a chance to restart.  onGitTampering()
+                    // may call doWork() again (with an amended prompt) and
+                    // will return true if it wants us to re-evaluate.
+                    if (onGitTampering()) {
+                        // Re-check after the restart
+                        resetTamperingState();
+                        detectGitTampering();
+                        if (gitTamperingDetected) {
+                            revertGitTampering();
+                            warn("Git tampering persisted after restart -- "
+                                + "all agent changes destroyed");
+                        }
+                    }
+                }
+
                 if (validateChanges()) {
                     handleGitOperations();
                     handleDependentRepoGitOperations();
@@ -885,6 +1053,185 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
+     * Detects whether the coding agent tampered with the git repository
+     * during its session.
+     *
+     * <p>Tampering is defined as any of the following:
+     * <ul>
+     *   <li>Switching to a different branch than the target branch</li>
+     *   <li>Creating new commits (HEAD has advanced beyond the pre-work hash)</li>
+     *   <li>Creating new local branches that did not exist before</li>
+     * </ul>
+     *
+     * <p>When tampering is detected, {@link #gitTamperingDetected} is set to
+     * {@code true} and {@link #tamperingDescription} is populated with details.</p>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void detectGitTampering() throws IOException, InterruptedException {
+        if (preWorkHeadHash == null) {
+            return;
+        }
+
+        StringBuilder violations = new StringBuilder();
+
+        // Check 1: Has the branch changed?
+        String currentBranch = getCurrentBranch();
+        if (!targetBranch.equals(currentBranch)) {
+            violations.append("Branch switched from '").append(targetBranch)
+                .append("' to '").append(currentBranch).append("'. ");
+        }
+
+        // Check 2: Were any commits created on the current branch?
+        // Count commits reachable from HEAD but not from preWorkHeadHash and
+        // not already on origin/targetBranch.  Excluding origin means commits
+        // the agent pulled from remote (pre-existing history) are not flagged —
+        // only commits the agent created locally that aren't on the remote count.
+        executeGit("fetch", "origin", "--quiet");
+        boolean remoteRefExists = executeGit("show-ref", "--verify", "--quiet",
+                "refs/remotes/origin/" + targetBranch) == 0;
+        String newCommits;
+        if (remoteRefExists) {
+            newCommits = executeGitWithOutput("rev-list", "HEAD",
+                "--not", preWorkHeadHash, "refs/remotes/origin/" + targetBranch,
+                "--count").trim();
+        } else {
+            newCommits = executeGitWithOutput(
+                "rev-list", preWorkHeadHash + "..HEAD", "--count").trim();
+        }
+        int commitCount = 0;
+        try {
+            commitCount = Integer.parseInt(newCommits);
+        } catch (NumberFormatException ignored) {
+            // If we can't parse, check whether HEAD moved at all
+            String currentHead = executeGitWithOutput("rev-parse", "HEAD").trim();
+            if (!currentHead.equals(preWorkHeadHash)) {
+                commitCount = -1; // unknown but HEAD moved
+            }
+        }
+
+        if (commitCount != 0) {
+            if (commitCount > 0) {
+                violations.append("Agent created ").append(commitCount)
+                    .append(" unauthorized commit(s) on ").append(currentBranch).append(". ");
+            } else {
+                violations.append("HEAD moved from pre-work position (unknown commit count). ");
+            }
+        }
+
+        // Check 3: Were any new local branches created during the session?
+        // Compare against the pre-work snapshot so pre-existing branches
+        // checked out before the job started are not flagged.
+        String branchOutput = executeGitWithOutput("branch", "--list", "--format=%(refname:short)");
+        List<String> newBranches = new ArrayList<>();
+        for (String branch : branchOutput.split("\n")) {
+            String trimmed = branch.trim();
+            if (!trimmed.isEmpty() && !preWorkBranches.contains(trimmed)) {
+                newBranches.add(trimmed);
+            }
+        }
+
+        if (!newBranches.isEmpty()) {
+            // Only flag as tampering if there are also other violations;
+            // extra local branches alone may be artifacts from prior jobs.
+            if (violations.length() > 0) {
+                violations.append("Unexpected local branches found: ")
+                    .append(String.join(", ", newBranches)).append(". ");
+            }
+        }
+
+        if (violations.length() > 0) {
+            gitTamperingDetected = true;
+            tamperingDescription = violations.toString().trim();
+            warn("Git tampering detected: " + tamperingDescription);
+        }
+    }
+
+    /**
+     * Reverts all git changes made by the agent that constitute tampering.
+     *
+     * <p>This method:
+     * <ol>
+     *   <li>Discards all uncommitted changes (staged and unstaged)</li>
+     *   <li>Removes all untracked files</li>
+     *   <li>Switches back to the target branch</li>
+     *   <li>Resets HEAD to the pre-work commit hash, undoing any commits
+     *       the agent made</li>
+     * </ol>
+     *
+     * <p>After this method completes, the working directory is in exactly
+     * the state it was in just before {@link #doWork()} was called.</p>
+     *
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    private void revertGitTampering() throws IOException, InterruptedException {
+        log("Reverting git tampering -- restoring pre-work state...");
+
+        // 1. Discard all uncommitted changes and untracked files on
+        //    whatever branch we're currently on.
+        executeGit("reset", "--hard");
+        executeGit("clean", "-fd");
+
+        // 2. Switch back to the target branch if needed
+        String currentBranch = getCurrentBranch();
+        if (!targetBranch.equals(currentBranch)) {
+            log("Switching from '" + currentBranch + "' back to '" + targetBranch + "'");
+            if (executeGit("checkout", targetBranch) != 0) {
+                // Target branch may have been deleted or never existed locally
+                // if the agent was creating branches.  Force-create it from the
+                // pre-work hash.
+                warn("Could not checkout " + targetBranch + " -- recreating from pre-work HEAD");
+                executeGit("checkout", "-B", targetBranch, preWorkHeadHash);
+            }
+        }
+
+        // 3. Reset to the pre-work HEAD, undoing any commits the agent made
+        String headBefore = executeGitWithOutput("rev-parse", "--short", "HEAD").trim();
+        if (executeGit("reset", "--hard", preWorkHeadHash) != 0) {
+            throw new RuntimeException(
+                "Failed to reset to pre-work HEAD " + preWorkHeadHash
+                    + " -- manual intervention required");
+        }
+
+        // 4. Clean again in case the reset left untracked files
+        executeGit("clean", "-fd");
+
+        String headAfter = executeGitWithOutput("rev-parse", "--short", "HEAD").trim();
+        log("Tampering reverted: HEAD was " + headBefore + ", now restored to " + headAfter);
+    }
+
+    /**
+     * Returns whether git tampering was detected after the last
+     * {@link #doWork()} execution.
+     *
+     * @return true if the agent tampered with the git repository
+     */
+    protected boolean isGitTamperingDetected() {
+        return gitTamperingDetected;
+    }
+
+    /**
+     * Returns a human-readable description of the git tampering that
+     * was detected, or null if no tampering occurred.
+     *
+     * @return the tampering description, or null
+     */
+    protected String getTamperingDescription() {
+        return tamperingDescription;
+    }
+
+    /**
+     * Resets the git tampering detection state.
+     * Called before each doWork() invocation when retrying.
+     */
+    protected void resetTamperingState() {
+        gitTamperingDetected = false;
+        tamperingDescription = null;
+    }
+
+    /**
      * Handles all git operations: branch management, staging, committing, and pushing.
      *
      * @throws IOException if a git command fails to execute
@@ -895,7 +1242,10 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         log("Starting git operations...");
         log("Target branch: " + targetBranch);
 
-        // Ensure we're on the target branch
+        // At this point, detectGitTampering()/revertGitTampering() have already
+        // run.  We should be on the target branch with a clean HEAD (any
+        // unauthorized commits have been reset).  If the branch still doesn't
+        // match, something unexpected happened — fail loudly.
         if (!ensureOnTargetBranch()) {
             String msg = "Failed to switch to target branch '" + targetBranch + "'" +
                 " (working directory: " + (workingDirectory != null ? workingDirectory : System.getProperty("user.dir")) + ")";
@@ -946,7 +1296,17 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Ensures we're on the target branch, creating it if necessary.
+     * Checks out the target branch, creating it from the base branch if it does
+     * not yet exist and {@link #createBranchIfMissing} is {@code true}.
+     *
+     * <p>If {@link #dryRun} is {@code true}, the checkout is only logged.
+     * New branches are created with {@code --no-track} so that the upstream
+     * is set explicitly to {@code origin/<targetBranch>} by {@link #pushToOrigin()}
+     * rather than inheriting the base branch's upstream.</p>
+     *
+     * @return true if we are (or would be in dry-run mode) on the target branch
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
      */
     private boolean ensureOnTargetBranch() throws IOException, InterruptedException {
         String currentBranch = getCurrentBranch();
@@ -985,7 +1345,15 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Finds all changed files (modified, added, deleted, untracked).
+     * Returns all files reported as changed by {@code git status --porcelain},
+     * including modified, added, deleted, and untracked files.
+     *
+     * <p>For renamed files the post-rename path is returned (the part after
+     * {@code " -> "}).</p>
+     *
+     * @return list of changed file paths relative to the working directory
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
      */
     private List<String> findChangedFiles() throws IOException, InterruptedException {
         List<String> files = new ArrayList<>();
@@ -1010,7 +1378,28 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Stages files that pass all guardrails.
+     * Evaluates each changed file against the staging guardrails and adds
+     * passing files to the git index via {@code git add}.
+     *
+     * <p>The guardrails are applied in order:
+     * <ol>
+     *   <li>Excluded-pattern check (see {@link #excludedPatterns} and
+     *       {@link #additionalExcludedPatterns})</li>
+     *   <li>Test-file protection (when {@link #protectTestFiles} is enabled):
+     *       files matching {@link #PROTECTED_PATH_PATTERNS} that exist on the
+     *       base branch are blocked</li>
+     *   <li>File-size check: files larger than {@link #maxFileSizeBytes} are
+     *       skipped</li>
+     *   <li>Binary detection: files with more than 10 % null bytes are skipped</li>
+     * </ol>
+     *
+     * <p>Files that pass all guardrails are added with {@code git add} and
+     * recorded in {@link #stagedFiles}; rejected files are recorded in
+     * {@link #skippedFiles} with a reason suffix.</p>
+     *
+     * @param changedFiles the candidate file paths to evaluate
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
      */
     private void stageFiles(List<String> changedFiles) throws IOException, InterruptedException {
         Set<String> allExcluded = new HashSet<>(excludedPatterns);
@@ -1071,12 +1460,19 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Commits the staged changes.
+     * Commits the staged changes with the message from {@link #getCommitMessage()}.
      *
      * <p>If {@link #gitUserName} and/or {@link #gitUserEmail} are set,
      * they are passed via {@code git -c user.name=... -c user.email=...}
      * directly on the command line, which is the most reliable way to
      * override identity regardless of container or SSH environment.</p>
+     *
+     * <p>On success, the resulting commit hash is stored in {@link #commitHash}
+     * and any leftover {@code commit.txt} scratch file is deleted.</p>
+     *
+     * @return true if the commit succeeded (exit code 0)
+     * @throws IOException if the git process cannot be started
+     * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     private boolean commit() throws IOException, InterruptedException {
         String message = getCommitMessage();
@@ -1128,11 +1524,16 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Pushes changes to origin.
+     * Pushes the current branch to the {@code origin} remote.
      *
      * <p>Uses an explicit refspec ({@code targetBranch:targetBranch})
      * so the push always targets the correct remote branch, regardless
-     * of any inherited upstream tracking configuration.</p>
+     * of any inherited upstream tracking configuration. The {@code -u}
+     * flag also sets the upstream to {@code origin/<targetBranch>}.</p>
+     *
+     * @return true if the push succeeded (exit code 0)
+     * @throws IOException if the git process cannot be started
+     * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     private boolean pushToOrigin() throws IOException, InterruptedException {
         log("Pushing to origin/" + targetBranch + "...");
@@ -1207,10 +1608,26 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
     }
 
+    /**
+     * Returns the short name of the currently checked-out branch.
+     *
+     * @return the current branch name (e.g. {@code "feature/my-work"})
+     * @throws IOException if the git command fails to execute
+     * @throws InterruptedException if the git command is interrupted
+     */
     private String getCurrentBranch() throws IOException, InterruptedException {
         return executeGitWithOutput("rev-parse", "--abbrev-ref", "HEAD").trim();
     }
 
+    /**
+     * Returns whether the given branch exists locally or as a remote-tracking
+     * ref under {@code origin/}.
+     *
+     * @param branch the branch name to check
+     * @return true if the branch exists locally or at {@code origin/<branch>}
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
     private boolean branchExists(String branch) throws IOException, InterruptedException {
         // Check local branches
         int result = executeGit("show-ref", "--verify", "--quiet", "refs/heads/" + branch);
@@ -1239,6 +1656,21 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
     }
 
+    /**
+     * Executes a git sub-command in the {@link #workingDirectory} and returns
+     * its exit code.
+     *
+     * <p>Standard error is merged into standard output so the full output is
+     * captured. If the exit code is non-zero, the output is logged as a
+     * warning. SSH host-key prompts are suppressed via
+     * {@code GIT_SSH_COMMAND}. Git identity environment variables are
+     * injected via {@link #applyGitIdentity(ProcessBuilder)}.</p>
+     *
+     * @param args git sub-command and its arguments (e.g. {@code "commit", "-m", "msg"})
+     * @return the process exit code (0 on success)
+     * @throws IOException if the process cannot be started
+     * @throws InterruptedException if the calling thread is interrupted while waiting
+     */
     private int executeGit(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(GitOperations.resolveGitCommand());
@@ -1274,6 +1706,19 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return exitCode;
     }
 
+    /**
+     * Executes a git sub-command in the {@link #workingDirectory} and returns
+     * its combined standard-output and standard-error as a string.
+     *
+     * <p>Unlike {@link #executeGit(String...)}, the exit code is not checked;
+     * callers that need to detect failure should inspect the returned string
+     * or use {@link #executeGit(String...)} instead.</p>
+     *
+     * @param args git sub-command and its arguments
+     * @return the full output of the command
+     * @throws IOException if the process cannot be started
+     * @throws InterruptedException if the calling thread is interrupted while waiting
+     */
     private String executeGitWithOutput(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(GitOperations.resolveGitCommand());
@@ -1333,6 +1778,14 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     // ==================== File Utilities ====================
 
+    /**
+     * Resolves a relative file path against the {@link #workingDirectory}.
+     * When no working directory is configured, the path is treated as relative
+     * to the JVM's current working directory.
+     *
+     * @param path the relative file path to resolve
+     * @return a {@link File} object for the resolved path
+     */
     private File resolveFile(String path) {
         if (workingDirectory != null) {
             return new File(workingDirectory, path);
@@ -1340,14 +1793,42 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return new File(path);
     }
 
+    /**
+     * Returns whether the given file path matches any pattern in the provided set.
+     * Delegates to {@link FileStager#matchesAnyPattern(String, Set)} which
+     * supports both exact-suffix and glob matching.
+     *
+     * @param path     the file path to test
+     * @param patterns the set of patterns to match against
+     * @return true if any pattern matches the path
+     */
     private boolean matchesAnyPattern(String path, Set<String> patterns) {
         return FileStager.matchesAnyPattern(path, patterns);
     }
 
+    /**
+     * Returns whether a file path matches a single glob pattern.
+     * Delegates to {@link FileStager#matchesGlobPattern(String, String)}.
+     *
+     * @param path    the file path to test
+     * @param pattern the glob pattern to match against
+     * @return true if the pattern matches the path
+     */
     private boolean matchesGlobPattern(String path, String pattern) {
         return FileStager.matchesGlobPattern(path, pattern);
     }
 
+    /**
+     * Heuristically determines whether the given file is binary by scanning
+     * up to the first 8,000 bytes for null bytes.  A file is considered
+     * binary if more than 10 % of the inspected bytes are null ({@code 0x00}).
+     *
+     * <p>If the file does not exist, is a directory, or cannot be read,
+     * it is assumed to be binary (safe default for staging).</p>
+     *
+     * @param file the file to inspect
+     * @return true if the file appears to be binary
+     */
     private boolean isBinaryFile(File file) {
         if (!file.exists() || file.isDirectory()) {
             return false;
@@ -1373,6 +1854,13 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
     }
 
+    /**
+     * Formats a byte count as a human-readable string in B, KB, or MB units.
+     *
+     * @param bytes the number of bytes to format
+     * @return a formatted string such as {@code "512 B"}, {@code "1.5 KB"},
+     *         or {@code "2.3 MB"}
+     */
     private String formatSize(long bytes) {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
@@ -1381,7 +1869,19 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     // ==================== Job Interface ====================
 
-    /** {@inheritDoc} */
+    /**
+     * Formats a log message by prepending the simple class name and, when
+     * available, the task ID enclosed in square brackets.
+     *
+     * <p>Example outputs:
+     * <ul>
+     *   <li>With task ID: {@code "ClaudeCodeJob [abc-123]: message text"}</li>
+     *   <li>Without task ID: {@code "ClaudeCodeJob: message text"}</li>
+     * </ul>
+     *
+     * @param msg the raw message text
+     * @return the formatted log string
+     */
     @Override
     public String formatMessage(String msg) {
         String prefix = getLogClass().getSimpleName();
@@ -1392,31 +1892,68 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return prefix + ": " + msg;
     }
 
+    /**
+     * Returns the task identifier for this job, used in log messages and
+     * completion events.
+     *
+     * @return the task ID, or null if none was assigned
+     */
     @Override
     public String getTaskId() {
         return taskId;
     }
 
+    /**
+     * Sets the task identifier for this job.
+     *
+     * @param taskId the task ID string
+     */
     public void setTaskId(String taskId) {
         this.taskId = taskId;
     }
 
+    /**
+     * Returns a {@link CompletableFuture} that is completed when {@link #run()}
+     * finishes, whether successfully or with an exception.  Callers can use
+     * this to await job termination without blocking the FlowTree thread pool.
+     *
+     * @return the future that completes on job termination
+     */
     @Override
     public CompletableFuture<Void> getCompletableFuture() {
         return future;
     }
 
+    /**
+     * Registers a consumer that receives {@link JobOutput} events while
+     * the job is running.
+     *
+     * @param outputConsumer the consumer to notify with output events
+     */
     @Override
     public void setOutputConsumer(Consumer<JobOutput> outputConsumer) {
         this.outputConsumer = outputConsumer;
     }
 
+    /**
+     * Returns the currently registered output consumer, or null if none
+     * has been set.
+     *
+     * @return the output consumer, or null
+     */
     protected Consumer<JobOutput> getOutputConsumer() {
         return outputConsumer;
     }
 
     // ==================== Configuration ====================
 
+    /**
+     * Returns the git branch to which this job's changes are committed.
+     * Returns null if no target branch has been set, in which case git
+     * operations are skipped entirely.
+     *
+     * @return the target branch name, or null
+     */
     public String getTargetBranch() {
         return targetBranch;
     }
@@ -1451,10 +1988,34 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         this.baseBranch = baseBranch;
     }
 
+    /**
+     * Returns the absolute path of the local repository root used for all
+     * git operations and file resolution.
+     *
+     * @return the working directory path, or null if not yet resolved
+     */
     public String getWorkingDirectory() {
         return workingDirectory;
     }
 
+    /**
+     * Provides the working directory to the parent {@link EnvironmentManagedJob}
+     * so that environment preparation (Python venv, etc.) targets the same
+     * directory as git operations.
+     *
+     * @return the working directory path, or null
+     */
+    @Override
+    protected String getEnvironmentWorkingDirectory() {
+        return workingDirectory;
+    }
+
+    /**
+     * Sets the absolute path of the local repository root where git commands
+     * are executed and files are resolved.
+     *
+     * @param workingDirectory the absolute path to the repository root
+     */
     public void setWorkingDirectory(String workingDirectory) {
         this.workingDirectory = workingDirectory;
     }
@@ -1522,6 +2083,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         return new ArrayList<>(dependentRepoPaths);
     }
 
+    /**
+     * Returns the maximum file size in bytes that will be staged and committed.
+     * Files larger than this threshold are skipped with a size-exceeded reason.
+     *
+     * @return the maximum file size in bytes
+     */
     public long getMaxFileSizeBytes() {
         return maxFileSizeBytes;
     }
@@ -1536,6 +2103,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         this.maxFileSizeBytes = maxFileSizeBytes;
     }
 
+    /**
+     * Returns whether commits will be pushed to the {@code origin} remote.
+     *
+     * @return true if push-to-origin is enabled (default)
+     */
     public boolean isPushToOrigin() {
         return pushToOrigin;
     }
@@ -1549,6 +2121,11 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         this.pushToOrigin = pushToOrigin;
     }
 
+    /**
+     * Returns whether the target branch will be created when it does not exist.
+     *
+     * @return true if automatic branch creation is enabled (default)
+     */
     public boolean isCreateBranchIfMissing() {
         return createBranchIfMissing;
     }
@@ -1562,6 +2139,12 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         this.createBranchIfMissing = createBranchIfMissing;
     }
 
+    /**
+     * Returns whether this job is running in dry-run mode.
+     * In dry-run mode all git operations are logged but not executed.
+     *
+     * @return true if dry-run mode is enabled
+     */
     public boolean isDryRun() {
         return dryRun;
     }
@@ -1804,6 +2387,7 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         }
     }
 
+    /** Shared Jackson mapper used to serialize {@link JobCompletionEvent} instances to JSON. */
     private static final ObjectMapper eventMapper = new ObjectMapper();
 
     /**
@@ -1859,14 +2443,45 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
 
     // ==================== Encoding ====================
 
+    /**
+     * Encodes a string as Base64 for safe embedding in the {@link #encode()} wire format.
+     * Returns an empty string when the input is null so null fields are safely
+     * round-tripped through the protocol.
+     *
+     * @param s the string to encode, or null
+     * @return the Base64-encoded string, or {@code ""} if {@code s} is null
+     */
     protected static String base64Encode(String s) {
         return s == null ? "" : Base64.getEncoder().encodeToString(s.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * Decodes a Base64-encoded string that was produced by {@link #base64Encode(String)}.
+     * Returns null when the input is null or empty so that optional fields
+     * remain null after deserialization.
+     *
+     * @param s the Base64-encoded string, or null/empty
+     * @return the decoded string, or null if the input was null or empty
+     */
     protected static String base64Decode(String s) {
         return s == null || s.isEmpty() ? null : new String(Base64.getDecoder().decode(s), StandardCharsets.UTF_8);
     }
 
+    /**
+     * Serializes this job to the FlowTree key-value wire format used to
+     * transmit jobs between nodes.
+     *
+     * <p>The encoding is a {@code ::}-delimited string of {@code key:=value}
+     * pairs prefixed with the fully-qualified class name. String values are
+     * Base64-encoded to avoid delimiter collisions. The encoded form is
+     * consumed by {@link #set(String, String)} on the receiving side.</p>
+     *
+     * <p>Only non-default values are emitted to keep the string compact.
+     * Subclasses that add additional fields must override this method and
+     * call {@code super.encode()} to include the base fields.</p>
+     *
+     * @return the encoded job string
+     */
     @Override
     public String encode() {
         StringBuilder sb = new StringBuilder();
@@ -1904,9 +2519,24 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
         for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
             sb.append("::req.").append(entry.getKey()).append(":=").append(entry.getValue());
         }
+        sb.append(encodeEnvironmentProperties());
         return sb.toString();
     }
 
+    /**
+     * Deserializes a single key-value pair from the FlowTree wire format,
+     * populating the corresponding field on this job.
+     *
+     * <p>This method is called once per {@code key:=value} token produced by
+     * {@link #encode()}. String values must be Base64-decoded with
+     * {@link #base64Decode(String)} before use.  Keys that start with
+     * {@code "req."} are interpreted as required-label entries.  Unrecognized
+     * keys are forwarded to {@link #setEnvironmentProperty(String, String)}
+     * so that environment configuration is also handled transparently.</p>
+     *
+     * @param key   the property key from the encoded string
+     * @param value the property value (Base64-encoded for string fields)
+     */
     @Override
     public void set(String key, String value) {
         switch (key) {
@@ -1955,6 +2585,8 @@ public abstract class GitManagedJob implements Job, ConsoleFeatures {
             default:
                 if (key.startsWith("req.")) {
                     requiredLabels.put(key.substring(4), value);
+                } else {
+                    setEnvironmentProperty(key, value);
                 }
                 break;
         }

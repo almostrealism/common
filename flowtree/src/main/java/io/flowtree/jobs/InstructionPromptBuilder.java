@@ -39,23 +39,79 @@ import java.util.List;
  */
 public class InstructionPromptBuilder {
 
+    /** The user's request text, wrapped between BEGIN/END markers in the output. */
     private String prompt;
+
+    /** Workstream URL; controls whether messaging sections are included. */
     private String workstreamUrl;
-    /** @deprecated GitHub tools are now always available via ar-manager. */
+
+    /**
+     * Whether the GitHub MCP server is enabled.
+     *
+     * @deprecated GitHub tools are now always available via ar-manager.
+     */
+    @Deprecated
     private boolean gitHubMcpEnabled;
+
+    /**
+     * When {@code true}, includes the test integrity policy section that
+     * prevents the agent from modifying test files that exist on the base branch.
+     */
     private boolean protectTestFiles;
+
+    /**
+     * When {@code true}, replaces the permissive "Non-Code Requests" and
+     * "Justifying No Code Changes" sections with a strict warning that code
+     * changes are required.
+     */
     private boolean enforceChanges;
+
+    /**
+     * Number of prior failed attempts. When greater than zero, a prominent
+     * retry warning is prepended above all other content.
+     */
     private int enforcementAttempt;
+
+    /** Base branch name used in merge conflict and test protection instructions. */
     private String baseBranch;
+
+    /**
+     * Target branch name; when set, enables git commit, branch awareness, and
+     * memory tool usage instructions.
+     */
     private String targetBranch;
+
+    /** Absolute path to the working directory shown to the agent. */
     private String workingDirectory;
+
+    /**
+     * Whether a merge attempt against the base branch produced unresolved
+     * conflicts that the agent must resolve.
+     */
     private boolean hasMergeConflicts;
+
+    /** List of file paths with merge conflicts (used when {@code hasMergeConflicts} is true). */
     private List<String> mergeConflictFiles;
+
+    /** Maximum cost budget in USD (0 or negative to omit the budget instruction). */
     private double maxBudgetUsd;
+
+    /** Maximum number of turns (0 or negative to omit the turns instruction). */
     private int maxTurns;
+
+    /** Task identifier included in the prompt footer for traceability. */
     private String taskId;
+
+    /** Relative path to a planning document the agent must read before starting. */
     private String planningDocument;
+    /** Filesystem paths to dependent repo checkouts made available to the agent. */
     private List<String> dependentRepoPaths;
+
+    /**
+     * Description of a git tampering violation from a prior session.
+     * When set, a stern warning is prepended above all content.
+     */
+    private String gitTamperingViolation;
 
     /**
      * Sets the user's request prompt.
@@ -84,6 +140,7 @@ public class InstructionPromptBuilder {
      *
      * @param gitHubMcpEnabled true if GitHub MCP tools are available
      * @return this builder for chaining
+     * @deprecated GitHub tools are now always available via ar-manager.
      */
     public InstructionPromptBuilder setGitHubMcpEnabled(boolean gitHubMcpEnabled) {
         this.gitHubMcpEnabled = gitHubMcpEnabled;
@@ -248,6 +305,23 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Sets a git tampering violation description from a previous session.
+     *
+     * <p>When set, the prompt will include a prominent warning explaining
+     * that the previous session was terminated because the agent tampered
+     * with the git repository, and that repeating this behavior will result
+     * in all changes being destroyed and the agent being terminated.</p>
+     *
+     * @param violation the description of the tampering that was detected,
+     *                  or null if no tampering occurred
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setGitTamperingViolation(String violation) {
+        this.gitTamperingViolation = violation;
+        return this;
+    }
+
+    /**
      * Builds the full instruction prompt by assembling all configured
      * sections into a single string.
      *
@@ -275,6 +349,29 @@ public class InstructionPromptBuilder {
      */
     public String build() {
         StringBuilder sb = new StringBuilder();
+
+        // Git tampering violation warning -- highest priority, prepended above
+        // everything else.  This is used when the previous session was killed
+        // because the agent tampered with git (made commits, switched branches,
+        // etc.).
+        if (gitTamperingViolation != null && !gitTamperingViolation.isEmpty()) {
+            sb.append("## !! SESSION RESTARTED -- GIT TAMPERING VIOLATION !!\n\n");
+            sb.append("Your previous session was TERMINATED and ALL your changes were ");
+            sb.append("DESTROYED because you violated the rules against tampering with ");
+            sb.append("the git repository.\n\n");
+            sb.append("**What you did:** ").append(gitTamperingViolation).append("\n\n");
+            sb.append("**The rules:**\n");
+            sb.append("- You MUST NOT run `git commit`, `git checkout`, `git switch`, ");
+            sb.append("`git branch`, `git merge`, `git rebase`, `git reset`, `git stash`, ");
+            sb.append("or any other command that modifies git state.\n");
+            sb.append("- You MUST NOT change branches. Stay on the branch you were given.\n");
+            sb.append("- You MUST NOT create commits. The harness commits your work.\n");
+            sb.append("- Your ONLY job is to edit files. Git management is handled for you.\n\n");
+            sb.append("**Consequences:** This is your LAST chance. If you tamper with git ");
+            sb.append("again, ALL your changes will be destroyed and this session will be ");
+            sb.append("terminated with no further retries. Your work will be lost entirely.\n\n");
+            sb.append("---\n\n");
+        }
 
         // Enforcement retry warning -- prepended above everything else so the
         // agent sees it immediately.  This is used when the job has been

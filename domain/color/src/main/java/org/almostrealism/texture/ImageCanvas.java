@@ -26,6 +26,7 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.PrintWriter;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
@@ -201,7 +202,7 @@ public class ImageCanvas extends JPanel {
 			
 			out.flush();
 		} if (encoding == ImageCanvas.PPMEncoding) {
-			java.io.PrintWriter out = new java.io.PrintWriter(o);
+			PrintWriter out = new PrintWriter(o);
 			
 			out.println("P3");
 			

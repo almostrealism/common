@@ -83,9 +83,13 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ClaudeCodeClient implements ConsoleFeatures {
 
+	/** Pool of remote agent connections available for job submission. */
 	private final List<AgentConnection> agents = new ArrayList<>();
+	/** Maps agent index to the {@link NodeProxy} used to relay jobs to that agent. */
 	private final ConcurrentHashMap<Integer, NodeProxy> proxyMap = new ConcurrentHashMap<>();
+	/** Local FlowTree server used to relay jobs to remote agents. */
 	private Server server;
+	/** Round-robin index of the next agent to receive a submitted job. */
 	private int nextAgent = 0;
 
 	/**
@@ -277,17 +281,36 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 		return agents.size();
 	}
 
+	/**
+	 * Holds the network coordinates of a single remote Claude Code agent.
+	 */
 	private static class AgentConnection {
+		/** Hostname or IP address of the remote agent. */
 		final String host;
+		/** TCP port the remote agent is listening on. */
 		final int port;
 
+		/**
+		 * Constructs a new {@link AgentConnection}.
+		 *
+		 * @param host  hostname or IP address of the remote agent
+		 * @param port  TCP port the agent is listening on
+		 */
 		AgentConnection(String host, int port) {
 			this.host = host;
 			this.port = port;
 		}
 	}
 
-	// Command-line interface
+	/**
+	 * Command-line entry point. Parses arguments for host, port(s), prompt
+	 * text, allowed tools, max turns, and max budget; creates a
+	 * {@link ClaudeCodeClient}; and submits a single
+	 * {@link io.flowtree.jobs.ClaudeCodeJob.Factory} to the configured agents.
+	 *
+	 * @param args  command-line arguments (see {@link #printUsage()} for details)
+	 * @throws IOException if a network error occurs while connecting to an agent
+	 */
 	public static void main(String[] args) throws IOException {
 		String host = "localhost";
 		String ports = "7766";
@@ -355,6 +378,10 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Prints usage instructions for the command-line interface to
+	 * {@link System#out}.
+	 */
 	private static void printUsage() {
 		System.out.println("Usage: ClaudeCodeClient [options]");
 		System.out.println();

@@ -49,47 +49,229 @@ import java.util.Optional;
 import java.util.Properties;
 
 /**
- * A {@link NodeGroup} object represents a group of {@link Node}s
- * The {@link NodeGroup} object is responsible for moderating communication
- * with each of its children.
- * 
+ * A {@link NodeGroup} manages a collection of child {@link Node}s and
+ * their connections to remote Servers.
+ *
+ * <h2>Two Networking Layers</h2>
+ * <ul>
+ *   <li><b>Server connections</b> ({@link NodeProxy}, stored in
+ *       {@code this.servers}) are socket-level links between two
+ *       Servers. They carry {@link Message} objects (tasks, connection
+ *       requests, job data). When an agent connects to the controller,
+ *       a NodeProxy is added to this list.</li>
+ *   <li><b>Peer connections</b> ({@link Connection}, stored in each
+ *       {@code Node.peers}) are logical links between individual Nodes
+ *       on different Servers. They wrap a NodeProxy and target a
+ *       specific remote Node by ID. Peer connections are how jobs
+ *       actually move between Nodes via the relay loop.</li>
+ * </ul>
+ *
+ * <h2>Job Distribution</h2>
+ * <p>The run loop iterates registered {@link JobFactory} instances,
+ * calls {@code nextJob()} to produce {@link Job} objects, and hands
+ * each job to {@link #routeJob(Job)}, which routes to a label-matching worker
+ * Node or falls back to the relay Node if none is available locally.</p>
+ *
+ * <h2>Peer Connection Establishment</h2>
+ * <p>Child Nodes request peer connections automatically through their
+ * activity threads by calling {@link #getConnection(int)}, which picks
+ * a random entry from {@code this.servers} and sends a
+ * {@link Message#ConnectionRequest}. The remote NodeGroup responds with
+ * a {@link Message#ConnectionConfirmation}, establishing a peer
+ * {@link Connection} on both sides.</p>
+ *
  * @author  Michael Murray
+ * @see Node
+ * @see Connection
+ * @see <a href="../docs/node-relay.md">Node Relay and Job Routing</a>
  */
 public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener,
 														Node.ActivityListener {
+	/**
+	 * Separator token used between key and value when encoding
+	 * {@link JobFactory} configuration entries into a string payload.
+	 */
 	public static final String KEY_VALUE_SEPARATOR = ":=";
 
+	/**
+	 * Additive offset applied to the raw average-activity computation in
+	 * {@link #getAverageActivityRating()}. A negative value biases the reported
+	 * activity lower so that a lightly loaded group still appears willing to accept
+	 * more work from peers.
+	 */
 	private double activityO = -0.2;
-	
+
+	/**
+	 * Maximum number of {@link NodeProxy} entries permitted for the same remote
+	 * endpoint before the oldest duplicate is forcibly dropped.
+	 */
 	private final int maxDuplicateConnections = 2;
 
+	/**
+	 * Legacy single-factory job source. Tasks are now managed via {@link #tasks}
+	 * together with {@link #addTask(JobFactory)}; this field is retained only for
+	 * backwards compatibility and may be {@code null}.
+	 *
+	 * @deprecated Use {@link #tasks} with {@link #addTask(JobFactory)} instead.
+	 */
 	@Deprecated
 	private final JobFactory defaultFactory;
-	
+
+	/**
+	 * Worker {@link Node} instances owned by this group. Each node executes jobs
+	 * whose required labels are satisfied by the node's own labels.
+	 */
 	private final List<Node> nodes;
+
+	/**
+	 * Dedicated relay {@link Node} labelled {@code role=relay} whose sole purpose
+	 * is to forward jobs that cannot be satisfied by any local worker node to a
+	 * capable peer over an established {@link Connection}.
+	 */
+	private final Node relayNode;
+
+	/**
+	 * Live socket-level connections to remote servers, each wrapped in a
+	 * {@link NodeProxy} that handles message framing and optional encryption.
+	 */
 	private final List<NodeProxy> servers;
+
+	/**
+	 * Proxies currently being initialised inside {@link #addServer(NodeProxy)}.
+	 * A proxy is present in this list from the moment it enters that method until
+	 * initialisation completes, so that re-entrant callbacks (e.g.
+	 * {@link #connect(NodeProxy)}) can skip still-pending proxies.
+	 */
 	private final List connecting;
+
+	/**
+	 * Active {@link JobFactory} instances registered as tasks for this group.
+	 * The run loop polls each factory every iteration to produce new
+	 * {@link Job} objects up to {@link #maxTasks} factories per cycle.
+	 */
 	private final List<JobFactory> tasks;
+
+	/**
+	 * String-encoded task representations received while their
+	 * {@link JobFactory} class was unavailable. Entries are retained so
+	 * they can be reported by {@link #taskList()} and potentially replayed.
+	 */
 	private final List cachedTasks;
+
+	/**
+	 * External {@link NodeProxy.EventListener} instances that must be notified
+	 * whenever a server connection is removed from this group.
+	 */
 	private final List plisteners;
-	private int jobsPerTask = 1, maxTasks = 10;
-	
+
+	/**
+	 * Number of {@link Job} objects to request from each {@link JobFactory} per
+	 * run-loop iteration, scaled by the factory's priority.
+	 */
+	private int jobsPerTask = 1;
+
+	/**
+	 * Upper bound on the number of active task factories processed per
+	 * run-loop iteration.
+	 */
+	private int maxTasks = 10;
+
+	/**
+	 * Password used to authenticate and/or encrypt communication with remote
+	 * servers via {@link NodeProxy}. {@code null} means no authentication.
+	 */
 	private char[] passwd;
+
+	/**
+	 * Name of the symmetric encryption algorithm applied to server communication,
+	 * as understood by {@link NodeProxy}. {@code null} means no encryption.
+	 */
 	private final String crypt;
-	
+
+	/**
+	 * Time-series chart of the group's average activity rating, sampled once per
+	 * status poll. Used to render the activity history section of the HTML status
+	 * page returned by {@link #getStatus(String)}.
+	 */
 	private final Chart activityGraph;
+
+	/**
+	 * Time-series chart of {@link OutputServer} job throughput, sampled every
+	 * {@link #tpFreq} status polls to avoid over-weighting short bursts.
+	 */
 	private final Chart throughputGraph;
+
+	/**
+	 * Throughput sampling interval: one sample is taken every {@code tpFreq}
+	 * calls to {@link #getStatus(String)}.
+	 */
 	private final int tpFreq = 5;
+
+	/**
+	 * Counter tracking the current position within the {@link #tpFreq} sampling
+	 * interval for throughput measurements.
+	 */
 	private int tpLast = 0;
-	private double activitySum, totalActivitySum;
-	private int activityDivisor, totalActivityDiv;
-	
+
+	/**
+	 * Accumulator for activity ratings gathered since the last status poll, used
+	 * to compute the interval average displayed on the status page.
+	 */
+	private double activitySum;
+
+	/**
+	 * Lifetime accumulator for all activity rating samples ever recorded,
+	 * used to compute the running-total average shown in the status page.
+	 */
+	private double totalActivitySum;
+
+	/**
+	 * Number of samples added to {@link #activitySum} since the last status
+	 * poll. Reset to zero after each poll.
+	 */
+	private int activityDivisor;
+
+	/**
+	 * Lifetime count of all activity rating samples ever added to
+	 * {@link #totalActivitySum}.
+	 */
+	private int totalActivityDiv;
+
+	/**
+	 * The thread that drives the group's main run loop ({@link #run()}).
+	 */
 	private final Thread thread;
+
+	/**
+	 * Background daemon thread that periodically samples the group's activity
+	 * and sleep metrics without blocking the main run loop.
+	 */
 	private final Thread monitor;
+
+	/**
+	 * When {@code true} the run loop exits at the next opportunity.
+	 * Set by {@link #stop()}.
+	 */
 	private boolean stop;
+
+	/**
+	 * Counter that increments each run-loop iteration while no server connections
+	 * are present. When it exceeds 200 the group considers itself isolated and
+	 * calls {@link #becameIsolated()}.
+	 */
 	private int isolationTime;
+
+	/**
+	 * Interval in milliseconds between successive monitor-thread samples of
+	 * activity and sleep metrics. Defaults to 30 seconds.
+	 */
 	private int monitorSleep = 30000;
-	
+
+	/**
+	 * Counter of consecutive iterations where {@link #nextJob()} returned
+	 * {@code null}. Used to suppress per-iteration log noise; a summary is printed
+	 * every 21 null results.
+	 */
 	private int jobWasNull = 1;
 	
 	/**
@@ -114,7 +296,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		
 		int nodeCount = Integer.parseInt(p.getProperty("nodes.initial", "1"));
 		int nodeMaxJobs = Integer.parseInt(p.getProperty("nodes.jobs.max", "4"));
-		int nodeMaxPeers = Integer.parseInt(p.getProperty("nodes.peers.max", "2"));
+		int nodeMaxPeers = Integer.parseInt(p.getProperty("nodes.peers.max", "10"));
+		int relayMaxPeers = Integer.parseInt(p.getProperty("nodes.relay.peers.max", "10"));
 		
 		int serverCount = Integer.parseInt(p.getProperty("servers.total", "0"));
 		
@@ -131,6 +314,10 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 			System.out.println("NodeGroup: Added node " + i + " (" + n + ")");
 		}
+
+		this.relayNode = new Node(this, nodeCount, nodeMaxJobs, relayMaxPeers);
+		this.relayNode.setLabel("role", "relay");
+		System.out.println("NodeGroup: Added relay node (index " + nodeCount + ")");
 
 		// Load labels from properties (nodes.labels.<key>=<value>)
 		String labelPrefix = "nodes.labels.";
@@ -265,10 +452,21 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		synchronized (this.nodes) {
 			nodes.forEach(Node::start);
 		}
+
+		this.relayNode.start();
 		
 		return this;
 	}
 	
+	/**
+	 * Starts the background monitor thread at the specified scheduler priority
+	 * and sampling interval. The monitor periodically records the group's
+	 * average activity and sleep metrics so that status polls can report
+	 * meaningful interval averages even when no poll has occurred recently.
+	 *
+	 * @param priority  Thread priority for the monitor (see {@link Thread#setPriority}).
+	 * @param sleep     Sampling interval in milliseconds between successive metric reads.
+	 */
 	public void startMonitor(int priority, int sleep) {
 		this.monitorSleep = sleep;
 		this.monitor.setPriority(priority);
@@ -287,6 +485,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			Iterator itr = this.nodes.iterator();
 			while (itr.hasNext()) ((Node)itr.next()).stop();
 		}
+
+		this.relayNode.stop();
 	}
 	
 	/**
@@ -300,6 +500,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return false;
 	}
 	
+	/**
+	 * Applies every entry in the supplied {@link Properties} object as a named
+	 * parameter by delegating to {@link #setParam(String, String)}. Numeric
+	 * parse errors are logged but do not abort processing of the remaining entries.
+	 *
+	 * @param p  Properties whose entries are applied as group configuration parameters.
+	 */
 	public void setParam(Properties p) {
 		Iterator itr = p.entrySet().iterator();
 		while (itr.hasNext()) {
@@ -316,6 +523,21 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}
 	}
 	
+	/**
+	 * Applies a single named configuration parameter to this group and propagates
+	 * relevant parameters to all child nodes. Recognised keys include:
+	 * {@code nodes.acs}, {@code nodes.pasc}, {@code nodes.parp}, {@code nodes.prc},
+	 * {@code nodes.mjp}, {@code nodes.mfj}, {@code group.aco}, {@code group.msc},
+	 * {@code group.taskjobs}, {@code group.taskmax}, {@code nodes.workingDirectory},
+	 * {@code nodes.relay}, {@code nodes.wp}, and the {@link Message} verbosity flags.
+	 *
+	 * @param name   The property key.
+	 * @param value  The string value to apply.
+	 * @return {@code true} if the key was recognised and applied;
+	 *         {@code false} if it is unknown to this group.
+	 * @throws NumberFormatException  If {@code value} cannot be parsed as the
+	 *         numeric type required by the named property.
+	 */
 	public boolean setParam(String name, String value) {
 		String msg = null;
 		
@@ -378,6 +600,21 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return true;
 	}
 	
+	/**
+	 * Retrieves a named object from this group or its child nodes.
+	 * Supported keys:
+	 * <ul>
+	 *   <li>{@code group.tasks} — returns {@link #taskList()} as a {@code String[]}.</li>
+	 *   <li>{@code group.tasks.<i>} — returns the {@link JobFactory} at index {@code i}
+	 *       from the tasks list.</li>
+	 *   <li>{@code node.<i>} — returns the child {@link Node} at index {@code i}.</li>
+	 *   <li>{@code node.<i>.<subkey>} — delegates {@link Node#getObject(String)} on
+	 *       child {@code i} using {@code subkey}.</li>
+	 * </ul>
+	 *
+	 * @param key  Hierarchical dot-separated key identifying the object.
+	 * @return The requested object, or {@code null} if the key is not recognised.
+	 */
 	// TODO Add tasks object value to documentation.
 	@Override
 	public Object getObject(String key) {
@@ -412,6 +649,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 */
 	public Node[] getNodes() { return this.nodes.toArray(new Node[0]); }
 	
+	/**
+	 * Returns a live view of the child {@link Node} collection managed by this
+	 * group. Callers must synchronize on the returned collection when iterating
+	 * while the group is running.
+	 *
+	 * @return  The mutable, live collection of child nodes.
+	 */
 	public Collection<Node> nodes() { return nodes; }
 	
 	/**
@@ -420,6 +664,14 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	@Override
 	public JobFactory getJobFactory() { return this.defaultFactory; }
 	
+	/**
+	 * Returns a snapshot of all registered tasks as strings, combining the
+	 * string representations of active {@link JobFactory} instances in
+	 * {@link #tasks} with the raw encoded strings stored in
+	 * {@link #cachedTasks}.
+	 *
+	 * @return  Array of task descriptions; never {@code null}.
+	 */
 	public String[] taskList() {
 		List l = new ArrayList();
 		
@@ -432,6 +684,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return (String[]) l.toArray(new String[0]);
 	}
 	
+	/**
+	 * Adds an encoded task string to the cached-task list if it is not already
+	 * present. Cached tasks are retained as raw strings when the corresponding
+	 * {@link JobFactory} class cannot be instantiated at reception time.
+	 *
+	 * @param task  Encoded task string to cache.
+	 */
 	public void addCachedTask(String task) {
 		if (!this.cachedTasks.contains(task)) this.cachedTasks.add(task);
 	}
@@ -487,11 +746,43 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	}
 	
 	/**
+	 * Finds the least active child Node whose labels satisfy the
+	 * job's required labels. Returns null if no child qualifies.
+	 *
+	 * @param j the job to match
+	 * @return a suitable Node, or null
+	 */
+	public Node findNodeForJob(Job j) {
+		Map<String, String> requirements = j.getRequiredLabels();
+
+		List<Node> candidates = new ArrayList<>();
+		double rating = -1.0;
+
+		synchronized (this.nodes) {
+			for (Node n : this.nodes) {
+				if (n.satisfies(requirements)) {
+					double a = n.getActivityRating();
+					if (rating == -1.0 || rating > a) {
+						candidates.clear();
+						candidates.add(n);
+						rating = a;
+					} else if (a == rating) {
+						candidates.add(n);
+					}
+				}
+			}
+		}
+
+		if (candidates.isEmpty()) return null;
+		return candidates.get(random.nextInt(candidates.size()));
+	}
+
+	/**
 	 * Adds the specified socket connection as a server for this NodeGroup to communicate with.
-	 * 
+	 *
 	 * @param s  Socket connection to server.
 	 * @throws IOException  If an IO error occurs constructing a NodeProxy using the Socket.
-	 * @throws InvalidAlgorithmParameterException 
+	 * @throws InvalidAlgorithmParameterException
 	 * @throws NoSuchPaddingException 
 	 * @throws InvalidKeySpecException 
 	 * @throws NoSuchAlgorithmException 
@@ -501,6 +792,20 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return this.addServer(s, false);
 	}
 	
+	/**
+	 * Wraps the supplied socket in a {@link NodeProxy} and registers it as a
+	 * server connection. The {@code server} flag controls how the NodeProxy
+	 * performs the initial handshake (client-side vs. server-side role).
+	 * Encryption and authentication errors are caught and logged; in those cases
+	 * the method returns {@code false} without throwing.
+	 *
+	 * @param s       Socket connected to the remote server.
+	 * @param server  {@code true} if this side initiated the listen socket
+	 *                (server role in the handshake).
+	 * @return {@code true} if the proxy was successfully added;
+	 *         {@code false} if a cryptographic error prevented proxy creation.
+	 * @throws IOException  If an I/O error occurs while constructing the proxy.
+	 */
 	public synchronized boolean addServer(Socket s, boolean server) throws IOException {
 		try {
 			return this.addServer(new NodeProxy(s, this.passwd, this.crypt, server));
@@ -519,6 +824,17 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return false;
 	}
 	
+	/**
+	 * Registers a fully constructed {@link NodeProxy} as a live server connection.
+	 * If the same remote endpoint already has {@link #maxDuplicateConnections}
+	 * entries the oldest duplicate is removed first. All registered
+	 * {@link NodeProxy.EventListener}s (including task factories that implement
+	 * the interface) are wired to the new proxy, and the proxy's queued messages
+	 * are flushed immediately.
+	 *
+	 * @param pr  The proxy to register.
+	 * @return Always {@code true} once the proxy is successfully registered.
+	 */
 	public synchronized boolean addServer(NodeProxy pr) {
 		this.connecting.add(pr);
 		
@@ -609,6 +925,16 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return tot;
 	}
 
+	/**
+	 * Starts a background daemon thread that monitors the server list and
+	 * reconnects to the specified host whenever no active server connections
+	 * remain. The thread waits 30 seconds between each connection attempt to
+	 * avoid tight reconnect loops. This is the mechanism used when the
+	 * {@code FLOWTREE_ROOT_HOST} environment variable is set.
+	 *
+	 * @param host  Hostname or IP address of the root server.
+	 * @param port  TCP port of the root server.
+	 */
 	public void startPersistentHost(String host, int port){
 		new Thread(() -> {
 			w: while (true) {
@@ -639,6 +965,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}, "Persistent Host Attempt").start();
 	}
 	
+	/**
+	 * Returns a snapshot of the job currently executing in each child node,
+	 * in index order. Entries are {@code null} for nodes that are idle.
+	 *
+	 * @return  Array of job descriptions (or {@code null} per idle slot),
+	 *          one element per child node.
+	 */
 	public String[] getCurrentWork() {
 		synchronized (this.nodes) {
 			String[] w = new String[this.nodes.size()];
@@ -659,6 +992,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}
 	}
 	
+	/**
+	 * Returns a snapshot array of all currently registered server proxies.
+	 * The array is a copy, so it is safe to iterate without holding the
+	 * internal lock after the call returns.
+	 *
+	 * @return  Array of active {@link NodeProxy} connections; never {@code null}.
+	 */
 	public NodeProxy[] getServers() {
 		synchronized (this.servers) {
 			return this.servers.toArray(new NodeProxy[0]);
@@ -703,7 +1043,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		
 		try {
 			Message m = new Message(Message.ConnectionRequest, id, p);
-			m.setLocalNode(this.nodes.get(id));
+			Node localNode = id < this.nodes.size() ? this.nodes.get(id) : this.relayNode;
+			m.setLocalNode(localNode);
 			c = (Connection)m.send(-1);
 		} catch (SocketException se) {
 			this.displayMessage("Removing server " + p + " (" + se.getMessage() + ")");
@@ -718,6 +1059,19 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return c;
 	}
 	
+	/**
+	 * Decodes an encoded task string into a fully initialised
+	 * {@link JobFactory}. The string format is:
+	 * <pre>
+	 *   &lt;ClassName&gt;&lt;ENTRY_SEP&gt;&lt;key1&gt;:=&lt;value1&gt;&lt;ENTRY_SEP&gt;...
+	 * </pre>
+	 * The first token is the fully-qualified class name; subsequent tokens are
+	 * key-value pairs applied to the factory via {@link JobFactory#set(String, String)}.
+	 * Returns {@code null} if the class cannot be found or instantiated.
+	 *
+	 * @param data  Encoded representation of the {@link JobFactory}.
+	 * @return  The constructed and configured factory, or {@code null} on failure.
+	 */
 	protected JobFactory createTask(String data) {
 		int index = data.indexOf(JobFactory.ENTRY_SEPARATOR);
 		String className = data.substring(0, index);
@@ -823,7 +1177,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	/**
 	 * Sends an encoded JobFactory instance to a server that this {@link NodeGroup}
 	 * is connected to.
-	 * 
+	 *
 	 * @param f  JobFactory to transmit.
 	 * @param server  Server index.
 	 */
@@ -875,18 +1229,39 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		while (itr.hasNext()) ((Node)itr.next()).setStatusLabel(label);
 	}
 	
+	/**
+	 * Propagates the activity-sleep coefficient to every child node.
+	 * This coefficient scales how much a node's sleep time adapts to its
+	 * current activity rating.
+	 *
+	 * @param acs  Activity-sleep coefficient to apply to all child nodes.
+	 */
 	public void setActivitySleepC(double acs) {
 		if (this.nodes == null) return;
 		Iterator itr = this.nodes.iterator();
 		while (itr.hasNext()) ((Node)itr.next()).setActivitySleepC(acs);
 	}
 	
+	/**
+	 * Propagates the peer-activity-sleep coefficient to every child node.
+	 * This coefficient adjusts how much a node's sleep time responds to
+	 * the activity levels of its connected peers.
+	 *
+	 * @param pacs  Peer-activity-sleep coefficient to apply to all child nodes.
+	 */
 	public void setPeerActivitySleepC(double pacs) {
 		if (this.nodes == null) return;
 		Iterator itr = this.nodes.iterator();
 		while (itr.hasNext()) ((Node)itr.next()).setPeerActivitySleepC(pacs);
 	}
 	
+	/**
+	 * Propagates the parental-relay probability to every child node.
+	 * This probability governs how often a node relays a job upward to its
+	 * parent (this group) rather than to a peer.
+	 *
+	 * @param parp  Parental relay probability in the range [0.0, 1.0].
+	 */
 	public void setParentalRelayP(double parp) {
 		if (this.nodes == null) return;
 		Iterator<Node> itr = this.nodes.iterator();
@@ -903,6 +1278,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		while (itr.hasNext()) ((Node)itr.next()).setPeerRelayC(prc);
 	}
 	
+	/**
+	 * Propagates the minimum-job probability to every child node.
+	 * This is the lower-bound probability used when deciding whether to
+	 * execute or relay the next job.
+	 *
+	 * @param mjp  Minimum job-execution probability in the range [0.0, 1.0].
+	 */
 	public void setMinimumJobP(double mjp) {
 		if (this.nodes == null) return;
 		Iterator itr = this.nodes.iterator();
@@ -963,6 +1345,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return t - (t % 1);
 	}
 	
+	/**
+	 * Returns the total time all child nodes in this group have spent on
+	 * network communication, measured in milliseconds (truncated to whole
+	 * milliseconds).
+	 *
+	 * @return  Total communication time in milliseconds across all child nodes.
+	 */
 	public double getTimeCommunicated() {
 		double t = 0;
 		
@@ -1022,6 +1411,14 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	@Override
 	public double getActivityRating() { return this.getAverageActivityRating(); }
 	
+	/**
+	 * Computes the mean activity rating across all child nodes, with
+	 * {@link #activityO} added as a bias offset.  A negative offset means this
+	 * group always appears slightly less busy than the raw average would
+	 * suggest, making it more attractive as a job recipient.
+	 *
+	 * @return  Biased average activity rating; 0.0 if no child nodes exist.
+	 */
 	public double getAverageActivityRating() {
 		Iterator itr = this.nodes.iterator();
 		
@@ -1176,7 +1573,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		
 		if (Message.verbose) System.out.println("NodeGroup: Getting dbs info...");
 		
-		io.flowtree.fs.OutputServer dbs = io.flowtree.fs.OutputServer.getCurrentServer();
+		OutputServer dbs = OutputServer.getCurrentServer();
 		if (dbs != null) {
 			if (this.tpLast % this.tpFreq == 0) {
 				this.throughputGraph.addEntry(dbs.getThroughput());
@@ -1244,6 +1641,20 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return false;
 	}
 	
+	/**
+	 * Main run loop for the NodeGroup management thread. Each iteration:
+	 * <ol>
+	 *   <li>Calls {@link #iteration(Node)} to adjust the group's sleep time and
+	 *       notify {@link Node.ActivityListener}s.</li>
+	 *   <li>Sleeps for the computed interval (longer when isolated).</li>
+	 *   <li>Detects network isolation and invokes
+	 *       {@link #becameIsolated()} after 200 consecutive isolated cycles.</li>
+	 *   <li>Calls {@link #nextJob()} on the default factory and routes any
+	 *       resulting job via {@link #routeJob(Job)}.</li>
+	 *   <li>Polls all registered task {@link JobFactory}s, routing their jobs
+	 *       and removing completed factories.</li>
+	 * </ol>
+	 */
 	public void run() {
 		while (!this.stop) {
 			this.iteration(this);
@@ -1300,8 +1711,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			}
 			
 			if (j != null) {
-				Node target = this.getLeastActiveNode();
-				if (target != null) target.addJob(j);
+				routeJob(j);
 			}
 
 			addJobs(defaultFactory);
@@ -1320,6 +1730,28 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}
 	}
 
+	/**
+	 * Routes a job to the most appropriate child {@link Node}. If a Node exists
+	 * whose labels satisfy the job's requirements it receives the job directly.
+	 * Otherwise the job is queued on the relay Node so the activity thread can
+	 * forward it to a capable peer.
+	 *
+	 * @param j the job to route
+	 */
+	private void routeJob(Job j) {
+		Node target = findNodeForJob(j);
+		if (target == null) target = this.relayNode;
+		target.addJob(j);
+	}
+
+	/**
+	 * Requests up to {@code jobsPerTask * f.getPriority()} jobs from the given
+	 * {@link JobFactory} and routes each non-null result via
+	 * {@link #routeJob(Job)}. Runtime exceptions thrown by the factory are
+	 * caught and logged so a misbehaving factory cannot abort the run loop.
+	 *
+	 * @param f  The factory from which jobs are requested.
+	 */
 	private void addJobs(JobFactory f) {
 		double t = this.jobsPerTask * f.getPriority();
 
@@ -1341,12 +1773,18 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				if (this.verbose)
 					System.out.println("NodeGroup: " + f + "  nextJob = " + j);
 
-				Node n = this.getLeastActiveNode();
-				if (n != null) n.addJob(j);
+				routeJob(j);
 			}
 		}
 	}
 	
+	/**
+	 * Registers an external listener that will be notified when a server
+	 * connection is removed from this group. Useful for components that
+	 * maintain state tied to specific {@link NodeProxy} instances.
+	 *
+	 * @param l  Listener to register.
+	 */
 	public void addProxyEventListener(NodeProxy.EventListener l) { this.plisteners.add(l); }
 	
 	/**
@@ -1366,6 +1804,38 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	/**
 	 * @see NodeProxy.EventListener#recievedMessage(Message, int)
 	 */
+	/**
+	 * Dispatches an incoming {@link Message} to the appropriate handler.
+	 * Only messages addressed to receiver {@code -1} (i.e. the group itself
+	 * rather than a specific child node) are processed here; all others are
+	 * ignored and {@code false} is returned.
+	 *
+	 * <p>Handled message types:
+	 * <ul>
+	 *   <li>{@link Message#Job} — decodes and routes an inbound job.</li>
+	 *   <li>{@link Message#StringMessage} — logs a human-readable message.</li>
+	 *   <li>{@link Message#ConnectionRequest} — picks the least-connected
+	 *       local node, creates a {@link Connection}, and sends a
+	 *       {@link Message#ConnectionConfirmation} back to the requester.</li>
+	 *   <li>{@link Message#ConnectionConfirmation} — echoes a confirmation
+	 *       if the data payload is null (two-phase handshake completion).</li>
+	 *   <li>{@link Message#ServerStatus} — updates the sending proxy's
+	 *       activity rating and average job time from the encoded payload.</li>
+	 *   <li>{@link Message#ServerStatusQuery} — responds with the list of
+	 *       known peer servers (excluding the querying peer itself).</li>
+	 *   <li>{@link Message#ResourceRequest} — looks up the URI of the
+	 *       requested resource and replies with a {@link Message#ResourceUri}.</li>
+	 *   <li>{@link Message#Task} — deserialises and registers a new
+	 *       {@link JobFactory} task.</li>
+	 *   <li>{@link Message#Kill} — kills the identified task and propagates
+	 *       the kill signal to all child nodes.</li>
+	 * </ul>
+	 *
+	 * @param m         The received message.
+	 * @param receiver  ID of the intended recipient; must be {@code -1} for this
+	 *                  method to handle the message.
+	 * @return {@code true} if the message was handled; {@code false} otherwise.
+	 */
 	public boolean recievedMessage(Message m, int receiver) {
 		if (receiver == -1) {
 			NodeProxy p = m.getNodeProxy();
@@ -1375,34 +1845,42 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			
 			if (type == Message.Job) {
 				System.out.println("NodeGroup: Received job. Data = " + m.getData());
-				Node target = this.getLeastActiveNode();
-				if (target != null) {
-					target.addJob(this.defaultFactory.createJob(m.getData()));
-				} else {
-					System.out.println("NodeGroup: No local nodes available, ignoring received job");
-				}
+				routeJob(this.defaultFactory.createJob(m.getData()));
 			} else if (type == Message.StringMessage) {
 				System.out.println("Message from " + p.toString() + ": " + m.getData());
 			} else if (type == Message.ConnectionRequest) {
 				try {
 					Node n = this.getLeastConnectedNode();
+					if (n == null) n = this.relayNode;
 					Connection c;
-					
-					if (n != null && n.getPeers().length < n.getMaxPeers() && !n.isConnected(p)) {
+
+					if (n == null) {
+						System.out.println("NodeGroup: ConnectionRequest rejected -- no available node (no workers, no relay)");
+						c = null;
+					} else if (n.getPeers().length >= n.getMaxPeers()) {
+						System.out.println("NodeGroup: ConnectionRequest rejected -- node " + n.getId() +
+								" at peer capacity (" + n.getPeers().length + "/" + n.getMaxPeers() + ")");
+						c = null;
+					} else if (n.isConnected(p)) {
+						if (Message.verbose) System.out.println("NodeGroup: ConnectionRequest rejected -- node " + n.getId() +
+								" already connected via proxy " + p);
+						c = null;
+					} else {
 						System.out.println("NodeGroup: Constructing connection...");
 						c = new Connection(n, p, remoteId);
-					} else {
-						c = null;
 					}
-					
+
 					if (c != null && n.connect(c)) {
 						Message response = new Message(Message.ConnectionConfirmation, n.getId(), p);
 						response.setString("true");
 						response.send(remoteId);
 					} else {
-					//	Message response = new Message(-1, -1, p);
-					//	response.setString("false");
-					//	response.send(remoteId);
+						if (c != null) {
+							System.out.println("NodeGroup: ConnectionRequest rejected -- n.connect(c) returned false for node " + n.getId());
+						}
+						Message response = new Message(-1, -1, p);
+						response.setString("false");
+						response.send(remoteId);
 					}
 				} catch (IOException ioe) {
 					System.out.println("NodeGroup: " + ioe);
@@ -1513,6 +1991,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}
 	}
 	
+	/**
+	 * Returns a human-readable summary of this group, listing the number of
+	 * child nodes, active server connections, and queued jobs.
+	 *
+	 * @return  A descriptive string such as
+	 *          {@code "Network Node Group: 2 children and 1 server connection."}.
+	 */
 	public String toString() {
 		StringBuffer b = new StringBuffer();
 		b.append("Network Node Group: ");
@@ -1552,6 +2037,15 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return b.toString();
 	}
 	
+	/**
+	 * Called at the start of each run-loop cycle. Adjusts the node's sleep
+	 * time proportionally to its current activity rating, then notifies all
+	 * registered {@link Node.ActivityListener}s that an iteration has occurred.
+	 * This is the primary feedback mechanism that lets the group self-throttle
+	 * under load.
+	 *
+	 * @param n  The node (always {@code this} group) whose sleep time is updated.
+	 */
 	public void iteration(Node n) {
 		n.setSleep((int) (n.getActivityRating() * n.getSleep()));
 		

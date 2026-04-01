@@ -52,7 +52,10 @@ import java.util.Map;
  */
 public class ManagedToolsDownloader implements ConsoleFeatures {
 
+	/** Builder used to parse pushed tool configurations and extract JSON fields. */
 	private final McpConfigBuilder configBuilder;
+
+	/** Jackson mapper for parsing pushed tools configuration JSON. */
 	private final ObjectMapper objectMapper;
 
 	/**

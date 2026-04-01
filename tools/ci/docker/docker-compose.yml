@@ -29,4 +29,9 @@ services:
         limits:
           memory: ${RUNNER_MEMORY_LIMIT:-16g}
           cpus: "${RUNNER_CPU_LIMIT:-4}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped

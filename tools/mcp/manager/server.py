@@ -986,6 +986,61 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
 
 
 @mcp.tool()
+def workstream_list_jobs(
+    workstream_id: str,
+    limit: int = 10,
+) -> dict:
+    """List recent jobs for a workstream, newest first.
+
+    Returns the most recent job events tracked by the FlowTree controller for
+    the specified workstream. Each entry includes status, description,
+    timestamps, and any error details.
+
+    Args:
+        workstream_id: The workstream identifier (from workstream_list).
+        limit: Maximum number of jobs to return (default: 10).
+
+    Returns:
+        Dictionary with a ``jobs`` list, each entry containing jobId, status,
+        description, timestamp, and optional fields such as targetBranch,
+        commitHash, pullRequestUrl, errorMessage, and costUsd.
+    """
+    _require_scope("read")
+    err = _check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+    _audit("workstream_list_jobs", workstream_id=workstream_id)
+    params = urlencode({"limit": limit})
+    result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?{params}")
+    if isinstance(result, list):
+        return {"ok": True, "workstream_id": workstream_id, "jobs": result}
+    return result
+
+
+@mcp.tool()
+def workstream_get_job(job_id: str) -> dict:
+    """Look up a specific job event by its job ID.
+
+    Returns the most recent status event for the given job ID. Useful for
+    checking whether a previously submitted job succeeded or failed.
+
+    Args:
+        job_id: The job identifier returned by workstream_submit_task.
+
+    Returns:
+        Dictionary with jobId, status, description, timestamp, and optional
+        fields such as targetBranch, commitHash, pullRequestUrl, errorMessage,
+        and costUsd.
+    """
+    _require_scope("read")
+    err = _check_short_strings(job_id=job_id)
+    if err:
+        return err
+    _audit("workstream_get_job", job_id=job_id)
+    return _controller_get(f"/api/jobs/{job_id}")
+
+
+@mcp.tool()
 def workstream_submit_task(
     prompt: str,
     workstream_id: str = "",
@@ -1097,6 +1152,7 @@ def workstream_register(
     repo_url: str = "",
     planning_document: str = "",
     channel_name: str = "",
+    required_labels: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1113,6 +1169,10 @@ def workstream_register(
         repo_url: Git repository URL for automatic checkout.
         planning_document: Path to a planning document for broader context.
         channel_name: Slack channel name to create (optional).
+        required_labels: Comma-separated key:value pairs specifying Node labels
+            that all jobs in this workstream must match by default
+            (e.g., "platform:macos,gpu:true"). Job-level labels always override
+            these workstream-level defaults.
 
     Returns:
         Dictionary with workstreamId and channel info on success.
@@ -1136,6 +1196,15 @@ def workstream_register(
         payload["planningDocument"] = planning_document
     if channel_name:
         payload["channelName"] = channel_name
+    if required_labels:
+        labels_map = {}
+        for pair in required_labels.split(","):
+            pair = pair.strip()
+            if ":" in pair:
+                k, v = pair.split(":", 1)
+                labels_map[k.strip()] = v.strip()
+        if labels_map:
+            payload["requiredLabels"] = labels_map
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -1167,6 +1236,7 @@ def workstream_update_config(
     repo_url: str = "",
     planning_document: str = "",
     channel_name: str = "",
+    required_labels: str = "",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -1181,6 +1251,10 @@ def workstream_update_config(
         repo_url: Git repository URL (enables pipeline tools).
         planning_document: Path to planning document.
         channel_name: New Slack channel name.
+        required_labels: Comma-separated key:value pairs specifying Node labels
+            that all jobs in this workstream must match by default
+            (e.g., "platform:macos,gpu:true"). Job-level labels always override
+            these workstream-level defaults.
 
     Returns:
         Dictionary confirming the update.
@@ -1206,6 +1280,15 @@ def workstream_update_config(
         payload["planningDocument"] = planning_document
     if channel_name:
         payload["channelName"] = channel_name
+    if required_labels:
+        labels_map = {}
+        for pair in required_labels.split(","):
+            pair = pair.strip()
+            if ":" in pair:
+                k, v = pair.split(":", 1)
+                labels_map[k.strip()] = v.strip()
+        if labels_map:
+            payload["requiredLabels"] = labels_map
 
     if not payload:
         return {
@@ -1213,7 +1296,7 @@ def workstream_update_config(
             "error": "No fields to update. Provide at least one field.",
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
-                "repo_url, planning_document, or channel_name",
+                "repo_url, planning_document, channel_name, or required_labels",
             ],
         }
 
@@ -2079,6 +2162,16 @@ def memory_branch_context(
         else:
             commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
 
+    # Fetch last 3 jobs for this workstream from the controller
+    recent_jobs = []
+    if workstream_id:
+        try:
+            jobs_result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?limit=3")
+            if isinstance(jobs_result, list):
+                recent_jobs = jobs_result
+        except Exception:
+            pass  # Non-critical: proceed without job history
+
     result = {
         "ok": True,
         "repo_url": effective_repo,
@@ -2099,6 +2192,8 @@ def memory_branch_context(
             result["initial_commit_sha"] = all_commits[0].get("sha", "")[:10]
     if commit_error is not None:
         result["commit_error"] = commit_error
+    if recent_jobs:
+        result["recent_jobs"] = recent_jobs
 
     return result
 

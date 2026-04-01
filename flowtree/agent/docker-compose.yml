@@ -16,6 +16,8 @@
 #
 # ─────────────────────────────────────────────────────────────────────
 
+name: flowtree
+
 services:
   agent:
     build:
@@ -29,7 +31,10 @@ services:
           memory: "${AGENT_MEMORY:-4g}"
     volumes:
       - workspaces:/workspace/project
-      - ${SSH_KEY_DIR:-/dev/null}:/home/agent/.ssh:ro
+      - maven-cache:/home/agent/.m2
+      - ${SSH_KEY_DIR}:/home/agent/.ssh:ro
+      - ${MODELS_DIR:-/Users/Shared/models}:/models:ro
+      - ${SAMPLES_DIR:-/dev/null}:/samples:ro
     environment:
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:?Run claude setup-token and set this}
       - FLOWTREE_ROOT_HOST=${FLOWTREE_ROOT_HOST:?Set to controller hostname}
@@ -39,7 +44,13 @@ services:
       - GIT_USER_NAME=${GIT_USER_NAME:-FlowTree Agent}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-agent@flowtree.io}
       - MAVEN_OPTS=${AGENT_JVM_OPTS:--Xmx2048m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     restart: unless-stopped
 
 volumes:
   workspaces:
+  maven-cache:

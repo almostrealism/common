@@ -43,13 +43,22 @@ import java.util.Properties;
  * @author  Michael Murray
  */
 public class Client {
+	/** The singleton {@link Client} instance set by {@link #main(String[])} or {@link #setCurrentClient(Client)}. */
 	private static Client client;
-	
+
+	/** Username used when sending job output to the output server. */
 	private final String user;
+
+	/** Password used when sending job output to the output server. */
 	private final String passwd;
+
+	/** Hostname of the output server that receives query results and job output. */
 	private String outputHost;
+
+	/** Port number of the output server that receives query results and job output. */
 	private int outputPort;
-	
+
+	/** The underlying {@link Server} instance managed by this client. */
 	private final Server server;
 	
 	/**
@@ -127,17 +136,61 @@ public class Client {
 		this.server.start();
 	}
 	
+	/**
+	 * Returns the username associated with this client.
+	 *
+	 * @return  The username string.
+	 */
 	public String getUser() { return this.user; }
-	
+
+	/**
+	 * Returns the password associated with this client.
+	 *
+	 * @return  The password string.
+	 */
 	public String getPassword() { return this.passwd; }
-	
+
+	/**
+	 * Sets the hostname of the output server used for query submission.
+	 *
+	 * @param host  Output server hostname.
+	 */
 	public void setOutputHost(String host) { this.outputHost = host; }
+
+	/**
+	 * Sets the port number of the output server used for query submission.
+	 *
+	 * @param port  Output server port number.
+	 */
 	public void setOutputPort(int port) { this.outputPort = port; }
+
+	/**
+	 * Returns the hostname of the output server used for query submission.
+	 *
+	 * @return  Output server hostname.
+	 */
 	public String getOutputHost() { return this.outputHost; }
+
+	/**
+	 * Returns the port number of the output server used for query submission.
+	 *
+	 * @return  Output server port number.
+	 */
 	public int getOutputPort() { return this.outputPort; }
-	
+
+	/**
+	 * Sets the Swing label that the underlying {@link Server} will use to display
+	 * its current status message.
+	 *
+	 * @param label  The {@link JLabel} to update, or {@code null} to disable GUI status.
+	 */
 	public void setStatusLabel(JLabel label) { if (this.server != null) this.server.setStatusLabel(label); }
-	
+
+	/**
+	 * Returns the {@link Server} instance managed by this client.
+	 *
+	 * @return  The underlying {@link Server}.
+	 */
 	public Server getServer() { return this.server; }
 	
 	/**

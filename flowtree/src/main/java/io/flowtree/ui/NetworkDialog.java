@@ -36,45 +36,100 @@ import java.util.Properties;
  * @author  Michael Murray
  */
 public class NetworkDialog extends JPanel {
+  /** When {@code true}, verbose error messages are shown in dialog popups. */
   private static final boolean verbose = true;
-  
+
+  /** Default port on which the FlowTree server listens for peer connections. */
   private static final int defaultPort = 7766;
+
+  /** Default number of worker nodes to start. */
   private static final int defaultTotalNodes = 2;
+
+  /** Default number of peer connections per node. */
   private static final int defaultPeers = 2;
+
+  /** Default number of concurrent jobs per node. */
   private static final int defaultJobs = 3;
-  
+
+  /** Default port for the output/database server. */
   private static final int defaultOutputPort = 7788;
-  
+
+  /** The currently active FlowTree client, or {@code null} if none is running. */
   private Client client;
-  
+
+  /** Enclosing frame that hosts this panel. */
   private final JFrame frame;
-  private boolean open, locked;
-  
+
+  /** {@code true} when the dialog frame is visible. */
+  private boolean open;
+
+  /**
+   * {@code true} when the network is running and configuration fields should
+   * not be editable.
+   */
+  private boolean locked;
+
+  /** Panel containing node-configuration input fields and the server list. */
   private final JPanel nodePanel;
-	private final JPanel serverPanel;
-	private final JPanel statusPanel;
+
+  /** Panel showing the HTML status detail page. */
+  private final JPanel serverPanel;
+
+  /** Panel showing the status label and start/stop buttons. */
+  private final JPanel statusPanel;
+
+  /** Sub-panel containing the start, stop, and close buttons. */
   private final JPanel statusButtonPanel;
-	private final JPanel serverButtonPanel;
-  
+
+  /** Sub-panel containing the add, send-task, and remove server buttons. */
+  private final JPanel serverButtonPanel;
+
+  /** Button that starts the FlowTree client with the current configuration. */
   private final JButton startButton;
-	private final JButton stopButton;
+
+  /** Button that stops the currently running FlowTree client. */
+  private final JButton stopButton;
+
+  /** Button that opens a prompt to add a new server to the list. */
   private final JButton addButton;
-	private final JButton removeButton;
-	private final JButton sendButton;
+
+  /** Button that removes the selected server from the list. */
+  private final JButton removeButton;
+
+  /** Button that opens a {@link SendTaskDialog} for the selected server. */
+  private final JButton sendButton;
+
+  /** Button that hides the dialog. */
   private final JButton closeButton;
+
+  /** Button that refreshes the HTML status detail pane. */
   private final JButton updateStatusButton;
-  
+
+  /** HTML pane displaying the node-group status report. */
   private final JEditorPane statusDetailPane;
-  
+
+  /** Label displaying a short status summary for the running client. */
   private final JLabel statusLabel;
-  
+
+  /** Text field for the hostname of the output/database server. */
   private final JTextField outputHostField;
+
+  /** Formatted text field for the local server port. */
   private final JFormattedTextField portField;
-	private final JFormattedTextField nodesField;
-	private final JFormattedTextField peersField;
-	private final JFormattedTextField jobsField;
-	private final JFormattedTextField outputPortField;
-  
+
+  /** Formatted text field for the total number of worker nodes. */
+  private final JFormattedTextField nodesField;
+
+  /** Formatted text field for the number of peer connections per node. */
+  private final JFormattedTextField peersField;
+
+  /** Formatted text field for the number of concurrent jobs per node. */
+  private final JFormattedTextField jobsField;
+
+  /** Formatted text field for the output server port. */
+  private final JFormattedTextField outputPortField;
+
+  /** List of servers to connect to when starting the network. */
   private final JList serverList;
 
 	/**
@@ -312,23 +367,36 @@ public class NetworkDialog extends JPanel {
 		}
 	}
 	
+	/**
+	 * Refreshes the HTML status detail pane with the current node-group status
+	 * retrieved from the running {@link Client}. Has no effect if no client is
+	 * active.
+	 */
 	public void updateStatus() {
 		if (this.client == null) return;
 		this.statusDetailPane.setText(this.client.getServer().getNodeGroup().getStatus("<br>\n"));
 	}
-	
+
+	/**
+	 * Clears and repopulates the server list with the addresses of all
+	 * currently connected peer nodes. Has no effect if no client is active.
+	 */
 	public void updateServerList() {
 		if (this.client == null) return;
-		
+
 		DefaultListModel m = (DefaultListModel) NetworkDialog.this.serverList.getModel();
 		m.clear();
-		
+
 		NodeProxy[] p = this.client.getServer().getNodeGroup().getServers();
-		
+
 		for (int i = 0; i < p.length; i++)
 			m.add(m.getSize(), p[i].getInetAddress().getHostAddress() + ":" + p[i].getRemotePort());
 	}
-	
+
+	/**
+	 * Updates all configuration input fields to reflect the settings of the
+	 * currently running {@link Client}. Has no effect if no client is active.
+	 */
 	public void updateFields() {
 		if (this.client == null) return;
 		
@@ -424,6 +492,11 @@ public class NetworkDialog extends JPanel {
 		this.setLockFields(false);
 	}
 	
+	/**
+	 * Restarts the FlowTree client by stopping the current one and immediately
+	 * starting a new one. A temporary "Restarting…" window is shown during the
+	 * transition.
+	 */
 	public void restart() {
 		JFrame f = new JFrame("Network...");
 		f.getContentPane().add(new JLabel("Restarting network client..."));
@@ -438,6 +511,13 @@ public class NetworkDialog extends JPanel {
 		f.dispose();
 	}
 	
+	/**
+	 * Locks or unlocks all configuration input fields. Fields are locked while
+	 * the network is running to prevent accidental changes.
+	 *
+	 * @param locked {@code true} to make fields non-editable; {@code false} to
+	 *               restore editability
+	 */
 	private void setLockFields(boolean locked) {
 		this.portField.setEditable(!locked);
 		this.nodesField.setEditable(!locked);
