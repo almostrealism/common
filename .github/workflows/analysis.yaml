@@ -533,6 +533,9 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
+      - name: Check exempt file lengths
+        run: bash scripts/check-exempt-file-lengths.sh
+
       - name: Run Checkstyle
         id: check
         continue-on-error: true

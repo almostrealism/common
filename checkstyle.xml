@@ -3,11 +3,84 @@
         "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
         "https://checkstyle.org/dtds/configuration_1_3.dtd">
 
+<!--
+    Project-wide code quality rules applied to every module in the default build.
+
+    Rules applied:
+      - FileLength           : Java source files are capped at 1800 lines.  Files
+                               larger than this are a sign that a class is doing
+                               too much and should be split into focused collaborators.
+                               Three legacy files exceed this limit and are individually
+                               exempted via SuppressionSingleFilter (see below).  Those
+                               files are tracked by scripts/check-exempt-file-lengths.sh,
+                               which enforces that they do not grow beyond their current
+                               sizes.
+      - JavadocPackage       : every package needs a package-info.java with Javadoc
+      - MissingJavadocType   : every type declaration needs a Javadoc comment
+      - MissingJavadocMethod : every method and constructor needs a Javadoc comment
+      - JavadocVariable      : every field needs a Javadoc comment
+      - RegexpSinglelineJava : prohibits use of 'var' and '@SuppressWarnings'
+-->
 <module name="Checker">
     <property name="charset" value="UTF-8"/>
     <property name="severity" value="error"/>
+    <property name="fileExtensions" value="java"/>
+
+    <!-- Exclude auto-generated source files -->
+    <module name="BeforeExecutionExclusionFileFilter">
+        <property name="fileNamePattern" value="[/\\]generated[/\\]"/>
+    </module>
+
+    <!-- Cap Java source files at 1800 lines.  Files larger than this are a
+         sign that a class is doing too much and should be split into focused
+         collaborators. -->
+    <module name="FileLength">
+        <property name="max" value="1800"/>
+    </module>
+
+    <!-- Exempt legacy files that currently exceed 1800 lines.  These files are
+         tracked by scripts/check-exempt-file-lengths.sh, which prevents them
+         from growing beyond their sizes at the time of exemption. -->
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="CollectionFeatures\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="Expression\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="AttentionFeatures\.java"/>
+    </module>
+
+    <!-- Require package-info.java with a Javadoc comment for every package -->
+    <module name="JavadocPackage"/>
 
     <module name="TreeWalker">
+
+        <!-- Every type declaration (class, interface, enum, annotation, record)
+             must have a Javadoc comment, including private and package-private types. -->
+        <module name="MissingJavadocType">
+            <property name="scope" value="private"/>
+        </module>
+
+        <!-- Every method and constructor must have a Javadoc comment,
+             including private helpers.  Property-style getters and setters
+             are NOT exempt: they must also document the field they access. -->
+        <module name="MissingJavadocMethod">
+            <property name="scope" value="private"/>
+            <property name="allowMissingPropertyJavadoc" value="false"/>
+            <property name="minLineCount" value="-1"/>
+            <property name="tokens" value="METHOD_DEF, CTOR_DEF, ANNOTATION_FIELD_DEF"/>
+        </module>
+
+        <!-- Every field (including private constants and instance variables)
+             must have a Javadoc comment. -->
+        <module name="JavadocVariable">
+            <property name="scope" value="private"/>
+        </module>
+
         <!-- Prohibit use of 'var' keyword - always use explicit types -->
         <module name="RegexpSinglelineJava">
             <property name="format" value="^\s*(var|final\s+var)\s+\w+\s*="/>
@@ -21,5 +94,6 @@
             <property name="message" value="@SuppressWarnings is prohibited."/>
             <property name="ignoreComments" value="true"/>
         </module>
+
     </module>
 </module>
