@@ -65,21 +65,37 @@ public class GRUDecoder implements LayerFeatures {
 	/** Number of output tokens generated per position by the GRU decoder. */
 	public static final int TOKENS_PER_NOTE = 7;
 
+	/** Model hyperparameters (hidden size, decoder hidden size, vocab sizes, etc.). */
 	private final MoonbeamConfig config;
+	/** Number of stacked GRU layers in the decoder. */
 	private final int numLayers;
+	/** Input size for each GRU layer (layer 0 takes transformer hidden; others take decoder hidden). */
 	private final int[] inputSizes;
+	/** Input-hidden weight matrices ({@code [3*dh, inputSize]}) for each layer. */
 	private final PackedCollection[] weightIh;
+	/** Hidden-hidden weight matrices ({@code [3*dh, dh]}) for each layer. */
 	private final PackedCollection[] weightHh;
+	/** Input-hidden bias vectors ({@code [3*dh]}) for each layer. */
 	private final PackedCollection[] biasIh;
+	/** Hidden-hidden bias vectors ({@code [3*dh]}) for each layer. */
 	private final PackedCollection[] biasHh;
+	/** Summary projection weight: maps transformer hidden state to initial decoder hidden state. */
 	private final PackedCollection summaryWeight;
+	/** Summary projection bias. */
 	private final PackedCollection summaryBias;
+	/** First-pass output projection weight (intermediate step before lm_head). */
 	private final PackedCollection fcOutWeight;
+	/** First-pass output projection bias. */
 	private final PackedCollection fcOutBias;
+	/** Language model head weight: maps decoder hidden state to flat vocabulary logits. */
 	private final PackedCollection lmHeadWeight;
+	/** Language model head bias. */
 	private final PackedCollection lmHeadBias;
+	/** Token embedding table for the decoder input at each generation step. */
 	private final PackedCollection decoderEmbedding;
+	/** Cumulative vocabulary offsets per step, used to map flat-vocab indices to per-attribute indices. */
 	private final int[] vocabOffsets;
+	/** Per-step vocabulary sizes (one per token in {@link #TOKENS_PER_NOTE}). */
 	private final int[] vocabSizesPerStep;
 
 	/**

@@ -65,10 +65,15 @@ import javax.sound.midi.InvalidMidiDataException;
  */
 public class MoonbeamMidiGenerator {
 
+	/** The generic autoregressive token-generation loop. */
 	private final AutoregressiveModel<MidiCompoundToken> inner;
+	/** The underlying Moonbeam model (encoder + embedding). */
 	private final MoonbeamMidi model;
+	/** Model hyperparameters used during token generation. */
 	private final MoonbeamConfig config;
+	/** Embedding used to convert tokens to transformer input vectors. */
 	private final CompoundMidiEmbedding embedding;
+	/** GRU decoder that converts transformer hidden states to compound token predictions. */
 	private final GRUDecoder decoder;
 
 	/** Current length of the prompt set via {@link #setPrompt(MidiCompoundToken[])}. */

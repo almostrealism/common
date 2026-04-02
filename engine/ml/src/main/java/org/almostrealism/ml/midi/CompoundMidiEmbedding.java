@@ -61,13 +61,16 @@ import java.util.List;
  */
 public class CompoundMidiEmbedding implements LayerFeatures {
 
+	/** Weight key prefixes for each FME attribute (null for instrument, which uses a different path). */
 	private static final String[] FME_PREFIXES = {
 			"onset_embedding", "duration_embedding", "octave_embedding",
 			"pitch_embedding", null, "velocity_embedding"
 	};
 
+	/** Index into the attribute array for the instrument attribute (uses supplementary embedding). */
 	private static final int INSTRUMENT_INDEX = 4;
 
+	/** Model configuration supplying vocab sizes, hidden size, and FME base frequencies. */
 	private final MoonbeamConfig config;
 
 	/** FME embeddings for onset, duration, octave, pitch, velocity (indices 0-3 and 5). */

@@ -87,10 +87,15 @@ import java.util.Map;
  * @see AttentionFeatures
  */
 public class MoonbeamMidi implements AttentionFeatures {
+	/** Model hyperparameters (hidden size, heads, vocab sizes, etc.). */
 	private final MoonbeamConfig config;
+	/** Compound token embedding for all six MIDI attributes. */
 	private final CompoundMidiEmbedding embedding;
+	/** GRU-based autoregressive decoder that converts transformer output to token predictions. */
 	private final GRUDecoder decoder;
+	/** The compiled transformer model used for the encoder forward pass. */
 	private final CompiledModel compiledTransformer;
+	/** Optional profiling node for performance diagnostics. */
 	private final OperationProfileNode profile;
 
 	/** Sequential position counter for KV cache indexing. */

@@ -94,6 +94,7 @@ import java.util.function.Supplier;
  */
 public class AutoregressiveModel<T> {
 
+	/** Singleton for accessing {@link DistributionFeatures#softmax} from static context. */
 	private static final DistributionFeatures DIST = new DistributionFeatures() {};
 	/** Consumer invoked with the current position index before each forward pass. */
 	private final IntConsumer step;

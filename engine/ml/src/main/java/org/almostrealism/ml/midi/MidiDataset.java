@@ -69,9 +69,13 @@ import java.util.List;
  */
 public class MidiDataset implements Dataset<PackedCollection> {
 
+	/** Configuration for the Moonbeam model (vocab sizes, sequence lengths, etc.). */
 	private final MoonbeamConfig modelConfig;
+	/** Maximum sequence length; longer sequences are truncated during batching. */
 	private final int maxSeqLen;
+	/** All tokenized MIDI sequences loaded from the dataset directory. */
 	private final List<List<MidiCompoundToken>> tokenizedSequences;
+	/** Cumulative vocabulary offsets per attribute, used for flat-index encoding. */
 	private final int[] vocabOffsets;
 
 	/**

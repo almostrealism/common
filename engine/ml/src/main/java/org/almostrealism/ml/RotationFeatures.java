@@ -29,7 +29,6 @@ import org.almostrealism.ml.midi.HeadGroupConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
-import java.util.stream.IntStream;
 
 /**
  * Provides Rotary Position Embedding (RoPE) implementations for transformer attention.
@@ -242,15 +241,17 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	static PackedCollection computeRopeFreqs(double theta, int headDim, int seqLen) {
 		int freqDim = headDim / 2;
 		double logTheta = Math.log(theta);
-		double[] data = IntStream.range(0, seqLen * freqDim * 2).mapToDouble(i -> {
-			int pos = i / (freqDim * 2);
-			int f = (i % (freqDim * 2)) / 2;
-			double angle = pos * Math.exp(-logTheta * 2.0 * f / headDim);
-			return ((i % 2) == 0) ? Math.cos(angle) : Math.sin(angle);
-		}).toArray();
-		PackedCollection freqCis = new PackedCollection(new TraversalPolicy(seqLen, freqDim, 2));
-		freqCis.setMem(0, data, 0, data.length);
-		return freqCis;
+		RotationFeatures rf = new RotationFeatures() {};
+		// invFreq[f] = theta^(-2f/headDim) = exp(-logTheta * 2*f / headDim)
+		CollectionProducer invFreq = rf.exp(
+				rf.integers(0, freqDim).multiply(rf.c(-2.0 * logTheta / headDim)));
+		// angles[pos, f] = pos * invFreq[f]  — outer product via matmul
+		CollectionProducer positions = rf.integers(0, seqLen).reshape(rf.shape(seqLen, 1));
+		CollectionProducer angles = rf.matmul(positions, invFreq.reshape(rf.shape(1, freqDim)));
+		// freqCis[pos, f, 0] = cos(angle), freqCis[pos, f, 1] = sin(angle)
+		CollectionProducer cosVals = rf.cos(angles).reshape(rf.shape(seqLen, freqDim, 1));
+		CollectionProducer sinVals = rf.sin(angles).reshape(rf.shape(seqLen, freqDim, 1));
+		return rf.concat(2, cosVals, sinVals).evaluate();
 	}
 
 	/**
