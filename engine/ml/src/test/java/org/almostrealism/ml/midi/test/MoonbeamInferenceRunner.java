@@ -52,14 +52,14 @@ public class MoonbeamInferenceRunner {
 
 	public static void main(String[] args) throws Exception {
 		if (args.length < 3) {
-			System.err.println("Usage: MoonbeamInferenceRunner <weights_dir> <output.mid> <max_tokens> [options]");
-			System.err.println();
-			System.err.println("Options:");
-			System.err.println("  --input <file.mid>   MIDI file to use as prompt (default: unconditional)");
-			System.err.println("  --temp <value>       Sampling temperature (default: 0.8, 0=greedy)");
-			System.err.println("  --top-p <value>      Nucleus sampling threshold (default: 0.95)");
-			System.err.println("  --seed <value>       Random seed for reproducibility");
-			System.err.println("  --config <name>      Model config: 'default' or '309M' (default: 309M)");
+			log("Usage: MoonbeamInferenceRunner <weights_dir> <output.mid> <max_tokens> [options]");
+			log("");
+			log("Options:");
+			log("  --input <file.mid>   MIDI file to use as prompt (default: unconditional)");
+			log("  --temp <value>       Sampling temperature (default: 0.8, 0=greedy)");
+			log("  --top-p <value>      Nucleus sampling threshold (default: 0.95)");
+			log("  --seed <value>       Random seed for reproducibility");
+			log("  --config <name>      Model config: 'default' or '309M' (default: 309M)");
 			System.exit(1);
 		}
 
@@ -91,7 +91,7 @@ public class MoonbeamInferenceRunner {
 					configName = args[++i];
 					break;
 				default:
-					System.err.println("Unknown option: " + args[i]);
+					log("Unknown option: " + args[i]);
 					System.exit(1);
 			}
 		}
@@ -113,8 +113,8 @@ public class MoonbeamInferenceRunner {
 		// Validate weights directory
 		File weightsFile = new File(weightsDir);
 		if (!weightsFile.isDirectory()) {
-			System.err.println("ERROR: Weights directory not found: " + weightsDir);
-			System.err.println("Run extract_moonbeam_weights.py first to create protobuf weights.");
+			log("ERROR: Weights directory not found: " + weightsDir);
+			log("Run extract_moonbeam_weights.py first to create protobuf weights.");
 			System.exit(1);
 		}
 

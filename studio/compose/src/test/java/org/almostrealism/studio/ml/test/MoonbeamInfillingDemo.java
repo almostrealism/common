@@ -23,6 +23,7 @@ import org.almostrealism.ml.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -50,7 +51,7 @@ import java.util.List;
  * @see MidiCompoundToken#fillStart()
  * @see MidiCompoundToken#fillEnd()
  */
-public class MoonbeamInfillingDemo extends TestSuiteBase {
+public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatures {
 
 	/** BPM for all generated patterns. */
 	private static final double BPM = 120.0;
@@ -102,11 +103,11 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 
 		File baselineFile = new File(outputDir, "baseline-Cmaj-I-IV-V-I.mid");
 		fileWriter.write(baselineEvents, baselineFile);
-		System.err.println("Wrote baseline: " + baselineFile.getAbsolutePath()
+		log("Wrote baseline: " + baselineFile.getAbsolutePath()
 				+ " (" + baselineEvents.size() + " notes)");
 
 		List<MidiCompoundToken> tokens = tokenizer.tokenize(baselineEvents);
-		System.err.println("Tokenized baseline: " + tokens.size() + " compound tokens");
+		log("Tokenized baseline: " + tokens.size() + " compound tokens");
 
 		generateRegionInfill(model, tokenizer, fileWriter, tokens, baselineEvents,
 				outputDir, "infilled-region-Cmaj-I-IV-V-I.mid");
@@ -181,14 +182,14 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 		autoregressive.setSeed(42);
 
 		List<MidiCompoundToken> fillTokens = autoregressive.generateInfill(masked, MAX_FILL_TOKENS);
-		System.err.println("Region infill generated " + fillTokens.size() + " tokens");
+		log("Region infill generated " + fillTokens.size() + " tokens");
 
 		List<MidiNoteEvent> result = assembleInfilledEvents(
 				tokens, baselineEvents, fillTokens, tokenizer, maskStart, maskEnd);
 
 		File outputFile = new File(outputDir, filename);
 		fileWriter.write(result, outputFile);
-		System.err.println("Wrote region-infilled: " + outputFile.getAbsolutePath()
+		log("Wrote region-infilled: " + outputFile.getAbsolutePath()
 				+ " (" + result.size() + " notes)");
 	}
 
@@ -208,7 +209,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 		autoregressive.setSeed(123);
 
 		List<MidiCompoundToken> fillTokens = autoregressive.generateInfill(masked, MAX_FILL_TOKENS);
-		System.err.println("Melody infill generated " + fillTokens.size() + " tokens");
+		log("Melody infill generated " + fillTokens.size() + " tokens");
 
 		List<MidiNoteEvent> chordEvents = new ArrayList<>();
 		for (MidiNoteEvent event : baselineEvents) {
@@ -224,7 +225,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 
 		File outputFile = new File(outputDir, filename);
 		fileWriter.write(result, outputFile);
-		System.err.println("Wrote melody-infilled: " + outputFile.getAbsolutePath()
+		log("Wrote melody-infilled: " + outputFile.getAbsolutePath()
 				+ " (" + result.size() + " notes)");
 	}
 
@@ -248,14 +249,14 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 		autoregressive.setSeed(999);
 
 		List<MidiCompoundToken> fillTokens = autoregressive.generateInfill(masked, MAX_FILL_TOKENS);
-		System.err.println("Dense region infill generated " + fillTokens.size() + " tokens");
+		log("Dense region infill generated " + fillTokens.size() + " tokens");
 
 		List<MidiNoteEvent> result = assembleInfilledEvents(
 				tokens, baselineEvents, fillTokens, tokenizer, maskStart, maskEnd);
 
 		File outputFile = new File(outputDir, filename);
 		fileWriter.write(result, outputFile);
-		System.err.println("Wrote dense-infilled: " + outputFile.getAbsolutePath()
+		log("Wrote dense-infilled: " + outputFile.getAbsolutePath()
 				+ " (" + result.size() + " notes)");
 	}
 
