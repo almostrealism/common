@@ -648,6 +648,11 @@ mcp = FastMCP("ar-manager")
 
 # GitHub API helpers and PR tools live in github.py to keep this file short.
 # Import after mcp is defined so github.py can decorate tools with @mcp.tool().
+# When run as __main__, register this module under its real name so that sibling
+# modules (github.py, pipeline.py) can do `from server import ...` without
+# triggering a second import of server.py and a circular-import failure.
+import sys as _sys
+_sys.modules.setdefault("server", _sys.modules[__name__])
 import github as _github_module  # noqa: E402
 _github_request = _github_module._github_request
 _github_graphql_request = _github_module._github_graphql_request
