@@ -18,18 +18,23 @@ package org.almostrealism.layers;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.lifecycle.Setup;
+import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Factory interface for structural routing layers that compose blocks.
@@ -303,6 +308,186 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 		SequentialBlock residual = new SequentialBlock(block.getInputShape());
 		residual.accum(block);
 		return residual;
+	}
+
+	/**
+	 * Creates a composed layer factory using the output shape of the auxiliary block.
+	 *
+	 * @param name         a human-readable label for the composed layer
+	 * @param aux          the auxiliary branch whose output is the second argument to {@code operator}
+	 * @param operator     the composition operator combining the main input and auxiliary output
+	 * @param requirements optional compute requirements
+	 * @return a function that creates the composed layer for any main input shape
+	 */
+	default Function<TraversalPolicy, CellularLayer> compose(String name,
+															 Block aux,
+															 Composition<PackedCollection> operator,
+															 ComputeRequirement... requirements) {
+		return shape -> compose(name, shape, aux.getOutputShape(), aux, operator, requirements);
+	}
+
+	/**
+	 * Creates a composed layer factory with an explicit output shape.
+	 *
+	 * @param name         a human-readable label for the composed layer
+	 * @param aux          the auxiliary branch
+	 * @param outputShape  the shape produced by the composed layer
+	 * @param operator     the composition operator
+	 * @param requirements optional compute requirements
+	 * @return a function that creates the composed layer for any main input shape
+	 */
+	default Function<TraversalPolicy, CellularLayer> compose(String name,
+															 Block aux,
+															 TraversalPolicy outputShape,
+															 Composition<PackedCollection> operator,
+															 ComputeRequirement... requirements) {
+		return shape -> compose(name, shape, aux, outputShape, operator, requirements);
+	}
+
+	/**
+	 * Creates a composed layer using the auxiliary block's output shape as the auxiliary input shape.
+	 *
+	 * @param name         a human-readable label for the composed layer
+	 * @param inputShape   the main input shape
+	 * @param aux          the auxiliary branch block
+	 * @param outputShape  the output shape of the composed layer
+	 * @param operator     the composition operator
+	 * @param requirements optional compute requirements
+	 * @return the constructed composed {@link CellularLayer}
+	 */
+	default CellularLayer compose(String name,
+								  TraversalPolicy inputShape,
+								  Block aux, TraversalPolicy outputShape,
+								  Composition<PackedCollection> operator,
+								  ComputeRequirement... requirements) {
+		return compose(name, inputShape, aux.getOutputShape(), outputShape, aux, operator, requirements);
+	}
+
+	/**
+	 * Creates a composed layer where input and auxiliary shapes are both equal to {@code shape}.
+	 *
+	 * @param name         a human-readable label for the composed layer
+	 * @param shape        the shape used for both the main input and the auxiliary input
+	 * @param aux          the auxiliary branch propagation
+	 * @param operator     the composition operator
+	 * @param requirements optional compute requirements
+	 * @return the constructed composed {@link CellularLayer}
+	 */
+	default CellularLayer compose(String name,
+								  TraversalPolicy shape,
+								  CellularPropagation<PackedCollection> aux,
+								  Composition<PackedCollection> operator,
+								  ComputeRequirement... requirements) {
+		return compose(name, shape, shape, aux, operator, requirements);
+	}
+
+	/**
+	 * Creates a composed layer with the same output shape as the main input shape.
+	 *
+	 * @param name         a human-readable label for the composed layer
+	 * @param shape        the main input (and output) shape
+	 * @param auxShape     the shape of data coming from the auxiliary branch
+	 * @param aux          the auxiliary branch propagation
+	 * @param operator     the composition operator
+	 * @param requirements optional compute requirements
+	 * @return the constructed composed {@link CellularLayer}
+	 */
+	default CellularLayer compose(String name,
+								  TraversalPolicy shape,
+								  TraversalPolicy auxShape,
+								  CellularPropagation<PackedCollection> aux,
+								  Composition<PackedCollection> operator,
+								  ComputeRequirement... requirements) {
+		return compose(name, shape, auxShape, shape, aux, operator, requirements);
+	}
+
+	/**
+	 * Core composed-layer factory that wires the auxiliary branch into a composition operator.
+	 *
+	 * <p>The auxiliary branch's forward output is captured and provided as the second argument
+	 * to {@code operator} whenever the main forward cell is pushed. The backward pass propagates
+	 * gradients through both branches.</p>
+	 *
+	 * @param name         a human-readable label for the composed layer
+	 * @param inputShape   the main input shape
+	 * @param auxShape     the shape of data from the auxiliary branch
+	 * @param outputShape  the output shape of the composed layer
+	 * @param aux          the auxiliary branch propagation
+	 * @param operator     the composition operator combining main input and auxiliary output
+	 * @param requirements optional compute requirements
+	 * @return the constructed composed {@link CellularLayer}
+	 */
+	default CellularLayer compose(String name,
+								  TraversalPolicy inputShape,
+								  TraversalPolicy auxShape,
+								  TraversalPolicy outputShape,
+								  CellularPropagation<PackedCollection> aux,
+								  Composition<PackedCollection> operator,
+								  ComputeRequirement... requirements) {
+		PackedCollection auxInput = Layer.ioTracking ? new PackedCollection(auxShape) : null;
+
+		Cell<PackedCollection> auxExit = Cell.of((in, next) -> {
+			if (auxInput == null) {
+				return next.push(in);
+			} else {
+				OperationList op = new OperationList(name + " composed layer (Entry)");
+				op.add(into(name + " composed layer (Input Record)", in,
+						p(auxInput), DefaultCellularLayer.enableMemoryDataCopy));
+				op.add(next.push(p(auxInput)));
+				return op;
+			}
+		});
+		aux.getForward().setReceptor(auxExit);
+
+		Cell.CaptureReceptor<PackedCollection> auxReceptor = new Cell.CaptureReceptor<>();
+		auxExit.setReceptor(auxReceptor);
+
+		Supplier<Runnable> setup = new OperationList();
+		if (aux instanceof Setup) {
+			setup = ((Setup) aux).setup();
+		}
+
+		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape,
+				Cell.of((input, next) -> next == null ? new OperationList() :
+						next.push(operator.compose(input, auxReceptor.getReceipt()))),
+				null, Collections.emptyList(), setup);
+		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
+
+		layer.init(inputShape, Layer.ioTracking, true);
+
+		String mainName = name + " main";
+		BackPropagationCell mainBackward = new BackPropagationCell(mainName,
+				DefaultGradientPropagation.create(mainName, in -> operator.compose(in, p(auxInput))));
+		mainBackward.setForwardInput(layer.getInput());
+
+		String auxName = name + " aux";
+		BackPropagationCell auxBackward = new BackPropagationCell(auxName,
+				DefaultGradientPropagation.create(auxName, in -> operator.compose(p(layer.getInput()), in)));
+		auxBackward.setForwardInput(auxInput);
+		auxBackward.setReceptor(aux.getBackward());
+
+		layer.setBackward(new LayerFeatures.LearningCell() {
+			@Override
+			public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
+				if (aux instanceof Learning) {
+					((Learning) aux).setParameterUpdate(update);
+				}
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<PackedCollection> input) {
+				OperationList op = new OperationList(name + " Composed Backward");
+				op.add(auxBackward.push(input));
+				op.add(mainBackward.push(input));
+				return op;
+			}
+
+			@Override
+			public void setReceptor(Receptor<PackedCollection> r) {
+				mainBackward.setReceptor(r);
+			}
+		});
+		return layer;
 	}
 
 	/**
