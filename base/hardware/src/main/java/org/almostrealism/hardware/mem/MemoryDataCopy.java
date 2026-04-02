@@ -138,30 +138,79 @@ import java.util.function.Supplier;
  * @see Process
  */
 public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, OperationInfo {
+	/** If true, logs each copy operation to stdout including source, target, and length. */
 	public static boolean enableVerbose = false;
 
+	/** Metadata describing this copy operation for profiling and display. */
 	private OperationMetadata metadata;
+	/** Supplier for the source memory data to copy from. */
 	private Supplier<MemoryData> source;
+	/** Supplier for the target memory data to copy into. */
 	private Supplier<MemoryData> target;
-	private int sourcePosition, targetPosition;
+	/** Element offset within the source from which copying begins. */
+	private int sourcePosition;
+	/** Element offset within the target at which copying begins. */
+	private int targetPosition;
+	/** Number of elements to copy. */
 	private int length;
 
+	/**
+	 * Creates a copy operation between two fixed memory data instances, copying all elements.
+	 *
+	 * @param name   Display name for this copy operation
+	 * @param source Source memory data
+	 * @param target Target memory data
+	 */
 	public MemoryDataCopy(String name, MemoryData source, MemoryData target) {
 		this(name, () -> source, () -> target, 0, 0, source.getMemLength());
 	}
 
+	/**
+	 * Creates an unnamed copy operation between supplier-backed memory data, copying from the start.
+	 *
+	 * @param source Supplier for source memory data
+	 * @param target Supplier for target memory data
+	 * @param length Number of elements to copy
+	 */
 	public MemoryDataCopy(Supplier<MemoryData> source, Supplier<MemoryData> target, int length) {
 		this(null, source, target, 0, 0, length);
 	}
 
+	/**
+	 * Creates a copy operation between supplier-backed memory data, copying from the start.
+	 *
+	 * @param name   Display name for this copy operation
+	 * @param source Supplier for source memory data
+	 * @param target Supplier for target memory data
+	 * @param length Number of elements to copy
+	 */
 	public MemoryDataCopy(String name, Supplier<MemoryData> source, Supplier<MemoryData> target, int length) {
 		this(name, source, target, 0, 0, length);
 	}
 
+	/**
+	 * Creates an unnamed copy operation with explicit source and target offsets.
+	 *
+	 * @param source         Supplier for source memory data
+	 * @param target         Supplier for target memory data
+	 * @param sourcePosition Offset within the source to begin copying
+	 * @param targetPosition Offset within the target to begin copying
+	 * @param length         Number of elements to copy
+	 */
 	public MemoryDataCopy(Supplier<MemoryData> source, Supplier<MemoryData> target, int sourcePosition, int targetPosition, int length) {
 		this(null, source, target, sourcePosition, targetPosition, length);
 	}
 
+	/**
+	 * Creates a copy operation with a display name and explicit source and target offsets.
+	 *
+	 * @param name           Display name for this copy operation
+	 * @param source         Supplier for source memory data
+	 * @param target         Supplier for target memory data
+	 * @param sourcePosition Offset within the source to begin copying
+	 * @param targetPosition Offset within the target to begin copying
+	 * @param length         Number of elements to copy
+	 */
 	public MemoryDataCopy(String name, Supplier<MemoryData> source, Supplier<MemoryData> target, int sourcePosition, int targetPosition, int length) {
 		this.metadata = new OperationMetadata("copy_" + length, name, "Copy " + length + " values");
 		this.source = source;

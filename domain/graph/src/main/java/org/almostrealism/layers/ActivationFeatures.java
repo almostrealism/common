@@ -40,12 +40,28 @@ import java.util.function.Function;
  */
 public interface ActivationFeatures extends GeometryFeatures {
 
+	/**
+	 * When {@code true} (default), softmax uses {@code subtractIgnoreZero} and {@code expIgnoreZero}
+	 * to skip zero-padding tokens in the attention computation.
+	 */
 	boolean enableIgnoreZero = true;
+
+	/**
+	 * When {@code true} (default), the multi-dimensional softmax subtracts the per-row maximum
+	 * before exponentiating to improve numerical stability.
+	 */
 	boolean enableLogStability = true;
 
 	/**
 	 * Creates a layer with the specified properties.
 	 * This method must be implemented by classes that provide layer creation functionality.
+	 *
+	 * @param name         a human-readable label for the layer
+	 * @param inputShape   the shape of data entering the forward cell
+	 * @param outputShape  the shape produced by the forward cell
+	 * @param operator     the differentiable forward operator
+	 * @param requirements optional compute requirements
+	 * @return the constructed {@link CellularLayer}
 	 */
 	CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 						Factor<PackedCollection> operator, ComputeRequirement... requirements);
@@ -61,19 +77,48 @@ public interface ActivationFeatures extends GeometryFeatures {
 		return shape -> softmax(shape);
 	}
 
+	/**
+	 * Creates a flat softmax layer for a 1-D input of the given size.
+	 *
+	 * @param size the number of elements in the input/output vector
+	 * @return the softmax {@link CellularLayer}
+	 */
 	default CellularLayer softmax(int size) {
 		return softmax(shape(size));
 	}
 
+	/**
+	 * Creates a flat softmax layer for the given shape.
+	 *
+	 * @param shape the input/output shape; the softmax is applied across the last traversal dimension
+	 * @return the softmax {@link CellularLayer}
+	 */
 	default CellularLayer softmax(TraversalPolicy shape) {
 		return layer("softmax", shape, shape,
 				input -> c(input).traverse(1).exp().divide(c(input).traverse(1).exp().traverse(0).sum()));
 	}
 
+	/**
+	 * Returns a factory that creates a softmax layer for any given input shape,
+	 * with optional max-subtraction for numerical stability.
+	 *
+	 * @param subtractMax  when {@code true}, subtracts the per-row max before exponentiation
+	 * @param requirements optional compute requirements forwarded to the layer
+	 * @return a function from shape to a configured softmax {@link CellularLayer}
+	 */
 	default Function<TraversalPolicy, CellularLayer> softmax(boolean subtractMax, ComputeRequirement... requirements) {
 		return shape -> softmax(shape, subtractMax, requirements);
 	}
 
+	/**
+	 * Creates a 2-D softmax layer with an optional max-subtraction step for stability.
+	 *
+	 * @param shape        the input/output shape; must have at least 2 dimensions
+	 * @param subtractMax  when {@code true}, subtracts the per-row max before exponentiation
+	 * @param requirements optional compute requirements
+	 * @return the softmax {@link CellularLayer}
+	 * @throws IllegalArgumentException if {@code shape} has fewer than 2 dimensions
+	 */
 	default CellularLayer softmax(TraversalPolicy shape, boolean subtractMax, ComputeRequirement... requirements) {
 		if (shape.getDimensions() < 2) {
 			throw new IllegalArgumentException();
@@ -121,10 +166,24 @@ public interface ActivationFeatures extends GeometryFeatures {
 		}
 	}
 
+	/**
+	 * Creates a log-softmax layer factory that accepts any input shape.
+	 *
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a log-softmax layer for a given shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> logSoftmax(ComputeRequirement... requirements) {
 		return shape -> logSoftmax(shape, requirements);
 	}
 
+	/**
+	 * Creates a log-softmax layer factory that validates the last dimension matches {@code size}.
+	 *
+	 * @param size         the expected size of the last dimension
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a log-softmax layer for a shape whose last dimension is {@code size}
+	 * @throws IllegalArgumentException if the shape's last dimension does not equal {@code size}
+	 */
 	default Function<TraversalPolicy, CellularLayer> logSoftmax(int size, ComputeRequirement... requirements) {
 		return shape -> {
 			shape = padDimensions(shape, 2);
@@ -136,6 +195,16 @@ public interface ActivationFeatures extends GeometryFeatures {
 		};
 	}
 
+	/**
+	 * Creates a log-softmax layer for the given shape.
+	 *
+	 * <p>The shape is padded to at least 2 dimensions and traversed along axis 1. The
+	 * computation is {@code log(softmax(x)) = x - log(sum(exp(x)))}.</p>
+	 *
+	 * @param shape        the input/output shape
+	 * @param requirements optional compute requirements
+	 * @return the log-softmax {@link CellularLayer}
+	 */
 	default CellularLayer logSoftmax(TraversalPolicy shape, ComputeRequirement... requirements) {
 		shape = padDimensions(shape, 2).traverse(1);
 
@@ -156,6 +225,13 @@ public interface ActivationFeatures extends GeometryFeatures {
 		return shape -> relu(shape, requirements);
 	}
 
+	/**
+	 * Creates a ReLU layer for the given shape.
+	 *
+	 * @param shape        the input/output shape
+	 * @param requirements optional compute requirements
+	 * @return the ReLU {@link CellularLayer}
+	 */
 	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("relu", shape, shape, input -> rectify(input), requirements);
 	}
@@ -173,6 +249,13 @@ public interface ActivationFeatures extends GeometryFeatures {
 		return shape -> silu(shape, requirements);
 	}
 
+	/**
+	 * Creates a SiLU layer for the given shape.
+	 *
+	 * @param shape        the input/output shape
+	 * @param requirements optional compute requirements
+	 * @return the SiLU {@link CellularLayer}
+	 */
 	default CellularLayer silu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("silu", shape, shape, input -> multiply(traverseEach(input), sigmoid(traverseEach(input))), requirements);
 	}
@@ -188,6 +271,13 @@ public interface ActivationFeatures extends GeometryFeatures {
 		return shape -> gelu(shape, requirements);
 	}
 
+	/**
+	 * Creates a GELU layer for the given shape.
+	 *
+	 * @param shape        the input/output shape
+	 * @param requirements optional compute requirements
+	 * @return the GELU {@link CellularLayer}
+	 */
 	default CellularLayer gelu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		// 0.5 * x * (1 + math.tanh(sqrt(2 / pi) * (x + 0.044715 * x^3)))
 		return layer("gelu", shape, shape, input -> {
@@ -211,6 +301,13 @@ public interface ActivationFeatures extends GeometryFeatures {
 		return shape -> sigmoid(shape, requirements);
 	}
 
+	/**
+	 * Creates a Sigmoid activation layer for the given shape.
+	 *
+	 * @param shape        the input (and output) shape
+	 * @param requirements optional compute requirements
+	 * @return the constructed Sigmoid {@link CellularLayer}
+	 */
 	default CellularLayer sigmoid(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("sigmoid", shape, shape,
 				input -> sigmoid(traverseEach(input)), requirements);
@@ -227,6 +324,13 @@ public interface ActivationFeatures extends GeometryFeatures {
 		return shape -> tanh(shape, requirements);
 	}
 
+	/**
+	 * Creates a Tanh activation layer for the given shape.
+	 *
+	 * @param shape        the input (and output) shape
+	 * @param requirements optional compute requirements
+	 * @return the constructed Tanh {@link CellularLayer}
+	 */
 	default CellularLayer tanh(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("tanh", shape, shape,
 				input -> tanh(traverseEach(input)), requirements);

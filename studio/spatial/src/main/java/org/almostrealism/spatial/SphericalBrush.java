@@ -37,9 +37,16 @@ import java.util.Random;
  */
 public class SphericalBrush implements SpatialBrush {
 
+	/** The brush radius in spatial units defining the sphere boundary. */
 	private double radius = 10.0;
-	private double density = 100.0;  // Points per second
+
+	/** The point density in points per second. */
+	private double density = 100.0;
+
+	/** The base intensity multiplier applied to all generated points. */
 	private double baseIntensity = 1.0;
+
+	/** The random number generator used for spherical point placement. */
 	private final Random random = new Random();
 
 	/**

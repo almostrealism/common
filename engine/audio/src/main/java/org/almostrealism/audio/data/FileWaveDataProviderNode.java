@@ -51,8 +51,14 @@ import java.util.stream.Stream;
  * @see FileWaveDataProvider
  */
 public class FileWaveDataProviderNode implements FileWaveDataProviderTree<FileWaveDataProviderNode>, Supplier<FileWaveDataProvider>, Named {
+	/** The underlying file or directory this node represents. */
 	private final File file;
 
+	/**
+	 * Creates a FileWaveDataProviderNode for the given file or directory.
+	 *
+	 * @param f the file or directory to represent
+	 */
 	public FileWaveDataProviderNode(File f) {
 		this.file = f;
 	}
@@ -97,6 +103,11 @@ public class FileWaveDataProviderNode implements FileWaveDataProviderTree<FileWa
 		}
 	}
 
+	/**
+	 * Returns true if this node represents a file (leaf), false if it represents a directory.
+	 *
+	 * @return true for leaf nodes (files), false for branch nodes (directories)
+	 */
 	public boolean isLeaf() {
 		return !file.isDirectory();
 	}

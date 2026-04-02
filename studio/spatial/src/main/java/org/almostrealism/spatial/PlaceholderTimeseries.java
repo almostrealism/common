@@ -33,6 +33,7 @@ import java.util.List;
  * @see GenomicTimeseries
  */
 public class PlaceholderTimeseries implements SpatialTimeseries {
+	/** The total duration of the placeholder timeline in seconds. */
 	private double seconds;
 
 	/**

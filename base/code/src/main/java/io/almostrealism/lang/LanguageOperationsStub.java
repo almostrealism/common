@@ -21,6 +21,15 @@ import io.almostrealism.code.Precision;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.scope.Method;
 
+/**
+ * A minimal stub implementation of {@link LanguageOperations} for use in tests and
+ * other contexts where a full language backend is not required.
+ *
+ * <p>Returns simple, human-readable expressions for all operations (e.g., {@code pow(a, b)},
+ * {@code min(a, b)}) and uses the Unicode pi character ({@code \u03C0}) for {@link #pi()}.
+ * Variable offsets are not supported ({@link #isVariableOffsetSupported()} returns
+ * {@code false}) and the precision is fixed at {@link io.almostrealism.code.Precision#FP64}.</p>
+ */
 public class LanguageOperationsStub implements LanguageOperations {
 	@Override
 	public Precision getPrecision() { return Precision.FP64; }

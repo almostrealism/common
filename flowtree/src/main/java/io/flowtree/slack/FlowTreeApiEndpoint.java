@@ -38,9 +38,6 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -135,6 +132,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
 
+    /** Handles all {@code /api/github/proxy} requests and GitHub PR creation. */
+    private final GitHubProxyHandler githubProxyHandler;
+
+    /** Handles all {@code /api/stats} requests. */
+    private StatsQueryHandler statsQueryHandler;
+
     /**
      * Controls whether jobs that self-identify as automated (e.g., from CI
      * pipelines) are accepted. When {@code false}, submissions with
@@ -166,6 +169,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     public FlowTreeApiEndpoint(int port, SlackNotifier notifier) {
         super(port);
         this.notifier = notifier;
+        this.githubProxyHandler = new GitHubProxyHandler(githubOrgTokens);
     }
 
     /**
@@ -197,6 +201,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setGithubOrgTokens(Map<String, String> githubOrgTokens) {
         this.githubOrgTokens = githubOrgTokens != null ? githubOrgTokens : new HashMap<>();
+        githubProxyHandler.setGithubOrgTokens(this.githubOrgTokens);
     }
 
     /**
@@ -237,6 +242,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setStatsStore(JobStatsStore statsStore) {
         this.statsStore = statsStore;
+        this.statsQueryHandler = new StatsQueryHandler(statsStore);
     }
 
     /**
@@ -1067,14 +1073,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 // Resolve org: explicit config first, then derive from repo URL
                 String effectiveOrg = prCtx.githubOrg;
                 if (effectiveOrg == null || effectiveOrg.isEmpty()) {
-                    effectiveOrg = extractOrgFromRepoUrl(prCtx.repoUrl);
+                    effectiveOrg = GitHubProxyHandler.extractOrgFromRepoUrl(prCtx.repoUrl);
                 }
-                String token = resolveGithubToken(effectiveOrg);
+                String token = githubProxyHandler.resolveGithubToken(effectiveOrg);
                 if (token != null) {
-                    String ownerRepo = extractOwnerRepo(prCtx.repoUrl);
+                    String ownerRepo = GitHubProxyHandler.extractOwnerRepo(prCtx.repoUrl);
                     if (ownerRepo != null) {
                         String base = prCtx.baseBranch != null ? prCtx.baseBranch : "master";
-                        String prUrl = createGitHubPullRequest(
+                        String prUrl = githubProxyHandler.createGitHubPullRequest(
                             ownerRepo, event.getTargetBranch(), base,
                             prCtx.description, prCtx.description, token);
                         if (prUrl != null) {
@@ -1241,17 +1247,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Handles {@code GET /api/workstreams}. Returns a JSON array of all
-     * registered workstreams with their configuration and capabilities.
-     *
-     * <p>Sensitive fields (git credentials, env vars, tokens) are omitted.
-     * Each entry includes a {@code pipelineCapable} boolean indicating
-     * whether the workstream has the configuration needed for Tier 2
-     * pipeline operations (requires {@code repoUrl}).</p>
-     *
-     * @return JSON response with an array of workstream summaries
-     */
-    /**
      * Serialises a {@link JobCompletionEvent} to a JSON object string.
      *
      * @param event the event to serialise
@@ -1380,220 +1375,27 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Handles {@code GET /api/stats}. Returns weekly job statistics as JSON.
+     * Handles {@code GET /api/stats}. Delegates to {@link StatsQueryHandler}.
      *
-     * <p>Query parameters:</p>
-     * <ul>
-     *   <li>{@code workstream} - optional workstream ID filter</li>
-     *   <li>{@code period} - reporting period; only {@code "weekly"} is
-     *       currently supported (default). Unsupported values return a
-     *       400 error.</li>
-     * </ul>
+     * @param session the HTTP session supplying query parameters
+     * @return an HTTP response containing weekly stats JSON
      */
     private Response handleStatsQuery(IHTTPSession session) {
-        if (statsStore == null) {
-            return newFixedLengthResponse(Response.Status.OK,
-                "application/json", "{\"error\":\"Stats not configured\"}");
-        }
-
-        String period = session.getParms().get("period");
-        if (period != null && !period.isEmpty() && !"weekly".equals(period)) {
-            return errorResponse("Unsupported period: " + period + ". Only 'weekly' is supported.");
-        }
-
-        String workstreamFilter = session.getParms().get("workstream");
-
-        LocalDate today = LocalDate.now(ZoneId.of("UTC"));
-        LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
-
-        StringBuilder json = new StringBuilder();
-        json.append("{\"thisWeek\":");
-        json.append(formatWeekJson(thisWeekStart, workstreamFilter));
-        json.append(",\"lastWeek\":");
-        json.append(formatWeekJson(lastWeekStart, workstreamFilter));
-        json.append("}");
-
-        return newFixedLengthResponse(Response.Status.OK,
-            "application/json", json.toString());
+        StatsQueryHandler handler = statsQueryHandler != null
+            ? statsQueryHandler : new StatsQueryHandler(null);
+        return handler.handle(session, this::errorResponse);
     }
 
     /**
-     * Handles requests to {@code /api/github/proxy} by forwarding them to the
-     * GitHub API using per-organization tokens from workstreams.yaml.
-     *
-     * <p>This endpoint allows agents to make GitHub API calls without needing
-     * their own token. The controller acts as an authenticated proxy using
-     * per-org tokens configured in the {@code githubOrgs} section of
-     * workstreams.yaml.</p>
-     *
-     * <p>The HTTP method of the incoming request determines the method used
-     * for the GitHub API call (GET or POST).</p>
-     *
-     * <p>Query parameters:</p>
-     * <ul>
-     *   <li>{@code url} &ndash; GitHub API path (e.g.,
-     *       {@code /repos/owner/repo/pulls}) or a full URL starting with
-     *       {@code https://}. Required.</li>
-     * </ul>
-     *
-     * <p>For POST requests, the request body is forwarded as-is to the
-     * GitHub API.</p>
-     *
-     * <p>Response body format:</p>
-     * <pre>{@code {"status": 200, "link": "<pagination>", "body": <github-json>}}</pre>
+     * Handles requests to {@code /api/github/proxy} by forwarding them to
+     * {@link GitHubProxyHandler}.
      *
      * @param session the HTTP session
-     * @param method  the HTTP method (determines GET or POST to GitHub)
-     * @return JSON response wrapping the GitHub API response
+     * @param method  the HTTP method of the incoming request
+     * @return JSON response wrapping the GitHub API result
      */
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
-        // Resolve token: explicit ?org= param, then extract from the URL path,
-        // then fall back to single-org default
-        String org = session.getParms().get("org");
-        if ((org == null || org.isEmpty())) {
-            // Extract org from the GitHub API path: /repos/{org}/{repo}/...
-            String urlOrPathParam = session.getParms().get("url");
-            if (urlOrPathParam != null) {
-                String path = urlOrPathParam.startsWith("https://")
-                    ? urlOrPathParam.replaceFirst("https://api\\.github\\.com", "")
-                    : urlOrPathParam;
-                if (path.startsWith("/repos/")) {
-                    String afterRepos = path.substring("/repos/".length());
-                    int slash = afterRepos.indexOf('/');
-                    if (slash > 0) {
-                        org = afterRepos.substring(0, slash);
-                    }
-                }
-            }
-        }
-        String token = resolveGithubToken(org);
-        if (token == null) {
-            String detail = (org != null && !org.isEmpty())
-                    ? "No GitHub token configured for org '" + org
-                      + "' (configured orgs: " + githubOrgTokens.keySet() + ")"
-                    : "No GitHub org token available (configured orgs: "
-                      + githubOrgTokens.keySet() + ")";
-            warn("GitHub proxy token resolution failed: " + detail);
-            return errorResponse(detail);
-        }
-
-        String urlOrPath = session.getParms().get("url");
-        if (urlOrPath == null || urlOrPath.isEmpty()) {
-            return errorResponse("Missing required query parameter: url");
-        }
-
-        String githubMethod;
-        if (Method.POST.equals(method)) {
-            githubMethod = "POST";
-        } else if (Method.PUT.equals(method)) {
-            githubMethod = "PUT";
-        } else {
-            githubMethod = "GET";
-        }
-
-        // Read body for POST/PUT requests (forwarded to GitHub as-is)
-        String payload = null;
-        if (Method.POST.equals(method) || Method.PUT.equals(method)) {
-            payload = readBody(session);
-        }
-
-        // Resolve full GitHub API URL
-        String fullUrl;
-        if (urlOrPath.startsWith("https://")) {
-            fullUrl = urlOrPath;
-        } else {
-            fullUrl = "https://api.github.com" + urlOrPath;
-        }
-
-        log("GitHub proxy " + githubMethod + " " + urlOrPath);
-
-        try {
-            URL url = URI.create(fullUrl).toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod(githubMethod);
-            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            conn.setRequestProperty("Accept", "application/vnd.github+json");
-            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
-
-            if (("POST".equals(githubMethod) || "PUT".equals(githubMethod))
-                    && payload != null && !payload.isEmpty()) {
-                conn.setDoOutput(true);
-                conn.setRequestProperty("Content-Type", "application/json");
-                OutputStream os = conn.getOutputStream();
-                os.write(payload.getBytes(StandardCharsets.UTF_8));
-                os.close();
-            }
-
-            int status = conn.getResponseCode();
-            String linkHeader = conn.getHeaderField("Link");
-
-            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            String responseBody = "";
-            if (is != null) {
-                responseBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                is.close();
-            }
-
-            // Wrap response: {"status":N,"link":"...","body":<raw-github-json>}
-            StringBuilder json = new StringBuilder();
-            json.append("{\"status\":").append(status);
-            json.append(",\"link\":\"")
-                .append(escapeJson(linkHeader != null ? linkHeader : ""))
-                .append("\"");
-            json.append(",\"body\":")
-                .append(responseBody.isEmpty() ? "null" : responseBody);
-            json.append("}");
-
-            return newFixedLengthResponse(Response.Status.OK,
-                    "application/json", json.toString());
-        } catch (Exception e) {
-            log("GitHub proxy error: " + e.getMessage());
-            return errorResponse("GitHub proxy error: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Formats a week's stats as JSON.
-     */
-    private String formatWeekJson(LocalDate weekStart, String workstreamFilter) {
-        StringBuilder json = new StringBuilder();
-        json.append("{\"weekStart\":\"").append(weekStart).append("\",\"stats\":{");
-
-        if (workstreamFilter != null && !workstreamFilter.isEmpty()) {
-            JobStatsStore.WeeklyStats stats = statsStore.getWeeklyStats(workstreamFilter, weekStart);
-            json.append("\"").append(escapeJson(workstreamFilter)).append("\":");
-            appendStatsJson(json, stats);
-        } else {
-            Map<String, JobStatsStore.WeeklyStats> byWs = statsStore.getWeeklyStatsByWorkstream(weekStart);
-            boolean first = true;
-            for (Map.Entry<String, JobStatsStore.WeeklyStats> entry : byWs.entrySet()) {
-                if (!first) json.append(",");
-                first = false;
-                json.append("\"").append(escapeJson(entry.getKey())).append("\":");
-                appendStatsJson(json, entry.getValue());
-            }
-        }
-
-        json.append("}}");
-        return json.toString();
-    }
-
-    /**
-     * Appends a single {@link JobStatsStore.WeeklyStats} as a JSON object.
-     */
-    private static void appendStatsJson(StringBuilder json, JobStatsStore.WeeklyStats stats) {
-        json.append("{\"jobCount\":").append(stats.jobCount);
-        json.append(",\"successCount\":").append(stats.successCount);
-        json.append(",\"failedCount\":").append(stats.failedCount);
-        json.append(",\"cancelledCount\":").append(stats.cancelledCount);
-        json.append(",\"totalWallClockMs\":").append(stats.totalWallClockMs);
-        json.append(",\"totalDurationMs\":").append(stats.totalDurationMs);
-        json.append(",\"totalCostUsd\":").append(stats.totalCostUsd);
-        json.append(",\"totalTurns\":").append(stats.totalTurns);
-        json.append("}");
+        return githubProxyHandler.handle(session, method, this::readBody, this::errorResponse);
     }
 
     /**
@@ -1624,124 +1426,5 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             this.githubOrg = githubOrg;
             this.description = description;
         }
-    }
-
-    /**
-     * Extracts the GitHub {@code owner/repo} from a git repository URL.
-     *
-     * <p>Handles both HTTPS ({@code https://github.com/owner/repo.git})
-     * and SSH ({@code git@github.com:owner/repo.git}) URL formats.</p>
-     *
-     * @param repoUrl the repository URL
-     * @return the {@code owner/repo} string, or null if the URL is not recognized
-     */
-    private static String extractOwnerRepo(String repoUrl) {
-        if (repoUrl == null) return null;
-        // SSH format: git@github.com:owner/repo.git
-        Matcher ssh = Pattern.compile("git@github\\.com:([^/]+/[^/]+?)(?:\\.git)?$").matcher(repoUrl);
-        if (ssh.find()) return ssh.group(1);
-        // HTTPS format: https://github.com/owner/repo.git
-        Matcher https = Pattern.compile("github\\.com/([^/]+/[^/]+?)(?:\\.git)?$").matcher(repoUrl);
-        if (https.find()) return https.group(1);
-        return null;
-    }
-
-    /**
-     * Creates a GitHub pull request using the controller's token.
-     *
-     * @param ownerRepo the {@code owner/repo} string
-     * @param head      the head branch name
-     * @param base      the base branch name
-     * @param title     the PR title
-     * @param body      the PR body text
-     * @param token     the GitHub API token
-     * @return the pull request URL, or null on failure
-     */
-    private String createGitHubPullRequest(String ownerRepo, String head, String base,
-                                            String title, String body, String token) {
-        try {
-            String apiUrl = "https://api.github.com/repos/" + ownerRepo + "/pulls";
-            String payload = "{\"title\":\"" + escapeJson(title)
-                    + "\",\"head\":\"" + escapeJson(head)
-                    + "\",\"base\":\"" + escapeJson(base)
-                    + "\",\"body\":\"" + escapeJson(body) + "\"}";
-
-            URL url = URI.create(apiUrl).toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            conn.setRequestProperty("Accept", "application/vnd.github+json");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
-            conn.setDoOutput(true);
-            OutputStream os = conn.getOutputStream();
-            os.write(payload.getBytes(StandardCharsets.UTF_8));
-            os.close();
-
-            int status = conn.getResponseCode();
-            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            String responseBody = is != null
-                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
-            if (is != null) is.close();
-
-            if (status == 201) {
-                Matcher m = Pattern.compile("\"html_url\"\\s*:\\s*\"([^\"]+)\"").matcher(responseBody);
-                if (m.find()) {
-                    String prUrl = m.group(1);
-                    log("Auto-created PR: " + prUrl);
-                    return prUrl;
-                }
-            }
-
-            log("GitHub PR creation returned HTTP " + status + ": " + responseBody.substring(0,
-                    Math.min(200, responseBody.length())));
-        } catch (Exception e) {
-            log("GitHub PR creation failed: " + e.getMessage());
-        }
-        return null;
-    }
-
-    /**
-     * Resolves the GitHub API token for the given organization.
-     *
-     * <p>Looks up the token from the per-org token map populated from
-     * the {@code githubOrgs} section of workstreams.yaml. If the org
-     * is not specified but only one org token is configured, that token
-     * is used as the default.</p>
-     *
-     * @param org the GitHub organization name (may be null)
-     * @return the resolved token, or null if no token is available
-     */
-    private String resolveGithubToken(String org) {
-        if (org != null && !org.isEmpty()) {
-            // Case-insensitive lookup — GitHub org names are case-insensitive
-            for (Map.Entry<String, String> entry : githubOrgTokens.entrySet()) {
-                if (entry.getKey().equalsIgnoreCase(org)) {
-                    return entry.getValue();
-                }
-            }
-        }
-
-        // When there is exactly one configured org, use it as the default
-        if (githubOrgTokens.size() == 1) {
-            return githubOrgTokens.values().iterator().next();
-        }
-
-        return null;
-    }
-
-    /**
-     * Extracts the GitHub organization (owner) from a repository URL.
-     *
-     * @param repoUrl the repository URL (HTTPS or SSH format)
-     * @return the organization name, or null if not parseable
-     */
-    private static String extractOrgFromRepoUrl(String repoUrl) {
-        String ownerRepo = extractOwnerRepo(repoUrl);
-        if (ownerRepo == null) return null;
-        int slash = ownerRepo.indexOf('/');
-        return slash > 0 ? ownerRepo.substring(0, slash) : null;
     }
 }

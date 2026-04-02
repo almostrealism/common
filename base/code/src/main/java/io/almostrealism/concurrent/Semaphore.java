@@ -18,13 +18,42 @@ package io.almostrealism.concurrent;
 
 import io.almostrealism.profile.OperationMetadata;
 
+/**
+ * A synchronization primitive used to coordinate completion of asynchronous hardware
+ * executions with their waiting callers.
+ *
+ * <p>A semaphore carries an optional {@link OperationMetadata} that identifies the
+ * operation waiting on it, enabling diagnostic attribution of blocked threads.</p>
+ */
 public interface Semaphore {
+	/**
+	 * Returns the metadata describing the operation that is waiting on this semaphore,
+	 * or {@code null} if no requester metadata is available.
+	 *
+	 * @return the requester metadata, or {@code null}
+	 */
 	OperationMetadata getRequester();
 
+	/**
+	 * Blocks the calling thread until the guarded operation has completed.
+	 */
 	void waitFor();
 
+	/**
+	 * Returns a new semaphore backed by the same synchronization state as this one
+	 * but attributed to the given requester.
+	 *
+	 * @param requester the metadata of the new requester
+	 * @return a semaphore with the updated requester
+	 */
 	Semaphore withRequester(OperationMetadata requester);
 
+	/**
+	 * Registers a callback to be invoked on a background thread once the guarded
+	 * operation has completed.
+	 *
+	 * @param r the callback to invoke after {@link #waitFor()} returns
+	 */
 	default void onComplete(Runnable r) {
 		new Thread(() -> {
 			waitFor();

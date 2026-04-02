@@ -52,12 +52,22 @@ public class Llama2 implements AttentionFeatures {
 		System.setProperty("AR_GRAPH_PROPAGATION_WARNINGS", "disabled");
 	}
 
+	/** Configuration hyperparameters read from the checkpoint header. */
 	private Llama2Config config;
+
+	/** All weight tensors loaded from the checkpoint file. */
 	private Llama2Weights weights;
+
+	/** Vocabulary strings indexed by token ID. */
 	private String[] vocab;
+
+	/** BPE merge scores indexed by token ID; higher scores indicate preferred merges. */
 	private float[] vocabScores;
 
+	/** The compiled autoregressive model used for inference. */
 	private AutoregressiveModel model;
+
+	/** Performance profile for tracking kernel execution times. */
 	private OperationProfile profile;
 
 	/**

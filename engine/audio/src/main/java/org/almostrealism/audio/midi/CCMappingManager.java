@@ -60,13 +60,34 @@ public class CCMappingManager implements MidiInputListener {
 	/**
 	 * Represents a single CC mapping.
 	 */
+	/**
+	 * Represents a single CC mapping.
+	 */
 	public static class CCMapping {
+		/** MIDI channel this mapping applies to (0–15), or -1 for all channels. */
 		private final int channel;
+
+		/** MIDI CC controller number (0–127). */
 		private final int ccNumber;
+
+		/** The modulation destination this CC controls. */
 		private final ModulationSlot.Destination destination;
+
+		/** The MidiCCSource that converts incoming CC values into modulation signals. */
 		private final MidiCCSource source;
+
+		/** The modulation slot connecting the source to the destination in the router. */
 		private final ModulationSlot slot;
 
+		/**
+		 * Creates a CCMapping with the given channel, CC number, destination, source, and router slot.
+		 *
+		 * @param channel     MIDI channel (0–15), or -1 for all channels
+		 * @param ccNumber    MIDI CC controller number (0–127)
+		 * @param destination the modulation destination this mapping controls
+		 * @param source      the MidiCCSource that converts CC values to modulation signals
+		 * @param slot        the router slot connecting source to destination
+		 */
 		CCMapping(int channel, int ccNumber, ModulationSlot.Destination destination,
 				  MidiCCSource source, ModulationSlot slot) {
 			this.channel = channel;
@@ -76,17 +97,35 @@ public class CCMappingManager implements MidiInputListener {
 			this.slot = slot;
 		}
 
+		/** Returns the MIDI channel for this mapping, or -1 for all channels. */
 		public int getChannel() { return channel; }
+
+		/** Returns the MIDI CC controller number for this mapping. */
 		public int getCCNumber() { return ccNumber; }
+
+		/** Returns the modulation destination controlled by this mapping. */
 		public ModulationSlot.Destination getDestination() { return destination; }
+
+		/** Returns the MidiCCSource that produces modulation values for this mapping. */
 		public MidiCCSource getSource() { return source; }
+
+		/** Returns the modulation slot in the router connecting this source to its destination. */
 		public ModulationSlot getSlot() { return slot; }
 	}
 
+	/** The modulation router that routes CC-sourced modulation signals to their destinations. */
 	private final ModulationRouter router;
+
+	/** Map from encoded (channel, ccNumber) keys to their active CCMapping entries. */
 	private final Map<Long, CCMapping> mappings;  // Key = channel << 8 | ccNumber
+
+	/** MIDI channel to listen on during MIDI learn, or -1 if not in learn mode. */
 	private int learnChannel;
+
+	/** Modulation destination awaiting a CC assignment during MIDI learn. */
 	private ModulationSlot.Destination learnDestination;
+
+	/** Callback invoked with the new CCMapping when MIDI learn completes. */
 	private Consumer<CCMapping> learnCallback;
 
 	/**

@@ -53,6 +53,7 @@ import java.util.logging.Logger;
  * @see SimilarityMetric
  */
 public class HnswIndex {
+	/** Logger for this class. */
 	private static final Logger log = Logger.getLogger(HnswIndex.class.getName());
 
 	/** Default maximum number of connections per node per layer. */
@@ -64,18 +65,40 @@ public class HnswIndex {
 	/** Default size of the dynamic candidate list during search. */
 	public static final int DEFAULT_EF_SEARCH = 50;
 
+	/** Dimensionality of the vectors stored in this index. */
 	private final int dimension;
+
+	/** Maximum number of bi-directional connections per node per non-zero layer. */
 	private final int m;
+
+	/** Maximum connections for layer 0 (typically {@code 2 * m}). */
 	private final int maxM0;
+
+	/** Candidate list size used during index construction (controls recall vs. build speed). */
 	private final int efConstruction;
+
+	/** Candidate list size used during search (controls recall vs. query speed). */
 	private int efSearch;
+
+	/** Similarity metric used for distance calculations and vector normalization. */
 	private final SimilarityMetric metric;
+
+	/** Normalization constant for random level generation: {@code 1 / ln(m)}. */
 	private final double levelMultiplier;
+
+	/** Random number generator for level assignment during insertion. */
 	private final Random random;
 
+	/** All nodes in the graph, including soft-deleted ones, keyed by ID. */
 	private final Map<String, Node> nodes;
+
+	/** Number of non-deleted nodes currently in the index. */
 	private int activeCount;
+
+	/** ID of the current top-level entry point node, or {@code null} if the index is empty. */
 	private String entryPointId;
+
+	/** Highest layer index present in the current graph. */
 	private int maxLevel;
 
 	/**
@@ -502,12 +525,28 @@ public class HnswIndex {
 		return result;
 	}
 
+	/**
+	 * Returns the similarity between the given node's cached vector and the query data.
+	 * Returns {@link Float#NEGATIVE_INFINITY} if the node is not found.
+	 *
+	 * @param nodeId    ID of the node to compare
+	 * @param queryData Normalized query vector as a {@code double[]}
+	 * @return Similarity score, or {@link Float#NEGATIVE_INFINITY} if the node is absent
+	 */
 	private float similarityTo(String nodeId, double[] queryData) {
 		Node node = nodes.get(nodeId);
 		if (node == null) return Float.NEGATIVE_INFINITY;
 		return metric.similarityCached(queryData, node.cachedData);
 	}
 
+	/**
+	 * Samples a random level for a new node using the HNSW level distribution.
+	 *
+	 * <p>The level is drawn as {@code floor(-ln(uniform) * levelMultiplier)},
+	 * clamped to a minimum of 0.</p>
+	 *
+	 * @return The randomly assigned level for the new node
+	 */
 	private int randomLevel() {
 		double r = random.nextDouble();
 		int level = (int) (-Math.log(r) * levelMultiplier);
@@ -542,12 +581,28 @@ public class HnswIndex {
 	 * when the finalizer is disabled.
 	 */
 	private static class Node {
+		/** Unique identifier for this node. */
 		final String id;
+
+		/** Normalized vector data cached as a {@code double[]} for fast similarity computation. */
 		double[] cachedData;
+
+		/** Highest layer at which this node has edges. */
 		final int level;
+
+		/** Whether this node has been soft-deleted and should be excluded from search results. */
 		boolean deleted;
+
+		/** Adjacency lists indexed by layer, each holding neighbor IDs for that layer. */
 		private final List<List<String>> neighborsByLayer;
 
+		/**
+		 * Creates a new node with pre-normalized vector data and initializes empty neighbor lists.
+		 *
+		 * @param id    Unique node identifier
+		 * @param data  Pre-normalized vector as a {@code double[]}
+		 * @param level Maximum layer index for this node
+		 */
 		Node(String id, double[] data, int level) {
 			this.id = id;
 			this.cachedData = data;
@@ -559,6 +614,12 @@ public class HnswIndex {
 			}
 		}
 
+		/**
+		 * Returns the neighbor list for the given layer, or an empty list if the layer is out of range.
+		 *
+		 * @param layer The layer index
+		 * @return The mutable neighbor ID list for that layer
+		 */
 		List<String> getNeighbors(int layer) {
 			if (layer >= neighborsByLayer.size()) {
 				return new ArrayList<>();
@@ -566,6 +627,12 @@ public class HnswIndex {
 			return neighborsByLayer.get(layer);
 		}
 
+		/**
+		 * Replaces the neighbor list for the given layer, extending the adjacency structure if needed.
+		 *
+		 * @param layer     The layer index to update
+		 * @param neighbors The new list of neighbor IDs
+		 */
 		void setNeighbors(int layer, List<String> neighbors) {
 			while (neighborsByLayer.size() <= layer) {
 				neighborsByLayer.add(new ArrayList<>());

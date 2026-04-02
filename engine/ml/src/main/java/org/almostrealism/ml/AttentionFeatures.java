@@ -2179,11 +2179,34 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attention;
 	}
 
+	/**
+	 * Builds a scaled dot-product attention block using the same sequence length for queries and context.
+	 *
+	 * @param batchSize Batch dimension
+	 * @param seqLen    Sequence length for both queries and context
+	 * @param heads     Number of attention heads
+	 * @param dimHead   Dimension per head
+	 * @param k         Key tensor (batch, heads, seqLen, dimHead)
+	 * @param v         Value tensor (batch, heads, seqLen, dimHead)
+	 * @return Block computing softmax(Q @ K^T / sqrt(dimHead)) @ V
+	 */
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
 											PackedCollection k, PackedCollection v) {
 		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, null);
 	}
 
+	/**
+	 * Builds a scaled dot-product attention block with optional attention score capture.
+	 *
+	 * @param batchSize       Batch dimension
+	 * @param seqLen          Sequence length for both queries and context
+	 * @param heads           Number of attention heads
+	 * @param dimHead         Dimension per head
+	 * @param k               Key tensor (batch, heads, seqLen, dimHead)
+	 * @param v               Value tensor (batch, heads, seqLen, dimHead)
+	 * @param attentionScores Optional receptor to receive the attention weight matrix; may be null
+	 * @return Block computing softmax(Q @ K^T / sqrt(dimHead)) @ V
+	 */
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
 											PackedCollection k, PackedCollection v,
 											Receptor<PackedCollection> attentionScores) {

@@ -165,24 +165,49 @@ import java.util.function.UnaryOperator;
  */
 public class HardwareEvaluable<T> implements
 		Evaluable<T>, StreamingEvaluable<T>, Destroyable, Runnable, ArgumentList<T> {
+	/** Supplier that produces the underlying {@link Evaluable} for this computation. */
 	private Supplier<Evaluable<T>> ev;
+	/** Evaluable used to allocate and provide the output destination buffer. */
 	private Evaluable<T> destination;
+	/** If set, this evaluable is used instead of the main computation (short-circuit path). */
 	private Evaluable<T> shortCircuit;
 
+	/** True if this evaluable runs as a GPU/hardware kernel rather than sequential CPU logic. */
 	private boolean isKernel;
+	/** Context-specific wrapper that manages per-context lifecycle for the underlying evaluable. */
 	private ContextSpecific<Evaluable<T>> kernel;
 
+	/** Optional post-processor applied to the output destination before kernel dispatch. */
 	private UnaryOperator<MemoryBank<?>> destinationProcessor;
 
+	/** Optional executor for async dispatch of the underlying evaluable. */
 	private Executor executor;
+	/** Optional consumer called with the result of each evaluation. */
 	private Consumer<T> downstream;
 
+	/**
+	 * Creates a hardware evaluable without an executor.
+	 *
+	 * @param ev          Supplier for the underlying evaluable
+	 * @param destination Evaluable used to create the output destination
+	 * @param shortCircuit If non-null, used instead of {@code ev} for evaluation
+	 * @param kernel      True if this should execute as a hardware kernel
+	 */
 	public HardwareEvaluable(Supplier<Evaluable<T>> ev,
 							 Evaluable<T> destination, Evaluable<T> shortCircuit,
 							 boolean kernel) {
 		this(ev, destination, shortCircuit, kernel, null);
 	}
 
+	/**
+	 * Creates a hardware evaluable with an optional executor.
+	 *
+	 * @param ev          Supplier for the underlying evaluable
+	 * @param destination Evaluable used to create the output destination
+	 * @param shortCircuit If non-null, used instead of {@code ev} for evaluation
+	 * @param kernel      True if this should execute as a hardware kernel
+	 * @param executor    Optional executor for async dispatch
+	 */
 	public HardwareEvaluable(Supplier<Evaluable<T>> ev,
 							 Evaluable<T> destination, Evaluable<T> shortCircuit,
 							 boolean kernel, Executor executor) {
@@ -194,14 +219,41 @@ public class HardwareEvaluable<T> implements
 		this.executor = executor;
 	}
 
+	/**
+	 * Replaces the underlying evaluable supplier with the given one.
+	 *
+	 * @param ev New evaluable supplier to use for future evaluations
+	 */
 	public void setEvaluable(Supplier<Evaluable<T>> ev) { this.ev = ev; }
 
+	/**
+	 * Returns the evaluable used to create output destinations.
+	 *
+	 * @return Destination evaluable, or null if not set
+	 */
 	public Evaluable<T> getDestination() { return destination; }
+
+	/**
+	 * Sets the evaluable used to create output destinations.
+	 *
+	 * @param destination Destination evaluable
+	 */
 	public void setDestination(Evaluable<T> destination) {
 		this.destination = destination;
 	}
 
+	/**
+	 * Returns the short-circuit evaluable used instead of the main computation.
+	 *
+	 * @return Short-circuit evaluable, or null if the main computation is used
+	 */
 	public Evaluable<T> getShortCircuit() { return shortCircuit; }
+
+	/**
+	 * Sets a short-circuit evaluable that replaces the main computation during evaluation.
+	 *
+	 * @param shortCircuit Evaluable to use instead of the main computation
+	 */
 	public void setShortCircuit(Evaluable<T> shortCircuit) {
 		this.shortCircuit = shortCircuit;
 	}
@@ -211,12 +263,27 @@ public class HardwareEvaluable<T> implements
 		return getKernel().getValue().isConstant();
 	}
 
+	/**
+	 * Returns true if this evaluable executes as a GPU/hardware kernel.
+	 *
+	 * @return True if kernel-based execution is used
+	 */
 	public boolean isKernel() { return isKernel; }
 
+	/**
+	 * Returns the destination processor that transforms the output memory bank before dispatch.
+	 *
+	 * @return Destination processor, or null if none is configured
+	 */
 	public UnaryOperator<MemoryBank<?>> getDestinationProcessor() {
 		return destinationProcessor;
 	}
 
+	/**
+	 * Sets a function to post-process the destination memory bank before kernel dispatch.
+	 *
+	 * @param destinationProcessor Function applied to the destination before dispatch
+	 */
 	public void setDestinationProcessor(UnaryOperator<MemoryBank<?>> destinationProcessor) {
 		this.destinationProcessor = destinationProcessor;
 	}
@@ -226,6 +293,12 @@ public class HardwareEvaluable<T> implements
 		return withDestination((MemoryBank) destination);
 	}
 
+	/**
+	 * Returns an evaluable that writes its results into the given destination memory bank.
+	 *
+	 * @param destination Memory bank to write results into
+	 * @return Evaluable targeting the specified destination
+	 */
 	public Evaluable<T> withDestination(MemoryBank destination) {
 		if (destinationProcessor != null) {
 			destination = destinationProcessor.apply(destination);

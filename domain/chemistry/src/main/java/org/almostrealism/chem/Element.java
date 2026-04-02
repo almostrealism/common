@@ -323,9 +323,18 @@ public enum Element implements Atomic {
 	/** Oganesson (Og) - Atomic number 118. Electron configuration: [Rn] 5f14 6d10 7s2 7p6. */
 	Oganesson(118, () -> shells(Radon, Shell.fifth(0, 0, 0, 14), Shell.sixth(0, 0, 10, 0), Shell.seventh(2, 6, 0, 0)));
 
+	/** The atomic number (Z) of this element. */
 	private final int atomicNumber;
+
+	/** Supplier that lazily constructs the electron shells for this element. */
 	private final Supplier<List<Shell>> shellSupplier;
 
+	/**
+	 * Constructs an element enum constant with the given atomic number and shell supplier.
+	 *
+	 * @param atomicNumber   the atomic number (Z) of the element
+	 * @param shellSupplier  a supplier that produces the electron shells for this element
+	 */
 	Element(int atomicNumber, Supplier<List<Shell>> shellSupplier) {
 		this.atomicNumber = atomicNumber;
 		this.shellSupplier = shellSupplier;
@@ -603,6 +612,7 @@ public enum Element implements Atomic {
 	 * Provides access to elements organized by period (row) in the periodic table.
 	 */
 	public static final class Periods {
+		/** Private constructor — all members are static. */
 		private Periods() { }
 
 		/** Returns elements in Period 1. @return H, He */
@@ -664,6 +674,7 @@ public enum Element implements Atomic {
 	 * Provides access to elements organized by group (column) in the periodic table.
 	 */
 	public static class Groups {
+		/** Private constructor — all members are static. */
 		private Groups() { }
 
 		/** Returns elements in Group 1. @return H, Li, Na, K, Rb, Cs, Fr */

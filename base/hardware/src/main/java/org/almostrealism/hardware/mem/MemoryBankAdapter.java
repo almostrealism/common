@@ -156,6 +156,7 @@ import java.util.stream.Stream;
  */
 @Deprecated
 public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T> {
+	/** The default cache level applied when constructing without an explicit cache level. */
 	public static final CacheLevel defaultCacheLevel = CacheLevel.ACCESSED;
 
 	static {
@@ -164,14 +165,22 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 		}
 	}
 
-	private int memLength, count;
+	/** Number of elements in each bank entry (size of one element in memory units). */
+	private int memLength;
+	/** Total number of entries in this bank. */
+	private int count;
+	/** Total memory footprint: {@code memLength * count}. */
 	private int totalMemLength;
 
+	/** Factory function that creates new entries given a delegate and offset specification. */
 	private Function<DelegateSpec, T> supply;
 
+	/** Flat list of pre-created entries when cache level is {@link CacheLevel#ALL}. */
 	private List<T> entriesList;
+	/** Map from index to entry when cache level is {@link CacheLevel#ACCESSED}. */
 	private Map<Integer, T> entriesMap;
 
+	/** Strategy controlling how and when bank entries are created and cached. */
 	private CacheLevel cacheLevel;
 
 	/**
@@ -275,6 +284,12 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 				getAtomicMemLength());
 	}
 
+	/**
+	 * Writes the given double values into the entry at the specified index.
+	 *
+	 * @param index Zero-based index of the entry to write
+	 * @param values Double values to write into the entry
+	 */
 	public void set(int index, double... values) {
 		setMem(index * getAtomicMemLength(), values, 0, values.length);
 	}
@@ -288,28 +303,58 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	@Override
 	public long getCountLong() { return count; }
 
+	/**
+	 * Returns a sequential stream over all entries in this bank.
+	 *
+	 * @return Stream of entries in index order
+	 */
 	public Stream<T> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
 
+	/**
+	 * Applies the given consumer to each entry in this bank in index order.
+	 *
+	 * @param consumer The consumer to apply to each entry
+	 */
 	public void forEach(Consumer<T> consumer) {
 		stream().forEach(consumer);
 	}
 
+	/**
+	 * Specification passed to the entry factory describing the delegate and offset for a new entry.
+	 */
 	public class DelegateSpec {
+		/** Byte offset within the bank's contiguous memory at which the entry begins. */
 		private int offset;
 
+		/**
+		 * Creates a delegate specification with the given memory offset.
+		 *
+		 * @param offset Byte offset of the entry within the bank
+		 */
 		public DelegateSpec(int offset) {
 			setOffset(offset);
 		}
 
+		/** Returns the parent {@link MemoryBankAdapter} acting as the delegate for new entries. */
 		public MemoryData getDelegate() { return MemoryBankAdapter.this; }
 
+		/** Returns the byte offset of the entry within the bank. */
 		public int getOffset() { return offset; }
+		/** Sets the byte offset of the entry within the bank. */
 		public void setOffset(int offset) { this.offset = offset; }
 	}
 
+	/**
+	 * Controls how bank entries are created and cached after first access.
+	 */
 	public enum CacheLevel {
-		NONE, ACCESSED, ALL
+		/** No caching; a new entry object is created on every access. */
+		NONE,
+		/** Cache entries in a map after first access; entries are created lazily. */
+		ACCESSED,
+		/** Pre-create all entries during initialization and store in a list. */
+		ALL
 	}
 }

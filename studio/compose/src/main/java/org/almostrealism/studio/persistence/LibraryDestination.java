@@ -39,19 +39,47 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
+/**
+ * Manages the file-based storage for an audio library, supporting batched
+ * sequential write and read of protobuf files at a given path prefix.
+ * Files are written to temporary locations first and atomically moved to
+ * their final destinations on {@link Writer#close()}.
+ */
 public class LibraryDestination implements ConsoleFeatures {
+	/** Subdirectory name used for temporary files. */
 	public static final String TEMP = "temp";
+
+	/** Default subdirectory name for audio sample files. */
 	public static final String SAMPLES = "Samples";
 
+	/** Path prefix for all batch files (e.g. {@code /path/to/library}). */
 	private final String prefix;
+
+	/** Monotonically increasing index used to generate batch file names. */
 	private int index;
+
+	/** When {@code true}, new files are appended directly without using temporary files. */
 	private final boolean append;
+
+	/** List of temporary file paths pending a flush to their final destinations. */
 	private final List<String> temporaryFiles;
 
+	/**
+	 * Creates a destination that writes to files named {@code prefix_N.bin}.
+	 *
+	 * @param prefix the path prefix for batch files; may be a bare name or a full path
+	 */
 	public LibraryDestination(String prefix) {
 		this(prefix, false);
 	}
 
+	/**
+	 * Creates a destination with the given path prefix and append mode.
+	 *
+	 * @param prefix the path prefix for batch files
+	 * @param append if {@code true}, files are written directly to their final paths;
+	 *               if {@code false}, files are staged as temporary and moved on close
+	 */
 	public LibraryDestination(String prefix, boolean append) {
 		if (prefix.contains("/")) {
 			this.prefix = prefix;
@@ -63,10 +91,21 @@ public class LibraryDestination implements ConsoleFeatures {
 		this.temporaryFiles = new ArrayList<>();
 	}
 
+	/**
+	 * Returns the next batch file path and increments the index.
+	 *
+	 * @return the path of the next batch file
+	 */
 	protected String nextFile() {
 		return prefix + "_" + index++ + ".bin";
 	}
 
+	/**
+	 * Creates and returns the path of the next temporary file, registering it
+	 * in the list of pending temporary files.
+	 *
+	 * @return the temporary file path
+	 */
 	protected String nextTemporaryFile() {
 		String tempFile = getTemporaryPath().resolve("lib_" +
 				System.currentTimeMillis() +
@@ -75,6 +114,11 @@ public class LibraryDestination implements ConsoleFeatures {
 		return tempFile;
 	}
 
+	/**
+	 * Returns an iterator over all existing batch file paths at this destination's prefix.
+	 *
+	 * @return an iterator of batch file paths
+	 */
 	protected Iterator<String> files() {
 		return new Iterator<>() {
 			int idx = 0;
@@ -91,6 +135,12 @@ public class LibraryDestination implements ConsoleFeatures {
 		};
 	}
 
+	/**
+	 * Returns a supplier of input streams, one per batch file, in order.
+	 * Returns {@code null} when all batch files have been consumed.
+	 *
+	 * @return a supplier of batch file input streams
+	 */
 	public Supplier<InputStream> in() {
 		Iterator<String> all = files();
 
@@ -106,6 +156,11 @@ public class LibraryDestination implements ConsoleFeatures {
 		};
 	}
 
+	/**
+	 * Opens a new {@link Writer} for writing batch files to this destination.
+	 *
+	 * @return a new writer
+	 */
 	public Writer out() { return new Writer(); }
 
 	/**
@@ -155,6 +210,12 @@ public class LibraryDestination implements ConsoleFeatures {
 		temporaryFiles.clear();
 	}
 
+	/**
+	 * Loads library data from this destination into the given {@link AudioLibrary},
+	 * without loading similarity data, and configures a details loader for on-demand access.
+	 *
+	 * @param library the library to populate
+	 */
 	public void load(AudioLibrary library) {
 		try {
 			AudioLibraryPersistence.loadLibrary(library, in(), false);
@@ -192,6 +253,11 @@ public class LibraryDestination implements ConsoleFeatures {
 		return store;
 	}
 
+	/**
+	 * Saves the given {@link AudioLibrary} to this destination's batch files.
+	 *
+	 * @param library the library to save
+	 */
 	public void save(AudioLibrary library) {
 		try (Writer writer = out()) {
 			AudioLibraryPersistence.saveLibrary(library, writer);
@@ -200,6 +266,11 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Loads and returns all {@link Audio.AudioLibraryData} batches from this destination.
+	 *
+	 * @return list of deserialized library data batches
+	 */
 	public List<Audio.AudioLibraryData> load() {
 		Supplier<InputStream> in = in();
 		InputStream input = in.get();
@@ -218,6 +289,11 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Saves a single {@link Audio.AudioLibraryData} batch to this destination.
+	 *
+	 * @param data the data to save
+	 */
 	public void save(Audio.AudioLibraryData data) {
 		try (Writer writer = out()) {
 			data.writeTo(writer.get());
@@ -226,11 +302,24 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns the path to the temporary directory used for staging files before flush.
+	 *
+	 * @return the temporary directory path, creating it if necessary
+	 */
 	public Path getTemporaryPath() {
 		Path p = SystemUtils.getLocalDestination().resolve(TEMP);
 		return SystemUtils.ensureDirectoryExists(p);
 	}
 
+	/**
+	 * Returns a temporary file for the given key and file extension.
+	 * If the key contains slashes, it is Base64-encoded for safe use as a filename.
+	 *
+	 * @param key       the logical key for the file
+	 * @param extension the file extension (without the leading dot)
+	 * @return the temporary file
+	 */
 	public File getTemporaryFile(String key, String extension) {
 		if (key.contains("/")) {
 			key = Base64.getEncoder().encodeToString(key.getBytes());
@@ -239,6 +328,13 @@ public class LibraryDestination implements ConsoleFeatures {
 		return temporary(getTemporaryPath().resolve(key + "." + extension).toFile());
 	}
 
+	/**
+	 * Opens and returns an output stream to a temporary file for the given key and extension.
+	 *
+	 * @param key       the logical key for the file
+	 * @param extension the file extension (without the leading dot)
+	 * @return an output stream to the temporary file
+	 */
 	public OutputStream getTemporaryDestination(String key, String extension) {
 		try {
 			return new FileOutputStream(getTemporaryFile(key, extension));
@@ -247,17 +343,31 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns a temporary WAV file for the given key, saving the wave data if it does not
+	 * already exist.
+	 *
+	 * @param key  the logical key for the file
+	 * @param data the wave data to save if the file does not exist
+	 * @return the temporary WAV file, or {@code null} if the file could not be saved
+	 */
 	public File getTemporaryWave(String key, WaveData data) {
 		File f = getTemporaryFile(key, "wav");
 		return (f.exists() || data.save(f)) ? f : null;
 	}
 
+	/**
+	 * Deletes all batch files at this destination and any pending temporary files.
+	 */
 	public void delete() {
 		files().forEachRemaining(f -> new File(f).delete());
 		discardTemporary(); // Also clean up any pending temporary files
 		index = 0;
 	}
 
+	/**
+	 * Removes all files from the temporary directory.
+	 */
 	public void cleanup() {
 		try {
 			clean(getTemporaryPath());
@@ -266,11 +376,24 @@ public class LibraryDestination implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Registers the given file for deletion on JVM exit and returns it.
+	 *
+	 * @param f the file to mark for deletion on exit
+	 * @return the file
+	 */
 	protected File temporary(File f) {
 		f.deleteOnExit();
 		return f;
 	}
 
+	/**
+	 * Deletes all files in the given directory. Refuses to operate on the filesystem
+	 * root or paths shorter than three characters as a safety guard.
+	 *
+	 * @param directory the directory to clean
+	 * @throws IllegalArgumentException if the path is too short or is the root
+	 */
 	protected void clean(Path directory) {
 		Path root = directory.getRoot();
 		if (root != null && root.equals(directory)) {
@@ -305,6 +428,10 @@ public class LibraryDestination implements ConsoleFeatures {
 		return SystemUtils.ensureDirectoryExists(libraryPath);
 	}
 
+	/**
+	 * A write session that supplies output streams for successive batch files and
+	 * flushes temporary files to their final destinations on close.
+	 */
 	public class Writer implements Supplier<OutputStream>, AutoCloseable {
 		@Override
 		public OutputStream get() {

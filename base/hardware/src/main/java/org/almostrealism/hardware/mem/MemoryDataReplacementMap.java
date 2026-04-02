@@ -37,14 +37,27 @@ import java.util.function.Supplier;
  * @see MemoryDataCopy
  */
 public class MemoryDataReplacementMap implements Destroyable {
+	/** Optional operation profile used for timing replacement copy operations. */
 	public static OperationProfile profile;
 
+	/** Map from original memory references to their replacement data suppliers. */
 	private Map<MemoryDataRef, Supplier<MemoryData>> replacements;
 
+	/**
+	 * Creates an empty replacement map.
+	 */
 	public MemoryDataReplacementMap() {
 		this.replacements = new HashMap<>();
 	}
 
+	/**
+	 * Registers a memory replacement, mapping the original {@link MemoryData} to a producer-backed replacement.
+	 *
+	 * @param original    The original memory data to be replaced
+	 * @param replacement Producer that supplies the replacement data
+	 * @param pos         Offset within the replacement data
+	 * @throws IllegalArgumentException if the original is already registered
+	 */
 	public void addReplacement(MemoryData original, Producer<MemoryData> replacement, int pos) {
 		MemoryDataRef ref = new MemoryDataRef(original);
 
@@ -55,6 +68,11 @@ public class MemoryDataReplacementMap implements Destroyable {
 		replacements.put(ref, new MemoryDataSource(replacement, pos, original.getMemLength()));
 	}
 
+	/**
+	 * Returns an {@link OperationList} that copies data from original memory into each replacement before kernel execution.
+	 *
+	 * @return Pre-execution copy operations
+	 */
 	public OperationList getPreprocess() {
 		OperationList prep = new OperationList("MemoryDataReplacementMap Preprocess");
 		replacements.forEach((original, replacement) -> {
@@ -63,6 +81,11 @@ public class MemoryDataReplacementMap implements Destroyable {
 		return prep;
 	}
 
+	/**
+	 * Returns an {@link OperationList} that copies results from each replacement back to original memory after kernel execution.
+	 *
+	 * @return Post-execution copy operations
+	 */
 	public OperationList getPostprocess() {
 		OperationList post = new OperationList("MemoryDataReplacementMap Postprocess");
 		replacements.forEach((original, replacement) -> {
@@ -73,11 +96,23 @@ public class MemoryDataReplacementMap implements Destroyable {
 
 	public boolean isEmpty() { return replacements.isEmpty(); }
 
+	/** Simple supplier that wraps a fixed {@link MemoryData} instance. */
 	private class MemoryDataSupplier implements Supplier<MemoryData> {
+		/** The memory data instance to supply. */
 		private MemoryData md;
 
+		/**
+		 * Creates a supplier wrapping the given memory data.
+		 *
+		 * @param md Memory data to wrap
+		 */
 		public MemoryDataSupplier(MemoryData md) { this.md = md; }
 
+		/**
+		 * Creates a supplier wrapping the memory data from the given reference.
+		 *
+		 * @param ref Memory data reference to unwrap
+		 */
 		public MemoryDataSupplier(MemoryDataRef ref) {
 			this(ref.getMemoryData());
 		}
@@ -86,10 +121,20 @@ public class MemoryDataReplacementMap implements Destroyable {
 		public MemoryData get() { return md; }
 	}
 
+	/** Supplier that evaluates a {@link Producer} and slices the result at a given offset. */
 	private class MemoryDataSource implements Supplier<MemoryData> {
+		/** Producer that yields the aggregate memory block. */
 		private Producer<MemoryData> md;
+		/** Offset within the aggregate block and total length of this slice. */
 		private int pos, len;
 
+		/**
+		 * Creates a supplier for a slice of the producer's output.
+		 *
+		 * @param md  Producer yielding the aggregate memory block
+		 * @param pos Offset into the aggregate block
+		 * @param len Length of the slice
+		 */
 		public MemoryDataSource(Producer<MemoryData> md, int pos, int len) {
 			this.md = md;
 			this.pos = pos;

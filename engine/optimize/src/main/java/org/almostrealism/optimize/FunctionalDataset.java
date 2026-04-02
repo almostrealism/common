@@ -67,7 +67,10 @@ import java.util.function.Function;
  * @author Michael Murray
  */
 public class FunctionalDataset<T extends PackedCollection> implements Dataset<T> {
+	/** The list of raw input data items. */
 	private final List<PackedCollection> inputs;
+
+	/** The function that transforms each input into one or more value targets. */
 	private final Function<PackedCollection, Collection<ValueTarget<T>>> function;
 
 	/**

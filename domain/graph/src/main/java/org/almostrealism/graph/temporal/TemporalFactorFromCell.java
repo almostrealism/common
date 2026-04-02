@@ -62,9 +62,16 @@ import java.util.function.Supplier;
  * @see Cell
  */
 public class TemporalFactorFromCell<T> implements CellularTemporalFactor<T> {
+	/** The wrapped cell whose push output is stored in the destination buffer. */
 	private final Cell<T> cell;
+
+	/** The producer for the buffer that receives the cell's output on each tick. */
 	private final Producer<T> destination;
+
+	/** Factory that creates the receptor used to write into the destination buffer. */
 	private final Function<Producer<T>, Receptor<T>> assignment;
+
+	/** Function that merges the destination value with a new input to produce the factor's output. */
 	private final BiFunction<Producer<T>, Producer<T>, Producer<T>> combine;
 
 	/**

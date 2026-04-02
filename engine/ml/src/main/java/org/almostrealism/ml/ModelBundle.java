@@ -63,19 +63,53 @@ import java.util.Map;
  */
 public class ModelBundle implements Destroyable {
 
+	/** Model type identifier for a standalone base model. */
 	public static final String TYPE_BASE = "base";
+
+	/** Model type identifier for a LoRA adapter that modifies a base model. */
 	public static final String TYPE_LORA_ADAPTER = "lora_adapter";
+
+	/** Model type identifier for a model with LoRA weights merged into the base. */
 	public static final String TYPE_MERGED = "merged";
 
+	/** The weight tensors stored in this bundle. */
 	private final StateDictionary weights;
+
+	/** Model type string (one of {@link #TYPE_BASE}, {@link #TYPE_LORA_ADAPTER}, or {@link #TYPE_MERGED}). */
 	private final String modelType;
+
+	/** Identifier of the base model this bundle is derived from; may be null for base bundles. */
 	private final String baseModelId;
+
+	/** Unix epoch timestamp in milliseconds when this bundle was created. */
 	private final long createdTimestamp;
+
+	/** Numeric training metrics (e.g., final loss, accuracy) associated with this bundle. */
 	private final Map<String, Double> metrics;
+
+	/** Arbitrary string key-value configuration stored alongside the weights. */
 	private final Map<String, String> config;
+
+	/** Human-readable description of this bundle; may be null. */
 	private final String description;
+
+	/** LoRA adapter configuration; non-null only for adapter bundles. */
 	private final AdapterConfig adapterConfig;
 
+	/**
+	 * Constructs a ModelBundle with all fields explicitly specified.
+	 * Use the static factory methods ({@link #forAdapter}, {@link #forBaseModel},
+	 * {@link #forMergedModel}) or the {@link Builder} to create instances.
+	 *
+	 * @param weights          the weight tensors
+	 * @param modelType        model type string
+	 * @param baseModelId      base model identifier; may be null
+	 * @param createdTimestamp creation time as Unix epoch milliseconds
+	 * @param metrics          numeric training metrics; may be null
+	 * @param config           string configuration entries; may be null
+	 * @param description      human-readable description; may be null
+	 * @param adapterConfig    LoRA adapter configuration; may be null
+	 */
 	private ModelBundle(StateDictionary weights, String modelType, String baseModelId,
 						long createdTimestamp, Map<String, Double> metrics,
 						Map<String, String> config, String description,
@@ -90,34 +124,74 @@ public class ModelBundle implements Destroyable {
 		this.adapterConfig = adapterConfig;
 	}
 
+	/**
+	 * Returns the weight tensors stored in this bundle.
+	 *
+	 * @return the {@link StateDictionary} holding model parameters
+	 */
 	public StateDictionary getWeights() {
 		return weights;
 	}
 
+	/**
+	 * Returns the model type string.
+	 *
+	 * @return one of {@link #TYPE_BASE}, {@link #TYPE_LORA_ADAPTER}, or {@link #TYPE_MERGED}
+	 */
 	public String getModelType() {
 		return modelType;
 	}
 
+	/**
+	 * Returns the identifier of the base model this bundle was derived from.
+	 *
+	 * @return the base model identifier, or null for standalone base model bundles
+	 */
 	public String getBaseModelId() {
 		return baseModelId;
 	}
 
+	/**
+	 * Returns the creation timestamp as Unix epoch milliseconds.
+	 *
+	 * @return creation time in milliseconds since epoch
+	 */
 	public long getCreatedTimestamp() {
 		return createdTimestamp;
 	}
 
+	/**
+	 * Returns the numeric training metrics stored with this bundle.
+	 *
+	 * @return an unmodifiable map of metric names to values
+	 */
 	public Map<String, Double> getMetrics() {
 		return metrics;
 	}
 
+	/**
+	 * Returns the string configuration entries stored with this bundle.
+	 *
+	 * @return an unmodifiable map of configuration keys to values
+	 */
 	public Map<String, String> getConfig() {
 		return config;
 	}
 
+	/**
+	 * Returns the human-readable description of this bundle.
+	 *
+	 * @return the description, or null if none was set
+	 */
 	public String getDescription() {
 		return description;
 	}
 
+	/**
+	 * Returns whether this bundle contains a LoRA adapter.
+	 *
+	 * @return true if the model type is {@link #TYPE_LORA_ADAPTER}
+	 */
 	public boolean isAdapterBundle() {
 		return TYPE_LORA_ADAPTER.equals(modelType);
 	}
@@ -284,24 +358,55 @@ public class ModelBundle implements Destroyable {
 	 * Builder for creating ModelBundle instances.
 	 */
 	public static class Builder {
+		/** The weight tensors for the bundle being constructed. */
 		private final StateDictionary weights;
+
+		/** The model type for the bundle being constructed. */
 		private final String modelType;
+
+		/** Optional base model identifier. */
 		private String baseModelId;
+
+		/** Numeric training metrics accumulated by this builder. */
 		private final Map<String, Double> metrics = new HashMap<>();
+
+		/** String configuration entries accumulated by this builder. */
 		private final Map<String, String> config = new HashMap<>();
+
+		/** Optional human-readable description for the bundle. */
 		private String description;
+
+		/** Optional LoRA adapter configuration. */
 		private AdapterConfig adapterConfig;
 
+		/**
+		 * Constructs a builder for the specified weights and model type.
+		 *
+		 * @param weights   the weight tensors
+		 * @param modelType model type string
+		 */
 		private Builder(StateDictionary weights, String modelType) {
 			this.weights = weights;
 			this.modelType = modelType;
 		}
 
+		/**
+		 * Sets the base model identifier.
+		 *
+		 * @param baseModelId identifier of the base model
+		 * @return this builder
+		 */
 		public Builder baseModelId(String baseModelId) {
 			this.baseModelId = baseModelId;
 			return this;
 		}
 
+		/**
+		 * Adds multiple numeric training metrics to this bundle.
+		 *
+		 * @param metrics map of metric names to values; null is silently ignored
+		 * @return this builder
+		 */
 		public Builder withMetrics(Map<String, Double> metrics) {
 			if (metrics != null) {
 				this.metrics.putAll(metrics);
@@ -309,26 +414,58 @@ public class ModelBundle implements Destroyable {
 			return this;
 		}
 
+		/**
+		 * Adds a single numeric training metric to this bundle.
+		 *
+		 * @param key   metric name
+		 * @param value metric value
+		 * @return this builder
+		 */
 		public Builder metric(String key, double value) {
 			this.metrics.put(key, value);
 			return this;
 		}
 
+		/**
+		 * Adds a string configuration entry to this bundle.
+		 *
+		 * @param key   configuration key
+		 * @param value configuration value
+		 * @return this builder
+		 */
 		public Builder config(String key, String value) {
 			this.config.put(key, value);
 			return this;
 		}
 
+		/**
+		 * Sets a human-readable description for the bundle.
+		 *
+		 * @param description the description text
+		 * @return this builder
+		 */
 		public Builder withDescription(String description) {
 			this.description = description;
 			return this;
 		}
 
+		/**
+		 * Sets the LoRA adapter configuration for this bundle.
+		 *
+		 * @param adapterConfig the adapter configuration
+		 * @return this builder
+		 */
 		Builder adapterConfig(AdapterConfig adapterConfig) {
 			this.adapterConfig = adapterConfig;
 			return this;
 		}
 
+		/**
+		 * Constructs the {@link ModelBundle} with the current builder state.
+		 * The creation timestamp is set to the current time.
+		 *
+		 * @return a new ModelBundle
+		 */
 		public ModelBundle build() {
 			return new ModelBundle(
 					weights,

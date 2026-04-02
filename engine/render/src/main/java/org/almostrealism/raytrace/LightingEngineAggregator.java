@@ -63,19 +63,41 @@ import java.util.List;
  * @see LightingEngine
  */
 public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implements DimensionAware {
+	/** When true, additional ranked-choice selection details are logged to stdout. */
 	public static boolean enableVerbose = false;
 
+	/** Pre-computed pixel-position input buffer used in kernel mode. */
 	private PackedCollection input;
+	/** Cached rank values for each lighting engine, computed once per kernel invocation. */
 	private List<PackedCollection> ranks;
 
+	/** When true, intersection ranks are pre-computed for all pixel positions and cached. */
 	private boolean kernel;
+	/** Image width, height, and supersampling factors used to resolve pixel positions. */
 	private int width, height, ssw, ssh;
 
+	/**
+	 * Constructs an aggregator without kernel-mode pre-computation.
+	 *
+	 * @param r        The ray producer for this pixel
+	 * @param surfaces The scene surfaces to evaluate
+	 * @param lights   The scene lights to evaluate
+	 * @param context  Shader context; may be {@code null} to auto-construct per pair
+	 */
 	public LightingEngineAggregator(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces,
 									Iterable<Light> lights, ShaderContext context) {
 		this(r, surfaces, lights, context, false);
 	}
 
+	/**
+	 * Constructs an aggregator with optional kernel-mode pre-computation.
+	 *
+	 * @param r        The ray producer for this pixel
+	 * @param surfaces The scene surfaces to evaluate
+	 * @param lights   The scene lights to evaluate
+	 * @param context  Shader context; may be {@code null} to auto-construct per pair
+	 * @param kernel   When true, all intersection ranks are pre-computed and cached for the full pixel grid
+	 */
 	public LightingEngineAggregator(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces,
 									Iterable<Light> lights, ShaderContext context, boolean kernel) {
 		super(Intersection.e);
@@ -144,6 +166,17 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	}
 
 	// TODO  Rename this class to SurfaceLightingAggregator and have LightingEngineAggregator sum the lights instead of rank choice them
+	/**
+	 * Populates the aggregator with one {@link IntersectionalLightingEngine} for each surface-light pair.
+	 *
+	 * <p>For each combination of surface and light, a {@link ShaderContext} is constructed and an
+	 * {@link IntersectionalLightingEngine} is added to the ranked-choice list.</p>
+	 *
+	 * @param r        The ray producer
+	 * @param surfaces The scene surfaces
+	 * @param lights   The scene lights
+	 * @param context  Base shader context to clone per pair, or {@code null} to construct from scratch
+	 */
 	protected void init(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces, Iterable<Light> lights, ShaderContext context) {
 		for (Curve<PackedCollection> s : surfaces) {
 			for (Light l : lights) {

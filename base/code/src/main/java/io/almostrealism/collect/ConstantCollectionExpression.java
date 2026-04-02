@@ -20,19 +20,42 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.sequence.Index;
 
+/**
+ * A {@link CollectionExpression} whose every element has the same constant value.
+ *
+ * <p>Regardless of the index, {@link #getValueAt} returns the fixed expression supplied at
+ * construction time. When the entire collection is a single-element constant, or when the
+ * constant value is zero, the unique non-zero offset is reported as {@code 0} to allow
+ * the code generator to elide redundant memory accesses.</p>
+ */
 public class ConstantCollectionExpression extends CollectionExpressionAdapter {
+	/** The constant expression returned for every index. */
 	private final Expression<?> value;
 
+	/**
+	 * Creates a constant collection expression with the given shape and value.
+	 *
+	 * @param shape the shape of the collection
+	 * @param value the constant expression to return for every element
+	 */
 	public ConstantCollectionExpression(TraversalPolicy shape, Expression<?> value) {
 		super("constant", shape);
 		this.value = value;
 	}
 
+	/** {@inheritDoc} Returns the constant value regardless of the index. */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		return (Expression) value;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns {@code 0} when the collection has a single element, or when the
+	 * constant value is zero (no non-zero elements anywhere). Returns {@code null}
+	 * otherwise (the offset is not uniquely determinable).</p>
+	 */
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		if (getShape().getTotalSizeLong() == 1) return new IntegerConstant(0);
@@ -40,6 +63,7 @@ public class ConstantCollectionExpression extends CollectionExpressionAdapter {
 		return null;
 	}
 
+	/** {@inheritDoc} Returns {@code true}: the value does not depend on the index. */
 	@Override
 	public boolean isIndexIndependent() { return true; }
 }

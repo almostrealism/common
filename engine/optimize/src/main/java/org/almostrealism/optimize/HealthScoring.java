@@ -52,8 +52,14 @@ package org.almostrealism.optimize;
  * @author Michael Murray
  */
 public class HealthScoring {
+	/** Expected number of fitness evaluations; used to compute the population average. */
 	private final int popSize;
-	private double highestHealth, totalHealth;
+
+	/** The highest fitness score recorded across all evaluations. */
+	private double highestHealth;
+
+	/** The cumulative sum of all fitness scores pushed. */
+	private double totalHealth;
 
 	/**
 	 * Creates a new scoring aggregator for the specified population size.

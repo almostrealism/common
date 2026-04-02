@@ -96,6 +96,7 @@ import java.util.function.Supplier;
  * @see org.almostrealism.collect.CollectionFeatures#pad(TraversalPolicy, TraversalPolicy, Producer)
  */
 public class PackedCollectionPad extends TraversableExpressionComputation {
+	/** When true, simplifies the boundary condition expression for improved kernel performance. */
 	public static boolean enableConditionSimplify = true;
 
 	/** The shape/dimensions of the input collection being padded */

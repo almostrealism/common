@@ -21,22 +21,45 @@ import io.almostrealism.profile.OperationInfo;
 
 import java.util.OptionalLong;
 
+/**
+ * A {@link KernelStructureContext} that provides a default {@link KernelSeriesProvider}
+ * based on the kernel element count and has no traversal provider.
+ *
+ * <p>The series provider is obtained from {@link KernelSeriesMatcher#defaultProvider} and
+ * takes the optional kernel maximum into account when constructing its matching strategy.</p>
+ */
 public class DefaultKernelStructureContext implements KernelStructureContext {
+	/** The number of kernel elements, or empty if the kernel size is not yet known. */
 	private OptionalLong count;
 
+	/**
+	 * Creates a {@link DefaultKernelStructureContext} with no fixed kernel maximum.
+	 */
 	public DefaultKernelStructureContext() {
 		this.count = OptionalLong.empty();
 	}
 
+	/**
+	 * Creates a {@link DefaultKernelStructureContext} with the given kernel element count.
+	 *
+	 * @param count the number of kernel elements
+	 */
 	public DefaultKernelStructureContext(long count) {
 		this.count = OptionalLong.of(count);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public OptionalLong getKernelMaximum() {
 		return count;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns a default {@link KernelSeriesProvider} from {@link KernelSeriesMatcher},
+	 * seeded with the kernel element count when present.</p>
+	 */
 	@Override
 	public KernelSeriesProvider getSeriesProvider() {
 		if (count.isPresent()) {
@@ -49,6 +72,11 @@ public class DefaultKernelStructureContext implements KernelStructureContext {
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @return {@code null} always — this context has no traversal provider
+	 */
 	@Override
 	public KernelTraversalProvider getTraversalProvider() {
 		return null;

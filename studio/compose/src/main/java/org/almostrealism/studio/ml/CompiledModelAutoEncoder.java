@@ -58,10 +58,19 @@ import org.almostrealism.model.CompiledModel;
  */
 public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 
+	/** The compiled encoder model that maps audio to latent space. */
 	private final CompiledModel encoder;
+
+	/** The compiled decoder model that maps latent space back to audio. */
 	private final CompiledModel decoder;
+
+	/** Audio sample rate in Hz. */
 	private final double sampleRate;
+
+	/** Sample rate of the latent space (latent time steps per second). */
 	private final double latentSampleRate;
+
+	/** Maximum audio duration in seconds that this autoencoder can process. */
 	private final double maxDuration;
 
 	/**

@@ -28,6 +28,7 @@ package org.almostrealism.spatial.series;
  * @see SoundDataTimeseries
  */
 public class RecordedTimeseries extends SimpleTimeseries<RecordedTimeseries> {
+	/** Whether this timeseries is a container group ({@code true}) or an individual recording ({@code false}). */
 	private boolean group;
 
 	/**

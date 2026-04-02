@@ -30,11 +30,22 @@ import org.almostrealism.algebra.Vector;
  * @see TemporalSpatialContext
  */
 public class SpatialValue<T> extends SpatialElement {
+	/** The numeric value at this spatial position, typically a log-scaled magnitude. */
 	private double value;
+
+	/** The temperature value used for color mapping (typically {@code 1.0 - frequency}). */
 	private double temperature;
+
+	/** The index of this value within its source data, or -1 if not set. */
 	private int index;
+
+	/** Whether to use alternative visualization mode (e.g., for aggregated quartile data). */
 	private boolean alt;
+
+	/** Whether this value should be rendered as a dot. */
 	private boolean dot;
+
+	/** The source timeseries or object that generated this spatial value. */
 	private T referent;
 
 	/**

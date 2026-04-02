@@ -42,18 +42,40 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
+/**
+ * Manages the generation of a rise (swell) audio element, combining a synthesized
+ * pitched tone with a noise generator over the full evaluation duration. The rendered
+ * audio is made available as a {@link CellList} for integration into the mixdown chain.
+ */
 public class RiseManager implements Setup, PatternFeatures, CellFeatures {
+	/** Duration of the rise effect in seconds (matches the standard health evaluation duration). */
 	public static final double riseDuration = HealthComputationAdapter.standardDurationSeconds;
 
+	/** Chromosome providing automation parameters for the rise effect. */
 	private final ProjectedChromosome chromosome;
+
+	/** Audio sample rate. */
 	private final int sampleRate;
 
+	/** Synthesizer producing the pitched tone component of the rise. */
 	private final AudioSynthesizer synth;
+
+	/** Noise generator producing the noise component of the rise. */
 	private final NoiseGenerator noise;
+
+	/** Setup operations list that renders the rise audio into {@link #destination}. */
 	private final OperationList setup;
 
+	/** GPU-resident buffer holding the rendered rise audio. */
 	private PackedCollection destination;
 
+	/**
+	 * Creates a rise manager that renders its audio during setup.
+	 *
+	 * @param chromosome the chromosome supplying automation parameters
+	 * @param context    supplier providing the audio scene context for rendering
+	 * @param sampleRate the audio sample rate
+	 */
 	public RiseManager(ProjectedChromosome chromosome, Supplier<AudioSceneContext> context, int sampleRate) {
 		this.chromosome = chromosome;
 		this.sampleRate = sampleRate;
@@ -83,11 +105,19 @@ public class RiseManager implements Setup, PatternFeatures, CellFeatures {
 		));
 	}
 
+	/** Returns the chromosome providing automation parameters for the rise effect. */
 	public ProjectedChromosome getChromosome() { return chromosome; }
 
+	/** {@inheritDoc} */
 	@Override
 	public Supplier<Runnable> setup() { return setup; }
 
+	/**
+	 * Returns a {@link CellList} wrapping the rendered rise audio, usable by the mixdown chain.
+	 *
+	 * @param frames the number of frames to expose from the rendered buffer
+	 * @return a cell list containing the rise audio
+	 */
 	public CellList getRise(int frames) {
 		Producer<PackedCollection> audio =
 				func(shape(frames), args -> destination, false);

@@ -59,14 +59,28 @@ import java.util.function.DoubleConsumer;
  */
 public class DiffusionSampler implements ConsoleFeatures {
 
+	/** Diffusion model used to compute noise predictions during the sampling loop. */
 	private final DiffusionModel model;
+
+	/** Sampling strategy (e.g., DDIM or ping-pong) that determines each denoising step. */
 	private final SamplingStrategy strategy;
+
+	/** Total number of diffusion training timesteps the scheduler was trained with. */
 	private final int numSteps;
+
+	/** Shape of the latent tensor that is iteratively denoised. */
 	private final TraversalPolicy latentShape;
+
+	/** Total number of elements in the latent tensor; cached for noise generation. */
 	private final int latentSize;
 
+	/** Number of inference steps to actually run (may be less than {@link #numSteps}). */
 	private int numInferenceSteps;
+
+	/** Optional callback invoked with progress fraction (0.0–1.0) after each step. */
 	private DoubleConsumer progressCallback;
+
+	/** Whether to log per-step progress and NaN diagnostics. */
 	private boolean verbose = true;
 
 	/**
@@ -275,6 +289,13 @@ public class DiffusionSampler implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Checks the given collection for NaN values and logs a warning if any are found.
+	 * Only active when {@link #verbose} is {@code true}.
+	 *
+	 * @param x       Collection to check
+	 * @param context Human-readable description for the warning message
+	 */
 	private void checkNan(PackedCollection x, String context) {
 		if (verbose) {
 			long nanCount = x.count(Double::isNaN);

@@ -27,13 +27,29 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.DoubleFunction;
 
+/**
+ * A simple {@link PatternNoteAudio} adapter that wraps a single {@link NoteAudio} instance.
+ *
+ * <p>Delegates all sample rate, duration, and audio retrieval calls to the wrapped
+ * {@link NoteAudio}. Validity is determined by the validity of the wrapped audio.</p>
+ *
+ * @see PatternNoteAudio
+ * @see NoteAudioSource
+ */
 public class SimplePatternNote implements PatternNoteAudio, KeyboardTuned, Validity {
+	/** The underlying note audio instance. */
 	private final NoteAudio audio;
 
+	/**
+	 * Creates a {@code SimplePatternNote} wrapping the given note audio.
+	 *
+	 * @param audio the note audio to wrap
+	 */
 	public SimplePatternNote(NoteAudio audio) {
 		this.audio = audio;
 	}
 
+	/** Returns the underlying note audio instance. */
 	public NoteAudio getNoteAudio() { return audio; }
 
 	@Override

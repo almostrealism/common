@@ -105,8 +105,11 @@ import java.util.List;
  */
 public class Periodic extends OperationComputationAdapter<MemoryData>
 		implements ExpressionFeatures {
+	/** The computation to execute once per period. */
 	private final Computation atom;
+	/** Number of invocations between executions of the atom. */
 	private final int period;
+	/** Memory data used to track the invocation count between periodic executions. */
 	private final MemoryData counter;
 
 	/**

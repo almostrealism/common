@@ -44,9 +44,16 @@ import java.util.Random;
  */
 public class GaussianBrush implements SpatialBrush {
 
+	/** The standard deviation (sigma) of the Gaussian distribution in spatial units. */
 	private double radius = 10.0;
+
+	/** The point density in points per second. */
 	private double density = 100.0;
+
+	/** The base intensity multiplier applied to all generated points. */
 	private double baseIntensity = 1.0;
+
+	/** The random number generator used for point placement. */
 	private final Random random = new Random();
 
 	/**

@@ -137,6 +137,7 @@ public class ReshapeProducer
 	 */
 	public static boolean enableShapeDelegateIsolation = true;
 
+	/** When true, validates that traversal shapes are compatible during reshape operations. */
 	public static boolean enableTraversalShapeValidation = false;
 
 	/** Metadata describing this reshape operation for debugging and introspection. */

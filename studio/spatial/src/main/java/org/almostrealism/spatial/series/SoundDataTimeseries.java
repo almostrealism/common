@@ -38,7 +38,10 @@ import org.almostrealism.audio.data.WaveDetails;
  * @see SimpleTimeseries
  */
 public class SoundDataTimeseries extends FrequencyTimeseriesAdapter {
+	/** The sound data containing the audio file reference. */
 	private SoundData sound;
+
+	/** The spatial wave details adapter providing frequency analysis. */
 	private SpatialWaveDetails details;
 
 	/**

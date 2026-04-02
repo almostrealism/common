@@ -76,8 +76,10 @@ import java.util.function.BiConsumer;
  * @author Michael Murray
  */
 public class AverageHealthComputationSet<T extends Temporal> extends HashSet<HealthComputation<T, ?>> implements HealthComputation<T, HealthScore> {
+	/** Listeners notified before each individual health computation runs. */
 	private final List<BiConsumer<HealthComputation<T, ?>, Temporal>> listeners;
 
+	/** The current target organism being evaluated. */
 	private T target;
 
 	/**

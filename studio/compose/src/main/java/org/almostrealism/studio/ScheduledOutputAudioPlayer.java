@@ -71,7 +71,10 @@ import java.util.function.DoubleConsumer;
  * @see BufferedOutputScheduler for the scheduling mechanism
  */
 public class ScheduledOutputAudioPlayer extends AudioPlayerBase {
+	/** The underlying buffered audio player that drives playback. */
 	private final BufferedAudioPlayer player;
+
+	/** The scheduler responsible for timing and delivering audio batches to the output. */
 	private final BufferedOutputScheduler scheduler;
 
 	/**

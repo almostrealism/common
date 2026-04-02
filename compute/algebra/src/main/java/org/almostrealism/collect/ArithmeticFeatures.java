@@ -63,6 +63,7 @@ import java.util.stream.Stream;
  */
 public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures {
 
+	/** Shared console for logging arithmetic-related messages and warnings. */
 	Console console = CollectionFeatures.console;
 
 	/**
@@ -224,6 +225,15 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		}
 	}
 
+	/**
+	 * Multiplies all elements of an evaluated collection by a scalar and returns the result as
+	 * a constant collection with the specified shape.
+	 *
+	 * @param shape the output shape
+	 * @param scale the scalar value to multiply by
+	 * @param a     the evaluable collection whose values are scaled
+	 * @return a CollectionProducer wrapping the scaled constant values
+	 */
 	default CollectionProducer multiply(TraversalPolicy shape, double scale, Evaluable<PackedCollection> a) {
 		return c(shape, a.evaluate().doubleStream().parallel().map(d -> d * scale).toArray());
 	}
@@ -487,6 +497,16 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	}
 
 	// Utility methods required for internal use
+	/**
+	 * Attaches a short-circuit evaluable to the given producer if it is a
+	 * {@link CollectionProducerComputationBase}. The short-circuit is used to bypass
+	 * full computation for inputs that can be answered trivially (e.g., zero inputs).
+	 *
+	 * @param <P>          the producer type
+	 * @param producer     the producer to attach the short-circuit to
+	 * @param shortCircuit the evaluable to use as a short-circuit
+	 * @return the producer with the short-circuit attached (same object)
+	 */
 	default <P extends Producer<PackedCollection>> P withShortCircuit(P producer, Evaluable<PackedCollection> shortCircuit) {
 		if (producer instanceof CollectionProducerComputationBase) {
 			((CollectionProducerComputationBase) producer).setShortCircuit(shortCircuit);
@@ -494,6 +514,14 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		return producer;
 	}
 
+	/**
+	 * Attaches a short-circuit evaluable to the given {@link CollectionProducer} if it is a
+	 * {@link CollectionProducerComputationBase}.
+	 *
+	 * @param producer     the producer to attach the short-circuit to
+	 * @param shortCircuit the evaluable to use as a short-circuit
+	 * @return the producer with the short-circuit attached (same object)
+	 */
 	default CollectionProducer withShortCircuit(CollectionProducer producer, Evaluable<PackedCollection> shortCircuit) {
 		if (producer instanceof CollectionProducerComputationBase) {
 			((CollectionProducerComputationBase) producer).setShortCircuit(shortCircuit);
@@ -501,6 +529,14 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		return producer;
 	}
 
+	/**
+	 * Returns true if the given producer can be directly compiled to a computation kernel.
+	 * A producer is considered computable if it is a {@link CollectionProducerComputation},
+	 * a {@link CollectionProviderProducer}, or a {@link ReshapeProducer} wrapping a computable.
+	 *
+	 * @param p the producer to test
+	 * @return true if the producer is directly kernel-compilable
+	 */
 	static boolean checkComputable(Producer<?> p) {
 		if (p instanceof CollectionProducerComputation || p instanceof CollectionProviderProducer) {
 			return true;

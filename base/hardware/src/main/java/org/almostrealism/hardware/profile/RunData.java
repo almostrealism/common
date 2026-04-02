@@ -53,6 +53,7 @@ package org.almostrealism.hardware.profile;
  * @see io.almostrealism.profile.OperationProfile
  */
 public class RunData {
+	/** Measured execution duration of this run in nanoseconds. */
 	private long durationNanos;
 
 	/**

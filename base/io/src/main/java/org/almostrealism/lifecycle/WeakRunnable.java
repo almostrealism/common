@@ -13,6 +13,7 @@ import java.util.stream.Stream;
  * @param <T> The type of the target object to be referenced weakly
  */
 public class WeakRunnable<T> extends WeakReference<T> implements Runnable {
+	/** The action applied to the weakly referenced target when {@link #run()} is called. */
 	private Consumer<T> operation;
 
 	/**

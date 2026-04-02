@@ -55,9 +55,16 @@ import java.io.PrintWriter;
  * @see ReceptorConsumer
  */
 public class CSVReceptor<T> extends ReceptorConsumer<T> implements AutoCloseable {
+	/** The writer used to output CSV lines to the underlying stream. */
 	private final PrintWriter ps;
+
+	/** The number of values received so far; used together with {@link #rate} to subsample output. */
 	private long index;
+
+	/** Only every {@code rate}-th value is written; 1 means every value is written. */
 	private final int rate;
+
+	/** The most recently written value, stored as a string for de-duplication or reference. */
 	private String lastValue;
 
 	/**

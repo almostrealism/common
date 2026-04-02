@@ -90,6 +90,8 @@ import java.util.function.Supplier;
 public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerComputation implements TraversableExpression<Double> {
 	/** The shape of the delta (gradient) computation output, before appending target dimensions. */
 	private final TraversalPolicy deltaShape;
+
+	/** The shape of the target producer with respect to which the derivative is computed. */
 	private final TraversalPolicy targetShape;
 
 	/** The expression function that defines the computation at each iteration. */

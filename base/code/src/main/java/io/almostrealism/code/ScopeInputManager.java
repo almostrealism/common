@@ -18,6 +18,23 @@ package io.almostrealism.code;
 
 import io.almostrealism.lang.LanguageOperations;
 
+/**
+ * Extends {@link ArgumentProvider} with access to the target language operations.
+ *
+ * <p>{@code ScopeInputManager} is the interface passed to computations during scope
+ * compilation. In addition to providing {@link io.almostrealism.scope.ArrayVariable}
+ * instances for input producers, it exposes the {@link LanguageOperations} needed to
+ * emit language-specific code.</p>
+ *
+ * @see ArgumentProvider
+ * @see LanguageOperations
+ * @see ScopeLifecycle
+ */
 public interface ScopeInputManager extends ArgumentProvider {
+	/**
+	 * Returns the language operations for the compilation target.
+	 *
+	 * @return the language operations
+	 */
 	LanguageOperations getLanguage();
 }

@@ -67,13 +67,22 @@ import java.util.Random;
  */
 public class DiffusionNoiseScheduler implements CodeFeatures {
 
+	/** Total number of diffusion timesteps. */
 	private final int numSteps;
+
+	/** Random number generator used for noise sampling and timestep selection. */
 	private final Random random;
 
-	// Schedule values stored as PackedCollections for GPU access
+	/** Per-step alpha values derived from the cosine schedule. */
 	private final PackedCollection alphas;
+
+	/** Cumulative product of alphas, representing signal retention at each timestep. */
 	private final PackedCollection alphasCumprod;
+
+	/** Precomputed square root of {@link #alphasCumprod} for efficient forward diffusion. */
 	private final PackedCollection sqrtAlphasCumprod;
+
+	/** Precomputed square root of {@code (1 - alphasCumprod)} for efficient forward diffusion. */
 	private final PackedCollection sqrtOneMinusAlphasCumprod;
 
 	/**

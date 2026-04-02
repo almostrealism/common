@@ -37,14 +37,28 @@ import org.almostrealism.stats.SphericalProbabilityDistribution;
  * @author  Michael Murray
  */
 public class LightBulb implements Volume<Object>, Absorber, Transparent, PhysicalConstants {
+	/** The simulation clock used to determine photon emission timing. */
 	protected Clock clock;
-	
+
+	/**
+	 * Power of this bulb in eV/msec, time between emitted photons (microseconds),
+	 * and the time of the last emission respectively.
+	 */
 	protected double power, delta, last;
+
+	/** Optional spectral probability distribution governing emitted photon energies. */
 	protected ProbabilityDistribution spectra;
+
+	/** Optional bidirectional reflectance distribution function for emission direction. */
 	protected SphericalProbabilityDistribution brdf;
 	
+	/** Upper bound of the visible spectrum energy range (violet end, in eV). */
 	private final double specEnd = H * C / 0.380;
+
+	/** Lower bound of the visible spectrum energy range (red end, in eV). */
 	private final double specStart = H * C / 0.780;
+
+	/** Mid-point energy value of the visible spectrum (average of red and violet bounds, in eV). */
 	protected double specAvg = (specStart + specEnd) / 2.0;
 	
 	/**

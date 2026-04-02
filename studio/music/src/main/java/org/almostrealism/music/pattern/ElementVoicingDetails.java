@@ -50,26 +50,60 @@ import java.util.Objects;
  * @author Michael Murray
  */
 public class ElementVoicingDetails {
+	/** The signal path voicing (MAIN or WET). */
 	private ChannelInfo.Voicing voicing;
+
+	/** The stereo channel (LEFT or RIGHT). */
 	private ChannelInfo.StereoChannel stereoChannel;
+
+	/** Whether this element is melodic (pitched). */
 	private boolean melodic;
+
+	/** The key position target for melodic content. */
 	private KeyPosition<?> target;
+
+	/** The current note position in measures. */
 	private double position;
+
+	/** The position of the next note (for duration calculation). */
 	private double nextNotePosition;
 
+	/** Creates an {@code ElementVoicingDetails} in the MAIN voicing with all other defaults. */
 	public ElementVoicingDetails() {
 		this(ChannelInfo.Voicing.MAIN);
 	}
 
+	/**
+	 * Creates an {@code ElementVoicingDetails} with the given voicing and all other defaults.
+	 *
+	 * @param voicing the signal path voicing
+	 */
 	public ElementVoicingDetails(ChannelInfo.Voicing voicing) {
 		this(voicing, null, false, null, 0, 0);
 	}
 
+	/**
+	 * Creates an {@code ElementVoicingDetails} with the given voicing, melodic flag, and target.
+	 *
+	 * @param voicing  the signal path voicing
+	 * @param melodic  whether the element is melodic
+	 * @param target   the key position target
+	 */
 	public ElementVoicingDetails(ChannelInfo.Voicing voicing, boolean melodic,
 									 KeyPosition<?> target) {
 		this(voicing, null, melodic, target, 0, 0);
 	}
 
+	/**
+	 * Creates a fully specified {@code ElementVoicingDetails}.
+	 *
+	 * @param voicing          the signal path voicing
+	 * @param stereoChannel    the stereo channel
+	 * @param melodic          whether the element is melodic
+	 * @param target           the key position target
+	 * @param position         the current note position
+	 * @param nextNotePosition the next note position
+	 */
 	public ElementVoicingDetails(ChannelInfo.Voicing voicing,
 								 ChannelInfo.StereoChannel stereoChannel,
 								 boolean melodic, KeyPosition<?> target,
@@ -82,50 +116,62 @@ public class ElementVoicingDetails {
 		this.nextNotePosition = nextNotePosition;
 	}
 
+	/** Returns the signal path voicing. */
 	public ChannelInfo.Voicing getVoicing() {
 		return voicing;
 	}
 
+	/** Sets the signal path voicing. */
 	public void setVoicing(ChannelInfo.Voicing voicing) {
 		this.voicing = voicing;
 	}
 
+	/** Returns the stereo channel. */
 	public ChannelInfo.StereoChannel getStereoChannel() {
 		return stereoChannel;
 	}
 
+	/** Sets the stereo channel. */
 	public void setStereoChannel(ChannelInfo.StereoChannel stereoChannel) {
 		this.stereoChannel = stereoChannel;
 	}
 
+	/** Returns {@code true} if this element is melodic (pitched). */
 	public boolean isMelodic() {
 		return melodic;
 	}
 
+	/** Sets whether this element is melodic. */
 	public void setMelodic(boolean melodic) {
 		this.melodic = melodic;
 	}
 
+	/** Returns the key position target for melodic content. */
 	public KeyPosition<?> getTarget() {
 		return target;
 	}
 
+	/** Sets the key position target. */
 	public void setTarget(KeyPosition<?> target) {
 		this.target = target;
 	}
 
+	/** Returns the current note position in measures. */
 	public double getPosition() {
 		return position;
 	}
 
+	/** Sets the current note position. */
 	public void setPosition(double position) {
 		this.position = position;
 	}
 
+	/** Returns the position of the next note. */
 	public double getNextNotePosition() {
 		return nextNotePosition;
 	}
 
+	/** Sets the position of the next note. */
 	public void setNextNotePosition(double nextNotePosition) {
 		this.nextNotePosition = nextNotePosition;
 	}

@@ -57,6 +57,13 @@ public interface OutputLine extends BufferedAudio, Destroyable {
 	 */
 	void write(PackedCollection sample);
 
+	/**
+	 * Creates a compiled operation that evaluates the given {@link Producer} and writes
+	 * the resulting audio data to this output line.
+	 *
+	 * @param frames a Producer yielding the audio frames to write
+	 * @return a Supplier that, when executed, evaluates the producer and writes the result
+	 */
 	default Supplier<Runnable> write(Producer<PackedCollection> frames) {
 		return () -> {
 			Evaluable<PackedCollection> sample = frames.get();

@@ -49,8 +49,11 @@ public class JobOutput implements Externalizable {
 	/** Separator used in string encoding between fields. */
 	public static final String ENTRY_SEPARATOR = "::";
 
+	/** Identifier of the task that produced this output. */
 	private String taskId;
+	/** The user, password, and job output string associated with this record. */
 	private String user, passwd, output;
+	/** Unix timestamp (milliseconds) recording when this output was generated. */
 	private long time;
 
 	/**

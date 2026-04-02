@@ -36,10 +36,16 @@ import java.util.Map;
  */
 public class OnnxAudioConditioner implements AudioAttentionConditioner, OnnxFeatures {
 
+	/** Sequence length used when padding or truncating T5 token id arrays. */
 	protected static final int T5_SEQ_LENGTH = 128;
 
+	/** The ONNX Runtime environment used to create and run the conditioner session. */
 	private final OrtEnvironment env;
+
+	/** The ONNX session that runs the conditioner (T5-based) model. */
 	private final OrtSession conditionersSession;
+
+	/** Whether this instance created (and therefore owns) the {@link OrtEnvironment}. */
 	private final boolean ownsEnvironment;
 
 	/**
@@ -72,6 +78,7 @@ public class OnnxAudioConditioner implements AudioAttentionConditioner, OnnxFeat
 		this.conditionersSession = env.createSession(assets.getAssetPath("conditioners.onnx"), options);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public OrtEnvironment getOnnxEnvironment() {
 		return env;
@@ -79,11 +86,25 @@ public class OnnxAudioConditioner implements AudioAttentionConditioner, OnnxFeat
 
 	/**
 	 * Returns the ONNX session for the conditioners model.
+	 *
+	 * @return the conditioners {@link OrtSession}
 	 */
 	public OrtSession getConditionersSession() {
 		return conditionersSession;
 	}
 
+	/**
+	 * Runs the T5-based conditioner model to produce attention inputs for the diffusion model.
+	 *
+	 * <p>The token id array is padded or truncated to {@link #T5_SEQ_LENGTH} tokens.
+	 * An attention mask is generated from the actual token count. The model returns
+	 * cross-attention input, cross-attention mask, and a global conditioning vector.
+	 *
+	 * @param ids             token ids from a tokenizer, padded/truncated to {@link #T5_SEQ_LENGTH}
+	 * @param durationSeconds target audio duration in seconds passed to the conditioner
+	 * @return a {@link ConditionerOutput} containing the three conditioning tensors
+	 * @throws org.almostrealism.hardware.HardwareException if the ONNX session fails
+	 */
 	@Override
 	public ConditionerOutput runConditioners(long[] ids, double durationSeconds) {
 		long[] paddedIds = new long[T5_SEQ_LENGTH];
@@ -122,6 +143,14 @@ public class OnnxAudioConditioner implements AudioAttentionConditioner, OnnxFeat
 		}
 	}
 
+	/**
+	 * Releases ONNX Runtime resources held by this conditioner.
+	 *
+	 * <p>Closes the conditioner session. If this instance owns the {@link OrtEnvironment}
+	 * (i.e., it was created via the asset-group constructor), the environment is also closed.
+	 *
+	 * @throws org.almostrealism.hardware.HardwareException if the session cannot be closed
+	 */
 	@Override
 	public void destroy() {
 		if (conditionersSession != null) {

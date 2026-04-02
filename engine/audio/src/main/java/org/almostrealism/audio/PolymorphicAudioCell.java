@@ -64,16 +64,36 @@ import java.util.function.Function;
  */
 public class PolymorphicAudioCell extends AudioCellChoiceAdapter {
 
+	/**
+	 * Creates a PolymorphicAudioCell with shared data and varargs choices.
+	 *
+	 * @param data the shared PolymorphicAudioData for all choices
+	 * @param decision the producer that selects which choice executes
+	 * @param choices functions that build cell adapters sharing the same data
+	 */
 	public PolymorphicAudioCell(PolymorphicAudioData data, CollectionProducer decision,
 								Function<PolymorphicAudioData, ? extends CollectionTemporalCellAdapter>... choices) {
 		this(data, decision, Arrays.asList(choices));
 	}
 
+	/**
+	 * Creates a PolymorphicAudioCell with shared data and a list of choices.
+	 *
+	 * @param data the shared PolymorphicAudioData for all choices
+	 * @param decision the producer that selects which choice executes
+	 * @param choices functions that build cell adapters sharing the same data
+	 */
 	public PolymorphicAudioCell(PolymorphicAudioData data, CollectionProducer decision,
 								List<Function<PolymorphicAudioData, ? extends CollectionTemporalCellAdapter>> choices) {
 		super(decision, i -> data, choices, false);
 	}
 
+	/**
+	 * Creates a PolymorphicAudioCell from pre-built cell adapters.
+	 *
+	 * @param decision the producer that selects which choice executes
+	 * @param choices the pre-built cell adapters to choose from
+	 */
 	public PolymorphicAudioCell(CollectionProducer decision,
 								List<CollectionTemporalCellAdapter> choices) {
 		super(decision, choices, false);

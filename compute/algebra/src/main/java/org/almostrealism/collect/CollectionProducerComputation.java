@@ -95,6 +95,7 @@ import java.util.stream.Stream;
  */
 public interface CollectionProducerComputation extends
 		 ProducerComputation<PackedCollection>, CollectionProducerParallelProcess {
+	/** When true, logs additional information about computation isolation for debugging. */
 	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
 
 	/**
@@ -132,10 +133,28 @@ public interface CollectionProducerComputation extends
 				.filter(f -> !(f instanceof MemoryDataDestinationProducer));
 	}
 
+	/**
+	 * Creates the destination {@link PackedCollection} for storing the result of this computation.
+	 * Subclasses should override this to provide an appropriately shaped destination.
+	 *
+	 * @param len the number of elements in the destination
+	 * @return a new PackedCollection to hold the computation output
+	 * @throws UnsupportedOperationException if not overridden by the implementation
+	 */
 	default PackedCollection createDestination(int len) {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Wraps the raw output memory data into a properly shaped {@link PackedCollection}.
+	 * Prepends dimensions to match the expected output shape if necessary, and
+	 * validates that the total size is compatible.
+	 *
+	 * @param output the raw output memory data from computation
+	 * @param offset the element offset into the output data
+	 * @return a PackedCollection view of the output with the correct shape
+	 * @throws IllegalArgumentException if the output size is not compatible with the expected shape
+	 */
 	default PackedCollection postProcessOutput(MemoryData output, int offset) {
 		TraversalPolicy shape = getShape();
 
@@ -217,6 +236,14 @@ public interface CollectionProducerComputation extends
 		return new ReshapeProducer(shape, this);
 	}
 
+	/**
+	 * Evaluates this computation and converts the result to a typed data adapter
+	 * using the provided factory function.
+	 *
+	 * @param <T>     the type of the resulting data adapter
+	 * @param factory a function that creates a data adapter from the output shape
+	 * @return the evaluated and converted result
+	 */
 	default <T extends MemoryDataAdapter> T collect(Function<TraversalPolicy, T> factory) {
 		PackedCollection c = get().evaluate();
 		T data = factory.apply(c.getShape());
@@ -224,6 +251,15 @@ public interface CollectionProducerComputation extends
 		return data;
 	}
 
+	/**
+	 * Creates a factory function that generates a new {@link CollectionProducer} from a list of
+	 * input producers, using the structure of an existing computation as the template.
+	 * If only one non-null input is present, that input is returned directly.
+	 *
+	 * @param <T>      the collection type of the computation
+	 * @param original the computation to use as a template for generating the new producer
+	 * @return a function that takes a list of producers and returns a new CollectionProducer
+	 */
 	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer>
 				producerFactory(CollectionProducerComputation original) {
 		return args -> {
@@ -241,6 +277,14 @@ public interface CollectionProducerComputation extends
 		};
 	}
 
+	/**
+	 * Returns true if the given producer may be isolated into an independent process.
+	 * Isolation is permitted only when the process supports it and the total collection
+	 * size does not exceed the maximum memory reservation limit.
+	 *
+	 * @param op the collection producer to test
+	 * @return true if isolation is permitted
+	 */
 	static <T extends PackedCollection> boolean isIsolationPermitted(CollectionProducer op) {
 		return Process.isolationPermitted(op) &&
 				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
@@ -290,8 +334,19 @@ public interface CollectionProducerComputation extends
 		return shape;
 	}
 
+	/**
+	 * A delegating wrapper that marks a {@link CollectionProducer} as isolated,
+	 * causing it to be evaluated as an independent process rather than inlined
+	 * into a parent computation graph.
+	 */
 	class IsolatedProcess extends DelegatedCollectionProducer {
 
+		/**
+		 * Creates an isolated process wrapping the specified producer.
+		 *
+		 * @param op the collection producer to isolate
+		 * @throws IllegalArgumentException if the producer's total size exceeds the maximum reservation
+		 */
 		public IsolatedProcess(CollectionProducer op) {
 			super(op);
 

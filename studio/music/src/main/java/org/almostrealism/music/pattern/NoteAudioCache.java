@@ -38,6 +38,7 @@ import java.util.Map;
  * @author Michael Murray
  */
 public class NoteAudioCache {
+	/** Map from absolute frame offset to cached audio data. */
 	private final Map<Integer, PackedCollection> cache = new HashMap<>();
 
 	/**

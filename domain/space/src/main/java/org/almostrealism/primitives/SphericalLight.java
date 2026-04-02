@@ -35,8 +35,19 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public class SphericalLight extends Sphere implements SurfaceLight {
-  private double intensity, atta, attb, attc;
-  
+  /** Total light intensity shared across all samples. */
+  private double intensity;
+
+  /** Constant attenuation coefficient for generated {@link org.almostrealism.color.PointLight} samples. */
+  private double atta;
+
+  /** Linear attenuation coefficient for generated {@link org.almostrealism.color.PointLight} samples. */
+  private double attb;
+
+  /** Quadratic attenuation coefficient for generated {@link org.almostrealism.color.PointLight} samples. */
+  private double attc;
+
+  /** Default number of {@link org.almostrealism.color.PointLight} samples generated per call. */
   private int samples;
 
 	/** Constructs a new {@link SphericalLight}. */

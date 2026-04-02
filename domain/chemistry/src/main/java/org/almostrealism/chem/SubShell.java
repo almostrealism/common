@@ -52,7 +52,10 @@ package org.almostrealism.chem;
  * @see Spin
  */
 public class SubShell {
+	/** The orbital associated with this subshell (defines quantum numbers and energy level). */
 	private Orbital o;
+
+	/** The number of electrons occupying this subshell (0, 1, or 2). */
 	private int e;
 
 	/**

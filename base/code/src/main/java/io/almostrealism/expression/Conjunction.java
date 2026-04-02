@@ -19,7 +19,19 @@ package io.almostrealism.expression;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * A boolean conjunction ({@code &}) of two or more sub-expressions.
+ *
+ * <p>Generates code of the form {@code a & b & c}. Constant-true operands are
+ * pruned during construction; if any operand is statically false the entire
+ * conjunction collapses to {@code false}.</p>
+ */
 public class Conjunction extends NAryExpression<Boolean> {
+	/**
+	 * Constructs a conjunction from the given list of boolean sub-expressions.
+	 *
+	 * @param values the operands joined by the {@code &} operator
+	 */
 	protected Conjunction(List<Expression<?>> values) { super(Boolean.class, "&", values); }
 
 	@Override
@@ -36,10 +48,23 @@ public class Conjunction extends NAryExpression<Boolean> {
 		return Conjunction.of(children);
 	}
 
+	/**
+	 * Creates a conjunction of the given boolean expressions.
+	 *
+	 * @param values the operands to conjoin
+	 * @return a simplified expression representing the logical AND
+	 */
 	public static Expression<Boolean> of(Expression<Boolean>... values) {
 		return of(List.of(values));
 	}
 
+	/**
+	 * Creates a conjunction from a list of expressions, pruning constant-true
+	 * operands and collapsing to a constant if any operand is statically false.
+	 *
+	 * @param values the list of operands to conjoin
+	 * @return a simplified expression representing the logical AND
+	 */
 	public static Expression<Boolean> of(List<Expression<?>> values) {
 		values = values.stream().filter(e -> !e.booleanValue()
 							.orElse(false)).collect(Collectors.toList());

@@ -25,9 +25,23 @@ import org.dcache.nfs.vfs.Inode;
 import java.io.IOException;
 import java.io.InputStream;
 
+/**
+ * An {@link Inode} that wraps a {@link Resource}, allowing resources in the virtual
+ * file system to be addressed both as NFS inodes and as {@link Resource} objects.
+ *
+ * <p>The inode's file handle is built from the resource's URI bytes, so path lookups
+ * performed by {@link GraphFileSystem} can resolve directly to the underlying resource.</p>
+ */
 public class ResourceInode extends Inode implements Resource {
+    /** The underlying resource represented by this inode. */
     private final Resource r;
 
+    /**
+     * Constructs a {@link ResourceInode} whose file handle is derived from the given
+     * resource's URI.
+     *
+     * @param r The resource to wrap
+     */
     public ResourceInode(Resource r) {
         super(new FileHandle.FileHandleBuilder().build(r.getURI().getBytes()));
         this.r = r;

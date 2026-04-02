@@ -68,10 +68,19 @@ import java.util.List;
  */
 public class LoopedWeightedSumComputation extends AggregatedProducerComputation {
 
+	/** The number of inner (kernel) elements summed together for each output element. */
 	private final int innerCount;
+
+	/** The shape of the input collection. */
 	private final TraversalPolicy inputShape;
+
+	/** The shape of the weight collection. */
 	private final TraversalPolicy weightShape;
+
+	/** Strategy for computing the linear index into the input array during accumulation. */
 	private final InputIndexer inputIndexer;
+
+	/** Strategy for computing the linear index into the weight array during accumulation. */
 	private final WeightIndexer weightIndexer;
 
 	/**

@@ -188,21 +188,46 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable, CellFeatures {
+	/** Console logger scoped to {@code AudioScene} for timing and debug output. */
 	public static final Console console = CellFeatures.console.child();
+
+	/** Timing metric that tracks the cumulative duration of {@code getCells} calls. */
 	private static final TimingMetric getCellsTime = console.timing("getCells");
+
+	/** Registry of all currently active {@code AudioScene} instances. */
 	private static final List<AudioScene<?>> activeInstances = new ArrayList<>();
 
+	/** Default number of audio source channels per scene. */
 	public static final int DEFAULT_SOURCE_COUNT = 6;
+
+	/** Default PCM buffer size in frames for real-time rendering. */
 	public static final int DEFAULT_REALTIME_BUFFER_SIZE = 1024;
+
+	/** Default number of delay echo layers per scene. */
 	public static final int DEFAULT_DELAY_LAYERS = 3;
+
+	/** Default number of patterns available per channel. */
 	public static final int DEFAULT_PATTERNS_PER_CHANNEL = 6;
+
+	/** Maximum number of scene sections supported by the genome structure. */
 	public static final int MAX_SCENE_SECTIONS = 16;
+
+	/** Default operator returning the number of active patterns for each channel index. */
 	public static final IntUnaryOperator DEFAULT_ACTIVE_PATTERNS;
+
+	/** Default operator returning the number of pattern layers for each channel index. */
 	public static final IntUnaryOperator DEFAULT_LAYERS;
+
+	/** Default function returning the minimum layer scale for each channel index. */
 	public static final IntToDoubleFunction DEFAULT_LAYER_SCALE;
+
+	/** Default operator returning the pattern loop duration (in measures) for each channel index. */
 	public static final IntUnaryOperator DEFAULT_DURATION;
 
+	/** Probability that a random genome variation will be applied to any given gene. */
 	public static double variationRate = 0.1;
+
+	/** Gaussian standard deviation multiplier for random genome variation perturbations. */
 	public static double variationIntensity = 0.01;
 
 	static {
@@ -253,58 +278,146 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				};
 	}
 
+	/** Audio sample rate in Hz for this scene. */
 	private final int sampleRate;
+
+	/** Tempo in beats per minute. */
 	private double bpm;
+
+	/** Number of mix channels in this scene. */
 	private final int channelCount;
+
+	/** Number of delay echo layers in the mixdown pipeline. */
 	private final int delayLayerCount;
+
+	/** Number of beats per measure (time signature numerator). */
 	private int measureSize = 4;
+
+	/** Total number of measures for the full composition. */
 	private int totalMeasures = 1;
 
+	/** Optional visual scene backing this audio scene; may be {@code null}. */
 	private final Animation<T> scene;
 
+	/** Manages global clock resets and measure-boundary timing. */
 	private final GlobalTimeManager time;
+
+	/** Keyboard tuning used to resolve note frequencies. */
 	private KeyboardTuning tuning;
+
+	/** Manages chord progression for the composition. */
 	private final ChordProgressionManager progression;
 
+	/** Audio library providing sample data for patterns; may be {@code null}. */
 	private AudioLibrary library;
+
+	/** Manages pattern layers and note scheduling for all channels. */
 	private final PatternSystemManager patterns;
+
+	/** Human-readable names for each mix channel. */
 	private final List<String> channelNames;
+
+	/** Bias factor applied to pattern activity probability during rendering. */
 	private double patternActivityBias;
 
+	/** Manages scene sections that define structural regions of the composition. */
 	private final SceneSectionManager sections;
+
+	/** Manages parameter automation envelopes over time. */
 	private final AutomationManager automation;
+
+	/** Manages per-channel effects chains. */
 	private final EfxManager efx;
+
+	/** Manages rise/swell effect processing. */
 	private final RiseManager riser;
+
+	/** Manages delays, reverb, and final mixdown processing. */
 	private final MixdownManager mixdown;
 
+	/** Manages ML-based audio generation integration. */
 	private final GenerationManager generation;
 
+	/** Genome encoding all evolvable parameters for this scene. */
 	private final ProjectedGenome genome;
-	
+
+	/** One-shot setup operation compiled during the first {@link #getCells} call. */
 	private OperationList setup;
+
+	/** Pattern audio buffers created for each channel during setup. */
 	private List<PatternAudioBuffer> renderCells = new ArrayList<>();
+
+	/** Consolidated backing buffer for all render cell outputs; allocated during {@code getCells}. */
 	private PackedCollection consolidatedRenderBuffer;
+
+	/** Index into the consolidated render buffer for the next allocation. */
 	private int renderBufferIndex;
+
+	/** The active cell list produced by the most recent {@code getCells} call. */
 	private CellList activeCells;
+
+	/** Cached automation level function built lazily from the automation manager. */
 	private Function<PackedCollection, Factor<PackedCollection>> automationLevel;
 
+	/** Listeners notified whenever the tempo changes. */
 	private final List<Consumer<Frequency>> tempoListeners;
+
+	/** Listeners notified whenever the total composition duration changes. */
 	private final List<DoubleConsumer> durationListeners;
 
+	/**
+	 * Creates an audio scene backed by the given visual scene at the specified tempo,
+	 * using default source count and delay layer count.
+	 *
+	 * @param scene      the optional visual scene; may be {@code null}
+	 * @param bpm        the tempo in beats per minute
+	 * @param sampleRate the audio sample rate in Hz
+	 */
 	public AudioScene(Animation<T> scene, double bpm, int sampleRate) {
 		this(scene, bpm, DEFAULT_SOURCE_COUNT, DEFAULT_DELAY_LAYERS, sampleRate);
 	}
 
+	/**
+	 * Creates an audio scene without a visual scene at the specified tempo, channel count,
+	 * delay layers, and sample rate.
+	 *
+	 * @param bpm         the tempo in beats per minute
+	 * @param channels    the number of mix channels
+	 * @param delayLayers the number of delay echo layers in the mixdown pipeline
+	 * @param sampleRate  the audio sample rate in Hz
+	 */
 	public AudioScene(double bpm, int channels, int delayLayers,
 					  int sampleRate) {
 		this(null, bpm, channels, delayLayers, sampleRate);
 	}
 
+	/**
+	 * Creates an audio scene backed by the given visual scene at the specified tempo,
+	 * channel count, delay layers, and sample rate. Uses an empty note audio choices list
+	 * and a no-op generation provider.
+	 *
+	 * @param scene       the optional visual scene; may be {@code null}
+	 * @param bpm         the tempo in beats per minute
+	 * @param channels    the number of mix channels
+	 * @param delayLayers the number of delay echo layers in the mixdown pipeline
+	 * @param sampleRate  the audio sample rate in Hz
+	 */
 	public AudioScene(Animation<T> scene, double bpm, int channels, int delayLayers,
 					  int sampleRate) {
 		this(scene, bpm, channels, delayLayers, sampleRate, new ArrayList<>(), new NoOpGenerationProvider());
 	}
 
+	/**
+	 * Primary constructor that fully initializes the audio scene with all manager subsystems.
+	 *
+	 * @param scene      the optional visual scene; may be {@code null}
+	 * @param bpm        the initial tempo in beats per minute
+	 * @param channels   the number of mix channels
+	 * @param delayLayers the number of delay echo layers in the mixdown pipeline
+	 * @param sampleRate the audio sample rate in Hz
+	 * @param choices    the initial list of note audio choices for pattern rendering
+	 * @param generation the generation provider for ML-based audio generation
+	 */
 	public AudioScene(Animation<T> scene, double bpm, int channels, int delayLayers,
 					  int sampleRate, List<NoteAudioChoice> choices,
 					  GenerationProvider generation) {
@@ -362,6 +475,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		activeInstances.add(this);
 	}
 
+	/**
+	 * Sets the scene tempo in beats per minute.
+	 *
+	 * @param bpm the tempo in beats per minute
+	 * @deprecated Use {@link #setTempo(Frequency)} instead.
+	 */
 	@Deprecated
 	public void setBPM(double bpm) {
 		this.bpm = bpm;
@@ -372,27 +491,65 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	@Deprecated
 	public double getBPM() { return this.bpm; }
 
+	/**
+	 * Sets the scene tempo and notifies all registered tempo listeners.
+	 *
+	 * @param tempo the new tempo as a {@link Frequency}
+	 */
 	public void setTempo(Frequency tempo) {
 		this.bpm = tempo.asBPM();
 		tempoListeners.forEach(l -> l.accept(tempo));
 		triggerDurationChange();
 	}
 
+	/**
+	 * Returns the current tempo as a {@link Frequency}.
+	 *
+	 * @return the current tempo
+	 */
 	public Frequency getTempo() { return Frequency.forBPM(bpm); }
 
+	/**
+	 * Sets the keyboard tuning used to resolve note frequencies and propagates it
+	 * to the pattern system manager.
+	 *
+	 * @param tuning the keyboard tuning to apply
+	 */
 	public void setTuning(KeyboardTuning tuning) {
 		this.tuning = tuning;
 		patterns.setTuning(tuning);
 	}
 
+	/**
+	 * Returns the current keyboard tuning.
+	 *
+	 * @return the keyboard tuning
+	 */
 	public KeyboardTuning getTuning() { return tuning; }
 
+	/**
+	 * Returns the audio library providing sample data for pattern rendering.
+	 *
+	 * @return the audio library, or {@code null} if none has been set
+	 */
 	public AudioLibrary getLibrary() { return library; }
 
+	/**
+	 * Sets the audio library and refreshes the pattern system with the library's sample tree.
+	 *
+	 * @param library the new audio library
+	 */
 	public void setLibrary(AudioLibrary library) {
 		setLibrary(library, null);
 	}
 
+	/**
+	 * Sets the audio library with optional progress reporting during sample tree loading.
+	 *
+	 * @param library  the new audio library
+	 * @param progress optional consumer that receives loading progress values in {@code [0, 1]};
+	 *                 may be {@code null}
+	 */
 	public void setLibrary(AudioLibrary library, DoubleConsumer progress) {
 		this.library = library;
 
@@ -401,14 +558,34 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		}
 	}
 
+	/**
+	 * Convenience method that creates an {@link AudioLibrary} from the given provider tree
+	 * and sets it as the scene's library.
+	 *
+	 * @param tree the file-based wave data provider tree
+	 */
 	public void setLibraryRoot(FileWaveDataProviderTree tree) {
 		setLibraryRoot(tree, null);
 	}
 
+	/**
+	 * Convenience method that creates an {@link AudioLibrary} from the given provider tree
+	 * and sets it as the scene's library, with optional progress reporting.
+	 *
+	 * @param tree     the file-based wave data provider tree
+	 * @param progress optional consumer that receives loading progress values; may be {@code null}
+	 */
 	public void setLibraryRoot(FileWaveDataProviderTree tree, DoubleConsumer progress) {
 		setLibrary(new AudioLibrary(tree, getSampleRate()), progress);
 	}
 
+	/**
+	 * Loads note audio choices from the specified JSON patterns file and adds them to the
+	 * pattern manager's choices list.
+	 *
+	 * @param patternsFile path to the JSON patterns file
+	 * @throws IOException if the file cannot be read
+	 */
 	public void loadPatterns(String patternsFile) throws IOException {
 		try (FileInputStream in = new FileInputStream(patternsFile)) {
 			NoteAudioChoiceList choices = defaultMapper()
@@ -418,8 +595,18 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		}
 	}
 
+	/**
+	 * Returns the optional visual scene backing this audio scene.
+	 *
+	 * @return the visual scene, or {@code null} if none was provided
+	 */
 	public Animation<T> getScene() { return scene; }
 
+	/**
+	 * Returns a copy of the scene's current genome parameters.
+	 *
+	 * @return a new {@link ProjectedGenome} with the current parameter values
+	 */
 	public ProjectedGenome getGenome() { return new ProjectedGenome(genome.getParameters()); }
 
 	/**
@@ -444,16 +631,63 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		this.patterns.refreshParameters();
 	}
 
+	/**
+	 * Adds a scene section starting at the given measure position with the specified length.
+	 *
+	 * @param position the starting measure index of the section
+	 * @param length   the duration of the section in measures
+	 */
 	public void addSection(int position, int length) {
 		sections.addSection(position, length);
 	}
+
+	/**
+	 * Adds a global time reset (break) at the specified measure.
+	 *
+	 * @param measure the measure index at which to insert a reset
+	 */
 	public void addBreak(int measure) { time.addReset(measure); }
 
+	/**
+	 * Returns the global time manager that controls clock resets and measure boundaries.
+	 *
+	 * @return the global time manager
+	 */
 	public GlobalTimeManager getTimeManager() { return time; }
+
+	/**
+	 * Returns the scene section manager that organizes structural sections of the composition.
+	 *
+	 * @return the scene section manager
+	 */
 	public SceneSectionManager getSectionManager() { return sections; }
+
+	/**
+	 * Returns the chord progression manager for this scene.
+	 *
+	 * @return the chord progression manager
+	 */
 	public ChordProgressionManager getChordProgression() { return progression; }
+
+	/**
+	 * Returns the pattern system manager that handles note scheduling and layer rendering.
+	 *
+	 * @return the pattern system manager
+	 */
 	public PatternSystemManager getPatternManager() { return patterns; }
+
+	/**
+	 * Returns the automation manager that handles parameter envelope automation.
+	 *
+	 * @return the automation manager
+	 */
 	public AutomationManager getAutomationManager() { return automation; }
+
+	/**
+	 * Returns the per-channel effects manager.
+	 *
+	 * @return the EFX manager
+	 */
 	public EfxManager getEfxManager() { return efx; }
 
 	/**
@@ -463,49 +697,198 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * <p>Exposed for testing to verify that output buffer consolidation is active.</p>
 	 */
 	public PackedCollection getConsolidatedRenderBuffer() { return consolidatedRenderBuffer; }
+	/**
+	 * Returns the mixdown manager that handles delay, reverb, and final mix bus processing.
+	 *
+	 * @return the mixdown manager
+	 */
 	public MixdownManager getMixdownManager() { return mixdown; }
+
+	/**
+	 * Returns the generation manager for ML-based audio generation integration.
+	 *
+	 * @return the generation manager
+	 */
 	public GenerationManager getGenerationManager() { return generation; }
 
+	/**
+	 * Registers a listener that is notified whenever the tempo changes.
+	 *
+	 * @param listener the listener to add
+	 */
 	public void addTempoListener(Consumer<Frequency> listener) { this.tempoListeners.add(listener); }
+
+	/**
+	 * Removes a previously registered tempo listener.
+	 *
+	 * @param listener the listener to remove
+	 */
 	public void removeTempoListener(Consumer<Frequency> listener) { this.tempoListeners.remove(listener); }
 
+	/**
+	 * Registers a listener that receives the total composition duration (in seconds) whenever
+	 * tempo, measure size, or total measure count changes.
+	 *
+	 * @param listener the listener to add
+	 */
 	public void addDurationListener(DoubleConsumer listener) { this.durationListeners.add(listener); }
+
+	/**
+	 * Removes a previously registered duration listener.
+	 *
+	 * @param listener the listener to remove
+	 */
 	public void removeDurationListener(DoubleConsumer listener) { this.durationListeners.remove(listener); }
 
+	/**
+	 * Returns the number of mix channels in this scene.
+	 *
+	 * @return the channel count
+	 */
 	public int getChannelCount() { return channelCount; }
+
+	/**
+	 * Returns the number of delay echo layers in the mixdown pipeline.
+	 *
+	 * @return the delay layer count
+	 */
 	public int getDelayLayerCount() { return delayLayerCount; }
 
+	/**
+	 * Returns the pattern activity bias applied to pattern scheduling probability.
+	 *
+	 * @return the pattern activity bias
+	 */
 	public double getPatternActivityBias() { return patternActivityBias; }
+
+	/**
+	 * Sets the pattern activity bias applied to pattern scheduling probability.
+	 *
+	 * @param patternActivityBias the new bias value
+	 */
 	public void setPatternActivityBias(double patternActivityBias) { this.patternActivityBias = patternActivityBias; }
 
+	/**
+	 * Returns the human-readable channel names list.
+	 *
+	 * @return the channel names
+	 */
 	public List<String> getChannelNames() { return channelNames; }
 
+	/**
+	 * Returns the duration of a single beat in seconds at the current tempo.
+	 *
+	 * @return beat duration in seconds
+	 */
 	public double getBeatDuration() { return getTempo().l(1); }
 
+	/**
+	 * Sets the number of beats per measure and notifies duration listeners.
+	 *
+	 * @param measureSize the new beats-per-measure value
+	 */
 	public void setMeasureSize(int measureSize) { this.measureSize = measureSize; triggerDurationChange(); }
+
+	/**
+	 * Returns the number of beats per measure.
+	 *
+	 * @return the measure size
+	 */
 	public int getMeasureSize() { return measureSize; }
+
+	/**
+	 * Returns the duration of a single measure in seconds at the current tempo.
+	 *
+	 * @return measure duration in seconds
+	 */
 	public double getMeasureDuration() { return getTempo().l(getMeasureSize()); }
+
+	/**
+	 * Returns the number of audio samples in a single measure at the configured sample rate.
+	 *
+	 * @return samples per measure
+	 */
 	public int getMeasureSamples() { return (int) (getMeasureDuration() * getSampleRate()); }
 
+	/**
+	 * Sets the total number of measures in the composition and notifies duration listeners.
+	 *
+	 * @param measures the new total measure count
+	 */
 	public void setTotalMeasures(int measures) { this.totalMeasures = measures; triggerDurationChange(); }
+
+	/**
+	 * Returns the total number of measures in the composition.
+	 *
+	 * @return total measure count
+	 */
 	public int getTotalMeasures() { return totalMeasures; }
+
+	/**
+	 * Returns the total number of beats in the composition.
+	 *
+	 * @return total beat count
+	 */
 	public int getTotalBeats() { return totalMeasures * measureSize; }
+
+	/**
+	 * Returns the total duration of the composition in seconds.
+	 *
+	 * @return total duration in seconds
+	 */
 	public double getTotalDuration() { return getTempo().l(getTotalBeats()); }
+
+	/**
+	 * Returns the total number of samples in the full composition at the configured sample rate.
+	 *
+	 * @return total sample count
+	 */
 	public int getTotalSamples() { return (int) (getTotalDuration() * getSampleRate()); }
+
+	/**
+	 * Returns the number of samples available for health evaluation, clamped to the
+	 * standard health computation duration.
+	 *
+	 * @return available sample count
+	 */
 	public int getAvailableSamples() {
 		return Math.min(HealthComputationAdapter.standardDurationFrames, getTotalSamples());
 	}
 
+	/**
+	 * Returns the audio sample rate in Hz.
+	 *
+	 * @return sample rate in Hz
+	 */
 	public int getSampleRate() { return sampleRate; }
 
+	/**
+	 * Returns an {@link AudioSceneContext} with no specific channel selected.
+	 *
+	 * @return a scene context covering all channels
+	 */
 	public AudioSceneContext getContext() {
 		return getContext(Collections.emptyList());
 	}
 
+	/**
+	 * Returns an {@link AudioSceneContext} configured for the specified channel.
+	 *
+	 * @param channel the channel descriptor
+	 * @return a scene context for the given channel
+	 */
 	public AudioSceneContext getContext(ChannelInfo channel) {
 		return getContext(Collections.singletonList(channel));
 	}
 
+	/**
+	 * Returns an {@link AudioSceneContext} configured for the specified list of channels.
+	 * At most one channel may be provided; passing an empty list returns a context with
+	 * no channel-specific sections.
+	 *
+	 * @param channels the list of channel descriptors (must have zero or one element)
+	 * @return a fully configured scene context
+	 */
 	public AudioSceneContext getContext(List<ChannelInfo> channels) {
 		if (channels.size() > 1) {
 			throw new IllegalArgumentException();
@@ -544,6 +927,11 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return context;
 	}
 
+	/**
+	 * Serializes the current scene configuration into a {@link Settings} object.
+	 *
+	 * @return a settings snapshot of this scene's current state
+	 */
 	public Settings getSettings() {
 		Settings settings = new Settings();
 		settings.setBpm(getBPM());
@@ -567,8 +955,21 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return settings;
 	}
 
+	/**
+	 * Applies the given settings to this scene using the default library provider.
+	 *
+	 * @param settings the settings to apply
+	 */
 	public void setSettings(Settings settings) { setSettings(settings, this::createLibrary, null); }
 
+	/**
+	 * Applies the given settings to this scene with a custom library provider and optional
+	 * progress callback.
+	 *
+	 * @param settings        the settings to apply
+	 * @param libraryProvider a function that creates an {@link AudioLibrary} from a root path
+	 * @param progress        optional consumer that receives library loading progress; may be {@code null}
+	 */
 	public void setSettings(Settings settings,
 							Function<String, AudioLibrary> libraryProvider,
 							DoubleConsumer progress) {
@@ -607,10 +1008,21 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		}
 	}
 
+	/**
+	 * Notifies all registered duration listeners with the current total duration in seconds.
+	 * Called whenever tempo, measure size, or total measure count changes.
+	 */
 	protected void triggerDurationChange() {
 		durationListeners.forEach(l -> l.accept(getTotalDuration()));
 	}
 
+	/**
+	 * Returns {@code true} if any pattern choice in this scene references the given
+	 * resource (by canonical file path).
+	 *
+	 * @param canonicalPath the canonical file path to check
+	 * @return {@code true} if the resource is in use by at least one pattern choice
+	 */
 	public boolean checkResourceUsed(String canonicalPath) {
 		return getPatternManager().getChoices().stream().anyMatch(p -> p.checkResourceUsed(canonicalPath));
 	}
@@ -1117,14 +1529,35 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return notesEvaluated;
 	}
 
+	/**
+	 * Serializes the current scene settings to a JSON file.
+	 *
+	 * @param file the target file to write settings to
+	 * @throws IOException if the file cannot be written
+	 */
 	public void saveSettings(File file) throws IOException {
 		defaultMapper().writeValue(file, getSettings());
 	}
 
+	/**
+	 * Loads and applies scene settings from the given JSON file using the default library
+	 * provider. Falls back to default settings if the file does not exist or cannot be parsed.
+	 *
+	 * @param file the settings file to load; may be {@code null} to use defaults
+	 */
 	public void loadSettings(File file) {
 		loadSettings(file, this::createLibrary, null);
 	}
 
+	/**
+	 * Loads and applies scene settings from the given JSON file using the provided library
+	 * provider and optional progress callback. Falls back to default settings if the file
+	 * does not exist or cannot be parsed.
+	 *
+	 * @param file            the settings file to load; may be {@code null} to use defaults
+	 * @param libraryProvider a function that creates an {@link AudioLibrary} from a root path
+	 * @param progress        optional loading progress consumer; may be {@code null}
+	 */
 	public void loadSettings(File file, Function<String, AudioLibrary> libraryProvider, DoubleConsumer progress) {
 		if (file != null && file.exists()) {
 			try (FileInputStream in = new FileInputStream(file)) {
@@ -1180,6 +1613,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		}
 	}
 
+	/**
+	 * Creates a shallow clone of this scene. The clone shares the same audio library
+	 * and pattern choices but gets a fresh settings configuration.
+	 *
+	 * @return a new {@code AudioScene} that mirrors this scene's configuration
+	 */
 	public AudioScene<T> clone() {
 		AudioScene<T> clone = new AudioScene<>(scene, bpm,
 				channelCount, delayLayerCount, sampleRate,
@@ -1201,10 +1640,33 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return clone;
 	}
 
+	/**
+	 * Convenience factory method that creates and fully configures an audio scene from files.
+	 *
+	 * @param settingsFile path to the JSON settings file, or {@code null} for defaults
+	 * @param patternsFile path to the JSON patterns file
+	 * @param libraryRoot  path to the root sample library directory, or {@code null}
+	 * @param bpm          the initial tempo in beats per minute
+	 * @param sampleRate   the audio sample rate in Hz
+	 * @return a fully configured {@link AudioScene}
+	 * @throws IOException if any file cannot be read
+	 */
 	public static AudioScene<?> load(String settingsFile, String patternsFile, String libraryRoot, double bpm, int sampleRate) throws IOException {
 		return load(null, settingsFile, patternsFile, libraryRoot, bpm, sampleRate);
 	}
 
+	/**
+	 * Factory method that creates a visually backed audio scene from files.
+	 *
+	 * @param scene        the optional visual scene; may be {@code null}
+	 * @param settingsFile path to the JSON settings file, or {@code null} for defaults
+	 * @param patternsFile path to the JSON patterns file
+	 * @param libraryRoot  path to the root sample library directory, or {@code null}
+	 * @param bpm          the initial tempo in beats per minute
+	 * @param sampleRate   the audio sample rate in Hz
+	 * @return a fully configured {@link AudioScene}
+	 * @throws IOException if any file cannot be read
+	 */
 	public static AudioScene<?> load(Animation<?> scene, String settingsFile, String patternsFile, String libraryRoot, double bpm, int sampleRate) throws IOException {
 		AudioScene<?> audioScene = new AudioScene<>(scene, bpm, sampleRate);
 		audioScene.loadPatterns(patternsFile);
@@ -1214,6 +1676,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return audioScene;
 	}
 
+	/**
+	 * Creates a configured {@link ObjectMapper} for JSON serialization and deserialization of
+	 * scene settings. Includes custom deserializers for {@link KeyPosition} and
+	 * {@link WesternChromatic}.
+	 *
+	 * @return a configured {@link ObjectMapper}
+	 */
 	public static ObjectMapper defaultMapper() {
 		ObjectMapper mapper = new ObjectMapper();
 		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -1226,6 +1695,15 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		return mapper;
 	}
 
+	/**
+	 * Creates a JSON deserializer for key position types that handles both plain string
+	 * values and legacy array-encoded formats produced by older serializers.
+	 *
+	 * @param <T>     the key position type
+	 * @param clazz   the target type class
+	 * @param factory a factory function that creates instances from string representations
+	 * @return a {@link StdDeserializer} for the given key position type
+	 */
 	private static <T> StdDeserializer<T> keyPositionDeserializer(Class<T> clazz, Function<String, T> factory) {
 		return new StdDeserializer<>(clazz) {
 			@Override
@@ -1242,6 +1720,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		};
 	}
 
+	/**
+	 * Returns the default genome variation operator that applies small Gaussian perturbations
+	 * to a random subset of gene values. The rate and intensity are controlled by
+	 * {@link #variationRate} and {@link #variationIntensity}.
+	 *
+	 * @return a {@link UnaryOperator} that produces a perturbed copy of the input genome
+	 */
 	public static UnaryOperator<ProjectedGenome> defaultVariation() {
 		return genome -> {
 			Random rand = new Random();
@@ -1250,22 +1735,49 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		};
 	}
 
+	/**
+	 * Serializable settings for an {@link AudioScene}. Captures tempo, structure,
+	 * library path, chord progression, pattern system, channel names, and effects routing.
+	 * Used with {@link AudioScene#getSettings()} and {@link AudioScene#setSettings(Settings)}.
+	 */
 	public static class Settings {
+		/** Tempo in beats per minute. */
 		private double bpm = 120;
+
+		/** Number of beats per measure. */
 		private int measureSize = 4;
+
+		/** Total number of measures in the composition. */
 		private int totalMeasures = 64;
+
+		/** Measure indices at which global clock resets (breaks) occur. */
 		private List<Integer> breaks = new ArrayList<>();
+
+		/** Structural sections defining regions of the composition. */
 		private List<Section> sections = new ArrayList<>();
+
+		/** Root path of the audio sample library; may be {@code null}. */
 		private String libraryRoot;
 
+		/** Chord progression settings. */
 		private ChordProgressionManager.Settings chordProgression;
+
+		/** Pattern system settings controlling note scheduling and layers. */
 		private PatternSystemManager.Settings patternSystem;
+
+		/** Human-readable channel names. */
 		private List<String> channelNames;
+
+		/** Channel indices routed through the wet (effects) bus. */
 		private List<Integer> wetChannels;
+
+		/** Channel indices routed through the reverb bus. */
 		private List<Integer> reverbChannels;
 
+		/** Generation manager settings for ML-based audio generation. */
 		private GenerationManager.Settings generation;
 
+		/** Creates a new {@code Settings} instance with default pattern system and generation settings. */
 		public Settings() {
 			patternSystem = new PatternSystemManager.Settings();
 			generation = new GenerationManager.Settings();
@@ -1307,23 +1819,72 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		public GenerationManager.Settings getGeneration() { return generation; }
 		public void setGeneration(GenerationManager.Settings generation) { this.generation = generation; }
 
+		/**
+		 * A named structural section of the composition, defined by a start measure
+		 * position and a duration in measures.
+		 */
 		public static class Section {
-			private int position, length;
+			/** Starting measure index of this section. */
+			private int position;
 
+			/** Duration of this section in measures. */
+			private int length;
+
+			/** Creates an empty section with position 0 and length 0. */
 			public Section() { }
 
+			/**
+			 * Creates a section at the given start position with the specified duration.
+			 *
+			 * @param position the starting measure index
+			 * @param length   the section duration in measures
+			 */
 			public Section(int position, int length) {
 				this.position = position;
 				this.length = length;
 			}
 
+			/**
+			 * Returns the starting measure index of this section.
+			 *
+			 * @return the start position in measures
+			 */
 			public int getPosition() { return position; }
+
+			/**
+			 * Sets the starting measure index of this section.
+			 *
+			 * @param position the new start position in measures
+			 */
 			public void setPosition(int position) { this.position = position; }
 
+			/**
+			 * Returns the duration of this section in measures.
+			 *
+			 * @return the section length in measures
+			 */
 			public int getLength() { return length; }
+
+			/**
+			 * Sets the duration of this section in measures.
+			 *
+			 * @param length the new section length in measures
+			 */
 			public void setLength(int length) { this.length = length; }
 		}
 
+		/**
+		 * Creates a standard set of scene settings with default sections, breaks,
+		 * chord progression, pattern system configuration, and standard channel routing.
+		 *
+		 * @param channels          the number of mix channels
+		 * @param patternsPerChannel the number of patterns per channel
+		 * @param activePatterns     operator returning the number of active patterns per channel
+		 * @param layersPerPattern   operator returning the number of layers per channel
+		 * @param minLayerScale      function returning the minimum layer scale per channel
+		 * @param duration           operator returning the loop duration per channel
+		 * @return a fully configured default {@link Settings} instance
+		 */
 		public static Settings defaultSettings(int channels, int patternsPerChannel,
 											   IntUnaryOperator activePatterns,
 											   IntUnaryOperator layersPerPattern,
@@ -1351,12 +1912,25 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		}
 	}
 
+	/**
+	 * Creates an {@link AudioLibrary} from the given root path, or returns {@code null}
+	 * if the path is {@code null}.
+	 *
+	 * @param f the root directory path, or {@code null}
+	 * @return an {@link AudioLibrary} or {@code null}
+	 */
 	private AudioLibrary createLibrary(String f) {
 		if (f == null) return null;
 
 		return new AudioLibrary(createTree(f), getSampleRate());
 	}
 
+	/**
+	 * Creates a {@link FileWaveDataProviderNode} for the given directory path.
+	 *
+	 * @param f the root directory path
+	 * @return a {@link FileWaveDataProviderTree} backed by the directory
+	 */
 	private FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> createTree(String f) {
 		return new FileWaveDataProviderNode(new File(f));
 	}

@@ -21,7 +21,34 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
+/**
+ * A cell that accumulates incoming values by summing them into its cache.
+ *
+ * <p>{@code SummationCell} overrides the push operation to add each incoming
+ * value to the cached value rather than replacing it. This makes it the standard
+ * accumulator used at the receiving end of multiple concurrent push operations,
+ * such as when multiple upstream cells contribute to a single downstream value.</p>
+ *
+ * <p>On each tick (via {@link CachedStateCell#tick()}), the accumulated sum is
+ * forwarded downstream and the cache is reset to zero.</p>
+ *
+ * <p>Note: {@link CachedStateCell#tick()} contains an optimized path specifically
+ * for SummationCell that avoids the intermediate outValue copy.</p>
+ *
+ * @see CollectionCachedStateCell
+ * @see CachedStateCell
+ * @author Michael Murray
+ */
 public class SummationCell extends CollectionCachedStateCell {
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Adds the incoming value to the cached sum using an accelerated assignment.</p>
+	 *
+	 * @param protein the value to add to the accumulated sum (must not be null)
+	 * @return an operation that performs the accumulation
+	 * @throws NullPointerException if protein is null
+	 */
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		if (protein == null) throw new NullPointerException();

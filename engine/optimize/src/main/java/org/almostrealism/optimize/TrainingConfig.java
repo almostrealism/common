@@ -38,18 +38,43 @@ import java.nio.file.Path;
  */
 public class TrainingConfig {
 
+	/** Number of full passes over the training dataset. */
 	private int epochs = 10;
+
+	/** Number of samples processed in each gradient update step. */
 	private int batchSize = 4;
+
+	/** Step size for the Adam optimizer parameter updates. */
 	private double learningRate = 1e-4;
+
+	/** Exponential decay rate for Adam first moment (gradient) estimates. */
 	private double beta1 = 0.9;
+
+	/** Exponential decay rate for Adam second moment (squared gradient) estimates. */
 	private double beta2 = 0.999;
+
+	/** L2 regularization coefficient applied to parameter updates. */
 	private double weightDecay = 0.0;
+
+	/** Maximum L2 norm for gradient clipping; 0 disables clipping. */
 	private double maxGradNorm = 1.0;
+
+	/** Number of steps for linear learning rate warmup before reaching the target rate. */
 	private int warmupSteps = 0;
+
+	/** Frequency of checkpoint saves in training steps; 0 disables periodic saves. */
 	private int saveEveryNSteps = 0;
+
+	/** Number of epochs with no validation improvement before stopping; 0 disables. */
 	private int earlyStoppingPatience = 3;
+
+	/** Minimum improvement in validation loss that counts as progress for early stopping. */
 	private double earlyStoppingMinDelta = 1e-6;
+
+	/** Frequency of progress log messages in training steps. */
 	private int logEveryNSteps = 10;
+
+	/** Directory where training checkpoints are saved. */
 	private Path checkpointDir;
 
 	/**

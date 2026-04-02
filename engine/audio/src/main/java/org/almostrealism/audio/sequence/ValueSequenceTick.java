@@ -34,12 +34,27 @@ import java.util.function.Consumer;
  * @see ValueSequenceComputation
  */
 public class ValueSequenceTick extends ValueSequenceComputation {
+	/**
+	 * Creates a repeating ValueSequenceTick that advances through the given steps.
+	 *
+	 * @param data           audio state data for wave position tracking
+	 * @param durationFrames duration of each step in frames
+	 * @param choices        value producers (used only for determining step count)
+	 */
 	public ValueSequenceTick(BaseAudioData data,
 							 Producer<PackedCollection> durationFrames,
 							 Producer<PackedCollection>... choices) {
 		this(data, durationFrames, true, choices);
 	}
 
+	/**
+	 * Creates a ValueSequenceTick with configurable repeat behavior.
+	 *
+	 * @param data           audio state data for wave position tracking
+	 * @param durationFrames duration of each step in frames
+	 * @param repeat         whether the sequence repeats after the last step
+	 * @param choices        value producers (used only for determining step count)
+	 */
 	public ValueSequenceTick(BaseAudioData data,
 							 Producer<PackedCollection> durationFrames,
 							 boolean repeat, Producer<PackedCollection>... choices) {

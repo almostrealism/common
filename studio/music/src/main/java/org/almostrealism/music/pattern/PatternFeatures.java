@@ -49,6 +49,7 @@ import java.util.List;
  * @author Michael Murray
  */
 public interface PatternFeatures extends CodeFeatures {
+	/** Distribution metric tracking the sizes of rendered pattern audio segments. */
 	DistributionMetric sizes = CellFeatures.console.distribution("patternSizes");
 
 	/**

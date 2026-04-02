@@ -31,8 +31,13 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public class Clock implements Temporal {
+	/** The set of photon fields that are notified on each clock tick. */
 	private Set<PhotonField> fields;
+
+	/** The number of ticks elapsed since the clock was started. */
 	private long ticks;
+
+	/** The duration of one clock tick, defaulting to 1 nanosecond (1e-9 seconds). */
 	private double interval = Math.pow(10.0, -9.0);
 	
 	/**
@@ -89,6 +94,11 @@ public class Clock implements Temporal {
 	 */
 	public double getTickInterval() { return this.interval; }
 
+	/**
+	 * Sets the tick interval based on the specified frequency.
+	 *
+	 * @param f  the frequency to use (not yet implemented)
+	 */
 	public void setFrequency(Frequency f) {
 		// TODO  Set the tick interval based on the specified frequency
 	}

@@ -51,7 +51,10 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class OperationWithInfo implements Operation, OperationInfo {
+	/** The metadata describing this operation. */
 	private final OperationMetadata metadata;
+
+	/** The underlying operation being wrapped. */
 	private final Operation operation;
 
 	/**
@@ -123,7 +126,10 @@ public class OperationWithInfo implements Operation, OperationInfo {
 	 * its execution.
 	 */
 	public static class RunnableWithInfo implements OperationInfo, Runnable {
+		/** The metadata associated with this runnable. */
 		private final OperationMetadata metadata;
+
+		/** The underlying runnable being wrapped. */
 		private final Runnable runnable;
 
 		/**
@@ -143,11 +149,19 @@ public class OperationWithInfo implements Operation, OperationInfo {
 		@Override
 		public void run() { runnable.run(); }
 
+		/** {@inheritDoc} Returns the short description from the associated metadata. */
 		@Override
 		public String describe() {
 			return getMetadata().getShortDescription();
 		}
 
+		/**
+		 * Creates a {@link RunnableWithInfo} pairing the given metadata with the given runnable.
+		 *
+		 * @param metadata the metadata to associate
+		 * @param runnable the underlying runnable
+		 * @return a new wrapper
+		 */
 		public static RunnableWithInfo of(OperationMetadata metadata, Runnable runnable) {
 			return new RunnableWithInfo(metadata, runnable);
 		}

@@ -71,15 +71,22 @@ import java.util.Map;
  * @author Michael Murray
  */
 public class Qwen3Tokenizer extends ByteLevelBPETokenizer {
-	// Special token IDs (Qwen3 defaults)
-	public static final int BOS_TOKEN = 151643;  // <|endoftext|>
-	public static final int EOS_TOKEN = 151645;  // <|im_end|>
-	public static final int PAD_TOKEN = 151643;  // Same as BOS
-	public static final int UNK_TOKEN = 128244;  // <unk>
+	/** Beginning-of-sequence token ID ({@code <|endoftext|>}). */
+	public static final int BOS_TOKEN = 151643;
 
+	/** End-of-sequence token ID ({@code <|im_end|>}). */
+	public static final int EOS_TOKEN = 151645;
+
+	/** Padding token ID (same as {@link #BOS_TOKEN}). */
+	public static final int PAD_TOKEN = 151643;
+
+	/** Unknown token ID ({@code <unk>}). */
+	public static final int UNK_TOKEN = 128244;
+
+	/** BPE merge priority scores read from the tokenizer binary; higher is preferred. */
 	private final float[] vocabScores;
 
-	// Merge priority tracking (lower = higher priority)
+	/** Map from space-separated merge pair key to merge priority (lower index = higher priority). */
 	private final Map<String, Integer> mergePriorities;
 
 	/**
@@ -233,8 +240,11 @@ public class Qwen3Tokenizer extends ByteLevelBPETokenizer {
 		return priority != null ? priority : Integer.MAX_VALUE;
 	}
 
-	// Getters
-
+	/**
+	 * Returns the BPE merge priority scores read from the tokenizer binary.
+	 *
+	 * @return Array of vocab scores indexed by token ID
+	 */
 	public float[] getVocabScores() {
 		return vocabScores;
 	}

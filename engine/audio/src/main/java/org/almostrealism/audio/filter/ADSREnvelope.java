@@ -58,7 +58,10 @@ import java.util.function.Supplier;
  */
 public class ADSREnvelope implements TemporalFactor<PackedCollection>, Lifecycle, CodeFeatures {
 
+	/** The ADSR state data holding envelope parameters and current phase/level. */
 	private final ADSREnvelopeData data;
+
+	/** Audio sample rate in Hz used for converting time parameters to frame counts. */
 	private final int sampleRate;
 
 	/**

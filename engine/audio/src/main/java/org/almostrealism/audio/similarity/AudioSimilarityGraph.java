@@ -67,9 +67,16 @@ import java.util.stream.Stream;
  */
 public class AudioSimilarityGraph implements IndexedGraph<SimilarityNode> {
 
+	/** Ordered list of similarity nodes in the graph (one per audio sample). */
 	private final List<SimilarityNode> nodes;
+
+	/** Mapping from audio identifier to node index for O(1) index lookup. */
 	private final Map<String, Integer> nodeIndex;
+
+	/** Mapping from audio identifier to node for direct node retrieval. */
 	private final Map<String, SimilarityNode> nodeLookup;
+
+	/** Minimum similarity score for an edge to be included in the graph. */
 	private final double threshold;
 
 	/**
@@ -108,6 +115,14 @@ public class AudioSimilarityGraph implements IndexedGraph<SimilarityNode> {
 		}
 	}
 
+	/**
+	 * Internal constructor for creating a derived graph with pre-built data structures.
+	 *
+	 * @param nodes       ordered list of similarity nodes
+	 * @param nodeIndex   map from identifier to node index
+	 * @param nodeLookup  map from identifier to node
+	 * @param threshold   minimum similarity for edge inclusion
+	 */
 	private AudioSimilarityGraph(List<SimilarityNode> nodes,
 								 Map<String, Integer> nodeIndex,
 								 Map<String, SimilarityNode> nodeLookup,

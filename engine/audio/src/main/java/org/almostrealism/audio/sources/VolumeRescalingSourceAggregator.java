@@ -32,8 +32,12 @@ import org.almostrealism.collect.PackedCollection;
  * @see VolumeEnvelopeExtraction
  */
 public class VolumeRescalingSourceAggregator implements SourceAggregator, CellFeatures {
+	/** The envelope extraction filter used to measure the filter source's amplitude envelope. */
 	private final VolumeEnvelopeExtraction envExtract;
 
+	/**
+	 * Creates a VolumeRescalingSourceAggregator with default envelope extraction settings.
+	 */
 	public VolumeRescalingSourceAggregator() {
 		envExtract = new VolumeEnvelopeExtraction();
 	}

@@ -63,6 +63,7 @@ import java.util.Random;
  * @see ScaleFactor
  */
 public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> implements Factory<V> {
+	/** Random number generator used to sample from the probability distribution over factories. */
 	private Random random;
 
 	/**

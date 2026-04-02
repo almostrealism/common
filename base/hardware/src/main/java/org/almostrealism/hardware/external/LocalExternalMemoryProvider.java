@@ -77,10 +77,13 @@ import java.util.stream.Stream;
  * @see ExternalInstructionSet
  */
 public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
+	/** If true, file reads are deferred until the data is first accessed. */
 	public static boolean enableLazyReading = true;
 
+	/** Shared provider instance with a null location, used for lazy-read reassignment. */
 	private static LocalExternalMemoryProvider local = new LocalExternalMemoryProvider(null);
 
+	/** Supplier of file paths for new memory allocations. */
 	private Supplier<File> location;
 
 	/**
@@ -176,38 +179,90 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 		// TODO  Destroy all LocalExternalMemory
 	}
 
+	/**
+	 * Loads data from the backing file into memory for each given instance.
+	 *
+	 * @param mem Memory instances to load from disk
+	 */
 	protected static void load(LocalExternalMemory... mem) {
 		Stream.of(mem).forEach(LocalExternalMemory::read);
 	}
 
+	/**
+	 * Writes data from memory back to the backing file for each given instance.
+	 *
+	 * @param mem Memory instances to write to disk
+	 */
 	protected static void unload(LocalExternalMemory... mem) {
 		Stream.of(mem).forEach(LocalExternalMemory::write);
 	}
 
+	/**
+	 * Reads binary data from numbered files in a directory into the corresponding memory data arguments.
+	 *
+	 * @param dest Directory containing numbered argument files
+	 * @param args Memory data arguments to populate
+	 * @throws IOException If any file cannot be read
+	 */
 	protected static void readData(File dest, MemoryData[] args) throws IOException {
 		for (int i = 0; i < args.length; i++) {
 			readBinary(new File(dest, String.valueOf(i)), args[i]);
 		}
 	}
 
+	/**
+	 * Writes memory data arguments to numbered binary files in a directory.
+	 *
+	 * @param dest Directory to write argument files into
+	 * @param args Memory data arguments to write
+	 * @throws IOException If any file cannot be written
+	 */
 	protected static void writeData(File dest, MemoryData[] args) throws IOException {
 		for (int i = 0; i < args.length; i++) {
 			writeBinary(new File(dest, String.valueOf(i)), args[i]);
 		}
 	}
 
+	/**
+	 * Writes a binary file containing the memory lengths of the given arguments.
+	 *
+	 * @param dest Directory to write the sizes file into
+	 * @param args Memory data arguments whose lengths to record
+	 * @throws IOException If the file cannot be written
+	 */
 	protected static void writeSizes(File dest, MemoryData[] args) throws IOException {
 		writeBinary(new File(dest, "sizes"), Stream.of(args).mapToInt(MemoryData::getMemLength).toArray());
 	}
 
+	/**
+	 * Writes a binary file containing the memory offsets of the given arguments.
+	 *
+	 * @param dest Directory to write the offsets file into
+	 * @param args Memory data arguments whose offsets to record
+	 * @throws IOException If the file cannot be written
+	 */
 	protected static void writeOffsets(File dest, MemoryData[] args) throws IOException {
 		writeBinary(new File(dest, "offsets"), Stream.of(args).mapToInt(MemoryData::getOffset).toArray());
 	}
 
+	/**
+	 * Writes a binary file containing the given count value.
+	 *
+	 * @param dest Directory to write the count file into
+	 * @param count Count value to write
+	 * @throws IOException If the file cannot be written
+	 */
 	protected static void writeCount(File dest, int count) throws IOException {
 		writeBinary(new File(dest, "count"), new int[]{count});
 	}
 
+	/**
+	 * Reads binary data from a file into the given memory data instance.
+	 *
+	 * @param src Source file to read from
+	 * @param mem Memory data instance to populate
+	 * @throws IOException If the file cannot be read
+	 */
 	protected static void readBinary(File src, MemoryData mem) throws IOException {
 		if (enableLazyReading) {
 			mem.getRootDelegate().reassign(local.allocate(src, mem.getRootDelegate().getMemLength()));
@@ -218,20 +273,49 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 		}
 	}
 
+	/**
+	 * Writes the raw bytes of the given memory data to a binary file.
+	 *
+	 * @param dest Destination file to write to
+	 * @param mem  Memory data to write
+	 * @throws IOException If the file cannot be written
+	 */
 	protected static void writeBinary(File dest, MemoryData mem) throws IOException {
 		writeBinary(dest, mem.getMem(), mem.getMemLength());
 	}
 
+	/**
+	 * Writes the first {@code length} elements of raw memory to a binary file.
+	 *
+	 * @param dest   Destination file to write to
+	 * @param mem    Raw memory to read from
+	 * @param length Number of elements to write
+	 * @throws IOException If the file cannot be written
+	 */
 	protected static void writeBinary(File dest, Memory mem, int length) throws IOException {
 		writeBinary(dest, mem.getBytes(length).array());
 	}
 
+	/**
+	 * Writes an array of integers to a binary file as 32-bit values.
+	 *
+	 * @param dest Destination file to write to
+	 * @param data Integer data to write
+	 * @throws IOException If the file cannot be written
+	 */
 	protected static void writeBinary(File dest, int data[]) throws IOException {
 		ByteBuffer buf = ByteBuffer.allocate(data.length * 8);
 		for (int i : data) buf.putInt(i);
 		writeBinary(dest, buf.array());
 	}
 
+	/**
+	 * Reads double values from a binary file into the given array.
+	 *
+	 * @param src  Source file to read from
+	 * @param data Array to populate with double values
+	 * @throws IOException If the file cannot be read
+	 */
 	protected static void readBinary(File src, double data[]) throws IOException {
 		ByteBuffer buf = ByteBuffer.allocate(8 * data.length);
 		try (InputStream in = new FileInputStream(src)) {
@@ -247,6 +331,13 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 		}
 	}
 
+	/**
+	 * Writes raw bytes to a file.
+	 *
+	 * @param dest Destination file to write to
+	 * @param data Byte data to write
+	 * @throws IOException If the file cannot be written
+	 */
 	protected static void writeBinary(File dest, byte data[]) throws IOException {
 		try (OutputStream out = new FileOutputStream(dest)) {
 			out.write(data);

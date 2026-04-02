@@ -16,15 +16,8 @@
 
 package io.flowtree.cli;
 
-import io.almostrealism.db.Query;
-import io.almostrealism.db.QueryHandler;
-import io.almostrealism.resource.Resource;
 import io.flowtree.Server;
-import io.flowtree.behavior.ServerBehavior;
-import io.flowtree.fs.DistributedResource;
 import io.flowtree.fs.OutputServer;
-import io.flowtree.fs.ResourceDistributionTask;
-import io.flowtree.job.JobFactory;
 import io.flowtree.msg.Message;
 import io.flowtree.msg.NodeProxy;
 import io.flowtree.node.Client;
@@ -32,22 +25,15 @@ import io.flowtree.node.Node;
 import io.flowtree.node.NodeGroup;
 import io.flowtree.python.JythonJob;
 import io.flowtree.ui.NetworkDialog;
-import org.almostrealism.color.RGB;
-import org.almostrealism.io.OutputHandler;
-import org.almostrealism.io.Storable;
-import org.almostrealism.util.Help;
-import org.almostrealism.util.KeyUtils;
 
 import javax.swing.*;
 import java.awt.*;
 import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
@@ -59,10 +45,8 @@ import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Date;
 import java.util.Hashtable;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 
@@ -714,408 +698,44 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		String inc = c;
 		int in = c.indexOf(" ");
 		if (in > 0) inc = c.substring(0, in);
-		
+
 		try {
 			if (c.startsWith("::help")) {
-				if (c.endsWith(" sendtask")) {
-					return "sendtask <host index> <JobFactory class name> [[key]=[value]]...\n" +
-							"Using -1 for host index sends the task to localhost.\n" +
-							"As many key=value pairs may be included as needed.";
-				} else if (c.endsWith(" plyrender")) {
-					return "plyrender <uri> [dimensions] [sDimensions] " +
-					  		"[pDimensions] [focalLength] [cameraLocation] [cameraDirection]\n" +
-					  		"dimensions, sDimensions, and pDimensions take the form wxh IE 1.0x1.0" +
-					  		"dimensions is in pixels (integer values only)" +
-					  		"cameraLocation and cameraDirection are vector quantites\n" +
-					  		"which must take the form x,y,z IE 0.0,0.0,0.0\n" +
-					  		"plyrender uses the PlySceneLoader (raytracer.loaders).";
-				} else if (c.endsWith(" ls")) {
-					return "ls <uri> [color]\n" +
-							"Lists the contents of the directory at <uri>.\n" +
-							"If the word color is append to the command, ls will\n" +
-							"produce rich HTML output with colors.";
-				} else if (c.endsWith(" dbupdate")) {
-					return "dbupdate <relay> <table> <task>";
-				} else if (c.endsWith(" dbs")) {
-					return "dbs {start, add}";
-				} else if (c.endsWith(" dbs start")) {
-					return "dbs start";
-				} else if (c.endsWith(" dbs add")) {
-					return "dbs add <classname>";
-				} else if (c.endsWith(" set")) {
-					return "The set command is used to set runtime variables.\n" +
-							"Usage: set <varName> <value>\n" +
-							"Variables:\n" +
-							"\tserver.hostname\n" +
-							"\tserver.resource.verbose\n" +
-							"\tdb.verbose\n" +
-							"\tserver.resource.io.verbose\n" +
-							"\tservers.output.host\n" +
-							"\tservers.output.port\n";
-				} else {
-					return "No help info.";
-				}
+				return FlowTreeCliCommands.help(c);
 			} else if (c.startsWith("::classhelp")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				Object o = Class.forName(s[0]).newInstance();
-				
-				if (o instanceof Help) {
-					return ((Help)o).getHelpInfo();
-				} else {
-					return s[0] + " does not provide help.";
-				}
+				return FlowTreeCliCommands.classHelp(c);
 			} else if (c.startsWith("::confighelp")) {
-				if (c.endsWith("confighelp")) {
-					BufferedReader bufIn = new BufferedReader(
-								new InputStreamReader(
-								(FlowTreeCliServer.class).
-								getClassLoader().
-								getResource(FlowTreeCliServer.internalConfig).
-								openStream()));
-					StringBuffer buf = new StringBuffer();
-					
-					w: while (true) {
-						String st = bufIn.readLine();
-						if (st == null) break;
-						buf.append(st + "\n");
-					}
-					
-					return "# Usage: confighelp <entry>\n" +
-							"# Below is a sample config file representing the default\n" +
-							"# configuration (a different config file may have\n" +
-							"# been specified or values may have been changed since\n" +
-							"# the time that rings started, meaning this is not\n" +
-							"# necessarily the configuration that is loaded).\n" +
-							"# Use the confighelp command to learn more about each value.\n\n" +
-							buf;
-				} else if (c.endsWith("server.port")) {
-					return "# The port that the NodeGroup server accepts connections on.\n" +
-							"# This port is the port that should be opened by other Rings\n" +
-							"# servers to establish a connection with this server.\n" +
-							"# Default: " + FlowTreeCliServer.defaultPort + "\n" +
-							"# See also:\n" +
-							"# \t open command (help open)\n" +
-							"# server.port = [on,off]";
-				} else {
-					return "Unknown parameter.";
-				}
+				return FlowTreeCliCommands.configHelp(c);
 			} else if (c.startsWith("::render")) {
-				String sceneName = "scene.xml";
-				String dim = "100x100";
-				String sdim = "1x1";
-				String pdim = "-1.0x-1.0";
-				String fl = "-1.0";
-				String cloc = "0.0,0.0,0.0";
-				String cdir = "0.0,0.0,0.0";
-				String pri = "1.0";
-				
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				
-				if (s.length > 0) sceneName = s[0];
-				if (s.length > 1) dim = s[1];
-				if (s.length > 2) sdim = s[2];
-				if (s.length > 3) pdim = s[3];
-				if (s.length > 4) fl = s[4];
-				if (s.length > 5) cloc = s[5];
-				if (s.length > 6) cdir = s[6];
-				if (s.length > 7) pri = s[7];
-				
-				long id = System.currentTimeMillis();
-				
-				String[] args = {
-						current.httpwww + sceneName,
-						dim, sdim, pdim, fl, cloc, cdir,
-						String.valueOf(current.jobSize),
-						String.valueOf(id), pri};
-
-				// TODO  Load producer by reflection
-				/*
-				final JobProducer p = new JobProducer(args);
-				String host = p.getHost();
-				
-				Client cl = Client.getCurrentClient();
-				ThreadGroup g = null;
-				if (cl != null) g = cl.getServer().getThreadGroup();
-				Thread t = new Thread(g, new Runnable() {
-					public void run() {
-						p.sendTask();
-					}
-				});
-				
-				t.setName("Network Client Job Producer Thread");
-				
-				t.start();
-				*/
-				
-				return "Started render thread: " + id; // + "@" + host;
+				return FlowTreeCliCommands.render(c, current.httpwww, current.jobSize);
 			} else if (c.startsWith("::plyrender")) {
-				String sceneName = "scene.xml";
-				String dim = "100x100";
-				String sdim = "1x1";
-				String pdim = "-1.0x-1.0";
-				String fl = "-1.0";
-				String cloc = "0.0,0.0,0.0";
-				String cdir = "0.0,0.0,0.0";
-				String pri = "1.0";
-				
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				
-				if (s.length <= 0)
-					return FlowTreeCliServer.runCommand("help plyrender", ps, commands);
-				else
-					sceneName = s[0];
-				
-				if (s.length > 1) dim = s[1];
-				if (s.length > 2) sdim = s[2];
-				if (s.length > 3) pdim = s[3];
-				if (s.length > 4) fl = s[4];
-				if (s.length > 5) cloc = s[5];
-				if (s.length > 6) cdir = s[6];
-				if (s.length > 7) pri = s[7];
-				
-				long id = System.currentTimeMillis();
-				
-				String[] args = {sceneName,
-						dim, sdim, pdim, fl, cloc, cdir,
-						String.valueOf(current.jobSize),
-						String.valueOf(id), pri};
-
-				// TODO  Load Job Producer using reflection
-				/*
-				final JobProducer p = new JobProducer(args);
-//				p.setSceneLoader(FlowTreeCliServer.plySceneLoaderClass);
-				String host = p.getHost();
-				
-				Client cl = Client.getCurrentClient();
-				ThreadGroup g = null;
-				if (cl != null) g = cl.getServer().getThreadGroup();
-				Thread t = new Thread(g, new Runnable() {
-					public void run() {
-						p.sendTask();
-					}
-				});
-				
-				t.setName("Network Client Job Producer Thread");
-				
-				t.start();
-				*/
-				
-				return "Started render thread: " + id; // + "@" + host;
+				return FlowTreeCliCommands.plyRender(c, ps, current.jobSize, commands);
 			} else if (c.startsWith("::gtsrender")) {
-				String sceneName = "scene.xml";
-				String dim = "100x100";
-				String sdim = "1x1";
-				String pdim = "-1.0x-1.0";
-				String fl = "-1.0";
-				String cloc = "0.0,0.0,0.0";
-				String cdir = "0.0,0.0,0.0";
-				String pri = "1.0";
-				
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				
-				if (s.length <= 0)
-					return FlowTreeCliServer.runCommand("help gtsrender", ps, commands);
-				else
-					sceneName = s[0];
-				
-				if (s.length > 1) dim = s[1];
-				if (s.length > 2) sdim = s[2];
-				if (s.length > 3) pdim = s[3];
-				if (s.length > 4) fl = s[4];
-				if (s.length > 5) cloc = s[5];
-				if (s.length > 6) cdir = s[6];
-				if (s.length > 7) pri = s[7];
-				
-				long id = System.currentTimeMillis();
-				
-				String[] args = {sceneName,
-						dim, sdim, pdim, fl, cloc, cdir,
-						String.valueOf(current.jobSize),
-						String.valueOf(id), pri};
-
-				// TODO  Load Job Producer using reflection
-				/*
-				final JobProducer p = new JobProducer(args);
-//				p.setSceneLoader(FlowTreeCliServer.gtsSceneLoaderClass);
-				String host = p.getHost();
-				
-				Client cl = Client.getCurrentClient();
-				ThreadGroup g = null;
-				if (cl != null) g = cl.getServer().getThreadGroup();
-				Thread t = new Thread(g, new Runnable() {
-					public void run() {
-						p.sendTask();
-					}
-				});
-				
-				t.setName("Network Client Job Producer Thread");
-				
-				t.start();
-				 */
-				
-				return "Started render thread: " + id; // + "@" + host;
+				return FlowTreeCliCommands.gtsRender(c, ps, current.jobSize, commands);
 			} else if (c.equals("::suicide")) {
 				System.out.println("Terminal: Received suicide");
 				System.exit(9);
 				return "suicide";
 			} else if (c.startsWith("::sendtask")) {
-				final String[] s = FlowTreeCliServer.parseCommand(c);
-				if (s.length <= 0) return "Please specify peer to send to.";
-				if (s.length <= 1) return "Please specify class name.";
-				
-				Object o = Class.forName(s[1]).newInstance();
-				
-				if (!(o instanceof JobFactory))
-					return s[1] + " is not a JobFactory.";
-				
-				final JobFactory f = (JobFactory) o;
-				
-				final int h = Integer.parseInt(s[0]);
-				String id = KeyUtils.generateKey();
-				String[] peers = Client.getCurrentClient().getServer().getPeers();
-				String host;
-				
-				if (h == -1)
-					host = "localhost";
-				else if (h < peers.length)
-					host = peers[h];
-				else
-					throw new IndexOutOfBoundsException("No peer with index " + h);
-				
-				f.set("id", id);
-				
-				for (int i = 2; i < s.length; i++) {
-					String key = s[i].substring(0, s[i].indexOf(":="));
-					String value = s[i].substring(s[i].indexOf(":=") + 2);
-					
-					f.set(key, value);
-				}
-				
-				Client cl = Client.getCurrentClient();
-				ThreadGroup g = null;
-				if (cl != null) g = cl.getServer().getThreadGroup();
-				Thread t = new Thread(g, () -> Client.getCurrentClient().getServer().sendTask(f, h));
-				
-				t.setName("Send Task Thread");
-				t.start();
-				
-				return "Started sendtask thread: " + id + "@" + host;
+				return FlowTreeCliCommands.sendTask(c, ps);
 			} else if (c.startsWith("::threads")) {
-				String[] s = Client.getCurrentClient().getServer().getThreadList();
-				for (int i = 0; i < s.length; i++) ps.println(s[i]);
-				return s.length + " active threads.";
+				return FlowTreeCliCommands.threads(ps);
 			} else if (c.startsWith("::kill")) {
-				int index;
-				String s = c;
-				
-				index = s.indexOf(" ");
-				s = s.substring(index + 1);
-				index = s.indexOf(" ");
-				String task = s.substring(0, index);
-				
-				index = s.indexOf(" ");
-				int relay = Integer.parseInt(s.substring(index + 1));
-				
-				Client.getCurrentClient().getServer().sendKill(task, relay);
-				
-				return "Send kill signal for task " + task +
-						" with relay count of " + relay + ".";
+				return FlowTreeCliCommands.kill(c);
 			} else if (c.startsWith("::work")) {
-				// TODO Add work command to documentation.
-				
-				String[] w = Client.getCurrentClient().getServer().getCurrentWork();
-				int tot = 0;
-				
-				for (int i = 0; i < w.length; i++) {
-					if (w[i] == null) {
-						ps.println("Node " + i + ": Not working.");
-					} else {
-						ps.println("Node " + i + ": " + w[i]);
-						tot++;
-					}
-				}
-				
-				String jobs = " running job";
-				if (tot == 1)
-					jobs = jobs + " on ";
-				else
-					jobs = jobs + "s on ";
-				
-				String nodes = " node";
-				if (w.length == 1)
-					nodes = nodes + ".";
-				else
-					nodes = nodes + "s.";
-				
-				return tot + jobs + w.length + nodes;
+				return FlowTreeCliCommands.work(ps);
 			} else if (c.startsWith("::loadimage")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				RGB[][] rgb = Client.getCurrentClient().getServer().loadImage(s[0]);
-				
-				if (rgb == null)
-					return "No image data loaded.";
-				else
-					return "Loaded " + rgb.length + "x" + rgb[0].length + " image.";
+				return FlowTreeCliCommands.loadImage(c);
 			} else if (c.startsWith("::ccache")) {
-				int index;
-				String s = c;
-				
-				index = s.indexOf(" ");
-				s = s.substring(index + 1);
-				index = s.indexOf(" ");
-				String name = s.substring(0, index);
-				
-				if (name.equals("scene")) {
-					// TODO  Move removeSceneCache method to flowtree
-
-					/*
-					index = s.indexOf(" ");
-					s = s.substring(index + 1);
-					String scene = s;
-					
-					if (RayTracingJob.removeSceneCache(scene))
-						return "Removed " + scene + " from RayTracingJob cache.";
-					else
-						return "Not in RayTracingJob cache: " + scene;
-					*/
-
-					return "not implemented";
-				} else {
-					return "Unknown cache: " + name;
-				}
+				return FlowTreeCliCommands.ccache(c);
 			} else if (c.startsWith("::export")) {
-				String s = c;
-				s = s.substring(s.indexOf(" ") + 1);
-				
-				Resource r = DistributedResource.createDistributedResource(s);
-				try (InputStream ins =
-						Client.getCurrentClient().getServer().loadResource(r).getInputStream();
-						FileOutputStream fout = new FileOutputStream("~" + s)) {
-					w: while (true) {
-						int i = ins.read();
-						if (i < 0) break;
-						fout.write(i);
-					}
-					
-					fout.flush();
-				}
-				
-				return "Wrote ~" + s;
+				return FlowTreeCliCommands.export(c);
 			} else if (c.startsWith("::status")) {
-				int index = c.indexOf(" ");
-				
-				if (index > 0) {
-					String file = c.substring(index + 1);
-					Client.getCurrentClient().getServer().writeStatus(file);
-					return "Wrote status file.";
-				} else {
-					Client.getCurrentClient().getServer().printStatus(ps);
-					return "\n";
-				}
+				return FlowTreeCliCommands.status(c, ps);
 			} else if (c.startsWith("::jobtime")) {
 				return String.valueOf(
-						Client.getCurrentClient().getServer().
-						getNodeGroup().getAverageJobTime());
+						Client.getCurrentClient().getServer()
+								.getNodeGroup().getAverageJobTime());
 			} else if (c.startsWith("::inputrate")) {
 				String[] s = FlowTreeCliServer.parseCommand(c);
 				int peer = Integer.parseInt(s[0]);
@@ -1127,453 +747,52 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 				int peer = Integer.parseInt(s[0]);
 				return String.valueOf(Client.getCurrentClient().getServer().getActivityRating(peer));
 			} else if (c.startsWith("::behave")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				if (s.length <= 0) return "Please specify a ServerBehavior.";
-				
-				Object o = null;
-				boolean v = Message.verbose;
-				
-				if (s[0].equals("-v")) {
-					Message.verbose = true;
-					o = Class.forName(s[1]).newInstance();
-				} else {
-					o = Class.forName(s[0]).newInstance();
-				}
-				
-				if (!(o instanceof ServerBehavior))
-					return s[0] + " is not a ServerBehavior.";
-				
-				((ServerBehavior) o).behave(Client.getCurrentClient().getServer(), ps);
-				
-				Message.verbose = v;
-				
-				return "Executed behavior.";
+				return FlowTreeCliCommands.behave(c, ps);
 			} else if (c.startsWith("::sbehave")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				if (s.length <= 0) return "Please specify a ServerBehavior.";
-				
-				Object o = null;
-				boolean v = Message.verbose;
-				
-				if (s[0].equals("-v")) {
-					Message.verbose = true;
-					o = Class.forName(s[1]).newInstance();
-				} else {
-					o = Class.forName(s[0]).newInstance();
-				}
-				
-				if (!(o instanceof ServerBehavior))
-					return s[0] + " is not a ServerBehavior.";
-				
-				final Object oo = o;
-				
-				Thread t = new Thread() {
-					public void run() {
-						((ServerBehavior) oo).behave(Client.getCurrentClient().getServer(), ps);
-					}
-				};
-				
-				Message.verbose = v;
-				
-				t.start();
-				
-				return "Executed behavior in thread " + t + ".";
+				return FlowTreeCliCommands.sBehave(c, ps);
 			} else if (c.startsWith("::output")) {
-				int index = c.indexOf(" ");
-				
-				if (index > 0) {
-					String f = c.substring(index + 1);
-					
-					if (f.endsWith("-image")) {
-						// TODO  Image output should be general purpose
-						/*
-						long task = Long.parseLong(f.substring(0, f.indexOf("-image")));
-						RayTracingJob.getDefaultOutputHandler().getHandler(task).writeImage();
-						return "Wrote image file for task " + task;
-						*/
-						return "not implemented";
-					} else {
-						return "Unknown resource type.";
-					}
-				} else {
-					return "Must specify output resource.";
-				}
+				return FlowTreeCliCommands.output(c);
 			} else if (c.startsWith("::print")) {
-				// TODO  Add print command to doumentation.
-				
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				if (s.length <= 0) return "Specify an object.";
-				
-				Server server = Client.getCurrentClient().getServer();
-				Object o = server.getObject(s[0]);
-				
-				if (o == null) {
-					return "null";
-				} else if (o instanceof Collection) {
-					Collection col = (Collection) o;
-					Iterator itr = col.iterator();
-					while (itr.hasNext()) ps.println(itr.next());
-					return col + " is a collection of " +
-							col.size() + " elements.";
-				} else if (o instanceof Object[]) {
-					Object[] ob = (Object[]) o;
-					for (int i = 0; i < ob.length; i++) ps.println(ob[i]);
-					return ob + " is an array of " +
-							ob.length + " elements.";
-				} else {
-					ps.println(o);
-					return "An instance of " + o.getClass().getName();
-				}
+				return FlowTreeCliCommands.print(c, ps);
 			} else if (c.startsWith("::ls")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				String file = "/";
-				boolean useColor = false;
-				if (s.length > 0 && !s[0].equals("ls")) file = s[0];
-				if (s.length > 1 && s[1].equals("color"))
-					useColor = true;
-				
-				ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
-				if (t == null) return "No running ResourceDistributionTask.";
-				
-				DistributedResource res = t.getResource(file);
-				
-				if (t.isDirectory(file)) {
-					String[] list = t.getChildren(file);
-					if (list == null) return "Null";
-					
-					double tot = 0.0;
-					
-					for (int i = 0; i < list.length; i++) {
-						if (useColor) {
-							if (t.isDirectory(list[i]))
-								ps.print(FlowTreeCliServer.dirColor);
-							else
-								ps.print(FlowTreeCliServer.resColor);
-						}
-						
-						ps.print(list[i]);
-						
-						if (useColor)
-							ps.print(FlowTreeCliServer.endColor);
-						
-						DistributedResource d = t.getResource(list[i]);
-						
-						d: if (d != null) {
-							double l = d.getTotalBytes() / 1000.0;
-							
-							if (l < 0) {
-								ps.print(" ?");
-								break d;
-							}
-							
-							tot += l;
-							
-							ps.print(" ");
-							ps.print(l);
-							ps.print(" kb");
-						}
-						
-						ps.println();
-					}
-					
-					return list.length + " files.\n" +
-							"Resources total " + tot + " kilobytes.";
-				} else if (res != null) {
-					double kilo = res.getTotalBytes() / 1000.0;
-					return file + " is " + kilo + " kilobytes.";
-				} else {
-					return file + " not found.";
-				}
+				return FlowTreeCliCommands.ls(c, ps);
 			} else if (c.startsWith("::mkdir")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				if (s.length <= 0) return "Specify a URI.";
-				
-				ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
-				if (t == null) return "No running ResourceDistributionTask.";
-				
-				String l = t.createDirectory(s[0]);
-				
-				if (l == null)
-					return "Could not create " + s[0];
-				else
-					return "Created " + l;
+				return FlowTreeCliCommands.mkdir(c);
 			} else if (c.startsWith("::rmdir")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				if (s.length <= 0) return "Specify a URI.";
-				
-				ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
-				if (t == null) return "No running ResourceDistributionTask.";
-				
-				boolean d = t.deleteDirectory(s[0]);
-				
-				if (d)
-					return "Deleted " + s[0];
-				else
-					return "Some files could not be deleted.";
+				return FlowTreeCliCommands.rmdir(c);
 			} else if (c.startsWith("::rm ")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				if (s.length <= 0) return "Specify a URI.";
-				
-				ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
-				if (t == null) return "No running ResourceDistributionTask.";
-				
-				boolean d = t.deleteResource(s[0]);
-				
-				if (d)
-					return "Deleted " + s[0];
-				else
-					return "Could not delete " + s[0];
+				return FlowTreeCliCommands.rm(c);
 			} else if (c.startsWith("::store")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				if (s.length <= 0) return "Specify an object.";
-				if (s.length <= 1) return "Specify a URI.";
-				
-				Server server = Client.getCurrentClient().getServer();
-				Object o = server.getObject(s[0]);
-				
-				if (o == null)
-					return s[0] + " is null.";
-				else if (!(o instanceof Storable))
-					return s[0] + " is not storable.";
-				
-				
-				try (OutputStream out = server.getOutputStream(s[1])) {
-					if (out == null) return "Could not get out stream to " + s[1];
-					((Storable)o).store(out);
-					return o + " stored to " + s[1];
-				}
+				return FlowTreeCliCommands.store(c);
 			} else if (c.startsWith("::peers")) {
-				String[] s = Client.getCurrentClient().getServer().getPeers();
-				StringBuffer b = new StringBuffer();
-				for (int i = 0; i < s.length; i++) b.append(s[i] + "\n");
-				return b.toString();
+				return FlowTreeCliCommands.peers();
 			} else if (c.startsWith("::pping")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				
-				int peer = 0;
-				int size = 1;
-				int n = 1;
-				int t = 5;
-				
-				if (s.length > 0) peer = Integer.parseInt(s[0]);
-				if (s.length > 1) size = Integer.parseInt(s[1]);
-				if (s.length > 2) n = Integer.parseInt(s[2]);
-				if (s.length > 3) t = Integer.parseInt(s[3]);
-				
-				int opened = 0;
-				long time = 0;
-				
-				for (int i = 0; i < n; i++) {
-					ps.print("Sending peer " + peer +
-								" a message containing " + size +
-								" chars of data + header in " + t +
-								"s: ");
-					try {
-						Thread.sleep(t * 1000L);
-					} catch (InterruptedException ie) {}
-					
-					long l = Client.getCurrentClient().getServer().ping(peer, size, t * 1000);
-					
-					if (l < 0) {
-						ps.println("Timeout.");
-					} else {
-						ps.println(l + " msecs.");
-						opened++;
-						time += l;
-					}
-				}
-				
-				if (opened > 0) {
-					return "Recieved " + opened + " messages averaging " + time / opened + " msecs each.";
-				} else {
-					return "No messages recieved.";
-				}
+				return FlowTreeCliCommands.pping(c, ps);
 			} else if (c.startsWith("::open")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				String host = s[0];
-				int port = Server.defaultPort;
-				if (s.length > 1) port = Integer.parseInt(s[1]);
-				
-				if (Client.getCurrentClient().getServer().open(host, port)) {
-					return "Opened host " + host;
-				} else {
-					return "Host was not opened.";
-				}
+				return FlowTreeCliCommands.open(c);
 			} else if (c.startsWith("::close")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				int h = Integer.parseInt(s[0]);
-				String p = Client.getCurrentClient().getServer().getPeers()[h];
-				int d = Client.getCurrentClient().getServer().close(h);
-				return "Dropped " + d + " node connections to " + p;
+				return FlowTreeCliCommands.close(c);
 			} else if (c.startsWith("::uptime")) {
 				double min = Client.getCurrentClient().getServer().getUptime() / 60000.0;
 				return "Client up for " + min + " minutes.";
 			} else if (c.startsWith("::date")) {
 				return new Date().toString();
 			} else if (c.startsWith("::set")) {
-				int index;
-				String s = c;
-				
-				index = s.indexOf(" ");
-				s = s.substring(index + 1);
-				index = s.indexOf(" ");
-				String param = s.substring(0, index);
-				
-				index = s.indexOf(" ");
-				s = s.substring(index + 1);
-				String value = s;
-				
-				boolean b = Client.getCurrentClient().getServer().setParam(param, value);
-				
-				if (b)
-					return "Set " + param + " to " + value;
-				else
-					return "Unknown paramater: " + param;
+				return FlowTreeCliCommands.set(c);
 			} else if (c.startsWith("::giterate")) {
 				Node n = Client.getCurrentClient().getServer().getNodeGroup();
 				n.iteration(n);
 				return n + " iteration performed.";
 			} else if (c.startsWith("::run")) {
-				int index;
-				String s = c;
-				
-				index = s.indexOf(" ");
-				s = s.substring(index + 1);
-				index = s.indexOf(" ");
-				String prg = s.substring(0, index);
-				
-				if (prg.equals("test")) {
-					index = s.indexOf(" ");
-					int sleep = Integer.parseInt(s.substring(index + 1));
-
-					// TODO
-//					Client.getCurrentClient().getServer().sendTask(new TestJobFactory(sleep).encode(), 0);
-//					return "Sent test job factory.";
-					return "not implemented";
-				} else if (prg.equals("runnable")) {
-					index = s.indexOf(" ");
-					Runnable r = (Runnable) Class.forName(s.substring(index + 1)).newInstance();
-					
-					long start = System.currentTimeMillis();
-					r.run();
-					long end = System.currentTimeMillis();
-					
-					return r.getClass().getName() + ".run() completed in " +
-							(end - start) + " msecs.";
-				} else if (prg.equals("command")) {
-					index = s.indexOf(" ");
-					Command r = (Command) Class.forName(s.substring(index + 1)).newInstance();
-					
-					long start = System.currentTimeMillis();
-					r.run(c, ps);
-					long end = System.currentTimeMillis();
-					
-					return "Executed command " + r.getClass().getName() +
-							" in " + (end - start) + " msecs.";
-				}
-				
-				return "Unknown task type \"" + prg + "\"";
+				return FlowTreeCliCommands.run(c, ps);
 			} else if (c.startsWith("::tasks")) {
-				String[] s = Client.getCurrentClient().getServer().getNodeGroup().taskList();
-				StringBuffer r = new StringBuffer();
-				
-				for(int i = 0; i < s.length; i++) r.append(s[i] + "\n");
-				
-				return r.toString();
+				return FlowTreeCliCommands.tasks();
 			} else if (c.startsWith("::dbs")) {
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				
-				if (s.length <= 0) {
-					return "Usage: dbs <command>";
-				} else if (s[0].equals("start")) {
-					Properties p = new Properties();
-					p.setProperty("db.test", "true");
-					
-					OutputServer server =
-						new OutputServer(p);
-					
-					return "Started DBS.";
-				} else if (s[0].equals("create")) {
-					OutputServer server =
-						OutputServer.getCurrentServer();
-					if (server == null) return "No DBS running.";
-
-					if (server.getDatabaseConnection().createOutputTable())
-						return "Created DB tables.";
-					else
-						return "Could not create DB tables.";
-				} else if (s[0].equals("add")) {
-					OutputServer server =
-						OutputServer.getCurrentServer();
-					if (server == null) return "No DBS running.";
-					
-					Object o = Class.forName(s[1]).newInstance();
-					
-					boolean out = false, que = false;
-					
-					if (o instanceof OutputHandler) {
-						server.getDatabaseConnection().addOutputHandler(
-								(OutputHandler)o);
-						out = true;
-					}
-					
-					if (o instanceof QueryHandler) {
-						server.getDatabaseConnection().addQueryHandler(
-								(QueryHandler)o);
-						que = true;
-					}
-					
-					if (out && que) {
-						return "Added " + o + " as a handler for output and queries.";
-					} else if (out) {
-						return "Added " + o + " as a handler for output.";
-					} else if (que) {
-						return "Added " + o + " as a handler for queries.";
-					} else {
-						return "Could not add " + o + " as a DB handler.";
-					}
-				} else {
-					return "Unknown DBS command: " + s[0] + "\nTry start, create, or add.";
-				}
+				return FlowTreeCliCommands.dbs(c);
 			} else if (c.startsWith("::dbnotify")) {
-				OutputServer server =
-					OutputServer.getCurrentServer();
-				if (server == null) return "No DBS running.";
-				
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				server.storeOutput();
-				
-				return "Output from " + s[0] + " passed to output handlers.";
+				return FlowTreeCliCommands.dbNotify(c);
 			} else if (c.startsWith("::dbupdate")) {
-				OutputServer dbs =
-					OutputServer.getCurrentServer();
-				if (dbs == null) return "No DBS running.";
-				
-				String[] s = FlowTreeCliServer.parseCommand(c);
-				int depth = 1;
-				String table = "output";
-				String con = "true";
-				
-				if (s.length > 0 && !s[0].equals("dbupdate"))
-					depth = Integer.parseInt(s[0]);
-				
-				if (s.length > 1) table = s[1];
-				if (s.length > 2) con = s[2];
-				
-				if (!con.equals("true")) con = "data like '%:" + con + ":%'";
-				
-				Query q = new Query(table, con);
-				q.setRelay(depth);
-				
-				Server server = Client.getCurrentClient().getServer();
-				Message m = server.executeQuery(q, null, NodeProxy.queryTimeout);
-				
-				Hashtable h = new Hashtable();
-				Query.fromString(m.getData(), h);
-				
-				ps.println("Network Query returned " + h.size() + " items.");
-				dbs.storeOutput(h);
-				return "Passed " + h.size() + " items to output handlers.";
+				return FlowTreeCliCommands.dbUpdate(c, ps);
 			} else if (commands != null && commands.containsKey(inc)) {
 				Command r = (Command) commands.get(inc);
 				return r.run(c, ps);

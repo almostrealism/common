@@ -103,8 +103,11 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	 */
 	public static int maxReflections = 4;
 
+  /** The base reflectivity at normal incidence (0.0 to 1.0) and the blur factor for diffuse reflections. */
   private double reflectivity, blur;
+  /** The tint color multiplied with reflected ray colors. */
   private Producer<PackedCollection> reflectiveColor;
+  /** Optional environment map texture used when reflected rays miss all scene surfaces. */
   private Texture eMap;
 
 	/**

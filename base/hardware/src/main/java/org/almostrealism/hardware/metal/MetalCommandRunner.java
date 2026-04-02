@@ -42,12 +42,17 @@ import java.util.concurrent.Future;
  * @see MetalOperator
  */
 public class MetalCommandRunner {
+	/** Maximum number of kernel arguments supported by the pre-allocated offset and size buffers. */
 	public static final int MAX_ARGS = 512;
 
+	/** Single-threaded executor that serializes Metal command submission to avoid concurrency issues. */
 	private ExecutorService executor;
 
+	/** Pre-allocated integer buffer holding the byte offset of each kernel argument. */
 	private MTLBuffer offset;
+	/** Pre-allocated integer buffer holding the element count (size) of each kernel argument. */
 	private MTLBuffer size;
+	/** The command queue used to submit encoded Metal compute commands. */
 	private final MTLCommandQueue queue;
 
 	/**

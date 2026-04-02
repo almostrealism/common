@@ -85,21 +85,43 @@ import java.util.function.Supplier;
  * @see DistributionFeatures#sample(PackedCollection, int)
  */
 public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
+	/** Consumer invoked with the current position index before each forward pass. */
 	private final IntConsumer step;
+
+	/** Consumer invoked with the current token ID to load embeddings before each forward pass. */
 	private final IntConsumer token;
+
+	/** Supplier that executes the model forward pass and returns the output logit vector. */
 	private final Supplier<PackedCollection> logits;
+
+	/** Size of the model vocabulary, equal to the length of the logit vector. */
 	private final int vocabSize;
 
+	/** Compiled evaluable for finding the index of the maximum logit (greedy decoding). */
 	private Evaluable<PackedCollection> indexOfMax;
+
+	/** Compiled evaluable that divides logits by the current temperature. */
 	private Evaluable<PackedCollection> rescale;
+
+	/** Compiled evaluable that applies softmax to the temperature-scaled logits. */
 	private Evaluable<? extends PackedCollection> softmax;
 
+	/** The current generation step index; incremented after each call to {@link #next()}. */
 	private int currentStep;
+
+	/** The most recently generated or input token ID. */
 	private int currentToken;
 
+	/** A single-element collection holding the current sampling temperature value. */
 	private PackedCollection temperature;
+
+	/** The prompt token array set by {@link #setPrompt(int[], int)}. */
 	private int[] prompt;
+
+	/** Number of valid tokens in {@link #prompt}. */
 	private int promptTokens;
+
+	/** The logit vector produced by the most recent forward pass; used to sample the next token. */
 	private PackedCollection cachedLogits;
 
 	/**

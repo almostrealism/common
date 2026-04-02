@@ -77,8 +77,13 @@ public class VoiceAllocator {
 		NONE
 	}
 
+	/** Array of voice states, one per available voice slot. */
 	private final VoiceState[] voices;
+
+	/** Maximum number of simultaneously active voices. */
 	private final int maxVoices;
+
+	/** Voice stealing strategy used when all voices are active. */
 	private StealingStrategy stealingStrategy;
 
 	/**

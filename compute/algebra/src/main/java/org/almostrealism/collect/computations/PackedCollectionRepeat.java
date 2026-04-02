@@ -128,13 +128,25 @@ import java.util.function.Supplier;
 public class PackedCollectionRepeat
 		extends IndexProjectionProducerComputation {
 	
+	/** When true, uses unique non-zero offset optimization to reduce redundant index computation. */
 	public static boolean enableUniqueIndexOptimization = true;
+
+	/** When true, isolates the input computation before repeating, improving cache locality. */
 	public static boolean enableInputIsolation = true;
+
+	/** When true, wraps the repeat computation in process isolation for independent evaluation. */
 	public static boolean enableIsolation = true;
+
+	/** When true, permits repeat operations even when the slice exceeds Integer.MAX_VALUE elements. */
 	public static boolean enableLargeSlice = true;
+
+	/** When true, short-circuits simple repetitions by delegating to {@link PackedCollection#repeat(int)}. */
 	public static boolean enableShortCircuit = false;
 
+	/** The shape of the individual unit that is repeated, derived from the input collection's item shape. */
 	private final TraversalPolicy subsetShape;
+
+	/** The full slice shape, equal to subsetShape prepended with the repeat count dimension. */
 	private final TraversalPolicy sliceShape;
 
 	/**

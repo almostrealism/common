@@ -27,6 +27,16 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.function.DoubleFunction;
 import java.util.function.Supplier;
 
+/**
+ * Abstract base class for {@link PatternNoteAudio} implementations that delegate
+ * audio retrieval to a child source and optionally apply a {@link org.almostrealism.audio.notes.NoteAudioFilter}.
+ *
+ * <p>Subclasses provide the delegate, filter, and provider via abstract methods.
+ * The {@link #computeAudio} method handles the full retrieval and filtering logic,
+ * including optional frame-offset support for partial note rendering.</p>
+ *
+ * @see PatternNoteLayer
+ */
 public abstract class PatternNoteAudioAdapter implements
 		PatternNoteAudio, CellFeatures, SamplingFeatures {
 
@@ -108,10 +118,19 @@ public abstract class PatternNoteAudioAdapter implements
 		}
 	}
 
+	/** Returns the underlying note audio delegate, or {@code null} if none is set. */
 	protected abstract PatternNoteAudio getDelegate();
 
+	/** Returns the audio filter applied to the delegate's output. */
 	protected abstract NoteAudioFilter getFilter();
 
+	/**
+	 * Returns the note audio provider for the given target and selection function.
+	 *
+	 * @param target         the key position target
+	 * @param audioSelection function mapping a double to a {@link PatternNoteAudio}
+	 * @return the selected audio provider
+	 */
 	protected abstract PatternNoteAudio getProvider(KeyPosition<?> target,
 													DoubleFunction<PatternNoteAudio> audioSelection);
 }

@@ -24,15 +24,48 @@ import org.almostrealism.music.notes.PatternNote;
 import org.almostrealism.music.notes.PatternNoteAudio;
 import org.almostrealism.music.notes.PatternNoteLayer;
 
+/**
+ * Interface for parameterized envelope generators that create note audio filters.
+ *
+ * <p>Implementations compute ADSR envelope parameters from a {@link ParameterSet}
+ * and wrap note audio in a {@link PatternNoteLayer} or {@link PatternNote} with
+ * the resulting filter applied.</p>
+ *
+ * @see ParameterizedVolumeEnvelope
+ * @see ParameterizedFilterEnvelope
+ */
 public interface ParameterizedEnvelope extends EnvelopeFeatures {
 
+	/**
+	 * Wraps the given note audio in a layer with an envelope filter derived from the parameters.
+	 *
+	 * @param params the parameter set controlling envelope shape
+	 * @param voicing the signal path voicing
+	 * @param note the note audio to wrap
+	 * @return a new {@link PatternNoteLayer} with the filter applied
+	 */
 	default PatternNoteLayer apply(ParameterSet params, ChannelInfo.Voicing voicing, PatternNoteAudio note) {
 		return PatternNoteLayer.create(note, createFilter(params, voicing));
 	}
 
+	/**
+	 * Wraps the given pattern note in a new note with an envelope filter derived from the parameters.
+	 *
+	 * @param params the parameter set controlling envelope shape
+	 * @param voicing the signal path voicing
+	 * @param note the pattern note to wrap
+	 * @return a new {@link PatternNote} with the filter applied
+	 */
 	default PatternNote apply(ParameterSet params, ChannelInfo.Voicing voicing, PatternNote note) {
 		return new PatternNote(note, createFilter(params, voicing));
 	}
 
+	/**
+	 * Creates a {@link NoteAudioFilter} from the given parameters and voicing.
+	 *
+	 * @param params the parameter set controlling envelope shape
+	 * @param voicing the signal path voicing
+	 * @return the computed filter
+	 */
 	NoteAudioFilter createFilter(ParameterSet params, ChannelInfo.Voicing voicing);
 }

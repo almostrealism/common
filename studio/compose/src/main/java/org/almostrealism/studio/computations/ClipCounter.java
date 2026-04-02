@@ -30,7 +30,19 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * GPU-compatible operation that increments a clip counter whenever an audio sample
+ * falls outside the configured minimum and maximum amplitude bounds.
+ */
 public class ClipCounter extends OperationComputationAdapter<PackedCollection> {
+	/**
+	 * Creates a clip counter.
+	 *
+	 * @param clipCount    destination collection holding the running clip count (single element)
+	 * @param clipSettings collection providing the min and max amplitude bounds
+	 *                     (element 0 = min, element 1 = max)
+	 * @param value        the audio sample value to evaluate
+	 */
 	public ClipCounter(Producer<PackedCollection> clipCount,
 					   Producer<PackedCollection> clipSettings,
 					   Producer<PackedCollection> value) {

@@ -26,11 +26,33 @@ import java.util.OptionalInt;
 
 // TODO  Perhaps this should extend UniformCollectionExpression
 // TODO  (it is a uniform translation of the input expression)
+/**
+ * A collection expression that evaluates its input at an index bounded by the collection size.
+ *
+ * <p>The raw output index is reduced modulo the collection's total size before querying the
+ * input operand. When the reduced index can be resolved to a compile-time constant, the input
+ * is accessed directly. Otherwise a chain of {@link Conditional} expressions is generated,
+ * one branch per possible index value, so that the access can be resolved at runtime in the
+ * generated code.</p>
+ */
 public class ConditionalIndexExpression extends OperandCollectionExpression {
+	/**
+	 * Creates a conditional index expression with the given shape and input operand.
+	 *
+	 * @param shape the output shape (also defines the modulus for index reduction)
+	 * @param in    the input operand to evaluate at the bounded index
+	 */
 	public ConditionalIndexExpression(TraversalPolicy shape, TraversableExpression in) {
 		super(null, shape, in);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Reduces the index modulo the collection size and returns the value from the input
+	 * at that position. If the index is a compile-time constant, the input is accessed directly.
+	 * Otherwise a chain of {@link Conditional} nodes covers all possible index values.</p>
+	 */
 	@Override
 	public Expression<Double> getValueAt(Expression<?> index) {
 		TraversableExpression<Double> value = getOperands().get(0);
@@ -52,11 +74,13 @@ public class ConditionalIndexExpression extends OperandCollectionExpression {
 		}
 	}
 
+	/** {@inheritDoc} Delegates to the first operand. */
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		return getOperands().get(0).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
+	/** {@inheritDoc} Delegates to the first operand. */
 	@Override
 	public Optional<Boolean> containsIndex(int index) {
 		return getOperands().get(0).containsIndex(index);

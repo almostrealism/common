@@ -27,5 +27,10 @@ package org.almostrealism.audio.data;
  * @see FileWaveDataProviderTree
  */
 public interface PathResource {
+	/**
+	 * Returns the file system path of this resource.
+	 *
+	 * @return the absolute or relative path to the resource file
+	 */
 	String getResourcePath();
 }

@@ -29,12 +29,22 @@ import io.almostrealism.expression.Expression;
  * @see SpectrumCaching
  */
 public class ExplicitDepthCaching implements CachingSettings {
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns {@code true} when the expression's {@link Expression#treeDepth()} is 7.</p>
+	 */
 	public boolean isExpressionCacheTarget(Expression<?> e) {
 		int depth = e.treeDepth();
 //		return depth == 7 || depth == 11;
 		return depth == 7;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @return {@code "explicit"}
+	 */
 	@Override
 	public String shortDesc() {
 		return "explicit";

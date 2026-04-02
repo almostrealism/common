@@ -45,7 +45,10 @@ import java.util.Collections;
 
 /** A {@link Sphere} represents a primitive sphere in 3d space. */
 public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFeatures {
+	/** When {@code true}, applies inverse transform to the ray before intersection testing. */
 	public static boolean enableTransform = true;
+
+	/** When {@code true}, uses the hardware-accelerated (Producer-based) intersection path. */
 	private static final boolean enableHardwareAcceleration = true;
 
 	/** Constructs a {@link Sphere} representing a unit sphere centered at the origin that is black. */
@@ -330,12 +333,26 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	// TODO  Make private
+	/**
+	 * Computes the ray-sphere intersection discriminant for the given ray.
+	 * A positive discriminant indicates two intersection points; zero indicates a tangent hit;
+	 * negative indicates no intersection.
+	 *
+	 * @param ray the ray producer
+	 * @return a producer for the discriminant value
+	 */
 	public Producer<PackedCollection> discriminant(Producer<?> ray) {
 		// return oDotd(ray).pow(2.0).add(dDotd(ray).multiply(oDoto(ray).add(-1.0)).multiply(-1));
 		return oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).subtract(1.0)));
 	}
 
 	// TODO  Make private
+	/**
+	 * Computes the square root of the ray-sphere intersection discriminant for the given ray.
+	 *
+	 * @param ray the ray producer
+	 * @return a producer for the square root of the discriminant
+	 */
 	public Producer<PackedCollection> discriminantSqrt(Producer<?> ray) {
 		return pow(discriminant(ray), c(0.5));
 	}
@@ -402,6 +419,13 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 		);
 	}
 
+	/**
+	 * Computes the two quadratic solution distances for ray-sphere intersection.
+	 *
+	 * @param ray the ray (in sphere local space) to intersect
+	 * @return a {@link io.almostrealism.relation.Producer} of a {@link org.almostrealism.algebra.Pair}
+	 *         containing the two distance values {@code t0} and {@code t1}
+	 */
 	private CollectionProducer t(Producer<?> ray) {
 		Producer<PackedCollection> dS = discriminantSqrt(ray);
 		Producer<PackedCollection> minusODotD = oDotd(ray).minus();

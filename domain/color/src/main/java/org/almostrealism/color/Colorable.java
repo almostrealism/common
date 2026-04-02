@@ -16,6 +16,18 @@
 
 package org.almostrealism.color;
 
+/**
+ * Implemented by objects that have a settable RGB color.
+ *
+ * @author Michael Murray
+ */
 public interface Colorable {
+	/**
+	 * Sets the color of this object using the specified red, green, and blue channel values.
+	 *
+	 * @param r the red channel value in the range [0.0, 1.0]
+	 * @param g the green channel value in the range [0.0, 1.0]
+	 * @param b the blue channel value in the range [0.0, 1.0]
+	 */
 	void setColor(double r, double g, double b);
 }

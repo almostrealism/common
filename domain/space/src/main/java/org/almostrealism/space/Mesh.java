@@ -51,6 +51,7 @@ import java.util.List;
  * @author  Dan Chivers
  */
 public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
+	/** Default white color assigned to triangles that do not have an explicit color set. */
 	private static final RGB white = new RGB(1.0, 1.0, 1.0);
 	
 	/**
@@ -167,10 +168,26 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		PackedCollection getMeshPointData();
 	}
 	
-  private List points, triangles;
+  /** The list of vertex positions (as {@link Vertex} objects) for this mesh. */
+  private List points;
+
+  /** The list of triangle connectivity data (as {@code int[3]} index arrays). */
+  private List triangles;
+
+  /** Cache of preconstructed {@link Triangle} objects indexed by triangle number. */
   private Triangle[] tcache;
+
+  /** Flags indicating which triangles should be skipped during intersection tests. */
   private boolean[] ignore;
-  private boolean smooth, removeBackFaces, intcolor;
+
+  /** When true, vertex normals are averaged across shared vertices for smooth shading. */
+  private boolean smooth;
+
+  /** When true, triangles whose normals face away from the ray origin are culled. */
+  private boolean removeBackFaces;
+
+  /** When true, vertex colors are interpolated across triangle surfaces. */
+  private boolean intcolor;
   
   /** Source for loading mesh data from external files. */
   private MeshSource source;
@@ -392,6 +409,12 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   	 */
   	public Vertex[] getVectors() { return this.getVectors(this.source == null); }
   	
+	/**
+	 * Returns the vertices of this mesh, or null if {@code b} is false.
+	 *
+	 * @param b true to return the vertex array, false to return null
+	 * @return the array of vertices, or null
+	 */
   	public Vertex[] getVectors(boolean b) {
 		if (this.points == null) return null;
 
@@ -401,18 +424,31 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 			return null;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Collection<Vector> neighbors(Vector node) {
 		throw new UnsupportedOperationException();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public int countNodes() {
 		return points.size();
 	}
 
+	/**
+	 * Returns an iterator over the vertices of this mesh.
+	 *
+	 * @return an iterator of vertex objects
+	 */
 	public Iterator iterateVectors() { return this.points.iterator(); }
-  	
+
+	/**
+	 * Replaces the triangle connectivity data of this mesh with the specified array.
+	 * Each entry is an array of three vertex indices defining one triangle.
+	 *
+	 * @param data the triangle connectivity data (array of {@code int[3]} index triplets)
+	 */
   	public void setTriangleData(int[][] data) {
   		this.triangles.clear();
   		for (int i = 0; i < data.length; i++) this.triangles.add(data[i]);
@@ -452,10 +488,21 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   		return vertexData.getMeshPointData();
 	}
 
+	/**
+	 * Returns the triangle connectivity data for this mesh.
+	 *
+	 * @return the triangle index array, or null if a mesh source is set
+	 */
   	public int[][] getTriangleData() {
   		return this.getTriangleData(this.source == null);
   	}
 
+	/**
+	 * Returns the triangle connectivity data for this mesh, or null if {@code b} is false.
+	 *
+	 * @param b true to return the data, false to return null
+	 * @return the triangle index array, or null
+	 */
   	public int[][] getTriangleData(boolean b) {
   		if (b)
   			return (int[][]) this.triangles.toArray(new int[0][0]);
@@ -463,6 +510,13 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   			return null;
   	}
   	
+	/**
+	 * Returns an iterable over all {@link Triangle} objects in this mesh.
+	 * If a {@link VertexData} provider is configured, triangles are constructed on demand
+	 * from the provider; otherwise the internal triangle list is used.
+	 *
+	 * @return an iterable of triangles
+	 */
 	public Iterable<Triangle> triangles() {
 		return () -> {
 			if (vertexData == null) {
@@ -602,6 +656,12 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 */
 	public boolean getInterpolateColor() { return this.intcolor; }
 	
+	/**
+	 * Returns the index of the specified vertex in this mesh's point list.
+	 *
+	 * @param v the vertex to search for
+	 * @return the zero-based index, or -1 if not found
+	 */
 	public int getIndex(Vector v) { return this.points.indexOf(v); }
 	
 	/**
@@ -713,6 +773,13 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		return this.addTriangle(a, b, c);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Not yet implemented for {@link Mesh}.
+	 *
+	 * @throws UnsupportedOperationException always
+	 */
 	@Override
 	public BoundingSolid calculateBoundingSolid() {
 		throw new UnsupportedOperationException();
@@ -743,6 +810,12 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 				new DimensionAwareKernel<>(kernel));
 	}
 
+	/**
+	 * Updates the ignore flags for all cached triangles based on whether their normals
+	 * face toward or away from the given ray origin.
+	 *
+	 * @param r the ray to test back-face visibility against
+	 */
 	private void removeBackFaces(Ray r) {
 		int b = 0;
 
@@ -776,50 +849,37 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	@Override
 	public void setSurfaces(Triangle[] surfaces) { }
 	
-//	/**
-//	 * Adds the specified Surface object to the list of triangles stored by this Mesh object.
-//	 * This method should not be used to add triangles that will share verticies, because
-//	 * that can be done more efficiently with the addVector and addTriangle methods.
-//	 */
+	/**
+	 * Not supported for {@link Mesh}; use {@link #addVector} and {@link #addTriangle} instead.
+	 *
+	 * @param s the triangle to add (ignored)
+	 * @throws RuntimeException always
+	 */
 	@Override
 	public void addSurface(Triangle s) {
 		throw new RuntimeException("Not implemented");
-//		this.triangles.add(s);
-//		s.setParent(this);
 	}
-	
-//	/**
-//	 * Removes the Triangle object stored by this Mesh object at the specified index.
-//	 */
+
+	/**
+	 * Not supported for {@link Mesh}; use the triangle connectivity data methods instead.
+	 *
+	 * @param index the index of the surface to remove (ignored)
+	 * @throws RuntimeException always
+	 */
 	@Override
 	public void removeSurface(int index) {
 		throw new RuntimeException("Not implemented");
-//		Triangle t = (Triangle)this.triangles.get(index);
-//		
-//		Vector n = t.getNormalAt(new Vector());
-//		Vector v[] = t.getVertices();
-//		
-//		
-//		if (v[0] instanceof Vertex) {
-//			((Vertex)v[0]).removeNormal(n);
-//			((Vertex)v[1]).removeNormal(n);
-//			((Vertex)v[2]).removeNormal(n);
-//		}
-//		
-//		this.triangles.remove(index);
 	}
-	
-//	/**
-//	 * @return  An array of Surface objects containing the Triangle objects stored by this Mesh object.
-//	 */
+
+	/**
+	 * Not supported for {@link Mesh}; use {@link #getTriangles()} instead.
+	 *
+	 * @return never returns; always throws
+	 * @throws RuntimeException always
+	 */
 	@Override
 	public ShadableSurface[] getSurfaces() {
 		throw new RuntimeException("Not implemented");
-//		Triangle t[] = this.getTriangles();
-//		
-//		return t;
-//		
-//		// return (Surface[])this.triangles.toArray(new Surface[0]);
 	}
 	
 	/**
@@ -827,6 +887,12 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 */
 	public ShadableSurface getSurface(int index) { return this.getTriangle(index, false); }
 	
+	/**
+	 * Returns an object that can be used to encode and serialize this mesh.
+	 * If a mesh source is set, the source is returned; otherwise this mesh itself is returned.
+	 *
+	 * @return the mesh source or this mesh
+	 */
 	public Object encode() {
 		if (this.source != null) {
 			return this.source;

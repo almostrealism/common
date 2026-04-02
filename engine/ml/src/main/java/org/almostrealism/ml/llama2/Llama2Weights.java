@@ -120,6 +120,13 @@ public class Llama2Weights implements CodeFeatures {
 						.reshape(shape(config.vocabSize, config.dim));
 	}
 
+	/**
+	 * Reads the next {@code product(dims)} floats from the buffer into a new array.
+	 *
+	 * @param buffer the float buffer positioned at the next tensor's data
+	 * @param dims   the dimensions of the tensor to read
+	 * @return a float array containing the tensor values
+	 */
 	static float[] take(FloatBuffer buffer, int... dims) {
 		TraversalPolicy shape = new TraversalPolicy(dims);
 		float[] floats = new float[shape.getTotalSize()];
@@ -127,6 +134,15 @@ public class Llama2Weights implements CodeFeatures {
 		return floats;
 	}
 
+	/**
+	 * Packs real and imaginary float arrays into a single interleaved
+	 * {@link PackedCollection} suitable for RoPE frequency tensors.
+	 *
+	 * @param real  real components of each complex frequency entry
+	 * @param imag  imaginary components of each complex frequency entry
+	 * @param shape expected shape of the output collection; the last dimension must be 2
+	 * @return a packed collection with alternating real/imaginary values
+	 */
 	static PackedCollection packComplex(float[] real, float[] imag, TraversalPolicy shape) {
 		if (shape.length(shape.getDimensions() - 1) != 2)
 			throw new IllegalArgumentException();

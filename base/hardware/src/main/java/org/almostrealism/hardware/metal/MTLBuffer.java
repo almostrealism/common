@@ -57,7 +57,9 @@ import java.nio.IntBuffer;
  * @see MetalMemory
  */
 public class MTLBuffer extends MTLObject {
+	/** Numeric precision of elements stored in this buffer ({@link Precision#FP16} or {@link Precision#FP32}). */
 	private final Precision precision;
+	/** True if this buffer uses Metal shared storage mode (CPU/GPU accessible without explicit sync). */
 	private final boolean shared;
 
 	/**

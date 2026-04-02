@@ -39,16 +39,30 @@ import java.util.List;
  * @see CellFeatures
  */
 public class AudioSumProvider implements CellFeatures {
+	/** Timing metric tracking the duration of sum and adjustVolume operations. */
 	public static TimingMetric timing = CellFeatures.console.timing("audioSumProvider");
 
+	/** When true, kernel-mode (parallel) evaluation is used; otherwise repeated (sequential) mode. */
 	private final boolean parallel;
+
+	/** Compiled evaluable that adds two audio buffers element-wise. */
 	private final Evaluable<PackedCollection> sum;
+
+	/** Compiled evaluable that multiplies an audio buffer by a scalar volume factor. */
 	private final Evaluable<PackedCollection> scaleVolume;
 
+	/**
+	 * Creates an AudioSumProvider using the default kernel preference setting.
+	 */
 	public AudioSumProvider() {
 		this(KernelPreferences.isPreferKernels());
 	}
 
+	/**
+	 * Creates an AudioSumProvider with the specified execution mode.
+	 *
+	 * @param parallel {@code true} to use kernel (parallel) mode; {@code false} for sequential mode
+	 */
 	public AudioSumProvider(boolean parallel) {
 		if (Heap.getDefault() != null) {
 			throw new RuntimeException();
@@ -70,6 +84,13 @@ public class AudioSumProvider implements CellFeatures {
 		}
 	}
 
+	/**
+	 * Adds {@code in} to {@code dest} in-place and returns the updated {@code dest}.
+	 *
+	 * @param dest destination buffer (also the first operand)
+	 * @param in   source buffer to add into {@code dest}
+	 * @return the updated {@code dest}
+	 */
 	public PackedCollection sum(PackedCollection dest, PackedCollection in) {
 		long start = System.nanoTime();
 
@@ -86,6 +107,13 @@ public class AudioSumProvider implements CellFeatures {
 		}
 	}
 
+	/**
+	 * Multiplies each frame of {@code dest} by the given {@code volume} factor in-place.
+	 *
+	 * @param dest   audio buffer to scale
+	 * @param volume single-element collection containing the volume scale factor
+	 * @return the updated {@code dest}
+	 */
 	public PackedCollection adjustVolume(PackedCollection dest, PackedCollection volume) {
 		long start = System.nanoTime();
 

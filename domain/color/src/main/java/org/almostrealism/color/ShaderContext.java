@@ -80,17 +80,39 @@ import java.util.List;
  * @author Michael Murray
  */
 public class ShaderContext extends LightingContext {
+	/** The ray-surface intersection details for the point being shaded. */
 	private ContinuousField intersection;
-	
+
+	/** The surface currently being shaded. */
 	private Curve<PackedCollection> surface;
+
+	/** All other surfaces in the scene, used for shadow and reflection computations. */
 	private Curve<PackedCollection> otherSurfaces[];
-	
+
+	/** The color of the atmospheric fog applied to the scene. */
 	public RGB fogColor;
-	public double fogRatio, fogDensity;
 
+	/** The blend ratio between the surface color and the fog color (0=no fog, 1=full fog). */
+	public double fogRatio;
+
+	/** Controls how quickly the fog density increases with distance. */
+	public double fogDensity;
+
+	/** The number of reflection or refraction direction changes undergone by the current ray. */
 	private int refCount;
-	private int exit, enter;
 
+	/** The number of times the ray has exited a transparent surface. */
+	private int exit;
+
+	/** The number of times the ray has entered a transparent surface. */
+	private int enter;
+
+	/**
+	 * Constructs a minimal {@link ShaderContext} with only a surface and a light.
+	 *
+	 * @param surface the surface being shaded
+	 * @param l       the light source illuminating the surface
+	 */
 	public ShaderContext(Curve<PackedCollection> surface, Light l) {
 		this.surface = surface;
 		this.setLight(l);
@@ -110,6 +132,15 @@ public class ShaderContext extends LightingContext {
 		this(intersection, lightDirection, light, otherLights, otherSurfaces.toArray(new Curve[0]));
 	}
 	
+	/**
+	 * Constructs a {@link ShaderContext} without a primary surface.
+	 *
+	 * @param intersection   the ray-surface intersection details
+	 * @param lightDirection the normalized direction toward the light source
+	 * @param light          the light source
+	 * @param otherLights    other lights in the scene
+	 * @param otherSurfaces  other surfaces in the scene
+	 */
 	private ShaderContext(ContinuousField intersection, Producer<PackedCollection> lightDirection, Light light,
 						  Iterable<Light> otherLights, Curve<PackedCollection> otherSurfaces[]) {
 		this(intersection, lightDirection, light, otherLights, null, otherSurfaces);
@@ -137,8 +168,18 @@ public class ShaderContext extends LightingContext {
 		this.refCount = 0;
 	}
 	
+	/**
+	 * Sets the ray-surface intersection details for this context.
+	 *
+	 * @param intersect the new intersection field
+	 */
 	public void setIntersection(ContinuousField intersect) { intersection = intersect; }
-	
+
+	/**
+	 * Returns the ray-surface intersection details.
+	 *
+	 * @return the intersection field
+	 */
 	public ContinuousField getIntersection() { return intersection; }
 	
 	/**
@@ -146,6 +187,11 @@ public class ShaderContext extends LightingContext {
 	 */
 	public void setSurface(Curve<PackedCollection> surface) { this.surface = surface; }
 	
+	/**
+	 * Returns the surface currently being shaded.
+	 *
+	 * @return the surface curve
+	 */
 	public Curve<PackedCollection> getSurface() { return this.surface; }
 	
 	/**
@@ -169,6 +215,11 @@ public class ShaderContext extends LightingContext {
 	 */
 	public Curve<PackedCollection>[] getOtherSurfaces() { return this.otherSurfaces; }
 
+	/**
+	 * Returns an {@link Iterable} containing the primary surface followed by all other surfaces.
+	 *
+	 * @return all surfaces in the scene including the primary surface
+	 */
 	public Iterable<? extends Curve<PackedCollection>> getAllSurfaces() {
 		List<Curve<PackedCollection>> l = new ArrayList<>();
 		if (getSurface() != null) l.add(getSurface());
@@ -207,6 +258,12 @@ public class ShaderContext extends LightingContext {
 //					"ShaderParameters: Exit count exceedes entrance count.");
 	}
 
+	/**
+	 * Creates a shallow copy of this {@link ShaderContext}, duplicating the
+	 * {@code otherSurfaces} array reference to avoid aliasing.
+	 *
+	 * @return a cloned {@link ShaderContext}
+	 */
 	@Override
 	public ShaderContext clone() {
 		ShaderContext c = (ShaderContext) super.clone();
@@ -216,6 +273,12 @@ public class ShaderContext extends LightingContext {
 		return c;
 	}
 
+	/**
+	 * Returns a string representation of this {@link ShaderContext} containing the intersection,
+	 * light direction, light, other lights, and surface.
+	 *
+	 * @return a comma-separated string of context fields
+	 */
 	@Override
 	public String toString() {
 		return this.intersection + ", " + this.getLightDirection() + ", " +

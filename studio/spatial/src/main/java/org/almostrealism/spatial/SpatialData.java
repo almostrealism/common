@@ -38,7 +38,10 @@ package org.almostrealism.spatial;
  * @see SpatialDataListener
  */
 public class SpatialData<T extends SpatialTimeseries> {
+	/** The channel or slot index for this data. */
 	private int index;
+
+	/** The timeseries data contained in this event payload. */
 	private T timeseries;
 
 	/**

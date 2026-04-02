@@ -23,8 +23,13 @@ package org.almostrealism.persist.index;
  * @param <T> the record type
  */
 public class SearchResult<T> {
+	/** Unique identifier for the matched record. */
 	private final String id;
+
+	/** The full matched record. */
 	private final T record;
+
+	/** Similarity score between the query vector and this record's vector; higher is more similar. */
 	private final float similarity;
 
 	/**

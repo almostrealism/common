@@ -81,8 +81,21 @@ import java.util.List;
  * @author Michael Murray
  */
 public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
-	CHORD, SEQUENCE;
+	/** All scale positions play simultaneously as a chord at each element position. */
+	CHORD,
+	/** Scale positions are traversed sequentially across element repetitions. */
+	SEQUENCE;
 
+	/**
+	 * Converts a pattern element into a list of renderable note audio destinations.
+	 *
+	 * @param element      the pattern element to render
+	 * @param melodic      whether the pattern is melodic
+	 * @param offset       the measure offset for this pattern repetition
+	 * @param context      the audio scene context
+	 * @param audioContext the note audio context
+	 * @return list of rendered note audio destinations
+	 */
 	public List<RenderedNoteAudio> getNoteDestinations(PatternElement element,
 													   boolean melodic, double offset,
 													   AudioSceneContext context,
@@ -279,6 +292,17 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 		return (long) (seconds * MidiNoteEvent.TIME_RESOLUTION);
 	}
 
+	/**
+	 * Creates a single {@link RenderedNoteAudio} for the given element and voicing details.
+	 *
+	 * @param element         the pattern element
+	 * @param details         the voicing details for this note
+	 * @param automationLevel the automation level factor
+	 * @param audioContext    the note audio context
+	 * @param context         the audio scene context
+	 * @param actualPosition  the actual measure position (offset + element position + repetition)
+	 * @return the rendered note audio
+	 */
 	private RenderedNoteAudio createRenderedNote(PatternElement element,
 												 ElementVoicingDetails details,
 												 Factor<PackedCollection> automationLevel,

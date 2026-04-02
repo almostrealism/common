@@ -66,8 +66,11 @@ import java.util.Optional;
  * @author Michael Murray
  */
 public class ParallelProcessContext extends ProcessContextBase implements Countable {
+	/** The number of parallel work items dispatched at this level of the process tree. */
 	private long parallelism;
+	/** The number of results that are aggregated from child processes at this level. */
 	private long aggregationCount;
+	/** Whether the parallelism count is fixed and must not be modified by optimization. */
 	private boolean fixed;
 
 	/**

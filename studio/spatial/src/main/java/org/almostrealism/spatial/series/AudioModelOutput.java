@@ -42,8 +42,13 @@ import java.util.stream.Stream;
  */
 public class AudioModelOutput extends SimpleTimeseries<AudioModelOutput> {
 
+	/** The name of the model that generated this audio. */
 	private String modelName;
+
+	/** The conditional text prompt used for generation. */
 	private String conditions;
+
+	/** The embedding vector used for generation. */
 	private List<Double> embed;
 
 	/**

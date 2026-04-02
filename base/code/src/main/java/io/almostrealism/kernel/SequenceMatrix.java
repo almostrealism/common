@@ -22,9 +22,29 @@ import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 
+/**
+ * An {@link ExpressionMatrix} backed by a flat {@link IndexSequence} that stores
+ * all {@code rowCount * colCount} values in a single array.
+ *
+ * <p>Individual entries are retrieved by computing the flat offset
+ * {@code i * colCount + j} into the backing sequence. Row deduplication is applied
+ * at construction time by {@link #populate()}: consecutive rows whose column values
+ * are all identical are recorded in {@link ExpressionMatrix#rowDuplicates} to avoid
+ * redundant work during subsequent analysis.</p>
+ *
+ * @param <T> the value type of the stored expressions
+ */
 public class SequenceMatrix<T> extends ExpressionMatrix<T> {
+	/** The flat sequence of all matrix values, stored in row-major order. */
 	private IndexSequence seq;
 
+	/**
+	 * Creates a {@link SequenceMatrix} from a flat sequence and builds the row-duplicate map.
+	 *
+	 * @param row the row index
+	 * @param col the column index
+	 * @param seq the flat row-major sequence of matrix values
+	 */
 	protected SequenceMatrix(Index row, Index col,
 							   IndexSequence seq) {
 		super(row, col);
@@ -32,6 +52,15 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 		populate();
 	}
 
+	/**
+	 * Creates a {@link SequenceMatrix} from a flat sequence and a pre-computed row-duplicate map,
+	 * bypassing the populate step.
+	 *
+	 * @param row            the row index
+	 * @param col            the column index
+	 * @param seq            the flat row-major sequence of matrix values
+	 * @param rowDuplicates  the pre-computed row-duplicate map
+	 */
 	protected SequenceMatrix(Index row, Index col,
 							 IndexSequence seq,
 							 int rowDuplicates[]) {
@@ -40,6 +69,11 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 		this.rowDuplicates = rowDuplicates;
 	}
 
+	/**
+	 * Builds the row-duplicate map by comparing consecutive rows.
+	 * A row is a duplicate when every column value is identical to the corresponding
+	 * column value in the preceding row.
+	 */
 	protected void populate() {
 		if (seq == null) {
 			throw new UnsupportedOperationException();
@@ -76,18 +110,42 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>For integer-typed sequences, returns the maximum value plus one (i.e., the range
+	 * size). Falls back to the default {@code -1} for floating-point sequences.</p>
+	 */
 	@Override
 	public int getValueCount() {
 		if (seq.getType() != Double.class) return Math.toIntExact(seq.max() + 1);
 		return super.getValueCount();
 	}
 
+	/**
+	 * Returns the backing flat sequence.
+	 *
+	 * @return the flat row-major sequence
+	 */
 	public IndexSequence getSequence() { return seq; }
 
+	/**
+	 * Returns the raw numeric value at the given row and column from the backing sequence.
+	 *
+	 * @param i the row index
+	 * @param j the column index
+	 * @return the numeric value at {@code (i, j)}
+	 */
 	protected Number sequenceValueAt(int i, int j) {
 		return seq.valueAt(i * colCount + j);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Follows the row-duplicate chain to find the canonical row, then wraps the
+	 * corresponding numeric value in a constant expression.</p>
+	 */
 	@Override
 	public Expression<T> valueAt(int i, int j) {
 		if (rowDuplicates.length <= i || rowDuplicates[i] == i) {
@@ -101,6 +159,13 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 		return (Expression) Constant.of(sequenceValueAt(i, j));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns a column sequence (one value per row) when every column in a given row
+	 * has the same value, or {@code null} if any row has differing columns or the
+	 * sequence exceeds {@link ExpressionMatrix#MAX_SEQUENCE_LENGTH}.</p>
+	 */
 	@Override
 	public IndexSequence columnSequence() {
 		if (seq.lengthLong() > MAX_SEQUENCE_LENGTH) {

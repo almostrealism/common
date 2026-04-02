@@ -31,6 +31,15 @@ import java.util.Map;
 import java.util.Properties;
 
 /**
+ * A {@link SimpleUpdate} implementation that executes a parameterized SQL UPDATE statement
+ * against a c3p0 pooled data source, reflectively reading entity field values via BeanUtils.
+ *
+ * <p>The SQL query is split on the {@code WHERE} clause: the SET portion is assembled from
+ * the registered column-to-field mappings and the WHERE placeholders are filled with the
+ * supplied key strings.</p>
+ *
+ * @param <V> The entity type whose fields are written to the database
+ *
  * @author  Michael Murray
  */
 public class SQLInsert<V> extends SimpleUpdate<ComboPooledDataSource, String[], V> {
@@ -97,17 +106,43 @@ public class SQLInsert<V> extends SimpleUpdate<ComboPooledDataSource, String[], 
 		}
 	}
 
+	/**
+	 * Creates a new {@link SQLInsert} with the given SQL query and column-to-field mapping.
+	 *
+	 * @param <V>     The entity type
+	 * @param query   The SQL UPDATE statement template
+	 * @param columns A {@link Properties} map from column names to field names
+	 * @return A new {@link SQLInsert} for the given query and mappings
+	 */
 	public static <V> SQLInsert<V> prepare(String query, Properties columns) {
 		return new SQLInsert(query, columns);
 	}
-	
+
+	/**
+	 * Creates a new {@link SQLInsert} by loading the column-to-field mapping from
+	 * the given input stream.
+	 *
+	 * @param <V>       The entity type
+	 * @param query     The SQL UPDATE statement template
+	 * @param columnMap An input stream for a {@link Properties} file mapping columns to fields
+	 * @return A new {@link SQLInsert} for the given query and mappings
+	 * @throws IOException If loading the properties file fails
+	 */
 	public static <V> SQLInsert<V> prepare(String query, InputStream columnMap) throws IOException {
 		Properties fieldMap = new Properties();
 		fieldMap.load(columnMap);
 		return prepare(query, fieldMap);
 	}
-	
-	/** Select all. */
+
+	/**
+	 * Creates a new {@link SQLInsert} with a {@code "select *"} query using the column-to-field
+	 * mapping loaded from the given input stream.
+	 *
+	 * @param <V>       The entity type
+	 * @param columnMap An input stream for a {@link Properties} file mapping columns to fields
+	 * @return A new {@link SQLInsert} with a select-all query
+	 * @throws IOException If loading the properties file fails
+	 */
 	public static <V> SQLInsert<V> prepare(InputStream columnMap) throws IOException {
 		return prepare("select *", columnMap);
 	}

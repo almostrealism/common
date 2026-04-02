@@ -57,6 +57,7 @@ import org.almostrealism.geometry.DiscreteField;
  * @author Michael Murray
  */
 public class SilhouetteShader implements Evaluable<PackedCollection>, Shader<LightingContext>, RGBFeatures {
+	/** The uniform color returned for all shaded pixels. */
 	private Producer<PackedCollection> color;
 
 	/**

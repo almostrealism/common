@@ -51,7 +51,10 @@ import java.util.Map;
  */
 public class PdslParser {
 
+	/** Token stream produced by the lexer. */
 	private final List<PdslToken> tokens;
+
+	/** Current read position in the token stream. */
 	private int pos;
 
 	/**
@@ -77,6 +80,11 @@ public class PdslParser {
 		return new PdslNode.Program(definitions);
 	}
 
+	/**
+	 * Parses a single top-level definition (config, layer, or model).
+	 *
+	 * @return The parsed definition node
+	 */
 	private PdslNode.Definition parseDefinition() {
 		PdslToken token = peek();
 		switch (token.getType()) {
@@ -90,6 +98,11 @@ public class PdslParser {
 
 	// ---- Config ----
 
+	/**
+	 * Parses a {@code config Name { key = expr; ... }} block.
+	 *
+	 * @return The parsed config definition node
+	 */
 	private PdslNode.ConfigDef parseConfigDef() {
 		PdslToken kw = consume(PdslToken.Type.CONFIG);
 		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
@@ -107,6 +120,11 @@ public class PdslParser {
 
 	// ---- Layer ----
 
+	/**
+	 * Parses a {@code layer Name(params) -> shape? { body }} definition.
+	 *
+	 * @return The parsed layer definition node
+	 */
 	private PdslNode.LayerDef parseLayerDef() {
 		PdslToken kw = consume(PdslToken.Type.LAYER);
 		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
@@ -130,6 +148,11 @@ public class PdslParser {
 
 	// ---- Model ----
 
+	/**
+	 * Parses a {@code model Name(params) { body }} definition.
+	 *
+	 * @return The parsed model definition node
+	 */
 	private PdslNode.ModelDef parseModelDef() {
 		PdslToken kw = consume(PdslToken.Type.MODEL);
 		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
@@ -145,6 +168,11 @@ public class PdslParser {
 
 	// ---- Parameters ----
 
+	/**
+	 * Parses a comma-separated list of parameter declarations.
+	 *
+	 * @return List of parameter nodes, possibly empty
+	 */
 	private List<PdslNode.Parameter> parseParameterList() {
 		List<PdslNode.Parameter> params = new ArrayList<>();
 		if (!check(PdslToken.Type.RPAREN)) {
@@ -157,6 +185,11 @@ public class PdslParser {
 		return params;
 	}
 
+	/**
+	 * Parses a single parameter declaration: {@code name : type [shape]?}.
+	 *
+	 * @return The parsed parameter node
+	 */
 	private PdslNode.Parameter parseParameter() {
 		PdslToken nameTok = consume(PdslToken.Type.IDENTIFIER);
 		consume(PdslToken.Type.COLON);
@@ -206,6 +239,11 @@ public class PdslParser {
 
 	// ---- Body (statements) ----
 
+	/**
+	 * Parses a sequence of statements until a closing brace or EOF.
+	 *
+	 * @return List of parsed statement nodes
+	 */
 	private List<PdslNode.Statement> parseBody() {
 		List<PdslNode.Statement> stmts = new ArrayList<>();
 		while (!check(PdslToken.Type.RBRACE) && !check(PdslToken.Type.EOF)) {
@@ -215,6 +253,11 @@ public class PdslParser {
 		return stmts;
 	}
 
+	/**
+	 * Dispatches to the appropriate statement parser based on the current token.
+	 *
+	 * @return The parsed statement node
+	 */
 	private PdslNode.Statement parseStatement() {
 		PdslToken token = peek();
 		switch (token.getType()) {
@@ -230,6 +273,11 @@ public class PdslParser {
 		}
 	}
 
+	/**
+	 * Parses a {@code let name = expr} or {@code let name = branch { ... }} statement.
+	 *
+	 * @return The parsed let statement node
+	 */
 	private PdslNode.LetStatement parseLetStatement() {
 		PdslToken kw = consume(PdslToken.Type.LET);
 		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
@@ -250,12 +298,22 @@ public class PdslParser {
 		return new PdslNode.LetStatement(name, value, kw.getLine(), kw.getColumn());
 	}
 
+	/**
+	 * Parses a {@code return expr} statement.
+	 *
+	 * @return The parsed return statement node
+	 */
 	private PdslNode.ReturnStatement parseReturnStatement() {
 		PdslToken kw = consume(PdslToken.Type.RETURN);
 		PdslNode.Expression value = parseExpression();
 		return new PdslNode.ReturnStatement(value, kw.getLine(), kw.getColumn());
 	}
 
+	/**
+	 * Parses a {@code branch name? { body }} statement.
+	 *
+	 * @return The parsed branch statement node
+	 */
 	private PdslNode.BranchStatement parseBranchStatement() {
 		PdslToken kw = consume(PdslToken.Type.BRANCH);
 		String name = null;
@@ -268,6 +326,11 @@ public class PdslParser {
 		return new PdslNode.BranchStatement(name, body, kw.getLine(), kw.getColumn());
 	}
 
+	/**
+	 * Parses an {@code accum { body }} (residual connection) statement.
+	 *
+	 * @return The parsed accumulation statement node
+	 */
 	private PdslNode.AccumStatement parseAccumStatement() {
 		PdslToken kw = consume(PdslToken.Type.ACCUM);
 		consume(PdslToken.Type.LBRACE);
@@ -276,6 +339,11 @@ public class PdslParser {
 		return new PdslNode.AccumStatement(body, kw.getLine(), kw.getColumn());
 	}
 
+	/**
+	 * Parses a {@code product(left, right)} element-wise multiplication statement.
+	 *
+	 * @return The parsed product statement node
+	 */
 	private PdslNode.ProductStatement parseProductStatement() {
 		PdslToken kw = consume(PdslToken.Type.PRODUCT);
 		consume(PdslToken.Type.LPAREN);
@@ -286,6 +354,11 @@ public class PdslParser {
 		return new PdslNode.ProductStatement(left, right, kw.getLine(), kw.getColumn());
 	}
 
+	/**
+	 * Parses an {@code accum_blocks(left, right)} statement.
+	 *
+	 * @return the parsed {@link PdslNode.AccumBlocksStatement}
+	 */
 	private PdslNode.AccumBlocksStatement parseAccumBlocksStatement() {
 		PdslToken kw = consume(PdslToken.Type.ACCUM_BLOCKS);
 		consume(PdslToken.Type.LPAREN);
@@ -296,6 +369,11 @@ public class PdslParser {
 		return new PdslNode.AccumBlocksStatement(left, right, kw.getLine(), kw.getColumn());
 	}
 
+	/**
+	 * Parses a {@code concat_blocks(block1, block2, ...)} statement with two or more block arguments.
+	 *
+	 * @return the parsed {@link PdslNode.ConcatBlocksStatement}
+	 */
 	private PdslNode.ConcatBlocksStatement parseConcatBlocksStatement() {
 		PdslToken kw = consume(PdslToken.Type.CONCAT_BLOCKS);
 		consume(PdslToken.Type.LPAREN);
@@ -310,10 +388,11 @@ public class PdslParser {
 	}
 
 	/**
-	 * Parse an argument that can be an inline block {@code { ... }},
-	 * a nested {@code product(...)} statement (wrapped in a synthetic inline block),
-	 * a nested {@code accum_blocks(...)} statement (wrapped in a synthetic inline block),
-	 * or a plain expression.
+	 * Parses one argument of a block expression, which may be an inline block {@code { ... }},
+	 * a nested {@code product(...)}, {@code accum_blocks(...)}, or {@code concat_blocks(...)}
+	 * statement (each wrapped in a synthetic inline block), or a plain expression.
+	 *
+	 * @return the parsed expression node
 	 */
 	private PdslNode.Expression parseBlockArg() {
 		if (check(PdslToken.Type.LBRACE)) {
@@ -349,6 +428,11 @@ public class PdslParser {
 		return parseExpression();
 	}
 
+	/**
+	 * Parses a {@code for variable in start..end { body }} loop statement.
+	 *
+	 * @return The parsed for statement node
+	 */
 	private PdslNode.ForStatement parseForStatement() {
 		PdslToken kw = consume(PdslToken.Type.FOR);
 		String variable = consume(PdslToken.Type.IDENTIFIER).getValue();
@@ -363,6 +447,11 @@ public class PdslParser {
 				kw.getLine(), kw.getColumn());
 	}
 
+	/**
+	 * Parses an expression used as a standalone statement.
+	 *
+	 * @return The parsed expression statement node
+	 */
 	private PdslNode.ExpressionStatement parseExpressionStatement() {
 		PdslNode.Expression expr = parseExpression();
 		return new PdslNode.ExpressionStatement(expr, expr.getLine(), expr.getColumn());
@@ -370,10 +459,20 @@ public class PdslParser {
 
 	// ---- Expressions (precedence climbing) ----
 
+	/**
+	 * Parses an expression (entry point for precedence-climbing grammar).
+	 *
+	 * @return The parsed expression node
+	 */
 	private PdslNode.Expression parseExpression() {
 		return parseAddition();
 	}
 
+	/**
+	 * Parses additive expressions ({@code +} and {@code -}).
+	 *
+	 * @return The parsed expression node
+	 */
 	private PdslNode.Expression parseAddition() {
 		PdslNode.Expression left = parseMultiplication();
 		while (check(PdslToken.Type.PLUS) || check(PdslToken.Type.MINUS)) {
@@ -385,6 +484,11 @@ public class PdslParser {
 		return left;
 	}
 
+	/**
+	 * Parses multiplicative expressions ({@code *} and {@code /}).
+	 *
+	 * @return The parsed expression node
+	 */
 	private PdslNode.Expression parseMultiplication() {
 		PdslNode.Expression left = parseUnary();
 		while (check(PdslToken.Type.STAR) || check(PdslToken.Type.SLASH)) {
@@ -396,6 +500,11 @@ public class PdslParser {
 		return left;
 	}
 
+	/**
+	 * Parses a unary negation ({@code -}) or delegates to postfix.
+	 *
+	 * @return The parsed expression node
+	 */
 	private PdslNode.Expression parseUnary() {
 		if (check(PdslToken.Type.MINUS)) {
 			PdslToken op = advance();
@@ -406,6 +515,11 @@ public class PdslParser {
 		return parsePostfix();
 	}
 
+	/**
+	 * Parses postfix operations: function calls and field accesses.
+	 *
+	 * @return The parsed expression node
+	 */
 	private PdslNode.Expression parsePostfix() {
 		PdslNode.Expression expr = parsePrimary();
 
@@ -442,6 +556,11 @@ public class PdslParser {
 		return expr;
 	}
 
+	/**
+	 * Parses a primary expression: literal, identifier, grouped expression, or shape literal.
+	 *
+	 * @return The parsed expression node
+	 */
 	private PdslNode.Expression parsePrimary() {
 		PdslToken token = peek();
 
@@ -503,6 +622,11 @@ public class PdslParser {
 		}
 	}
 
+	/**
+	 * Parses a shape literal: {@code [dim1, dim2, ...]}.
+	 *
+	 * @return The parsed shape literal node
+	 */
 	private PdslNode.ShapeLiteral parseShapeLiteral() {
 		PdslToken bracket = consume(PdslToken.Type.LBRACKET);
 		List<PdslNode.Expression> dims = new ArrayList<>();
@@ -517,6 +641,11 @@ public class PdslParser {
 		return new PdslNode.ShapeLiteral(dims, bracket.getLine(), bracket.getColumn());
 	}
 
+	/**
+	 * Parses a comma-separated function argument list (without surrounding parentheses).
+	 *
+	 * @return List of parsed argument expression nodes, possibly empty
+	 */
 	private List<PdslNode.Expression> parseArgumentList() {
 		List<PdslNode.Expression> args = new ArrayList<>();
 		if (!check(PdslToken.Type.RPAREN)) {
@@ -531,20 +660,43 @@ public class PdslParser {
 
 	// ---- Token utilities ----
 
+	/**
+	 * Returns the current token without consuming it.
+	 *
+	 * @return The current token
+	 */
 	private PdslToken peek() {
 		return tokens.get(pos);
 	}
 
+	/**
+	 * Returns {@code true} if the current token has the given type.
+	 *
+	 * @param type Token type to check
+	 * @return Whether the current token matches
+	 */
 	private boolean check(PdslToken.Type type) {
 		return pos < tokens.size() && tokens.get(pos).getType() == type;
 	}
 
+	/**
+	 * Returns the current token and advances the position.
+	 *
+	 * @return The consumed token
+	 */
 	private PdslToken advance() {
 		PdslToken token = tokens.get(pos);
 		pos++;
 		return token;
 	}
 
+	/**
+	 * Consumes and returns the current token, asserting it has the expected type.
+	 *
+	 * @param type Expected token type
+	 * @return The consumed token
+	 * @throws PdslParseException If the current token does not match the expected type
+	 */
 	private PdslToken consume(PdslToken.Type type) {
 		PdslToken token = peek();
 		if (token.getType() != type) {
@@ -553,6 +705,12 @@ public class PdslParser {
 		return advance();
 	}
 
+	/**
+	 * Creates a parse exception with the current token's source location appended.
+	 *
+	 * @param message Error description
+	 * @return A {@link PdslParseException} with location information
+	 */
 	private PdslParseException error(String message) {
 		PdslToken token = peek();
 		return new PdslParseException(message + " at line " + token.getLine()

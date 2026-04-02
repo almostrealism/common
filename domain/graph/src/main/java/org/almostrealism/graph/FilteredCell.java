@@ -25,13 +25,46 @@ import org.almostrealism.time.Temporal;
 
 import java.util.function.Supplier;
 
+/**
+ * A {@link CellAdapter} that applies a {@link Factor} transformation to all
+ * incoming data before forwarding it to the downstream receptor.
+ *
+ * <p>{@code FilteredCell} wraps any {@link Factor} implementation as a cell.
+ * Setup, tick, and reset lifecycle events are delegated to the filter when it
+ * implements the corresponding interface ({@link Setup}, {@link Temporal},
+ * {@link Lifecycle}).</p>
+ *
+ * @param <T> the type of data processed, typically {@link org.almostrealism.collect.PackedCollection}
+ * @see CellAdapter
+ * @see CachedStateCell
+ * @author Michael Murray
+ */
 public class FilteredCell<T> extends CellAdapter<T> implements Temporal {
+	/** The factor that transforms incoming data before forwarding. */
 	private Factor<T> filter;
-	
+
+	/**
+	 * Creates a filtered cell with the specified transformation factor.
+	 *
+	 * @param filter the factor to apply to all incoming data
+	 */
 	public FilteredCell(Factor<T> filter) { this.filter = filter; }
-	
+
+	/**
+	 * Updates the transformation factor applied to incoming data.
+	 *
+	 * @param filter the new factor
+	 */
 	protected void setFilter(Factor<T> filter) { this.filter = filter; }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Delegates to the filter's setup if the filter implements {@link Setup}
+	 * and is not this cell itself.</p>
+	 *
+	 * @return the filter's setup operation, or an empty operation list
+	 */
 	@Override
 	public Supplier<Runnable> setup() {
 		if (filter instanceof Setup && filter != this) {
@@ -41,11 +74,28 @@ public class FilteredCell<T> extends CellAdapter<T> implements Temporal {
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Applies the filter's transformation to the input before forwarding
+	 * to the downstream receptor.</p>
+	 *
+	 * @param protein the incoming data producer
+	 * @return a supplier that performs the filtered push
+	 */
 	@Override
 	public Supplier<Runnable> push(Producer<T> protein) {
 		return super.push(filter.getResultant(protein));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Delegates to the filter's tick if the filter implements {@link Temporal}
+	 * and is not this cell itself.</p>
+	 *
+	 * @return the filter's tick operation, or an empty operation list
+	 */
 	@Override
 	public Supplier<Runnable> tick() {
 		if (filter instanceof Temporal && filter != this) {
@@ -55,6 +105,12 @@ public class FilteredCell<T> extends CellAdapter<T> implements Temporal {
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Resets the parent adapter and delegates to the filter's reset
+	 * if the filter implements {@link Lifecycle} and is not this cell itself.</p>
+	 */
 	@Override
 	public void reset() {
 		super.reset();

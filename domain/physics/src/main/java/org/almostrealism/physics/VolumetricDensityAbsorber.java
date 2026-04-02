@@ -28,6 +28,7 @@ import org.almostrealism.collect.PackedCollection;
  * @author  Michael Murray
  */
 public class VolumetricDensityAbsorber implements Absorber {
+	/** The volume defining the region in which photon absorption and refraction is simulated. */
 	private Volume volume;
 	
 	/** @param v  The Volume for this {@link VolumetricDensityAbsorber}. */

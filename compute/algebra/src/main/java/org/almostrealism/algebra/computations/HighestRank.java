@@ -65,6 +65,7 @@ import java.util.function.BiFunction;
  * @see Pair
  */
 public class HighestRank extends CollectionProducerComputationBase {
+	/** Counter for generating unique variable names in the generated kernel scope. */
 	private int varIdx = 0;
 
 	/**

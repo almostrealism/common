@@ -43,7 +43,10 @@ import java.util.List;
  * @see ContinuousField
  */
 public class ClosestIntersection extends ArrayList<Producer<PackedCollection>> implements ContinuousField {
+	/** The ray being tested against all surfaces. */
 	private final Producer<Ray> r;
+
+	/** The collection of surface intersection fields to test against. */
 	private final List<ContinuousField> s;
 
 	/**

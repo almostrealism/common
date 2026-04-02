@@ -73,8 +73,11 @@ import java.util.function.Function;
  * @author Michael Murray
  */
 public class OperationProfileNodeInfo {
+	/** The root of the entire profile tree, used for metadata lookups relative to the full profile. */
 	private OperationProfileNode root;
+	/** The specific profile node that this info object represents. */
 	private OperationProfileNode node;
+	/** The display label shown in tree views and UI components for this node. */
 	private String label;
 
 	/**

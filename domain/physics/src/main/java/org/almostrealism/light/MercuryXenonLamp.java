@@ -29,11 +29,18 @@ import java.util.ArrayList;
  * @author  Sam Tepper
  */
 public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
+	/** Probability threshold below which verbose emission logging is printed. */
 	public static double verbose = Math.pow(10.0, -7.0);
-	
+
 	/** EnergyTable = [starting energy value, percentage present] **/
 	ArrayList EnergyTable = new ArrayList();
 
+	/**
+	 * Constructs a MercuryXenonLamp and populates the energy table with
+	 * spectral data from the mercury-xenon discharge lamp spectrum. Each
+	 * entry is a pair of [energy (eV), relative percentage] values derived
+	 * from tabulated lamp output data.
+	 */
 	public MercuryXenonLamp() {
 		EnergyTable.add(new double[] {2.479, .199});
 		EnergyTable.add(new double[] {2.431, .199});
@@ -89,6 +96,11 @@ public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
 		System.out.println("MercuryXenonLamp: Constructed!");
 	}
 	
+	/**
+	 * Computes the average energy value across all entries in the energy table.
+	 *
+	 * @return the mean energy in electron volts
+	 */
 	public double getSpecAvg(){
 		double count = 0;
 		
@@ -99,6 +111,15 @@ public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
 		return count/(EnergyTable.size()-1);
 	}
 	
+	/**
+	 * Returns the index in the list that bisects the cumulative percentage sum.
+	 * Iterates through the list accumulating the percentage values (second element
+	 * of each entry) and returns the index at which the running total reaches half
+	 * the total sum, effectively finding the weighted median.
+	 *
+	 * @param Al  the list of {@code double[]} pairs where index 1 is the percentage weight
+	 * @return    the index of the entry at the weighted median
+	 */
 	public int GetAverageIndex(ArrayList Al){
 		//First, get the sum
 		double sum=0;
@@ -121,6 +142,16 @@ public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
 	}
 	
 	
+	/**
+	 * Selects a single spectral entry from the energy table using a binary search
+	 * tree traversal. At each step, the table is split at its weighted median and
+	 * one half is chosen at random. The process repeats until three or fewer entries
+	 * remain, at which point one is chosen uniformly.
+	 *
+	 * @return a one-element array containing the chosen {@code double[]} entry,
+	 *         where index 0 is the energy in eV and index 1 is the percentage
+	 * @throws RuntimeException if the list size unexpectedly falls below 1
+	 */
 	public double[][] GetValue() {
 		ArrayList TempList = (ArrayList) EnergyTable.clone();
 		ArrayList Value = new ArrayList();

@@ -29,14 +29,36 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 
+/**
+ * Abstract base class for {@link NoteAudioSource} implementations that support
+ * optional synthesizer-based rendering and forward/reverse playback.
+ *
+ * <p>Subclasses implement the synthesis-related abstract methods and the
+ * abstract tuning/playback accessors. The {@link #getPatternNotes()} method
+ * builds the final list of pattern notes based on the configured playback modes.</p>
+ *
+ * @see NoteAudioSource
+ * @see TreeNoteSource
+ */
 public abstract class NoteAudioSourceBase implements NoteAudioSource {
+	/** Factory used to create stateless synthesizer sources from raw note audio. */
 	private Function<NoteAudio, StatelessSource> synthesizerFactory;
 
+	/**
+	 * Returns the synthesizer factory used to create stateless sources from note audio.
+	 *
+	 * @return the synthesizer factory, or null if not set
+	 */
 	@JsonIgnore
 	public Function<NoteAudio, StatelessSource> getSynthesizerFactory() {
 		return synthesizerFactory;
 	}
 
+	/**
+	 * Sets the synthesizer factory used to create stateless sources from note audio.
+	 *
+	 * @param synthesizerFactory the factory to set
+	 */
 	@JsonIgnore
 	public void setSynthesizerFactory(Function<NoteAudio, StatelessSource> synthesizerFactory) {
 		this.synthesizerFactory = synthesizerFactory;
@@ -78,9 +100,15 @@ public abstract class NoteAudioSourceBase implements NoteAudioSource {
 		return notes;
 	}
 
+	/** Returns the keyboard tuning applied to note providers. */
 	public abstract KeyboardTuning getTuning();
 
+	/** Returns {@code true} if synthesizer rendering is enabled. */
 	public abstract boolean isUseSynthesizer();
+
+	/** Returns {@code true} if forward playback is enabled. */
 	public abstract boolean isForwardPlayback();
+
+	/** Returns {@code true} if reverse playback is enabled. */
 	public abstract boolean isReversePlayback();
 }

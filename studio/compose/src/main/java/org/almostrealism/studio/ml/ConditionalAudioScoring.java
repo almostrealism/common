@@ -37,7 +37,10 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 
 //	double[] timesteps = {0.25, 0.5, 0.75};
 //	double[] timestepWeights = {0.2, 0.6, 0.2};
+	/** Fractional noise timesteps used for weighted scoring. */
 	double[] timesteps = {0.0, 0.25, 0.5, 0.75, 1.0};
+
+	/** Weights for each timestep in the composite score calculation. */
 	double[] timestepWeights = {0.1, 0.25, 0.3, 0.25, 0.1};
 
 	/**
@@ -55,12 +58,26 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		super(tokenizer, conditioner, autoencoder, ditStates, true);
 	}
 
+	/**
+	 * Computes a text-audio alignment score for the given text prompt and audio.
+	 *
+	 * @param prompt the text prompt to score against
+	 * @param audio  the audio to evaluate
+	 * @return a higher score indicating better alignment
+	 */
 	public double computeScore(String prompt, WaveData audio) {
 		long[] tokens = getTokenizer().encodeAsLong(prompt);
 		log("\t\"" + prompt + "\" (" + tokens.length + " tokens)");
 		return computeScore(tokens, audio);
 	}
 
+	/**
+	 * Computes a text-audio alignment score for the given pre-tokenized prompt and audio.
+	 *
+	 * @param promptTokenIds the tokenized prompt
+	 * @param audio          the audio to evaluate
+	 * @return a score estimating alignment quality
+	 */
 	public double computeScore(long[] promptTokenIds, WaveData audio) {
 		// return computeScore(promptTokenIds, audio.getData(), audio.getDuration());
 		// return computeDenoisingScore(promptTokenIds, audio.getData(), audio.getDuration());
@@ -134,6 +151,13 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		return similarity;
 	}
 
+	/**
+	 * Computes the cosine similarity between two packed collections.
+	 *
+	 * @param a the first vector
+	 * @param b the second vector
+	 * @return the cosine similarity in [-1, 1]
+	 */
 	private double computeCosineSimilarity(PackedCollection a, PackedCollection b) {
 		double dotProduct = cp(a).multiply(cp(b)).sum(0).evaluateOptimized().valueAt(0);
 		double normA = cp(a).each().sq().sum(0).sqrt().evaluateOptimized().toDouble();
@@ -141,6 +165,15 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		return dotProduct / (normA * normB + 1e-6);
 	}
 
+	/**
+	 * Computes a multi-timestep attention-based alignment score for the given
+	 * pre-tokenized prompt and audio at the specified duration.
+	 *
+	 * @param promptTokenIds the tokenized prompt
+	 * @param audio          the raw audio samples
+	 * @param duration       the audio duration in seconds
+	 * @return the composite alignment score
+	 */
 	public double computeScore(long[] promptTokenIds, PackedCollection audio, double duration) {
 		// 1. Process tokens through conditioners
 		AudioAttentionConditioner.ConditionerOutput conditionerOutputs =
@@ -171,6 +204,15 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		return computeMultiTimestepScore(allAttentions, attentionMask, audioSeqLen);
 	}
 
+	/**
+	 * Aggregates attention-based scores across all timesteps and layers,
+	 * weighting later layers more heavily.
+	 *
+	 * @param allAttentions  per-timestep map of layer index to attention activations
+	 * @param attentionMask  the text attention mask, or {@code null} for no masking
+	 * @param audioSeqLen    the number of audio latent time steps
+	 * @return the aggregated score
+	 */
 	private double computeMultiTimestepScore(List<Map<Integer, PackedCollection>> allAttentions,
 											 PackedCollection attentionMask, int audioSeqLen) {
 		// Weight later layers more heavily
@@ -195,6 +237,13 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		return totalScore;
 	}
 
+	/**
+	 * Computes exponentially increasing weights for transformer layers,
+	 * normalized so that they sum to 1. Later layers receive higher weights.
+	 *
+	 * @param numLayers the total number of transformer layers
+	 * @return normalized weight array of length {@code numLayers}
+	 */
 	private double[] computeLayerWeights(int numLayers) {
 		// Exponentially increasing weights for later layers
 		double[] weights = new double[numLayers];
@@ -210,6 +259,15 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		return weights;
 	}
 
+	/**
+	 * Computes an entropy-based attention focus score for a single layer's attention tensor,
+	 * optionally restricted to positions indicated by a binary mask.
+	 *
+	 * @param attention    the attention tensor with shape {@code [batch, heads, audioSeq, textSeq]}
+	 * @param mask         optional binary mask over text positions; {@code null} means no masking
+	 * @param audioSeqLen  the number of audio latent time steps to evaluate
+	 * @return the average focus score across all valid (batch, head, audio position) triples
+	 */
 	private double computeMaskedAttentionScore(PackedCollection attention,
 											   PackedCollection mask,
 											   int audioSeqLen) {

@@ -78,10 +78,16 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class PatternElementFactory implements ConsoleFeatures {
+	/** Whether volume envelope processing is enabled for generated elements. */
 	public static boolean enableVolumeEnvelope = true;
+
+	/** Whether filter envelope processing is enabled for generated elements. */
 	public static boolean enableFilterEnvelope = true;
 
+	/** Maximum number of note layers per pattern element. */
 	public static int MAX_LAYERS = 10;
+
+	/** The duration strategy applied when generating chord elements. */
 	public static NoteDurationStrategy CHORD_STRATEGY = NoteDurationStrategy.FIXED;
 
 	/**
@@ -93,24 +99,40 @@ public class PatternElementFactory implements ConsoleFeatures {
 	 */
 	public static double noteLengthFactor = 0.75;
 
+	/** Optional distribution array for tracking repeat selections; may be null. */
 	public static int[] REPEAT_DIST;
 
+	/** Factory for creating pattern notes. */
 	private PatternNoteFactory noteFactory;
 
+	/** Function selecting which note to play for the element. */
 	private ParameterizedPositionFunction noteSelection;
+
+	/** Per-layer note selection functions (one per layer up to {@link #MAX_LAYERS}). */
 	private List<ParameterizedPositionFunction> noteLayerSelections;
+
+	/** Function selecting the note duration. */
 	private ParameterFunction noteLengthSelection;
 
+	/** Volume envelope applied to generated notes. */
 	private ParameterizedVolumeEnvelope volumeEnvelope;
+
+	/** Filter envelope applied to generated notes. */
 	private ParameterizedFilterEnvelope filterEnvelope;
+
+	/** Function selecting which chord note to use. */
 	private ChordPositionFunction chordNoteSelection;
+
+	/** Function selecting the repeat position. */
 	private ParameterizedPositionFunction repeatSelection;
 
+	/** Creates a {@code PatternElementFactory} with a default note factory and random selection functions. */
 	public PatternElementFactory() {
 		setNoteFactory(new PatternNoteFactory());
 		initSelectionFunctions();
 	}
 
+	/** Initializes all selection functions with random values. */
 	public void initSelectionFunctions() {
 		noteSelection = ParameterizedPositionFunction.random();
 		noteLayerSelections = IntStream.range(0, MAX_LAYERS)
@@ -123,53 +145,91 @@ public class PatternElementFactory implements ConsoleFeatures {
 		repeatSelection = ParameterizedPositionFunction.random();
 	}
 
+	/** Returns the note factory used to create pattern notes. */
 	public PatternNoteFactory getNoteFactory() {
 		return noteFactory;
 	}
 
+	/** Sets the note factory. */
 	public void setNoteFactory(PatternNoteFactory noteFactory) {
 		this.noteFactory = noteFactory;
 	}
 
+	/** Returns the note selection function. */
 	public ParameterizedPositionFunction getNoteSelection() {
 		return noteSelection;
 	}
+
+	/** Sets the note selection function. */
 	public void setNoteSelection(ParameterizedPositionFunction noteSelection) {
 		this.noteSelection = noteSelection;
 	}
 
+	/** Returns the per-layer note selection functions. */
 	public List<ParameterizedPositionFunction> getNoteLayerSelections() {
 		return noteLayerSelections;
 	}
 
+	/** Sets the per-layer note selection functions. */
 	public void setNoteLayerSelections(List<ParameterizedPositionFunction> noteLayerSelections) {
 		this.noteLayerSelections = noteLayerSelections;
 	}
 
+	/** Returns the note length selection function. */
 	public ParameterFunction getNoteLengthSelection() { return noteLengthSelection; }
+
+	/** Sets the note length selection function. */
 	public void setNoteLengthSelection(ParameterFunction noteLengthSelection) { this.noteLengthSelection = noteLengthSelection; }
 
+	/** Returns the volume envelope. */
 	public ParameterizedVolumeEnvelope getVolumeEnvelope() { return volumeEnvelope; }
+
+	/** Sets the volume envelope. */
 	public void setVolumeEnvelope(ParameterizedVolumeEnvelope volumeEnvelope) { this.volumeEnvelope = volumeEnvelope; }
 
+	/** Returns the filter envelope. */
 	public ParameterizedFilterEnvelope getFilterEnvelope() { return filterEnvelope; }
+
+	/** Sets the filter envelope. */
 	public void setFilterEnvelope(ParameterizedFilterEnvelope filterEnvelope) { this.filterEnvelope = filterEnvelope; }
 
+	/** Returns the chord note selection function. */
 	public ChordPositionFunction getChordNoteSelection() {
 		return chordNoteSelection;
 	}
+
+	/** Sets the chord note selection function. */
 	public void setChordNoteSelection(ChordPositionFunction chordNoteSelection) {
 		this.chordNoteSelection = chordNoteSelection;
 	}
 
+	/** Returns the repeat selection function. */
 	public ParameterizedPositionFunction getRepeatSelection() {
 		return repeatSelection;
 	}
+
+	/** Sets the repeat selection function. */
 	public void setRepeatSelection(ParameterizedPositionFunction repeatSelection) {
 		this.repeatSelection = repeatSelection;
 	}
 
-	// TODO  This should take instruction for whether to apply note duration, relying just on isMelodic limits its use
+	/**
+	 * Creates a {@link PatternElement} at the given position and parity.
+	 *
+	 * <p>TODO: This should take explicit instruction for whether to apply note duration;
+	 * relying only on {@code isMelodic} limits its use.</p>
+	 *
+	 * @param parity                 the position parity (LEFT, RIGHT, or NONE)
+	 * @param position               the base position in measures
+	 * @param scale                  the time scale for the element
+	 * @param bias                   the selection bias
+	 * @param scaleTraversalStrategy the traversal strategy
+	 * @param depth                  the chord/scale depth
+	 * @param repeat                 whether to apply repeat logic
+	 * @param melodic                whether this element is melodic
+	 * @param params                 the parameter set
+	 * @return an {@code Optional} containing the element, or empty if generation fails
+	 */
 	public Optional<PatternElement> apply(ElementParity parity, double position,
 										  double scale, double bias,
 										  ScaleTraversalStrategy scaleTraversalStrategy,

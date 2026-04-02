@@ -19,6 +19,10 @@ package org.almostrealism.studio.stream;
 import com.sun.net.httpserver.HttpHandler;
 import io.almostrealism.lifecycle.Destroyable;
 
+/**
+ * Marker interface combining {@link HttpHandler} with {@link Destroyable} for
+ * audio HTTP handlers that hold resources and must be explicitly destroyed.
+ */
 public interface HttpAudioHandler extends HttpHandler, Destroyable {
 
 }

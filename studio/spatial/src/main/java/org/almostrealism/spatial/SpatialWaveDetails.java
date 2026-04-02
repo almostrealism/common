@@ -45,8 +45,14 @@ import java.util.stream.IntStream;
  * @see GenomicTimeseries
  */
 public class SpatialWaveDetails extends FrequencyTimeseriesAdapter {
+	/** The underlying wave details containing frequency analysis data. */
 	private WaveDetails wave;
-	private int offset, length;
+
+	/** The starting frame offset within the audio file. */
+	private int offset;
+
+	/** The number of frames to include from the offset. */
+	private int length;
 
 	/**
 	 * Creates spatial wave details for the entire audio file.

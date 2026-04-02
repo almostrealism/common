@@ -41,6 +41,12 @@ import org.almostrealism.io.PrintWriter;
  */
 public class OpenCLPrintWriter extends CPrintWriter {
 
+	/**
+	 * Creates an OpenCL print writer for the given output and precision.
+	 *
+	 * @param p         Underlying writer for generated kernel source
+	 * @param precision Numeric precision for generated kernel code
+	 */
 	public OpenCLPrintWriter(PrintWriter p, Precision precision) {
 		super(p, null, precision, false);
 		setScopePrefix("__kernel void");

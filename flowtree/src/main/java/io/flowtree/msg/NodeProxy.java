@@ -22,9 +22,7 @@ import io.flowtree.node.Client;
 import io.flowtree.node.NodeGroup;
 import io.flowtree.node.Proxy;
 
-import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
@@ -35,9 +33,7 @@ import java.io.Externalizable;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.ObjectInput;
 import java.io.ObjectInputStream;
-import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.io.OptionalDataException;
 import java.io.StreamCorruptedException;
@@ -68,7 +64,7 @@ import java.util.List;
  *       to construct the correct {@link Externalizable} type.</li>
  *   <li><strong>Optional PBE encryption</strong> — when a password is supplied at
  *       construction time, each payload is encrypted/decrypted with a
- *       {@code PBEWithMD5AndDES} cipher via the inner {@link ByteWrapper} class
+ *       {@code PBEWithMD5AndDES} cipher via {@link NodeProxyByteWrapper}
  *       before it touches the stream.</li>
  *   <li><strong>Outbound queuing</strong> — writes issued while the proxy is
  *       reconnecting are buffered in {@link #queue} and flushed automatically once
@@ -158,11 +154,12 @@ public class NodeProxy implements Proxy, Runnable {
 	private final int count = 20;
 
 	/**
-	 * Shared static decrypt cipher used by {@link ByteWrapper#ByteWrapper()} when
-	 * no cipher is provided explicitly. Populated by the first {@code NodeProxy}
-	 * that initialises a secure session.
+	 * Shared static decrypt cipher used by {@link NodeProxyByteWrapper#NodeProxyByteWrapper()}
+	 * when no cipher is provided explicitly. Package-private so that the extracted
+	 * {@link NodeProxyByteWrapper} class can reference it. Populated by the first
+	 * {@code NodeProxy} that initialises a secure session.
 	 */
-	private static Cipher sInc;
+	static Cipher sInc;
 
 	/**
 	 * Counter incremented for every message received; reset to {@code 1} after a
@@ -191,217 +188,12 @@ public class NodeProxy implements Proxy, Runnable {
 	private Thread pingThread;
 
 	/**
-	 * A typed envelope that holds a received or queued object together with the
-	 * receiver node ID it was addressed to.
-	 *
-	 * <p>Instances of this class live in the {@link NodeProxy#obj} inbox list and
-	 * the {@link NodeProxy#queue} outbound buffer. They let the proxy match
-	 * incoming objects to the correct waiting caller via
-	 * {@link NodeProxy#nextObject(int)} and {@link NodeProxy#waitFor(int, int)},
-	 * and replay queued sends after a reconnection via
-	 * {@link NodeProxy#flushQueue()}.</p>
+	 * Backward-compatible alias for {@link NodeProxyEventListener}.
+	 * All method declarations live in the parent interface; this alias exists
+	 * solely so that pre-existing {@code implements NodeProxy.EventListener}
+	 * and {@code NodeProxy.EventListener} type references continue to compile.
 	 */
-	private class StoredObject {
-		/** The wrapped object ({@link Message} or {@link io.almostrealism.db.Query}). */
-		Object o;
-		/** The receiver node ID associated with this object. */
-		int id;
-
-		/**
-		 * Constructs a {@code StoredObject} pairing an object with a receiver ID.
-		 *
-		 * @param o   The object to store.
-		 * @param id  The receiver node ID.
-		 */
-		public StoredObject(Object o, int id) {
-			this.o = o;
-			this.id = id;
-		}
-
-		/**
-		 * @return  The stored object.
-		 */
-		public Object getObject() { return this.o; }
-
-		/**
-		 * @return  The receiver node ID associated with the stored object.
-		 */
-		public int getId() { return this.id; }
-
-		/**
-		 * @return  A human-readable description for logging.
-		 */
-		public String toString() { return "StoredObject: " + this.getId() + " " + this.getObject(); }
-	}
-
-	/**
-	 * {@link Externalizable} wrapper that encrypts or decrypts a byte array using
-	 * the configured PBE {@link Cipher}.
-	 *
-	 * <p>On write, the payload is padded to an 8-byte boundary (using
-	 * {@code (byte) -1} as the pad value) before encryption, so that the DES
-	 * block cipher's block-alignment requirement is always satisfied. On read,
-	 * the trailing {@code -1} bytes are stripped after decryption.</p>
-	 *
-	 * <p>This class is used exclusively by {@link NodeProxy#writeSecure} and the
-	 * reader loop in {@link NodeProxy#run()} when {@link NodeProxy#secure} is
-	 * {@code true}.</p>
-	 */
-	private static class ByteWrapper implements Externalizable {
-		/** Serial version UID required by {@link Externalizable}. */
-		private static final long serialVersionUID = 6512456536452755866L;
-
-		/** The cipher used to encrypt (on write) or decrypt (on read) the payload. */
-		private final transient Cipher c;
-
-		/** The raw byte payload, which may be modified in-place during padding/truncation. */
-		private byte[] b;
-
-		/**
-		 * No-argument constructor that uses the shared static decrypt cipher
-		 * {@link NodeProxy#sInc}. Required by the {@link Externalizable} contract for
-		 * deserialisation.
-		 */
-		public ByteWrapper() { this(NodeProxy.sInc); }
-
-		/**
-		 * Constructs a {@code ByteWrapper} with the given cipher and no initial payload.
-		 *
-		 * @param c  The cipher to use for encryption or decryption.
-		 */
-		public ByteWrapper(Cipher c) { this.c = c; }
-
-		/**
-		 * Constructs a {@code ByteWrapper} ready to encrypt and write the given bytes.
-		 *
-		 * @param c  The cipher to use for encryption.
-		 * @param b  The plaintext payload to encrypt on write.
-		 */
-		public ByteWrapper(Cipher c, byte[] b) { this.c = c; this.b = b; }
-
-		/**
-		 * Replaces the current payload with the given byte array.
-		 *
-		 * @param b  The new payload bytes.
-		 */
-		public void setBytes(byte[] b) { this.b = b; }
-
-		/**
-		 * Returns the current payload bytes. After a read, this contains the
-		 * decrypted plaintext with any trailing pad bytes removed.
-		 *
-		 * @return  The plaintext payload.
-		 */
-		public byte[] getBytes() { return this.b; }
-
-		/**
-		 * Pads the payload to an 8-byte boundary, encrypts it, and writes the
-		 * encrypted length followed by the encrypted bytes to {@code out}.
-		 *
-		 * @param out  The stream to write the encrypted data to.
-		 * @throws IOException  If an I/O error occurs while writing.
-		 */
-		public void writeExternal(ObjectOutput out) throws IOException {
-			try {
-				int div = 8 - (b.length % 8);
-
-				if (div < 8) {
-					byte[] temp = this.b;
-					int l = temp.length;
-					this.b = new byte[l + div];
-					System.arraycopy(temp, 0, this.b, 0, l);
-					for (int i = l; i < this.b.length; i++) this.b[i] = -1;
-
-					if (Message.dverbose)
-						System.out.println("NodeProxy.ByteWrapper: Padded message by " + div);
-				}
-
-				byte[] b = this.c.doFinal(this.b);
-				out.writeInt(b.length);
-				out.write(b);
-			} catch (IllegalBlockSizeException e) {
-				System.out.println("NodeProxy.ByteWrapper: Illegal block size (" + e.getMessage() + ")");
-			} catch (BadPaddingException e) {
-				System.out.println("NodeProxy.ByteWrapper: Bad padding (" + e.getMessage() + ")");
-			}
-		}
-
-		/**
-		 * Reads an encrypted byte block from {@code in}, decrypts it, and strips
-		 * any trailing {@code -1} pad bytes, leaving the original plaintext payload
-		 * in {@link #b}.
-		 *
-		 * @param in  The stream to read the encrypted data from.
-		 * @throws IOException  If an I/O error occurs while reading.
-		 */
-		public void readExternal(ObjectInput in) throws IOException {
-			try {
-				if (this.b == null) this.b = new byte[in.readInt()];
-				in.readFully(this.b);
-				this.b = this.c.doFinal(this.b);
-
-				int i;
-				i: for (i = 0; i < 8; i++) {
-					if (this.b[this.b.length - i - 1] != -1) break;
-				}
-
-				if (i > 0) {
-					byte[] temp = new byte[this.b.length - i];
-					System.arraycopy(this.b, 0, temp, 0, temp.length);
-					this.b = temp;
-
-					if (Message.dverbose)
-						System.out.println("NodeProxy.ByteWrapper: Truncated message by " + i);
-				}
-			} catch (IllegalBlockSizeException e) {
-				System.out.println("NodeProxy.ByteWrapper: Illegal block size (" + e.getMessage() + ")");
-			} catch (BadPaddingException e) {
-				System.out.println("NodeProxy.ByteWrapper: Bad padding (" + e.getMessage() + ")");
-			}
-		}
-	}
-
-	/**
-	 * Callback interface for objects that want to be notified of connection
-	 * lifecycle events and incoming messages from a {@link NodeProxy}.
-	 *
-	 * <p>{@link Connection} and {@link io.flowtree.node.NodeGroup} are the primary
-	 * implementations. Multiple listeners may be registered on a single
-	 * {@code NodeProxy}; the proxy iterates them in registration order.</p>
-	 */
-	public interface EventListener {
-		/**
-		 * Called when the {@link NodeProxy} establishes or re-establishes its
-		 * socket connection to the remote peer.
-		 *
-		 * @param p  The connected {@link NodeProxy}.
-		 */
-		void connect(NodeProxy p);
-
-		/**
-		 * Called when the {@link NodeProxy} loses its socket connection to the
-		 * remote peer. The listener should clean up any state that depends on the
-		 * connection being alive.
-		 *
-		 * @param p  The disconnected {@link NodeProxy}.
-		 * @return   An implementation-defined integer; typically {@code 0}.
-		 */
-		int disconnect(NodeProxy p);
-
-		/**
-		 * Called by the {@link NodeProxy} reader thread each time a
-		 * {@link Message} arrives. The listener should return {@code true} if it
-		 * claimed and fully processed the message, or {@code false} to allow other
-		 * listeners to examine it. If no listener claims the message it is stored
-		 * in the proxy's inbox for later retrieval via {@link NodeProxy#nextObject}.
-		 *
-		 * @param m         The received message.
-		 * @param reciever  The node ID from the message's receiver field.
-		 * @return  {@code true} if this listener handled the message; {@code false}
-		 *          to pass it to the next listener.
-		 */
-		boolean recievedMessage(Message m, int reciever);
-	}
+	public interface EventListener extends NodeProxyEventListener { }
 
 	/**
 	 * Milliseconds of silence on the input stream before the proxy attempts to
@@ -448,14 +240,14 @@ public class NodeProxy implements Proxy, Runnable {
 	private ObjectOutputStream fout;
 
 	/**
-	 * PBE decrypt cipher used to decrypt incoming {@link ByteWrapper}s,
+	 * PBE decrypt cipher used to decrypt incoming {@link NodeProxyByteWrapper}s,
 	 * or {@code null} when {@link #secure} is {@code false}.
 	 */
 	private Cipher inc;
 
 	/**
 	 * PBE encrypt cipher used to encrypt outgoing payloads before writing them
-	 * as {@link ByteWrapper}s, or {@code null} when {@link #secure} is
+	 * as {@link NodeProxyByteWrapper}s, or {@code null} when {@link #secure} is
 	 * {@code false}.
 	 */
 	private Cipher outc;
@@ -526,7 +318,7 @@ public class NodeProxy implements Proxy, Runnable {
 	private long checkedMsgIn;
 
 	/**
-	 * Inbox list of received {@link StoredObject} instances waiting to be
+	 * Inbox list of received {@link NodeProxyStoredObject} instances waiting to be
 	 * claimed by a caller via {@link #nextObject} or {@link #nextMessage}.
 	 * Access is synchronised on the list itself.
 	 */
@@ -589,7 +381,7 @@ public class NodeProxy implements Proxy, Runnable {
 	 * <p>When {@code passwd} is non-null, both an encrypt and a decrypt
 	 * {@link Cipher} are initialised using {@code PBEWithMD5AndDES} (or the
 	 * algorithm specified by {@code cipher}). All subsequent writes are encrypted
-	 * by {@link ByteWrapper} and all reads are decrypted before dispatch.</p>
+	 * by {@link NodeProxyByteWrapper} and all reads are decrypted before dispatch.</p>
 	 *
 	 * <p>After stream setup a daemon reader thread is started under the current
 	 * {@link io.flowtree.node.Client}'s {@link Server#getThreadGroup() ThreadGroup},
@@ -704,7 +496,7 @@ public class NodeProxy implements Proxy, Runnable {
 	 */
 	public void writeObject(Object o, int id, boolean useQueue) throws IOException {
 		if (useQueue) {
-			this.queue.add(new StoredObject(o, id));
+			this.queue.add(new NodeProxyStoredObject(o, id));
 			return;
 		}
 		
@@ -865,14 +657,14 @@ public class NodeProxy implements Proxy, Runnable {
 	
 	/**
 	 * Encrypts the given byte array and writes it to the output stream as a
-	 * {@link ByteWrapper}. If a file-dump stream ({@link #fout}) is open, the
+	 * {@link NodeProxyByteWrapper}. If a file-dump stream ({@link #fout}) is open, the
 	 * same encrypted wrapper is also mirrored there.
 	 *
 	 * @param b  The plaintext byte array to encrypt and send.
 	 * @throws IOException  If an I/O error occurs while writing to the stream.
 	 */
 	protected void writeSecure(byte[] b) throws IOException {
-		ByteWrapper bw = new ByteWrapper(this.outc, b);
+		NodeProxyByteWrapper bw = new NodeProxyByteWrapper(this.outc, b);
 		bw.writeExternal(this.out);
 		this.out.flush();
 		
@@ -891,11 +683,11 @@ public class NodeProxy implements Proxy, Runnable {
 	 */
 	@Override
 	public Object nextObject(int id) {
-		StoredObject[] o;
+		NodeProxyStoredObject[] o;
 		
 		synchronized (this.obj) {
 			if (this.obj.size() <= 0) return null;
-			o = (StoredObject[])this.obj.toArray(new StoredObject[0]);
+			o = (NodeProxyStoredObject[])this.obj.toArray(new NodeProxyStoredObject[0]);
 		}
 		
 		i: for (int i = o.length - 1; i >= 0; i--) {
@@ -923,11 +715,11 @@ public class NodeProxy implements Proxy, Runnable {
 	 * @return  The next Message object to be handled, or null if one is not present.
 	 */
 	public Object nextMessage(int type, String data) {
-		StoredObject[] o;
+		NodeProxyStoredObject[] o;
 		
 		synchronized (this.obj) {
 			if (this.obj.size() <= 0) return null;
-			o = (StoredObject[])this.obj.toArray(new StoredObject[0]);
+			o = (NodeProxyStoredObject[])this.obj.toArray(new NodeProxyStoredObject[0]);
 		}
 		
 		i: for (int i = o.length - 1; i >= 0; i--) {
@@ -1034,7 +826,7 @@ public class NodeProxy implements Proxy, Runnable {
 		this.println("Storing message -- " + m, true);
 		
 		synchronized (this.obj) {
-			this.obj.add(0, new StoredObject(m, m.getReceiver()));
+			this.obj.add(0, new NodeProxyStoredObject(m, m.getReceiver()));
 			if (this.obj.size() > this.maxStore) this.obj.remove(this.obj.size() - 1);
 		}
 	}
@@ -1190,7 +982,7 @@ public class NodeProxy implements Proxy, Runnable {
 			Iterator itr = this.queue.iterator();
 			
 			while (itr.hasNext()) {
-				StoredObject o = (StoredObject) itr.next();
+				NodeProxyStoredObject o = (NodeProxyStoredObject) itr.next();
 				
 				try {
 					this.writeObject(o.getObject(), o.getId(), false);
@@ -1484,7 +1276,7 @@ public class NodeProxy implements Proxy, Runnable {
 					}
 					
 					if (this.secure) {
-						ByteWrapper bw = new ByteWrapper(this.inc);
+						NodeProxyByteWrapper bw = new NodeProxyByteWrapper(this.inc);
 						bw.readExternal(this.in);
 						
 						if (Message.dverbose)

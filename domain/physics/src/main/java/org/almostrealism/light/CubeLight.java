@@ -23,16 +23,43 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * A cubic volumetric light source that samples emission positions from an {@link IntensityMap}.
+ * <p>
+ * The {@code CubeLight} uses rejection sampling against the intensity map to choose
+ * emission positions that are weighted by the map's intensity values. The cube dimensions
+ * default to 1x1x1 and can be scaled independently on each axis.
+ * </p>
+ */
 public class CubeLight extends LightBulb implements VectorFeatures {
+	/** The intensity map used to weight emission position sampling within the cube. */
 	private IntensityMap map;
-	private double width, height, depth;
-	
+
+	/** Width of the cube along the x axis (in scene units, typically micrometers). */
+	private double width;
+
+	/** Height of the cube along the y axis (in scene units, typically micrometers). */
+	private double height;
+
+	/** Depth of the cube along the z axis (in scene units, typically micrometers). */
+	private double depth;
+
+	/** Cached emission position from the last call to {@link #getEmitPosition()}. */
 	private Vector pos;
-	
+
+	/**
+	 * Constructs a {@code CubeLight} with no intensity map.
+	 */
 	public CubeLight() {
 		this(null);
 	}
-	
+
+	/**
+	 * Constructs a {@code CubeLight} with the specified intensity map.
+	 *
+	 * @param map  the intensity map used for emission position sampling, or {@code null}
+	 *             to use uniform random sampling
+	 */
 	public CubeLight(IntensityMap map) {
 		this.map = map;
 		this.width = 1.0;

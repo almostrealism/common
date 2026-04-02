@@ -40,19 +40,40 @@ import java.io.OutputStream;
  * @author  Michael Murray
  */
 public class AbsorptionPlane extends Plane implements Absorber, Fast {
+	/** Scale factor used when printing debug absorption coordinates. */
 	public static double displayCoords = Math.pow(10.0, 4.0);
-	
+
+	/** The physics clock used to track simulation time. */
 	private Clock clock;
-	
-	private int w, h;
+
+	/** Width of the sensor grid in pixels. */
+	private int w;
+
+	/** Height of the sensor grid in pixels. */
+	private int h;
+
+	/** Maximum energy value used for normalisation in the energy map. */
 	private final double max = Math.pow(10.0, 0.0);
+
+	/** Physical size of each pixel cell (typically in micrometres). */
 	private double pixel;
+
+	/** Accumulated photon energy per pixel cell. */
 	private double[][] energy;
+
+	/** Accumulated RGB colour per pixel cell. */
 	private RGB[][] image;
-	
+
+	/** When {@code true}, the AWT display panel is suppressed. */
 	private boolean noDisplay;
+
+	/** Tick counter used to throttle display refresh rate. */
 	private int displayTicks;
+
+	/** Number of absorption events between display refreshes. */
 	private final int displaySleep = 1000;
+
+	/** Optional AWT panel that renders the current image in real time. */
 	private JPanel display;
 	
 	/**
@@ -103,9 +124,11 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	 */
 	public void setOrientation(double[] p) { this.up = p; this.across = null; }
 
+	/** No-op: absorption delay is not used by this absorber. */
 	@Override
 	public void setAbsorbDelay(double t) { }
 
+	/** No-op: original position tracking is not used by this absorber. */
 	@Override
 	public void setOrigPosition(double[] x) { }
 
@@ -174,35 +197,58 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 		return true;
 	}
 
+	/** Returns {@code null}: this absorber does not emit photons. */
 	@Override
 	public Producer<PackedCollection> emit() { return null; }
 
+	/** Returns {@code 0}: this absorber does not emit energy. */
 	@Override
 	public double getEmitEnergy() { return 0; }
 
+	/** Returns {@code null}: this absorber has no emission position. */
 	@Override
 	public Producer<PackedCollection> getEmitPosition() { return null; }
 
+	/** Returns {@link Double#MAX_VALUE}: this absorber never emits. */
 	@Override
 	public double getNextEmit() { return Double.MAX_VALUE; }
 
+	/** Sets the physics clock used by this absorber. */
 	@Override
 	public void setClock(Clock c) { this.clock = c; }
 
+	/** Returns the physics clock used by this absorber. */
 	@Override
 	public Clock getClock() { return this.clock; }
-	
+
+	/**
+	 * Draws the current image onto the given AWT {@link Graphics} context.
+	 *
+	 * @param g the graphics context to draw on
+	 */
 	public void drawImage(Graphics g) {
 		System.out.println("AbsorptionPlane.drawImage");
 		g.drawImage(GraphicsConverter.convertToAWTImage(getImage()), 0, 0, display);
 	}
 	
+	/**
+	 * Writes the captured image to the given output stream.
+	 *
+	 * @param out the stream to write image data to
+	 * @throws IOException if an I/O error occurs
+	 */
 	public void writeImage(OutputStream out) throws IOException {
 		if (this.energy == null) {}
 //		TODO  Need to write image
 //		ImageCanvas.writeImage(this.getImage(), out, ImageCanvas.PPMEncoding);
 	}
 	
+	/**
+	 * Saves the captured image to the given file path.
+	 *
+	 * @param file the destination file path (uses extension to determine format)
+	 * @throws IOException if an I/O error occurs
+	 */
 	public void saveImage(String file) throws IOException {
 		if (this.energy == null) {}
 		
@@ -217,16 +263,30 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 		*/
 	}
 	
+	/** Enables real-time AWT display of absorbed photons. */
 	public void enableDisplay() { this.noDisplay = false; }
+
+	/** Disables real-time AWT display of absorbed photons. */
 	public void disableDisplay() { this.noDisplay = true; }
-	
+
+	/** Returns {@code true} if at least one photon has been absorbed and image data is available. */
 	public boolean imageAvailable() { return this.image != null; }
-	
+
+	/**
+	 * Returns the current RGB image accumulated from absorbed photons.
+	 *
+	 * @return a 2-D array of {@link RGB} values, or a {@code 1x0} array if no photons have been absorbed
+	 */
 	public RGB[][] getImage() {
 		if (this.image == null) return new RGB[1][0];
 		return this.image;
 	}
 	
+	/**
+	 * Returns a greyscale image representing the accumulated energy per pixel.
+	 *
+	 * @return a 2-D array of greyscale {@link RGB} values, or a {@code 1x0} array if no data is available
+	 */
 	public RGB[][] getEnergyMap() {
 		if (this.energy == null) return new RGB[1][0];
 		
@@ -242,6 +302,11 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 		return image;
 	}
 	
+	/**
+	 * Returns an AWT {@link JPanel} that renders the current absorbed image whenever it is painted.
+	 *
+	 * @return the display panel (created on first call)
+	 */
 	public JPanel getDisplay() {
 		if (this.display != null) return this.display;
 		

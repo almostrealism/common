@@ -19,6 +19,15 @@ package io.almostrealism.nfs;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.resource.Resource;
 
+/**
+ * Composite interface for managing resources in the virtual file system.
+ *
+ * <p>A {@link FileSystemManager} combines resource creation ({@link Factory}),
+ * path resolution ({@link SearchEngine}), directory creation ({@link DirectoryNotifier}),
+ * and deletion ({@link DeletionNotifier}) into a single service interface.</p>
+ *
+ * @param <T> The type of {@link Resource} managed by this file system
+ */
 public interface FileSystemManager<T extends Resource> extends Factory<T>, SearchEngine,
 													DirectoryNotifier, DeletionNotifier {
 }

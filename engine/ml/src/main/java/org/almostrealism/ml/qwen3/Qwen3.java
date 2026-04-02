@@ -84,13 +84,25 @@ public class Qwen3 implements AttentionFeatures {
 		System.setProperty("AR_GRAPH_PROPAGATION_WARNINGS", "disabled");
 	}
 
+	/** Model hyperparameters, either explicitly provided or inferred from weight shapes. */
 	private Qwen3Config config;
+
+	/** Weight tensors loaded from the protobuf checkpoint directory. */
 	private StateDictionary stateDict;
+
+	/** Byte-level BPE tokenizer specific to the Qwen3 vocabulary. */
 	private Qwen3Tokenizer tokenizer;
 
+	/** The autoregressive inference model managing the generation loop. */
 	private AutoregressiveModel model;
+
+	/** Performance profile node for tracking per-operation execution times. */
 	private OperationProfileNode profile;
+
+	/** The compiled transformer model ready for forward-pass execution. */
 	private CompiledModel compiledModel;
+
+	/** A single-element collection holding the current generation position index. */
 	private PackedCollection position;
 
 	/**
@@ -240,18 +252,38 @@ public class Qwen3 implements AttentionFeatures {
 		this.model = model(profile);
 	}
 
+	/**
+	 * Returns the tokenizer used by this model.
+	 *
+	 * @return the Qwen3-specific tokenizer
+	 */
 	public Qwen3Tokenizer getTokenizer() {
 		return tokenizer;
 	}
 
+	/**
+	 * Returns the operation profile node for performance analysis.
+	 *
+	 * @return the profile node accumulated during model execution
+	 */
 	public OperationProfileNode getProfile() {
 		return profile;
 	}
 
+	/**
+	 * Returns the model configuration hyperparameters.
+	 *
+	 * @return the Qwen3 configuration
+	 */
 	public Qwen3Config getConfig() {
 		return config;
 	}
 
+	/**
+	 * Sets the sampling temperature for token selection.
+	 *
+	 * @param temperature 0.0 for greedy decoding; higher values increase randomness
+	 */
 	public void setTemperature(double temperature) {
 		model.setTemperature(temperature);
 	}

@@ -33,8 +33,10 @@ import java.util.Map;
  */
 public class HeapAnalyzer {
 
+	/** Shared Jackson mapper configured for indented JSON output. */
 	private static final ObjectMapper MAPPER = new ObjectMapper()
 			.enable(SerializationFeature.INDENT_OUTPUT);
+	/** Default number of top entries returned when {@code --top} is not specified. */
 	private static final int DEFAULT_TOP = 30;
 
 	/**
@@ -239,10 +241,21 @@ public class HeapAnalyzer {
 		return metadata;
 	}
 
+	/**
+	 * Rounds a double value to two decimal places.
+	 *
+	 * @param value the value to round
+	 * @return the value rounded to two decimal places
+	 */
 	private static double round(double value) {
 		return Math.round(value * 100.0) / 100.0;
 	}
 
+	/**
+	 * Prints a JSON error object containing {@code message} to standard output.
+	 *
+	 * @param message the error description to include in the JSON response
+	 */
 	private static void printError(String message) {
 		Map<String, String> error = new LinkedHashMap<>();
 		error.put("error", message);
@@ -253,6 +266,9 @@ public class HeapAnalyzer {
 		}
 	}
 
+	/**
+	 * Prints usage instructions as a JSON error and exits with status 1.
+	 */
 	private static void printUsageAndExit() {
 		printError("Usage: java -jar ar-heap-analyzer.jar <histogram|dominators|summary> [--top N] <file.hprof>");
 		System.exit(1);
@@ -262,10 +278,20 @@ public class HeapAnalyzer {
 	 * Internal class for aggregating per-class statistics.
 	 */
 	private static class ClassStats {
+		/** Fully qualified name of the Java class represented by these statistics. */
 		private final String className;
+		/** Number of live instances of this class observed in the heap snapshot. */
 		private final int instanceCount;
+		/** Total shallow (not retained) heap bytes occupied by all instances of this class. */
 		private final long shallowSize;
 
+		/**
+		 * Creates a statistics record for a single class.
+		 *
+		 * @param className     the fully qualified class name
+		 * @param instanceCount the number of instances found in the heap
+		 * @param shallowSize   the total shallow size in bytes
+		 */
 		ClassStats(String className, int instanceCount, long shallowSize) {
 			this.className = className;
 			this.instanceCount = instanceCount;
