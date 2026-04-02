@@ -20,8 +20,8 @@ if _MANAGER_DIR not in sys.path:
 # Suppress startup prints during import
 with patch.dict(os.environ, {"AR_CONTROLLER_URL": "http://test:7780"}):
     import server
-    import github as github_module
-    import pipeline as pipeline_module
+    import github_tools as github_module
+    import pipeline_tools as pipeline_module
 
 
 def _grant_all_scopes():
@@ -827,22 +827,22 @@ class TestScopeEnforcement(unittest.TestCase):
 class TestExtractOwnerRepo(unittest.TestCase):
 
     def test_https_url(self):
-        from github import _extract_owner_repo
+        from github_tools import _extract_owner_repo
         result = _extract_owner_repo("https://github.com/org/repo")
         self.assertEqual(result, ("org", "repo"))
 
     def test_https_url_with_git_suffix(self):
-        from github import _extract_owner_repo
+        from github_tools import _extract_owner_repo
         result = _extract_owner_repo("https://github.com/org/repo.git")
         self.assertEqual(result, ("org", "repo"))
 
     def test_ssh_url(self):
-        from github import _extract_owner_repo
+        from github_tools import _extract_owner_repo
         result = _extract_owner_repo("git@github.com:org/repo.git")
         self.assertEqual(result, ("org", "repo"))
 
     def test_invalid_url(self):
-        from github import _extract_owner_repo
+        from github_tools import _extract_owner_repo
         result = _extract_owner_repo("not-a-url")
         self.assertIsNone(result)
 
@@ -905,8 +905,6 @@ class TestToolRegistration(unittest.TestCase):
 # -----------------------------------------------------------------------
 # GitHub PR tools
 # -----------------------------------------------------------------------
-
-import github as github_module
 
 
 class TestGithubPrReviewComments(unittest.TestCase):

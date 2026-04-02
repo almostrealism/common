@@ -21,7 +21,7 @@ from server import (
     _require_scope,
     mcp,
 )
-from github import (
+from github_tools import (
     _extract_owner_repo,
     _github_request,
     _set_github_org,

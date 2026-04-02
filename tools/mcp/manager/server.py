@@ -646,14 +646,9 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("ar-manager")
 
-# GitHub API helpers and PR tools live in github.py to keep this file short.
-# Import after mcp is defined so github.py can decorate tools with @mcp.tool().
-# When run as __main__, register this module under its real name so that sibling
-# modules (github.py, pipeline.py) can do `from server import ...` without
-# triggering a second import of server.py and a circular-import failure.
-import sys as _sys
-_sys.modules.setdefault("server", _sys.modules[__name__])
-import github as _github_module  # noqa: E402
+# GitHub API helpers and PR tools live in github_tools.py to keep this file short.
+# Import after mcp is defined so github_tools.py can decorate tools with @mcp.tool().
+import github_tools as _github_module  # noqa: E402
 _github_request = _github_module._github_request
 _github_graphql_request = _github_module._github_graphql_request
 _set_github_org = _github_module._set_github_org
@@ -1105,7 +1100,7 @@ def workstream_update_config(
 
 
 # -- Tier 2: Pipeline tools are in pipeline.py (imported above) ---------------
-import pipeline as _pipeline_module  # noqa: E402
+import pipeline_tools as _pipeline_module  # noqa: E402
 # Re-export pipeline tools so tests can reference server.project_*
 project_create_branch = _pipeline_module.project_create_branch
 project_verify_branch = _pipeline_module.project_verify_branch
