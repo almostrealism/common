@@ -16,7 +16,7 @@
 
 package org.almostrealism.studio.ml.test;
 
-import org.almostrealism.ml.midi.MidiAutoregressiveModel;
+import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiFileReader;
 import org.almostrealism.ml.midi.MidiNoteEvent;
@@ -46,7 +46,7 @@ import java.util.List;
  *   <li>{@code infilled-melody-Cmaj-I-IV-V-I.mid} — melody track infilled</li>
  * </ul>
  *
- * @see MidiAutoregressiveModel#generateInfill
+ * @see MoonbeamMidiGenerator#generateInfill
  * @see MidiCompoundToken#fillStart()
  * @see MidiCompoundToken#fillEnd()
  */
@@ -90,7 +90,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 
 		MoonbeamConfig config = MoonbeamConfig.checkpoint309M();
 		MoonbeamMidi model = new MoonbeamMidi(WEIGHTS_DIR, config);
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 		autoregressive.setTemperature(0.8);
 		autoregressive.setTopP(0.95);
 		autoregressive.setSeed(42);
@@ -175,7 +175,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 		List<MidiCompoundToken> masked = maskTimeRegion(tokens, baselineEvents,
 				maskStart, maskEnd);
 
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 		autoregressive.setTemperature(0.8);
 		autoregressive.setTopP(0.95);
 		autoregressive.setSeed(42);
@@ -202,7 +202,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 									  File outputDir, String filename) throws Exception {
 		List<MidiCompoundToken> masked = maskInstrument(tokens, baselineEvents, 1);
 
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 		autoregressive.setTemperature(0.8);
 		autoregressive.setTopP(0.95);
 		autoregressive.setSeed(123);
@@ -242,7 +242,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase {
 		List<MidiCompoundToken> masked = maskTimeRegion(tokens, baselineEvents,
 				maskStart, maskEnd);
 
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 		autoregressive.setTemperature(0.9);
 		autoregressive.setTopP(0.95);
 		autoregressive.setSeed(999);
