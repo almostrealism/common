@@ -36,12 +36,9 @@ import java.util.Map;
  * ({@link #rGateBlock}, {@link #zGateBlock}, {@link #nGateBlock},
  * {@link #hNewBlock}) for use by inference code.</p>
  *
- * <p>Weight sub-matrices are zero-copy views into the stacked PyTorch weight
- * tensors, obtained via {@link PackedCollection#range(TraversalPolicy, int)}.</p>
- *
- * <p>This class does not perform any computation and does not compile any models.
- * All four gate {@link Block} objects are assembled into the caller's single
- * {@link org.almostrealism.model.Model} by {@link GRUDecoder}.</p>
+ * <p>Per-gate weight sub-matrices are zero-copy views derived by the PDSL
+ * {@code data gru_weights} block via {@code range()} expressions — no
+ * Java-side {@link PackedCollection#range} calls are needed here.</p>
  *
  * <h2>Weight Conventions</h2>
  * <ul>
@@ -56,22 +53,50 @@ public class GRUBlock {
 	/** Classpath resource path for the GRU block PDSL definition. */
 	private static final String GRU_PDSL_RESOURCE = "/pdsl/gru_block.pdsl";
 
+	/** Dimension of the input vector. */
 	private final int inputSize;
+
+	/** Dimension of the hidden state. */
 	private final int hiddenSize;
 
-	/** Zero-copy weight views via {@link PackedCollection#range(TraversalPolicy, int)}. */
-	public final PackedCollection wIr, bIr, wHr, bHr;  // reset gate
-	public final PackedCollection wIz, bIz, wHz, bHz;  // update gate
-	public final PackedCollection wIn, bIn, wHn, bHn;  // candidate gate
+	// Zero-copy weight views derived from the PDSL gru_weights data block.
+	// Exposed for use by GRUDecoder, which builds the GRU step as a
+	// CellularLayer using raw producer expressions.
 
-	/**
-	 * Uncompiled DSL sub-blocks, one per GRU sub-computation.
-	 * Loaded from {@code gru_block.pdsl} at construction time.
-	 * These are assembled into the single decode-step model by {@link GRUDecoder}.
-	 */
+	/** Reset-gate input-hidden weight slice W_ir. */
+	public final PackedCollection wIr;
+	/** Reset-gate input-hidden bias slice b_ir. */
+	public final PackedCollection bIr;
+	/** Reset-gate hidden-hidden weight slice W_hr. */
+	public final PackedCollection wHr;
+	/** Reset-gate hidden-hidden bias slice b_hr. */
+	public final PackedCollection bHr;
+
+	/** Update-gate input-hidden weight slice W_iz. */
+	public final PackedCollection wIz;
+	/** Update-gate input-hidden bias slice b_iz. */
+	public final PackedCollection bIz;
+	/** Update-gate hidden-hidden weight slice W_hz. */
+	public final PackedCollection wHz;
+	/** Update-gate hidden-hidden bias slice b_hz. */
+	public final PackedCollection bHz;
+
+	/** Candidate-gate input-hidden weight slice W_in. */
+	public final PackedCollection wIn;
+	/** Candidate-gate input-hidden bias slice b_in. */
+	public final PackedCollection bIn;
+	/** Candidate-gate hidden-hidden weight slice W_hn. */
+	public final PackedCollection wHn;
+	/** Candidate-gate hidden-hidden bias slice b_hn. */
+	public final PackedCollection bHn;
+
+	/** Reset gate block (sigmoid of input + hidden projections). */
 	final Block rGateBlock;
+	/** Update gate block (sigmoid of input + hidden projections). */
 	final Block zGateBlock;
+	/** Candidate gate block (tanh with reset-gated hidden contribution). */
 	final Block nGateBlock;
+	/** Hidden state update block (lerp). */
 	final Block hNewBlock;
 
 	/**
@@ -90,33 +115,41 @@ public class GRUBlock {
 		this.inputSize = inputSize;
 		this.hiddenSize = hiddenSize;
 
-		int rs = hiddenSize * inputSize;
-		int rh = hiddenSize * hiddenSize;
-
-		// Zero-copy weight views using range()
-		wIr = weightIh.range(new TraversalPolicy(hiddenSize, inputSize),  0);
-		wIz = weightIh.range(new TraversalPolicy(hiddenSize, inputSize),  rs);
-		wIn = weightIh.range(new TraversalPolicy(hiddenSize, inputSize),  2 * rs);
-
-		wHr = weightHh.range(new TraversalPolicy(hiddenSize, hiddenSize), 0);
-		wHz = weightHh.range(new TraversalPolicy(hiddenSize, hiddenSize), rh);
-		wHn = weightHh.range(new TraversalPolicy(hiddenSize, hiddenSize), 2 * rh);
-
-		bIr = biasIh.range(new TraversalPolicy(hiddenSize), 0);
-		bIz = biasIh.range(new TraversalPolicy(hiddenSize), hiddenSize);
-		bIn = biasIh.range(new TraversalPolicy(hiddenSize), 2 * hiddenSize);
-
-		bHr = biasHh.range(new TraversalPolicy(hiddenSize), 0);
-		bHz = biasHh.range(new TraversalPolicy(hiddenSize), hiddenSize);
-		bHn = biasHh.range(new TraversalPolicy(hiddenSize), 2 * hiddenSize);
-
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loadProgram(loader);
 
-		rGateBlock = buildRGate(loader, program);
-		zGateBlock = buildZGate(loader, program);
-		nGateBlock = buildNGate(loader, program);
-		hNewBlock  = buildHNew(loader, program);
+		Map<String, Object> args = new HashMap<>();
+		args.put("weight_ih", weightIh);
+		args.put("weight_hh", weightHh);
+		args.put("bias_ih", biasIh);
+		args.put("bias_hh", biasHh);
+		args.put("input_size", inputSize);
+		args.put("hidden_size", hiddenSize);
+
+		// Derive zero-copy weight slices via the PDSL data block
+		Map<String, Object> data = loader.evaluateDataDef(program, "gru_weights", args);
+		wIr = (PackedCollection) data.get("w_ir");
+		wIz = (PackedCollection) data.get("w_iz");
+		wIn = (PackedCollection) data.get("w_in");
+		wHr = (PackedCollection) data.get("w_hr");
+		wHz = (PackedCollection) data.get("w_hz");
+		wHn = (PackedCollection) data.get("w_hn");
+		bIr = (PackedCollection) data.get("b_ir");
+		bIz = (PackedCollection) data.get("b_iz");
+		bIn = (PackedCollection) data.get("b_in");
+		bHr = (PackedCollection) data.get("b_hr");
+		bHz = (PackedCollection) data.get("b_hz");
+		bHn = (PackedCollection) data.get("b_hn");
+
+		// Build PDSL gate blocks; the data block entries are in scope for all layers
+		rGateBlock = loader.buildLayer(program, "gru_r_gate",
+				new TraversalPolicy(inputSize + hiddenSize), args);
+		zGateBlock = loader.buildLayer(program, "gru_z_gate",
+				new TraversalPolicy(inputSize + hiddenSize), args);
+		nGateBlock = loader.buildLayer(program, "gru_n_gate",
+				new TraversalPolicy(inputSize + 2 * hiddenSize), args);
+		hNewBlock  = loader.buildLayer(program, "gru_h_new",
+				new TraversalPolicy(3 * hiddenSize), args);
 	}
 
 	/** Returns the input dimension of this GRU block. */
@@ -125,8 +158,12 @@ public class GRUBlock {
 	/** Returns the hidden state dimension of this GRU block. */
 	public int getHiddenSize() { return hiddenSize; }
 
-	// ---- PDSL loading ----
-
+	/**
+	 * Load and parse the GRU block PDSL program from the classpath resource.
+	 *
+	 * @param loader the PDSL loader to use for parsing
+	 * @return the parsed program
+	 */
 	private static PdslNode.Program loadProgram(PdslLoader loader) {
 		try (InputStream is = GRUBlock.class.getResourceAsStream(GRU_PDSL_RESOURCE)) {
 			if (is == null) {
@@ -138,50 +175,5 @@ public class GRUBlock {
 			throw new PdslParseException(
 					"Failed to load GRU block PDSL from " + GRU_PDSL_RESOURCE, e);
 		}
-	}
-
-	// ---- DSL block builders ----
-
-	private Block buildRGate(PdslLoader loader, PdslNode.Program program) {
-		Map<String, Object> args = new HashMap<>();
-		args.put("w_ir", wIr);
-		args.put("b_ir", bIr);
-		args.put("w_hr", wHr);
-		args.put("b_hr", bHr);
-		args.put("input_size", inputSize);
-		args.put("hidden_size", hiddenSize);
-		return loader.buildLayer(program, "gru_r_gate",
-				new TraversalPolicy(inputSize + hiddenSize), args);
-	}
-
-	private Block buildZGate(PdslLoader loader, PdslNode.Program program) {
-		Map<String, Object> args = new HashMap<>();
-		args.put("w_iz", wIz);
-		args.put("b_iz", bIz);
-		args.put("w_hz", wHz);
-		args.put("b_hz", bHz);
-		args.put("input_size", inputSize);
-		args.put("hidden_size", hiddenSize);
-		return loader.buildLayer(program, "gru_z_gate",
-				new TraversalPolicy(inputSize + hiddenSize), args);
-	}
-
-	private Block buildNGate(PdslLoader loader, PdslNode.Program program) {
-		Map<String, Object> args = new HashMap<>();
-		args.put("w_in", wIn);
-		args.put("b_in", bIn);
-		args.put("w_hn", wHn);
-		args.put("b_hn", bHn);
-		args.put("input_size", inputSize);
-		args.put("hidden_size", hiddenSize);
-		return loader.buildLayer(program, "gru_n_gate",
-				new TraversalPolicy(inputSize + 2 * hiddenSize), args);
-	}
-
-	private Block buildHNew(PdslLoader loader, PdslNode.Program program) {
-		Map<String, Object> args = new HashMap<>();
-		args.put("hidden_size", hiddenSize);
-		return loader.buildLayer(program, "gru_h_new",
-				new TraversalPolicy(3 * hiddenSize), args);
 	}
 }

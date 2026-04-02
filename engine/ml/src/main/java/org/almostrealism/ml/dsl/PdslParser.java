@@ -89,10 +89,11 @@ public class PdslParser {
 		PdslToken token = peek();
 		switch (token.getType()) {
 			case CONFIG: return parseConfigDef();
-			case LAYER: return parseLayerDef();
-			case MODEL: return parseModelDef();
+			case DATA:   return parseDataDef();
+			case LAYER:  return parseLayerDef();
+			case MODEL:  return parseModelDef();
 			default:
-				throw error("Expected 'config', 'layer', or 'model' but found " + token);
+				throw error("Expected 'config', 'data', 'layer', or 'model' but found " + token);
 		}
 	}
 
@@ -193,7 +194,17 @@ public class PdslParser {
 	private PdslNode.Parameter parseParameter() {
 		PdslToken nameTok = consume(PdslToken.Type.IDENTIFIER);
 		consume(PdslToken.Type.COLON);
+		return parseParameterAfterColon(nameTok);
+	}
 
+	/**
+	 * Parses the type portion of a parameter declaration after the colon has been consumed.
+	 * Shared by {@link #parseParameter()} and {@link #parseDataDef()}.
+	 *
+	 * @param nameTok the already-consumed name token
+	 * @return The parsed parameter node
+	 */
+	private PdslNode.Parameter parseParameterAfterColon(PdslToken nameTok) {
 		String typeName;
 		PdslNode.Expression shape = null;
 
@@ -235,6 +246,42 @@ public class PdslParser {
 
 		return new PdslNode.Parameter(nameTok.getValue(), typeName, shape,
 				nameTok.getLine(), nameTok.getColumn());
+	}
+
+	// ---- Data ----
+
+	/**
+	 * Parses a {@code data Name { entries }} block.
+	 *
+	 * <p>Each entry is either a parameter declaration ({@code name: type}) or
+	 * a derivation ({@code name = expr}). Parameter declarations are satisfied
+	 * from caller-supplied arguments at build time; derivations are evaluated in
+	 * declaration order with earlier entries in scope for later expressions.</p>
+	 *
+	 * @return The parsed data definition node
+	 */
+	private PdslNode.DataDef parseDataDef() {
+		PdslToken kw = consume(PdslToken.Type.DATA);
+		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
+		consume(PdslToken.Type.LBRACE);
+
+		List<PdslNode.Parameter> parameters = new ArrayList<>();
+		Map<String, PdslNode.Expression> derivations = new LinkedHashMap<>();
+
+		while (!check(PdslToken.Type.RBRACE) && !check(PdslToken.Type.EOF)) {
+			PdslToken entryNameTok = consume(PdslToken.Type.IDENTIFIER);
+			if (check(PdslToken.Type.COLON)) {
+				consume(PdslToken.Type.COLON);
+				parameters.add(parseParameterAfterColon(entryNameTok));
+			} else {
+				consume(PdslToken.Type.EQUALS);
+				derivations.put(entryNameTok.getValue(), parseExpression());
+			}
+			while (check(PdslToken.Type.SEMICOLON)) advance();
+		}
+
+		consume(PdslToken.Type.RBRACE);
+		return new PdslNode.DataDef(name, parameters, derivations, kw.getLine(), kw.getColumn());
 	}
 
 	// ---- Body (statements) ----

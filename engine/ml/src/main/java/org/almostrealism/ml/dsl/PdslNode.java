@@ -113,6 +113,62 @@ public abstract class PdslNode {
 		public Map<String, Expression> getEntries() { return entries; }
 	}
 
+	/**
+	 * A data block declaring external weight inputs and derived zero-copy sub-views.
+	 *
+	 * <p>Data blocks are top-level definitions. When a layer or model is built,
+	 * all data blocks in the program are pre-populated into the environment before
+	 * the layer body is interpreted. Parameter declarations ({@code name: type})
+	 * are satisfied from caller-supplied arguments; derivations ({@code name = expr})
+	 * are evaluated in declaration order, with earlier entries visible to later ones.</p>
+	 *
+	 * <p>Example:
+	 * <pre>
+	 * data gru_weights {
+	 *     weight_ih: weight
+	 *     input_size: int
+	 *     hidden_size: int
+	 *
+	 *     w_ir = range(weight_ih, [hidden_size, input_size], 0)
+	 *     w_iz = range(weight_ih, [hidden_size, input_size], hidden_size * input_size)
+	 * }
+	 * </pre>
+	 * </p>
+	 */
+	public static class DataDef extends Definition {
+		/** External input declarations in the order they appear in source. */
+		private final List<Parameter> parameters;
+
+		/**
+		 * Derived bindings in declaration order.
+		 * Earlier entries are visible when evaluating later expressions.
+		 */
+		private final Map<String, Expression> derivations;
+
+		/**
+		 * Constructs a data block definition.
+		 *
+		 * @param name        data block name
+		 * @param parameters  external input declarations
+		 * @param derivations derived bindings, in declaration order
+		 * @param line        source line number
+		 * @param column      source column number
+		 */
+		public DataDef(String name, List<Parameter> parameters,
+					   Map<String, Expression> derivations,
+					   int line, int column) {
+			super(name, line, column);
+			this.parameters = parameters;
+			this.derivations = derivations;
+		}
+
+		/** Returns the external input declarations. */
+		public List<Parameter> getParameters() { return parameters; }
+
+		/** Returns the derived bindings in declaration order. */
+		public Map<String, Expression> getDerivations() { return derivations; }
+	}
+
 	/** A layer definition: reusable block builder. */
 	public static class LayerDef extends Definition {
 		/** Formal parameters accepted by this layer. */

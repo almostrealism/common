@@ -36,6 +36,7 @@ public class PdslLexer {
 		KEYWORDS.put("layer", PdslToken.Type.LAYER);
 		KEYWORDS.put("model", PdslToken.Type.MODEL);
 		KEYWORDS.put("config", PdslToken.Type.CONFIG);
+		KEYWORDS.put("data", PdslToken.Type.DATA);
 		KEYWORDS.put("let", PdslToken.Type.LET);
 		KEYWORDS.put("return", PdslToken.Type.RETURN);
 		KEYWORDS.put("if", PdslToken.Type.IF);
