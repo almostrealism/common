@@ -21,9 +21,16 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
+import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -59,7 +66,12 @@ public class GRUDecoder implements LayerFeatures {
 	public static final int TOKENS_PER_NOTE = 7;
 
 	private final MoonbeamConfig config;
-	private final GRUBlock[] layers;
+	private final int numLayers;
+	private final int[] inputSizes;
+	private final PackedCollection[] weightIh;
+	private final PackedCollection[] weightHh;
+	private final PackedCollection[] biasIh;
+	private final PackedCollection[] biasHh;
 	private final PackedCollection summaryWeight;
 	private final PackedCollection summaryBias;
 	private final PackedCollection fcOutWeight;
@@ -85,8 +97,17 @@ public class GRUDecoder implements LayerFeatures {
 	/**
 	 * Create a GRU decoder with explicit weights.
 	 *
+	 * <p>Weight tensors are provided in the stacked layout used by the model checkpoint.
+	 * The {@code gru_block.pdsl} data block is used at compile time to derive the
+	 * per-gate sub-views from these stacked tensors, eliminating the need for a
+	 * separate Java weight-holder class.</p>
+	 *
 	 * @param config           model configuration
-	 * @param layers           array of GRU blocks (one per layer)
+	 * @param inputSizes       input size for each layer (differs between layer 0 and deeper layers)
+	 * @param weightIh         stacked input-hidden weights per layer, shape (3*hiddenSize, inputSize)
+	 * @param weightHh         stacked hidden-hidden weights per layer, shape (3*hiddenSize, hiddenSize)
+	 * @param biasIh           stacked input-hidden biases per layer, shape (3*hiddenSize)
+	 * @param biasHh           stacked hidden-hidden biases per layer, shape (3*hiddenSize)
 	 * @param summaryWeight    summary projection weights (decoderHiddenSize, hiddenSize)
 	 * @param summaryBias      summary projection bias (decoderHiddenSize)
 	 * @param fcOutWeight      fc_out projection weights (may be null)
@@ -95,13 +116,20 @@ public class GRUDecoder implements LayerFeatures {
 	 * @param lmHeadBias       output projection bias (decodeVocabSize)
 	 * @param decoderEmbedding output token embedding (decodeVocabSize, decoderHiddenSize)
 	 */
-	public GRUDecoder(MoonbeamConfig config, GRUBlock[] layers,
+	public GRUDecoder(MoonbeamConfig config,
+					  int[] inputSizes, PackedCollection[] weightIh, PackedCollection[] weightHh,
+					  PackedCollection[] biasIh, PackedCollection[] biasHh,
 					  PackedCollection summaryWeight, PackedCollection summaryBias,
 					  PackedCollection fcOutWeight, PackedCollection fcOutBias,
 					  PackedCollection lmHeadWeight, PackedCollection lmHeadBias,
 					  PackedCollection decoderEmbedding) {
 		this.config = config;
-		this.layers = layers;
+		this.numLayers = inputSizes.length;
+		this.inputSizes = inputSizes;
+		this.weightIh = weightIh;
+		this.weightHh = weightHh;
+		this.biasIh = biasIh;
+		this.biasHh = biasHh;
 		this.summaryWeight = summaryWeight;
 		this.summaryBias = summaryBias;
 		this.fcOutWeight = fcOutWeight;
@@ -117,19 +145,25 @@ public class GRUDecoder implements LayerFeatures {
 	 * Create a GRU decoder without fc_out layer.
 	 *
 	 * @param config           model configuration
-	 * @param layers           array of GRU blocks (one per layer)
+	 * @param inputSizes       input size for each layer
+	 * @param weightIh         stacked input-hidden weights per layer
+	 * @param weightHh         stacked hidden-hidden weights per layer
+	 * @param biasIh           stacked input-hidden biases per layer
+	 * @param biasHh           stacked hidden-hidden biases per layer
 	 * @param summaryWeight    summary projection weights (decoderHiddenSize, hiddenSize)
 	 * @param summaryBias      summary projection bias (decoderHiddenSize)
 	 * @param lmHeadWeight     output projection weights (decodeVocabSize, decoderHiddenSize)
 	 * @param lmHeadBias       output projection bias (decodeVocabSize)
 	 * @param decoderEmbedding output token embedding (decodeVocabSize, decoderHiddenSize)
 	 */
-	public GRUDecoder(MoonbeamConfig config, GRUBlock[] layers,
+	public GRUDecoder(MoonbeamConfig config,
+					  int[] inputSizes, PackedCollection[] weightIh, PackedCollection[] weightHh,
+					  PackedCollection[] biasIh, PackedCollection[] biasHh,
 					  PackedCollection summaryWeight, PackedCollection summaryBias,
 					  PackedCollection lmHeadWeight, PackedCollection lmHeadBias,
 					  PackedCollection decoderEmbedding) {
-		this(config, layers, summaryWeight, summaryBias, null, null,
-				lmHeadWeight, lmHeadBias, decoderEmbedding);
+		this(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
+				summaryWeight, summaryBias, null, null, lmHeadWeight, lmHeadBias, decoderEmbedding);
 	}
 
 	/**
@@ -219,7 +253,7 @@ public class GRUDecoder implements LayerFeatures {
 	public int[] getVocabOffsets() { return vocabOffsets.clone(); }
 
 	/** Returns the number of GRU layers. */
-	public int getNumLayers() { return layers.length; }
+	public int getNumLayers() { return numLayers; }
 
 	/** Returns the decoder hidden size. */
 	public int getDecoderHiddenSize() { return config.decoderHiddenSize; }
@@ -251,8 +285,16 @@ public class GRUDecoder implements LayerFeatures {
 		synchronized (this) {
 			if (decodeStepModel != null) return;
 
+			// Load gru_block.pdsl to derive per-gate weight sub-views
+			PdslLoader loader = new PdslLoader();
+			PdslNode.Program gruBlockProgram;
+			try (InputStream is = GRUDecoder.class.getResourceAsStream("/pdsl/gru_block.pdsl")) {
+				gruBlockProgram = loader.parse(new String(is.readAllBytes(), StandardCharsets.UTF_8));
+			} catch (IOException e) {
+				throw new IllegalStateException("Cannot load gru_block.pdsl from classpath", e);
+			}
+
 			final int dh = config.decoderHiddenSize;
-			final int numLayers = layers.length;
 			// State layout: [x | h0 | h1 | ... | hL]  (slot 0 = x, slot l+1 = h_l)
 			final int stateSize = (1 + numLayers) * dh;
 			// Output layout: [h0' | h1' | ... | hL' | logits]
@@ -264,9 +306,32 @@ public class GRUDecoder implements LayerFeatures {
 			// prevent symbolic substitution across layers for large hidden sizes.
 			for (int l = 0; l < numLayers; l++) {
 				final int layerIdx = l;
+
+				// Evaluate gru_weights data block from PDSL to get per-gate sub-views
+				Map<String, Object> args = new HashMap<>();
+				args.put("weight_ih", weightIh[l]);
+				args.put("weight_hh", weightHh[l]);
+				args.put("bias_ih", biasIh[l]);
+				args.put("bias_hh", biasHh[l]);
+				args.put("input_size", inputSizes[l]);
+				args.put("hidden_size", dh);
+				Map<String, Object> w = loader.evaluateDataDef(gruBlockProgram, "gru_weights", args);
+
+				final PackedCollection wIr = (PackedCollection) w.get("w_ir");
+				final PackedCollection bIr = (PackedCollection) w.get("b_ir");
+				final PackedCollection wHr = (PackedCollection) w.get("w_hr");
+				final PackedCollection bHr = (PackedCollection) w.get("b_hr");
+				final PackedCollection wIz = (PackedCollection) w.get("w_iz");
+				final PackedCollection bIz = (PackedCollection) w.get("b_iz");
+				final PackedCollection wHz = (PackedCollection) w.get("w_hz");
+				final PackedCollection bHz = (PackedCollection) w.get("b_hz");
+				final PackedCollection wIn = (PackedCollection) w.get("w_in");
+				final PackedCollection bIn = (PackedCollection) w.get("b_in");
+				final PackedCollection wHn = (PackedCollection) w.get("w_hn");
+				final PackedCollection bHn = (PackedCollection) w.get("b_hn");
+
 				CellularLayer gruLayer = layer("gru_layer_" + l,
 						shape(stateSize), shape(stateSize), input -> {
-					GRUBlock block = layers[layerIdx];
 					// x = current layer input (slot 0); hl = hidden from last step (slot layerIdx+1)
 					CollectionProducer x = c(input).subset(shape(dh), 0).reshape(shape(dh));
 					CollectionProducer hl = c(input).subset(shape(dh), (layerIdx + 1) * dh)
@@ -274,18 +339,18 @@ public class GRUDecoder implements LayerFeatures {
 
 					// Reset gate: r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)
 					CollectionProducer r = sigmoid(
-							add(add(matmul(cp(block.wIr), x), cp(block.bIr)),
-								add(matmul(cp(block.wHr), hl), cp(block.bHr))));
+							add(add(matmul(cp(wIr), x), cp(bIr)),
+								add(matmul(cp(wHr), hl), cp(bHr))));
 
 					// Update gate: z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)
 					CollectionProducer z = sigmoid(
-							add(add(matmul(cp(block.wIz), x), cp(block.bIz)),
-								add(matmul(cp(block.wHz), hl), cp(block.bHz))));
+							add(add(matmul(cp(wIz), x), cp(bIz)),
+								add(matmul(cp(wHz), hl), cp(bHz))));
 
 					// Candidate gate: n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))
 					CollectionProducer n = tanh(
-							add(add(matmul(cp(block.wIn), x), cp(block.bIn)),
-								r.multiply(add(matmul(cp(block.wHn), hl), cp(block.bHn)))));
+							add(add(matmul(cp(wIn), x), cp(bIn)),
+								r.multiply(add(matmul(cp(wHn), hl), cp(bHn)))));
 
 					// Hidden state update: hNew = (1 - z) * n + z * h
 					CollectionProducer hNew = add(
@@ -356,7 +421,7 @@ public class GRUDecoder implements LayerFeatures {
 	private int[] runGruDecode(PackedCollection transformerHidden,
 								double temperature, double topP, Random random) {
 		final int dh = config.decoderHiddenSize;
-		final int numLayers = layers.length;
+		final int numLayers = this.numLayers;
 		final int inputSize = (1 + numLayers) * dh;
 
 		// One-time initialisation: summary projection before the decode loop.

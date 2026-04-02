@@ -6,7 +6,7 @@
 //   n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))  // new gate
 //   h' = n + z * (h - n)                                // hidden state update (lerp)
 //
-// Weight conventions (stacked PyTorch layout):
+// Weight conventions (stacked layout):
 //   weight_ih = [W_ir; W_iz; W_in]  shape (3 * hidden_size, input_size)
 //   weight_hh = [W_hr; W_hz; W_hn]  shape (3 * hidden_size, hidden_size)
 //   bias_ih   = [b_ir; b_iz; b_in]  shape (3 * hidden_size)

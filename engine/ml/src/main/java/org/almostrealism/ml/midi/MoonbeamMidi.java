@@ -39,7 +39,7 @@ import java.util.Map;
  * <p>This class implements the Moonbeam transformer architecture for symbolic music
  * (MIDI) generation. It loads model weights from protobuf format (exported via
  * extract_moonbeam_weights.py) and provides the compiled transformer for use with
- * {@link MidiAutoregressiveModel}.</p>
+ * {@link MoonbeamMidiGenerator}.</p>
  *
  * <h2>Architecture</h2>
  * <ul>
@@ -55,7 +55,7 @@ import java.util.Map;
  * MoonbeamMidi model = new MoonbeamMidi("/path/to/weights");
  *
  * // Generate unconditionally
- * MidiAutoregressiveModel gen = model.createAutoregressiveModel();
+ * MoonbeamMidiGenerator gen = model.createAutoregressiveModel();
  * gen.setTemperature(0.8);
  * gen.setTopP(0.95);
  * gen.generateUnconditional(new File("output.mid"), 100);
@@ -80,7 +80,7 @@ import java.util.Map;
  * model.saveLoraAdapter(Paths.get("lora.pb"), trainConfig);
  * }</pre>
  *
- * @see MidiAutoregressiveModel
+ * @see MoonbeamMidiGenerator
  * @see MoonbeamConfig
  * @see CompoundMidiEmbedding
  * @see GRUDecoder
@@ -205,12 +205,12 @@ public class MoonbeamMidi implements AttentionFeatures {
 	}
 
 	/**
-	 * Create a {@link MidiAutoregressiveModel} for compound token generation.
+	 * Create a {@link MoonbeamMidiGenerator} for compound token generation.
 	 *
 	 * @return a new autoregressive model ready for inference
 	 */
-	public MidiAutoregressiveModel createAutoregressiveModel() {
-		return new MidiAutoregressiveModel(this);
+	public MoonbeamMidiGenerator createAutoregressiveModel() {
+		return new MoonbeamMidiGenerator(this);
 	}
 
 	/**
@@ -347,17 +347,21 @@ public class MoonbeamMidi implements AttentionFeatures {
 	 * @return initialized GRU decoder
 	 */
 	private static GRUDecoder buildDecoder(StateDictionary stateDict, MoonbeamConfig config) {
-		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
-		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUBlock(
-					l == 0 ? config.hiddenSize : config.decoderHiddenSize, config.decoderHiddenSize,
-					stateDict.get(String.format("decoder.weight_ih_l%d", l)),
-					stateDict.get(String.format("decoder.weight_hh_l%d", l)),
-					stateDict.get(String.format("decoder.bias_ih_l%d", l)),
-					stateDict.get(String.format("decoder.bias_hh_l%d", l)));
+		int n = config.decoderLayers;
+		int[] inputSizes = new int[n];
+		PackedCollection[] weightIh = new PackedCollection[n];
+		PackedCollection[] weightHh = new PackedCollection[n];
+		PackedCollection[] biasIh = new PackedCollection[n];
+		PackedCollection[] biasHh = new PackedCollection[n];
+		for (int l = 0; l < n; l++) {
+			inputSizes[l] = (l == 0) ? config.hiddenSize : config.decoderHiddenSize;
+			weightIh[l] = stateDict.get(String.format("decoder.weight_ih_l%d", l));
+			weightHh[l] = stateDict.get(String.format("decoder.weight_hh_l%d", l));
+			biasIh[l] = stateDict.get(String.format("decoder.bias_ih_l%d", l));
+			biasHh[l] = stateDict.get(String.format("decoder.bias_hh_l%d", l));
 		}
 
-		return new GRUDecoder(config, layers,
+		return new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
 				stateDict.get("summary_projection.weight"),
 				stateDict.get("summary_projection.bias"),
 				stateDict.get("decoder.fc_out.weight"),

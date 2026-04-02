@@ -30,7 +30,7 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 
@@ -1053,24 +1053,24 @@ public interface AttentionFeatures extends RotationFeatures {
 		CollectionProducer componentMap = mod(integers(0, outputSize), c(2.0));
 
 		// Per-group masks for position routing: mask_g[i] = 1.0 if head i belongs to group g
+		int[] headOffsets = new int[numGroups + 1];
+		for (int g = 0; g < numGroups; g++) {
+			headOffsets[g + 1] = headOffsets[g] + headsInGroup[g];
+		}
+		CollectionProducer indices = integers(0, totalHeadFreq);
 		PackedCollection[] groupMasks = new PackedCollection[numGroups];
 		for (int g = 0; g < numGroups; g++) {
-			groupMasks[g] = new PackedCollection(totalHeadFreq);
-		}
-		headIdx = 0;
-		for (int g = 0; g < numGroups; g++) {
-			for (int h = 0; h < headsInGroup[g]; h++) {
-				for (int f = 0; f < freqDim; f++) {
-					groupMasks[g].setMem(headIdx * freqDim + f, 1.0);
-				}
-				headIdx++;
-			}
+			final int maskStart = headOffsets[g] * freqDim;
+			final int maskEnd = headOffsets[g + 1] * freqDim;
+			groupMasks[g] = indices.greaterThanOrEqual(c((double) maskStart))
+					.multiply(indices.lessThan(c((double) maskEnd)))
+					.evaluate();
 		}
 
 		List<PackedCollection> captured = new ArrayList<>();
 		captured.add(combinedFreqCis);
 		captured.add(groupBaseOffsets);
-		captured.addAll(Arrays.asList(groupMasks));
+		Collections.addAll(captured, groupMasks);
 
 		return layer("mraRopeRotation", inputShape, inputShape, input -> {
 			// Build per-head position by summing group-masked position scalars

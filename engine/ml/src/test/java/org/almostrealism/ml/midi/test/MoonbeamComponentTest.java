@@ -22,10 +22,9 @@ import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.FundamentalMusicEmbedding;
-import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.HeadGroupConfig;
-import org.almostrealism.ml.midi.MidiAutoregressiveModel;
+import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
@@ -305,7 +304,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		long buildTime = System.currentTimeMillis() - buildStart;
 		System.out.println("[MoonbeamComponentTest] 1-layer model build: " + buildTime + " ms");
 
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		long fwdStart = System.currentTimeMillis();
 		MidiCompoundToken result = autoregressive.next();
@@ -345,7 +344,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		long buildTime = System.currentTimeMillis() - buildStart;
 		System.out.println("[MoonbeamComponentTest] 2-layer model build: " + buildTime + " ms");
 
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos(),
 				new MidiCompoundToken(100, 50, 5, 7, 0, 80)
@@ -398,7 +397,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		long buildTime = System.currentTimeMillis() - buildStart;
 		System.out.println("[MoonbeamComponentTest] 15-layer model build: " + buildTime + " ms");
 
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		long fwdStart = System.currentTimeMillis();
 		MidiCompoundToken result = autoregressive.next();
@@ -437,7 +436,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		long buildTime = System.currentTimeMillis() - buildStart;
 		System.out.println("[MoonbeamComponentTest] model build: " + buildTime + " ms");
 
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		long stepStart = System.currentTimeMillis();
 		MidiCompoundToken result = autoregressive.next();
@@ -522,17 +521,21 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		int decoderHidden = config.decoderHiddenSize;
 		int vocabSize = config.decodeVocabSize;
 
-		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
-		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUBlock(
-					decoderHidden, decoderHidden,
-					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden));
+		int n = config.decoderLayers;
+		int[] inputSizes = new int[n];
+		PackedCollection[] weightIh = new PackedCollection[n];
+		PackedCollection[] weightHh = new PackedCollection[n];
+		PackedCollection[] biasIh = new PackedCollection[n];
+		PackedCollection[] biasHh = new PackedCollection[n];
+		for (int l = 0; l < n; l++) {
+			inputSizes[l] = decoderHidden;
+			weightIh[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
+			weightHh[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
+			biasIh[l] = createRandomCollection(rng, 3 * decoderHidden);
+			biasHh[l] = createRandomCollection(rng, 3 * decoderHidden);
 		}
 
-		return new GRUDecoder(config, layers,
+		return new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
 				createRandomCollection(rng, decoderHidden, hidden),
 				createRandomCollection(rng, decoderHidden),
 				createRandomCollection(rng, vocabSize, decoderHidden),

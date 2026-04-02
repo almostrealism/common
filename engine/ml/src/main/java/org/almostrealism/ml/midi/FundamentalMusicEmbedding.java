@@ -180,11 +180,8 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 	 * @return CollectionProducer of shape (dim/2,) containing inverse frequency values
 	 */
 	public CollectionProducer computeInvFreqs(double base, int dim) {
-		int halfDim = dim / 2;
-		double[] freqs = new double[halfDim];
-		for (int i = 0; i < halfDim; i++) {
-			freqs[i] = 1.0 / Math.pow(base, (2.0 * i) / dim);
-		}
-		return c(shape(halfDim), freqs);
+		return integers(0, dim / 2)
+				.multiply(c(-2.0 * Math.log(base) / dim))
+				.exp();
 	}
 }

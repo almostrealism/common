@@ -2172,6 +2172,24 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 	}
 
 	/**
+	 * Builds a linear-interpolation layer for the given input shape.
+	 *
+	 * @param inputShape must have total size {@code 3 * hiddenSize}
+	 * @param hiddenSize size of the output and of each segment in the input
+	 * @return a CellularLayer computing {@code from + weight * (to - from)}
+	 */
+	default CellularLayer lerpLayer(TraversalPolicy inputShape, int hiddenSize) {
+		TraversalPolicy outputShape = shape(hiddenSize);
+		return layer("lerp", inputShape, outputShape, input -> {
+			CollectionProducer inp = c(input);
+			CollectionProducer from = subset(outputShape, inp, 0);
+			CollectionProducer weight = subset(outputShape, inp, hiddenSize);
+			CollectionProducer to = subset(outputShape, inp, 2 * hiddenSize);
+			return from.add(weight.multiply(to.subtract(from)));
+		});
+	}
+
+	/**
 	 * A {@link Cell} that also implements {@link Learning}, combining data-flow
 	 * propagation with gradient-based weight update support.
 	 */

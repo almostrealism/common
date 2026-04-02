@@ -16,7 +16,7 @@
 
 package org.almostrealism.ml.midi.test;
 
-import org.almostrealism.ml.midi.MidiAutoregressiveModel;
+import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiFileReader;
 import org.almostrealism.ml.midi.MidiNoteEvent;
@@ -136,7 +136,7 @@ public class MoonbeamInferenceRunner {
 		log("");
 
 		// Create autoregressive model
-		MidiAutoregressiveModel gen = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen = model.createAutoregressiveModel();
 		gen.setTemperature(temperature);
 		gen.setTopP(topP);
 		if (seed >= 0) {

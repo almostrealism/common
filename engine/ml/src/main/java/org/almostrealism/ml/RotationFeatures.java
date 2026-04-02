@@ -27,6 +27,7 @@ import org.almostrealism.layers.LayerRoutingFeatures;
 
 import java.util.List;
 import java.util.function.Function;
+import java.util.stream.IntStream;
 
 /**
  * Provides Rotary Position Embedding (RoPE) implementations for transformer attention.
@@ -238,15 +239,15 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 */
 	static PackedCollection computeRopeFreqs(double theta, int headDim, int seqLen) {
 		int freqDim = headDim / 2;
+		double logTheta = Math.log(theta);
+		double[] data = IntStream.range(0, seqLen * freqDim * 2).mapToDouble(i -> {
+			int pos = i / (freqDim * 2);
+			int f = (i % (freqDim * 2)) / 2;
+			double angle = pos * Math.exp(-logTheta * 2.0 * f / headDim);
+			return ((i % 2) == 0) ? Math.cos(angle) : Math.sin(angle);
+		}).toArray();
 		PackedCollection freqCis = new PackedCollection(new TraversalPolicy(seqLen, freqDim, 2));
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int f = 0; f < freqDim; f++) {
-				double angle = pos * (1.0 / Math.pow(theta, (2.0 * f) / headDim));
-				int idx = (pos * freqDim + f) * 2;
-				freqCis.setMem(idx, Math.cos(angle));
-				freqCis.setMem(idx + 1, Math.sin(angle));
-			}
-		}
+		freqCis.setMem(0, data, 0, data.length);
 		return freqCis;
 	}
 
@@ -262,20 +263,11 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 */
 	default PackedCollection computeRotaryFreqs(int seqLen, PackedCollection invFreq) {
 		int freqDim = invFreq.getShape().getTotalSize(); // (dimHead / 4)
-		int rotaryDim = freqDim * 2; // (dimHead / 2)
-
-		PackedCollection freqs = new PackedCollection(shape(seqLen, rotaryDim));
-
-		// Compute position * inv_freq for each position and frequency
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int f = 0; f < freqDim; f++) {
-				double freq_val = pos * invFreq.toDouble(f);
-				freqs.setMem(pos * rotaryDim + f, freq_val);
-				freqs.setMem(pos * rotaryDim + f + freqDim, freq_val);
-			}
-		}
-
-		return freqs;
+		// Outer product: positions (seqLen,1) x invFreq (1,freqDim) -> (seqLen, freqDim)
+		CollectionProducer positions = integers(0, seqLen).reshape(shape(seqLen, 1));
+		CollectionProducer product = matmul(positions, cp(invFreq).reshape(shape(1, freqDim)));
+		// Duplicate along axis 1: (seqLen, freqDim) -> (seqLen, 2*freqDim)
+		return concat(1, product, product).evaluate();
 	}
 
 	/**

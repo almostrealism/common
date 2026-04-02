@@ -47,8 +47,8 @@ import javax.sound.midi.InvalidMidiDataException;
  * <h2>Usage</h2>
  * <pre>{@code
  * MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
- * MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
- * autoregressive.setPrompt(new MidiCompoundToken[]{ MidiCompoundToken.sos(), token1, token2 });
+ * MoonbeamMidiGenerator generator = model.createAutoregressiveModel();
+ * generator.setPrompt(new MidiCompoundToken[]{ MidiCompoundToken.sos(), token1, token2 });
  *
  * List<MidiCompoundToken> generated = new ArrayList<>();
  * for (int i = 0; i < maxLen; i++) {
@@ -63,7 +63,7 @@ import javax.sound.midi.InvalidMidiDataException;
  * @see CompoundMidiEmbedding
  * @see GRUDecoder
  */
-public class MidiAutoregressiveModel {
+public class MoonbeamMidiGenerator {
 
 	private final AutoregressiveModel<MidiCompoundToken> inner;
 	private final MoonbeamMidi model;
@@ -87,21 +87,21 @@ public class MidiAutoregressiveModel {
 	private final Random random;
 
 	/**
-	 * Create a MidiAutoregressiveModel from a MoonbeamMidi model.
+	 * Create a MoonbeamMidiGenerator from a MoonbeamMidi model.
 	 *
 	 * @param model the Moonbeam model containing transformer, embedding, and decoder
 	 */
-	public MidiAutoregressiveModel(MoonbeamMidi model) {
+	public MoonbeamMidiGenerator(MoonbeamMidi model) {
 		this(model, new Random());
 	}
 
 	/**
-	 * Create a MidiAutoregressiveModel from a MoonbeamMidi model with the given random source.
+	 * Create a MoonbeamMidiGenerator from a MoonbeamMidi model with the given random source.
 	 *
 	 * @param model  the Moonbeam model containing transformer, embedding, and decoder
 	 * @param random random number generator for sampling
 	 */
-	public MidiAutoregressiveModel(MoonbeamMidi model, Random random) {
+	public MoonbeamMidiGenerator(MoonbeamMidi model, Random random) {
 		this.model = model;
 		this.config = model.getConfig();
 		this.embedding = model.getEmbedding();

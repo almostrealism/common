@@ -19,9 +19,8 @@ package org.almostrealism.ml.midi.test;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
-import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
-import org.almostrealism.ml.midi.MidiAutoregressiveModel;
+import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.MidiTokenizer;
@@ -45,7 +44,7 @@ import java.util.List;
  * pretrained 309M checkpoint. Skipped if weights are not available.</p>
  *
  * @see MoonbeamMidi
- * @see MidiAutoregressiveModel
+ * @see MoonbeamMidiGenerator
  */
 public class MoonbeamInferenceTest extends TestSuiteBase {
 
@@ -158,7 +157,7 @@ public class MoonbeamInferenceTest extends TestSuiteBase {
 		Assert.assertNotNull("Compiled transformer should exist",
 				model.getCompiledTransformer());
 
-		MidiAutoregressiveModel gen = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen = model.createAutoregressiveModel();
 		gen.setTemperature(0.8);
 		gen.setTopP(0.95);
 		gen.setSeed(42);
@@ -204,17 +203,22 @@ public class MoonbeamInferenceTest extends TestSuiteBase {
 
 	/** Build a GRU decoder from the state dictionary. */
 	private static GRUDecoder buildDecoder(StateDictionary stateDict, MoonbeamConfig config) {
-		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
-		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUBlock(
-					config.decoderHiddenSize, config.decoderHiddenSize,
-					stateDict.get(String.format("decoder.weight_ih_l%d", l)),
-					stateDict.get(String.format("decoder.weight_hh_l%d", l)),
-					stateDict.get(String.format("decoder.bias_ih_l%d", l)),
-					stateDict.get(String.format("decoder.bias_hh_l%d", l)));
+		int n = config.decoderLayers;
+		int dh = config.decoderHiddenSize;
+		int[] inputSizes = new int[n];
+		PackedCollection[] weightIh = new PackedCollection[n];
+		PackedCollection[] weightHh = new PackedCollection[n];
+		PackedCollection[] biasIh = new PackedCollection[n];
+		PackedCollection[] biasHh = new PackedCollection[n];
+		for (int l = 0; l < n; l++) {
+			inputSizes[l] = dh;
+			weightIh[l] = stateDict.get(String.format("decoder.weight_ih_l%d", l));
+			weightHh[l] = stateDict.get(String.format("decoder.weight_hh_l%d", l));
+			biasIh[l] = stateDict.get(String.format("decoder.bias_ih_l%d", l));
+			biasHh[l] = stateDict.get(String.format("decoder.bias_hh_l%d", l));
 		}
 
-		return new GRUDecoder(config, layers,
+		return new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
 				stateDict.get("summary_projection.weight"),
 				stateDict.get("summary_projection.bias"),
 				stateDict.get("decoder.fc_out.weight"),

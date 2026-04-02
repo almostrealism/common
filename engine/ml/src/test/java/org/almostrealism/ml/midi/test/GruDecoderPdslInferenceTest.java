@@ -19,7 +19,6 @@ package org.almostrealism.ml.midi.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.util.TestDepth;
@@ -83,14 +82,19 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase {
 		int numLayers = 2;
 		Random rng = new Random(42);
 
-		// Build GRUBlock instances with synthetic weights
-		GRUBlock[] gruLayers = new GRUBlock[numLayers];
-		for (int l = 0; l < numLayers; l++) {
-			PackedCollection weightIh = random(rng, 3 * dh, dh);
-			PackedCollection weightHh = random(rng, 3 * dh, dh);
-			PackedCollection biasIh = random(rng, 3 * dh);
-			PackedCollection biasHh = random(rng, 3 * dh);
-			gruLayers[l] = new GRUBlock(dh, dh, weightIh, weightHh, biasIh, biasHh);
+		// Build weight arrays for each layer
+		int n = numLayers;
+		int[] inputSizes = new int[n];
+		PackedCollection[] weightIh = new PackedCollection[n];
+		PackedCollection[] weightHh = new PackedCollection[n];
+		PackedCollection[] biasIh = new PackedCollection[n];
+		PackedCollection[] biasHh = new PackedCollection[n];
+		for (int l = 0; l < n; l++) {
+			inputSizes[l] = dh;
+			weightIh[l] = random(rng, 3 * dh, dh);
+			weightHh[l] = random(rng, 3 * dh, dh);
+			biasIh[l] = random(rng, 3 * dh);
+			biasHh[l] = random(rng, 3 * dh);
 		}
 
 		// Build a minimal MoonbeamConfig with the synthetic dimensions
@@ -106,7 +110,7 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase {
 		PackedCollection embedTable = random(rng, vocabSize, dh);
 
 		// ONE GRUDecoder — internally builds ONE compiled model
-		GRUDecoder decoder = new GRUDecoder(config, gruLayers,
+		GRUDecoder decoder = new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
 				summaryW, summaryB, lmW, lmB, embedTable);
 
 		// Synthetic transformer hidden state
@@ -148,17 +152,17 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase {
 		int numLayers = config.decoderLayers;
 		int dh = config.decoderHiddenSize;
 
-		GRUBlock[] gruLayers = new GRUBlock[numLayers];
+		int[] inputSizes = new int[numLayers];
+		PackedCollection[] weightIh = new PackedCollection[numLayers];
+		PackedCollection[] weightHh = new PackedCollection[numLayers];
+		PackedCollection[] biasIh = new PackedCollection[numLayers];
+		PackedCollection[] biasHh = new PackedCollection[numLayers];
 		for (int l = 0; l < numLayers; l++) {
-			PackedCollection weightIh = stateDict.get(
-					String.format("decoder.weight_ih_l%d", l));
-			PackedCollection weightHh = stateDict.get(
-					String.format("decoder.weight_hh_l%d", l));
-			PackedCollection biasIh = stateDict.get(
-					String.format("decoder.bias_ih_l%d", l));
-			PackedCollection biasHh = stateDict.get(
-					String.format("decoder.bias_hh_l%d", l));
-			gruLayers[l] = new GRUBlock(dh, dh, weightIh, weightHh, biasIh, biasHh);
+			inputSizes[l] = dh;
+			weightIh[l] = stateDict.get(String.format("decoder.weight_ih_l%d", l));
+			weightHh[l] = stateDict.get(String.format("decoder.weight_hh_l%d", l));
+			biasIh[l] = stateDict.get(String.format("decoder.bias_ih_l%d", l));
+			biasHh[l] = stateDict.get(String.format("decoder.bias_hh_l%d", l));
 		}
 
 		PackedCollection summaryW = stateDict.get("summary_projection.weight");
@@ -167,7 +171,7 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase {
 		PackedCollection lmB = stateDict.get("lm_head.bias");
 		PackedCollection embedTable = stateDict.get("decoder_embedding.weight");
 
-		GRUDecoder decoder = new GRUDecoder(config, gruLayers,
+		GRUDecoder decoder = new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
 				summaryW, summaryB, lmW, lmB, embedTable);
 
 		// Synthetic transformer hidden state (all 0.1)

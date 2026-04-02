@@ -19,7 +19,6 @@ package org.almostrealism.ml.midi.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
-import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiTokenizer;
@@ -393,13 +392,18 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		PackedCollection lmHeadBias = createRandomCollection(rng, vocabSize);
 		PackedCollection decoderEmb = createRandomCollection(rng, vocabSize, decoderHidden);
 
-		GRUBlock[] layers = new GRUBlock[REAL_CONFIG.decoderLayers];
-		for (int l = 0; l < REAL_CONFIG.decoderLayers; l++) {
-			layers[l] = new GRUBlock(decoderHidden, decoderHidden,
-					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden));
+		int nl = REAL_CONFIG.decoderLayers;
+		int[] inputSizesL = new int[nl];
+		PackedCollection[] weightIhL = new PackedCollection[nl];
+		PackedCollection[] weightHhL = new PackedCollection[nl];
+		PackedCollection[] biasIhL = new PackedCollection[nl];
+		PackedCollection[] biasHhL = new PackedCollection[nl];
+		for (int l = 0; l < nl; l++) {
+			inputSizesL[l] = decoderHidden;
+			weightIhL[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
+			weightHhL[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
+			biasIhL[l] = createRandomCollection(rng, 3 * decoderHidden);
+			biasHhL[l] = createRandomCollection(rng, 3 * decoderHidden);
 		}
 
 		// Stage 1: Random input hidden state
@@ -414,8 +418,8 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		printStats("Stage 2: After summary projection (decoderHidden=" + decoderHidden + ")", projArr);
 
 		// Stage 3: GRU forward steps
-		PackedCollection[] h = new PackedCollection[layers.length];
-		for (int l = 0; l < layers.length; l++) {
+		PackedCollection[] h = new PackedCollection[nl];
+		for (int l = 0; l < nl; l++) {
 			h[l] = copyCollection(projected, decoderHidden);
 		}
 
@@ -426,17 +430,17 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		PackedCollection x = sosEmb;
 		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
 			PackedCollection layerInput = x;
-			for (int l = 0; l < layers.length; l++) {
-				h[l] = gruStep(layers[l], layerInput, h[l]);
+			for (int l = 0; l < nl; l++) {
+				h[l] = gruStep(weightIhL[l], weightHhL[l], biasIhL[l], biasHhL[l], layerInput, h[l]);
 				layerInput = h[l];
 			}
 
-			double[] gruOut = h[layers.length - 1].toArray(0, decoderHidden);
+			double[] gruOut = h[nl - 1].toArray(0, decoderHidden);
 			printStats("Stage 3b: GRU output (step " + step + ", " + ATTR_NAMES[step] + ")", gruOut);
 
 			// Stage 4: lm_head projection to logits
 			PackedCollection logits = linearForward(
-					h[layers.length - 1], decoderHidden,
+					h[nl - 1], decoderHidden,
 					lmHeadWeight, vocabSize, lmHeadBias);
 			double[] logitArr = logits.toArray(0, vocabSize);
 			printStats("Stage 4: lm_head logits (step " + step + ", " + ATTR_NAMES[step] + ")", logitArr);
@@ -645,16 +649,21 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		int vocabSize = REAL_CONFIG.decodeVocabSize;
 		int hidden = REAL_CONFIG.hiddenSize;
 
-		GRUBlock[] cells = new GRUBlock[REAL_CONFIG.decoderLayers];
-		for (int l = 0; l < cells.length; l++) {
-			cells[l] = new GRUBlock(decoderHidden, decoderHidden,
-					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden));
+		int nc = REAL_CONFIG.decoderLayers;
+		int[] inputSizesC = new int[nc];
+		PackedCollection[] weightIhC = new PackedCollection[nc];
+		PackedCollection[] weightHhC = new PackedCollection[nc];
+		PackedCollection[] biasIhC = new PackedCollection[nc];
+		PackedCollection[] biasHhC = new PackedCollection[nc];
+		for (int l = 0; l < nc; l++) {
+			inputSizesC[l] = decoderHidden;
+			weightIhC[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
+			weightHhC[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
+			biasIhC[l] = createRandomCollection(rng, 3 * decoderHidden);
+			biasHhC[l] = createRandomCollection(rng, 3 * decoderHidden);
 		}
 
-		return new GRUDecoder(REAL_CONFIG, cells,
+		return new GRUDecoder(REAL_CONFIG, inputSizesC, weightIhC, weightHhC, biasIhC, biasHhC,
 				createRandomCollection(rng, decoderHidden, hidden),
 				createRandomCollection(rng, decoderHidden),
 				createRandomCollection(rng, vocabSize, decoderHidden),
@@ -670,16 +679,21 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		int vocabSize = REAL_CONFIG.decodeVocabSize;
 		int hidden = REAL_CONFIG.hiddenSize;
 
-		GRUBlock[] cells = new GRUBlock[REAL_CONFIG.decoderLayers];
-		for (int l = 0; l < cells.length; l++) {
-			cells[l] = new GRUBlock(decoderHidden, decoderHidden,
-					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden));
+		int nr = REAL_CONFIG.decoderLayers;
+		int[] inputSizesR = new int[nr];
+		PackedCollection[] weightIhR = new PackedCollection[nr];
+		PackedCollection[] weightHhR = new PackedCollection[nr];
+		PackedCollection[] biasIhR = new PackedCollection[nr];
+		PackedCollection[] biasHhR = new PackedCollection[nr];
+		for (int l = 0; l < nr; l++) {
+			inputSizesR[l] = decoderHidden;
+			weightIhR[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
+			weightHhR[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
+			biasIhR[l] = createRandomCollection(rng, 3 * decoderHidden);
+			biasHhR[l] = createRandomCollection(rng, 3 * decoderHidden);
 		}
 
-		return new GRUDecoder(REAL_CONFIG, cells,
+		return new GRUDecoder(REAL_CONFIG, inputSizesR, weightIhR, weightHhR, biasIhR, biasHhR,
 				createRandomCollection(rng, decoderHidden, hidden),
 				createRandomCollection(rng, decoderHidden),
 				createRandomCollection(rng, vocabSize, decoderHidden),
@@ -698,13 +712,18 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		PackedCollection lmHeadBias = createRandomCollection(rng, vocabSize);
 		PackedCollection decoderEmb = createRandomCollection(rng, vocabSize, decoderHidden);
 
-		GRUBlock[] cells = new GRUBlock[REAL_CONFIG.decoderLayers];
-		for (int l = 0; l < cells.length; l++) {
-			cells[l] = new GRUBlock(decoderHidden, decoderHidden,
-					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden, decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden),
-					createRandomCollection(rng, 3 * decoderHidden));
+		int na = REAL_CONFIG.decoderLayers;
+		int[] inputSizesA = new int[na];
+		PackedCollection[] weightIhA = new PackedCollection[na];
+		PackedCollection[] weightHhA = new PackedCollection[na];
+		PackedCollection[] biasIhA = new PackedCollection[na];
+		PackedCollection[] biasHhA = new PackedCollection[na];
+		for (int l = 0; l < na; l++) {
+			inputSizesA[l] = decoderHidden;
+			weightIhA[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
+			weightHhA[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
+			biasIhA[l] = createRandomCollection(rng, 3 * decoderHidden);
+			biasHhA[l] = createRandomCollection(rng, 3 * decoderHidden);
 		}
 
 		PackedCollection inputHidden = createRandomCollection(new Random(77), hidden);
@@ -713,8 +732,8 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		PackedCollection projected = linearForward(
 				inputHidden, hidden, summaryWeight, decoderHidden, summaryBias);
 
-		PackedCollection[] h = new PackedCollection[cells.length];
-		for (int l = 0; l < cells.length; l++) {
+		PackedCollection[] h = new PackedCollection[na];
+		for (int l = 0; l < na; l++) {
 			h[l] = copyCollection(projected, decoderHidden);
 		}
 
@@ -722,13 +741,13 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 
 		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
 			PackedCollection layerInput = x;
-			for (int l = 0; l < cells.length; l++) {
-				h[l] = gruStep(cells[l], layerInput, h[l]);
+			for (int l = 0; l < na; l++) {
+				h[l] = gruStep(weightIhA[l], weightHhA[l], biasIhA[l], biasHhA[l], layerInput, h[l]);
 				layerInput = h[l];
 			}
 
 			PackedCollection logits = linearForward(
-					h[cells.length - 1], decoderHidden,
+					h[na - 1], decoderHidden,
 					lmHeadWeight, vocabSize, lmHeadBias);
 
 			double[] logitArr = logits.toArray(0, vocabSize);
@@ -864,32 +883,38 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	 * n = tanh(W_in·x + b_in + r*(W_hn·h + b_hn)),
 	 * h_new = (1-z)*n + z*h.</p>
 	 *
-	 * @param block      GRU weight holder
+	 * @param weightIh   stacked input-hidden weights, shape (3*dh, inputSize)
+	 * @param weightHh   stacked hidden-hidden weights, shape (3*dh, dh)
+	 * @param biasIh     stacked input-hidden biases, shape (3*dh)
+	 * @param biasHh     stacked hidden-hidden biases, shape (3*dh)
 	 * @param x          input vector of shape (inputSize)
 	 * @param h          previous hidden state of shape (hiddenSize)
 	 * @return new hidden state of shape (hiddenSize)
 	 */
-	private static PackedCollection gruStep(GRUBlock block, PackedCollection x, PackedCollection h) {
+	private static PackedCollection gruStep(
+			PackedCollection weightIh, PackedCollection weightHh,
+			PackedCollection biasIh, PackedCollection biasHh,
+			PackedCollection x, PackedCollection h) {
 		int dh = h.getShape().getTotalSize();
 		int inputSize = x.getShape().getTotalSize();
 
 		double[] xArr = x.toArray(0, inputSize);
 		double[] hArr = h.toArray(0, dh);
 
-		double[] wIr = block.wIr.toArray(0, dh * inputSize);
-		double[] bIr = block.bIr.toArray(0, dh);
-		double[] wHr = block.wHr.toArray(0, dh * dh);
-		double[] bHr = block.bHr.toArray(0, dh);
+		double[] wIr = weightIh.toArray(0, dh * inputSize);
+		double[] bIr = biasIh.toArray(0, dh);
+		double[] wHr = weightHh.toArray(0, dh * dh);
+		double[] bHr = biasHh.toArray(0, dh);
 
-		double[] wIz = block.wIz.toArray(0, dh * inputSize);
-		double[] bIz = block.bIz.toArray(0, dh);
-		double[] wHz = block.wHz.toArray(0, dh * dh);
-		double[] bHz = block.bHz.toArray(0, dh);
+		double[] wIz = weightIh.toArray(dh * inputSize, dh * inputSize);
+		double[] bIz = biasIh.toArray(dh, dh);
+		double[] wHz = weightHh.toArray(dh * dh, dh * dh);
+		double[] bHz = biasHh.toArray(dh, dh);
 
-		double[] wIn = block.wIn.toArray(0, dh * inputSize);
-		double[] bIn = block.bIn.toArray(0, dh);
-		double[] wHn = block.wHn.toArray(0, dh * dh);
-		double[] bHn = block.bHn.toArray(0, dh);
+		double[] wIn = weightIh.toArray(2 * dh * inputSize, dh * inputSize);
+		double[] bIn = biasIh.toArray(2 * dh, dh);
+		double[] wHn = weightHh.toArray(2 * dh * dh, dh * dh);
+		double[] bHn = biasHh.toArray(2 * dh, dh);
 
 		double[] r = new double[dh];
 		double[] z = new double[dh];

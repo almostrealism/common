@@ -18,7 +18,7 @@ package org.almostrealism.ml;
 
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.CodeFeatures;
+import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.stats.DistributionFeatures;
@@ -92,7 +92,9 @@ import java.util.function.Supplier;
  * @author Michael Murray
  * @see CompiledModel
  */
-public class AutoregressiveModel<T> implements CodeFeatures {
+public class AutoregressiveModel<T> {
+
+	private static final DistributionFeatures DIST = new DistributionFeatures() {};
 	/** Consumer invoked with the current position index before each forward pass. */
 	private final IntConsumer step;
 
@@ -357,9 +359,9 @@ public class AutoregressiveModel<T> implements CodeFeatures {
 
 		PackedCollection temperature = new PackedCollection(1);
 
-		Evaluable<PackedCollection> indexOfMax = FEATURES.indexOfMax(FEATURES.x(vocabSize)).get();
-		Evaluable<PackedCollection> rescale = FEATURES.x(vocabSize).divide(FEATURES.cp(temperature)).get();
-		Evaluable<? extends PackedCollection> softmax = Process.optimized(FEATURES.softmax(FEATURES.x(vocabSize))).get();
+		Evaluable<PackedCollection> indexOfMax = Ops.o().indexOfMax(Ops.o().x(vocabSize)).get();
+		Evaluable<PackedCollection> rescale = Ops.o().x(vocabSize).divide(Ops.o().cp(temperature)).get();
+		Evaluable<? extends PackedCollection> softmax = Process.optimized(DIST.softmax(Ops.o().x(vocabSize))).get();
 
 		Random random = new Random();
 
@@ -381,9 +383,4 @@ public class AutoregressiveModel<T> implements CodeFeatures {
 				temperature);
 	}
 
-	/** Mixin type providing access to all framework feature default methods. */
-	private static final class Features implements CodeFeatures, DistributionFeatures { }
-
-	/** Singleton used to access feature default methods from the static factory. */
-	private static final Features FEATURES = new Features();
 }

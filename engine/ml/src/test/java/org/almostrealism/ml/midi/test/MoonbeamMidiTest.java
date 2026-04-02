@@ -20,9 +20,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
-import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
-import org.almostrealism.ml.midi.MidiAutoregressiveModel;
+import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiFileReader;
 import org.almostrealism.ml.midi.MidiNoteEvent;
@@ -50,7 +49,7 @@ import java.util.Map;
  * tokens without crashing.</p>
  *
  * @see MoonbeamMidi
- * @see MidiAutoregressiveModel
+ * @see MoonbeamMidiGenerator
  */
 public class MoonbeamMidiTest extends TestSuiteBase {
 
@@ -86,7 +85,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos()
@@ -108,7 +107,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos(),
@@ -138,7 +137,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos()
@@ -199,7 +198,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	/**
 	 * Verify that unconditional generation (no prompt) works correctly.
 	 * This exercises the lastHidden == null branch in
-	 * {@link MidiAutoregressiveModel#next()}.
+	 * {@link MoonbeamMidiGenerator#next()}.
 	 */
 	@Test @TestDepth(2)
 	public void testUnconditionalGeneration() {
@@ -209,7 +208,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		// Do NOT call setPrompt -- exercise the no-prompt path
 		MidiCompoundToken generated = autoregressive.next();
@@ -236,7 +235,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos(),
@@ -264,7 +263,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		autoregressive.setTemperature(0.7);
 		Assert.assertEquals(0.7, autoregressive.getTemperature(), 1e-10);
@@ -318,17 +317,21 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		int decoderHidden = config.decoderHiddenSize;
 		int vocabSize = config.decodeVocabSize;
 
-		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
-		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUBlock(
-					decoderHidden, decoderHidden,
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden)));
+		int n = config.decoderLayers;
+		int[] inputSizes = new int[n];
+		PackedCollection[] weightIh = new PackedCollection[n];
+		PackedCollection[] weightHh = new PackedCollection[n];
+		PackedCollection[] biasIh = new PackedCollection[n];
+		PackedCollection[] biasHh = new PackedCollection[n];
+		for (int l = 0; l < n; l++) {
+			inputSizes[l] = decoderHidden;
+			weightIh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden));
+			weightHh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden));
+			biasIh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden));
+			biasHh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden));
 		}
 
-		return new GRUDecoder(config, layers,
+		return new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
 				new PackedCollection(new TraversalPolicy(decoderHidden, hidden)),
 				new PackedCollection(new TraversalPolicy(decoderHidden)),
 				new PackedCollection(new TraversalPolicy(vocabSize, decoderHidden)),
@@ -337,7 +340,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verify that GRUBlock produces the correct output for known weights and inputs.
+	 * Verify that the GRU cell produces the correct output for known weights and inputs.
 	 *
 	 * <p>Uses identity-like weights to verify the GRU equations:
 	 * r = sigmoid(W_ir@x + b_ir + W_hr@h + b_hr),
@@ -364,8 +367,6 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		PackedCollection biasIh = new PackedCollection(new TraversalPolicy(6));
 		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(6));
 
-		GRUBlock cell = new GRUBlock(inputSize, hiddenSize, weightIh, weightHh, biasIh, biasHh);
-
 		PackedCollection x = new PackedCollection(2);
 		x.setMem(0, 1.0);
 		x.setMem(1, 2.0);
@@ -374,7 +375,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		h.setMem(0, 0.5);
 		h.setMem(1, -0.5);
 
-		PackedCollection hNew = gruStep(cell, x, h);
+		PackedCollection hNew = gruStep(weightIh, weightHh, biasIh, biasHh, x, h);
 
 		Assert.assertEquals("Output size", 2, hNew.getShape().getTotalSize());
 
@@ -404,7 +405,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verify that GRUBlock correctly applies reset and update gates
+	 * Verify that the GRU cell correctly applies reset and update gates
 	 * when biases shift the gate activations away from 0.5.
 	 */
 	@Test
@@ -419,14 +420,12 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		biasIh.setMem(1, 10.0); // bias for z (update gate)
 		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(3));
 
-		GRUBlock cell = new GRUBlock(size, size, weightIh, weightHh, biasIh, biasHh);
-
 		PackedCollection x = new PackedCollection(1);
 		x.setMem(0, 5.0);
 		PackedCollection h = new PackedCollection(1);
 		h.setMem(0, 3.0);
 
-		PackedCollection hNew = gruStep(cell, x, h);
+		PackedCollection hNew = gruStep(weightIh, weightHh, biasIh, biasHh, x, h);
 
 		// With z ≈ sigmoid(10) ≈ 1.0, h' ≈ z * h ≈ h
 		Assert.assertEquals("With high update gate, h' should be close to h",
@@ -481,28 +480,34 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	/**
 	 * Run one GRU layer step in plain Java for unit testing.
 	 *
-	 * @param block GRU weight holder
-	 * @param x     input vector
-	 * @param h     previous hidden state
+	 * @param weightIh stacked input-hidden weights, shape (3*dh, inputSize)
+	 * @param weightHh stacked hidden-hidden weights, shape (3*dh, dh)
+	 * @param biasIh   stacked input-hidden biases, shape (3*dh)
+	 * @param biasHh   stacked hidden-hidden biases, shape (3*dh)
+	 * @param x        input vector
+	 * @param h        previous hidden state
 	 * @return new hidden state
 	 */
-	private static PackedCollection gruStep(GRUBlock block, PackedCollection x, PackedCollection h) {
+	private static PackedCollection gruStep(
+			PackedCollection weightIh, PackedCollection weightHh,
+			PackedCollection biasIh, PackedCollection biasHh,
+			PackedCollection x, PackedCollection h) {
 		int dh = h.getShape().getTotalSize();
 		int inputSize = x.getShape().getTotalSize();
 		double[] xArr = x.toArray(0, inputSize);
 		double[] hArr = h.toArray(0, dh);
-		double[] wIr = block.wIr.toArray(0, dh * inputSize);
-		double[] bIr = block.bIr.toArray(0, dh);
-		double[] wHr = block.wHr.toArray(0, dh * dh);
-		double[] bHr = block.bHr.toArray(0, dh);
-		double[] wIz = block.wIz.toArray(0, dh * inputSize);
-		double[] bIz = block.bIz.toArray(0, dh);
-		double[] wHz = block.wHz.toArray(0, dh * dh);
-		double[] bHz = block.bHz.toArray(0, dh);
-		double[] wIn = block.wIn.toArray(0, dh * inputSize);
-		double[] bIn = block.bIn.toArray(0, dh);
-		double[] wHn = block.wHn.toArray(0, dh * dh);
-		double[] bHn = block.bHn.toArray(0, dh);
+		double[] wIr = weightIh.toArray(0, dh * inputSize);
+		double[] bIr = biasIh.toArray(0, dh);
+		double[] wHr = weightHh.toArray(0, dh * dh);
+		double[] bHr = biasHh.toArray(0, dh);
+		double[] wIz = weightIh.toArray(dh * inputSize, dh * inputSize);
+		double[] bIz = biasIh.toArray(dh, dh);
+		double[] wHz = weightHh.toArray(dh * dh, dh * dh);
+		double[] bHz = biasHh.toArray(dh, dh);
+		double[] wIn = weightIh.toArray(2 * dh * inputSize, dh * inputSize);
+		double[] bIn = biasIh.toArray(2 * dh, dh);
+		double[] wHn = weightHh.toArray(2 * dh * dh, dh * dh);
+		double[] bHn = biasHh.toArray(2 * dh, dh);
 		double[] hNew = new double[dh];
 		for (int i = 0; i < dh; i++) {
 			double rGate = bIr[i] + bHr[i];

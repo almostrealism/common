@@ -22,9 +22,8 @@ import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
-import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
-import org.almostrealism.ml.midi.MidiAutoregressiveModel;
+import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiDataset;
 import org.almostrealism.ml.midi.MidiFileReader;
@@ -320,7 +319,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		List<MidiCompoundToken> generated = autoregressive.generate(5);
 		Assert.assertFalse("Should generate tokens", generated.isEmpty());
@@ -366,7 +365,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 		List<MidiNoteEvent> readEvents = reader.read(promptFile);
 		List<MidiCompoundToken> promptTokens = tokenizer.tokenize(readEvents);
 
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 		autoregressive.setPrompt(promptTokens.toArray(new MidiCompoundToken[0]));
 
 		List<MidiCompoundToken> generated = autoregressive.generate(3);
@@ -402,12 +401,12 @@ public class MidiTrainingTest extends TestSuiteBase {
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
 
-		MidiAutoregressiveModel gen1 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen1 = model.createAutoregressiveModel();
 		gen1.setTemperature(1.0);
 		gen1.setSeed(42);
 		List<MidiCompoundToken> output1 = gen1.generate(5);
 
-		MidiAutoregressiveModel gen2 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen2 = model.createAutoregressiveModel();
 		gen2.setTemperature(1.0);
 		gen2.setSeed(12345);
 		List<MidiCompoundToken> output2 = gen2.generate(5);
@@ -472,11 +471,11 @@ public class MidiTrainingTest extends TestSuiteBase {
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
 
-		MidiAutoregressiveModel gen1 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen1 = model.createAutoregressiveModel();
 		gen1.setTemperature(0.0);
 		List<MidiCompoundToken> output1 = gen1.generate(3);
 
-		MidiAutoregressiveModel gen2 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen2 = model.createAutoregressiveModel();
 		gen2.setTemperature(0.0);
 		List<MidiCompoundToken> output2 = gen2.generate(3);
 
@@ -500,12 +499,12 @@ public class MidiTrainingTest extends TestSuiteBase {
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
 
-		MidiAutoregressiveModel gen1 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen1 = model.createAutoregressiveModel();
 		gen1.setTemperature(0.8);
 		gen1.setSeed(99);
 		List<MidiCompoundToken> output1 = gen1.generate(5);
 
-		MidiAutoregressiveModel gen2 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen2 = model.createAutoregressiveModel();
 		gen2.setTemperature(0.8);
 		gen2.setSeed(99);
 		List<MidiCompoundToken> output2 = gen2.generate(5);
@@ -530,7 +529,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
 
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 		autoregressive.generate(2);
 
 		String summary = model.getProfilingSummary();
@@ -562,7 +561,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 		File outputFile = File.createTempFile("moonbeam_gen_output", ".mid");
 		outputFile.deleteOnExit();
 
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 		autoregressive.generateFromFile(inputFile, outputFile, 3);
 
 		Assert.assertTrue("Output file should exist", outputFile.exists());
@@ -580,7 +579,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MidiAutoregressiveModel autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
 		File outputFile = File.createTempFile("moonbeam_unconditional", ".mid");
 		outputFile.deleteOnExit();
@@ -668,17 +667,21 @@ public class MidiTrainingTest extends TestSuiteBase {
 		int decoderHidden = config.decoderHiddenSize;
 		int vocabSize = config.decodeVocabSize;
 
-		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
-		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUBlock(
-					decoderHidden, decoderHidden,
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden)));
+		int n = config.decoderLayers;
+		int[] inputSizes = new int[n];
+		PackedCollection[] weightIh = new PackedCollection[n];
+		PackedCollection[] weightHh = new PackedCollection[n];
+		PackedCollection[] biasIh = new PackedCollection[n];
+		PackedCollection[] biasHh = new PackedCollection[n];
+		for (int l = 0; l < n; l++) {
+			inputSizes[l] = decoderHidden;
+			weightIh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden));
+			weightHh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden));
+			biasIh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden));
+			biasHh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden));
 		}
 
-		return new GRUDecoder(config, layers,
+		return new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
 				new PackedCollection(new TraversalPolicy(decoderHidden, hidden)),
 				new PackedCollection(new TraversalPolicy(decoderHidden)),
 				new PackedCollection(new TraversalPolicy(vocabSize, decoderHidden)),
@@ -697,17 +700,21 @@ public class MidiTrainingTest extends TestSuiteBase {
 
 		Random rng = new Random(42);
 
-		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
-		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUBlock(
-					decoderHidden, decoderHidden,
-					randomCollection(3 * decoderHidden * decoderHidden, rng),
-					randomCollection(3 * decoderHidden * decoderHidden, rng),
-					randomCollection(3 * decoderHidden, rng),
-					randomCollection(3 * decoderHidden, rng));
+		int n = config.decoderLayers;
+		int[] inputSizes = new int[n];
+		PackedCollection[] weightIh = new PackedCollection[n];
+		PackedCollection[] weightHh = new PackedCollection[n];
+		PackedCollection[] biasIh = new PackedCollection[n];
+		PackedCollection[] biasHh = new PackedCollection[n];
+		for (int l = 0; l < n; l++) {
+			inputSizes[l] = decoderHidden;
+			weightIh[l] = randomCollection(3 * decoderHidden * decoderHidden, rng);
+			weightHh[l] = randomCollection(3 * decoderHidden * decoderHidden, rng);
+			biasIh[l] = randomCollection(3 * decoderHidden, rng);
+			biasHh[l] = randomCollection(3 * decoderHidden, rng);
 		}
 
-		return new GRUDecoder(config, layers,
+		return new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
 				randomCollection(decoderHidden * hidden, rng),
 				randomCollection(decoderHidden, rng),
 				randomCollection(vocabSize * decoderHidden, rng),

@@ -24,7 +24,6 @@ import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
-import org.almostrealism.ml.midi.GRUBlock;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiDataset;
@@ -543,17 +542,21 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 		int decoderHidden = config.decoderHiddenSize;
 		int vocabSize = config.decodeVocabSize;
 
-		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
-		for (int l = 0; l < config.decoderLayers; l++) {
-			layers[l] = new GRUBlock(
-					decoderHidden, decoderHidden,
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden)),
-					new PackedCollection(new TraversalPolicy(3 * decoderHidden)));
+		int n = config.decoderLayers;
+		int[] inputSizes = new int[n];
+		PackedCollection[] weightIh = new PackedCollection[n];
+		PackedCollection[] weightHh = new PackedCollection[n];
+		PackedCollection[] biasIh = new PackedCollection[n];
+		PackedCollection[] biasHh = new PackedCollection[n];
+		for (int l = 0; l < n; l++) {
+			inputSizes[l] = decoderHidden;
+			weightIh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden));
+			weightHh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden, decoderHidden));
+			biasIh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden));
+			biasHh[l] = new PackedCollection(new TraversalPolicy(3 * decoderHidden));
 		}
 
-		return new GRUDecoder(config, layers,
+		return new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
 				new PackedCollection(new TraversalPolicy(decoderHidden, hidden)),
 				new PackedCollection(new TraversalPolicy(decoderHidden)),
 				new PackedCollection(new TraversalPolicy(vocabSize, decoderHidden)),
