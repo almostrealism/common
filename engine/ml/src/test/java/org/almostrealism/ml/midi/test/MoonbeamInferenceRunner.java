@@ -22,6 +22,7 @@ import org.almostrealism.ml.midi.MidiFileReader;
 import org.almostrealism.ml.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
+import org.almostrealism.io.Console;
 import org.almostrealism.ml.midi.MoonbeamMidi;
 
 import java.io.File;
@@ -255,8 +256,7 @@ public class MoonbeamInferenceRunner {
 
 	private static void log(String message) {
 		String timestamp = String.format("[%tT]", System.currentTimeMillis());
-		System.out.println(timestamp + " " + message);
-		System.out.flush();
+		Console.root().println(timestamp + " " + message);
 	}
 
 	private static String formatTime(long millis) {

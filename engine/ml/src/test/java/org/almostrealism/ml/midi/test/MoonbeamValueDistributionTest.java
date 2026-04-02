@@ -24,6 +24,8 @@ import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -46,7 +48,7 @@ import java.util.Random;
  * @see GRUDecoder
  * @see MoonbeamConfig
  */
-public class MoonbeamValueDistributionTest extends TestSuiteBase {
+public class MoonbeamValueDistributionTest extends TestSuiteBase implements ConsoleFeatures {
 
 	/** Real model config used by all tests. */
 	private static final MoonbeamConfig REAL_CONFIG = MoonbeamConfig.defaultConfig();
@@ -89,29 +91,29 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120_000)
 	public void testVocabOffsetMapping() {
-		System.out.println("\n=== Test 1: Vocabulary Offset Mapping ===\n");
+		log("\n=== Test 1: Vocabulary Offset Mapping ===\n");
 
 		int[] offsets = GRUDecoder.computeVocabOffsets(REAL_CONFIG);
 
 		int[] expectedOffsets = {0, 1, 4100, 8199, 8212, 8226, 8357};
 		int[] expectedSizes = {1, 4099, 4099, 13, 14, 131, 130};
 
-		System.out.println("Computed offsets vs expected:");
+		log("Computed offsets vs expected:");
 		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
-			System.out.printf("  [%d] %-12s: offset=%5d (expected %5d), vocabSize=%4d%n",
+			log(String.format("  [%d] %-12s: offset=%5d (expected %5d), vocabSize=%4d%n",
 					i, ATTR_NAMES[i], offsets[i], expectedOffsets[i],
-					i < expectedSizes.length ? expectedSizes[i] : -1);
+					i < expectedSizes.length ? expectedSizes[i] : -1));
 			Assert.assertEquals("Offset for " + ATTR_NAMES[i],
 					expectedOffsets[i], offsets[i]);
 		}
 
 		int totalVocab = expectedOffsets[6] + expectedSizes[6];
-		System.out.printf("\nTotal vocab: %d (expected %d, config says %d)%n",
-				totalVocab, 8487, REAL_CONFIG.decodeVocabSize);
+		log(String.format("\nTotal vocab: %d (expected %d, config says %d)%n",
+				totalVocab, 8487, REAL_CONFIG.decodeVocabSize));
 		Assert.assertEquals("Total vocab size", 8487, totalVocab);
 
 		// Test round-trip with known flat indices
-		System.out.println("\nRound-trip tests with known flat indices:");
+		log("\nRound-trip tests with known flat indices:");
 
 		// Token representing onset=100 should be at flat index 1 + 100 = 101
 		int[] flatTokens = new int[]{0, 101, 4150, 8204, 8219, 8226, 8421};
@@ -119,32 +121,32 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		int[] expectedAttr = {0, 100, 50, 5, 7, 0, 64};
 
 		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
-			System.out.printf("  [%d] %-12s: flat=%5d -> attr=%5d (expected %5d) %s%n",
+			log(String.format("  [%d] %-12s: flat=%5d -> attr=%5d (expected %5d) %s%n",
 					i, ATTR_NAMES[i], flatTokens[i], attrValues[i], expectedAttr[i],
-					attrValues[i] == expectedAttr[i] ? "OK" : "MISMATCH");
+					attrValues[i] == expectedAttr[i] ? "OK" : "MISMATCH"));
 			Assert.assertEquals("Attribute value for " + ATTR_NAMES[i],
 					expectedAttr[i], attrValues[i]);
 		}
 
 		// Test boundary: what happens if the decoder picks a flat token
 		// that is BEYOND the valid range for its position?
-		System.out.println("\nBoundary test: what happens with out-of-range flat tokens?");
+		log("\nBoundary test: what happens with out-of-range flat tokens?");
 		int[] outOfRange = new int[]{0, 8000, 8400, 8400, 8400, 8400, 8487};
 		int[] outValues = createDecoderForTest().toAttributeValues(outOfRange);
 		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
 			boolean inRange = (i == 0)
 					? outValues[i] == 0
 					: (outValues[i] >= 0 && outValues[i] <= MAX_ATTR_VALUES[i]);
-			System.out.printf("  [%d] %-12s: flat=%5d -> attr=%5d, valid_max=%5d, in_range=%s%n",
+			log(String.format("  [%d] %-12s: flat=%5d -> attr=%5d, valid_max=%5d, in_range=%s%n",
 					i, ATTR_NAMES[i], outOfRange[i], outValues[i], MAX_ATTR_VALUES[i],
-					inRange ? "YES" : "NO (THIS IS THE BUG)");
+					inRange ? "YES" : "NO (THIS IS THE BUG)"));
 		}
 
-		System.out.println("\nKey insight: toAttributeValues() just subtracts the offset.");
-		System.out.println("If the GRU decoder picks a flat token > offset + vocabSize for");
-		System.out.println("that position, the resulting attribute value exceeds the valid range.");
-		System.out.println("The GRU decoder does NOT constrain its argmax to the correct");
-		System.out.println("sub-range of the flat vocabulary for each decode step.");
+		log("\nKey insight: toAttributeValues() just subtracts the offset.");
+		log("If the GRU decoder picks a flat token > offset + vocabSize for");
+		log("that position, the resulting attribute value exceeds the valid range.");
+		log("The GRU decoder does NOT constrain its argmax to the correct");
+		log("sub-range of the flat vocabulary for each decode step.");
 	}
 
 	/* ================================================================ */
@@ -163,7 +165,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	@TestDepth(2)
 	public void testGruDecoderLogitDistribution() {
 		if (skipLongTests) return;
-		System.out.println("\n=== Test 2: GRU Decoder Logit Distribution ===\n");
+		log("\n=== Test 2: GRU Decoder Logit Distribution ===\n");
 
 		int decoderHidden = REAL_CONFIG.decoderHiddenSize;
 		int vocabSize = REAL_CONFIG.decodeVocabSize;
@@ -175,32 +177,32 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 
 		// Run decoder on multiple random hidden states
 		int numTrials = 5;
-		System.out.printf("Running %d decode trials with random hidden states...%n%n", numTrials);
+		log(String.format("Running %d decode trials with random hidden states...%n%n", numTrials));
 
 		for (int trial = 0; trial < numTrials; trial++) {
 			PackedCollection hiddenState = createRandomCollection(new Random(trial), hidden);
 			int[] tokens = decoder.decode(hiddenState);
 			int[] attrValues = decoder.toAttributeValues(tokens);
 
-			System.out.printf("Trial %d:%n", trial);
-			System.out.printf("  Raw decode tokens: %s%n", Arrays.toString(tokens));
-			System.out.printf("  Attribute values:  %s%n", Arrays.toString(attrValues));
+			log(String.format("Trial %d:%n", trial));
+			log(String.format("  Raw decode tokens: %s%n", Arrays.toString(tokens)));
+			log(String.format("  Attribute values:  %s%n", Arrays.toString(attrValues)));
 
 			for (int i = 1; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
 				boolean inRange = attrValues[i] >= 0 && attrValues[i] <= MAX_ATTR_VALUES[i];
-				System.out.printf("    [%d] %-12s: attr=%5d, max=%5d %s%n",
+				log(String.format("    [%d] %-12s: attr=%5d, max=%5d %s%n",
 						i, ATTR_NAMES[i], attrValues[i], MAX_ATTR_VALUES[i],
-						inRange ? "OK" : "OUT OF RANGE");
+						inRange ? "OK" : "OUT OF RANGE"));
 				Assert.assertTrue(
 						String.format("Trial %d, %s: value %d exceeds max %d",
 								trial, ATTR_NAMES[i], attrValues[i], MAX_ATTR_VALUES[i]),
 						inRange);
 			}
-			System.out.println();
+			log("");
 		}
 
 		// Now analyze the lm_head logits directly
-		System.out.println("=== Logit Analysis: lm_head output at each GRU step ===\n");
+		log("=== Logit Analysis: lm_head output at each GRU step ===\n");
 		analyzeLogitsAtEachStep(rng, hidden, decoderHidden, vocabSize);
 	}
 
@@ -217,12 +219,12 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10_000)
 	public void testSoftmaxAndSampling() {
-		System.out.println("\n=== Test 3: Softmax and Sampling Verification ===\n");
+		log("\n=== Test 3: Softmax and Sampling Verification ===\n");
 
 		int vocabSize = REAL_CONFIG.decodeVocabSize;
 
 		// Test 1: Uniform logits should produce diverse samples
-		System.out.println("Test 3a: Uniform logits (all zeros)");
+		log("Test 3a: Uniform logits (all zeros)");
 		PackedCollection uniformLogits = new PackedCollection(vocabSize);
 		// All zeros by default
 
@@ -238,18 +240,18 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 			histogram[bin]++;
 		}
 
-		System.out.println("  Histogram of 1000 samples across 10 bins (expect ~100 each):");
+		log("  Histogram of 1000 samples across 10 bins (expect ~100 each):");
 		boolean uniformish = true;
 		for (int b = 0; b < 10; b++) {
 			String bar = "=".repeat(Math.min(histogram[b] / 2, 80));
-			System.out.printf("    bin %d [%5d-%5d]: %4d %s%n",
-					b, b * binSize, (b + 1) * binSize - 1, histogram[b], bar);
+			log(String.format("    bin %d [%5d-%5d]: %4d %s%n",
+					b, b * binSize, (b + 1) * binSize - 1, histogram[b], bar));
 			if (histogram[b] < 20 || histogram[b] > 300) uniformish = false;
 		}
-		System.out.println("  Distribution roughly uniform: " + uniformish);
+		log("  Distribution roughly uniform: " + uniformish);
 
 		// Test 2: Spike logit should produce concentrated samples
-		System.out.println("\nTest 3b: Spike logit at index 100");
+		log("\nTest 3b: Spike logit at index 100");
 		PackedCollection spikeLogits = new PackedCollection(vocabSize);
 		double[] spikeData = new double[vocabSize];
 		spikeData[100] = 100.0; // Very strong preference
@@ -262,12 +264,12 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 					1.0, 1.0, samplingRng);
 			if (token == 100) spikeCount++;
 		}
-		System.out.printf("  Spike token selected %d/%d times (expect ~1000)%n",
-				spikeCount, numSamples);
+		log(String.format("  Spike token selected %d/%d times (expect ~1000)%n",
+				spikeCount, numSamples));
 		Assert.assertTrue("Spike logit should dominate", spikeCount > 900);
 
 		// Test 3: Greedy (argmax) should always pick the max
-		System.out.println("\nTest 3c: Greedy argmax verification");
+		log("\nTest 3c: Greedy argmax verification");
 		spikeData = new double[vocabSize];
 		spikeData[4242] = 10.0;
 		PackedCollection greedyLogits = new PackedCollection(vocabSize);
@@ -275,20 +277,20 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 
 		// GRUDecoder.decode uses argmax internally, but we verify the static method
 		int argmaxResult = argmax(greedyLogits, vocabSize);
-		System.out.printf("  Argmax of logits with spike at 4242: %d%n", argmaxResult);
+		log(String.format("  Argmax of logits with spike at 4242: %d%n", argmaxResult));
 		Assert.assertEquals("Argmax should find the spike", 4242, argmaxResult);
 
 		// Test 4: What does argmax on random logits look like?
-		System.out.println("\nTest 3d: Argmax on random N(0,1) logits (10 trials)");
-		System.out.println("  (Shows which vocab region argmax lands in with random weights)");
+		log("\nTest 3d: Argmax on random N(0,1) logits (10 trials)");
+		log("  (Shows which vocab region argmax lands in with random weights)");
 		Random rng = new Random(42);
 		for (int trial = 0; trial < 10; trial++) {
 			PackedCollection randomLogits = createRandomLogits(rng, vocabSize, 1.0);
 			int maxIdx = argmax(randomLogits, vocabSize);
 			double maxVal = randomLogits.toDouble(maxIdx);
 			String region = describeVocabRegion(maxIdx);
-			System.out.printf("    trial %d: argmax=%5d (val=%.4f) -> %s%n",
-					trial, maxIdx, maxVal, region);
+			log(String.format("    trial %d: argmax=%5d (val=%.4f) -> %s%n",
+					trial, maxIdx, maxVal, region));
 		}
 	}
 
@@ -307,34 +309,34 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	@TestDepth(2)
 	public void testWeightShapeVerification() {
 		if (skipLongTests) return;
-		System.out.println("\n=== Test 4: Weight Shape Verification ===\n");
+		log("\n=== Test 4: Weight Shape Verification ===\n");
 
 		int hidden = REAL_CONFIG.hiddenSize;           // 1920
 		int decoderHidden = REAL_CONFIG.decoderHiddenSize; // 1536
 		int vocabSize = REAL_CONFIG.decodeVocabSize;   // 8487
 		int decoderLayers = REAL_CONFIG.decoderLayers;  // 4
 
-		System.out.println("Expected GRU decoder weight shapes:");
-		System.out.printf("  summary_projection.weight: (%d, %d) = %d elements%n",
-				decoderHidden, hidden, decoderHidden * hidden);
-		System.out.printf("  summary_projection.bias:   (%d) = %d elements%n",
-				decoderHidden, decoderHidden);
-		System.out.printf("  lm_head.weight:            (%d, %d) = %d elements%n",
-				vocabSize, decoderHidden, vocabSize * decoderHidden);
-		System.out.printf("  lm_head.bias:              (%d) = %d elements%n",
-				vocabSize, vocabSize);
-		System.out.printf("  decoder_embedding.weight:  (%d, %d) = %d elements%n",
-				vocabSize, decoderHidden, vocabSize * decoderHidden);
+		log("Expected GRU decoder weight shapes:");
+		log(String.format("  summary_projection.weight: (%d, %d) = %d elements%n",
+				decoderHidden, hidden, decoderHidden * hidden));
+		log(String.format("  summary_projection.bias:   (%d) = %d elements%n",
+				decoderHidden, decoderHidden));
+		log(String.format("  lm_head.weight:            (%d, %d) = %d elements%n",
+				vocabSize, decoderHidden, vocabSize * decoderHidden));
+		log(String.format("  lm_head.bias:              (%d) = %d elements%n",
+				vocabSize, vocabSize));
+		log(String.format("  decoder_embedding.weight:  (%d, %d) = %d elements%n",
+				vocabSize, decoderHidden, vocabSize * decoderHidden));
 
 		for (int l = 0; l < decoderLayers; l++) {
-			System.out.printf("  decoder.weight_ih_l%d:      (%d, %d) = %d elements%n",
-					l, 3 * decoderHidden, decoderHidden, 3 * decoderHidden * decoderHidden);
-			System.out.printf("  decoder.weight_hh_l%d:      (%d, %d) = %d elements%n",
-					l, 3 * decoderHidden, decoderHidden, 3 * decoderHidden * decoderHidden);
-			System.out.printf("  decoder.bias_ih_l%d:        (%d) = %d elements%n",
-					l, 3 * decoderHidden, 3 * decoderHidden);
-			System.out.printf("  decoder.bias_hh_l%d:        (%d) = %d elements%n",
-					l, 3 * decoderHidden, 3 * decoderHidden);
+			log(String.format("  decoder.weight_ih_l%d:      (%d, %d) = %d elements%n",
+					l, 3 * decoderHidden, decoderHidden, 3 * decoderHidden * decoderHidden));
+			log(String.format("  decoder.weight_hh_l%d:      (%d, %d) = %d elements%n",
+					l, 3 * decoderHidden, decoderHidden, 3 * decoderHidden * decoderHidden));
+			log(String.format("  decoder.bias_ih_l%d:        (%d) = %d elements%n",
+					l, 3 * decoderHidden, 3 * decoderHidden));
+			log(String.format("  decoder.bias_hh_l%d:        (%d) = %d elements%n",
+					l, 3 * decoderHidden, 3 * decoderHidden));
 		}
 
 		// Create decoder and verify shapes match
@@ -345,24 +347,24 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		Assert.assertEquals("Decoder hidden size", decoderHidden, decoder.getDecoderHiddenSize());
 
 		// Verify the lm_head output is vocabSize-dimensional
-		System.out.println("\nVerifying lm_head produces correct output dimension...");
+		log("\nVerifying lm_head produces correct output dimension...");
 		PackedCollection hiddenState = createRandomCollection(rng, hidden);
 		int[] tokens = decoder.decode(hiddenState);
 		for (int i = 0; i < tokens.length; i++) {
 			Assert.assertTrue("Token " + i + " in valid range [0, " + vocabSize + ")",
 					tokens[i] >= 0 && tokens[i] < vocabSize);
 		}
-		System.out.println("  All 7 decode tokens are within [0, " + vocabSize + ") - shapes OK");
+		log("  All 7 decode tokens are within [0, " + vocabSize + ") - shapes OK");
 
 		// Check for potential transposition issue with lm_head
-		System.out.println("\nTransposition diagnostic:");
-		System.out.printf("  If lm_head.weight is (%d, %d) [correct]: output = W @ h + b%n",
-				vocabSize, decoderHidden);
-		System.out.printf("  If lm_head.weight is (%d, %d) [transposed]: wrong matmul dims%n",
-				decoderHidden, vocabSize);
-		System.out.println("  The linearForward method assumes (outputSize, inputSize) layout.");
-		System.out.println("  If the extraction script produces (inputSize, outputSize), the");
-		System.out.println("  matmul is silently wrong (no size check) and produces garbage logits.");
+		log("\nTransposition diagnostic:");
+		log(String.format("  If lm_head.weight is (%d, %d) [correct]: output = W @ h + b%n",
+				vocabSize, decoderHidden));
+		log(String.format("  If lm_head.weight is (%d, %d) [transposed]: wrong matmul dims%n",
+				decoderHidden, vocabSize));
+		log("  The linearForward method assumes (outputSize, inputSize) layout.");
+		log("  If the extraction script produces (inputSize, outputSize), the");
+		log("  matmul is silently wrong (no size check) and produces garbage logits.");
 	}
 
 	/* ================================================================ */
@@ -378,7 +380,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 60_000)
 	public void testPipelineStageAnalysis() {
-		System.out.println("\n=== Test 5: Pipeline Stage Analysis ===\n");
+		log("\n=== Test 5: Pipeline Stage Analysis ===\n");
 
 		int hidden = REAL_CONFIG.hiddenSize;
 		int decoderHidden = REAL_CONFIG.decoderHiddenSize;
@@ -448,28 +450,28 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 			// Stage 5: Argmax
 			int token = argmax(logits, vocabSize);
 			String region = describeVocabRegion(token);
-			System.out.printf("Stage 5: Argmax token=%d -> %s%n%n", token, region);
+			log(String.format("Stage 5: Argmax token=%d -> %s%n%n", token, region));
 
 			// Embed the selected token for next step
 			x = getEmbeddingSlice(decoderEmb, token, decoderHidden);
 		}
 
 		// Key diagnostic: what is the lm_head logit magnitude relative to vocab structure?
-		System.out.println("=== KEY DIAGNOSTIC ===");
-		System.out.println("The lm_head projects a " + decoderHidden + "-dim vector to " + vocabSize + " logits.");
-		System.out.printf("With random N(0, 0.02) weights, each logit is a sum of %d terms.%n", decoderHidden);
-		System.out.printf("Expected logit std ~ 0.02 * sqrt(%d) * input_std%n", decoderHidden);
-		System.out.println("If input values are O(1), logit std ~ " +
+		log("=== KEY DIAGNOSTIC ===");
+		log("The lm_head projects a " + decoderHidden + "-dim vector to " + vocabSize + " logits.");
+		log(String.format("With random N(0, 0.02) weights, each logit is a sum of %d terms.%n", decoderHidden));
+		log(String.format("Expected logit std ~ 0.02 * sqrt(%d) * input_std%n", decoderHidden));
+		log("If input values are O(1), logit std ~ " +
 				String.format("%.4f", 0.02 * Math.sqrt(decoderHidden)));
-		System.out.println("With such small variance, argmax is essentially RANDOM across all 8487 tokens.");
-		System.out.println("The argmax has no reason to stay within the correct attribute sub-range.");
-		System.out.println();
-		System.out.println("ROOT CAUSE HYPOTHESIS: The decoder picks argmax over the FULL 8487 vocab");
-		System.out.println("at every step, but each step should only pick from its attribute's sub-range.");
-		System.out.println("With random/trained weights, the argmax token at step i (e.g. 'octave')");
-		System.out.println("could land anywhere in the 8487-token space, not just in the 13-token");
-		System.out.println("octave sub-range. After subtracting the octave offset, this produces");
-		System.out.println("a value >> 12, which gets clamped to the max.");
+		log("With such small variance, argmax is essentially RANDOM across all 8487 tokens.");
+		log("The argmax has no reason to stay within the correct attribute sub-range.");
+		log("");
+		log("ROOT CAUSE HYPOTHESIS: The decoder picks argmax over the FULL 8487 vocab");
+		log("at every step, but each step should only pick from its attribute's sub-range.");
+		log("With random/trained weights, the argmax token at step i (e.g. 'octave')");
+		log("could land anywhere in the 8487-token space, not just in the 13-token");
+		log("octave sub-range. After subtracting the octave offset, this produces");
+		log("a value >> 12, which gets clamped to the max.");
 	}
 
 	/* ================================================================ */
@@ -486,7 +488,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10_000)
 	public void testRoundTripValidation() {
-		System.out.println("\n=== Test 6: Round-Trip Validation ===\n");
+		log("\n=== Test 6: Round-Trip Validation ===\n");
 
 		// Middle C = MIDI note 60, octave 5, pitch class 0
 		// Quarter note at 120 BPM with 100 ticks/sec = 50 ticks duration
@@ -500,10 +502,10 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 
 		MidiCompoundToken middleC = new MidiCompoundToken(
 				onset, duration, octave, pitchClass, instrument, velocity);
-		System.out.println("Target token: " + middleC);
+		log("Target token: " + middleC);
 
 		int[] offsets = GRUDecoder.computeVocabOffsets(REAL_CONFIG);
-		System.out.println("Vocab offsets: " + Arrays.toString(offsets));
+		log("Vocab offsets: " + Arrays.toString(offsets));
 
 		// Compute what flat tokens would represent this compound token
 		int[] expectedFlat = new int[GRUDecoder.TOKENS_PER_NOTE];
@@ -515,39 +517,39 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		expectedFlat[5] = offsets[5] + instrument;   // 8226 + 0 = 8226
 		expectedFlat[6] = offsets[6] + velocity;     // 8357 + 64 = 8421
 
-		System.out.println("Expected flat tokens for middle C: " + Arrays.toString(expectedFlat));
+		log("Expected flat tokens for middle C: " + Arrays.toString(expectedFlat));
 
 		// Verify round-trip
 		GRUDecoder decoder = createDecoderForTest();
 		int[] roundTripped = decoder.toAttributeValues(expectedFlat);
 
-		System.out.println("Round-tripped attribute values: " + Arrays.toString(roundTripped));
+		log("Round-tripped attribute values: " + Arrays.toString(roundTripped));
 
 		int[] expectedAttr = {0, onset, duration, octave, pitchClass, instrument, velocity};
 		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
-			System.out.printf("  [%d] %-12s: expected=%5d, got=%5d %s%n",
+			log(String.format("  [%d] %-12s: expected=%5d, got=%5d %s%n",
 					i, ATTR_NAMES[i], expectedAttr[i], roundTripped[i],
-					roundTripped[i] == expectedAttr[i] ? "OK" : "MISMATCH");
+					roundTripped[i] == expectedAttr[i] ? "OK" : "MISMATCH"));
 			Assert.assertEquals("Round-trip for " + ATTR_NAMES[i],
 					expectedAttr[i], roundTripped[i]);
 		}
 
 		// Now show the valid flat token ranges for each step
-		System.out.println("\nValid flat token ranges per decode step:");
+		log("\nValid flat token ranges per decode step:");
 		int[] vocabSizes = {1, 4099, 4099, 13, 14, 131, 130};
 		for (int i = 0; i < GRUDecoder.TOKENS_PER_NOTE; i++) {
 			int lo = offsets[i];
 			int hi = offsets[i] + vocabSizes[i] - 1;
-			System.out.printf("  step %d %-12s: flat tokens [%5d, %5d] (size=%4d)%n",
-					i, ATTR_NAMES[i], lo, hi, vocabSizes[i]);
+			log(String.format("  step %d %-12s: flat tokens [%5d, %5d] (size=%4d)%n",
+					i, ATTR_NAMES[i], lo, hi, vocabSizes[i]));
 		}
 
-		System.out.println("\nNote: The decoder does argmax over ALL 8487 tokens at every step.");
-		System.out.println("For step 3 (octave), valid flat tokens are [8199, 8211] (13 values).");
-		System.out.println("But argmax could land anywhere in [0, 8486]. If it picks e.g. 5000,");
-		System.out.println("then attr = 5000 - 8199 = -3199, which is nonsensical.");
-		System.out.println("If it picks e.g. 8486 (last token), attr = 8486 - 8199 = 287,");
-		System.out.println("which is >> max octave of 10, resulting in clamping to 10.");
+		log("\nNote: The decoder does argmax over ALL 8487 tokens at every step.");
+		log("For step 3 (octave), valid flat tokens are [8199, 8211] (13 values).");
+		log("But argmax could land anywhere in [0, 8486]. If it picks e.g. 5000,");
+		log("then attr = 5000 - 8199 = -3199, which is nonsensical.");
+		log("If it picks e.g. 8486 (last token), attr = 8486 - 8199 = 287,");
+		log("which is >> max octave of 10, resulting in clamping to 10.");
 	}
 
 	/* ================================================================ */
@@ -567,7 +569,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 	@TestDepth(2)
 	public void testDecodedAttributeRangeValidation() {
 		if (skipLongTests) return;
-		System.out.println("\n=== Test 7: Decoded Attribute Range Validation ===\n");
+		log("\n=== Test 7: Decoded Attribute Range Validation ===\n");
 
 		int hidden = REAL_CONFIG.hiddenSize;
 		Random rng = new Random(123);
@@ -576,7 +578,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 		int numTrials = 20;
 
 		// Test greedy decode
-		System.out.println("Greedy decode (argmax) - " + numTrials + " trials:");
+		log("Greedy decode (argmax) - " + numTrials + " trials:");
 		for (int trial = 0; trial < numTrials; trial++) {
 			PackedCollection hiddenState = createRandomCollection(new Random(trial * 7), hidden);
 			int[] tokens = decoder.decode(hiddenState);
@@ -584,10 +586,10 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 
 			assertAttributeRanges(attrValues, "greedy trial " + trial);
 		}
-		System.out.println("  All greedy trials passed.\n");
+		log("  All greedy trials passed.\n");
 
 		// Test sampling decode
-		System.out.println("Sampling decode (temperature=0.8, topP=0.9) - " + numTrials + " trials:");
+		log("Sampling decode (temperature=0.8, topP=0.9) - " + numTrials + " trials:");
 		for (int trial = 0; trial < numTrials; trial++) {
 			PackedCollection hiddenState = createRandomCollection(new Random(trial * 13), hidden);
 			Random samplingRng = new Random(trial * 17);
@@ -596,10 +598,10 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 
 			assertAttributeRanges(attrValues, "sampling trial " + trial);
 		}
-		System.out.println("  All sampling trials passed.\n");
+		log("  All sampling trials passed.\n");
 
 		// Test high-temperature sampling (more randomness, higher chance of edge cases)
-		System.out.println("High-temperature sampling (temperature=2.0, topP=1.0) - " + numTrials + " trials:");
+		log("High-temperature sampling (temperature=2.0, topP=1.0) - " + numTrials + " trials:");
 		for (int trial = 0; trial < numTrials; trial++) {
 			PackedCollection hiddenState = createRandomCollection(new Random(trial * 19), hidden);
 			Random samplingRng = new Random(trial * 23);
@@ -608,7 +610,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 
 			assertAttributeRanges(attrValues, "high-temp trial " + trial);
 		}
-		System.out.println("  All high-temperature trials passed.");
+		log("  All high-temperature trials passed.");
 	}
 
 	/**
@@ -754,26 +756,26 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 
 			// Find top-5 tokens
 			int[] topK = topKIndices(logitArr, 5);
-			System.out.printf("Step %d (%s):%n", step, ATTR_NAMES[step]);
-			System.out.printf("  Logit stats: min=%.6f, max=%.6f, mean=%.6f, std=%.6f%n",
+			log(String.format("Step %d (%s):%n", step, ATTR_NAMES[step]));
+			log(String.format("  Logit stats: min=%.6f, max=%.6f, mean=%.6f, std=%.6f%n",
 					arrayMin(logitArr), arrayMax(logitArr),
-					arrayMean(logitArr), arrayStd(logitArr));
-			System.out.print("  Top-5 tokens: ");
+					arrayMean(logitArr), arrayStd(logitArr)));
+			log("  Top-5 tokens: ");
 			for (int k = 0; k < 5; k++) {
-				System.out.printf("[%d]=%.4f ", topK[k], logitArr[topK[k]]);
+				log(String.format("[%d]=%.4f ", topK[k], logitArr[topK[k]]));
 			}
-			System.out.println();
+			log("");
 
 			// Where do the top tokens fall in the vocab layout?
 			int token = topK[0];
 			String region = describeVocabRegion(token);
-			System.out.printf("  Argmax token %d -> %s%n", token, region);
+			log(String.format("  Argmax token %d -> %s%n", token, region));
 
 			// What would be the correct range for this step?
 			int[] offsets = GRUDecoder.computeVocabOffsets(REAL_CONFIG);
 			int[] sizes = {1, 4099, 4099, 13, 14, 131, 130};
-			System.out.printf("  Expected range for this step: [%d, %d] (size %d)%n",
-					offsets[step], offsets[step] + sizes[step] - 1, sizes[step]);
+			log(String.format("  Expected range for this step: [%d, %d] (size %d)%n",
+					offsets[step], offsets[step] + sizes[step] - 1, sizes[step]));
 
 			// How many of the top-5 are in the correct range?
 			int inRange = 0;
@@ -782,7 +784,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 					inRange++;
 				}
 			}
-			System.out.printf("  Top-5 tokens in correct range: %d/5%n%n", inRange);
+			log(String.format("  Top-5 tokens in correct range: %d/5%n%n", inRange));
 
 			x = getEmbeddingSlice(decoderEmb, token, decoderHidden);
 		}
@@ -800,14 +802,14 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 			int hi = offsets[i] + sizes[i] - 1;
 			boolean inExpectedRange = tokens[i] >= lo && tokens[i] <= hi;
 			if (!inExpectedRange) {
-				System.out.printf("    Step %d (%s): token=%d but valid range=[%d,%d]. ",
-						i, ATTR_NAMES[i], tokens[i], lo, hi);
+				log(String.format("    Step %d (%s): token=%d but valid range=[%d,%d]. ",
+						i, ATTR_NAMES[i], tokens[i], lo, hi));
 				if (tokens[i] < lo) {
-					System.out.printf("Token is %d below range (in %s region)%n",
-							lo - tokens[i], describeVocabRegion(tokens[i]));
+					log(String.format("Token is %d below range (in %s region)%n",
+							lo - tokens[i], describeVocabRegion(tokens[i])));
 				} else {
-					System.out.printf("Token is %d above range (in %s region)%n",
-							tokens[i] - hi, describeVocabRegion(tokens[i]));
+					log(String.format("Token is %d above range (in %s region)%n",
+							tokens[i] - hi, describeVocabRegion(tokens[i])));
 				}
 			}
 		}
@@ -1020,9 +1022,9 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 
 	/** Print min/max/mean/std statistics for an array. */
 	private static void printStats(String label, double[] arr) {
-		System.out.printf("%s:%n", label);
-		System.out.printf("  size=%d, min=%.6f, max=%.6f, mean=%.6f, std=%.6f%n",
-				arr.length, arrayMin(arr), arrayMax(arr), arrayMean(arr), arrayStd(arr));
+		Console.root().println(String.format("%s:%n", label));
+		Console.root().println(String.format("  size=%d, min=%.6f, max=%.6f, mean=%.6f, std=%.6f%n",
+				arr.length, arrayMin(arr), arrayMax(arr), arrayMean(arr), arrayStd(arr)));
 
 		// Count NaN/Inf
 		int nanCount = 0;
@@ -1032,7 +1034,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase {
 			if (Double.isInfinite(v)) infCount++;
 		}
 		if (nanCount > 0 || infCount > 0) {
-			System.out.printf("  WARNING: %d NaN, %d Inf values%n", nanCount, infCount);
+			Console.root().println(String.format("  WARNING: %d NaN, %d Inf values%n", nanCount, infCount));
 		}
 	}
 

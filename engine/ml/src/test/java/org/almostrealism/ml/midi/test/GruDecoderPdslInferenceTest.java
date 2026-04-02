@@ -22,6 +22,7 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Assume;
@@ -57,7 +58,7 @@ import java.util.Random;
  *   <li>{@code lm_head}    — projects decoder hidden → vocab logits</li>
  * </ul>
  */
-public class GruDecoderPdslInferenceTest extends TestSuiteBase {
+public class GruDecoderPdslInferenceTest extends TestSuiteBase implements ConsoleFeatures {
 
 	private static final String WEIGHTS_DIR = "/Users/Shared/models/moonbeam-weights-protobuf";
 
@@ -126,7 +127,7 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase {
 			Assert.assertTrue("Token " + i + " must be < vocabSize", tokens[i] < vocabSize);
 		}
 
-		System.out.println("[GruDecoderPdslInferenceTest] synthetic decode: "
+		log("[GruDecoderPdslInferenceTest] synthetic decode: "
 				+ Arrays.toString(tokens));
 	}
 
@@ -194,11 +195,11 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase {
 
 		int[] attrValues = decoder.toAttributeValues(tokens);
 
-		System.out.println("[GruDecoderPdslInferenceTest] output tokens (flat vocab): "
+		log("[GruDecoderPdslInferenceTest] output tokens (flat vocab): "
 				+ Arrays.toString(tokens));
-		System.out.println("[GruDecoderPdslInferenceTest] attribute values: "
+		log("[GruDecoderPdslInferenceTest] attribute values: "
 				+ Arrays.toString(attrValues));
-		System.out.println("[GruDecoderPdslInferenceTest] inference test passed.");
+		log("[GruDecoderPdslInferenceTest] inference test passed.");
 	}
 
 	// -----------------------------------------------------------------------

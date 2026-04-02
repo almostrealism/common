@@ -20,6 +20,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Assume;
@@ -39,7 +40,7 @@ import java.io.IOException;
  * @see StateDictionary
  * @see MoonbeamConfig#checkpoint309M()
  */
-public class MoonbeamWeightVerificationTest extends TestSuiteBase {
+public class MoonbeamWeightVerificationTest extends TestSuiteBase implements ConsoleFeatures {
 
 	private static final String WEIGHTS_DIR = "/workspace/project/moonbeam-weights-protobuf";
 
@@ -112,7 +113,7 @@ public class MoonbeamWeightVerificationTest extends TestSuiteBase {
 		assertShape(stateDict, "lm_head.bias", decodeVocab);
 		assertShape(stateDict, "decoder_embedding.weight", decodeVocab * decoderHidden);
 
-		System.out.println("All " + stateDict.size() + " weight keys verified.");
+		log("All " + stateDict.size() + " weight keys verified.");
 	}
 
 	/**
@@ -140,7 +141,7 @@ public class MoonbeamWeightVerificationTest extends TestSuiteBase {
 			checked++;
 		}
 
-		System.out.println("Verified " + checked + " tensors contain no NaN/Inf.");
+		log("Verified " + checked + " tensors contain no NaN/Inf.");
 	}
 
 	/**
@@ -181,8 +182,8 @@ public class MoonbeamWeightVerificationTest extends TestSuiteBase {
 			}
 
 			double mean = sum / size;
-			System.out.printf("  %s: min=%.6f, max=%.6f, mean=%.6f, nonZero=%d/%d%n",
-					key, min, max, mean, nonZero, size);
+			log(String.format("  %s: min=%.6f, max=%.6f, mean=%.6f, nonZero=%d/%d",
+					key, min, max, mean, nonZero, size));
 
 			Assert.assertTrue(key + " appears to be all zeros",
 					nonZero > size / 10);

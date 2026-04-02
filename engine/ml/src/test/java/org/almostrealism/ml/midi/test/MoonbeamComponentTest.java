@@ -29,6 +29,7 @@ import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -55,7 +56,7 @@ import java.util.Random;
  * @see MoonbeamMidi
  * @see MoonbeamConfig#defaultConfig()
  */
-public class MoonbeamComponentTest extends TestSuiteBase {
+public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatures {
 
 	/** Real model config used by all tests. */
 	private static final MoonbeamConfig REAL_CONFIG = MoonbeamConfig.defaultConfig();
@@ -91,7 +92,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		}
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleFmeEmbed: "
+		log("[MoonbeamComponentTest] testSingleFmeEmbed: "
 				+ elapsed + " ms (compute: " + computeTime + " ms)");
 	}
 
@@ -126,7 +127,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		}
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleCompoundEmbedding: "
+		log("[MoonbeamComponentTest] testSingleCompoundEmbedding: "
 				+ elapsed + " ms (compute: " + computeTime + " ms)");
 	}
 
@@ -158,13 +159,13 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 			Assert.assertEquals("FreqCis size for theta=" + theta,
 					expectedSize, freqCis.getShape().getTotalSize());
 
-			System.out.println("[MoonbeamComponentTest] freqCis theta=" + theta
+			log("[MoonbeamComponentTest] freqCis theta=" + theta
 					+ " (headDim=" + headDim + ", seqLen=" + maxSeqLen
 					+ "): " + groupTime + " ms");
 		}
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testRopeFrequencyComputation: "
+		log("[MoonbeamComponentTest] testRopeFrequencyComputation: "
 				+ elapsed + " ms");
 	}
 
@@ -187,7 +188,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		long allocStart = System.currentTimeMillis();
 		GRUDecoder decoder = createRandomDecoder(REAL_CONFIG);
 		long allocTime = System.currentTimeMillis() - allocStart;
-		System.out.println("[MoonbeamComponentTest] GRU block weight alloc: " + allocTime + " ms");
+		log("[MoonbeamComponentTest] GRU block weight alloc: " + allocTime + " ms");
 
 		PackedCollection hidden = createRandomCollection(rng, REAL_CONFIG.hiddenSize);
 
@@ -204,7 +205,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		}
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleGruBlock: "
+		log("[MoonbeamComponentTest] testSingleGruBlock: "
 				+ elapsed + " ms (decode: " + fwdTime + " ms)");
 	}
 
@@ -223,7 +224,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		long allocStart = System.currentTimeMillis();
 		GRUDecoder decoder = createRandomDecoder(REAL_CONFIG);
 		long allocTime = System.currentTimeMillis() - allocStart;
-		System.out.println("[MoonbeamComponentTest] GRU decoder alloc: " + allocTime + " ms");
+		log("[MoonbeamComponentTest] GRU decoder alloc: " + allocTime + " ms");
 
 		Random rng = new Random(42);
 		PackedCollection hidden = createRandomCollection(rng, REAL_CONFIG.hiddenSize);
@@ -241,11 +242,11 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 					tokens[i] < REAL_CONFIG.decodeVocabSize);
 		}
 
-		System.out.println("[MoonbeamComponentTest] GRU decode tokens: "
+		log("[MoonbeamComponentTest] GRU decode tokens: "
 				+ Arrays.toString(tokens));
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testGruDecoderRealDims: "
+		log("[MoonbeamComponentTest] testGruDecoderRealDims: "
 				+ elapsed + " ms (decode: " + decodeTime + " ms)");
 	}
 
@@ -269,7 +270,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(oneLayerConfig);
 		GRUDecoder decoder = createRandomDecoder(oneLayerConfig);
 		long allocTime = System.currentTimeMillis() - allocStart;
-		System.out.println("[MoonbeamComponentTest] 1-layer weight alloc: " + allocTime + " ms");
+		log("[MoonbeamComponentTest] 1-layer weight alloc: " + allocTime + " ms");
 
 		long buildStart = System.currentTimeMillis();
 		MoonbeamMidi model = new MoonbeamMidi(oneLayerConfig, stateDict, embedding, decoder);
@@ -278,7 +279,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		Assert.assertNotNull("Model should compile", model.getCompiledTransformer());
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleAttentionLayerBuild: "
+		log("[MoonbeamComponentTest] testSingleAttentionLayerBuild: "
 				+ elapsed + " ms (build: " + buildTime + " ms)");
 	}
 
@@ -302,7 +303,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		long buildStart = System.currentTimeMillis();
 		MoonbeamMidi model = new MoonbeamMidi(oneLayerConfig, stateDict, embedding, decoder);
 		long buildTime = System.currentTimeMillis() - buildStart;
-		System.out.println("[MoonbeamComponentTest] 1-layer model build: " + buildTime + " ms");
+		log("[MoonbeamComponentTest] 1-layer model build: " + buildTime + " ms");
 
 		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
@@ -313,7 +314,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		Assert.assertNotNull("Forward should produce a token", result);
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleTransformerBlockForward: "
+		log("[MoonbeamComponentTest] testSingleTransformerBlockForward: "
 				+ elapsed + " ms (forward+decode: " + fwdTime + " ms)");
 	}
 
@@ -337,12 +338,12 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(twoLayerConfig);
 		GRUDecoder decoder = createRandomDecoder(twoLayerConfig);
 		long allocTime = System.currentTimeMillis() - allocStart;
-		System.out.println("[MoonbeamComponentTest] 2-layer weight alloc: " + allocTime + " ms");
+		log("[MoonbeamComponentTest] 2-layer weight alloc: " + allocTime + " ms");
 
 		long buildStart = System.currentTimeMillis();
 		MoonbeamMidi model = new MoonbeamMidi(twoLayerConfig, stateDict, embedding, decoder);
 		long buildTime = System.currentTimeMillis() - buildStart;
-		System.out.println("[MoonbeamComponentTest] 2-layer model build: " + buildTime + " ms");
+		log("[MoonbeamComponentTest] 2-layer model build: " + buildTime + " ms");
 
 		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
@@ -355,7 +356,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 			long fwdStart = System.currentTimeMillis();
 			MidiCompoundToken result = autoregressive.next();
 			long fwdTime = System.currentTimeMillis() - fwdStart;
-			System.out.println("[MoonbeamComponentTest] 2-layer prompt token " + i
+			log("[MoonbeamComponentTest] 2-layer prompt token " + i
 					+ ": " + fwdTime + " ms");
 			Assert.assertNotNull("Prompt token " + i + " result", result);
 		}
@@ -363,12 +364,12 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		long genStart = System.currentTimeMillis();
 		MidiCompoundToken generated = autoregressive.next();
 		long genTime = System.currentTimeMillis() - genStart;
-		System.out.println("[MoonbeamComponentTest] 2-layer generate: " + genTime + " ms");
+		log("[MoonbeamComponentTest] 2-layer generate: " + genTime + " ms");
 
 		Assert.assertNotNull("Generated token should not be null", generated);
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testTwoLayerForwardPass: " + elapsed + " ms");
+		log("[MoonbeamComponentTest] testTwoLayerForwardPass: " + elapsed + " ms");
 	}
 
 	/* ------------------------------------------------------------ */
@@ -390,12 +391,12 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(REAL_CONFIG);
 		GRUDecoder decoder = createRandomDecoder(REAL_CONFIG);
 		long allocTime = System.currentTimeMillis() - allocStart;
-		System.out.println("[MoonbeamComponentTest] 15-layer weight alloc: " + allocTime + " ms");
+		log("[MoonbeamComponentTest] 15-layer weight alloc: " + allocTime + " ms");
 
 		long buildStart = System.currentTimeMillis();
 		MoonbeamMidi model = new MoonbeamMidi(REAL_CONFIG, stateDict, embedding, decoder);
 		long buildTime = System.currentTimeMillis() - buildStart;
-		System.out.println("[MoonbeamComponentTest] 15-layer model build: " + buildTime + " ms");
+		log("[MoonbeamComponentTest] 15-layer model build: " + buildTime + " ms");
 
 		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
@@ -404,10 +405,10 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		long fwdTime = System.currentTimeMillis() - fwdStart;
 
 		Assert.assertNotNull("Forward should produce a token", result);
-		System.out.println("[MoonbeamComponentTest] 15-layer forward+decode: " + fwdTime + " ms");
+		log("[MoonbeamComponentTest] 15-layer forward+decode: " + fwdTime + " ms");
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testFullModelForwardPass: " + elapsed + " ms");
+		log("[MoonbeamComponentTest] testFullModelForwardPass: " + elapsed + " ms");
 	}
 
 	/* ------------------------------------------------------------ */
@@ -429,12 +430,12 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(REAL_CONFIG);
 		GRUDecoder decoder = createRandomDecoder(REAL_CONFIG);
 		long allocTime = System.currentTimeMillis() - allocStart;
-		System.out.println("[MoonbeamComponentTest] weight alloc: " + allocTime + " ms");
+		log("[MoonbeamComponentTest] weight alloc: " + allocTime + " ms");
 
 		long buildStart = System.currentTimeMillis();
 		MoonbeamMidi model = new MoonbeamMidi(REAL_CONFIG, stateDict, embedding, decoder);
 		long buildTime = System.currentTimeMillis() - buildStart;
-		System.out.println("[MoonbeamComponentTest] model build: " + buildTime + " ms");
+		log("[MoonbeamComponentTest] model build: " + buildTime + " ms");
 
 		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
 
@@ -445,14 +446,14 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 		Assert.assertNotNull("Should produce a token", result);
 		Assert.assertFalse("Token should not be PAD", result.isPAD());
 
-		System.out.println("[MoonbeamComponentTest] autoregressive step: " + stepTime + " ms");
-		System.out.println("[MoonbeamComponentTest] generated token: onset="
+		log("[MoonbeamComponentTest] autoregressive step: " + stepTime + " ms");
+		log("[MoonbeamComponentTest] generated token: onset="
 				+ result.getOnset() + " dur=" + result.getDuration()
 				+ " oct=" + result.getOctave() + " pc=" + result.getPitchClass()
 				+ " inst=" + result.getInstrument() + " vel=" + result.getVelocity());
 
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("[MoonbeamComponentTest] testSingleAutoregressiveStep: " + elapsed + " ms");
+		log("[MoonbeamComponentTest] testSingleAutoregressiveStep: " + elapsed + " ms");
 	}
 
 	/* ------------------------------------------------------------ */

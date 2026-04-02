@@ -27,6 +27,7 @@ import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Assume;
@@ -46,7 +47,7 @@ import java.util.List;
  * @see MoonbeamMidi
  * @see MoonbeamMidiGenerator
  */
-public class MoonbeamInferenceTest extends TestSuiteBase {
+public class MoonbeamInferenceTest extends TestSuiteBase implements ConsoleFeatures {
 
 	private static final String WEIGHTS_DIR = "/workspace/project/moonbeam-weights-protobuf";
 
@@ -90,7 +91,7 @@ public class MoonbeamInferenceTest extends TestSuiteBase {
 		}
 		Assert.assertTrue("SOS and EOS should produce different embeddings", differ);
 
-		System.out.println("Real-weight embedding test passed.");
+		log("Real-weight embedding test passed.");
 	}
 
 	/**
@@ -126,12 +127,12 @@ public class MoonbeamInferenceTest extends TestSuiteBase {
 
 		// Convert to attribute values
 		int[] attrValues = decoder.toAttributeValues(decodeTokens);
-		System.out.println("Decoded tokens (flat vocab): ");
+		log("Decoded tokens (flat vocab): ");
 		for (int i = 0; i < decodeTokens.length; i++) {
-			System.out.printf("  [%d] flat=%d, attr=%d%n", i, decodeTokens[i], attrValues[i]);
+			log(String.format("  [%d] flat=%d, attr=%d", i, decodeTokens[i], attrValues[i]));
 		}
 
-		System.out.println("Real-weight GRU decoder test passed.");
+		log("Real-weight GRU decoder test passed.");
 	}
 
 	/**
@@ -148,11 +149,11 @@ public class MoonbeamInferenceTest extends TestSuiteBase {
 
 		MoonbeamConfig config = MoonbeamConfig.checkpoint309M();
 
-		System.out.println("Loading Moonbeam 309M model...");
+		log("Loading Moonbeam 309M model...");
 		long startLoad = System.currentTimeMillis();
 		MoonbeamMidi model = new MoonbeamMidi(WEIGHTS_DIR, config);
 		long loadTime = System.currentTimeMillis() - startLoad;
-		System.out.printf("Model loaded and compiled in %.1f seconds%n", loadTime / 1000.0);
+		log(String.format("Model loaded and compiled in %.1f seconds", loadTime / 1000.0));
 
 		Assert.assertNotNull("Compiled transformer should exist",
 				model.getCompiledTransformer());
@@ -162,20 +163,20 @@ public class MoonbeamInferenceTest extends TestSuiteBase {
 		gen.setTopP(0.95);
 		gen.setSeed(42);
 
-		System.out.println("Generating tokens from SOS...");
+		log("Generating tokens from SOS...");
 		long startGen = System.currentTimeMillis();
 		List<MidiCompoundToken> generated = gen.generate(5);
 		long genTime = System.currentTimeMillis() - startGen;
-		System.out.printf("Generated %d tokens in %.1f seconds%n",
-				generated.size(), genTime / 1000.0);
+		log(String.format("Generated %d tokens in %.1f seconds",
+				generated.size(), genTime / 1000.0));
 
 		Assert.assertFalse("Should generate at least one token", generated.isEmpty());
 
 		for (int i = 0; i < generated.size(); i++) {
 			MidiCompoundToken token = generated.get(i);
-			System.out.printf("  Token %d: onset=%d, dur=%d, oct=%d, pc=%d, inst=%d, vel=%d%n",
+			log(String.format("  Token %d: onset=%d, dur=%d, oct=%d, pc=%d, inst=%d, vel=%d",
 					i, token.getOnset(), token.getDuration(), token.getOctave(),
-					token.getPitchClass(), token.getInstrument(), token.getVelocity());
+					token.getPitchClass(), token.getInstrument(), token.getVelocity()));
 		}
 
 		// Try converting to MIDI note events
@@ -189,16 +190,16 @@ public class MoonbeamInferenceTest extends TestSuiteBase {
 
 		if (!withoutEos.isEmpty()) {
 			List<MidiNoteEvent> events = tokenizer.detokenize(withoutEos);
-			System.out.println("Converted to " + events.size() + " MIDI note events.");
+			log("Converted to " + events.size() + " MIDI note events.");
 
 			for (MidiNoteEvent event : events) {
-				System.out.printf("  Note: pitch=%d, onset=%d, dur=%d, vel=%d, inst=%d%n",
+				log(String.format("  Note: pitch=%d, onset=%d, dur=%d, vel=%d, inst=%d",
 						event.getPitch(), event.getOnset(), event.getDuration(),
-						event.getVelocity(), event.getInstrument());
+						event.getVelocity(), event.getInstrument()));
 			}
 		}
 
-		System.out.println("Full model inference test passed.");
+		log("Full model inference test passed.");
 	}
 
 	/** Build a GRU decoder from the state dictionary. */
