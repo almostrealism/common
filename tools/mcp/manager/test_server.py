@@ -11,6 +11,7 @@ import os
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError, URLError
 
 # Ensure the manager package is importable
 _MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -239,6 +240,50 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         result = server.workstream_submit_task(prompt="x" * 50_001)
         self.assertFalse(result["ok"])
         self.assertIn("maximum length", result["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_submit_required_labels(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-3"}
+        server.workstream_submit_task(
+            prompt="Task", required_labels="platform:macos,gpu:true")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["requiredLabels"], {
+            "platform": "macos", "gpu": "true"})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_preserves_job_id_in_next_steps(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "ok": True, "jobId": "job-42", "workstreamId": "ws-x"}
+        result = server.workstream_submit_task(
+            prompt="Task", workstream_id="ws-x")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["workstreamId"], "ws-x")
+        # next_steps should mention the workstream
+        self.assertTrue(any("ws-x" in s for s in result["next_steps"]))
+
+    @patch.object(server, "_controller_post")
+    def test_submit_controller_timeout(self, mock_post):
+        """Simulate controller timeout — returns an error dict."""
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "ok": False, "error": "Internal error contacting controller"}
+        result = server.workstream_submit_task(
+            prompt="Task", workstream_id="ws-test")
+        self.assertFalse(result["ok"])
+        self.assertIn("next_steps", result)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_controller_returns_no_ok_field(self, mock_post):
+        """Controller returns success-like response without explicit 'ok' key."""
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "jobId": "job-99", "workstreamId": "ws-test"}
+        result = server.workstream_submit_task(
+            prompt="Task", workstream_id="ws-test")
+        # Without "ok" key, result.get("ok") is None/falsy, so error next_steps added
+        self.assertIn("next_steps", result)
 
     def test_requires_write_scope(self):
         _grant_scopes("read")
@@ -774,6 +819,71 @@ class TestMemoryStore(unittest.TestCase):
             branch="feature/x",
         )
         self.assertFalse(result["ok"])
+
+
+# -----------------------------------------------------------------------
+# Controller HTTP helpers
+# -----------------------------------------------------------------------
+
+
+class TestControllerPost(unittest.TestCase):
+
+    @patch("server.urlopen")
+    def test_success_response(self, mock_urlopen):
+        resp = MagicMock()
+        resp.read.return_value = b'{"ok":true,"jobId":"j1"}'
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = resp
+        result = server._controller_post("/api/submit", {"prompt": "test"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["jobId"], "j1")
+
+    @patch("server.urlopen")
+    def test_empty_body_returns_ok(self, mock_urlopen):
+        resp = MagicMock()
+        resp.read.return_value = b""
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = resp
+        result = server._controller_post("/api/test", {})
+        self.assertTrue(result["ok"])
+
+    @patch("server.urlopen")
+    def test_http_error_with_json_body(self, mock_urlopen):
+        error = HTTPError(
+            url="http://test/api/submit", code=400, msg="Bad Request",
+            hdrs=None, fp=None)
+        error.read = lambda: b'{"ok":false,"error":"Missing prompt"}'
+        mock_urlopen.side_effect = error
+        result = server._controller_post("/api/submit", {})
+        self.assertFalse(result["ok"])
+        self.assertIn("Missing prompt", result["error"])
+
+    @patch("server.urlopen")
+    def test_http_error_without_json(self, mock_urlopen):
+        error = HTTPError(
+            url="http://test/api/submit", code=500, msg="Server Error",
+            hdrs=None, fp=None)
+        error.read = lambda: b"Internal Server Error"
+        mock_urlopen.side_effect = error
+        result = server._controller_post("/api/submit", {})
+        self.assertFalse(result["ok"])
+        self.assertIn("500", result["error"])
+
+    @patch("server.urlopen")
+    def test_url_error_returns_unreachable(self, mock_urlopen):
+        mock_urlopen.side_effect = URLError("Connection refused")
+        result = server._controller_post("/api/submit", {})
+        self.assertFalse(result["ok"])
+        self.assertIn("unreachable", result["error"])
+
+    @patch("server.urlopen")
+    def test_timeout_returns_error(self, mock_urlopen):
+        mock_urlopen.side_effect = TimeoutError("timed out")
+        result = server._controller_post("/api/submit", {})
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
 
 
 # -----------------------------------------------------------------------
