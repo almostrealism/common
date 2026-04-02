@@ -28,6 +28,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.Component;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.layers.LayerRoutingFeatures;
 import org.almostrealism.layers.Learning;
 import org.almostrealism.layers.ParameterUpdate;
 
@@ -60,7 +61,7 @@ import java.util.stream.IntStream;
  * @see DefaultBlock
  * @author Michael Murray
  */
-public class SequentialBlock implements Block, Learning, LayerFeatures {
+public class SequentialBlock implements Block, Learning, LayerRoutingFeatures {
 	/** When {@code true}, logs a warning when a block with no backward cell is added. */
 	public static boolean enableWarnings = false;
 

@@ -17,6 +17,7 @@
 package org.almostrealism.ml.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
@@ -156,30 +157,31 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 * results are concatenated. For special tokens (SOS/EOS), the
 	 * supplementary embedding + MLP is used instead.</p>
 	 *
-	 * @param token the compound token to embed
+	 * @param token producer supplying the compound token to embed
 	 * @return CollectionProducer of shape (hiddenSize,) producing the embedding
 	 */
-	public CollectionProducer embed(MidiCompoundToken token) {
+	public CollectionProducer embed(Producer<MidiCompoundToken> token) {
+		MidiCompoundToken t = token.get().evaluate();
 		int hidden = config.hiddenSize;
 
-		if (token.isSOS()) {
-			return embedSupplementary(0);
-		} else if (token.isEOS()) {
-			return embedSupplementary(1);
-		} else if (token.isFillStart()) {
-			return embedSupplementary(0);
-		} else if (token.isFillEnd()) {
-			return embedSupplementary(1);
-		} else if (token.isPAD()) {
+		if (t.isSOS()) {
+			return embedSupplementary(c(0.0));
+		} else if (t.isEOS()) {
+			return embedSupplementary(c(1.0));
+		} else if (t.isFillStart()) {
+			return embedSupplementary(c(0.0));
+		} else if (t.isFillEnd()) {
+			return embedSupplementary(c(1.0));
+		} else if (t.isPAD()) {
 			return zeros(shape(hidden));
 		}
 
-		int[] values = token.toArray();
+		int[] values = t.toArray();
 		int dim = config.embeddingDim;
 		CollectionProducer[] attrEmbs = new CollectionProducer[MoonbeamConfig.NUM_ATTRIBUTES];
 		for (int attr = 0; attr < MoonbeamConfig.NUM_ATTRIBUTES; attr++) {
 			if (attr == INSTRUMENT_INDEX) {
-				attrEmbs[attr] = embedInstrument(values[attr]).reshape(shape(dim));
+				attrEmbs[attr] = embedInstrument(c((double) values[attr])).reshape(shape(dim));
 			} else {
 				attrEmbs[attr] = fmeEmbeddings[attr].embed(values[attr]).reshape(shape(dim));
 			}
@@ -188,28 +190,54 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	}
 
 	/**
+	 * Convenience overload that wraps a concrete token in a producer and delegates to
+	 * {@link #embed(Producer)}.
+	 *
+	 * @param token the compound token to embed
+	 * @return CollectionProducer of shape (hiddenSize,) producing the embedding
+	 */
+	public CollectionProducer embed(MidiCompoundToken token) {
+		return embed(() -> args -> token);
+	}
+
+	/**
 	 * Embed a sequence of compound tokens, returning a {@link CollectionProducer}
 	 * of shape (seqLen, hiddenSize).
+	 *
+	 * @param tokens producer supplying the token sequence
+	 * @return CollectionProducer of shape (seqLen, hiddenSize)
+	 */
+	public CollectionProducer embedSequence(Producer<List<MidiCompoundToken>> tokens) {
+		List<MidiCompoundToken> tokenList = tokens.get().evaluate();
+		int hidden = config.hiddenSize;
+		CollectionProducer[] embeddings = new CollectionProducer[tokenList.size()];
+		for (int idx = 0; idx < tokenList.size(); idx++) {
+			MidiCompoundToken tok = tokenList.get(idx);
+			embeddings[idx] = embed(() -> args -> tok);
+		}
+		return concat(embeddings).reshape(shape(tokenList.size(), hidden));
+	}
+
+	/**
+	 * Convenience overload that wraps a concrete list in a producer and delegates to
+	 * {@link #embedSequence(Producer)}.
 	 *
 	 * @param tokens the token sequence
 	 * @return CollectionProducer of shape (seqLen, hiddenSize)
 	 */
 	public CollectionProducer embedSequence(List<MidiCompoundToken> tokens) {
-		int hidden = config.hiddenSize;
-		CollectionProducer[] embeddings = new CollectionProducer[tokens.size()];
-		for (int t = 0; t < tokens.size(); t++) {
-			embeddings[t] = embed(tokens.get(t));
-		}
-		return concat(embeddings).reshape(shape(tokens.size(), hidden));
+		return embedSequence(() -> args -> tokens);
 	}
 
 	/**
 	 * Embed an instrument value using standard lookup embedding, returning a
 	 * {@link CollectionProducer} of shape (embeddingDim,).
+	 *
+	 * @param instrumentId producer supplying the scalar instrument index
 	 */
-	private CollectionProducer embedInstrument(int instrumentId) {
+	private CollectionProducer embedInstrument(CollectionProducer instrumentId) {
 		int dim = config.embeddingDim;
-		return cp(instrumentEmbedding).subset(shape(1, dim), instrumentId, 0).reshape(shape(dim));
+		return subset(shape(dim), cp(instrumentEmbedding), instrumentId.multiply(c(dim)));
 	}
 
 	/**
@@ -217,12 +245,14 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 * returning a {@link CollectionProducer} of shape (hiddenSize,).
 	 *
 	 * <p>Pipeline: lookup -&gt; Linear -&gt; GELU -&gt; Linear</p>
+	 *
+	 * @param tokenIndex producer supplying the scalar token index into the supplementary table
 	 */
-	private CollectionProducer embedSupplementary(int tokenIndex) {
+	private CollectionProducer embedSupplementary(CollectionProducer tokenIndex) {
 		int hidden = config.hiddenSize;
 
-		CollectionProducer lookup = cp(supplementaryEmbedding)
-				.subset(shape(1, hidden), tokenIndex, 0).reshape(shape(hidden));
+		CollectionProducer lookup = subset(shape(hidden), cp(supplementaryEmbedding),
+				tokenIndex.multiply(c(hidden)));
 
 		CollectionProducer mlp0Out = add(matmul(cp(supplementaryMlp0Weight), lookup),
 				cp(supplementaryMlp0Bias));

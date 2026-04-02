@@ -30,6 +30,7 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 
@@ -772,12 +773,99 @@ public interface AttentionFeatures extends RotationFeatures {
 							Producer<PackedCollection> position,
 							double epsilon,
 							ComputeRequirement... requirements) {
+		return attentionImpl(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				bk, bv, bq, qkNormQ, qkNormK,
+				freqCis, null, position, epsilon, requirements);
+	}
+
+	/**
+	 * Attention with per-head-group rotary embeddings (Multidimensional Relative Attention).
+	 *
+	 * <p>Unlike standard attention which applies a single RoPE uniformly to all heads,
+	 * MRA partitions heads into groups and applies per-group RoPE with different theta
+	 * values and attribute-derived position IDs. This is the key architectural novelty
+	 * of the Moonbeam MIDI Foundation Model.</p>
+	 *
+	 * <p>The flow is identical to standard attention except for the RoPE application:</p>
+	 * <ol>
+	 *   <li>Q/K projection (standard)</li>
+	 *   <li>Split Q/K into head groups along head dimension</li>
+	 *   <li>Apply per-group RoPE with the group's precomputed freqCis and position</li>
+	 *   <li>Concatenate rotated groups back</li>
+	 *   <li>Standard scaled dot-product attention (unchanged)</li>
+	 * </ol>
+	 *
+	 * @param heads total number of query attention heads
+	 * @param kvHeads number of key/value heads (for GQA)
+	 * @param rmsAttWeight pre-attention RMSNorm weights
+	 * @param wk key projection weights
+	 * @param wv value projection weights
+	 * @param wq query projection weights
+	 * @param wo output projection weights
+	 * @param headGroups per-head-group RoPE configuration (freqCis + position per group)
+	 * @param position sequential position for KV cache indexing and causal masking
+	 * @param epsilon RMSNorm epsilon
+	 * @param requirements compute requirements
+	 * @return attention block with MRA
+	 */
+	default Block attention(int heads, int kvHeads,
+							PackedCollection rmsAttWeight,
+							PackedCollection wk, PackedCollection wv,
+							PackedCollection wq, PackedCollection wo,
+							HeadGroupConfig[] headGroups,
+							Producer<PackedCollection> position,
+							double epsilon,
+							ComputeRequirement... requirements) {
+		return attentionImpl(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				null, null, null, null, null,
+				null, headGroups, position, epsilon, requirements);
+	}
+
+	/**
+	 * Unified attention implementation supporting both standard RoPE and
+	 * Multidimensional Relative Attention (MRA).
+	 *
+	 * <p>When {@code headGroups} is non-null, MRA mode is active and per-group
+	 * {@link #mraRopeRotation} is used for Q and K. Otherwise standard
+	 * {@link RotationFeatures#ropeRotation} is applied using {@code freqCis}.
+	 * Optional bias ({@code bk}, {@code bv}, {@code bq}) and QK-Norm
+	 * ({@code qkNormQ}, {@code qkNormK}) parameters are applied only when non-null,
+	 * and are ignored in MRA mode.</p>
+	 */
+	private Block attentionImpl(int heads, int kvHeads,
+								PackedCollection rmsAttWeight,
+								PackedCollection wk, PackedCollection wv,
+								PackedCollection wq, PackedCollection wo,
+								PackedCollection bk, PackedCollection bv, PackedCollection bq,
+								PackedCollection qkNormQ, PackedCollection qkNormK,
+								PackedCollection freqCis,
+								HeadGroupConfig[] headGroups,
+								Producer<PackedCollection> position,
+								double epsilon,
+								ComputeRequirement... requirements) {
+		boolean useMRA = headGroups != null;
+
 		int dim = rmsAttWeight.getShape().length(0);
-		int headSize = freqCis.getShape().length(1) * 2; // freqCis is (seqLen, headSize/2, 2)
-		int seqLen = freqCis.getShape().length(0);
+		int headSize = useMRA ? headGroups[0].freqCis.getShape().length(1) * 2
+							  : freqCis.getShape().length(1) * 2;
+		int seqLen = useMRA ? headGroups[0].freqCis.getShape().length(0)
+							: freqCis.getShape().length(0);
 		int kvDim = dim * kvHeads / heads;
 		int headsPerKvGroup = heads / kvHeads;
 		boolean useGQA = kvHeads != heads;
+
+		// For MRA: compute per-group head counts for keys and queries
+		int numGroups = useMRA ? headGroups.length : 0;
+		int[] kvHeadsPerGroup = null;
+		int[] queryHeadsPerGroup = null;
+		if (useMRA) {
+			kvHeadsPerGroup = new int[numGroups];
+			queryHeadsPerGroup = new int[numGroups];
+			for (int g = 0; g < numGroups; g++) {
+				kvHeadsPerGroup[g] = headGroups[g].headCount / headsPerKvGroup;
+				queryHeadsPerGroup[g] = headGroups[g].headCount;
+			}
+		}
 
 		TraversalPolicy inputShape = shape(1, dim);
 		SequentialBlock attention = new SequentialBlock(inputShape);
@@ -809,7 +897,11 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 		// Use split-half reshape for RoPE (matches PyTorch's Qwen/Llama)
 		keys.add(reshapeToSplitHalfRope(kvDim, kvHeads, headSize));
-		keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position));
+		if (useMRA) {
+			keys.add(mraRopeRotation(kvHeads, headSize, kvHeadsPerGroup, headGroups, requirements));
+		} else {
+			keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position));
+		}
 		// Reshape back to (kvHeads, headSize) then flatten to (kvDim)
 		keys.add(reshapeFromSplitHalfRope(kvHeads, headSize));
 		keys.add(reshape(kvHeadShape, shape(kvDim)));
@@ -851,7 +943,11 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 		// Use split-half reshape for RoPE (matches PyTorch's Qwen/Llama)
 		attention.add(reshapeToSplitHalfRope(dim, heads, headSize));
-		attention.add(ropeRotation(headShapeComplex, freqCis, position));
+		if (useMRA) {
+			attention.add(mraRopeRotation(heads, headSize, queryHeadsPerGroup, headGroups, requirements));
+		} else {
+			attention.add(ropeRotation(headShapeComplex, freqCis, position));
+		}
 		// Reshape back to (heads, headSize) for attention computation
 		attention.add(reshapeFromSplitHalfRope(heads, headSize));
 		// Expanded keys cache (seqLen, heads, headSize) - use standard non-GQA attention
@@ -878,131 +974,6 @@ public interface AttentionFeatures extends RotationFeatures {
 		attention.add(dense(wo));
 
 		// Restore the (1, dim) shape for the transformer layer output
-		attention.reshape(inputShape);
-		/* ---- **/
-
-		return attention;
-	}
-
-	/**
-	 * Attention with per-head-group rotary embeddings (Multidimensional Relative Attention).
-	 *
-	 * <p>Unlike standard attention which applies a single RoPE uniformly to all heads,
-	 * MRA partitions heads into groups and applies per-group RoPE with different theta
-	 * values and attribute-derived position IDs. This is the key architectural novelty
-	 * of the Moonbeam MIDI Foundation Model.</p>
-	 *
-	 * <p>The flow is identical to standard attention except for the RoPE application:</p>
-	 * <ol>
-	 *   <li>Q/K projection (standard)</li>
-	 *   <li>Split Q/K into head groups along head dimension</li>
-	 *   <li>Apply per-group RoPE with the group's precomputed freqCis and position</li>
-	 *   <li>Concatenate rotated groups back</li>
-	 *   <li>Standard scaled dot-product attention (unchanged)</li>
-	 * </ol>
-	 *
-	 * @param heads total number of query attention heads
-	 * @param kvHeads number of key/value heads (for GQA)
-	 * @param rmsAttWeight pre-attention RMSNorm weights
-	 * @param wk key projection weights
-	 * @param wv value projection weights
-	 * @param wq query projection weights
-	 * @param wo output projection weights
-	 * @param headGroups per-head-group RoPE configuration (freqCis + position per group)
-	 * @param position sequential position for KV cache indexing and causal masking
-	 * @param epsilon RMSNorm epsilon
-	 * @param requirements compute requirements
-	 * @return attention block with MRA
-	 */
-	default Block attention(int heads, int kvHeads,
-							PackedCollection rmsAttWeight,
-							PackedCollection wk, PackedCollection wv,
-							PackedCollection wq, PackedCollection wo,
-							HeadGroupConfig[] headGroups,
-							Producer<PackedCollection> position,
-							double epsilon,
-							ComputeRequirement... requirements) {
-		int dim = rmsAttWeight.getShape().length(0);
-		int headSize = headGroups[0].freqCis.getShape().length(1) * 2;
-		int seqLen = headGroups[0].freqCis.getShape().length(0);
-		int kvDim = dim * kvHeads / heads;
-		int headsPerKvGroup = heads / kvHeads;
-		boolean useGQA = kvHeads != heads;
-		int numGroups = headGroups.length;
-
-		TraversalPolicy inputShape = shape(1, dim);
-		SequentialBlock attention = new SequentialBlock(inputShape);
-
-		PackedCollection keyCache = new PackedCollection(seqLen, heads, headSize);
-		PackedCollection valueCache = new PackedCollection(seqLen, heads, headSize);
-		keyCache.clear();
-		valueCache.clear();
-
-		attention.add(rmsnorm(inputShape, rmsAttWeight, epsilon, requirements));
-
-		SequentialBlock keys = attention.branch();
-		SequentialBlock values = attention.branch();
-
-		TraversalPolicy kvHeadShape = shape(kvHeads, headSize);
-
-		/* KEYS with per-group RoPE **/
-		keys.add(dense(wk));
-		int[] kvHeadsPerGroup = new int[numGroups];
-		for (int g = 0; g < numGroups; g++) {
-			kvHeadsPerGroup[g] = headGroups[g].headCount / headsPerKvGroup;
-		}
-		keys.add(reshapeToSplitHalfRope(kvDim, kvHeads, headSize));
-		keys.add(mraRopeRotation(kvHeads, headSize, kvHeadsPerGroup, headGroups, requirements));
-		keys.add(reshapeFromSplitHalfRope(kvHeads, headSize));
-		keys.add(reshape(kvHeadShape, shape(kvDim)));
-		if (useGQA) {
-			keys.add(reshape(shape(kvDim), shape(1, kvDim)));
-			keys.add(gqaExpand(kvDim, dim, kvHeads, heads, headSize, requirements));
-		} else {
-			keys.add(reshape(shape(kvDim), shape(1, dim)));
-		}
-		keys.andThen(into(keyCache.reshape(shape(seqLen, dim)), position));
-		/* ---- **/
-
-		/* VALUES (no RoPE, same as standard attention) **/
-		values.add(dense(wv));
-		if (useGQA) {
-			values.add(reshape(shape(kvDim), shape(1, kvDim)));
-			values.add(gqaExpand(kvDim, dim, kvHeads, heads, headSize, requirements));
-		} else {
-			values.add(reshape(shape(kvDim), shape(1, dim)));
-		}
-		values.andThen(into(valueCache.reshape(shape(seqLen, dim)), position));
-		/* ---- **/
-
-		/* QUERY with per-group RoPE **/
-		TraversalPolicy headShape = shape(heads, headSize);
-		TraversalPolicy attentionShape = shape(heads, seqLen).traverseEach();
-
-		int[] queryHeadsPerGroup = new int[numGroups];
-		for (int g = 0; g < numGroups; g++) {
-			queryHeadsPerGroup[g] = headGroups[g].headCount;
-		}
-
-		attention.add(dense(wq));
-		attention.add(reshapeToSplitHalfRope(dim, heads, headSize));
-		attention.add(mraRopeRotation(heads, headSize, queryHeadsPerGroup, headGroups, requirements));
-		attention.add(reshapeFromSplitHalfRope(heads, headSize));
-		attention.add(attentionKeysStandard(headShape, p(keyCache)));
-
-		CollectionProducer indices = integers(0, seqLen);
-		CollectionProducer maskRow =
-			greaterThan(indices, position, c(-10000.0), c(0.0), false);
-		CollectionProducer causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
-
-		attention.add(layer("causal_mask", attentionShape, attentionShape,
-		                   input -> add(input, causalMask),
-		                   requirements));
-
-		attention.add(softmax(attentionShape, true));
-		attention.add(attentionValuesStandard(attentionShape, p(valueCache)));
-		attention.add(dense(wo));
-
 		attention.reshape(inputShape);
 		/* ---- **/
 
@@ -1066,43 +1037,20 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 
 		// cos/sin relative index maps within a position's frequency row
-		PackedCollection cosRelIndexMap = new PackedCollection(totalHeadFreq);
-		PackedCollection sinRelIndexMap = new PackedCollection(totalHeadFreq);
-		for (int h = 0; h < totalHeads; h++) {
-			for (int f = 0; f < freqDim; f++) {
-				int idx = h * freqDim + f;
-				cosRelIndexMap.setMem(idx, f * 2);
-				sinRelIndexMap.setMem(idx, f * 2 + 1);
-			}
-		}
+		// cos/sin relative index maps: position f maps to freq index f*2 (cos) and f*2+1 (sin),
+		// tiled across all heads — expressed as CollectionProducers rather than filled arrays
+		CollectionProducer cosRelIndexMap = mod(integers(0, totalHeadFreq), c(freqDim)).multiply(c(2.0));
+		CollectionProducer sinRelIndexMap = cosRelIndexMap.add(c(1.0));
 
-		PackedCollection wfsSizeArray = new PackedCollection(totalHeadFreq);
-		for (int i = 0; i < totalHeadFreq; i++) {
-			wfsSizeArray.setMem(i, weightsFreqSize);
-		}
+		// Input index maps: element i in the split-half-interleaved input maps to i*2 (x1) and i*2+1 (x2)
+		CollectionProducer x1IndexMap = integers(0, totalHeadFreq).multiply(c(2.0));
+		CollectionProducer x2IndexMap = x1IndexMap.add(c(1.0));
 
-		// Input index maps for x1/x2 gathering
-		PackedCollection x1IndexMap = new PackedCollection(totalHeadFreq);
-		PackedCollection x2IndexMap = new PackedCollection(totalHeadFreq);
-		for (int h = 0; h < totalHeads; h++) {
-			for (int f = 0; f < freqDim; f++) {
-				int idx = h * freqDim + f;
-				x1IndexMap.setMem(idx, h * freqDim * 2 + f * 2);
-				x2IndexMap.setMem(idx, h * freqDim * 2 + f * 2 + 1);
-			}
-		}
-
-		// Output interleaving maps
+		// Output interleaving maps: output element i comes from source index floor(i/2),
+		// and is an x2 value when i%2==1, x1 value when i%2==0
 		int outputSize = totalHeads * freqDim * 2;
-		PackedCollection outputSourceMap = new PackedCollection(outputSize);
-		PackedCollection componentMap = new PackedCollection(outputSize);
-		for (int i = 0; i < outputSize; i++) {
-			int h = i / (freqDim * 2);
-			int f = (i % (freqDim * 2)) / 2;
-			int comp = i % 2;
-			outputSourceMap.setMem(i, h * freqDim + f);
-			componentMap.setMem(i, comp);
-		}
+		CollectionProducer outputSourceMap = floor(divide(integers(0, outputSize), c(2.0)));
+		CollectionProducer componentMap = mod(integers(0, outputSize), c(2.0));
 
 		// Per-group masks for position routing: mask_g[i] = 1.0 if head i belongs to group g
 		PackedCollection[] groupMasks = new PackedCollection[numGroups];
@@ -1122,16 +1070,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		List<PackedCollection> captured = new ArrayList<>();
 		captured.add(combinedFreqCis);
 		captured.add(groupBaseOffsets);
-		captured.add(cosRelIndexMap);
-		captured.add(sinRelIndexMap);
-		captured.add(wfsSizeArray);
-		captured.add(x1IndexMap);
-		captured.add(x2IndexMap);
-		captured.add(outputSourceMap);
-		captured.add(componentMap);
-		for (PackedCollection mask : groupMasks) {
-			captured.add(mask);
-		}
+		captured.addAll(Arrays.asList(groupMasks));
 
 		return layer("mraRopeRotation", inputShape, inputShape, input -> {
 			// Build per-head position by summing group-masked position scalars
@@ -1142,28 +1081,28 @@ public interface AttentionFeatures extends RotationFeatures {
 				perHeadPos = (perHeadPos == null) ? masked : perHeadPos.add(masked);
 			}
 
-			CollectionProducer posOffset = perHeadPos.multiply(c(p(wfsSizeArray)));
+			CollectionProducer posOffset = perHeadPos.multiply(c(weightsFreqSize));
 
 			// Absolute indices into combinedFreqCis
-			CollectionProducer cosIdx = c(p(groupBaseOffsets)).add(posOffset).add(c(p(cosRelIndexMap)));
-			CollectionProducer sinIdx = c(p(groupBaseOffsets)).add(posOffset).add(c(p(sinRelIndexMap)));
+			CollectionProducer cosIdx = c(p(groupBaseOffsets)).add(posOffset).add(cosRelIndexMap);
+			CollectionProducer sinIdx = c(p(groupBaseOffsets)).add(posOffset).add(sinRelIndexMap);
 
 			// Gather cos and sin values from combined frequency table
 			CollectionProducer cos = c(shape(totalHeadFreq), p(combinedFreqCis), cosIdx);
 			CollectionProducer sin = c(shape(totalHeadFreq), p(combinedFreqCis), sinIdx);
 
 			// Gather x1 and x2 from input
-			CollectionProducer x1 = c(shape(totalHeadFreq), input, p(x1IndexMap));
-			CollectionProducer x2 = c(shape(totalHeadFreq), input, p(x2IndexMap));
+			CollectionProducer x1 = c(shape(totalHeadFreq), input, x1IndexMap);
+			CollectionProducer x2 = c(shape(totalHeadFreq), input, x2IndexMap);
 
 			// Apply split-half rotation
 			CollectionProducer out1 = x1.multiply(cos).subtract(x2.multiply(sin));
 			CollectionProducer out2 = x2.multiply(cos).add(x1.multiply(sin));
 
 			// Interleave out1 and out2 to recreate (totalHeads, freqDim, 2) layout
-			CollectionProducer out1Vals = c(shape(outputSize), out1, p(outputSourceMap));
-			CollectionProducer out2Vals = c(shape(outputSize), out2, p(outputSourceMap));
-			CollectionProducer compVals = c(p(componentMap));
+			CollectionProducer out1Vals = c(shape(outputSize), out1, outputSourceMap);
+			CollectionProducer out2Vals = c(shape(outputSize), out2, outputSourceMap);
+			CollectionProducer compVals = componentMap;
 			CollectionProducer result = greaterThan(compVals, c(0.5), out2Vals, out1Vals, true);
 
 			return result.reshape(inputShape);

@@ -30,6 +30,7 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 import java.util.function.Consumer;
 
 /**
@@ -65,7 +66,7 @@ public class Llama2 implements AttentionFeatures {
 	private float[] vocabScores;
 
 	/** The compiled autoregressive model used for inference. */
-	private AutoregressiveModel model;
+	private AutoregressiveModel<Integer> model;
 
 	/** Performance profile for tracking kernel execution times. */
 	private OperationProfile profile;
@@ -170,7 +171,7 @@ public class Llama2 implements AttentionFeatures {
 	 * @param requirements optional compute requirements (e.g., GPU)
 	 * @return the compiled autoregressive model
 	 */
-	protected AutoregressiveModel model(OperationProfile profile, ComputeRequirement... requirements) {
+	protected AutoregressiveModel<Integer> model(OperationProfile profile, ComputeRequirement... requirements) {
 		Model transformer = new Model(shape(1, config.dim));
 
 		PackedCollection position = new PackedCollection(1);
@@ -216,15 +217,16 @@ public class Llama2 implements AttentionFeatures {
 		// Build prompt with BOS as the first token so that the model
 		// always processes BOS at position 0 (matching llama2.c behavior
 		// and the AutoregressiveModel contract used by Qwen3).
-		int[] allTokens = new int[config.seqLen];
-		allTokens[0] = 1; // BOS
+		int[] rawTokens = new int[config.seqLen];
+		rawTokens[0] = 1; // BOS
 		int tokenCount = 1;
 		if (prompt != null) {
 			int[] textTokens = new int[config.seqLen];
 			int textCount = BPE.encode(prompt, vocab, vocabScores, config.vocabSize, textTokens);
-			System.arraycopy(textTokens, 0, allTokens, 1, textCount);
+			System.arraycopy(textTokens, 0, rawTokens, 1, textCount);
 			tokenCount += textCount;
 		}
+		Integer[] allTokens = Arrays.stream(rawTokens).boxed().toArray(Integer[]::new);
 
 		long start = 0;
 		int next;

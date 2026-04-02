@@ -472,7 +472,8 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 		}
 
 		HeadGroupConfig[] headGroups =
-				HeadGroupConfig.fromConfig(config, attrProducers);
+				HeadGroupConfig.fromParams(config.ropeThetas, config.headDim,
+						config.maxSeqLen, config.headsPerGroup, attrProducers);
 
 		for (int i = 0; i < config.numLayers; i++) {
 			String prefix = String.format("model.layers.%d", i);

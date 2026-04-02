@@ -8,12 +8,14 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
+import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -94,7 +96,7 @@ public class Qwen3 implements AttentionFeatures {
 	private Qwen3Tokenizer tokenizer;
 
 	/** The autoregressive inference model managing the generation loop. */
-	private AutoregressiveModel model;
+	private AutoregressiveModel<Integer> model;
 
 	/** Performance profile node for tracking per-operation execution times. */
 	private OperationProfileNode profile;
@@ -291,7 +293,7 @@ public class Qwen3 implements AttentionFeatures {
 	/**
 	 * For testing: Get the autoregressive model to access internals.
 	 */
-	public AutoregressiveModel getAutoregressiveModel() {
+	public AutoregressiveModel<Integer> getAutoregressiveModel() {
 		return model;
 	}
 
@@ -329,7 +331,7 @@ public class Qwen3 implements AttentionFeatures {
 	 * @param requirements Compute requirements for hardware acceleration
 	 * @return Autoregressive model ready for inference
 	 */
-	protected AutoregressiveModel model(OperationProfile profile, ComputeRequirement... requirements) {
+	protected AutoregressiveModel<Integer> model(OperationProfile profile, ComputeRequirement... requirements) {
 		Model transformer = new Model(shape(1, config.dim));
 
 		// Placeholder for the index of the current step (position in sequence)
@@ -345,7 +347,8 @@ public class Qwen3 implements AttentionFeatures {
 		PackedCollection rmsFinalWeight = stateDict.get("model.norm.weight");
 
 		// Compute RoPE frequencies (not stored in state dict)
-		PackedCollection freqCis = computeRopeFreqs(config);
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(
+				config.ropeTheta, config.headSize, config.seqLen);
 
 		// Build transformer stack: 36 layers for Qwen3-4B
 		for (int i = 0; i < config.layerCount; i++) {
@@ -412,34 +415,6 @@ public class Qwen3 implements AttentionFeatures {
 				t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim));
 	}
 
-	/**
-	 * Compute RoPE frequency embeddings.
-	 */
-	private static PackedCollection computeRopeFreqs(Qwen3Config config) {
-		int headSize = config.headSize;
-		int seqLen = config.seqLen;
-		double theta = config.ropeTheta;
-
-		int freqDim = headSize / 2;
-		double[] freqs = new double[freqDim];
-		for (int i = 0; i < freqDim; i++) {
-			freqs[i] = 1.0 / Math.pow(theta, (2.0 * i) / headSize);
-		}
-
-		TraversalPolicy shape = new TraversalPolicy(seqLen, freqDim, 2);
-		PackedCollection freqCis = new PackedCollection(shape);
-
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int i = 0; i < freqDim; i++) {
-				double angle = pos * freqs[i];
-				int idx = (pos * freqDim + i) * 2;
-				freqCis.setMem(idx, Math.cos(angle));
-				freqCis.setMem(idx + 1, Math.sin(angle));
-			}
-		}
-
-		return freqCis;
-	}
 
 	/**
 	 * Run autoregressive generation for the specified number of steps.
@@ -459,10 +434,11 @@ public class Qwen3 implements AttentionFeatures {
 		}
 
 		// Encode prompt if provided
-		int[] promptTokens = null;
+		Integer[] promptTokens = null;
 		int promptTokenCount = 0;
 		if (prompt != null) {
-			promptTokens = tokenizer.encode(prompt, true, false);  // Add BOS, no EOS
+			int[] encoded = tokenizer.encode(prompt, true, false);  // Add BOS, no EOS
+			promptTokens = Arrays.stream(encoded).boxed().toArray(Integer[]::new);
 			promptTokenCount = promptTokens.length;
 			System.out.println("Encoded prompt: " + promptTokenCount + " tokens");
 		}

@@ -18,6 +18,7 @@ package org.almostrealism.ml.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.AutoregressiveModel;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,11 +30,10 @@ import javax.sound.midi.InvalidMidiDataException;
 /**
  * Autoregressive generation model for compound MIDI tokens.
  *
- * <p>This class manages the compound token generation loop for the Moonbeam
- * model. Unlike standard text autoregressive models where input and output
- * are single token IDs, Moonbeam takes a 6-attribute compound token as input
- * and produces 7 decode tokens per position via the GRU decoder, which are
- * then mapped back to a compound token.</p>
+ * <p>This class wraps {@link AutoregressiveModel}{@code <MidiCompoundToken>} to provide
+ * MIDI-specific autoregressive generation. Unlike standard text models where input and
+ * output are single token IDs, Moonbeam takes a 6-attribute compound token as input and
+ * produces 7 decode tokens per position via the GRU decoder.</p>
  *
  * <h2>Generation Flow</h2>
  * <ol>
@@ -59,36 +59,20 @@ import javax.sound.midi.InvalidMidiDataException;
  * }</pre>
  *
  * @see MoonbeamMidi
+ * @see AutoregressiveModel
  * @see CompoundMidiEmbedding
  * @see GRUDecoder
  */
 public class MidiAutoregressiveModel {
 
+	private final AutoregressiveModel<MidiCompoundToken> inner;
 	private final MoonbeamMidi model;
 	private final MoonbeamConfig config;
 	private final CompoundMidiEmbedding embedding;
 	private final GRUDecoder decoder;
-	private final int[] vocabOffsets;
 
-	private int currentStep;
-	private MidiCompoundToken currentToken;
-	private MidiCompoundToken[] prompt;
+	/** Current length of the prompt set via {@link #setPrompt(MidiCompoundToken[])}. */
 	private int promptLength;
-
-	/**
-	 * Cached hidden state from the most recent transformer forward pass.
-	 * Used to carry the hidden state from the last prompt token forward
-	 * to the first generation step without re-forwarding.
-	 */
-	private PackedCollection lastHidden;
-
-	/**
-	 * Temperature for sampling (0 = greedy).
-	 *
-	 * <p>When set to 0, the decoder uses greedy argmax. Higher values
-	 * produce more random output. Typical values are 0.7-1.0.</p>
-	 */
-	private double temperature;
 
 	/**
 	 * Top-p (nucleus) sampling threshold.
@@ -100,7 +84,7 @@ public class MidiAutoregressiveModel {
 	private double topP;
 
 	/** Random number generator for sampling. */
-	private Random random;
+	private final Random random;
 
 	/**
 	 * Create a MidiAutoregressiveModel from a MoonbeamMidi model.
@@ -108,16 +92,44 @@ public class MidiAutoregressiveModel {
 	 * @param model the Moonbeam model containing transformer, embedding, and decoder
 	 */
 	public MidiAutoregressiveModel(MoonbeamMidi model) {
+		this(model, new Random());
+	}
+
+	/**
+	 * Create a MidiAutoregressiveModel from a MoonbeamMidi model with the given random source.
+	 *
+	 * @param model  the Moonbeam model containing transformer, embedding, and decoder
+	 * @param random random number generator for sampling
+	 */
+	public MidiAutoregressiveModel(MoonbeamMidi model, Random random) {
 		this.model = model;
 		this.config = model.getConfig();
 		this.embedding = model.getEmbedding();
 		this.decoder = model.getDecoder();
-		this.vocabOffsets = GRUDecoder.computeVocabOffsets(config);
-		this.currentStep = 0;
-		this.currentToken = MidiCompoundToken.sos();
-		this.temperature = 0.0;
 		this.topP = 1.0;
-		this.random = new Random();
+		this.random = random;
+
+		int hiddenSize = config.hiddenSize;
+		PackedCollection input = new PackedCollection(new TraversalPolicy(1, hiddenSize));
+		PackedCollection temperature = new PackedCollection(1);
+
+		this.inner = new AutoregressiveModel<>(
+				step -> model.setPosition(step),
+				token -> {
+					model.setAttributePositions(token);
+					PackedCollection emb = embedding.embed(token).evaluate();
+					input.setMem(0, emb.toArray(0, hiddenSize), 0, hiddenSize);
+				},
+				() -> model.forward(input),
+				hidden -> {
+					PackedCollection vec = new PackedCollection(hiddenSize);
+					vec.setMem(0, hidden.toArray(0, hiddenSize), 0, hiddenSize);
+					int[] decodeTokens = decoder.decode(vec, temperature.toDouble(0), topP, random);
+					return decodeToCompoundToken(decodeTokens);
+				},
+				temperature);
+
+		this.inner.setCurrentToken(MidiCompoundToken.sos());
 	}
 
 	/**
@@ -129,55 +141,19 @@ public class MidiAutoregressiveModel {
 	 * @param promptTokens array of compound tokens to use as prompt
 	 */
 	public void setPrompt(MidiCompoundToken[] promptTokens) {
-		this.prompt = promptTokens;
 		this.promptLength = promptTokens != null ? promptTokens.length : 0;
-		this.currentStep = 0;
-		this.currentToken = MidiCompoundToken.sos();
-		this.lastHidden = null;
+		inner.setPrompt(promptTokens, promptLength);
+		inner.setCurrentStep(0);
+		inner.setCurrentToken(MidiCompoundToken.sos());
 	}
 
 	/**
 	 * Generate and return the next compound token in the sequence.
 	 *
-	 * <p>During the prompt phase, each prompt token is forwarded through
-	 * the transformer to populate the KV cache. The hidden state from
-	 * the last prompt token is saved and used to decode the first
-	 * generated token on the next call.</p>
-	 *
-	 * <p>During generation, the previously saved hidden state is decoded
-	 * via the GRU decoder, the resulting token is forwarded through the
-	 * transformer to extend the KV cache, and its hidden state is saved
-	 * for the next call.</p>
-	 *
 	 * @return the next compound token (may be EOS to signal end)
 	 */
 	public MidiCompoundToken next() {
-		if (currentStep < promptLength) {
-			MidiCompoundToken inputToken = prompt[currentStep];
-			processToken(inputToken);
-			lastHidden = model.forward(embedToken(inputToken));
-			currentToken = inputToken;
-			currentStep++;
-			return currentToken;
-		}
-
-		if (lastHidden == null) {
-			// No prompt was set; forward the initial SOS token
-			processToken(currentToken);
-			lastHidden = model.forward(embedToken(currentToken));
-			currentStep++;
-		}
-
-		PackedCollection hiddenVec = extractHiddenVector(lastHidden);
-		int[] decodeTokens = decoder.decode(hiddenVec, temperature, topP, random);
-		MidiCompoundToken generated = decodeToCompoundToken(decodeTokens);
-
-		processToken(generated);
-		lastHidden = model.forward(embedToken(generated));
-
-		currentToken = generated;
-		currentStep++;
-		return generated;
+		return inner.next();
 	}
 
 	/**
@@ -187,14 +163,14 @@ public class MidiAutoregressiveModel {
 	 * @return list of generated tokens (excluding prompt, including EOS if generated)
 	 */
 	public List<MidiCompoundToken> generate(int maxTokens) {
-		List<MidiCompoundToken> generated = new ArrayList<>();
-
-		while (currentStep < promptLength) {
-			next();
+		// Exhaust the prompt phase
+		while (inner.getCurrentStep() < promptLength) {
+			inner.next();
 		}
 
+		List<MidiCompoundToken> generated = new ArrayList<>();
 		for (int i = 0; i < maxTokens; i++) {
-			MidiCompoundToken token = next();
+			MidiCompoundToken token = inner.next();
 			generated.add(token);
 			if (token.isEOS()) break;
 		}
@@ -212,7 +188,7 @@ public class MidiAutoregressiveModel {
 	 * @param temperature 0.0 for greedy, higher for more randomness
 	 */
 	public void setTemperature(double temperature) {
-		this.temperature = temperature;
+		inner.setTemperature(temperature);
 	}
 
 	/**
@@ -235,17 +211,17 @@ public class MidiAutoregressiveModel {
 	 * @param seed the random seed
 	 */
 	public void setSeed(long seed) {
-		this.random = new Random(seed);
+		random.setSeed(seed);
 	}
 
 	/** Returns the current step in the sequence. */
-	public int getCurrentStep() { return currentStep; }
+	public int getCurrentStep() { return inner.getCurrentStep(); }
 
 	/** Returns the current (most recently produced) token. */
-	public MidiCompoundToken getCurrentToken() { return currentToken; }
+	public MidiCompoundToken getCurrentToken() { return inner.getCurrentToken(); }
 
 	/** Returns the temperature setting. */
-	public double getTemperature() { return temperature; }
+	public double getTemperature() { return inner.getTemperature(); }
 
 	/** Returns the top-p setting. */
 	public double getTopP() { return topP; }
@@ -290,46 +266,30 @@ public class MidiAutoregressiveModel {
 					"Masked sequence must contain FILL_START and FILL_END markers");
 		}
 
-		currentStep = 0;
-		lastHidden = null;
-
-		for (int i = 0; i < fillStartIdx; i++) {
-			MidiCompoundToken token = maskedSequence.get(i);
-			processToken(token);
-			lastHidden = model.forward(embedToken(token));
-			currentStep++;
+		// Feed left context + FILL_START as the prompt
+		MidiCompoundToken[] leftContext = maskedSequence.subList(0, fillStartIdx + 1)
+				.toArray(new MidiCompoundToken[0]);
+		setPrompt(leftContext);
+		while (inner.getCurrentStep() < leftContext.length) {
+			inner.next();
 		}
 
-		MidiCompoundToken fillStartToken = maskedSequence.get(fillStartIdx);
-		processToken(fillStartToken);
-		lastHidden = model.forward(embedToken(fillStartToken));
-		currentStep++;
-
+		// Generate fill tokens autoregressively
 		List<MidiCompoundToken> fillTokens = new ArrayList<>();
 		for (int i = 0; i < maxFillTokens; i++) {
-			PackedCollection hiddenVec = extractHiddenVector(lastHidden);
-			int[] decodeTokens = decoder.decode(hiddenVec, temperature, topP, random);
-			MidiCompoundToken generated = decodeToCompoundToken(decodeTokens);
-
+			MidiCompoundToken generated = inner.next();
 			if (generated.isEOS()) break;
-
 			fillTokens.add(generated);
-			processToken(generated);
-			lastHidden = model.forward(embedToken(generated));
-			currentStep++;
 		}
 
-		MidiCompoundToken fillEndToken = maskedSequence.get(fillEndIdx);
-		processToken(fillEndToken);
-		lastHidden = model.forward(embedToken(fillEndToken));
-		currentStep++;
-
-		for (int i = fillEndIdx + 1; i < maskedSequence.size(); i++) {
+		// Feed FILL_END and right context to update the KV cache
+		for (int i = fillEndIdx; i < maskedSequence.size(); i++) {
 			MidiCompoundToken token = maskedSequence.get(i);
 			if (token.isEOS()) break;
-			processToken(token);
-			lastHidden = model.forward(embedToken(token));
-			currentStep++;
+			int step = inner.getCurrentStep();
+			model.setPosition(step);
+			model.setAttributePositions(token);
+			inner.setCurrentStep(step + 1);
 		}
 
 		return fillTokens;
@@ -358,8 +318,7 @@ public class MidiAutoregressiveModel {
 		setPrompt(inputTokens.toArray(new MidiCompoundToken[0]));
 		List<MidiCompoundToken> generated = generate(maxTokens);
 
-		List<MidiCompoundToken> allTokens = new ArrayList<>();
-		allTokens.addAll(inputTokens);
+		List<MidiCompoundToken> allTokens = new ArrayList<>(inputTokens);
 		allTokens.addAll(generated);
 
 		List<MidiNoteEvent> outputEvents = tokenizer.detokenize(allTokens);
@@ -386,51 +345,17 @@ public class MidiAutoregressiveModel {
 	}
 
 	/**
-	 * Process a token through the model: update positions and prepare for forward pass.
-	 */
-	private void processToken(MidiCompoundToken token) {
-		model.setPosition(currentStep);
-		model.setAttributePositions(token);
-	}
-
-	/**
-	 * Embed a compound token into a (1, hiddenSize) collection for transformer input.
-	 */
-	private PackedCollection embedToken(MidiCompoundToken token) {
-		PackedCollection emb = embedding.embed(token).evaluate();
-		int hidden = config.hiddenSize;
-		PackedCollection input = new PackedCollection(new TraversalPolicy(1, hidden));
-		double[] data = emb.toArray(0, hidden);
-		input.setMem(0, data, 0, hidden);
-		return input;
-	}
-
-	/**
-	 * Extract the hidden vector from transformer output of shape (1, hiddenSize).
-	 */
-	private PackedCollection extractHiddenVector(PackedCollection transformerOutput) {
-		int hidden = config.hiddenSize;
-		PackedCollection vec = new PackedCollection(hidden);
-		double[] data = transformerOutput.toArray(0, hidden);
-		vec.setMem(0, data, 0, hidden);
-		return vec;
-	}
-
-	/**
 	 * Convert GRU decoder output tokens to a compound token.
 	 *
 	 * <p>The decode tokens are in the flat decode vocabulary. The first token
 	 * (sos_out) is skipped. Tokens 1-6 are mapped to attribute values by
-	 * subtracting the vocabulary offset for each position. The GRU decoder
-	 * masks logits at each step so that only tokens in the valid sub-range
-	 * for that attribute can be selected, guaranteeing values are in range.</p>
+	 * subtracting the vocabulary offset for each position.</p>
 	 *
 	 * @param decodeTokens 7 tokens from the GRU decoder
 	 * @return the compound token
 	 */
 	private MidiCompoundToken decodeToCompoundToken(int[] decodeTokens) {
 		int[] attributeValues = decoder.toAttributeValues(decodeTokens);
-
 		return new MidiCompoundToken(
 				attributeValues[1], attributeValues[2], attributeValues[3],
 				attributeValues[4], attributeValues[5], attributeValues[6]);

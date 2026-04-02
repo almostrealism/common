@@ -378,7 +378,7 @@ public class PdslInterpreter {
 		for (PdslNode.Expression expr : concatStmt.getBlocks()) {
 			subBlocks.add(expressionToBlock(expr, inputShape, env));
 		}
-		block.add(FEATURES.concatCells(inputShape, subBlocks));
+		block.add(FEATURES.concatBlocks(inputShape, subBlocks));
 	}
 
 	// ---- Expression evaluation ----

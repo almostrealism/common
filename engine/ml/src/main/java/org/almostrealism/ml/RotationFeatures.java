@@ -23,7 +23,7 @@ import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.layers.LayerRoutingFeatures;
 
 import java.util.List;
 import java.util.function.Function;
@@ -83,7 +83,7 @@ import java.util.function.Function;
  * @see AttentionFeatures
  * @see org.almostrealism.algebra.PairFeatures
  */
-public interface RotationFeatures extends PairFeatures, LayerFeatures {
+public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 
 	/**
 	 * Creates a RoPE rotation layer for single-position autoregressive attention using split-half format.
@@ -217,6 +217,37 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 
 			return result.reshape(shape(heads, freqDim, 2));
 		}, List.of(weights, cosRelativeIndexMap, sinRelativeIndexMap, x1IndexMap, x2IndexMap, outputSourceMap, componentMap, weightsFreqSizeArray), requirements);
+	}
+
+	/**
+	 * Precomputes a RoPE frequency tensor (freqCis) for autoregressive single-position attention.
+	 *
+	 * <p>Computes cos and sin values for all positions in [0, seqLen) using the given theta
+	 * as the RoPE base frequency:</p>
+	 * <pre>
+	 * invFreq[i] = 1.0 / theta^(2*i / headDim)
+	 * angle      = position * invFreq[i]
+	 * freqCis[pos, i, 0] = cos(angle)
+	 * freqCis[pos, i, 1] = sin(angle)
+	 * </pre>
+	 *
+	 * @param theta   RoPE base frequency (e.g., 10000 for Llama, 1000000 for Qwen3)
+	 * @param headDim per-head dimension
+	 * @param seqLen  maximum sequence length to precompute
+	 * @return frequency tensor of shape (seqLen, headDim/2, 2) with [cos, sin] pairs
+	 */
+	static PackedCollection computeRopeFreqs(double theta, int headDim, int seqLen) {
+		int freqDim = headDim / 2;
+		PackedCollection freqCis = new PackedCollection(new TraversalPolicy(seqLen, freqDim, 2));
+		for (int pos = 0; pos < seqLen; pos++) {
+			for (int f = 0; f < freqDim; f++) {
+				double angle = pos * (1.0 / Math.pow(theta, (2.0 * f) / headDim));
+				int idx = (pos * freqDim + f) * 2;
+				freqCis.setMem(idx, Math.cos(angle));
+				freqCis.setMem(idx + 1, Math.sin(angle));
+			}
+		}
+		return freqCis;
 	}
 
 	/**

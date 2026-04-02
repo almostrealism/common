@@ -25,21 +25,29 @@ import org.almostrealism.stats.DistributionFeatures;
 
 import java.util.Arrays;
 import java.util.Random;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 /**
- * Manages autoregressive token generation for language models.
+ * Manages autoregressive token generation for language models, parameterized
+ * by the token type {@code T}.
  *
  * <p>This class wraps a compiled transformer model and provides the autoregressive
- * inference loop needed for text generation. It handles:</p>
+ * inference loop needed for generation. It handles:</p>
  * <ul>
- *   <li><strong>Token-by-token generation:</strong> Produces one token at a time based on model logits</li>
+ *   <li><strong>Token-by-token generation:</strong> Produces one token at a time via a caller-supplied sample function</li>
  *   <li><strong>Prompt handling:</strong> Pre-fills the model with prompt tokens before generation</li>
  *   <li><strong>Temperature sampling:</strong> Controls randomness of token selection</li>
  *   <li><strong>Position tracking:</strong> Maintains the current step in the sequence</li>
  * </ul>
+ *
+ * <p>For standard integer-token text models use the {@link #of(CompiledModel, IntConsumer, IntFunction)}
+ * factory, which returns {@code AutoregressiveModel<Integer>} and handles all
+ * sampling infrastructure internally. For compound or structured token types, use the
+ * generic constructor directly.</p>
  *
  * <h2>Generation Modes</h2>
  * <ul>
@@ -47,10 +55,10 @@ import java.util.function.Supplier;
  *   <li><strong>Sampling (temperature&gt;0):</strong> Samples from the softmax probability distribution</li>
  * </ul>
  *
- * <h2>Usage Example</h2>
+ * <h2>Usage Example (Integer tokens)</h2>
  * <pre>{@code
  * // Create from compiled transformer model
- * AutoregressiveModel model = AutoregressiveModel.of(
+ * AutoregressiveModel<Integer> model = AutoregressiveModel.of(
  *     compiledTransformer,
  *     step -> position.setMem((double) step),
  *     tokenId -> embeddings.range(shape(dim), tokenId * dim)
@@ -60,7 +68,8 @@ import java.util.function.Supplier;
  * model.setTemperature(0.7);
  *
  * // Set prompt tokens
- * int[] promptTokens = tokenizer.encode("Once upon a time");
+ * Integer[] promptTokens = Arrays.stream(tokenizer.encode("Once upon a time"))
+ *                                 .boxed().toArray(Integer[]::new);
  * model.setPrompt(promptTokens, promptTokens.length);
  * model.setCurrentToken(BOS_TOKEN);
  *
@@ -76,109 +85,105 @@ import java.util.function.Supplier;
  * <p>The {@link #next()} method implements the following logic:</p>
  * <ol>
  *   <li>If within prompt range: return the next prompt token</li>
- *   <li>If temperature == 0: return argmax of logits (greedy)</li>
- *   <li>If temperature &gt; 0: scale logits, apply softmax, sample from distribution</li>
+ *   <li>Otherwise: apply the sample function to the cached model output</li>
  * </ol>
  *
+ * @param <T> the token type (e.g. {@code Integer} for text, {@code MidiCompoundToken} for MIDI)
  * @author Michael Murray
  * @see CompiledModel
- * @see DistributionFeatures#sample(PackedCollection, int)
  */
-public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
+public class AutoregressiveModel<T> implements CodeFeatures {
 	/** Consumer invoked with the current position index before each forward pass. */
 	private final IntConsumer step;
 
-	/** Consumer invoked with the current token ID to load embeddings before each forward pass. */
-	private final IntConsumer token;
+	/**
+	 * Consumer invoked with the current token before each forward pass.
+	 * Responsible for loading the token's representation into the model's input buffer.
+	 */
+	private final Consumer<T> token;
 
-	/** Supplier that executes the model forward pass and returns the output logit vector. */
-	private final Supplier<PackedCollection> logits;
+	/** Supplier that executes the model forward pass and returns the model's output. */
+	private final Supplier<PackedCollection> forward;
 
-	/** Size of the model vocabulary, equal to the length of the logit vector. */
-	private final int vocabSize;
-
-	/** Compiled evaluable for finding the index of the maximum logit (greedy decoding). */
-	private Evaluable<PackedCollection> indexOfMax;
-
-	/** Compiled evaluable that divides logits by the current temperature. */
-	private Evaluable<PackedCollection> rescale;
-
-	/** Compiled evaluable that applies softmax to the temperature-scaled logits. */
-	private Evaluable<? extends PackedCollection> softmax;
+	/**
+	 * Function that converts the cached model output to the next token.
+	 * For text models this applies temperature scaling, softmax, and sampling.
+	 * For structured token types (e.g. MIDI compound tokens) this may invoke
+	 * a specialized decoder such as a GRU.
+	 */
+	private final Function<PackedCollection, T> sample;
 
 	/** The current generation step index; incremented after each call to {@link #next()}. */
 	private int currentStep;
 
-	/** The most recently generated or input token ID. */
-	private int currentToken;
+	/** The most recently generated or input token. */
+	private T currentToken;
 
 	/** A single-element collection holding the current sampling temperature value. */
 	private PackedCollection temperature;
 
-	/** The prompt token array set by {@link #setPrompt(int[], int)}. */
-	private int[] prompt;
+	/** The prompt token array set by {@link #setPrompt(Object[], int)}. */
+	private T[] prompt;
 
 	/** Number of valid tokens in {@link #prompt}. */
-	private int promptTokens;
+	private int promptLength;
 
-	/** The logit vector produced by the most recent forward pass; used to sample the next token. */
-	private PackedCollection cachedLogits;
+	/** The model output produced by the most recent forward pass; used to sample the next token. */
+	private PackedCollection cachedOutput;
 
 	/**
 	 * Creates a new autoregressive model with the specified components.
 	 *
-	 * @param step Consumer to update the current position in the sequence (called before each forward pass)
-	 * @param token Consumer to set the current input token embedding (called before each forward pass)
-	 * @param logits Supplier that executes the model forward pass and returns output logits
-	 * @param vocabSize Size of the vocabulary (number of possible output tokens)
+	 * @param step        consumer to update the current position in the sequence (called before each forward pass)
+	 * @param token       consumer to load the current input token before each forward pass
+	 * @param forward     supplier that executes the model forward pass and returns output
+	 * @param sample      function that converts the cached model output to the next token
+	 * @param temperature shared temperature collection (may be updated via {@link #setTemperature(double)})
 	 */
-	public AutoregressiveModel(IntConsumer step, IntConsumer token, Supplier<PackedCollection> logits, int vocabSize) {
+	public AutoregressiveModel(IntConsumer step, Consumer<T> token, Supplier<PackedCollection> forward,
+							   Function<PackedCollection, T> sample, PackedCollection temperature) {
 		this.step = step;
 		this.token = token;
-		this.logits = logits;
-		this.vocabSize = vocabSize;
-		this.temperature = new PackedCollection(1);
-
-		this.indexOfMax = indexOfMax(x(vocabSize)).get();
-		this.rescale = x(vocabSize).divide(cp(temperature)).get();
-		this.softmax = Process.optimized(softmax(x(vocabSize))).get();
+		this.forward = forward;
+		this.sample = sample;
+		this.temperature = temperature;
 	}
 
 	/**
 	 * Returns the current step (position) in the generation sequence.
 	 *
-	 * @return The current step index, starting from 0
+	 * @return the current step index, starting from 0
 	 */
 	public int getCurrentStep() { return currentStep; }
 
 	/**
 	 * Sets the current step (position) in the generation sequence.
 	 *
-	 * @param currentStep The step index to set
+	 * @param currentStep the step index to set
 	 */
 	public void setCurrentStep(int currentStep) {
 		this.currentStep = currentStep;
-		this.cachedLogits = null;  // Clear cached logits when resetting
+		this.cachedOutput = null;
 	}
 
 	/**
-	 * Returns the most recently generated (or input) token ID.
+	 * Returns the most recently generated (or input) token.
 	 *
-	 * @return The current token ID
+	 * @return the current token
 	 */
-	public int getCurrentToken() { return currentToken; }
+	public T getCurrentToken() { return currentToken; }
 
 	/**
-	 * Sets the current token ID. Use this to initialize with a BOS token before generation.
+	 * Sets the current token. Use this to initialize with a BOS or SOS token before generation.
 	 *
-	 * @param currentToken The token ID to set
+	 * @param currentToken the token to set
 	 */
-	public void setCurrentToken(int currentToken) { this.currentToken = currentToken; }
+	public void setCurrentToken(T currentToken) { this.currentToken = currentToken; }
 
 	/**
 	 * Returns the current sampling temperature.
 	 *
-	 * @return The temperature value (0.0 for greedy, higher values for more randomness)
+	 * @return the temperature value (0.0 for greedy, higher values for more randomness)
 	 */
 	public double getTemperature() {
 		return temperature.toDouble(0);
@@ -195,7 +200,7 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	 *   <li><strong>&gt;1.0:</strong> High randomness - more creative but potentially less coherent</li>
 	 * </ul>
 	 *
-	 * @param temperature The temperature value (0.0 or higher)
+	 * @param temperature the temperature value (0.0 or higher)
 	 */
 	public void setTemperature(double temperature) {
 		this.temperature.set(0, temperature);
@@ -208,12 +213,12 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	 * steps instead of sampling from the model output. This allows the model to process
 	 * the prompt context while still providing token outputs for each step.</p>
 	 *
-	 * @param promptTokens Array containing the prompt token IDs
-	 * @param length Number of tokens to use from the array (may be less than array length)
+	 * @param promptTokens array containing the prompt tokens
+	 * @param length       number of tokens to use from the array
 	 */
-	public void setPrompt(int promptTokens[], int length) {
+	public void setPrompt(T[] promptTokens, int length) {
 		this.prompt = promptTokens;
-		this.promptTokens = length;
+		this.promptLength = length;
 	}
 
 	/**
@@ -222,52 +227,35 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	 * <p>This method performs one step of autoregressive generation:</p>
 	 * <ol>
 	 *   <li>Updates the position callback with the current step</li>
-	 *   <li>Updates the token callback with the current token embedding</li>
-	 *   <li>Executes the model forward pass to get logits</li>
-	 *   <li>Selects the next token (from prompt, greedy, or sampling)</li>
+	 *   <li>Updates the token callback with the current token</li>
+	 *   <li>Executes the model forward pass to get the model output</li>
+	 *   <li>Selects the next token (from prompt or by applying the sample function)</li>
 	 *   <li>Increments the step counter</li>
 	 * </ol>
 	 *
-	 * @return The selected token ID for this step
+	 * @return the selected token for this step
 	 */
-	public int next() {
-		PackedCollection logit;
-
-		if (currentStep < promptTokens) {
+	public T next() {
+		if (currentStep < promptLength) {
 			// Prompt phase: feed each prompt token at its correct position
 			// to build the KV cache for the entire prompt
 			step.accept(currentStep);
 			token.accept(prompt[currentStep]);
-			logit = logits.get();
-			cachedLogits = logit;  // Cache logits for next step's sampling
+			cachedOutput = forward.get();
 			currentToken = prompt[currentStep];
 		} else {
 			// Generation phase:
-			// 1. Sample from PREVIOUS step's logits (what comes next?)
+			// 1. Sample from PREVIOUS step's output (what comes next?)
 			// 2. Feed the sampled token at current position
-			// 3. Cache current logits for next step
-			currentToken = sampleFromLogits(cachedLogits);
+			// 3. Cache current output for next step
+			currentToken = sample.apply(cachedOutput);
 			step.accept(currentStep);
 			token.accept(currentToken);
-			logit = logits.get();
-			cachedLogits = logit;
+			cachedOutput = forward.get();
 		}
 
 		currentStep++;
 		return currentToken;
-	}
-
-	/**
-	 * Sample a token from logits using the configured temperature.
-	 */
-	private int sampleFromLogits(PackedCollection logit) {
-		if (temperature.toDouble(0) == 0.0) {
-			return (int) indexOfMax.evaluate(logit).toDouble(0);
-		} else {
-			rescale.into(logit).evaluate(logit);
-			softmax.into(logit).evaluate(logit);
-			return sample(logit, vocabSize);
-		}
 	}
 
 	/**
@@ -284,7 +272,7 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	 * @return selected token index
 	 */
 	public static int sampleToken(PackedCollection logits, int vocabSize,
-								   double temperature, double topP, Random random) {
+								  double temperature, double topP, Random random) {
 		if (temperature <= 0.0 || random == null) {
 			int maxIdx = 0;
 			double maxVal = logits.toDouble(0);
@@ -348,27 +336,54 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 	}
 
 	/**
-	 * Creates an AutoregressiveModel from a compiled transformer model.
+	 * Creates an {@code AutoregressiveModel<Integer>} from a compiled transformer model.
 	 *
-	 * <p>This factory method creates an AutoregressiveModel that:</p>
+	 * <p>This factory method creates an autoregressive model that:</p>
 	 * <ul>
 	 *   <li>Updates position via the provided step consumer</li>
 	 *   <li>Copies token embeddings into a reusable input buffer</li>
 	 *   <li>Executes the compiled model's forward pass for logits</li>
+	 *   <li>Samples the next token using temperature scaling and softmax</li>
 	 * </ul>
 	 *
-	 * @param model The compiled transformer model
-	 * @param step Consumer to update the position for each generation step
-	 * @param tokenEmbed Function that returns the embedding for a given token ID
-	 * @return A new AutoregressiveModel ready for generation
+	 * @param model      the compiled transformer model
+	 * @param step       consumer to update the position for each generation step
+	 * @param tokenEmbed function that returns the embedding for a given token ID
+	 * @return a new {@code AutoregressiveModel<Integer>} ready for generation
 	 */
-	public static AutoregressiveModel of(CompiledModel model, IntConsumer step, IntFunction<PackedCollection> tokenEmbed) {
+	public static AutoregressiveModel<Integer> of(CompiledModel model, IntConsumer step, IntFunction<PackedCollection> tokenEmbed) {
 		PackedCollection in = new PackedCollection(model.getInputShape());
-		return new AutoregressiveModel(
+		int vocabSize = model.getOutputShape().getTotalSize();
+
+		PackedCollection temperature = new PackedCollection(1);
+
+		Evaluable<PackedCollection> indexOfMax = FEATURES.indexOfMax(FEATURES.x(vocabSize)).get();
+		Evaluable<PackedCollection> rescale = FEATURES.x(vocabSize).divide(FEATURES.cp(temperature)).get();
+		Evaluable<? extends PackedCollection> softmax = Process.optimized(FEATURES.softmax(FEATURES.x(vocabSize))).get();
+
+		Random random = new Random();
+
+		Function<PackedCollection, Integer> sample = logits -> {
+			if (temperature.toDouble(0) == 0.0) {
+				return (int) indexOfMax.evaluate(logits).toDouble(0);
+			} else {
+				rescale.into(logits).evaluate(logits);
+				softmax.into(logits).evaluate(logits);
+				return sampleToken(logits, vocabSize, 1.0, 1.0, random);
+			}
+		};
+
+		return new AutoregressiveModel<>(
 				step,
-				t ->
-						in.setMem(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize()),
+				t -> in.setMem(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize()),
 				() -> model.forward(in),
-				model.getOutputShape().getTotalSize());
+				sample,
+				temperature);
 	}
+
+	/** Mixin type providing access to all framework feature default methods. */
+	private static final class Features implements CodeFeatures, DistributionFeatures { }
+
+	/** Singleton used to access feature default methods from the static factory. */
+	private static final Features FEATURES = new Features();
 }

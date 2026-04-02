@@ -19,6 +19,7 @@ package org.almostrealism.ml.midi.test;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.midi.GRUDecoder;
+import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.util.TestSuiteBase;
@@ -40,7 +41,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 		int maxSeqLen = 128;
 		double theta = 199999.0;
 
-		PackedCollection freqCis = HeadGroupConfig.computeFreqCis(theta, headDim, maxSeqLen);
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, maxSeqLen);
 
 		Assert.assertEquals(3, freqCis.getShape().getDimensions());
 		Assert.assertEquals(maxSeqLen, freqCis.getShape().length(0));
@@ -57,7 +58,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 		int maxSeqLen = 16;
 		double theta = 19.0;
 
-		PackedCollection freqCis = HeadGroupConfig.computeFreqCis(theta, headDim, maxSeqLen);
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, maxSeqLen);
 
 		int totalSize = freqCis.getShape().getTotalSize();
 		for (int i = 0; i < totalSize; i++) {
@@ -77,7 +78,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 		double theta = 100.0;
 		int freqDim = headDim / 2;
 
-		PackedCollection freqCis = HeadGroupConfig.computeFreqCis(theta, headDim, maxSeqLen);
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, maxSeqLen);
 
 		for (int f = 0; f < freqDim; f++) {
 			int idx = f * 2;
@@ -98,8 +99,8 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 		int pos = 5;
 		int freqDim = headDim / 2;
 
-		PackedCollection freqCis1 = HeadGroupConfig.computeFreqCis(19.0, headDim, maxSeqLen);
-		PackedCollection freqCis2 = HeadGroupConfig.computeFreqCis(199999.0, headDim, maxSeqLen);
+		PackedCollection freqCis1 = RotationFeatures.computeRopeFreqs(19.0, headDim, maxSeqLen);
+		PackedCollection freqCis2 = RotationFeatures.computeRopeFreqs(199999.0, headDim, maxSeqLen);
 
 		boolean anyDifferent = false;
 		for (int f = 0; f < freqDim; f++) {
@@ -128,7 +129,8 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 			positions[i] = () -> args -> posVal;
 		}
 
-		HeadGroupConfig[] groups = HeadGroupConfig.fromConfig(config, positions);
+		HeadGroupConfig[] groups = HeadGroupConfig.fromParams(
+				config.ropeThetas, config.headDim, config.maxSeqLen, config.headsPerGroup, positions);
 
 		Assert.assertEquals(MoonbeamConfig.NUM_ATTRIBUTES, groups.length);
 
@@ -157,7 +159,8 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 			positions[i] = () -> args -> posVal;
 		}
 
-		HeadGroupConfig[] groups = HeadGroupConfig.fromConfig(config, positions);
+		HeadGroupConfig[] groups = HeadGroupConfig.fromParams(
+				config.ropeThetas, config.headDim, config.maxSeqLen, config.headsPerGroup, positions);
 
 		for (int g = 0; g < groups.length; g++) {
 			PackedCollection fc = groups[g].freqCis;

@@ -18,6 +18,7 @@ package org.almostrealism.ml.midi;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.RotationFeatures;
 
 /**
  * Configuration for a single head group in Multidimensional Relative Attention (MRA).
@@ -76,61 +77,28 @@ public class HeadGroupConfig {
 	}
 
 	/**
-	 * Compute RoPE frequency tensor for a given theta and head dimension.
+	 * Build head group configurations from individual parameters.
 	 *
-	 * <p>Precomputes cos and sin values for all positions in [0, maxSeqLen)
-	 * using the given theta as the RoPE base frequency. This reuses the same
-	 * mathematical formula as Qwen3's computeRopeFreqs:</p>
-	 * <pre>
-	 * invFreq[i] = 1.0 / theta^(2*i / headDim)
-	 * angle = position * invFreq[i]
-	 * freqCis[pos, i, 0] = cos(angle)
-	 * freqCis[pos, i, 1] = sin(angle)
-	 * </pre>
+	 * <p>Creates one {@link HeadGroupConfig} per attribute group, each with its own
+	 * precomputed RoPE frequencies for its theta value. Delegates frequency computation
+	 * to {@link org.almostrealism.ml.RotationFeatures#computeRopeFreqs}.</p>
 	 *
-	 * @param theta RoPE base frequency (e.g., 199999 for onset, 19 for octave)
-	 * @param headDim per-head dimension (e.g., 160 for Moonbeam)
-	 * @param maxSeqLen maximum position value to precompute
-	 * @return frequency tensor of shape (maxSeqLen, headDim/2, 2) with [cos, sin] pairs
+	 * @param ropeThetas        per-group RoPE base frequencies
+	 * @param headDim           per-head dimension
+	 * @param maxSeqLen         maximum sequence length to precompute
+	 * @param headsPerGroup     number of heads in each group
+	 * @param attributePositions producers providing per-attribute position values
+	 * @return array of head group configurations, one per group
 	 */
-	public static PackedCollection computeFreqCis(double theta, int headDim, int maxSeqLen) {
-		int freqDim = headDim / 2;
-
-		PackedCollection freqCis = new PackedCollection(maxSeqLen, freqDim, 2);
-		for (int pos = 0; pos < maxSeqLen; pos++) {
-			for (int f = 0; f < freqDim; f++) {
-				double angle = pos * (1.0 / Math.pow(theta, (2.0 * f) / headDim));
-				int idx = (pos * freqDim + f) * 2;
-				freqCis.setMem(idx, Math.cos(angle));
-				freqCis.setMem(idx + 1, Math.sin(angle));
-			}
-		}
-
-		return freqCis;
-	}
-
-	/**
-	 * Build head group configurations for all attribute groups from a {@link MoonbeamConfig}.
-	 *
-	 * <p>Creates one {@link HeadGroupConfig} per attribute, each with its own
-	 * precomputed RoPE frequencies based on the attribute's theta value.</p>
-	 *
-	 * @param config the Moonbeam model configuration
-	 * @param attributePositions array of 6 producers providing per-attribute position values
-	 * @return array of 6 head group configurations
-	 */
-	public static HeadGroupConfig[] fromConfig(MoonbeamConfig config,
+	public static HeadGroupConfig[] fromParams(double[] ropeThetas, int headDim, int maxSeqLen,
+											   int[] headsPerGroup,
 											   Producer<PackedCollection>[] attributePositions) {
-		int numGroups = config.ropeThetas.length;
-		HeadGroupConfig[] groups = new HeadGroupConfig[numGroups];
-
-		for (int g = 0; g < numGroups; g++) {
-			PackedCollection freqCis = computeFreqCis(
-					config.ropeThetas[g], config.headDim, config.maxSeqLen);
-			groups[g] = new HeadGroupConfig(
-					config.headsPerGroup[g], freqCis, attributePositions[g]);
+		HeadGroupConfig[] groups = new HeadGroupConfig[ropeThetas.length];
+		for (int g = 0; g < ropeThetas.length; g++) {
+			PackedCollection freqCis = RotationFeatures.computeRopeFreqs(
+					ropeThetas[g], headDim, maxSeqLen);
+			groups[g] = new HeadGroupConfig(headsPerGroup[g], freqCis, attributePositions[g]);
 		}
-
 		return groups;
 	}
 }

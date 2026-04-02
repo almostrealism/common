@@ -169,7 +169,9 @@ public class MoonbeamMidi implements AttentionFeatures {
 			attrProducers[i] = p(attributePositions[i]);
 		}
 
-		HeadGroupConfig[] headGroups = HeadGroupConfig.fromConfig(config, attrProducers);
+		HeadGroupConfig[] headGroups = HeadGroupConfig.fromParams(
+				config.ropeThetas, config.headDim, config.maxSeqLen,
+				config.headsPerGroup, attrProducers);
 
 		for (int i = 0; i < config.numLayers; i++) {
 			String prefix = String.format("model.layers.%d", i);
@@ -348,7 +350,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 		GRUBlock[] layers = new GRUBlock[config.decoderLayers];
 		for (int l = 0; l < config.decoderLayers; l++) {
 			layers[l] = new GRUBlock(
-					config.decoderHiddenSize, config.decoderHiddenSize,
+					l == 0 ? config.hiddenSize : config.decoderHiddenSize, config.decoderHiddenSize,
 					stateDict.get(String.format("decoder.weight_ih_l%d", l)),
 					stateDict.get(String.format("decoder.weight_hh_l%d", l)),
 					stateDict.get(String.format("decoder.bias_ih_l%d", l)),

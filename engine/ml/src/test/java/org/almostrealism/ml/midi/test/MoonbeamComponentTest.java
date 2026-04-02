@@ -18,6 +18,7 @@ package org.almostrealism.ml.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.FundamentalMusicEmbedding;
@@ -150,7 +151,7 @@ public class MoonbeamComponentTest extends TestSuiteBase {
 			double theta = REAL_CONFIG.ropeThetas[g];
 
 			long groupStart = System.currentTimeMillis();
-			PackedCollection freqCis = HeadGroupConfig.computeFreqCis(
+			PackedCollection freqCis = RotationFeatures.computeRopeFreqs(
 					theta, headDim, maxSeqLen);
 			long groupTime = System.currentTimeMillis() - groupStart;
 
