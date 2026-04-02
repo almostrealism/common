@@ -294,21 +294,6 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 		NodeGroupNodeConfig.applyNodeLabels(this, this.nodes, p);
 
-		this.setParam(p);
-		
-		this.servers = new ArrayList(serverCount);
-		NodeGroupNodeConfig.initServerConnections(this, p, serverCount);
-		
-		super.rssfile = p.getProperty("group.rss.file");
-		String rsslink = p.getProperty("group.rss.url");
-		
-		if (rssfile != null) {
-			SimpleDateFormat df = new SimpleDateFormat("h:mm a 'on' EEEE, MMMM d");
-			super.log = new RSSFeed("Network Node Group Log", "Started at " + df.format(new Date()));
-			
-			if (rsslink != null) super.log.setLink(rsslink);
-		}
-		
 		this.plisteners = new ArrayList();
 		super.sleepGraph = new Chart(Integer.MAX_VALUE - 1);
 
@@ -316,6 +301,21 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		this.statusRenderer = new NodeGroupStatusRenderer(this, activityChart, 5);
 		this.messageHandler = new NodeGroupMessageHandler(this);
 		this.nodeConfig = new NodeGroupNodeConfig(this, this.nodes);
+
+		this.setParam(p);
+
+		this.servers = new ArrayList(serverCount);
+		NodeGroupNodeConfig.initServerConnections(this, p, serverCount);
+
+		super.rssfile = p.getProperty("group.rss.file");
+		String rsslink = p.getProperty("group.rss.url");
+
+		if (rssfile != null) {
+			SimpleDateFormat df = new SimpleDateFormat("h:mm a 'on' EEEE, MMMM d");
+			super.log = new RSSFeed("Network Node Group Log", "Started at " + df.format(new Date()));
+
+			if (rsslink != null) super.log.setLink(rsslink);
+		}
 		this.metrics = new NodeGroupMetrics(this.nodes);
 
 		Client c = Client.getCurrentClient();
