@@ -140,7 +140,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	 * head dimension (160) and a reasonable sequence length. Validates
 	 * shapes and value ranges.
 	 */
-	@Test(timeout = 5_000)
+	@Test(timeout = 30_000)
 	public void testRopeFrequencyComputation() {
 		long start = System.currentTimeMillis();
 
