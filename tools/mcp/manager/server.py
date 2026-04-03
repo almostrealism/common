@@ -874,6 +874,7 @@ def workstream_submit_task(
     enforce_changes: bool = False,
     started_after: str = "",
     required_labels: str = "",
+    deduplication_mode: str = "",
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -905,6 +906,12 @@ def workstream_submit_task(
         required_labels: Comma-separated key:value pairs specifying Node
             labels required to execute this job (e.g., "platform:macos,gpu:true").
             Only Nodes with matching labels will execute the job.
+        deduplication_mode: Post-work deduplication behaviour. Use "local" to
+            run an inline Claude Code session that removes duplicate methods
+            before committing (safe for iterative testing, no extra jobs
+            spawned). Use "spawn" to submit a separate follow-up job to the
+            same workstream after committing (requires workstream URL). Omit
+            or pass "" to disable deduplication entirely.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -916,6 +923,7 @@ def workstream_submit_task(
     err = _check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
         description=description, started_after=started_after,
+        deduplication_mode=deduplication_mode,
     )
     if err:
         return err
@@ -947,6 +955,8 @@ def workstream_submit_task(
                 labels_dict[parts[0].strip()] = parts[1].strip()
         if labels_dict:
             payload["requiredLabels"] = labels_dict
+    if deduplication_mode:
+        payload["deduplicationMode"] = deduplication_mode
 
     result = _controller_post("/api/submit", payload)
 

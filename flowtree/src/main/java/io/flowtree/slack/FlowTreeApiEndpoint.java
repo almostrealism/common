@@ -863,6 +863,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         double maxBudgetUsd = extractJsonDoubleField(body, "maxBudgetUsd");
         boolean protectTestFiles = extractJsonBooleanField(body, "protectTestFiles");
         boolean enforceChanges = extractJsonBooleanField(body, "enforceChanges");
+        String deduplicationMode = extractJsonField(body, "deduplicationMode");
         boolean autoCreatePr = extractJsonBooleanField(body, "autoCreatePr");
 
         // Create job factory with workstream defaults, overridden by request values
@@ -923,6 +924,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Enforcement mode (require code changes or loop)
         if (enforceChanges) {
             factory.setEnforceChanges(true);
+        }
+
+        // Deduplication mode (local inline session or spawn follow-up job)
+        if (deduplicationMode != null && !deduplicationMode.isEmpty()) {
+            factory.setDeduplicationMode(deduplicationMode);
         }
 
         // Required labels for Node routing (e.g., {"platform": "macos"})
