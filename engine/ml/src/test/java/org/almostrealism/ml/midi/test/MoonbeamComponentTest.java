@@ -180,6 +180,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	 */
 	@Test(timeout = 10_000)
 	public void testSingleGruBlock() {
+		if (skipHighMemTests) return;
 		long start = System.currentTimeMillis();
 
 		int decoderHidden = REAL_CONFIG.decoderHiddenSize; // 1536
@@ -219,6 +220,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	 */
 	@Test(timeout = 30_000)
 	public void testGruDecoderRealDims() {
+		if (skipHighMemTests) return;
 		long start = System.currentTimeMillis();
 
 		long allocStart = System.currentTimeMillis();
@@ -262,6 +264,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	@Test(timeout = 60_000)
 	@TestDepth(2)
 	public void testSingleAttentionLayerBuild() {
+		if (skipHighMemTests) return;
 		long start = System.currentTimeMillis();
 
 		MoonbeamConfig oneLayerConfig = createRealConfigWithLayers(1);
@@ -295,6 +298,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	@Test(timeout = 120_000)
 	@TestDepth(2)
 	public void testSingleTransformerBlockForward() {
+		if (skipHighMemTests) return;
 		long start = System.currentTimeMillis();
 
 		MoonbeamConfig oneLayerConfig = createRealConfigWithLayers(1);
@@ -331,6 +335,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	@Test(timeout = 300_000)
 	@TestDepth(2)
 	public void testTwoLayerForwardPass() {
+		if (skipHighMemTests) return;
 		long start = System.currentTimeMillis();
 
 		MoonbeamConfig twoLayerConfig = createRealConfigWithLayers(2);
@@ -386,6 +391,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void testFullModelForwardPass() {
+		if (skipHighMemTests) return;
 		long start = System.currentTimeMillis();
 
 		long allocStart = System.currentTimeMillis();
@@ -425,6 +431,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void testSingleAutoregressiveStep() {
+		if (skipHighMemTests) return;
 		long start = System.currentTimeMillis();
 
 		long allocStart = System.currentTimeMillis();

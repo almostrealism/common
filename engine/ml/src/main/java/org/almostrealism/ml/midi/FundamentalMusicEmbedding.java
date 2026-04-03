@@ -138,19 +138,14 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 		CollectionProducer biasedValue = cp(translationBias).add(c((double) value));
 
 		// angles = invFreqs * biasedValue, shape (dim/2,)
+		int halfDim = dim / 2;
 		CollectionProducer angles = invFreqs.multiply(biasedValue);
-		CollectionProducer sins = sin(angles);
-		CollectionProducer coss = cos(angles);
+		CollectionProducer sins = sin(angles).reshape(shape(halfDim, 1));
+		CollectionProducer coss = cos(angles).reshape(shape(halfDim, 1));
 
 		// Interleave sins and coss: [sin0, cos0, sin1, cos1, ...]
-		// Use concat on individual element slices
-		int halfDim = dim / 2;
-		CollectionProducer[] interleaved = new CollectionProducer[dim];
-		for (int i = 0; i < halfDim; i++) {
-			interleaved[2 * i]     = sins.subset(shape(1), i);
-			interleaved[2 * i + 1] = coss.subset(shape(1), i);
-		}
-		return concat(interleaved).reshape(shape(dim));
+		// Concatenate along axis 1 to get (halfDim, 2), then flatten to (dim,)
+		return concat(1, sins, coss).reshape(shape(dim));
 	}
 
 	/** Returns the embedding dimension. */
@@ -180,8 +175,11 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 	 * @return CollectionProducer of shape (dim/2,) containing inverse frequency values
 	 */
 	public CollectionProducer computeInvFreqs(double base, int dim) {
-		return integers(0, dim / 2)
-				.multiply(c(-2.0 * Math.log(base) / dim))
-				.exp();
+		int halfDim = dim / 2;
+		double[] freqs = new double[halfDim];
+		for (int i = 0; i < halfDim; i++) {
+			freqs[i] = 1.0 / Math.pow(base, (2.0 * i) / dim);
+		}
+		return c(shape(halfDim), freqs);
 	}
 }

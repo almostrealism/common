@@ -708,18 +708,18 @@ public class MidiTrainingTest extends TestSuiteBase {
 		PackedCollection[] biasHh = new PackedCollection[n];
 		for (int l = 0; l < n; l++) {
 			inputSizes[l] = decoderHidden;
-			weightIh[l] = randomCollection(3 * decoderHidden * decoderHidden, rng);
-			weightHh[l] = randomCollection(3 * decoderHidden * decoderHidden, rng);
+			weightIh[l] = randomMatrix(3 * decoderHidden, decoderHidden, rng);
+			weightHh[l] = randomMatrix(3 * decoderHidden, decoderHidden, rng);
 			biasIh[l] = randomCollection(3 * decoderHidden, rng);
 			biasHh[l] = randomCollection(3 * decoderHidden, rng);
 		}
 
 		return new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
-				randomCollection(decoderHidden * hidden, rng),
+				randomMatrix(decoderHidden, hidden, rng),
 				randomCollection(decoderHidden, rng),
-				randomCollection(vocabSize * decoderHidden, rng),
+				randomMatrix(vocabSize, decoderHidden, rng),
 				randomCollection(vocabSize, rng),
-				randomCollection(vocabSize * decoderHidden, rng));
+				randomMatrix(vocabSize, decoderHidden, rng));
 	}
 
 	/**
@@ -739,6 +739,17 @@ public class MidiTrainingTest extends TestSuiteBase {
 	private static PackedCollection randomCollection(int size, Random rng) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(size));
 		for (int i = 0; i < size; i++) {
+			collection.setMem(i, (rng.nextDouble() - 0.5) * 0.1);
+		}
+		return collection;
+	}
+
+	/**
+	 * Create a 2D PackedCollection filled with small random values.
+	 */
+	private static PackedCollection randomMatrix(int rows, int cols, Random rng) {
+		PackedCollection collection = new PackedCollection(new TraversalPolicy(rows, cols));
+		for (int i = 0; i < rows * cols; i++) {
 			collection.setMem(i, (rng.nextDouble() - 0.5) * 0.1);
 		}
 		return collection;

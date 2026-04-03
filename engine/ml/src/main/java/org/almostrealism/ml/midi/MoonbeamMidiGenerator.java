@@ -80,6 +80,16 @@ public class MoonbeamMidiGenerator {
 	private int promptLength;
 
 	/**
+	 * Whether the model has been primed with at least one forward pass.
+	 *
+	 * <p>On the first call to {@link #next()} with no explicit prompt, the model
+	 * performs an implicit SOS forward pass to populate the initial hidden state
+	 * before sampling the first generated token. This flag tracks whether that
+	 * priming has already occurred so subsequent calls skip it.</p>
+	 */
+	private boolean primed;
+
+	/**
 	 * Top-p (nucleus) sampling threshold.
 	 *
 	 * <p>When set to 1.0, no filtering is applied. Lower values restrict
@@ -150,14 +160,27 @@ public class MoonbeamMidiGenerator {
 		inner.setPrompt(promptTokens, promptLength);
 		inner.setCurrentStep(0);
 		inner.setCurrentToken(MidiCompoundToken.sos());
+		this.primed = false;
 	}
 
 	/**
 	 * Generate and return the next compound token in the sequence.
 	 *
+	 * <p>On the first call with no explicit prompt, performs an implicit SOS
+	 * forward pass to initialize the cached hidden state before sampling the
+	 * first generated token. This means the first call advances the internal
+	 * step counter by 2 (SOS priming at step 0, then generation at step 1).</p>
+	 *
 	 * @return the next compound token (may be EOS to signal end)
 	 */
 	public MidiCompoundToken next() {
+		if (!primed && promptLength == 0 && inner.getCurrentStep() == 0) {
+			// Prime with SOS: feed through transformer to initialize cachedOutput
+			inner.setPrompt(new MidiCompoundToken[]{MidiCompoundToken.sos()}, 1);
+			inner.next(); // Prompt phase: step 0 → 1, cachedOutput populated
+			inner.setPrompt(new MidiCompoundToken[0], 0); // Clear prompt, keep step and cachedOutput
+			primed = true;
+		}
 		return inner.next();
 	}
 
@@ -175,7 +198,7 @@ public class MoonbeamMidiGenerator {
 
 		List<MidiCompoundToken> generated = new ArrayList<>();
 		for (int i = 0; i < maxTokens; i++) {
-			MidiCompoundToken token = inner.next();
+			MidiCompoundToken token = next();
 			generated.add(token);
 			if (token.isEOS()) break;
 		}

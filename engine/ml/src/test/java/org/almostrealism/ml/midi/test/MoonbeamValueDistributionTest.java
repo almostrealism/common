@@ -164,7 +164,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	@Test
 	@TestDepth(2)
 	public void testGruDecoderLogitDistribution() {
-		if (skipLongTests) return;
+		if (skipHighMemTests) return;
 		log("\n=== Test 2: GRU Decoder Logit Distribution ===\n");
 
 		int decoderHidden = REAL_CONFIG.decoderHiddenSize;
@@ -308,7 +308,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	@Test
 	@TestDepth(2)
 	public void testWeightShapeVerification() {
-		if (skipLongTests) return;
+		if (skipHighMemTests) return;
 		log("\n=== Test 4: Weight Shape Verification ===\n");
 
 		int hidden = REAL_CONFIG.hiddenSize;           // 1920
@@ -568,7 +568,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	@Test
 	@TestDepth(2)
 	public void testDecodedAttributeRangeValidation() {
-		if (skipLongTests) return;
+		if (skipHighMemTests) return;
 		log("\n=== Test 7: Decoded Attribute Range Validation ===\n");
 
 		int hidden = REAL_CONFIG.hiddenSize;

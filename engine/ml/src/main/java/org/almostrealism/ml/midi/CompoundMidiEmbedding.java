@@ -168,13 +168,13 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 		int hidden = config.hiddenSize;
 
 		if (t.isSOS()) {
-			return embedSupplementary(c(0.0));
+			return embedSupplementary(0);
 		} else if (t.isEOS()) {
-			return embedSupplementary(c(1.0));
+			return embedSupplementary(1);
 		} else if (t.isFillStart()) {
-			return embedSupplementary(c(0.0));
+			return embedSupplementary(0);
 		} else if (t.isFillEnd()) {
-			return embedSupplementary(c(1.0));
+			return embedSupplementary(1);
 		} else if (t.isPAD()) {
 			return zeros(shape(hidden));
 		}
@@ -184,7 +184,7 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 		CollectionProducer[] attrEmbs = new CollectionProducer[MoonbeamConfig.NUM_ATTRIBUTES];
 		for (int attr = 0; attr < MoonbeamConfig.NUM_ATTRIBUTES; attr++) {
 			if (attr == INSTRUMENT_INDEX) {
-				attrEmbs[attr] = embedInstrument(c((double) values[attr])).reshape(shape(dim));
+				attrEmbs[attr] = embedInstrument(values[attr]).reshape(shape(dim));
 			} else {
 				attrEmbs[attr] = fmeEmbeddings[attr].embed(values[attr]).reshape(shape(dim));
 			}
@@ -236,11 +236,11 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 * Embed an instrument value using standard lookup embedding, returning a
 	 * {@link CollectionProducer} of shape (embeddingDim,).
 	 *
-	 * @param instrumentId producer supplying the scalar instrument index
+	 * @param instrumentId the integer instrument index into the embedding table
 	 */
-	private CollectionProducer embedInstrument(CollectionProducer instrumentId) {
+	private CollectionProducer embedInstrument(int instrumentId) {
 		int dim = config.embeddingDim;
-		return subset(shape(dim), cp(instrumentEmbedding), instrumentId.multiply(c(dim)));
+		return cp(instrumentEmbedding).subset(shape(1, dim), instrumentId, 0).reshape(shape(dim));
 	}
 
 	/**
@@ -249,13 +249,13 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 *
 	 * <p>Pipeline: lookup -&gt; Linear -&gt; GELU -&gt; Linear</p>
 	 *
-	 * @param tokenIndex producer supplying the scalar token index into the supplementary table
+	 * @param tokenIndex the integer token index into the supplementary embedding table
 	 */
-	private CollectionProducer embedSupplementary(CollectionProducer tokenIndex) {
+	private CollectionProducer embedSupplementary(int tokenIndex) {
 		int hidden = config.hiddenSize;
 
-		CollectionProducer lookup = subset(shape(hidden), cp(supplementaryEmbedding),
-				tokenIndex.multiply(c(hidden)));
+		CollectionProducer lookup = cp(supplementaryEmbedding)
+				.subset(shape(1, hidden), tokenIndex, 0).reshape(shape(hidden));
 
 		CollectionProducer mlp0Out = add(matmul(cp(supplementaryMlp0Weight), lookup),
 				cp(supplementaryMlp0Bias));

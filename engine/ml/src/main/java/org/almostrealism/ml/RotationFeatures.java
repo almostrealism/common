@@ -241,17 +241,18 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	static PackedCollection computeRopeFreqs(double theta, int headDim, int seqLen) {
 		int freqDim = headDim / 2;
 		double logTheta = Math.log(theta);
-		RotationFeatures rf = new RotationFeatures() {};
-		// invFreq[f] = theta^(-2f/headDim) = exp(-logTheta * 2*f / headDim)
-		CollectionProducer invFreq = rf.exp(
-				rf.integers(0, freqDim).multiply(rf.c(-2.0 * logTheta / headDim)));
-		// angles[pos, f] = pos * invFreq[f]  — outer product via matmul
-		CollectionProducer positions = rf.integers(0, seqLen).reshape(rf.shape(seqLen, 1));
-		CollectionProducer angles = rf.matmul(positions, invFreq.reshape(rf.shape(1, freqDim)));
-		// freqCis[pos, f, 0] = cos(angle), freqCis[pos, f, 1] = sin(angle)
-		CollectionProducer cosVals = rf.cos(angles).reshape(rf.shape(seqLen, freqDim, 1));
-		CollectionProducer sinVals = rf.sin(angles).reshape(rf.shape(seqLen, freqDim, 1));
-		return rf.concat(2, cosVals, sinVals).evaluate();
+		double[] data = new double[seqLen * freqDim * 2];
+		for (int pos = 0; pos < seqLen; pos++) {
+			for (int f = 0; f < freqDim; f++) {
+				double angle = pos * Math.exp(-logTheta * 2.0 * f / headDim);
+				int idx = (pos * freqDim + f) * 2;
+				data[idx] = Math.cos(angle);
+				data[idx + 1] = Math.sin(angle);
+			}
+		}
+		PackedCollection freqCis = new PackedCollection(new TraversalPolicy(seqLen, freqDim, 2));
+		freqCis.setMem(0, data, 0, data.length);
+		return freqCis;
 	}
 
 	/**
