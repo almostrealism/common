@@ -223,6 +223,26 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	public boolean isFixedCount() { return fixedCount; }
 
 	/**
+	 * Returns a signature that includes the {@code initial} and {@code rate} constants,
+	 * ensuring that arithmetic sequences with different constants produce different
+	 * compiled kernels rather than sharing a cached kernel from the instruction cache.
+	 *
+	 * <p>Without this override, the instruction cache would key only on operation type
+	 * and shape, causing two sequences with different rates (e.g., from different
+	 * {@code theta} values in RoPE frequency computation) to receive the same cached
+	 * kernel and produce incorrect results.</p>
+	 *
+	 * @return A signature string that includes the constant values, or null if the
+	 *         parent signature is null
+	 */
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+		return signature + "{" + initial + "," + rate + "}";
+	}
+
+	/**
 	 * Creates the expression for generating arithmetic sequence values.
 	 *
 	 * <p>Returns an {@link ArithmeticSequenceExpression} with the configured initial value
