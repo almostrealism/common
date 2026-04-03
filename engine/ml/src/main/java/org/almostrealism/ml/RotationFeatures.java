@@ -239,20 +239,24 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * @return frequency tensor of shape (seqLen, headDim/2, 2) with [cos, sin] pairs
 	 */
 	static PackedCollection computeRopeFreqs(double theta, int headDim, int seqLen) {
+		// CRITICAL: This method MUST use CollectionProducer computations, NOT Java loops + setMem.
+		// Manual Java math loops hide computation from the native compiler, destroying hardware
+		// acceleration, breaking automatic differentiation (gradients cannot flow through setMem),
+		// and preventing kernel fusion. Every time this has been reverted to Java math it must be
+		// corrected. The CollectionProducer graph below is the ONLY acceptable implementation.
 		int freqDim = headDim / 2;
 		double logTheta = Math.log(theta);
-		double[] data = new double[seqLen * freqDim * 2];
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int f = 0; f < freqDim; f++) {
-				double angle = pos * Math.exp(-logTheta * 2.0 * f / headDim);
-				int idx = (pos * freqDim + f) * 2;
-				data[idx] = Math.cos(angle);
-				data[idx + 1] = Math.sin(angle);
-			}
-		}
-		PackedCollection freqCis = new PackedCollection(new TraversalPolicy(seqLen, freqDim, 2));
-		freqCis.setMem(0, data, 0, data.length);
-		return freqCis;
+		RotationFeatures rf = new RotationFeatures() {};
+		// invFreq[f] = theta^(-2f/headDim) = exp(-logTheta * 2*f / headDim)
+		CollectionProducer invFreq = rf.exp(
+				rf.integers(0, freqDim).multiply(-2.0 * logTheta / headDim));
+		// angles[pos, f] = pos * invFreq[f]  — outer product via matmul
+		CollectionProducer positions = rf.integers(0, seqLen).reshape(rf.shape(seqLen, 1));
+		CollectionProducer angles = rf.matmul(positions, invFreq.reshape(rf.shape(1, freqDim)));
+		// freqCis[pos, f, 0] = cos(angle), freqCis[pos, f, 1] = sin(angle)
+		CollectionProducer cosVals = rf.cos(angles).reshape(rf.shape(seqLen, freqDim, 1));
+		CollectionProducer sinVals = rf.sin(angles).reshape(rf.shape(seqLen, freqDim, 1));
+		return rf.concat(2, cosVals, sinVals).evaluate();
 	}
 
 	/**
