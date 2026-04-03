@@ -30,6 +30,13 @@ import java.util.stream.IntStream;
  * only against a dedicated test server — never as part of the automated suite.
  */
 public class SubmitJobMain {
+	/**
+	 * Connects to a FlowTree server at {@code localhost:7766} and submits a batch
+	 * of {@link ExternalProcessJob} tasks. Run by hand only — never from CI.
+	 *
+	 * @param args  unused
+	 * @throws IOException  if the server connection cannot be established
+	 */
 	public static void main(String[] args) throws IOException {
 		Properties p = new Properties();
 		p.setProperty("server.port", "7701");
