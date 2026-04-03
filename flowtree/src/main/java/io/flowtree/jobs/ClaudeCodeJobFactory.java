@@ -74,6 +74,13 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     private boolean enforceChanges;
 
     /**
+     * Deduplication mode applied to jobs created by this factory.
+     * {@code null} disables deduplication.
+     * See {@link ClaudeCodeJob#DEDUP_LOCAL} and {@link ClaudeCodeJob#DEDUP_SPAWN}.
+     */
+    private String deduplicationMode;
+
+    /**
      * Default constructor for deserialization.
      */
     public ClaudeCodeJobFactory() {
@@ -467,6 +474,30 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns the deduplication mode applied to jobs created by this factory,
+     * or {@code null} if deduplication is disabled.
+     *
+     * @return {@link ClaudeCodeJob#DEDUP_LOCAL}, {@link ClaudeCodeJob#DEDUP_SPAWN},
+     *         or {@code null}
+     */
+    public String getDeduplicationMode() {
+        return deduplicationMode;
+    }
+
+    /**
+     * Sets the deduplication mode for jobs created by this factory.
+     *
+     * @param deduplicationMode {@link ClaudeCodeJob#DEDUP_LOCAL},
+     *                          {@link ClaudeCodeJob#DEDUP_SPAWN}, or {@code null}
+     */
+    public void setDeduplicationMode(String deduplicationMode) {
+        this.deduplicationMode = deduplicationMode;
+        if (deduplicationMode != null) {
+            set("dedupMode", deduplicationMode);
+        }
+    }
+
+    /**
      * Returns whether a pull request should be automatically created
      * upon successful job completion.
      */
@@ -575,6 +606,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
 
         job.setProtectTestFiles(isProtectTestFiles());
         job.setEnforceChanges(isEnforceChanges());
+        if (deduplicationMode != null) {
+            job.setDeduplicationMode(deduplicationMode);
+        }
 
         String pyReqs = getPythonRequirements();
         if (pyReqs != null) {
@@ -648,6 +682,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 break;
             case "enforceChanges":
                 this.enforceChanges = Boolean.parseBoolean(value);
+                break;
+            case "dedupMode":
+                this.deduplicationMode = value;
                 break;
             default:
                 break;

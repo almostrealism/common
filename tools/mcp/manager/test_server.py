@@ -252,6 +252,30 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
             "platform": "macos", "gpu": "true"})
 
     @patch.object(server, "_controller_post")
+    def test_submit_deduplication_mode_local(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-d1"}
+        server.workstream_submit_task(prompt="Task", deduplication_mode="local")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["deduplicationMode"], "local")
+
+    @patch.object(server, "_controller_post")
+    def test_submit_deduplication_mode_spawn(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-d2"}
+        server.workstream_submit_task(prompt="Task", deduplication_mode="spawn")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["deduplicationMode"], "spawn")
+
+    @patch.object(server, "_controller_post")
+    def test_submit_deduplication_mode_omitted_by_default(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-d3"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("deduplicationMode", payload)
+
+    @patch.object(server, "_controller_post")
     def test_submit_preserves_job_id_in_next_steps(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {

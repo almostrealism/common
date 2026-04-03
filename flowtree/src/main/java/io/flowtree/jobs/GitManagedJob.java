@@ -985,7 +985,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * POSTs a JSON string to the given URL.
      * Fire-and-forget: errors are logged but do not propagate.
      */
-    private void postJson(String url, String json) {
+    protected void postJson(String url, String json) {
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("POST");
