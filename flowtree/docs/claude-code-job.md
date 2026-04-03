@@ -71,6 +71,7 @@ ClaudeCodeJob (io.flowtree.jobs)
 | `getPushedToolsConfig()` / `setPushedToolsConfig(String)` | `String` | `null` | JSON mapping pushed tool server names to download URLs, tool lists, and optional env vars. |
 | `getWorkstreamEnv()` / `setWorkstreamEnv(Map)` | `Map<String,String>` | `null` | Per-workstream environment variables that override global pushed-tool env vars. |
 | `getPlanningDocument()` / `setPlanningDocument(String)` | `String` | `null` | Path (relative to working directory) to a planning document the agent must read. |
+| `getDeduplicationMode()` / `setDeduplicationMode(String)` | `String` | `null` | Post-work duplicate-method scan mode. `null` disables. `DEDUP_LOCAL` runs an inline session before the commit. `DEDUP_SPAWN` posts a follow-up job to the workstream. |
 
 All `GitManagedJob` setters are also available: `setTargetBranch`, `setBaseBranch`, `setWorkingDirectory`, `setRepoUrl`, `setDefaultWorkspacePath`, `setPushToOrigin`, `setGitUserName`, `setGitUserEmail`, `setWorkstreamUrl`, `setProtectTestFiles`, and `setMaxFileSizeBytes`. These inherited setters control the git harness behavior and status event delivery. When `targetBranch` is null, git operations (staging, committing, pushing) are skipped entirely, and the job simply runs Claude Code and reports its output. When `pushToOrigin` is false, the commit is created locally but not pushed to the remote.
 
@@ -90,6 +91,8 @@ Additional timing and session detail fields are extracted internally and forward
 |---|---|---|
 | `PROMPT_SEPARATOR` | `";;PROMPT;;"` | Delimiter used to join multiple prompts into a single encoded string in the Factory. This delimiter was chosen to be unlikely to appear in natural language prompts. |
 | `DEFAULT_TOOLS` | `"Read,Edit,Write,Bash,Glob,Grep"` | The base set of tools available to every Claude Code session. These are Claude Code's built-in file and shell tools. MCP tools are appended to this base set by `McpConfigBuilder.buildAllowedTools()`. |
+| `DEDUP_LOCAL` | `"local"` | Deduplication mode: run an inline Claude Code session with the deduplication prompt before the commit. All existing session machinery (tools, budget, MCP config) is reused. The dedup edits land in the same working tree and are committed together with the original work. |
+| `DEDUP_SPAWN` | `"spawn"` | Deduplication mode: post a follow-up `ClaudeCodeJob` to the same workstream via `POST /api/submit` with `automated: true`. Fire-and-forget; requires a workstream URL to be configured. |
 
 The `DEFAULT_TOOLS` constant defines the minimum tool set that every Claude Code session receives. These six tools provide the agent with basic file system access (Read, Write, Edit, Glob, Grep) and shell command execution (Bash). Without these, the agent could not perform any useful work. Additional tools are appended by the MCP config builder, including MCP server tools (prefixed with `mcp__<serverName>__`) and any custom tools defined in the workstream configuration.
 
@@ -274,7 +277,7 @@ If the Claude Code process exits with a non-zero code, this is NOT treated as a 
 
 After `doWork()` returns, `GitManagedJob.run()` handles:
 
-1. **Change validation** -- `validateChanges()` is called. `ClaudeCodeJob` overrides this to run `detect-test-hiding.sh` when test file protection is enabled. Exit code 2 means violations were found and the commit is aborted.
+1. **Change validation** -- `validateChanges()` is called. `ClaudeCodeJob` overrides this with two independent sub-steps: (a) when `protectTestFiles` is enabled, runs `detect-test-hiding.sh`; exit code 2 aborts the commit. (b) when `deduplicationMode` is set, scans new Java method declarations in the working-tree diff and either runs an inline deduplication session (`DEDUP_LOCAL`) or posts a follow-up job (`DEDUP_SPAWN`). See [Deduplication Check](#deduplication-check).
 
 2. **File discovery and staging** -- `git status --porcelain` lists all changed files. The output is parsed line by line: lines starting with `?? ` indicate untracked files, and lines starting with ` M `, `M `, `A `, `D `, etc. indicate modified, added, or deleted tracked files. Each file passes through a multi-layer guardrail pipeline: excluded pattern check (glob matching against a comprehensive exclusion list), protected test file check (files on the base branch cannot be modified when `protectTestFiles` is true), file size check (default 1MB max, configurable via `maxFileSizeBytes`), and binary detection (scanning the first 8000 bytes for null content, with a 10% threshold). Files that pass all guardrails are staged with `git add <file>`. Files that fail any guardrail are added to the `skippedFiles` list with a parenthetical reason suffix for inclusion in the completion event.
 
@@ -317,6 +320,45 @@ The script's exit code determines the action:
 - Exit code 1: Script error (e.g., bad arguments). Logged as a warning but does not block the commit (defense against script bugs).
 
 If the script does not exist at the expected path, validation is silently skipped.
+
+### Deduplication Check
+
+The deduplication check is the second sub-step of `validateChanges()`. It runs whenever `deduplicationMode` is set to a non-null value, regardless of whether test file protection is enabled.
+
+#### Method Extraction
+
+New Java method declarations are collected from two sources:
+
+1. **Modified tracked files** — `git diff origin/<baseBranch> -- '*.java'` produces a unified diff; lines beginning with `+` (but not `+++`) are matched against `NEW_METHOD_PATTERN`:
+   ```
+   ^\+[ \t]+(?:public|private|protected)\b.*\b(\w+)[ \t]*\(
+   ```
+   The pattern requires an access modifier at the start of the line (after the `+` prefix). The captured group is the last word before `(`, which is the method name. Constructors and interface default methods are included — the dedup session decides whether they constitute genuine duplicates.
+
+2. **Untracked new files** — `git ls-files --others --exclude-standard -- '*.java'` lists entirely new Java files. Each line of these files is matched against the same pattern (with a synthetic `+ ` prefix). Every method in a new file is new by definition.
+
+Results are deduplicated (insertion-order `LinkedHashSet`) and capped at 50. If the list exceeds 50 the prompt reports the true total.
+
+#### Deduplication Prompt
+
+The prompt is aggressive by design:
+
+- States that every listed method should be assumed to be a clone until proven otherwise.
+- Notes that this is a statistical observation, not a pessimistic guess: agent sessions routinely re-implement existing functionality under new names.
+- Instructs the agent to search by keyword and logical purpose (not just by name) using `Grep`.
+- Prohibits rationalising slight differences: if the logical purpose is the same, the duplicate must be removed and its call sites redirected.
+
+#### Mode Dispatch
+
+| `deduplicationMode` | Behaviour |
+|---|---|
+| `null` | Skipped entirely. |
+| `"local"` (`DEDUP_LOCAL`) | `this.prompt` is temporarily swapped with the dedup prompt, `executeSingleRun()` is called, and the original prompt is restored in a `finally` block. The dedup session uses the same MCP config, tool allowlist, and budget as the original session. No new jobs are created; the dedup edits are staged and committed together with the original work. |
+| `"spawn"` (`DEDUP_SPAWN`) | The controller base URL and workstream ID are parsed from `workstreamUrl` (pattern: `http://host:port/api/workstreams/{id}/jobs/{jobId}`). A JSON payload with `prompt`, `workstreamId`, `description`, and `automated: true` is POSTed to `{controllerBase}/api/submit`. Fire-and-forget — errors are logged but do not affect the current commit. |
+
+#### Infinite Loop Safety
+
+`DEDUP_LOCAL` calls `executeSingleRun()` directly, which never re-invokes `validateChanges()`. The deduplication session is a terminal step: it runs once, modifies the working tree, and the commit proceeds with the combined changes. `deduplicationMode` is never copied to any nested or spawned session.
 
 ### GitManagedJob Guardrails
 
@@ -818,6 +860,8 @@ The first token is the fully qualified class name (used by the deserialization f
 | `wsEnv` | `workstreamEnv` | JSON then Base64 | Non-null, non-empty |
 | `planDoc` | `planningDocument` | Base64 | Non-null |
 | `protectTests` | `protectTestFiles` | Plain boolean | Always |
+| `enforceChanges` | `enforceChanges` | Plain boolean | Always |
+| `dedupMode` | `deduplicationMode` | Plain string | Non-null |
 
 Additionally, all `GitManagedJob` fields are encoded by `super.encode()`:
 
@@ -851,11 +895,13 @@ The `set(String key, String value)` method handles incoming key-value pairs duri
 - `wsEnv`: Base64-decoded to JSON, then parsed to `Map<String, String>` via `parseJsonObjectToMap()`
 - `planDoc`: Base64-decoded to `this.planningDocument`
 - `protectTests`: Parsed as boolean
+- `enforceChanges`: Parsed as boolean
+- `dedupMode`: Stored directly as `this.deduplicationMode` (plain string; `"local"` or `"spawn"`)
 - Default: delegated to `super.set(key, value)` for `GitManagedJob` fields
 
 ### Factory Serialization
 
-The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`). The factory also stores `factoryTaskId` for task ID persistence.
+The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`). The factory also stores `factoryTaskId` for task ID persistence.
 
 Prompts are stored via `setPrompts(String... prompts)`, which joins them with `PROMPT_SEPARATOR` (`;;PROMPT;;`), Base64-encodes the result, and stores it under the key `prompts`. Retrieval via `getPrompts()` reverses this process.
 
