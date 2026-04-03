@@ -35,6 +35,8 @@ import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
+import org.almostrealism.graph.Receptor;
+
 import java.io.File;
 import java.util.Collection;
 import java.util.List;

@@ -19,8 +19,6 @@ package org.almostrealism.layers;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.lifecycle.Setup;
-import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
@@ -101,7 +99,7 @@ import java.util.function.Supplier;
  *   <li>{@link #accum(TraversalPolicy, CellularPropagation)} - Element-wise addition</li>
  *   <li>{@link #product(CellularPropagation)} - Element-wise multiplication</li>
  *   <li>{@link #concat(int, Block)} - Concatenation along an axis</li>
- *   <li>{@link #compose(String, TraversalPolicy, Block, TraversalPolicy, io.almostrealism.relation.Composition)} - General composition</li>
+ *   <li>{@link LayerRoutingFeatures#compose(String, TraversalPolicy, Block, TraversalPolicy, io.almostrealism.relation.Composition, io.almostrealism.compute.ComputeRequirement...)} - General composition</li>
  * </ul>
  *
  * <h2>Usage Patterns</h2>
@@ -403,194 +401,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 					weights.toArray(PackedCollection[]::new)));
 
 		backwardCell.setForwardInput(layer.getInput());
-		return layer;
-	}
-
-	/**
-	 * Creates a composed layer factory using the output shape of the auxiliary block.
-	 *
-	 * @param name         a human-readable label for the composed layer
-	 * @param aux          the auxiliary branch whose output is the second argument to {@code operator}
-	 * @param operator     the composition operator combining the main input and auxiliary output
-	 * @param requirements optional compute requirements
-	 * @return a function that creates the composed layer for any main input shape
-	 */
-	default Function<TraversalPolicy, CellularLayer> compose(String name,
-															 Block aux,
-															 Composition<PackedCollection> operator,
-															 ComputeRequirement... requirements) {
-		return shape -> compose(name, shape, aux.getOutputShape(), aux, operator, requirements);
-	}
-
-	/**
-	 * Creates a composed layer factory with an explicit output shape.
-	 *
-	 * @param name         a human-readable label for the composed layer
-	 * @param aux          the auxiliary branch
-	 * @param outputShape  the shape produced by the composed layer
-	 * @param operator     the composition operator
-	 * @param requirements optional compute requirements
-	 * @return a function that creates the composed layer for any main input shape
-	 */
-	default Function<TraversalPolicy, CellularLayer> compose(String name,
-															 Block aux,
-															 TraversalPolicy outputShape,
-															 Composition<PackedCollection> operator,
-															 ComputeRequirement... requirements) {
-		return shape -> compose(name, shape, aux, outputShape, operator, requirements);
-	}
-
-	/**
-	 * Creates a composed layer using the auxiliary block's output shape as the auxiliary input shape.
-	 *
-	 * @param name         a human-readable label for the composed layer
-	 * @param inputShape   the main input shape
-	 * @param aux          the auxiliary branch block
-	 * @param outputShape  the output shape of the composed layer
-	 * @param operator     the composition operator
-	 * @param requirements optional compute requirements
-	 * @return the constructed composed {@link CellularLayer}
-	 */
-	default CellularLayer compose(String name,
-								  TraversalPolicy inputShape,
-								  Block aux, TraversalPolicy outputShape,
-								  Composition<PackedCollection> operator,
-								  ComputeRequirement... requirements) {
-		return compose(name, inputShape, aux.getOutputShape(), outputShape, aux, operator, requirements);
-	}
-
-	/**
-	 * Creates a composed layer where input and auxiliary shapes are both equal to {@code shape}.
-	 *
-	 * @param name         a human-readable label for the composed layer
-	 * @param shape        the shape used for both the main input and the auxiliary input
-	 * @param aux          the auxiliary branch propagation
-	 * @param operator     the composition operator
-	 * @param requirements optional compute requirements
-	 * @return the constructed composed {@link CellularLayer}
-	 */
-	default CellularLayer compose(String name,
-								  TraversalPolicy shape,
-								  CellularPropagation<PackedCollection> aux,
-								  Composition<PackedCollection> operator,
-								  ComputeRequirement... requirements) {
-		return compose(name, shape, shape, aux, operator, requirements);
-	}
-
-	/**
-	 * Creates a composed layer with the same output shape as the main input shape.
-	 *
-	 * @param name         a human-readable label for the composed layer
-	 * @param shape        the main input (and output) shape
-	 * @param auxShape     the shape of data coming from the auxiliary branch
-	 * @param aux          the auxiliary branch propagation
-	 * @param operator     the composition operator
-	 * @param requirements optional compute requirements
-	 * @return the constructed composed {@link CellularLayer}
-	 */
-	default CellularLayer compose(String name,
-								  TraversalPolicy shape,
-								  TraversalPolicy auxShape,
-								  CellularPropagation<PackedCollection> aux,
-								  Composition<PackedCollection> operator,
-								  ComputeRequirement... requirements) {
-		return compose(name, shape, auxShape, shape, aux, operator, requirements);
-	}
-
-	/**
-	 * Core composed-layer factory that wires the auxiliary branch into a composition operator.
-	 *
-	 * <p>The auxiliary branch's forward output is captured and provided as the second argument
-	 * to {@code operator} whenever the main forward cell is pushed. The backward pass propagates
-	 * gradients through both branches.</p>
-	 *
-	 * @param name         a human-readable label for the composed layer
-	 * @param inputShape   the main input shape
-	 * @param auxShape     the shape of data from the auxiliary branch
-	 * @param outputShape  the output shape of the composed layer
-	 * @param aux          the auxiliary branch propagation
-	 * @param operator     the composition operator combining main input and auxiliary output
-	 * @param requirements optional compute requirements
-	 * @return the constructed composed {@link CellularLayer}
-	 */
-	default CellularLayer compose(String name,
-								  TraversalPolicy inputShape,
-								  TraversalPolicy auxShape,
-								  TraversalPolicy outputShape,
-								  CellularPropagation<PackedCollection> aux,
-								  Composition<PackedCollection> operator,
-								  ComputeRequirement... requirements) {
-		PackedCollection auxInput = Layer.ioTracking ? new PackedCollection(auxShape) : null;
-
-		// Capture the input coming in via aux, storing
-		// the actual value (if it is necessary)
-		Cell<PackedCollection> auxExit = Cell.of((in, next) -> {
-			if (auxInput == null) {
-				return next.push(in);
-			} else {
-				OperationList op = new OperationList(name + " composed layer (Entry)");
-				op.add(into(name + " composed layer (Input Record)", in,
-						p(auxInput), DefaultCellularLayer.enableMemoryDataCopy));
-				op.add(next.push(p(auxInput)));
-				return op;
-			}
-		});
-		aux.getForward().setReceptor(auxExit);
-
-		// Capture the result intended as input for the composition
-		Cell.CaptureReceptor<PackedCollection> auxReceptor = new Cell.CaptureReceptor<>();
-		auxExit.setReceptor(auxReceptor);
-
-		Supplier<Runnable> setup = new OperationList();
-		if (aux instanceof Setup) {
-			setup = ((Setup) aux).setup();
-		}
-
-		// Create a layer that composes its input with whatever was received for aux
-		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape,
-				Cell.of((input, next) -> next == null ? new OperationList() :
-						next.push(operator.compose(input, auxReceptor.getReceipt()))),
-				null, Collections.emptyList(), setup);
-		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
-
-		layer.init(inputShape, Layer.ioTracking, true);
-
-		// Create gradient propagation for the main input
-		String mainName = name + " main";
-		BackPropagationCell mainBackward = new BackPropagationCell(mainName,
-				DefaultGradientPropagation.create(mainName, in -> operator.compose(in, p(auxInput))));
-		mainBackward.setForwardInput(layer.getInput());
-
-		// Create gradient propagation for the aux input
-		// and direct its output to the aux backward Cell
-		String auxName = name + " aux";
-		BackPropagationCell auxBackward = new BackPropagationCell(auxName,
-				DefaultGradientPropagation.create(auxName, in -> operator.compose(p(layer.getInput()), in)));
-		auxBackward.setForwardInput(auxInput);
-		auxBackward.setReceptor(aux.getBackward());
-
-		// Combine both backpropagation steps and attach the result to the layer
-		layer.setBackward(new LearningCell() {
-			@Override
-			public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
-				if (aux instanceof Learning) {
-					((Learning) aux).setParameterUpdate(update);
-				}
-			}
-
-			@Override
-			public Supplier<Runnable> push(Producer<PackedCollection> input) {
-				OperationList op = new OperationList(name + " Composed Backward");
-				op.add(auxBackward.push(input));
-				op.add(mainBackward.push(input));
-				return op;
-			}
-
-			@Override
-			public void setReceptor(Receptor<PackedCollection> r) {
-				mainBackward.setReceptor(r);
-			}
-		});
 		return layer;
 	}
 
@@ -1458,285 +1268,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 	}
 
 	/**
-	 * Creates an accumulation layer that adds the output of the given cell to the layer's input.
-	 *
-	 * @deprecated Does not support backpropagation. Use {@link #accum(TraversalPolicy, CellularPropagation, ComputeRequirement...)} instead.
-	 * @param shape        the input and output shape
-	 * @param value        the cell whose output is accumulated with the input
-	 * @param requirements optional compute requirements
-	 * @return the constructed accumulation {@link CellularLayer}
-	 */
-	@Deprecated
-	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection> value, ComputeRequirement... requirements) {
-		if (!allowNonComposites) {
-			throw new UnsupportedOperationException("accum will not support backpropagation");
-		}
-
-		warn("accum will not support backpropagation");
-		return layer("accum", shape, shape, Cell.of((input, next) -> {
-			Cell.CaptureReceptor<PackedCollection> r = new Cell.CaptureReceptor<>();
-			value.setReceptor(r);
-
-			OperationList ops = new OperationList();
-			ops.add(value.push(input));
-			if (next != null) ops.add(next.push(add(traverseEach(input), traverseEach(r.getReceipt()))));
-			return ops;
-		}), null, requirements);
-	}
-
-	/**
-	 * Creates an accumulation layer that element-wise adds the output of an auxiliary
-	 * propagation path to the main input.
-	 *
-	 * @param shape        the input and output shape
-	 * @param aux          the auxiliary propagation whose output is added to the input
-	 * @param requirements optional compute requirements
-	 * @return the constructed accumulation {@link CellularLayer}
-	 */
-	default CellularLayer accum(TraversalPolicy shape,
-								  CellularPropagation<PackedCollection> aux,
-								  ComputeRequirement... requirements) {
-		return compose("accum", shape, aux,
-				(input, auxValue) -> add(traverseEach(input), traverseEach(auxValue)),
-				requirements);
-	}
-
-	/**
-	 * Creates a concatenation layer factory that concatenates the main input and the auxiliary block's
-	 * output along the given axis.
-	 *
-	 * @param axis         the axis along which to concatenate
-	 * @param aux          the auxiliary block whose output is concatenated with the main input
-	 * @param requirements optional compute requirements
-	 * @return a function that creates the concatenation layer for any main input shape
-	 */
-	default Function<TraversalPolicy, CellularLayer> concat(int axis, Block aux, ComputeRequirement... requirements) {
-		return shape -> {
-			TraversalPolicy auxShape = aux.getOutputShape();
-			if (auxShape.getDimensions() != shape.getDimensions()) {
-				throw new IllegalArgumentException();
-			}
-
-			return concat(shape,
-					shape.replaceDimension(axis, shape.length(axis) + auxShape.length(axis)),
-					aux, requirements);
-		};
-	}
-
-	/**
-	 * Creates a concatenation layer with explicit input and output shapes.
-	 *
-	 * @param inputShape   the main input shape
-	 * @param outputShape  the shape after concatenation
-	 * @param aux          the auxiliary block whose output is concatenated
-	 * @param requirements optional compute requirements
-	 * @return the constructed concatenation {@link CellularLayer}
-	 */
-	default CellularLayer concat(TraversalPolicy inputShape,
-								 TraversalPolicy outputShape,
-								 Block aux,
-								 ComputeRequirement... requirements) {
-		return compose("concat", inputShape, aux, outputShape,
-				(input, auxValue) -> concat(outputShape, input, auxValue),
-				requirements);
-	}
-
-	/**
-	 * Creates a product layer that element-wise multiplies the input by a fixed producer value.
-	 *
-	 * @deprecated Does not support backpropagation.
-	 * @param value        the producer supplying the fixed multiplier values
-	 * @param requirements optional compute requirements
-	 * @return the constructed product {@link CellularLayer}
-	 */
-	@Deprecated
-	default CellularLayer product(Producer<PackedCollection> value, ComputeRequirement... requirements) {
-		warn("product will not support backpropagation");
-		TraversalPolicy shape = shape(value);
-		return layer("product", shape, shape,
-				input -> multiply(traverseEach(input), traverseEach(value)),
-				requirements);
-	}
-
-	/**
-	 * Creates a product layer that computes the element-wise product of the outputs of two cells.
-	 *
-	 * @deprecated Does not support backpropagation.
-	 * @param inputShape   the input shape fed to both cells
-	 * @param outputShape  the shape of the resulting product
-	 * @param a            the first cell
-	 * @param b            the second cell
-	 * @param requirements optional compute requirements
-	 * @return the constructed product {@link CellularLayer}
-	 */
-	@Deprecated
-	default CellularLayer product(TraversalPolicy inputShape, TraversalPolicy outputShape,
-								  Cell<PackedCollection> a, Cell<PackedCollection> b,
-								  ComputeRequirement... requirements) {
-		warn("product will not support backpropagation");
-		return layer("product", inputShape, outputShape, Cell.of((input, next) -> {
-			Cell.CaptureReceptor<PackedCollection> ar = new Cell.CaptureReceptor<>();
-			a.setReceptor(ar);
-
-			Cell.CaptureReceptor<PackedCollection> br = new Cell.CaptureReceptor<>();
-			b.setReceptor(br);
-
-			OperationList ops = new OperationList();
-			ops.add(a.push(input));
-			ops.add(b.push(input));
-			if (next != null)
-				ops.add(next.push(multiply(traverseEach(ar.getReceipt()), traverseEach(br.getReceipt()))));
-			return ops;
-		}), null, requirements);
-	}
-
-	/**
-	 * Creates an element-wise product layer factory using the given auxiliary branch.
-	 *
-	 * @param aux          the auxiliary propagation whose output is multiplied element-wise with the main input
-	 * @param requirements optional compute requirements
-	 * @return a function that creates the product layer for any input shape
-	 */
-	default Function<TraversalPolicy, CellularLayer> product(CellularPropagation<PackedCollection> aux,
-								  							 ComputeRequirement... requirements) {
-		return shape -> product(shape, aux, requirements);
-	}
-
-	/**
-	 * Creates an element-wise product layer for the given shape using the given auxiliary branch.
-	 *
-	 * @param shape        the input (and output) shape
-	 * @param aux          the auxiliary propagation whose output is multiplied element-wise
-	 * @param requirements optional compute requirements
-	 * @return the constructed product {@link CellularLayer}
-	 */
-	default CellularLayer product(TraversalPolicy shape,
-								  CellularPropagation<PackedCollection> aux,
-								  ComputeRequirement... requirements) {
-		return compose("product", shape, aux,
-					(input, auxValue) -> multiply(traverseEach(input), traverseEach(auxValue)),
-				requirements);
-	}
-
-	/**
-	 * Creates a residual block factory that wraps the given block factory in a skip-connection.
-	 *
-	 * @param block a factory that produces the inner block for a given shape
-	 * @return a function that creates a residual block wrapping the inner block
-	 */
-	default Function<TraversalPolicy, Block> residual(Function<TraversalPolicy, Block> block) {
-		return shape -> residual(block.apply(shape));
-	}
-
-	/**
-	 * Wraps a block in a residual skip-connection by accumulating the block's output with the input.
-	 *
-	 * @param block the inner block; its input and output shapes must have the same total size
-	 * @return a {@link SequentialBlock} that adds the inner block's output to its input
-	 * @throws IllegalArgumentException if the block's input and output shapes have different total sizes
-	 */
-	default Block residual(Block block) {
-		if (block.getInputShape().getTotalSize() != block.getOutputShape().getTotalSize())
-			throw new IllegalArgumentException();
-
-		SequentialBlock residual = new SequentialBlock(block.getInputShape());
-		residual.accum(block);
-		return residual;
-	}
-
-	/**
-	 * Creates a pairwise similarity layer factory that computes a weighted inner product
-	 * between the main input and the key block output across spatial positions.
-	 *
-	 * <p>The key block must produce a 4-D output of shape {@code (batch, c, dim, s2)}.
-	 * The resulting layer maps inputs of some query shape to an output of shape
-	 * {@code (batch, c, s1, s2)}.</p>
-	 *
-	 * @param k   the key block whose output forms one side of the similarity computation
-	 * @param c   the number of channels (heads)
-	 * @param s1  the number of query positions
-	 * @param s2  the number of key positions
-	 * @return a function that creates the similarity {@link CellularLayer} for any query input shape
-	 */
-	default Function<TraversalPolicy, CellularLayer> similarity(
-			Block k, int c, int s1, int s2) {
-		if (k.getOutputShape().getDimensions() != 4 ||
-				k.getOutputShape().length(1) != c ||
-				k.getOutputShape().length(3) != s2) {
-			throw new IllegalArgumentException();
-		}
-
-		int batchSize = k.getOutputShape().length(0);
-		int dim = k.getOutputShape().length(2);
-
-		TraversalPolicy outputShape = shape(batchSize, c, s1, s2).traverseEach();
-
-		return compose("similarity", k, outputShape, (a, b) -> {
-			TraversalPolicy leftShape = shape(batchSize, c, dim, s1, 1);
-			TraversalPolicy rightShape = shape(batchSize, c, dim, 1, s2);
-
-			TraversalPolicy resultShape = shape(batchSize, c, 1, s1, s2);
-			TraversalPolicy leftPosition = leftShape.repeat(4, s2);
-			TraversalPolicy rightPosition = rightShape.repeat(3, s1);
-			TraversalPolicy groupShape = shape(1, 1, dim, 1, 1);
-
-			return weightedSum("similarity",
-					resultShape,
-					leftPosition, rightPosition,
-					groupShape, groupShape,
-					reshape(leftShape, c(a)),
-					reshape(rightShape, c(b)))
-					.reshape(outputShape);
-		});
-	}
-
-	/**
-	 * Creates a weighted-sum (attention value aggregation) layer factory that multiplies
-	 * attention weights against a value block and sums over the head dimension.
-	 *
-	 * <p>The value block must produce a 4-D output of shape {@code (batch, heads, dimHead, size)}.
-	 * The resulting layer output has shape {@code (batch, heads, size, dimHead)}.</p>
-	 *
-	 * @param v       the value block whose output is aggregated by the attention weights
-	 * @param heads   the number of attention heads
-	 * @param dimHead the per-head feature dimension
-	 * @param size    the sequence length (number of key/value positions)
-	 * @return a function that creates the weighted-sum {@link CellularLayer} for any attention-weight input shape
-	 */
-	default Function<TraversalPolicy, CellularLayer> weightedSum(
-			Block v, int heads, int dimHead, int size) {
-		if (v.getOutputShape().getDimensions() != 4 ||
-				v.getOutputShape().length(1) != heads ||
-				v.getOutputShape().length(2) != dimHead ||
-				v.getOutputShape().length(3) != size) {
-			throw new IllegalArgumentException();
-		}
-
-		int batchSize = v.getOutputShape().length(0);
-
-		if (enableWeightedSum) {
-			return null;
-		} else {
-			return compose("weightedSum", v, shape(batchSize, heads, size, dimHead),
-					(a, b) -> {
-						CollectionProducer pa = c(a)
-								.traverse(4)
-								.repeat(dimHead);
-						CollectionProducer pb = c(b)
-								.traverse(2)
-								.enumerate(3, 1)
-								.traverse(2)
-								.repeat(size);
-						return multiply(pa, pb)
-								.reshape(batchSize, heads, size, size, dimHead)
-								.traverse(3)
-								.enumerate(4, 1)
-								.sum(4);
-					});
-		}
-	}
-
-	/**
 	 * Creates a scalar scaling layer factory that multiplies every element of the input
 	 * by the given constant.
 	 *
@@ -2448,6 +1979,24 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		setup.add(() -> randn::refresh);
 		setup.add(a(p(weights.each()), multiply(randn.traverseEach(), c(scale).traverse(0))));
 		return setup;
+	}
+
+	/**
+	 * Builds a linear-interpolation layer for the given input shape.
+	 *
+	 * @param inputShape must have total size {@code 3 * hiddenSize}
+	 * @param hiddenSize size of the output and of each segment in the input
+	 * @return a CellularLayer computing {@code from + weight * (to - from)}
+	 */
+	default CellularLayer lerpLayer(TraversalPolicy inputShape, int hiddenSize) {
+		TraversalPolicy outputShape = shape(hiddenSize);
+		return layer("lerp", inputShape, outputShape, input -> {
+			CollectionProducer inp = c(input);
+			CollectionProducer from = subset(outputShape, inp, 0);
+			CollectionProducer weight = subset(outputShape, inp, hiddenSize);
+			CollectionProducer to = subset(outputShape, inp, 2 * hiddenSize);
+			return from.add(weight.multiply(to.subtract(from)));
+		});
 	}
 
 	/**

@@ -48,6 +48,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.layers.LayerRoutingFeatures;
 import org.almostrealism.time.TemporalFeatures;
 
 import java.util.Arrays;
@@ -114,7 +115,7 @@ import java.util.function.Supplier;
  * @see ComputerFeatures
  * @author Michael Murray
  */
-public interface CodeFeatures extends LayerFeatures,
+public interface CodeFeatures extends LayerRoutingFeatures,
 								TriangleFeatures, TransformMatrixFeatures,
 								TemporalFeatures, ComputerFeatures {
 	/** When {@code true}, constant {@link PackedCollection} instances are embedded as fixed data in the expression tree. */

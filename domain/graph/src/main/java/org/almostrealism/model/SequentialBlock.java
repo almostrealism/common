@@ -28,6 +28,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.Component;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.layers.LayerRoutingFeatures;
 import org.almostrealism.layers.Learning;
 import org.almostrealism.layers.ParameterUpdate;
 
@@ -60,7 +61,7 @@ import java.util.stream.IntStream;
  * @see DefaultBlock
  * @author Michael Murray
  */
-public class SequentialBlock implements Block, Learning, LayerFeatures {
+public class SequentialBlock implements Block, Learning, LayerRoutingFeatures {
 	/** When {@code true}, logs a warning when a block with no backward cell is added. */
 	public static boolean enableWarnings = false;
 
@@ -415,6 +416,61 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 			add(accum(value.getOutputShape(), value, requirements));
 		} else {
 			add(accum(getOutputShape(), value.getForward(), requirements));
+		}
+	}
+
+	/**
+	 * Applies two factory-produced blocks to the same input and accumulates their outputs element-wise.
+	 *
+	 * @param a            factory that produces the first block
+	 * @param b            factory that produces the second block
+	 * @param requirements optional compute requirements
+	 */
+	public void accum(Function<TraversalPolicy, ? extends Block> a,
+					  Function<TraversalPolicy, ? extends Block> b,
+					  ComputeRequirement... requirements) {
+		accum(a.apply(getOutputShape()), b.apply(getOutputShape()), requirements);
+	}
+
+	/**
+	 * Applies a factory-produced block and a pre-built block to the same input and accumulates their outputs.
+	 *
+	 * @param a            factory that produces the first block
+	 * @param b            the second pre-built block
+	 * @param requirements optional compute requirements
+	 */
+	public void accum(Function<TraversalPolicy, ? extends Block> a, Block b,
+					  ComputeRequirement... requirements) {
+		accum(a.apply(getOutputShape()), b, requirements);
+	}
+
+	/**
+	 * Applies two blocks to the same input and accumulates their outputs element-wise.
+	 * Both {@code a} and {@code b} receive the current sequential output as input.
+	 * The combined output replaces the current tail.
+	 *
+	 * @param a first block, transforms current input to some shape
+	 * @param b second block, transforms same current input to the same output shape as {@code a}
+	 * @param requirements optional compute requirements
+	 */
+	public void accum(Block a, Block b, ComputeRequirement... requirements) {
+		if (a.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
+			throw new IllegalArgumentException();
+		if (b.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
+			throw new IllegalArgumentException();
+
+		if (enableComposites) {
+			// Branch b off the current output so it receives the same input as a
+			b = branch(b);
+
+			// Build a sub-block: apply a, then element-wise add b's output
+			SequentialBlock sum = new SequentialBlock(getOutputShape());
+			sum.add(a);
+			sum.add(accum(a.getOutputShape(), b, requirements));
+
+			add(sum);
+		} else {
+			add(accum(getOutputShape(), b.getForward(), requirements));
 		}
 	}
 

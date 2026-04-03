@@ -1,6 +1,7 @@
 package org.almostrealism.render.test;
 
 import io.almostrealism.relation.Producer;
+import java.util.Collections;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -10,7 +11,11 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.RealizableImage;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.Shader;
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.projection.PinholeCamera;
 import org.almostrealism.raytrace.FogParameters;

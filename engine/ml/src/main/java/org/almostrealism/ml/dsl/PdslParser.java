@@ -89,10 +89,11 @@ public class PdslParser {
 		PdslToken token = peek();
 		switch (token.getType()) {
 			case CONFIG: return parseConfigDef();
-			case LAYER: return parseLayerDef();
-			case MODEL: return parseModelDef();
+			case DATA:   return parseDataDef();
+			case LAYER:  return parseLayerDef();
+			case MODEL:  return parseModelDef();
 			default:
-				throw error("Expected 'config', 'layer', or 'model' but found " + token);
+				throw error("Expected 'config', 'data', 'layer', or 'model' but found " + token);
 		}
 	}
 
@@ -193,7 +194,17 @@ public class PdslParser {
 	private PdslNode.Parameter parseParameter() {
 		PdslToken nameTok = consume(PdslToken.Type.IDENTIFIER);
 		consume(PdslToken.Type.COLON);
+		return parseParameterAfterColon(nameTok);
+	}
 
+	/**
+	 * Parses the type portion of a parameter declaration after the colon has been consumed.
+	 * Shared by {@link #parseParameter()} and {@link #parseDataDef()}.
+	 *
+	 * @param nameTok the already-consumed name token
+	 * @return The parsed parameter node
+	 */
+	private PdslNode.Parameter parseParameterAfterColon(PdslToken nameTok) {
 		String typeName;
 		PdslNode.Expression shape = null;
 
@@ -237,6 +248,42 @@ public class PdslParser {
 				nameTok.getLine(), nameTok.getColumn());
 	}
 
+	// ---- Data ----
+
+	/**
+	 * Parses a {@code data Name { entries }} block.
+	 *
+	 * <p>Each entry is either a parameter declaration ({@code name: type}) or
+	 * a derivation ({@code name = expr}). Parameter declarations are satisfied
+	 * from caller-supplied arguments at build time; derivations are evaluated in
+	 * declaration order with earlier entries in scope for later expressions.</p>
+	 *
+	 * @return The parsed data definition node
+	 */
+	private PdslNode.DataDef parseDataDef() {
+		PdslToken kw = consume(PdslToken.Type.DATA);
+		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
+		consume(PdslToken.Type.LBRACE);
+
+		List<PdslNode.Parameter> parameters = new ArrayList<>();
+		Map<String, PdslNode.Expression> derivations = new LinkedHashMap<>();
+
+		while (!check(PdslToken.Type.RBRACE) && !check(PdslToken.Type.EOF)) {
+			PdslToken entryNameTok = consume(PdslToken.Type.IDENTIFIER);
+			if (check(PdslToken.Type.COLON)) {
+				consume(PdslToken.Type.COLON);
+				parameters.add(parseParameterAfterColon(entryNameTok));
+			} else {
+				consume(PdslToken.Type.EQUALS);
+				derivations.put(entryNameTok.getValue(), parseExpression());
+			}
+			while (check(PdslToken.Type.SEMICOLON)) advance();
+		}
+
+		consume(PdslToken.Type.RBRACE);
+		return new PdslNode.DataDef(name, parameters, derivations, kw.getLine(), kw.getColumn());
+	}
+
 	// ---- Body (statements) ----
 
 	/**
@@ -248,6 +295,7 @@ public class PdslParser {
 		List<PdslNode.Statement> stmts = new ArrayList<>();
 		while (!check(PdslToken.Type.RBRACE) && !check(PdslToken.Type.EOF)) {
 			stmts.add(parseStatement());
+			while (check(PdslToken.Type.SEMICOLON)) advance(); // consume optional statement separators
 		}
 		return stmts;
 	}
@@ -265,6 +313,8 @@ public class PdslParser {
 			case BRANCH: return parseBranchStatement();
 			case ACCUM: return parseAccumStatement();
 			case PRODUCT: return parseProductStatement();
+			case ACCUM_BLOCKS: return parseAccumBlocksStatement();
+			case CONCAT_BLOCKS: return parseConcatBlocksStatement();
 			case FOR: return parseForStatement();
 			default: return parseExpressionStatement();
 		}
@@ -344,24 +394,83 @@ public class PdslParser {
 	private PdslNode.ProductStatement parseProductStatement() {
 		PdslToken kw = consume(PdslToken.Type.PRODUCT);
 		consume(PdslToken.Type.LPAREN);
-		PdslNode.Expression left = parseProductArg();
+		PdslNode.Expression left = parseBlockArg();
 		consume(PdslToken.Type.COMMA);
-		PdslNode.Expression right = parseProductArg();
+		PdslNode.Expression right = parseBlockArg();
 		consume(PdslToken.Type.RPAREN);
 		return new PdslNode.ProductStatement(left, right, kw.getLine(), kw.getColumn());
 	}
 
 	/**
-	 * Parses one argument of a product expression, which may be an inline block or a regular expression.
+	 * Parses an {@code accum_blocks(left, right)} statement.
 	 *
-	 * @return The parsed expression node
+	 * @return the parsed {@link PdslNode.AccumBlocksStatement}
 	 */
-	private PdslNode.Expression parseProductArg() {
+	private PdslNode.AccumBlocksStatement parseAccumBlocksStatement() {
+		PdslToken kw = consume(PdslToken.Type.ACCUM_BLOCKS);
+		consume(PdslToken.Type.LPAREN);
+		PdslNode.Expression left = parseBlockArg();
+		consume(PdslToken.Type.COMMA);
+		PdslNode.Expression right = parseBlockArg();
+		consume(PdslToken.Type.RPAREN);
+		return new PdslNode.AccumBlocksStatement(left, right, kw.getLine(), kw.getColumn());
+	}
+
+	/**
+	 * Parses a {@code concat_blocks(block1, block2, ...)} statement with two or more block arguments.
+	 *
+	 * @return the parsed {@link PdslNode.ConcatBlocksStatement}
+	 */
+	private PdslNode.ConcatBlocksStatement parseConcatBlocksStatement() {
+		PdslToken kw = consume(PdslToken.Type.CONCAT_BLOCKS);
+		consume(PdslToken.Type.LPAREN);
+		List<PdslNode.Expression> blocks = new ArrayList<>();
+		blocks.add(parseBlockArg());
+		while (check(PdslToken.Type.COMMA)) {
+			consume(PdslToken.Type.COMMA);
+			blocks.add(parseBlockArg());
+		}
+		consume(PdslToken.Type.RPAREN);
+		return new PdslNode.ConcatBlocksStatement(blocks, kw.getLine(), kw.getColumn());
+	}
+
+	/**
+	 * Parses one argument of a block expression, which may be an inline block {@code { ... }},
+	 * a nested {@code product(...)}, {@code accum_blocks(...)}, or {@code concat_blocks(...)}
+	 * statement (each wrapped in a synthetic inline block), or a plain expression.
+	 *
+	 * @return the parsed expression node
+	 */
+	private PdslNode.Expression parseBlockArg() {
 		if (check(PdslToken.Type.LBRACE)) {
 			PdslToken brace = consume(PdslToken.Type.LBRACE);
 			List<PdslNode.Statement> body = parseBody();
 			consume(PdslToken.Type.RBRACE);
 			return new PdslNode.InlineBlock(body, brace.getLine(), brace.getColumn());
+		} else if (check(PdslToken.Type.PRODUCT)) {
+			// Wrap a product statement inside a synthetic inline block
+			int line = peek().getLine();
+			int col = peek().getColumn();
+			PdslNode.ProductStatement productStmt = parseProductStatement();
+			List<PdslNode.Statement> body = new ArrayList<>();
+			body.add(productStmt);
+			return new PdslNode.InlineBlock(body, line, col);
+		} else if (check(PdslToken.Type.ACCUM_BLOCKS)) {
+			// Wrap an accum_blocks statement inside a synthetic inline block
+			int line = peek().getLine();
+			int col = peek().getColumn();
+			PdslNode.AccumBlocksStatement addStmt = parseAccumBlocksStatement();
+			List<PdslNode.Statement> body = new ArrayList<>();
+			body.add(addStmt);
+			return new PdslNode.InlineBlock(body, line, col);
+		} else if (check(PdslToken.Type.CONCAT_BLOCKS)) {
+			// Wrap a concat_blocks statement inside a synthetic inline block
+			int line = peek().getLine();
+			int col = peek().getColumn();
+			PdslNode.ConcatBlocksStatement concatStmt = parseConcatBlocksStatement();
+			List<PdslNode.Statement> body = new ArrayList<>();
+			body.add(concatStmt);
+			return new PdslNode.InlineBlock(body, line, col);
 		}
 		return parseExpression();
 	}

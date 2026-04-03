@@ -113,6 +113,62 @@ public abstract class PdslNode {
 		public Map<String, Expression> getEntries() { return entries; }
 	}
 
+	/**
+	 * A data block declaring external weight inputs and derived zero-copy sub-views.
+	 *
+	 * <p>Data blocks are top-level definitions. When a layer or model is built,
+	 * all data blocks in the program are pre-populated into the environment before
+	 * the layer body is interpreted. Parameter declarations ({@code name: type})
+	 * are satisfied from caller-supplied arguments; derivations ({@code name = expr})
+	 * are evaluated in declaration order, with earlier entries visible to later ones.</p>
+	 *
+	 * <p>Example:
+	 * <pre>
+	 * data gru_weights {
+	 *     weight_ih: weight
+	 *     input_size: int
+	 *     hidden_size: int
+	 *
+	 *     w_ir = range(weight_ih, [hidden_size, input_size], 0)
+	 *     w_iz = range(weight_ih, [hidden_size, input_size], hidden_size * input_size)
+	 * }
+	 * </pre>
+	 * </p>
+	 */
+	public static class DataDef extends Definition {
+		/** External input declarations in the order they appear in source. */
+		private final List<Parameter> parameters;
+
+		/**
+		 * Derived bindings in declaration order.
+		 * Earlier entries are visible when evaluating later expressions.
+		 */
+		private final Map<String, Expression> derivations;
+
+		/**
+		 * Constructs a data block definition.
+		 *
+		 * @param name        data block name
+		 * @param parameters  external input declarations
+		 * @param derivations derived bindings, in declaration order
+		 * @param line        source line number
+		 * @param column      source column number
+		 */
+		public DataDef(String name, List<Parameter> parameters,
+					   Map<String, Expression> derivations,
+					   int line, int column) {
+			super(name, line, column);
+			this.parameters = parameters;
+			this.derivations = derivations;
+		}
+
+		/** Returns the external input declarations. */
+		public List<Parameter> getParameters() { return parameters; }
+
+		/** Returns the derived bindings in declaration order. */
+		public Map<String, Expression> getDerivations() { return derivations; }
+	}
+
 	/** A layer definition: reusable block builder. */
 	public static class LayerDef extends Definition {
 		/** Formal parameters accepted by this layer. */
@@ -368,6 +424,64 @@ public abstract class PdslNode {
 		public Expression getLeft() { return left; }
 
 		/** Returns the right-hand sub-block expression. */
+		public Expression getRight() { return right; }
+	}
+
+	/**
+	 * ConcatBlocks statement: concatenation of N sub-block outputs.
+	 * All sub-blocks receive the same input; their outputs are concatenated in order.
+	 * {@code concat_blocks(blockA, blockB, ...)}
+	 */
+	public static class ConcatBlocksStatement extends Statement {
+		/** The list of sub-block expressions to apply in parallel and concatenate. */
+		private final List<Expression> blocks;
+
+		/**
+		 * Constructs a ConcatBlocksStatement.
+		 *
+		 * @param blocks the list of sub-block expressions
+		 * @param line   the source line number
+		 * @param column the source column number
+		 */
+		public ConcatBlocksStatement(List<Expression> blocks, int line, int column) {
+			super(line, column);
+			this.blocks = blocks;
+		}
+
+		/** @return the list of sub-block expressions */
+		public List<Expression> getBlocks() { return blocks; }
+	}
+
+	/**
+	 * AccumBlocks statement: element-wise accumulation (sum) of two sub-block outputs.
+	 * Both sub-blocks receive the same input; their outputs are summed.
+	 * {@code accum_blocks(blockA, blockB)}
+	 */
+	public static class AccumBlocksStatement extends Statement {
+		/** The left sub-block expression. */
+		private final Expression left;
+		/** The right sub-block expression. */
+		private final Expression right;
+
+		/**
+		 * Constructs an AccumBlocksStatement.
+		 *
+		 * @param left   the left sub-block expression
+		 * @param right  the right sub-block expression
+		 * @param line   the source line number
+		 * @param column the source column number
+		 */
+		public AccumBlocksStatement(Expression left, Expression right,
+								  int line, int column) {
+			super(line, column);
+			this.left = left;
+			this.right = right;
+		}
+
+		/** @return the left sub-block expression */
+		public Expression getLeft() { return left; }
+
+		/** @return the right sub-block expression */
 		public Expression getRight() { return right; }
 	}
 

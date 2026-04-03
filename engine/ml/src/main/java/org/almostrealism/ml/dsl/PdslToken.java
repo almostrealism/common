@@ -30,6 +30,8 @@ public class PdslToken {
 		MODEL,
 		/** {@code config} keyword introducing a configuration block. */
 		CONFIG,
+		/** {@code data} keyword introducing a data block definition. */
+		DATA,
 		/** {@code let} keyword for local variable binding. */
 		LET,
 		/** {@code return} keyword for returning a value. */
@@ -48,6 +50,10 @@ public class PdslToken {
 		ACCUM,
 		/** {@code product} keyword for product expressions. */
 		PRODUCT,
+		/** {@code accum_blocks} keyword for element-wise accumulation of two blocks. */
+		ACCUM_BLOCKS,
+		/** {@code concat_blocks} keyword for concatenating outputs of N blocks applied to the same input. */
+		CONCAT_BLOCKS,
 		/** {@code weight} keyword marking a weight reference. */
 		WEIGHT,
 		/** {@code scalar} type annotation keyword. */
