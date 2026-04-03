@@ -260,6 +260,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	 * Measures the model compilation cost at real matrix sizes.
 	 */
 	@Test(timeout = 60_000)
+	@TestDepth(2)
 	public void testSingleAttentionLayerBuild() {
 		long start = System.currentTimeMillis();
 
@@ -292,6 +293,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	 * at real dimensions. Measures actual forward pass computation cost.
 	 */
 	@Test(timeout = 120_000)
+	@TestDepth(2)
 	public void testSingleTransformerBlockForward() {
 		long start = System.currentTimeMillis();
 

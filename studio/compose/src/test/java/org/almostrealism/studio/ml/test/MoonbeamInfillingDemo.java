@@ -24,7 +24,9 @@ import org.almostrealism.ml.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -83,9 +85,15 @@ public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatu
 	 * <p>Creates a C major I-IV-V-I chord progression over 4 measures, exports
 	 * baseline MIDI, then generates infilled versions with region masking and
 	 * melody masking strategies.</p>
+	 *
+	 * <p>Requires pretrained weights at {@value WEIGHTS_DIR} and significant
+	 * memory for the full 309M checkpoint. Skipped automatically in CI.</p>
 	 */
 	@Test
+	@TestDepth(2)
 	public void generateInfillingSamples() throws Exception {
+		Assume.assumeTrue("Moonbeam weights not found at " + WEIGHTS_DIR,
+				new File(WEIGHTS_DIR).isDirectory());
 		File outputDir = new File(OUTPUT_DIR);
 		outputDir.mkdirs();
 
