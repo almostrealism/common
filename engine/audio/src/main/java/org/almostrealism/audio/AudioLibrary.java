@@ -17,6 +17,7 @@
 package org.almostrealism.audio;
 
 import io.almostrealism.util.FrequencyCache;
+import org.almostrealism.audio.data.DynamicWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
@@ -128,7 +129,7 @@ import java.util.stream.Stream;
  * });
  *
  * // Get details for a specific file
- * WaveDetails details = library.getDetailsAwait(new FileWaveDataProvider("/path/to/file.wav"));
+ * WaveDetails details = library.getDetailsForFileAwait("/path/to/file.wav", false);
  * }</pre>
  *
  * <h2>Priority Levels</h2>
@@ -527,7 +528,6 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @see #find(String)
 	 */
 	public WaveDetails get(String identifier) {
-		if (!completeIdentifiers.contains(identifier)) return null;
 		return resolveDetails(identifier);
 	}
 
@@ -600,109 +600,80 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	// ── Identifier-based retrieval (primary API) ─────────────────────
+
 	/**
-	 * Returns the WaveDetails for the given file key if immediately available.
+	 * Returns the current {@link WaveDetails} for the given identifier without
+	 * blocking, submitting a computation job if the entry is not yet complete.
 	 *
-	 * @param key the file path or key to look up
-	 * @return an Optional containing the WaveDetails, or empty if not yet computed
+	 * @param identifier the content identifier
+	 * @return the details if already computed, or empty if still pending
 	 */
-	public Optional<WaveDetails> getDetailsNow(String key) {
-		return getDetailsNow(new FileWaveDataProvider(key));
+	public Optional<WaveDetails> getDetailsNow(String identifier) {
+		if (completeIdentifiers.contains(identifier)) {
+			return Optional.ofNullable(resolveDetails(identifier));
+		}
+
+		WaveDataProvider provider = resolveProvider(identifier);
+		if (provider == null) return Optional.empty();
+		return Optional.ofNullable(getDetails(provider, false, DEFAULT_PRIORITY).getNow(null));
 	}
 
 	/**
-	 * Returns the WaveDetails for the given file key if immediately available, with persistence control.
+	 * Blocks until the {@link WaveDetails} for the given identifier are fully
+	 * computed (including feature data), or the timeout expires.
 	 *
-	 * @param key        the file path or key to look up
-	 * @param persistent if true, marks the details as persistent
-	 * @return an Optional containing the WaveDetails, or empty if not yet computed
+	 * @param identifier the content identifier
+	 * @param timeout    maximum seconds to wait
+	 * @return the completed WaveDetails, or null if interrupted
 	 */
-	public Optional<WaveDetails> getDetailsNow(String key, boolean persistent) {
-		return getDetailsNow(new FileWaveDataProvider(key), persistent);
+	public WaveDetails getDetailsAwait(String identifier, long timeout) {
+		if (completeIdentifiers.contains(identifier)) {
+			WaveDetails existing = resolveDetails(identifier);
+			if (existing != null) return existing;
+		}
+
+		WaveDataProvider provider = resolveProvider(identifier);
+		if (provider == null) return null;
+		return getDetailsAwait(provider, timeout);
 	}
 
 	/**
-	 * Returns the WaveDetails for the given provider if immediately available.
+	 * Asynchronously computes {@link WaveDetails} for the given identifier and
+	 * delivers the result to the consumer.
 	 *
-	 * @param provider the audio data provider to look up
-	 * @return an Optional containing the WaveDetails, or empty if not yet computed
+	 * @param identifier the content identifier
+	 * @param consumer   callback for the completed details
+	 * @param priority   true for high priority, false for background
 	 */
-	public Optional<WaveDetails> getDetailsNow(WaveDataProvider provider) {
-		return getDetailsNow(provider, false);
+	public void getDetails(String identifier, Consumer<WaveDetails> consumer, boolean priority) {
+		if (completeIdentifiers.contains(identifier)) {
+			WaveDetails existing = resolveDetails(identifier);
+			if (existing != null) {
+				consumer.accept(existing);
+				return;
+			}
+		}
+
+		WaveDataProvider provider = resolveProvider(identifier);
+		if (provider == null) return;
+		getDetails(provider, false, priority ? HIGH_PRIORITY : DEFAULT_PRIORITY).thenAccept(consumer);
 	}
 
-	/**
-	 * Returns the WaveDetails for the given provider if immediately available, with persistence control.
-	 *
-	 * @param provider   the audio data provider to look up
-	 * @param persistent if true, marks the details as persistent
-	 * @return an Optional containing the WaveDetails, or empty if not yet computed
-	 */
-	public Optional<WaveDetails> getDetailsNow(WaveDataProvider provider, boolean persistent) {
-		return Optional.ofNullable(getDetails(provider, persistent, DEFAULT_PRIORITY).getNow(null));
-	}
+	// ── Provider-based retrieval ──────────────────────────────────────
 
 	/**
-	 * Blocks until WaveDetails are available for the given file key, with persistence control.
+	 * Blocks until the {@link WaveDetails} for the given provider are fully
+	 * computed, or the timeout expires.
 	 *
-	 * @param key        the file path or key to look up
-	 * @param persistent if true, marks the details as persistent
-	 * @return the WaveDetails for the given key
-	 */
-	public WaveDetails getDetailsAwait(String key, boolean persistent) {
-		return getDetailsAwait(new FileWaveDataProvider(key), persistent);
-	}
-
-	/**
-	 * Blocks until WaveDetails are available for the given provider.
-	 *
-	 * @param provider the audio data provider to look up
-	 * @return the WaveDetails for the given provider
-	 */
-	public WaveDetails getDetailsAwait(WaveDataProvider provider) {
-		return getDetailsAwait(provider, false);
-	}
-
-	/**
-	 * Blocks until WaveDetails are available for the given provider, with a timeout.
-	 *
-	 * @param provider the audio data provider to look up
-	 * @param timeout  the maximum number of seconds to wait
-	 * @return the WaveDetails for the given provider
+	 * @param provider the data provider
+	 * @param timeout  maximum seconds to wait
+	 * @return the completed WaveDetails, or null if interrupted
 	 */
 	public WaveDetails getDetailsAwait(WaveDataProvider provider, long timeout) {
-		return getDetailsAwait(provider, false, OptionalLong.of(timeout));
-	}
-
-	/**
-	 * Blocks until WaveDetails are available for the given provider, with persistence control.
-	 *
-	 * @param provider   the audio data provider to look up
-	 * @param persistent if true, marks the details as persistent
-	 * @return the WaveDetails for the given provider
-	 */
-	public WaveDetails getDetailsAwait(WaveDataProvider provider, boolean persistent) {
-		return getDetailsAwait(provider, persistent, OptionalLong.empty());
-	}
-
-	/**
-	 * Blocks until WaveDetails are available for the given provider, with optional timeout and persistence control.
-	 *
-	 * @param provider   the audio data provider to look up
-	 * @param persistent if true, marks the details as persistent
-	 * @param timeout    an optional timeout in seconds; empty means wait indefinitely
-	 * @return the WaveDetails for the given provider, or null if interrupted
-	 * @throws RuntimeException wrapping TimeoutException or ExecutionException on failure
-	 */
-	public WaveDetails getDetailsAwait(WaveDataProvider provider, boolean persistent, OptionalLong timeout) {
 		try {
-			CompletableFuture<WaveDetails> future = getDetails(provider, persistent, HIGH_PRIORITY);
-
-			if (timeout.isPresent()) {
-				return future.get(timeout.getAsLong(), TimeUnit.SECONDS);
-			} else {
-				return future.get();
-			}
+			return getDetails(provider, false, HIGH_PRIORITY)
+					.get(timeout, TimeUnit.SECONDS);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			return null;
@@ -711,26 +682,97 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	// ── File-path convenience delegates ───────────────────────────────
+
 	/**
-	 * Retrieves WaveDetails for the given file path asynchronously, delivering results to a consumer.
+	 * Returns current details for the given file path without blocking.
 	 *
-	 * @param file     the file path to look up
-	 * @param consumer the consumer to receive the WaveDetails when available
-	 * @param priority if true, uses HIGH_PRIORITY; otherwise DEFAULT_PRIORITY
+	 * @param filePath the filesystem path to the audio file
+	 * @return the details if already computed, or empty if still pending
 	 */
-	public void getDetails(String file, Consumer<WaveDetails> consumer, boolean priority) {
-		getDetails(new FileWaveDataProvider(file), consumer, priority);
+	public Optional<WaveDetails> getDetailsForFileNow(String filePath) {
+		return getDetailsNow(new FileWaveDataProvider(filePath).getIdentifier());
 	}
 
 	/**
-	 * Retrieves WaveDetails for the given provider asynchronously, delivering results to a consumer.
+	 * Returns current details for the given file path without blocking,
+	 * marking the entry as persistent if requested.
 	 *
-	 * @param provider the audio data provider to look up
-	 * @param consumer the consumer to receive the WaveDetails when available
-	 * @param priority if true, uses HIGH_PRIORITY; otherwise DEFAULT_PRIORITY
+	 * @param filePath   the filesystem path to the audio file
+	 * @param persistent whether to mark the entry as persistent
+	 * @return the details if already computed, or empty if still pending
 	 */
-	public void getDetails(WaveDataProvider provider, Consumer<WaveDetails> consumer, boolean priority) {
-		getDetails(provider, false, priority ? HIGH_PRIORITY : DEFAULT_PRIORITY).thenAccept(consumer);
+	public Optional<WaveDetails> getDetailsForFileNow(String filePath, boolean persistent) {
+		FileWaveDataProvider provider = new FileWaveDataProvider(filePath);
+		return Optional.ofNullable(
+				getDetails(provider, persistent, DEFAULT_PRIORITY).getNow(null));
+	}
+
+	/**
+	 * Blocks until details for the given file path are fully computed.
+	 *
+	 * @param filePath   the filesystem path to the audio file
+	 * @param persistent whether to mark the entry as persistent
+	 * @return the completed WaveDetails
+	 */
+	public WaveDetails getDetailsForFileAwait(String filePath, boolean persistent) {
+		try {
+			return getDetails(new FileWaveDataProvider(filePath), persistent, HIGH_PRIORITY).get();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return null;
+		} catch (ExecutionException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	/**
+	 * Asynchronously computes details for the given file path and delivers
+	 * the result to the consumer.
+	 *
+	 * @param filePath the filesystem path to the audio file
+	 * @param consumer callback for the completed details
+	 * @param priority true for high priority, false for background
+	 */
+	public void getDetailsForFile(String filePath, Consumer<WaveDetails> consumer, boolean priority) {
+		getDetails(new FileWaveDataProvider(filePath), false,
+				priority ? HIGH_PRIORITY : DEFAULT_PRIORITY).thenAccept(consumer);
+	}
+
+	// ── Internal core ─────────────────────────────────────────────────
+
+	/**
+	 * Resolves a {@link WaveDataProvider} for the given identifier.
+	 *
+	 * <p>Checks the file tree first (for file-backed samples), then falls
+	 * back to cached {@link WaveDetails}. For cached entries, a provider is
+	 * created if the entry has either raw audio data or frequency data —
+	 * the latter is sufficient because {@link WaveDetailsFactory#forExisting}
+	 * can synthesize audio from frequency magnitudes transparently.</p>
+	 *
+	 * @param identifier the content identifier
+	 * @return a provider, or null if no data is available for this identifier
+	 */
+	protected WaveDataProvider resolveProvider(String identifier) {
+		WaveDataProvider provider = find(identifier);
+		if (provider != null) return provider;
+
+		WaveDetails existing = resolveDetails(identifier);
+		if (existing == null) return null;
+
+		if (existing.getData() != null) {
+			return new DynamicWaveDataProvider(identifier, existing.getWaveData());
+		}
+
+		// Entry has frequency data but no audio waveform (e.g., a drawing).
+		// WaveDetailsFactory.forExisting() will synthesize audio from the
+		// frequency data, so we just need a provider that carries the
+		// identifier through the job system.
+		if (existing.getFreqData() != null) {
+			return new DynamicWaveDataProvider(identifier, existing.getSampleRate());
+		}
+
+		return null;
 	}
 
 	/**
@@ -921,7 +963,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @return a map from other sample identifiers to similarity scores
 	 */
 	public Map<String, Double> getSimilarities(WaveDataProvider provider) {
-		return computeSimilarities(getDetailsAwait(provider, false)).getSimilarities();
+		return computeSimilarities(getDetailsAwait(provider.getIdentifier(), 600)).getSimilarities();
 	}
 
 	/**

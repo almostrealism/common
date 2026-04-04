@@ -75,10 +75,10 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
 
     /**
      * Deduplication mode applied to jobs created by this factory.
-     * {@code null} disables deduplication.
-     * See {@link ClaudeCodeJob#DEDUP_LOCAL} and {@link ClaudeCodeJob#DEDUP_SPAWN}.
+     * Defaults to {@link ClaudeCodeJob#DEDUP_LOCAL}.
+     * See {@link ClaudeCodeJob#DEDUP_NONE} to disable.
      */
-    private String deduplicationMode;
+    private String deduplicationMode = ClaudeCodeJob.DEDUP_LOCAL;
 
     /**
      * Default constructor for deserialization.
@@ -474,11 +474,10 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
-     * Returns the deduplication mode applied to jobs created by this factory,
-     * or {@code null} if deduplication is disabled.
+     * Returns the deduplication mode applied to jobs created by this factory.
      *
      * @return {@link ClaudeCodeJob#DEDUP_LOCAL}, {@link ClaudeCodeJob#DEDUP_SPAWN},
-     *         or {@code null}
+     *         or {@link ClaudeCodeJob#DEDUP_NONE}
      */
     public String getDeduplicationMode() {
         return deduplicationMode;
@@ -488,13 +487,12 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
      * Sets the deduplication mode for jobs created by this factory.
      *
      * @param deduplicationMode {@link ClaudeCodeJob#DEDUP_LOCAL},
-     *                          {@link ClaudeCodeJob#DEDUP_SPAWN}, or {@code null}
+     *                          {@link ClaudeCodeJob#DEDUP_SPAWN},
+     *                          or {@link ClaudeCodeJob#DEDUP_NONE}
      */
     public void setDeduplicationMode(String deduplicationMode) {
         this.deduplicationMode = deduplicationMode;
-        if (deduplicationMode != null) {
-            set("dedupMode", deduplicationMode);
-        }
+        set("dedupMode", deduplicationMode);
     }
 
     /**
@@ -606,9 +604,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
 
         job.setProtectTestFiles(isProtectTestFiles());
         job.setEnforceChanges(isEnforceChanges());
-        if (deduplicationMode != null) {
-            job.setDeduplicationMode(deduplicationMode);
-        }
+        job.setDeduplicationMode(deduplicationMode);
 
         String pyReqs = getPythonRequirements();
         if (pyReqs != null) {

@@ -254,7 +254,7 @@ public class AudioDiffusionGenerator implements ConsoleFeatures, CollectionFeatu
 		if (verbose) log("Decoding latent to audio...");
 
 		long start = System.currentTimeMillis();
-		PackedCollection audioData = autoEncoder.decode(() -> args -> latent).get().evaluate();
+		PackedCollection audioData = autoEncoder.decode(cp(latent)).get().evaluate();
 
 		int audioLength = (int) (audioData.getMemLength() / 2); // 2 channels
 

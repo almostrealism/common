@@ -101,6 +101,13 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     public static final String DEDUP_SPAWN = "spawn";
 
+    /**
+     * Deduplication mode that disables the deduplication scan entirely.
+     * Use this to explicitly opt out when the default {@link #DEDUP_LOCAL}
+     * behaviour is not desired.
+     */
+    public static final String DEDUP_NONE = "none";
+
     /** The prompt submitted to Claude Code for this job. */
     private String prompt;
     /** Short human-readable description of this job, used in status messages. */
@@ -127,11 +134,11 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String gitTamperingViolation;
     /**
      * Controls post-work deduplication behaviour.
-     * {@code null} disables deduplication (default).
-     * {@link #DEDUP_LOCAL} runs an inline session before committing.
+     * Defaults to {@link #DEDUP_LOCAL} (inline session before committing).
      * {@link #DEDUP_SPAWN} submits a follow-up job to the same workstream.
+     * {@link #DEDUP_NONE} disables deduplication entirely.
      */
-    private String deduplicationMode;
+    private String deduplicationMode = DEDUP_LOCAL;
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
@@ -436,10 +443,9 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Returns the deduplication mode for this job, or {@code null} if
-     * deduplication is disabled.
+     * Returns the deduplication mode for this job.
      *
-     * @return {@link #DEDUP_LOCAL}, {@link #DEDUP_SPAWN}, or {@code null}
+     * @return {@link #DEDUP_LOCAL}, {@link #DEDUP_SPAWN}, or {@link #DEDUP_NONE}
      */
     public String getDeduplicationMode() {
         return deduplicationMode;
@@ -448,13 +454,13 @@ public class ClaudeCodeJob extends GitManagedJob {
     /**
      * Sets the deduplication mode for this job.
      *
-     * <p>Use {@link #DEDUP_LOCAL} to run an inline deduplication session
-     * before the commit (safe for iterative testing). Use {@link #DEDUP_SPAWN}
-     * to submit a separate agent job after committing (requires a workstream
-     * URL). Pass {@code null} to disable deduplication entirely.</p>
+     * <p>The default is {@link #DEDUP_LOCAL} (inline session before commit).
+     * Use {@link #DEDUP_SPAWN} to submit a separate agent job after committing
+     * (requires a workstream URL). Use {@link #DEDUP_NONE} to disable
+     * deduplication entirely.</p>
      *
      * @param deduplicationMode {@link #DEDUP_LOCAL}, {@link #DEDUP_SPAWN},
-     *                          or {@code null} to disable
+     *                          or {@link #DEDUP_NONE}
      */
     public void setDeduplicationMode(String deduplicationMode) {
         this.deduplicationMode = deduplicationMode;
@@ -844,11 +850,11 @@ public class ClaudeCodeJob extends GitManagedJob {
      * <p>When the mode is {@link #DEDUP_LOCAL}, an inline Claude Code session
      * is executed with the deduplication prompt before the commit is finalised.
      * When the mode is {@link #DEDUP_SPAWN}, a follow-up job is posted to the
-     * same workstream (fire-and-forget).  If the mode is {@code null} or
-     * unrecognised, no action is taken.</p>
+     * same workstream (fire-and-forget).  {@link #DEDUP_NONE} skips the scan
+     * entirely.</p>
      */
     private void submitDeduplicationJobIfNeeded() {
-        if (deduplicationMode == null) {
+        if (DEDUP_NONE.equals(deduplicationMode)) {
             return;
         }
 

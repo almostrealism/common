@@ -407,28 +407,38 @@ public class WaveDetails implements CodeFeatures, Node {
 	}
 
 	/**
-	 * Returns the extracted feature data for similarity comparison.
+	 * Returns the autoencoder latent features for this audio.
 	 *
-	 * @return the feature data as a PackedCollection
+	 * <p>This is the output of {@code AutoEncoder.encode()} applied to the
+	 * audio waveform. It serves dual purposes: similarity comparison between
+	 * library samples (cosine similarity in latent space) and as conditioning
+	 * input for the {@code AudioComposer} during diffusion-based generation.</p>
+	 *
+	 * <p>Computed by {@code AutoEncoderFeatureProvider} via the AudioLibrary
+	 * job system. For entries with only frequency data (e.g., drawings),
+	 * {@code WaveDetailsFactory} first synthesizes audio via IFFT before
+	 * encoding.</p>
+	 *
+	 * @return the latent feature tensor, or null if not yet computed
+	 * @see #getFeatureData(boolean)
 	 */
 	public PackedCollection getFeatureData() {
 		return featureData;
 	}
 
-	/**
-	 * Sets the extracted feature data for similarity comparison.
-	 *
-	 * @param featureData the feature data
-	 */
+	/** @param featureData the autoencoder latent features */
 	public void setFeatureData(PackedCollection featureData) {
 		this.featureData = featureData;
 	}
 
 	/**
-	 * Returns the feature data, optionally transposed for analysis convenience.
+	 * Returns the autoencoder latent features, optionally transposed.
 	 *
-	 * @param transpose if true, returns the transposed feature collection
-	 * @return the feature data, possibly transposed
+	 * <p>The transposed form is used when passing features to
+	 * {@code AudioGenerator.addFeatures()} for composer interpolation.</p>
+	 *
+	 * @param transpose if true, returns the transposed feature tensor
+	 * @return the feature tensor, or null if not yet computed
 	 */
 	public PackedCollection getFeatureData(boolean transpose) {
 		if (transpose) {

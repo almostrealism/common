@@ -110,7 +110,7 @@ public class WaveDetailsNode implements Tree<WaveDetailsNode> {
 	 * @param key     the unique identifier for the audio sample
 	 */
 	public WaveDetailsNode(AudioLibrary library, String key) {
-		this(library, library.getDetailsAwait(key, false));
+		this(library, library.getDetailsForFileAwait(key, false));
 	}
 
 	/**
