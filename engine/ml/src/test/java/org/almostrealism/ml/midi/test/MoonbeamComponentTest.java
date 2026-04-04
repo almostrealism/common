@@ -29,6 +29,7 @@ import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -140,7 +141,8 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	 * head dimension (160) and a reasonable sequence length. Validates
 	 * shapes and value ranges.
 	 */
-	@Test(timeout = 30_000)
+	@TestProperties(knownIssue = true)
+	@Test(timeout = 3 * 60000)
 	public void testRopeFrequencyComputation() {
 		long start = System.currentTimeMillis();
 

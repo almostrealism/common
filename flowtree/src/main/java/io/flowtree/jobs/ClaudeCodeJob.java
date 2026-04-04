@@ -892,12 +892,41 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     private void runLocalDeduplication(String dedupPrompt) {
         String originalPrompt = this.prompt;
+
+        // Preserve the primary agent's commit.txt so the dedup session cannot
+        // overwrite it.  executeSingleRun() deletes any stale commit.txt at
+        // startup, so we read the content now and write it back in finally.
+        Path commitFile = resolveWorkingPath("commit.txt");
+        String savedCommitMessage = null;
+        if (commitFile != null && Files.exists(commitFile)) {
+            try {
+                savedCommitMessage = Files.readString(commitFile, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                warn("Could not read commit.txt before dedup run: " + e.getMessage());
+            }
+        }
+
         try {
             this.prompt = dedupPrompt;
             log("Running inline deduplication session");
             executeSingleRun();
         } finally {
             this.prompt = originalPrompt;
+
+            // Restore the primary agent's commit message, discarding whatever
+            // the dedup session wrote.
+            if (commitFile != null) {
+                try {
+                    if (savedCommitMessage != null) {
+                        Files.writeString(commitFile, savedCommitMessage, StandardCharsets.UTF_8);
+                        log("Restored primary commit message from commit.txt");
+                    } else {
+                        Files.deleteIfExists(commitFile);
+                    }
+                } catch (IOException e) {
+                    warn("Could not restore commit.txt after dedup run: " + e.getMessage());
+                }
+            }
         }
     }
 
@@ -1092,6 +1121,14 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("all call sites with the existing method.\n");
         sb.append("3. Only after a thorough search may you conclude a method is ");
         sb.append("genuinely new.\n\n");
+        sb.append("IMPORTANT — editing rules:\n");
+        sb.append("- Use the Edit tool to remove duplicate methods surgically. ");
+        sb.append("Remove only the duplicate method body and its declaration; ");
+        sb.append("preserve all other changes in the file.\n");
+        sb.append("- NEVER use git restore, git checkout --, git reset, or any ");
+        sb.append("other git command to revert a file. Those commands discard ALL ");
+        sb.append("changes in that file, not just the duplicate method, and will ");
+        sb.append("destroy work that must be preserved.\n\n");
         sb.append("Do not rationalise keeping a duplicate because it is 'slightly ");
         sb.append("different'. Slight differences are how duplicates hide. If the ");
         sb.append("logical purpose is the same, merge them. The codebase already has ");
