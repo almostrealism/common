@@ -906,12 +906,12 @@ def workstream_submit_task(
         required_labels: Comma-separated key:value pairs specifying Node
             labels required to execute this job (e.g., "platform:macos,gpu:true").
             Only Nodes with matching labels will execute the job.
-        deduplication_mode: Post-work deduplication behaviour. Use "local" to
-            run an inline Claude Code session that removes duplicate methods
-            before committing (safe for iterative testing, no extra jobs
+        deduplication_mode: Post-work deduplication behaviour. Defaults to
+            "local" (inline Claude Code session that removes duplicate methods
+            before committing — safe for iterative testing, no extra jobs
             spawned). Use "spawn" to submit a separate follow-up job to the
-            same workstream after committing (requires workstream URL). Omit
-            or pass "" to disable deduplication entirely.
+            same workstream after committing (requires workstream URL). Pass
+            "none" to disable deduplication entirely.
 
     Returns:
         Dictionary with job_id and workstream_id on success.

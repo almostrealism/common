@@ -30,8 +30,8 @@ services:
           cpus: "${AGENT_CPUS:-4}"
           memory: "${AGENT_MEMORY:-4g}"
     volumes:
-      - workspaces:/workspace/project
-      - maven-cache:/home/agent/.m2
+      - /workspace/project
+      - /home/agent/.m2
       - ${SSH_KEY_DIR}:/home/agent/.ssh:ro
       - ${MODELS_DIR:-/Users/Shared/models}:/models:ro
       - ${SAMPLES_DIR:-/dev/null}:/samples:ro
@@ -51,6 +51,3 @@ services:
         max-file: "5"
     restart: unless-stopped
 
-volumes:
-  workspaces:
-  maven-cache:
