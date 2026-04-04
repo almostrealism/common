@@ -186,30 +186,31 @@ public class MidiFileReader {
 	}
 
 	/**
-	 * Write a list of {@link SkyTntMidiEvent} objects to a standard MIDI file.
+	 * Write a list of {@link MidiNoteEvent} objects to a standard MIDI file,
+	 * handling all six event types.
 	 *
-	 * <p>All six SkyTNT V2 event types are handled:</p>
+	 * <p>All six event types are supported:</p>
 	 * <ul>
-	 *   <li>{@link SkyTntMidiEvent.EventType#NOTE} — writes NOTE_ON at onset
+	 *   <li>{@link MidiNoteEvent.EventType#NOTE} — writes NOTE_ON at onset
 	 *       and NOTE_OFF at onset + duration, assigning a unique channel per
 	 *       (track, channel) combination.</li>
-	 *   <li>{@link SkyTntMidiEvent.EventType#PATCH_CHANGE} — writes a PROGRAM_CHANGE.</li>
-	 *   <li>{@link SkyTntMidiEvent.EventType#CONTROL_CHANGE} — writes a CC message.</li>
-	 *   <li>{@link SkyTntMidiEvent.EventType#SET_TEMPO} — writes a tempo meta-message
+	 *   <li>{@link MidiNoteEvent.EventType#PATCH_CHANGE} — writes a PROGRAM_CHANGE.</li>
+	 *   <li>{@link MidiNoteEvent.EventType#CONTROL_CHANGE} — writes a CC message.</li>
+	 *   <li>{@link MidiNoteEvent.EventType#SET_TEMPO} — writes a tempo meta-message
 	 *       (type 0x51), converting BPM to microseconds per beat.</li>
-	 *   <li>{@link SkyTntMidiEvent.EventType#TIME_SIGNATURE} — writes a time-signature
+	 *   <li>{@link MidiNoteEvent.EventType#TIME_SIGNATURE} — writes a time-signature
 	 *       meta-message (type 0x58).</li>
-	 *   <li>{@link SkyTntMidiEvent.EventType#KEY_SIGNATURE} — writes a key-signature
+	 *   <li>{@link MidiNoteEvent.EventType#KEY_SIGNATURE} — writes a key-signature
 	 *       meta-message (type 0x59).</li>
 	 * </ul>
 	 *
-	 * @param events       SkyTNT events to write
+	 * @param events       MIDI events to write
 	 * @param output       the output MIDI file
 	 * @param ticksPerBeat MIDI PPQ resolution (must match the value used during detokenization)
 	 * @throws IOException              if the file cannot be written
 	 * @throws InvalidMidiDataException if a MIDI message cannot be constructed
 	 */
-	public void writeSkyTntEvents(List<SkyTntMidiEvent> events, File output, int ticksPerBeat)
+	public void write(List<MidiNoteEvent> events, File output, int ticksPerBeat)
 			throws IOException, InvalidMidiDataException {
 		Sequence sequence = new Sequence(Sequence.PPQ, ticksPerBeat);
 		Track track = sequence.createTrack();
@@ -218,7 +219,7 @@ public class MidiFileReader {
 		Map<Long, Integer> channelMap = new HashMap<>();
 		int[] nextMidiChannel = {0};
 
-		for (SkyTntMidiEvent event : events) {
+		for (MidiNoteEvent event : events) {
 			long tick = event.getTick();
 
 			switch (event.getEventType()) {
@@ -283,10 +284,10 @@ public class MidiFileReader {
 	}
 
 	/**
-	 * Resolve the output MIDI channel for a SkyTNT event, assigning a new channel
+	 * Resolve the output MIDI channel for an event, assigning a new channel
 	 * if the (track, channel) pair has not been seen before.
 	 */
-	private static int resolveChannel(SkyTntMidiEvent event,
+	private static int resolveChannel(MidiNoteEvent event,
 			Map<Long, Integer> channelMap, int[] nextMidiChannel) {
 		long channelKey = ((long) event.getTrack() << 16) | event.getChannel();
 		Integer midiChannel = channelMap.get(channelKey);

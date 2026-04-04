@@ -17,7 +17,7 @@
 package org.almostrealism.ml.midi.test;
 
 import org.almostrealism.ml.midi.SkyTntMidi;
-import org.almostrealism.ml.midi.SkyTntMidiEvent;
+import org.almostrealism.ml.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.SkyTntTokenizerV2;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -103,10 +103,10 @@ public class SkyTntIntegrationTest extends TestSuiteBase {
 		SkyTntTokenizerV2 tokenizer = model.getTokenizer();
 
 		// Build a minimal prompt: BOS + one C4 note
-		List<SkyTntMidiEvent> promptEvents = new ArrayList<>();
-		promptEvents.add(SkyTntMidiEvent.note(0, 0, 0, 60, 80, 16));  // tick=0, track=0, ch=0, pitch=60, vel=80, dur=16
+		List<MidiNoteEvent> promptEvents = new ArrayList<>();
+		promptEvents.add(MidiNoteEvent.note(0, 0, 0, 60, 80, 16));  // tick=0, track=0, ch=0, pitch=60, vel=80, dur=16
 
-		List<SkyTntMidiEvent> generated = model.generateFromEvents(
+		List<MidiNoteEvent> generated = model.generateFromEvents(
 				promptEvents, MAX_NEW_EVENTS,
 				SkyTntMidi.DEFAULT_TEMPERATURE,
 				SkyTntMidi.DEFAULT_TOP_P,
@@ -116,8 +116,8 @@ public class SkyTntIntegrationTest extends TestSuiteBase {
 		Assert.assertNotNull("Generated events should not be null", generated);
 
 		// Verify parameter ranges for any generated note events
-		for (SkyTntMidiEvent event : generated) {
-			if (event.getEventType() == SkyTntMidiEvent.EventType.NOTE) {
+		for (MidiNoteEvent event : generated) {
+			if (event.getEventType() == MidiNoteEvent.EventType.NOTE) {
 				Assert.assertTrue("Pitch should be in [0, 127]",
 						event.getPitch() >= 0 && event.getPitch() <= 127);
 				Assert.assertTrue("Velocity should be in [0, 127]",

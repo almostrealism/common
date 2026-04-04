@@ -16,7 +16,7 @@
 
 package org.almostrealism.ml.midi.test;
 
-import org.almostrealism.ml.midi.SkyTntMidiEvent;
+import org.almostrealism.ml.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.SkyTntTokenizerV2;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -142,8 +142,8 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testBosEosInjection() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
-        events.add(SkyTntMidiEvent.note(0, 0, 0, 60, 80, 480));
+        List<MidiNoteEvent> events = new ArrayList<>();
+        events.add(MidiNoteEvent.note(0, 0, 0, 60, 80, 480));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
 
@@ -166,11 +166,11 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testBosEosStripping() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
-        events.add(SkyTntMidiEvent.note(0, 0, 0, 60, 80, 480));
+        List<MidiNoteEvent> events = new ArrayList<>();
+        events.add(MidiNoteEvent.note(0, 0, 0, 60, 80, 480));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
-        List<SkyTntMidiEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
+        List<MidiNoteEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
 
         assertEquals("BOS/EOS stripped; 1 event returned", 1, decoded.size());
     }
@@ -185,10 +185,10 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testRowWidthAlwaysEight() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
-        events.add(SkyTntMidiEvent.note(0, 0, 0, 60, 80, 480));
-        events.add(SkyTntMidiEvent.patchChange(240, 0, 1, 40));
-        events.add(SkyTntMidiEvent.setTempo(480, 0, 120));
+        List<MidiNoteEvent> events = new ArrayList<>();
+        events.add(MidiNoteEvent.note(0, 0, 0, 60, 80, 480));
+        events.add(MidiNoteEvent.patchChange(240, 0, 1, 40));
+        events.add(MidiNoteEvent.setTempo(480, 0, 120));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
         for (int r = 0; r < tokens.length; r++) {
@@ -203,8 +203,8 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testShortEventsArePadded() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
-        events.add(SkyTntMidiEvent.setTempo(0, 0, 120)); // 5 tokens + 3 PAD
+        List<MidiNoteEvent> events = new ArrayList<>();
+        events.add(MidiNoteEvent.setTempo(0, 0, 120)); // 5 tokens + 3 PAD
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
         // Row 1 = the set_tempo event (row 0 = BOS)
@@ -225,16 +225,16 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testNoteRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
+        List<MidiNoteEvent> events = new ArrayList<>();
         // tick=960 → beat=2, time2=0 with 480 ticks/beat
-        events.add(SkyTntMidiEvent.note(960, 1, 3, 72, 100, 960));
+        events.add(MidiNoteEvent.note(960, 1, 3, 72, 100, 960));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
-        List<SkyTntMidiEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
+        List<MidiNoteEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
 
         assertEquals("decoded count", 1, decoded.size());
-        SkyTntMidiEvent d = decoded.get(0);
-        Assert.assertEquals("event type", SkyTntMidiEvent.EventType.NOTE, d.getEventType());
+        MidiNoteEvent d = decoded.get(0);
+        Assert.assertEquals("event type", MidiNoteEvent.EventType.NOTE, d.getEventType());
         assertEquals("track", 1, d.getTrack());
         assertEquals("channel", 3, d.getChannel());
         assertEquals("pitch", 72, d.getPitch());
@@ -247,15 +247,15 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testPatchChangeRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
-        events.add(SkyTntMidiEvent.patchChange(0, 0, 2, 40));
+        List<MidiNoteEvent> events = new ArrayList<>();
+        events.add(MidiNoteEvent.patchChange(0, 0, 2, 40));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
-        List<SkyTntMidiEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
+        List<MidiNoteEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
 
         assertEquals("decoded count", 1, decoded.size());
-        SkyTntMidiEvent d = decoded.get(0);
-        Assert.assertEquals("event type", SkyTntMidiEvent.EventType.PATCH_CHANGE, d.getEventType());
+        MidiNoteEvent d = decoded.get(0);
+        Assert.assertEquals("event type", MidiNoteEvent.EventType.PATCH_CHANGE, d.getEventType());
         assertEquals("channel", 2, d.getChannel());
         assertEquals("patch", 40, d.getPatch());
     }
@@ -266,15 +266,15 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testControlChangeRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
-        events.add(SkyTntMidiEvent.controlChange(480, 0, 0, 7, 100));
+        List<MidiNoteEvent> events = new ArrayList<>();
+        events.add(MidiNoteEvent.controlChange(480, 0, 0, 7, 100));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
-        List<SkyTntMidiEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
+        List<MidiNoteEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
 
         assertEquals("decoded count", 1, decoded.size());
-        SkyTntMidiEvent d = decoded.get(0);
-        Assert.assertEquals("event type", SkyTntMidiEvent.EventType.CONTROL_CHANGE, d.getEventType());
+        MidiNoteEvent d = decoded.get(0);
+        Assert.assertEquals("event type", MidiNoteEvent.EventType.CONTROL_CHANGE, d.getEventType());
         assertEquals("controller", 7, d.getController());
         assertEquals("cc value", 100, d.getCcValue());
     }
@@ -285,15 +285,15 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testSetTempoRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
-        events.add(SkyTntMidiEvent.setTempo(0, 0, 140));
+        List<MidiNoteEvent> events = new ArrayList<>();
+        events.add(MidiNoteEvent.setTempo(0, 0, 140));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
-        List<SkyTntMidiEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
+        List<MidiNoteEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
 
         assertEquals("decoded count", 1, decoded.size());
-        SkyTntMidiEvent d = decoded.get(0);
-        Assert.assertEquals("event type", SkyTntMidiEvent.EventType.SET_TEMPO, d.getEventType());
+        MidiNoteEvent d = decoded.get(0);
+        Assert.assertEquals("event type", MidiNoteEvent.EventType.SET_TEMPO, d.getEventType());
         assertEquals("bpm", 140, d.getBpm());
     }
 
@@ -303,16 +303,16 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testTimeSignatureRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
+        List<MidiNoteEvent> events = new ArrayList<>();
         // 4/4 time: nn=3 (4-1), dd=1 (4=2^(1+1))
-        events.add(SkyTntMidiEvent.timeSignature(0, 0, 3, 1));
+        events.add(MidiNoteEvent.timeSignature(0, 0, 3, 1));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
-        List<SkyTntMidiEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
+        List<MidiNoteEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
 
         assertEquals("decoded count", 1, decoded.size());
-        SkyTntMidiEvent d = decoded.get(0);
-        Assert.assertEquals("event type", SkyTntMidiEvent.EventType.TIME_SIGNATURE, d.getEventType());
+        MidiNoteEvent d = decoded.get(0);
+        Assert.assertEquals("event type", MidiNoteEvent.EventType.TIME_SIGNATURE, d.getEventType());
         assertEquals("nn", 3, d.getNn());
         assertEquals("dd", 1, d.getDd());
     }
@@ -323,16 +323,16 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testKeySignatureRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
+        List<MidiNoteEvent> events = new ArrayList<>();
         // C major: sf=7 (0 sharps/flats + 7 offset), mi=0 (major)
-        events.add(SkyTntMidiEvent.keySignature(0, 0, 7, 0));
+        events.add(MidiNoteEvent.keySignature(0, 0, 7, 0));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
-        List<SkyTntMidiEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
+        List<MidiNoteEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
 
         assertEquals("decoded count", 1, decoded.size());
-        SkyTntMidiEvent d = decoded.get(0);
-        Assert.assertEquals("event type", SkyTntMidiEvent.EventType.KEY_SIGNATURE, d.getEventType());
+        MidiNoteEvent d = decoded.get(0);
+        Assert.assertEquals("event type", MidiNoteEvent.EventType.KEY_SIGNATURE, d.getEventType());
         assertEquals("sf", 7, d.getSf());
         assertEquals("mi", 0, d.getMi());
     }
@@ -347,15 +347,15 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testMixedEventRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
-        events.add(SkyTntMidiEvent.setTempo(0, 0, 120));
-        events.add(SkyTntMidiEvent.timeSignature(0, 0, 3, 1));
-        events.add(SkyTntMidiEvent.note(480, 0, 0, 60, 80, 480));
-        events.add(SkyTntMidiEvent.note(960, 0, 0, 64, 80, 480));
-        events.add(SkyTntMidiEvent.patchChange(1440, 0, 1, 25));
+        List<MidiNoteEvent> events = new ArrayList<>();
+        events.add(MidiNoteEvent.setTempo(0, 0, 120));
+        events.add(MidiNoteEvent.timeSignature(0, 0, 3, 1));
+        events.add(MidiNoteEvent.note(480, 0, 0, 60, 80, 480));
+        events.add(MidiNoteEvent.note(960, 0, 0, 64, 80, 480));
+        events.add(MidiNoteEvent.patchChange(1440, 0, 1, 25));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
-        List<SkyTntMidiEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
+        List<MidiNoteEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
 
         assertEquals("event count preserved", events.size(), decoded.size());
         for (int i = 0; i < events.size(); i++) {
@@ -371,9 +371,9 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testTime1DeltaEncoding() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
-        events.add(SkyTntMidiEvent.note(0, 0, 0, 60, 80, 480));
-        events.add(SkyTntMidiEvent.note(480, 0, 0, 62, 80, 480)); // 1 beat later
+        List<MidiNoteEvent> events = new ArrayList<>();
+        events.add(MidiNoteEvent.note(0, 0, 0, 60, 80, 480));
+        events.add(MidiNoteEvent.note(480, 0, 0, 62, 80, 480)); // 1 beat later
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
         // Row 1 = first note, row 2 = second note
@@ -390,9 +390,9 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testTime2FineResolution() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
+        List<MidiNoteEvent> events = new ArrayList<>();
         // 480 / 16 = 30 ticks per 1/16th beat.  3 * 30 = 90 ticks = time2=3
-        events.add(SkyTntMidiEvent.note(90, 0, 0, 60, 80, 480));
+        events.add(MidiNoteEvent.note(90, 0, 0, 60, 80, 480));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
         int time2 = tokens[1][2] - SkyTntTokenizerV2.TIME2_OFFSET;
@@ -414,7 +414,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
         assertEquals("row 0 = BOS", SkyTntTokenizerV2.BOS_ID, tokens[0][0]);
         assertEquals("row 1 = EOS", SkyTntTokenizerV2.EOS_ID, tokens[1][0]);
 
-        List<SkyTntMidiEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
+        List<MidiNoteEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
         assertTrue("empty detokenize", decoded.isEmpty());
     }
 
@@ -424,13 +424,13 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testSingleNote() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
-        events.add(SkyTntMidiEvent.note(0, 0, 0, 60, 100, 480));
+        List<MidiNoteEvent> events = new ArrayList<>();
+        events.add(MidiNoteEvent.note(0, 0, 0, 60, 100, 480));
 
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);
         assertEquals("seq_len", 3, tokens.length);
 
-        List<SkyTntMidiEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
+        List<MidiNoteEvent> decoded = tokenizer.detokenize(tokens, TICKS_PER_BEAT);
         assertEquals("1 note decoded", 1, decoded.size());
         assertEquals("pitch", 60, decoded.get(0).getPitch());
         assertEquals("velocity", 100, decoded.get(0).getVelocity());
@@ -442,15 +442,15 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     @Test
     public void testMaxParameterValues() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
-        List<SkyTntMidiEvent> events = new ArrayList<>();
+        List<MidiNoteEvent> events = new ArrayList<>();
         // Maximum ticks = 127 beats (time1 max) * TICKS_PER_BEAT
         long maxTick = 127L * TICKS_PER_BEAT;
-        events.add(SkyTntMidiEvent.note(maxTick, 127, 15, 127, 127, 2047));
-        events.add(SkyTntMidiEvent.setTempo(0, 127, 383));
-        events.add(SkyTntMidiEvent.timeSignature(0, 0, 15, 3));
-        events.add(SkyTntMidiEvent.keySignature(0, 0, 14, 1));
-        events.add(SkyTntMidiEvent.patchChange(0, 127, 15, 127));
-        events.add(SkyTntMidiEvent.controlChange(0, 127, 15, 127, 127));
+        events.add(MidiNoteEvent.note(maxTick, 127, 15, 127, 127, 2047));
+        events.add(MidiNoteEvent.setTempo(0, 127, 383));
+        events.add(MidiNoteEvent.timeSignature(0, 0, 15, 3));
+        events.add(MidiNoteEvent.keySignature(0, 0, 14, 1));
+        events.add(MidiNoteEvent.patchChange(0, 127, 15, 127));
+        events.add(MidiNoteEvent.controlChange(0, 127, 15, 127, 127));
 
         // Should not throw
         int[][] tokens = tokenizer.tokenize(events, TICKS_PER_BEAT);

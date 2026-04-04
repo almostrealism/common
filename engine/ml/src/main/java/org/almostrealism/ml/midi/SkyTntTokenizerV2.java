@@ -24,7 +24,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * SkyTNT V2 MIDI tokenizer: converts between {@link SkyTntMidiEvent} sequences
+ * SkyTNT V2 MIDI tokenizer: converts between {@link MidiNoteEvent} sequences
  * and the flat integer token sequences consumed by the SkyTNT midi-model.
  *
  * <h2>Vocabulary layout (3406 tokens)</h2>
@@ -73,7 +73,7 @@ import java.util.List;
  * <p>time1 is stored as a delta from the previous event's time1. Duration is
  * stored in 1/16th-beat units (clamped to 1–2047).</p>
  *
- * @see SkyTntMidiEvent
+ * @see MidiNoteEvent
  */
 public class SkyTntTokenizerV2 implements ConsoleFeatures {
 
@@ -212,8 +212,8 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
      * @param ticksPerBeat MIDI PPQ resolution (ticks per quarter-note beat)
      * @return token array of shape (events.size() + 2) × {@value #MAX_TOKEN_SEQ}
      */
-    public int[][] tokenize(List<SkyTntMidiEvent> events, int ticksPerBeat) {
-        List<SkyTntMidiEvent> sorted = new ArrayList<>(events);
+    public int[][] tokenize(List<MidiNoteEvent> events, int ticksPerBeat) {
+        List<MidiNoteEvent> sorted = new ArrayList<>(events);
         Collections.sort(sorted);
 
         int seqLen = sorted.size() + 2; // +2 for BOS and EOS
@@ -226,7 +226,7 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         int prevTime1 = 0;
 
         for (int i = 0; i < sorted.size(); i++) {
-            SkyTntMidiEvent event = sorted.get(i);
+            MidiNoteEvent event = sorted.get(i);
             int[] row = tokens[i + 1];
 
             int[] timing = quantizeTick(event.getTick(), prevTime1, ticksPerBeat);
@@ -246,7 +246,7 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
     }
 
     /**
-     * Reconstructs a list of {@link SkyTntMidiEvent}s from a token array.
+     * Reconstructs a list of {@link MidiNoteEvent}s from a token array.
      *
      * <p>BOS, EOS, and fully-padded rows are stripped. Timing is reconstructed
      * by accumulating time1 deltas and combining with time2.</p>
@@ -255,8 +255,8 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
      * @param ticksPerBeat MIDI PPQ resolution (ticks per quarter-note beat)
      * @return reconstructed MIDI events
      */
-    public List<SkyTntMidiEvent> detokenize(int[][] tokens, int ticksPerBeat) {
-        List<SkyTntMidiEvent> events = new ArrayList<>();
+    public List<MidiNoteEvent> detokenize(int[][] tokens, int ticksPerBeat) {
+        List<MidiNoteEvent> events = new ArrayList<>();
         int accumulatedTime1 = 0;
 
         for (int[] row : tokens) {
@@ -266,7 +266,7 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
                 continue;
             }
 
-            SkyTntMidiEvent event = decodeEvent(row, accumulatedTime1, ticksPerBeat);
+            MidiNoteEvent event = decodeEvent(row, accumulatedTime1, ticksPerBeat);
             if (event == null) {
                 warn("Skipping unrecognized event token " + eventToken);
                 continue;
@@ -345,7 +345,7 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
      * Fills {@code row} with the token IDs for the given event using the
      * pre-computed time1 delta and time2 fine position.
      */
-    private static void encodeEvent(SkyTntMidiEvent event, int time1Delta, int time2,
+    private static void encodeEvent(MidiNoteEvent event, int time1Delta, int time2,
                                      int[] row) {
         switch (event.getEventType()) {
             case NOTE:
@@ -419,10 +419,10 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
     // -----------------------------------------------------------------------
 
     /**
-     * Decodes a single token row into a {@link SkyTntMidiEvent}, or returns
+     * Decodes a single token row into a {@link MidiNoteEvent}, or returns
      * {@code null} if the row contains invalid token IDs.
      */
-    private static SkyTntMidiEvent decodeEvent(int[] row, int accumulatedTime1,
+    private static MidiNoteEvent decodeEvent(int[] row, int accumulatedTime1,
                                                 int ticksPerBeat) {
         int eventToken = row[0];
         if (row[1] < TIME1_OFFSET || row[1] >= TIME1_OFFSET + 128) return null;
@@ -450,7 +450,7 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
     }
 
     /** Decodes a NOTE row, or returns {@code null} on invalid token range. */
-    private static SkyTntMidiEvent decodeNote(int[] row, long tick) {
+    private static MidiNoteEvent decodeNote(int[] row, long tick) {
         if (row[3] < TRACK_OFFSET || row[3] >= TRACK_OFFSET + 128) return null;
         if (row[4] < CHANNEL_OFFSET || row[4] >= CHANNEL_OFFSET + 16) return null;
         if (row[5] < PITCH_OFFSET || row[5] >= PITCH_OFFSET + 128) return null;
@@ -462,11 +462,11 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         int pitch = row[5] - PITCH_OFFSET;
         int velocity = row[6] - VELOCITY_OFFSET;
         int durationUnits = row[7] - DURATION_OFFSET;
-        return SkyTntMidiEvent.note(tick, track, channel, pitch, velocity, durationUnits);
+        return MidiNoteEvent.note(tick, track, channel, pitch, velocity, durationUnits);
     }
 
     /** Decodes a PATCH_CHANGE row, or returns {@code null} on invalid token range. */
-    private static SkyTntMidiEvent decodePatchChange(int[] row, long tick) {
+    private static MidiNoteEvent decodePatchChange(int[] row, long tick) {
         if (row[3] < TRACK_OFFSET || row[3] >= TRACK_OFFSET + 128) return null;
         if (row[4] < CHANNEL_OFFSET || row[4] >= CHANNEL_OFFSET + 16) return null;
         if (row[5] < PATCH_OFFSET || row[5] >= PATCH_OFFSET + 128) return null;
@@ -474,11 +474,11 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         int track = row[3] - TRACK_OFFSET;
         int channel = row[4] - CHANNEL_OFFSET;
         int patch = row[5] - PATCH_OFFSET;
-        return SkyTntMidiEvent.patchChange(tick, track, channel, patch);
+        return MidiNoteEvent.patchChange(tick, track, channel, patch);
     }
 
     /** Decodes a CONTROL_CHANGE row, or returns {@code null} on invalid token range. */
-    private static SkyTntMidiEvent decodeControlChange(int[] row, long tick) {
+    private static MidiNoteEvent decodeControlChange(int[] row, long tick) {
         if (row[3] < TRACK_OFFSET || row[3] >= TRACK_OFFSET + 128) return null;
         if (row[4] < CHANNEL_OFFSET || row[4] >= CHANNEL_OFFSET + 16) return null;
         if (row[5] < CONTROLLER_OFFSET || row[5] >= CONTROLLER_OFFSET + 128) return null;
@@ -488,21 +488,21 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         int channel = row[4] - CHANNEL_OFFSET;
         int controller = row[5] - CONTROLLER_OFFSET;
         int value = row[6] - VALUE_OFFSET;
-        return SkyTntMidiEvent.controlChange(tick, track, channel, controller, value);
+        return MidiNoteEvent.controlChange(tick, track, channel, controller, value);
     }
 
     /** Decodes a SET_TEMPO row, or returns {@code null} on invalid token range. */
-    private static SkyTntMidiEvent decodeSetTempo(int[] row, long tick) {
+    private static MidiNoteEvent decodeSetTempo(int[] row, long tick) {
         if (row[3] < TRACK_OFFSET || row[3] >= TRACK_OFFSET + 128) return null;
         if (row[4] < BPM_OFFSET || row[4] >= BPM_OFFSET + 384) return null;
 
         int track = row[3] - TRACK_OFFSET;
         int bpm = row[4] - BPM_OFFSET;
-        return SkyTntMidiEvent.setTempo(tick, track, bpm);
+        return MidiNoteEvent.setTempo(tick, track, bpm);
     }
 
     /** Decodes a TIME_SIGNATURE row, or returns {@code null} on invalid token range. */
-    private static SkyTntMidiEvent decodeTimeSignature(int[] row, long tick) {
+    private static MidiNoteEvent decodeTimeSignature(int[] row, long tick) {
         if (row[3] < TRACK_OFFSET || row[3] >= TRACK_OFFSET + 128) return null;
         if (row[4] < NN_OFFSET || row[4] >= NN_OFFSET + 16) return null;
         if (row[5] < DD_OFFSET || row[5] >= DD_OFFSET + 4) return null;
@@ -510,11 +510,11 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         int track = row[3] - TRACK_OFFSET;
         int nn = row[4] - NN_OFFSET;
         int dd = row[5] - DD_OFFSET;
-        return SkyTntMidiEvent.timeSignature(tick, track, nn, dd);
+        return MidiNoteEvent.timeSignature(tick, track, nn, dd);
     }
 
     /** Decodes a KEY_SIGNATURE row, or returns {@code null} on invalid token range. */
-    private static SkyTntMidiEvent decodeKeySignature(int[] row, long tick) {
+    private static MidiNoteEvent decodeKeySignature(int[] row, long tick) {
         if (row[3] < TRACK_OFFSET || row[3] >= TRACK_OFFSET + 128) return null;
         if (row[4] < SF_OFFSET || row[4] >= SF_OFFSET + 15) return null;
         if (row[5] < MI_OFFSET || row[5] >= MI_OFFSET + 2) return null;
@@ -522,7 +522,7 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         int track = row[3] - TRACK_OFFSET;
         int sf = row[4] - SF_OFFSET;
         int mi = row[5] - MI_OFFSET;
-        return SkyTntMidiEvent.keySignature(tick, track, sf, mi);
+        return MidiNoteEvent.keySignature(tick, track, sf, mi);
     }
 
     // -----------------------------------------------------------------------

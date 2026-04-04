@@ -28,7 +28,7 @@ import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.ml.midi.MidiFileReader;
 import org.almostrealism.ml.midi.SkyTntConfig;
 import org.almostrealism.ml.midi.SkyTntMidi;
-import org.almostrealism.ml.midi.SkyTntMidiEvent;
+import org.almostrealism.ml.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.SkyTntTokenizerV2;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestSuiteBase;
@@ -134,7 +134,7 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
         log("Generated " + (unconditional.length - 1) + " events (BOS + "
                 + (unconditional.length - 1) + " generated)");
 
-        List<SkyTntMidiEvent> unconditionalEvents =
+        List<MidiNoteEvent> unconditionalEvents =
                 tokenizer.detokenize(
                         Arrays.copyOfRange(unconditional, 1, unconditional.length),
                         SkyTntMidi.DEFAULT_TICKS_PER_BEAT);
@@ -146,10 +146,10 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
 
         // ---- 2. C major chord prompt ----
         log("--- Generating MIDI from C major chord prompt ---");
-        List<SkyTntMidiEvent> promptEvents = buildCMajorPrompt(SkyTntMidi.DEFAULT_TICKS_PER_BEAT);
+        List<MidiNoteEvent> promptEvents = buildCMajorPrompt(SkyTntMidi.DEFAULT_TICKS_PER_BEAT);
         log("Prompt contains " + promptEvents.size() + " events");
 
-        List<SkyTntMidiEvent> promptedEvents = model.generateFromEvents(
+        List<MidiNoteEvent> promptedEvents = model.generateFromEvents(
                 promptEvents, MAX_NEW_EVENTS,
                 SkyTntMidi.DEFAULT_TEMPERATURE,
                 SkyTntMidi.DEFAULT_TOP_P,
@@ -158,7 +158,7 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
         logEventSummary("prompted-Cmaj", promptedEvents);
 
         // Write the full sequence: prompt + generated
-        List<SkyTntMidiEvent> fullCmaj = new ArrayList<>(promptEvents);
+        List<MidiNoteEvent> fullCmaj = new ArrayList<>(promptEvents);
         fullCmaj.addAll(promptedEvents);
 
         File promptedFile = new File(outputDir, "prompted-Cmaj-001.mid");
@@ -256,13 +256,13 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
      * @param ticksPerBeat MIDI PPQ resolution
      * @return list of note events forming a C major chord
      */
-    private static List<SkyTntMidiEvent> buildCMajorPrompt(int ticksPerBeat) {
-        List<SkyTntMidiEvent> events = new ArrayList<>();
+    private static List<MidiNoteEvent> buildCMajorPrompt(int ticksPerBeat) {
+        List<MidiNoteEvent> events = new ArrayList<>();
         // C4=60, E4=64, G4=67, all on track 0 channel 0, velocity 80, duration 1 beat
         long duration = ticksPerBeat;
-        events.add(SkyTntMidiEvent.note(0, 0, 0, 60, 80, duration));  // C4
-        events.add(SkyTntMidiEvent.note(0, 0, 0, 64, 80, duration));  // E4
-        events.add(SkyTntMidiEvent.note(0, 0, 0, 67, 80, duration));  // G4
+        events.add(MidiNoteEvent.note(0, 0, 0, 60, 80, duration));  // C4
+        events.add(MidiNoteEvent.note(0, 0, 0, 64, 80, duration));  // E4
+        events.add(MidiNoteEvent.note(0, 0, 0, 67, 80, duration));  // G4
         return events;
     }
 
@@ -281,18 +281,18 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
      * @param outputFile   destination file
      * @throws Exception if writing fails
      */
-    private void writeMidiFile(List<SkyTntMidiEvent> events, File outputFile) throws Exception {
+    private void writeMidiFile(List<MidiNoteEvent> events, File outputFile) throws Exception {
         MidiFileReader writer = new MidiFileReader();
 
         if (events.isEmpty()) {
             log("Warning: event list is empty for " + outputFile.getName()
                     + " — writing silence placeholder");
             // Write a minimal file with a single short note so the file is valid MIDI
-            List<SkyTntMidiEvent> placeholder = new ArrayList<>();
-            placeholder.add(SkyTntMidiEvent.note(0, 0, 0, 60, 64, SkyTntMidi.DEFAULT_TICKS_PER_BEAT));
-            writer.writeSkyTntEvents(placeholder, outputFile, SkyTntMidi.DEFAULT_TICKS_PER_BEAT);
+            List<MidiNoteEvent> placeholder = new ArrayList<>();
+            placeholder.add(MidiNoteEvent.note(0, 0, 0, 60, 64, SkyTntMidi.DEFAULT_TICKS_PER_BEAT));
+            writer.write(placeholder, outputFile, SkyTntMidi.DEFAULT_TICKS_PER_BEAT);
         } else {
-            writer.writeSkyTntEvents(events, outputFile, SkyTntMidi.DEFAULT_TICKS_PER_BEAT);
+            writer.write(events, outputFile, SkyTntMidi.DEFAULT_TICKS_PER_BEAT);
         }
     }
 
@@ -306,11 +306,11 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
      * @param label  label to include in the log
      * @param events generated events
      */
-    private void logEventSummary(String label, List<SkyTntMidiEvent> events) {
+    private void logEventSummary(String label, List<MidiNoteEvent> events) {
         int notes = 0;
         int other = 0;
-        for (SkyTntMidiEvent e : events) {
-            if (e.getEventType() == SkyTntMidiEvent.EventType.NOTE) {
+        for (MidiNoteEvent e : events) {
+            if (e.getEventType() == MidiNoteEvent.EventType.NOTE) {
                 notes++;
             } else {
                 other++;

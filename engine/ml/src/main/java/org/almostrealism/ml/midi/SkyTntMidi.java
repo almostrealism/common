@@ -71,7 +71,7 @@ import java.util.Random;
  *
  * @see SkyTntConfig
  * @see SkyTntTokenizerV2
- * @see SkyTntMidiEvent
+ * @see MidiNoteEvent
  */
 public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 
@@ -334,7 +334,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * @param ticksPerBeat   MIDI PPQ resolution for timing quantization
 	 * @return newly generated MIDI events (does not include prompt events)
 	 */
-	public List<SkyTntMidiEvent> generateFromEvents(List<SkyTntMidiEvent> promptEvents,
+	public List<MidiNoteEvent> generateFromEvents(List<MidiNoteEvent> promptEvents,
 													int maxNewEvents, double temperature,
 													double topP, int topK, int ticksPerBeat) {
 		int[][] promptTokens = tokenizer.tokenize(promptEvents, ticksPerBeat);
