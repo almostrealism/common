@@ -58,6 +58,7 @@ public class RSSFeed {
 	 * Represents a single item in the RSS feed.
 	 */
 	public static class Item {
+		/** The item title, text content, and optional image URL. */
 		private String title, text, image;
 
 		/**
@@ -100,9 +101,12 @@ public class RSSFeed {
 	/** CDATA section end tag. */
 	public static final String endHtml = "]]>";
 
+	/** The feed title, description, and link URL. */
 	private String title, desc, link;
+	/** The list of {@link Item} objects in this feed. */
 	private List items;
 
+	/** Formatter for RFC-2822-compliant dates used in RSS. */
 	private SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss Z");
 
 	/**

@@ -37,14 +37,30 @@ import java.util.function.Supplier;
  * @see OutputLine
  */
 public class SilenceDetectionOutputLine implements OutputLine, CellFeatures {
+	/** The delegate output line that receives audio samples after analysis. */
 	private final OutputLine out;
+
+	/** Amplitude threshold below which audio is considered silence. */
 	private final double threshold;
+
+	/** Single-element collection holding the maximum absolute sample value observed. */
 	private final PackedCollection max;
 
+	/**
+	 * Creates a SilenceDetectionOutputLine wrapping the given output line with a default threshold of 0.05.
+	 *
+	 * @param out the delegate output line
+	 */
 	public SilenceDetectionOutputLine(OutputLine out) {
 		this(out, 0.05);
 	}
 
+	/**
+	 * Creates a SilenceDetectionOutputLine wrapping the given output line with the specified threshold.
+	 *
+	 * @param out       the delegate output line
+	 * @param threshold amplitude below which audio is considered silence (0.0–1.0)
+	 */
 	public SilenceDetectionOutputLine(OutputLine out, double threshold) {
 		this.out = out;
 		this.threshold = threshold;
@@ -56,6 +72,12 @@ public class SilenceDetectionOutputLine implements OutputLine, CellFeatures {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Returns true if the maximum observed sample amplitude is below the configured threshold,
+	 * indicating that the most recently written buffer was silent.
+	 *
+	 * @return true if the audio is below the silence threshold
+	 */
 	public boolean isSilence() {
 		return max.toDouble() < threshold;
 	}

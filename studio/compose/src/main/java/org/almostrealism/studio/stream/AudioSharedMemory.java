@@ -24,11 +24,29 @@ import org.almostrealism.studio.persistence.WaveDetailsOutputLine;
 
 import java.io.IOException;
 
+/**
+ * Standalone entry point that demonstrates shared-memory audio streaming.
+ * Loads two samples into a {@link BufferedAudioPlayer} and starts an
+ * {@link AudioStreamManager} server so DAW clients can connect via shared memory.
+ */
 public class AudioSharedMemory implements CellFeatures {
+	/**
+	 * Application entry point.
+	 *
+	 * @param args command-line arguments (unused)
+	 * @throws InterruptedException if the main thread is interrupted
+	 * @throws IOException          if the audio manager or writer cannot be created
+	 */
 	public static void main(String[] args) throws InterruptedException, IOException {
 		new AudioSharedMemory().run();
 	}
 
+	/**
+	 * Configures and starts the shared-memory audio streaming server.
+	 *
+	 * @throws IOException          if the audio manager or writer cannot be created
+	 * @throws InterruptedException if the run loop is interrupted
+	 */
 	public void run() throws IOException, InterruptedException {
 		AudioLibraryDataWriter writer = new AudioLibraryDataWriter("recording_test", "recordings");
 		WaveDetailsOutputLine record = new WaveDetailsOutputLine(writer);

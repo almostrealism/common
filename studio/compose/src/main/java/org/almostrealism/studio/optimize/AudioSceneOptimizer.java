@@ -63,27 +63,64 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * High-level optimizer that wires an {@link AudioScene} to a population of genomes and
+ * coordinates evolutionary optimization cycles. Extends {@link AudioPopulationOptimizer} with
+ * {@link TemporalCellular} as the temporal type.
+ *
+ * <p>On each cycle the population's genomes are applied to the scene, health is evaluated
+ * by the configured {@link AudioHealthComputation}, and the resulting scored population is bred
+ * to produce improved candidates.</p>
+ */
 public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellular> {
+	/** Local destination path for the JSON population persistence file. */
 	public static final String POPULATION_FILE = SystemUtils.getLocalDestination("population.json");
 
+	/** Verbosity level read from the {@code AR_AUDIO_OPT_VERBOSITY} system property. */
 	public static final int verbosity = SystemUtils.getInt("AR_AUDIO_OPT_VERBOSITY").orElse(0);
+
+	/** When set to {@code -1} all channels are active; otherwise only the specified channel is active. */
 	public static final int singleChannel = -1;
 
+	/** Enables verbose logging within the optimizer when {@code true}. */
 	public static boolean enableVerbose = false;
+
+	/** Enables hardware-level operation profiling when {@code true}. */
 	public static boolean enableProfile = false;
+
+	/** Enables native heap allocation for the optimization run when {@code true}. */
 	public static boolean enableHeap = false;
+
+	/** Reduces scene duration for faster iteration cycles when {@code true}. */
 	public static boolean enableShort = false;
 
+	/** Default native heap size in bytes when {@link #enableHeap} is active. */
 	public static int DEFAULT_HEAP_SIZE = 384 * 1024 * 1024;
+
+	/** Magnitude of random perturbations applied during genome breeding. */
 	public static double breederPerturbation = 0.02;
 
+	/** Root directory path of the audio sample library, configurable via {@code AR_RINGS_LIBRARY}. */
 	public static String LIBRARY = SystemUtils.getProperty("AR_RINGS_LIBRARY", "Library");
 
+	/** Console logger scoped to {@code AudioSceneOptimizer}. */
 	private static final ConsoleFeatures console = Console.root().features(AudioSceneOptimizer.class);
 
+	/** The active audio scene population managed by this optimizer. */
 	private AudioScenePopulation population;
+
+	/** Optional processor for wave detail metadata produced during health evaluation. */
 	private Consumer<WaveDetails> detailsProcessor;
 
+	/**
+	 * Constructs an {@code AudioSceneOptimizer} for the given audio scene, using the default
+	 * genome generator derived from the scene's genome factory.
+	 *
+	 * @param scene        the audio scene whose parameters will be optimized
+	 * @param breeder      supplier of the genome breeder for producing offspring
+	 * @param generator    supplier of a genome supplier for generating new individuals
+	 * @param totalCycles  the total number of optimization cycles to run
+	 */
 	public AudioSceneOptimizer(AudioScene<?> scene,
 							   Supplier<GenomeBreeder<PackedCollection>> breeder,
 							   Supplier<Supplier<Genome<PackedCollection>>> generator,
@@ -127,6 +164,12 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 				});
 	}
 
+	/**
+	 * Sets an optional processor that receives {@link WaveDetails} metadata produced
+	 * during each health evaluation cycle.
+	 *
+	 * @param processor the wave details consumer, or {@code null} to disable
+	 */
 	public void setWaveDetailsProcessor(Consumer<WaveDetails> processor) {
 		this.detailsProcessor = processor;
 	}
@@ -138,15 +181,38 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		population = null;
 	}
 
+	/**
+	 * Creates an {@code AudioSceneOptimizer} using the default random genome generator
+	 * derived from the scene's genome.
+	 *
+	 * @param scene  the audio scene to optimize
+	 * @param cycles the number of optimization cycles to run
+	 * @return a configured {@code AudioSceneOptimizer}
+	 */
 	public static AudioSceneOptimizer build(AudioScene<?> scene, int cycles) {
 		return build(() -> scene.getGenome()::random, scene, cycles);
 	}
 
+	/**
+	 * Creates an {@code AudioSceneOptimizer} with an explicit genome generator supplier.
+	 *
+	 * @param generator supplier of a genome supplier for generating new individuals
+	 * @param scene     the audio scene to optimize
+	 * @param cycles    the number of optimization cycles to run
+	 * @return a configured {@code AudioSceneOptimizer}
+	 */
 	public static AudioSceneOptimizer build(Supplier<Supplier<Genome<PackedCollection>>> generator,
 											AudioScene<?> scene, int cycles) {
 		return new AudioSceneOptimizer(scene, () -> defaultBreeder(breederPerturbation), generator, cycles);
 	}
 
+	/**
+	 * Creates the default genome breeder that combines two parent genomes via perturbation.
+	 * Each gene value is perturbed by a random scale factor derived from {@code magnitude}.
+	 *
+	 * @param magnitude the base perturbation magnitude applied during breeding
+	 * @return a {@link GenomeBreeder} that produces perturbed offspring genomes
+	 */
 	public static GenomeBreeder<PackedCollection> defaultBreeder(double magnitude) {
 		return (g1, g2) -> {
 			PackedCollection a = ((ProjectedGenome) g1).getParameters();
@@ -164,6 +230,12 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		};
 	}
 
+	/**
+	 * Configures the active feature set for the audio scene based on a numeric feature level.
+	 * Higher levels enable more processing stages such as EFX, reverb, and automation.
+	 *
+	 * @param featureLevel the desired feature level (0 = minimal, 7 = full feature set)
+	 */
 	public static void setFeatureLevel(int featureLevel) {
 		PatternElementFactory.enableVolumeEnvelope = featureLevel > 0;
 		PatternElementFactory.enableFilterEnvelope = featureLevel > 0;
@@ -190,6 +262,14 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		}
 	}
 
+	/**
+	 * Configures logging verbosity and optional hardware-level profiling across all optimizer
+	 * subsystems. Higher verbosity values enable progressively more detailed logging.
+	 *
+	 * @param verbosity     the verbosity level (negative disables breeding; positive enables subsystem logging)
+	 * @param enableProfile when {@code true} a hardware operation profile node is created and assigned
+	 * @return an {@link OperationProfileNode} if profiling is enabled, otherwise {@code null}
+	 */
 	public static OperationProfileNode setVerbosity(int verbosity, boolean enableProfile) {
 		// Verbosity level -1
 		enableBreeding = verbosity < 0;
@@ -261,6 +341,12 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		}
 	}
 
+	/**
+	 * Creates a new scene, builds and initializes an optimizer, then executes the optimization
+	 * loop. Prints the profile and additional metrics summaries after the run completes.
+	 *
+	 * @param profile the operation profile node for collecting timing data, or {@code null}
+	 */
 	public static void run(OperationProfileNode profile) {
 		try {
 			AudioScene<?> scene = createScene();
@@ -283,6 +369,13 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		}
 	}
 
+	/**
+	 * Creates and configures a default {@link AudioScene} using standard constants and settings.
+	 * Loads pattern factory data from the local destination and configures keyboard tuning and
+	 * library root.
+	 *
+	 * @return a fully configured {@link AudioScene} ready for optimization
+	 */
 	public static AudioScene<?> createScene() {
 		double bpm = 120.0;
 		int sourceCount = AudioScene.DEFAULT_SOURCE_COUNT;
@@ -323,6 +416,12 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		return scene;
 	}
 
+	/**
+	 * Loads pattern factory JSON data into the specified scene, throwing a runtime exception
+	 * if the file cannot be read.
+	 *
+	 * @param scene the audio scene to populate with pattern choices
+	 */
 	private static void loadChoices(AudioScene scene) {
 		try {
 			scene.loadPatterns(SystemUtils.getLocalDestination("pattern-factory.json"));

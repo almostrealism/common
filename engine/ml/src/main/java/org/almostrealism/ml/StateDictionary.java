@@ -48,6 +48,7 @@ import java.util.Set;
  * @author  Michael Murray
  */
 public class StateDictionary extends AssetGroup implements Destroyable, ConsoleFeatures {
+	/** The in-memory map from weight key names to their decoded {@link PackedCollection} tensors. */
 	private Map<String, PackedCollection> weights;
 
 	/**
@@ -92,6 +93,11 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 		this.weights = weights;
 	}
 
+	/**
+	 * Initializes the weight map and loads all weight tensors from the underlying assets.
+	 *
+	 * @throws IOException if any asset cannot be read or decoded
+	 */
 	protected void init() throws IOException {
 		this.weights = new HashMap<>();
 		loadWeights();

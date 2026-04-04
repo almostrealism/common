@@ -78,24 +78,46 @@ import java.util.function.Supplier;
  */
 public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures {
 
+	/** Random number generator used to initialize the LoRA A matrix with Gaussian values. */
 	private static final Random random = new Random(42);
 
+	/** The human-readable name identifying this layer, including rank and dimensions. */
 	private final String name;
+
+	/** The shape of data arriving at this layer's forward cell. */
 	private final TraversalPolicy inputShape;
+
+	/** The shape produced by this layer's forward cell. */
 	private final TraversalPolicy outputShape;
+
+	/** The low-rank dimension used for both LoRA matrices. */
 	private final int rank;
+
+	/** The scaling factor applied to the LoRA contribution ({@code alpha / rank = scale}). */
 	private final double alpha;
+
+	/** The pre-computed scaling factor ({@code alpha / rank}). */
 	private final double scale;
 
+	/** The frozen base weight matrix of shape {@code [outputSize, inputSize]}. */
 	private final PackedCollection baseWeights;
+
+	/** The frozen base bias vector of shape {@code [outputSize]}, or {@code null} if there is no bias. */
 	private final PackedCollection baseBias;
+
+	/** The trainable LoRA A matrix of shape {@code [inputSize, rank]}, initialized from a Gaussian. */
 	private final PackedCollection loraA;
+
+	/** The trainable LoRA B matrix of shape {@code [rank, outputSize]}, initialized to zeros. */
 	private final PackedCollection loraB;
 
-	// Delegate to a properly constructed CellularLayer
+	/** Fully constructed CellularLayer that backs the forward and backward cells for this LoRA layer. */
 	private final CellularLayer delegate;
 
+	/** The parameter update strategy applied to {@link #loraA} and {@link #loraB} during training. */
 	private ParameterUpdate<PackedCollection> parameterUpdate;
+
+	/** Optional compute requirements forwarded to the delegate layer. */
 	private List<ComputeRequirement> requirements;
 
 	/**
@@ -313,6 +335,12 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 		}
 	}
 
+	/**
+	 * Sets compute requirements to apply to operations in the delegate layer.
+	 *
+	 * @param requirements the list of {@link ComputeRequirement} constraints, or {@code null}
+	 *                     to use the defaults
+	 */
 	public void setComputeRequirements(List<ComputeRequirement> requirements) {
 		this.requirements = requirements;
 		if (delegate instanceof DefaultCellularLayer) {

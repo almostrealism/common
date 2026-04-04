@@ -30,13 +30,35 @@ import org.almostrealism.collect.PackedCollection;
  * @see WaveDetailsFactory
  */
 public interface WaveDataFeatureProvider {
+	/**
+	 * Computes feature vectors for the given wave data provider, resampling to the expected audio sample rate.
+	 *
+	 * @param provider the audio provider to extract features from
+	 * @return feature vector as a PackedCollection
+	 */
 	default PackedCollection computeFeatures(WaveDataProvider provider) {
 		return computeFeatures(provider.get(getAudioSampleRate()));
 	}
 
+	/**
+	 * Computes feature vectors directly from the given WaveData.
+	 *
+	 * @param waveData the audio data to extract features from
+	 * @return feature vector as a PackedCollection
+	 */
 	PackedCollection computeFeatures(WaveData waveData);
 
+	/**
+	 * Returns the expected audio sample rate in Hz for input to this feature provider.
+	 *
+	 * @return required audio sample rate in Hz
+	 */
 	int getAudioSampleRate();
 
+	/**
+	 * Returns the sample rate of the output feature vectors in frames per second.
+	 *
+	 * @return feature sample rate in frames per second
+	 */
 	double getFeatureSampleRate();
 }

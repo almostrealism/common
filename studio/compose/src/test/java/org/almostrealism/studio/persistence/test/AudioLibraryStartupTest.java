@@ -25,6 +25,7 @@ import org.almostrealism.studio.persistence.AudioLibraryMigration;
 import org.almostrealism.studio.persistence.AudioLibraryPersistence;
 import org.almostrealism.studio.persistence.LibraryDestination;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
+import io.almostrealism.code.Precision;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persist.assets.CollectionEncoder;
 import io.almostrealism.code.Precision;

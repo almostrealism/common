@@ -298,7 +298,9 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 					CollectionExpression<PassThroughProducer<T>>,
 					DescribableParent<Process<?, ?>> {
 
+	/** Traversal policy defining the shape of the data this producer passes through. */
 	private TraversalPolicy shape;
+	/** Zero-based index of the kernel argument that this producer passes through. */
 	private int argIndex;
 
 	/**
@@ -314,6 +316,9 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		init();
 	}
 
+	/**
+	 * Creates an uninitialized pass-through producer with a self-referential destination input.
+	 */
 	private PassThroughProducer() {
 		this.setInputs(Arrays.asList(new MemoryDataDestinationProducer(this)));
 	}

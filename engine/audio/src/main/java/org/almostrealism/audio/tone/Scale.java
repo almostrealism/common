@@ -55,12 +55,29 @@ import java.util.function.Consumer;
  * @see SetIntervalScale
  */
 public interface Scale<T extends KeyPosition> extends Plural<T> {
+	/**
+	 * Returns the number of notes in this scale.
+	 *
+	 * @return the scale length
+	 */
 	int length();
 
+	/**
+	 * Creates a static scale from an array of pre-specified notes.
+	 *
+	 * @param <T>   the KeyPosition type
+	 * @param notes the notes to include in the scale
+	 * @return a Scale containing exactly the specified notes
+	 */
 	static <T extends KeyPosition> Scale<T> of(T... notes) {
 		return new StaticScale<>(notes);
 	}
 
+	/**
+	 * Iterates over all notes in this scale, passing each to the given consumer.
+	 *
+	 * @param consumer the consumer to receive each note
+	 */
 	default void forEach(Consumer<T> consumer) {
 		for (int i = 0; i < length(); i++) {
 			consumer.accept(valueAt(i));

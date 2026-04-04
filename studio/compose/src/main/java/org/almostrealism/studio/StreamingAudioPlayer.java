@@ -53,12 +53,22 @@ public class StreamingAudioPlayer implements ConsoleFeatures {
 		SHARED
 	}
 
+	/** The scheduled audio player that wraps the buffered player with a scheduler. */
 	private final ScheduledOutputAudioPlayer player;
+
+	/** The delegated audio line used for output switching between direct and DAW modes. */
 	private final DelegatedAudioLine outputLine;
+
+	/** Optional recording output line; may be {@code null}. */
 	private final OutputLine recordingLine;
 
+	/** The direct hardware output line; created lazily by {@link #getOrCreateDirectOutput()}. */
 	private SourceDataOutputLine directOutput;
+
+	/** The current DAW shared-memory connection; may be {@code null} if no DAW has connected. */
 	private SharedMemoryAudioLine dawOutput;
+
+	/** The currently active output mode; {@code null} until explicitly set. */
 	private OutputMode activeMode;
 
 	/**

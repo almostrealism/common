@@ -26,21 +26,45 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Stateful ML audio generator that manages source audio conditioning and generated
+ * audio results. The generator transitions through lifecycle states as it refreshes
+ * its model and produces new audio samples.
+ */
 public class Generator {
+	/** Unique identifier for this generator. */
 	private String id;
+
+	/** Human-readable name for this generator. */
 	private String name;
+
+	/** Current lifecycle state. */
 	private State state;
 
+	/** Identifiers of audio sources used as conditioning input. */
 	private List<String> sources;
+
+	/** Generated audio results produced by the most recent generation call. */
 	private List<NoteAudio> results;
 
+	/** Provider for resolving audio sources by identifier. */
 	private NoteSourceProvider sourceProvider;
+
+	/** Back-end generation provider used to refresh and generate audio. */
 	private GenerationProvider generationProvider;
 
+	/** Creates a generator with a generated ID and initial {@link State#NONE} state. */
 	public Generator() {
 		this(KeyUtils.generateKey(), "Generator", State.NONE);
 	}
 
+	/**
+	 * Creates a generator with the given identifier, name, and state.
+	 *
+	 * @param id    unique identifier
+	 * @param name  human-readable name
+	 * @param state initial lifecycle state
+	 */
 	public Generator(String id, String name, State state) {
 		this.id = id;
 		this.name = name;
@@ -76,6 +100,13 @@ public class Generator {
 	@JsonIgnore
 	public void setGenerationProvider(GenerationProvider provider) { this.generationProvider = provider; }
 
+	/**
+	 * Refreshes the generation model using the currently configured sources.
+	 * The generator must not already be refreshing or generating when this is called.
+	 *
+	 * @return {@code false} if no sources were available; {@code true} if refresh was triggered
+	 * @throws IllegalStateException if the generator is currently busy
+	 */
 	public boolean refresh() {
 		if (state == State.REFRESHING || state == State.GENERATING) {
 			throw new IllegalStateException("Generator is busy");
@@ -97,6 +128,12 @@ public class Generator {
 		return true;
 	}
 
+	/**
+	 * Generates audio samples using the refreshed model.
+	 *
+	 * @param count the number of samples to generate
+	 * @throws IllegalStateException if the generator is not in the {@link State#READY} state
+	 */
 	public void generate(int count) {
 		if (state != State.READY) {
 			throw new IllegalStateException("Generator is not ready");
@@ -110,9 +147,25 @@ public class Generator {
 		}
 	}
 
+	/** Lifecycle state of a {@link Generator}. */
 	public enum State {
-		NONE, REFRESHING, READY, GENERATING;
+		/** The generator has not been initialised or has been reset. */
+		NONE,
 
+		/** The generator is currently refreshing its model from source audio. */
+		REFRESHING,
+
+		/** The generator is fully trained and ready to produce audio. */
+		READY,
+
+		/** The generator is currently producing audio samples. */
+		GENERATING;
+
+		/**
+		 * Returns a human-readable display name for this state.
+		 *
+		 * @return the display name
+		 */
 		public String getName() {
 			switch (this) {
 				case NONE:

@@ -29,14 +29,41 @@ import org.almostrealism.color.SurfaceLight;
 import org.almostrealism.geometry.Locatable;
 import org.almostrealism.geometry.UniformSphericalRandom;
 
+/**
+ * A planar area light source that emits photons from a rectangular surface.
+ * <p>
+ * The {@code PlanarLight} models a flat luminaire with configurable width, height,
+ * surface normal, and orientation vector. Emission positions are sampled uniformly
+ * across the plane, and emission directions are either normal to the surface or
+ * distributed over a hemisphere (based on the {@code lightProp} flag).
+ * </p>
+ */
 public class PlanarLight extends LightBulb implements SurfaceLight, Locatable, VectorFeatures, RGBFeatures {
-	private double w, h;
+	/** Width of the emission plane in scene units (typically micrometers). */
+	private double w;
+
+	/** Height of the emission plane in scene units (typically micrometers). */
+	private double h;
+
+	/** Unit vector normal to the plane surface, pointing in the primary emission direction. */
 	private Vector normal;
-	private Vector up, across;
+
+	/** Vector pointing upward across the plane surface; {@code across} is derived from this. */
+	private Vector up;
+
+	/** Vector pointing across the plane surface, computed as the cross product of up and normal. */
+	private Vector across;
+
+	/** When {@code true}, emission directions are distributed over a hemisphere; otherwise normal only. */
 	private boolean lightProp = false;
+
+	/** Alignment blend factor between the random hemisphere direction and the surface normal. */
 	private final double align = 0.0;
+
+	/** Optional color tint applied to all light samples produced by this planar light. */
 	private RGB color;
 
+	/** World-space location of the center of this planar light. */
 	private Vector location;
 	
 	/**

@@ -52,7 +52,9 @@ import java.util.concurrent.Executor;
  * @author  Michael Murray
  */
 public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
+	/** The synchronous evaluable whose result is forwarded to the downstream consumer. */
 	private final Evaluable<T> evaluable;
+	/** The executor used to run the evaluation, enabling asynchronous delivery. */
 	private final Executor executor;
 
 	/**

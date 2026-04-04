@@ -23,11 +23,38 @@ import org.almostrealism.protobuf.Collections;
 
 import java.util.stream.IntStream;
 
+/**
+ * Utility class for encoding and decoding {@link PackedCollection} tensors to and from
+ * the protobuf {@link Collections.CollectionData} wire format.
+ *
+ * <p>Encoding preserves the tensor's shape ({@link TraversalPolicy}) and numeric data at
+ * either FP64 or FP32 precision. Decoding reconstructs a {@link PackedCollection} —
+ * optionally writing into an existing destination buffer at a given offset.</p>
+ *
+ * @see PackedCollection
+ */
 public class CollectionEncoder {
+	/**
+	 * Encodes a {@link PackedCollection} to protobuf format at FP64 (double) precision.
+	 *
+	 * @param c The collection to encode; must not be {@code null}
+	 * @return A {@link Collections.CollectionData} message representing the collection
+	 */
 	public static Collections.CollectionData encode(PackedCollection c) {
 		return encode(c, Precision.FP64);
 	}
 
+	/**
+	 * Encodes a {@link PackedCollection} to protobuf format at the specified precision.
+	 *
+	 * <p>If {@code c} is {@code null}, the default (empty) instance of
+	 * {@link Collections.CollectionData} is returned.</p>
+	 *
+	 * @param c         The collection to encode
+	 * @param precision {@link Precision#FP64} stores doubles; {@link Precision#FP32} stores floats
+	 * @return A {@link Collections.CollectionData} message, or the default instance if {@code c} is null
+	 * @throws IllegalArgumentException if {@code precision} is not FP32 or FP64
+	 */
 	public static Collections.CollectionData encode(PackedCollection c, Precision precision) {
 		if (c == null) return Collections.CollectionData.getDefaultInstance();
 
@@ -45,6 +72,12 @@ public class CollectionEncoder {
 		return data.build();
 	}
 
+	/**
+	 * Encodes a {@link TraversalPolicy} shape to its protobuf representation.
+	 *
+	 * @param shape The traversal policy to encode
+	 * @return A {@link Collections.TraversalPolicyData} message capturing dimensions and traversal axis
+	 */
 	public static Collections.TraversalPolicyData encode(TraversalPolicy shape) {
 		Collections.TraversalPolicyData.Builder data = Collections.TraversalPolicyData.newBuilder();
 		IntStream.range(0, shape.getDimensions()).forEach(i -> data.addDims(shape.length(i)));
@@ -52,6 +85,15 @@ public class CollectionEncoder {
 		return data.build();
 	}
 
+	/**
+	 * Decodes a {@link Collections.CollectionData} message into a new {@link PackedCollection}.
+	 *
+	 * <p>Returns {@code null} if the encoded shape has zero dimensions (i.e., the collection was null
+	 * when encoded).</p>
+	 *
+	 * @param data The protobuf message to decode
+	 * @return A new {@link PackedCollection} with the encoded shape and values, or {@code null}
+	 */
 	public static PackedCollection decode(Collections.CollectionData data) {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
 		if (shape.getDimensions() == 0) return null;
@@ -59,11 +101,28 @@ public class CollectionEncoder {
 		return decode(data, new PackedCollection(shape.getTotalSize()));
 	}
 
+	/**
+	 * Decodes a {@link Collections.CollectionData} message into an existing destination collection.
+	 *
+	 * @param data        The protobuf message to decode
+	 * @param destination The collection to write decoded values into, starting at offset 0
+	 * @return A range view of {@code destination} shaped according to the encoded shape,
+	 *         or {@code null} if the encoded shape has zero dimensions
+	 */
 	public static PackedCollection decode(Collections.CollectionData data,
 											 PackedCollection destination) {
 		return decode(data, destination, 0);
 	}
 
+	/**
+	 * Decodes a {@link Collections.CollectionData} message into an existing destination collection at the given offset.
+	 *
+	 * @param data              The protobuf message to decode
+	 * @param destination       The collection to write decoded values into
+	 * @param destinationOffset Element offset within {@code destination} at which writing begins
+	 * @return A range view of {@code destination} shaped according to the encoded shape,
+	 *         or {@code null} if the encoded shape has zero dimensions
+	 */
 	public static PackedCollection decode(Collections.CollectionData data,
 											 PackedCollection destination,
 											 int destinationOffset) {
@@ -85,10 +144,15 @@ public class CollectionEncoder {
 		return destination.range(shape, destinationOffset);
 	}
 
+	/**
+	 * Decodes a {@link Collections.TraversalPolicyData} message back into a {@link TraversalPolicy}.
+	 *
+	 * @param data The protobuf shape message
+	 * @return The reconstructed {@link TraversalPolicy}
+	 */
 	public static TraversalPolicy decode(Collections.TraversalPolicyData data) {
 		return new TraversalPolicy(true,
 				data.getDimsList().stream().mapToInt(i -> i).toArray())
 				.traverse(data.getTraversalAxis());
 	}
 }
-

@@ -27,9 +27,16 @@ package org.almostrealism.optimize;
  */
 public class TrainingProgress {
 
+	/** Current epoch number (0-indexed). */
 	private final int epoch;
+
+	/** Total training steps completed so far. */
 	private final int step;
+
+	/** Average training loss for this epoch. */
 	private final double trainLoss;
+
+	/** Validation loss for this epoch, or null if no validation data was provided. */
 	private final Double validationLoss;
 
 	/**

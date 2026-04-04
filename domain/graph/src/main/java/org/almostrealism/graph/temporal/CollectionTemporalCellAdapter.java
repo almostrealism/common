@@ -55,6 +55,7 @@ public abstract class CollectionTemporalCellAdapter extends CollectionCachedStat
 	/** Global depth parameter for controlling processing intensity. Default is 1.0. */
 	public static double depth = 1.0;
 
+	/** The list of setup operations accumulated via {@link #addSetup(Supplier)}. */
 	private final OperationList setup;
 
 	/**

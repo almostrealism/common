@@ -52,7 +52,18 @@ package org.almostrealism.physics;
  */
 public interface PhotonField {
 	
+	/**
+	 * Sets the simulation clock for this photon field.
+	 *
+	 * @param c  the clock to use
+	 */
 	void setClock(Clock c);
+
+	/**
+	 * Returns the simulation clock used by this photon field.
+	 *
+	 * @return the clock
+	 */
 	Clock getClock();
 	
 	/**

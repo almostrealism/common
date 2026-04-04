@@ -27,11 +27,28 @@ import org.almostrealism.collect.computations.DynamicCollectionProducer;
 
 import java.util.List;
 
+/**
+ * A {@link ParameterizedEnvelope} for a single layer within a {@link ParameterizedEnvelopeLayers}.
+ *
+ * <p>Delegates all parameter lookups to the parent {@link ParameterizedEnvelopeLayers}
+ * for the specific layer index, enabling per-layer ADSR values within a shared parameter set.</p>
+ *
+ * @see ParameterizedEnvelopeLayers
+ */
 public class ParameterizedLayerEnvelope implements ParameterizedEnvelope {
 
+	/** The parent layers configuration that provides the parameter functions. */
 	private final ParameterizedEnvelopeLayers parent;
+
+	/** The zero-based layer index this envelope controls. */
 	private final int layer;
 
+	/**
+	 * Creates a {@code ParameterizedLayerEnvelope} for the given layer in the given parent.
+	 *
+	 * @param parent the layers configuration
+	 * @param layer  the zero-based layer index
+	 */
 	public ParameterizedLayerEnvelope(ParameterizedEnvelopeLayers parent, int layer) {
 		this.parent = parent;
 		this.layer = layer;
@@ -42,39 +59,58 @@ public class ParameterizedLayerEnvelope implements ParameterizedEnvelope {
 		return new Filter(params, voicing);
 	}
 
+	/**
+	 * A concrete {@link NoteAudioFilter} that applies a per-layer multi-stage envelope.
+	 */
 	public class Filter implements NoteAudioFilter, EnvelopeFeatures {
+		/** The parameter set controlling envelope values. */
 		private final ParameterSet params;
+
+		/** The signal path voicing. */
 		private final ChannelInfo.Voicing voicing;
 
+		/**
+		 * Creates a Filter with the given parameters and voicing.
+		 *
+		 * @param params the parameter set
+		 * @param voicing the signal path voicing
+		 */
 		public Filter(ParameterSet params, ChannelInfo.Voicing voicing) {
 			this.params = params;
 			this.voicing = voicing;
 		}
 
+		/** Returns the computed attack duration from the parent layers. */
 		public double getAttack() {
 			return parent.getAttack(layer, params);
 		}
 
+		/** Returns the computed sustain duration from the parent layers. */
 		public double getSustain() {
 			return parent.getSustain(layer, params);
 		}
 
+		/** Returns the computed release duration from the parent layers. */
 		public double getRelease() {
 			return parent.getRelease(layer, params);
 		}
 
+		/** Returns the volume for audio source 0. */
 		public double getVolume0() {
 			return parent.getVolume(layer, 0, params);
 		}
 
+		/** Returns the volume for audio source 1. */
 		public double getVolume1() {
 			return parent.getVolume(layer, 1, params);
 		}
 
+		/** Returns the volume for audio source 2. */
 		public double getVolume2() {
 			return parent.getVolume(layer, 2, params);
 		}
 
+		/** Returns the volume for audio source 3. */
 		public double getVolume3() {
 			return parent.getVolume(layer, 3, params);
 		}

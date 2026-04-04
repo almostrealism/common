@@ -36,9 +36,16 @@ import java.util.List;
  * </p>
  */
 public class AudioCategory {
+	/** Unique identifier for this category. */
 	private String id;
+
+	/** Human-readable name of this category. */
 	private String name;
+
+	/** The sample-based note audio choice backing this category. */
 	private NoteAudioChoice choice;
+
+	/** The ML generative model descriptor for this category. */
 	private AudioModel model;
 
 	/**
@@ -96,18 +103,26 @@ public class AudioCategory {
 		return category;
 	}
 
+	/** Propagates the current {@link #id} to both the choice and model components. */
 	private void syncIds() {
 		if (choice != null) choice.setId(id);
 		if (model != null) model.setId(id);
 	}
 
+	/** Returns the unique identifier of this category. */
 	public String getId() { return id; }
 
+	/**
+	 * Sets the unique identifier of this category, propagating to both components.
+	 *
+	 * @param id the new identifier
+	 */
 	public void setId(String id) {
 		this.id = id;
 		syncIds();
 	}
 
+	/** Returns the human-readable name of this category. */
 	public String getName() { return name; }
 
 	/**
@@ -130,6 +145,11 @@ public class AudioCategory {
 	 */
 	public NoteAudioChoice getChoice() { return choice; }
 
+	/**
+	 * Sets the choice component, propagating the current id and name to it.
+	 *
+	 * @param choice the note audio choice to use
+	 */
 	public void setChoice(NoteAudioChoice choice) {
 		this.choice = choice;
 		if (choice != null) {
@@ -145,6 +165,11 @@ public class AudioCategory {
 	 */
 	public AudioModel getModel() { return model; }
 
+	/**
+	 * Sets the model component, propagating the current id and name to it.
+	 *
+	 * @param model the audio model to use
+	 */
 	public void setModel(AudioModel model) {
 		this.model = model;
 		if (model != null) {
@@ -155,66 +180,114 @@ public class AudioCategory {
 
 	// ========== Delegated Choice Properties ==========
 
+	/** Returns the audio sources associated with the choice component. */
 	public List<NoteAudioSource> getSources() {
 		return choice != null ? choice.getSources() : new ArrayList<>();
 	}
 
+	/**
+	 * Sets the audio sources on the choice component.
+	 *
+	 * @param sources the list of audio sources
+	 */
 	public void setSources(List<NoteAudioSource> sources) {
 		if (choice != null) choice.setSources(sources);
 	}
 
+	/** Returns the channel assignments from the choice component. */
 	public List<Integer> getChannels() {
 		return choice != null ? choice.getChannels() : new ArrayList<>();
 	}
 
+	/**
+	 * Sets the channel assignments on the choice component.
+	 *
+	 * @param channels the list of channel indices
+	 */
 	public void setChannels(List<Integer> channels) {
 		if (choice != null) choice.setChannels(channels);
 	}
 
+	/** Returns whether this category is configured for melodic (pitched) playback. */
 	public boolean isMelodic() {
 		return choice != null && choice.isMelodic();
 	}
 
+	/**
+	 * Sets whether this category is configured for melodic playback.
+	 *
+	 * @param melodic {@code true} for melodic playback
+	 */
 	public void setMelodic(boolean melodic) {
 		if (choice != null) choice.setMelodic(melodic);
 	}
 
+	/** Returns the minimum playback scale factor from the choice component. */
 	public double getMinScale() {
 		return choice != null ? choice.getMinScale() : 0.0625;
 	}
 
+	/**
+	 * Sets the minimum playback scale factor on the choice component.
+	 *
+	 * @param minScale the minimum scale factor
+	 */
 	public void setMinScale(double minScale) {
 		if (choice != null) choice.setMinScale(minScale);
 	}
 
+	/** Returns the maximum playback scale factor from the choice component. */
 	public double getMaxScale() {
 		return choice != null ? choice.getMaxScale() : 16.0;
 	}
 
+	/**
+	 * Sets the maximum playback scale factor on the choice component.
+	 *
+	 * @param maxScale the maximum scale factor
+	 */
 	public void setMaxScale(double maxScale) {
 		if (choice != null) choice.setMaxScale(maxScale);
 	}
 
+	/** Returns the maximum scale traversal depth from the choice component. */
 	public int getMaxScaleTraversalDepth() {
 		return choice != null ? choice.getMaxScaleTraversalDepth() : 9;
 	}
 
+	/**
+	 * Sets the maximum scale traversal depth on the choice component.
+	 *
+	 * @param depth the maximum traversal depth
+	 */
 	public void setMaxScaleTraversalDepth(int depth) {
 		if (choice != null) choice.setMaxScaleTraversalDepth(depth);
 	}
 
+	/** Returns whether this category is a seed category in the choice component. */
 	public boolean isSeed() {
 		return choice != null && choice.isSeed();
 	}
 
+	/**
+	 * Sets whether this category is a seed category on the choice component.
+	 *
+	 * @param seed {@code true} to mark as a seed
+	 */
 	public void setSeed(boolean seed) {
 		if (choice != null) choice.setSeed(seed);
 	}
 
+	/** Returns the selection bias value from the choice component. */
 	public double getBias() {
 		return choice != null ? choice.getBias() : -0.2;
 	}
 
+	/**
+	 * Sets the selection bias on the choice component.
+	 *
+	 * @param bias the bias value
+	 */
 	public void setBias(double bias) {
 		if (choice != null) choice.setBias(bias);
 	}
@@ -253,34 +326,58 @@ public class AudioCategory {
 		}
 	}
 
+	/** Returns the audio condition file paths from the model component. */
 	public List<String> getAudioConditions() {
 		return model != null ? model.getAudioConditions() : new ArrayList<>();
 	}
 
+	/**
+	 * Sets the audio condition file paths on the model component.
+	 *
+	 * @param audioConditions list of audio condition file paths
+	 */
 	public void setAudioConditions(List<String> audioConditions) {
 		if (model != null) model.setAudioConditions(audioConditions);
 	}
 
+	/** Returns the creativity (temperature) value from the model component, or {@code null}. */
 	public Double getCreativity() {
 		return model != null ? model.getCreativity() : null;
 	}
 
+	/**
+	 * Sets the creativity value on the model component.
+	 *
+	 * @param creativity the generation temperature, or {@code null} for the default
+	 */
 	public void setCreativity(Double creativity) {
 		if (model != null) model.setCreativity(creativity);
 	}
 
+	/** Returns the target generation duration in seconds from the model component. */
 	public double getDuration() {
 		return model != null ? model.getDuration() : 1.0;
 	}
 
+	/**
+	 * Sets the target generation duration in seconds on the model component.
+	 *
+	 * @param duration generation duration in seconds
+	 */
 	public void setDuration(double duration) {
 		if (model != null) model.setDuration(duration);
 	}
 
+	/** Returns whether this category generates pattern (loopable) audio. */
 	public boolean isPattern() {
 		return model != null && model.isPattern();
 	}
 
+	/**
+	 * Sets whether this category generates pattern (loopable) audio.
+	 *
+	 * @param pattern {@code true} for loopable pattern generation
+	 */
 	public void setPattern(boolean pattern) {
 		if (model != null) model.setPattern(pattern);
 	}

@@ -121,7 +121,9 @@ import java.util.TreeSet;
  * @author Michael Murray
  */
 public class TimeSeries {
+	/** Entries kept in ascending time order for efficient range queries and iteration. */
 	private final TreeSet<TemporalScalar> sorted;
+	/** Index from timestamp (seconds) to the corresponding scalar entry for O(1) lookup by time. */
 	private final Map<Double, TemporalScalar> byTime;
 
 	/**

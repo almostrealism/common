@@ -30,6 +30,7 @@
                 <a href="#relay">Job Relay</a>
                 <a href="#labels">Labels</a>
                 <a href="#classes">Key Classes</a>
+                <a href="#coding-agent">Coding Agent</a>
             </nav>
         </header>
 
@@ -215,6 +216,79 @@ relay Node activity thread
                     connections, manages thread groups.</p>
                 </div>
             </div>
+        </section>
+
+        <section id="coding-agent">
+            <h2>Coding Agent Integration</h2>
+
+            <p>FlowTree integrates with Claude Code to execute AI coding prompts as distributed
+            jobs. The controller dispatches <code>ClaudeCodeJob.Factory</code> instances to
+            connected agent nodes; each agent runs Claude Code in a headless subprocess
+            (<code>claude -p</code>) and commits the resulting changes via
+            <code>GitManagedJob</code>.</p>
+
+            <h3>ClaudeCodeJob Options</h3>
+
+            <p>Key configuration fields on <code>ClaudeCodeJob</code> and its
+            <code>Factory</code>:</p>
+
+            <table>
+                <thead>
+                    <tr><th>Property</th><th>Default</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>prompt</code></td><td>—</td><td>Prompt sent to Claude Code.</td></tr>
+                    <tr><td><code>allowedTools</code></td><td><code>Read,Edit,Write,Bash,Glob,Grep</code></td><td>Base tool allowlist; MCP tools are appended automatically.</td></tr>
+                    <tr><td><code>maxTurns</code></td><td>50</td><td>Maximum agentic turns before Claude Code stops.</td></tr>
+                    <tr><td><code>maxBudgetUsd</code></td><td>10.0</td><td>Spending cap in USD.</td></tr>
+                    <tr><td><code>targetBranch</code></td><td>null</td><td>Git branch for commits. If null, git operations are skipped.</td></tr>
+                    <tr><td><code>enforceChanges</code></td><td>false</td><td>When true, loops until the agent produces at least one code change.</td></tr>
+                    <tr><td><code>protectTestFiles</code></td><td>false</td><td>When true, prevents staging of existing test/CI files.</td></tr>
+                    <tr><td><code>deduplicationMode</code></td><td>null</td><td>Post-work duplicate-method scan. See below.</td></tr>
+                </tbody>
+            </table>
+
+            <h3>Deduplication Check</h3>
+
+            <p>Agent sessions routinely re-implement functionality that already exists
+            elsewhere in the codebase — renamed, slightly generalised, or placed in a
+            different class. The deduplication check runs after Claude Code finishes and
+            before changes are committed. It scans the diff for new Java method declarations
+            and submits an aggressive follow-up prompt that instructs a second agent to find
+            and eliminate any duplicates.</p>
+
+            <div class="key-concepts">
+                <div class="concept-card">
+                    <h4><code>DEDUP_LOCAL</code> ("local")</h4>
+                    <p>Runs an inline Claude Code session with the deduplication prompt before
+                    the commit is finalised. The dedup edits land in the same working tree and
+                    are committed together with the original work. No extra jobs are created.
+                    <strong>Recommended while iterating.</strong></p>
+                </div>
+                <div class="concept-card">
+                    <h4><code>DEDUP_SPAWN</code> ("spawn")</h4>
+                    <p>Posts a follow-up <code>ClaudeCodeJob</code> to the same workstream
+                    via <code>POST /api/submit</code> after the current commit. Fire-and-forget;
+                    requires a workstream URL. Useful in production pipelines where the
+                    dedup pass should be independently observable.</p>
+                </div>
+            </div>
+
+            <div class="tip">
+                <strong>Infinite loop safety.</strong> <code>DEDUP_LOCAL</code> calls
+                <code>executeSingleRun()</code> directly. This never re-invokes
+                <code>validateChanges()</code> and never copies <code>deduplicationMode</code>
+                to the inner session, so the check runs exactly once.
+            </div>
+
+            <h4>Via ar-manager MCP</h4>
+            <p>The <code>workstream_submit_task</code> MCP tool exposes
+            <code>deduplication_mode</code>:</p>
+            <pre><code>workstream_submit_task(
+    prompt="Implement feature X",
+    workstream_id="ws-common",
+    deduplication_mode="local"
+)</code></pre>
         </section>
 
         <section>

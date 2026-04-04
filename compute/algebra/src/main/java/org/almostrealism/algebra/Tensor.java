@@ -110,6 +110,7 @@ import java.util.stream.IntStream;
  * @see TraversalPolicy
  */
 public class Tensor<T> {
+	/** The root linked list used to hold the first dimension of the tensor's sparse data tree. */
 	private final LinkedList top;
 
 	/**
@@ -422,6 +423,7 @@ public class Tensor<T> {
 	 * @param <T>  the type of value stored in this leaf
 	 */
 	private static class Leaf<T> implements Future<T> {
+		/** The value stored at this leaf node. */
 		private final T o;
 
 		/**

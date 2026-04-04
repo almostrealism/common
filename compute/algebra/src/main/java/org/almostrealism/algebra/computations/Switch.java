@@ -67,6 +67,7 @@ import java.util.stream.IntStream;
  * @see Choice
  */
 public class Switch extends OperationComputationAdapter<PackedCollection> implements ExpressionFeatures {
+	/** The list of computation branches, one of which is executed based on the decision value. */
 	private final List<Computation<?>> choices;
 
 	/**

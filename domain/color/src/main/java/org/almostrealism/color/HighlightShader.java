@@ -78,7 +78,10 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
  */
 public class HighlightShader extends ShaderSet<ShaderContext> implements
 		Shader<ShaderContext>, RGBFeatures, RayFeatures {
+  /** The color of the specular highlight. */
   private Producer<PackedCollection> highlightColor;
+
+  /** The Phong exponent controlling highlight sharpness; higher values produce smaller, sharper highlights. */
   private double highlightExponent;
 
 	/**

@@ -52,9 +52,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class MidiInputConnection implements AutoCloseable {
 
+	/** The MIDI device this connection wraps. */
 	private final MidiDevice device;
+
+	/** Listeners notified on incoming MIDI messages. */
 	private final List<MidiInputListener> listeners;
+
+	/** The MIDI transmitter obtained from the device after it is opened. */
 	private Transmitter transmitter;
+
+	/** True while the device is open and receiving MIDI input. */
 	private boolean open;
 
 	/**

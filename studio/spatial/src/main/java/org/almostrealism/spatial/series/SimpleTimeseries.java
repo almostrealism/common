@@ -37,9 +37,13 @@ import java.util.List;
  * @see AudioModelOutput
  */
 public class SimpleTimeseries<T extends Tree> extends FrequencyTimeseriesAdapter implements Tree<T> {
+	/** The unique identifier for this timeseries. */
 	private String key;
 
+	/** The delegate timeseries used for frequency visualization. */
 	private SoundDataTimeseries delegate;
+
+	/** The child nodes of this tree node. */
 	private List<T> children;
 
 	/**

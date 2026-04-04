@@ -28,11 +28,25 @@ import java.io.OutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * HTTP audio handler that resumes a paused {@link BufferedOutputScheduler} when
+ * a GET request is received. Used to trigger playback from a remote client.
+ */
 public class BufferedOutputControl implements HttpAudioHandler, ConsoleFeatures {
+	/** Executor for off-thread resume submissions. */
 	private final ExecutorService executor;
+
+	/** The buffered output scheduler to resume on request. */
 	private final BufferedOutputScheduler scheduler;
+
+	/** Audio sample rate reported by the scheduler's output buffer. */
 	private final int sampleRate;
 
+	/**
+	 * Creates a control handler for the given scheduler.
+	 *
+	 * @param scheduler the buffered output scheduler to control
+	 */
 	public BufferedOutputControl(BufferedOutputScheduler scheduler) {
 		this.executor = Executors.newSingleThreadExecutor();
 		this.scheduler = scheduler;
@@ -40,8 +54,13 @@ public class BufferedOutputControl implements HttpAudioHandler, ConsoleFeatures 
 		BufferDefaults.logBufferInfo(sampleRate, scheduler.getOutputLine().getBufferSize(), this::log);
 	}
 
+	/** Returns the buffered output scheduler managed by this handler. */
 	public BufferedOutputScheduler getScheduler() { return scheduler; }
 
+	/**
+	 * Submits a resume request to the executor, which calls
+	 * {@link BufferedOutputScheduler#resume()} off the HTTP handler thread.
+	 */
 	protected void submitResume() {
 		this.executor.submit(() -> {
 			try {

@@ -96,9 +96,12 @@ import java.util.stream.Stream;
  * @author Michael Murray
  */
 public class Model implements Setup, Destroyable, CodeFeatures {
+	/** The sequential chain of blocks that constitutes this model's forward path. */
 	private SequentialBlock blocks;
+	/** Auxiliary input blocks whose outputs are injected at specific points in the forward path. */
 	private List<Block> inputs;
 
+	/** The parameter-update strategy applied during training; may be {@code null}. */
 	private ParameterUpdate<PackedCollection> parameterUpdate;
 
 	/**

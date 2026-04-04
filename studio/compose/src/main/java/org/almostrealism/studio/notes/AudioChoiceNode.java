@@ -28,23 +28,45 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Audio node that represents a single {@link NoteAudioChoice} category, with
+ * child nodes derived from the pattern elements assigned to that choice.
+ */
 public class AudioChoiceNode implements NoteAudioNode {
+	/** The note audio choice this node represents. */
 	private NoteAudioChoice choice;
+
+	/** Optional override name; if {@code null} the choice name is used. */
 	private String name;
 
+	/** Pattern elements assigned to this choice, used to build child nodes. */
 	private List<PatternElement> patternElements;
+
+	/** Child note audio nodes derived from pattern elements. */
 	private List<NoteAudioNode> children;
 
+	/** Creates an empty node with no choice or children. */
 	public AudioChoiceNode() { }
 
+	/**
+	 * Creates a node for the given note audio choice.
+	 *
+	 * @param choice the note audio choice this node represents
+	 */
 	public AudioChoiceNode(NoteAudioChoice choice) {
 		this.choice = choice;
 	}
 
+	/**
+	 * Sets an override name for this node.
+	 *
+	 * @param name the name to use instead of the choice name
+	 */
 	public void setName(String name) {
 		this.name = name;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public String getName() {
 		if (name != null) return name;
@@ -52,18 +74,29 @@ public class AudioChoiceNode implements NoteAudioNode {
 		return choice.getName();
 	}
 
+	/**
+	 * Sets the pattern elements from the given map, keyed by choice.
+	 *
+	 * @param elements map from choice to its pattern elements
+	 */
 	public void setPatternElements(Map<NoteAudioChoice, List<PatternElement>> elements) {
 		if (choice != null) {
 			setPatternElements(elements.get(choice));
 		}
 	}
 
+	/**
+	 * Sets the pattern elements and rebuilds the child nodes.
+	 *
+	 * @param patternElements the pattern elements to use
+	 */
 	public void setPatternElements(List<PatternElement> patternElements) {
 		this.patternElements = patternElements;
 		children = null;
 		initChildren();
 	}
 
+	/** Initialises the child nodes from the current pattern elements, if not already done. */
 	protected void initChildren() {
 		if (children != null) return;
 
@@ -80,10 +113,16 @@ public class AudioChoiceNode implements NoteAudioNode {
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Directly sets the child nodes, bypassing the pattern-element-derived initialisation.
+	 *
+	 * @param children the child nodes to set
+	 */
 	public void setChildren(List<NoteAudioNode> children) {
 		this.children = children;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Collection<NoteAudioNode> getChildren() {
 		return children;

@@ -7,6 +7,7 @@ import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
@@ -21,6 +22,7 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 
 /**
  * Test that uses Qwen3.java directly (with DynamicCollectionProducer for position)

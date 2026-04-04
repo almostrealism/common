@@ -95,13 +95,25 @@ import java.util.function.Function;
  * @see ArrayVariable
  */
 public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
+	/** Maximum number of entries this cache can hold. */
 	private final int maxEntries;
+	/** Number of elements per cache entry. */
 	private final int entrySize;
+	/** Factory that creates array variables for a given backing memory data block. */
 	private final Function<MemoryData, ArrayVariable<?>> variableFactory;
 
+	/** Backing contiguous memory block holding all cached entries. */
 	private Bytes data;
+	/** Array variable wrapping the backing memory, used for expression generation. */
 	private ArrayVariable<?> variable;
 
+	/**
+	 * Creates a cache manager with the given capacity and entry configuration.
+	 *
+	 * @param maxEntries     Maximum number of cached entries
+	 * @param entrySize      Number of elements per entry
+	 * @param variableFactory Factory for building expression variables over the backing memory
+	 */
 	protected MemoryDataCacheManager(int maxEntries, int entrySize,
 									 Function<MemoryData, ArrayVariable<?>> variableFactory) {
 		this.maxEntries = maxEntries;
@@ -109,9 +121,25 @@ public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 		this.variableFactory = variableFactory;
 	}
 
+	/**
+	 * Returns the number of elements in each cache entry.
+	 *
+	 * @return Entry size in elements
+	 */
 	public int getEntrySize() { return entrySize; }
+
+	/**
+	 * Returns the maximum number of entries this cache can hold.
+	 *
+	 * @return Maximum entry count
+	 */
 	public int getMaxEntries() { return maxEntries; }
 
+	/**
+	 * Returns the backing memory block, allocating it on first access.
+	 *
+	 * @return Bytes instance holding all cache data
+	 */
 	protected Bytes getData() {
 		if (data == null) {
 			long total = getMaxEntries() * (long) entrySize;
@@ -122,6 +150,13 @@ public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 		return data;
 	}
 
+	/**
+	 * Sets the value of the cache entry at the given index.
+	 *
+	 * @param index Entry index to update
+	 * @param data  Double values to write; must have length equal to {@link #getEntrySize()}
+	 * @throws IllegalArgumentException if data length does not equal entry size
+	 */
 	public void setValue(int index, double data[]) {
 		if (data.length != entrySize) {
 			throw new IllegalArgumentException();
@@ -130,6 +165,14 @@ public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 		getData().setMem(entrySize * index, data);
 	}
 
+	/**
+	 * Returns an expression that accesses the element at the given relative index within the specified cache entry.
+	 *
+	 * @param entry The cache entry index
+	 * @param index Expression for the element offset within the entry
+	 * @return Expression referencing the element at {@code (entry * entrySize) + index}
+	 * @throws IllegalArgumentException if the cache has not been initialized via {@link #setValue}
+	 */
 	public Expression<?> reference(int entry, Expression<?> index) {
 		if (variable == null) {
 			throw new IllegalArgumentException("Cannot reference series variable when nothing has been cached");
@@ -145,6 +188,14 @@ public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 		data.destroy();
 	}
 
+	/**
+	 * Factory method for creating a cache manager with the given configuration.
+	 *
+	 * @param entrySize      Number of elements per cache entry
+	 * @param maxEntries     Maximum number of entries
+	 * @param variableFactory Factory for building expression variables over the backing memory
+	 * @return New {@link MemoryDataCacheManager} instance
+	 */
 	public static MemoryDataCacheManager create(int entrySize, int maxEntries,
 												Function<MemoryData, ArrayVariable<?>> variableFactory) {
 		return new MemoryDataCacheManager(maxEntries, entrySize, variableFactory);

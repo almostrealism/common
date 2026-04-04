@@ -22,12 +22,45 @@ import io.almostrealism.uml.Named;
 
 import java.util.OptionalLong;
 
+/**
+ * A named, bounded sequence generator that represents an index variable in a kernel computation.
+ *
+ * <p>An {@code Index} is the fundamental building block for describing iteration dimensions in
+ * kernel computations. It combines {@link SequenceGenerator} (for producing {@link IndexSequence}
+ * values) with {@link Named} (for identifier-based lookup). Concrete subtypes include
+ * {@link io.almostrealism.kernel.KernelIndex} (the GPU thread ID) and {@link DefaultIndex}
+ * (an arbitrary named index with an optional limit).</p>
+ *
+ * @see SequenceGenerator
+ * @see DefaultIndex
+ * @see IndexChild
+ * @see io.almostrealism.kernel.KernelIndex
+ */
 public interface Index extends SequenceGenerator, Named {
 
+	/**
+	 * Creates a composite child index from the given parent and child indices.
+	 *
+	 * <p>The child index encodes a multi-dimensional position as a flat index using
+	 * {@code parent * childLimit + child}.
+	 *
+	 * @param parent the parent (outer) index
+	 * @param child the child (inner) index
+	 * @return a new {@link IndexChild} combining the two indices
+	 */
 	static IndexChild child(Index parent, Index child) {
 		return child(parent, child, null);
 	}
 
+	/**
+	 * Creates a composite child index from the given parent and child indices,
+	 * returning {@code null} if the resulting limit exceeds the given maximum.
+	 *
+	 * @param parent the parent (outer) index
+	 * @param child the child (inner) index
+	 * @param limitMax the maximum allowed limit (exclusive), or {@code null} for no limit check
+	 * @return a new {@link IndexChild} if within the limit, or {@code null} if the limit is exceeded
+	 */
 	static IndexChild child(Index parent, Index child, Long limitMax) {
 		IndexChild result;
 

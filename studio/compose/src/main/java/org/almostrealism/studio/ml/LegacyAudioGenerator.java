@@ -40,11 +40,19 @@ import java.util.function.DoubleConsumer;
 @Deprecated
 public class LegacyAudioGenerator extends ConditionalAudioSystem {
 
+	/** Target audio duration in seconds. */
 	private double audioDurationSeconds;
+
+	/** Optional consumer notified of generation progress in [0, 1]. */
 	private DoubleConsumer progressMonitor;
 
+	/** Composer used to interpolate between latent audio representations. */
 	private final AudioComposer composer;
+
+	/** The diffusion sampler that owns the denoising loop. */
 	private final DiffusionSampler sampler;
+
+	/** Strength controlling how much the seed audio is preserved (0 = preserve, 1 = full noise). */
 	private double strength;
 
 	/**
@@ -80,17 +88,37 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 		);
 	}
 
+	/** Returns the target audio generation duration in seconds. */
 	public double getAudioDuration() { return audioDurationSeconds; }
+
+	/**
+	 * Sets the target audio generation duration.
+	 *
+	 * @param seconds the desired duration in seconds
+	 */
 	public void setAudioDurationSeconds(double seconds) {
 		this.audioDurationSeconds = seconds;
 	}
 
+	/** Returns the progress monitor consumer, or {@code null} if not configured. */
 	public DoubleConsumer getProgressMonitor() { return progressMonitor; }
+
+	/**
+	 * Sets the progress monitor consumer for generation progress updates.
+	 *
+	 * @param monitor the consumer receiving progress in [0, 1]
+	 */
 	public void setProgressMonitor(DoubleConsumer monitor) {
 		this.progressMonitor = monitor;
 		sampler.setProgressCallback(monitor);
 	}
 
+	/**
+	 * Sets the diffusion strength parameter.
+	 *
+	 * @param strength a value in [0, 1]: 0 preserves the seed audio, 1 generates from pure noise
+	 * @throws IllegalArgumentException if strength is outside [0, 1]
+	 */
 	public void setStrength(double strength) {
 		if (strength < 0.0 || strength > 1.0) {
 			throw new IllegalArgumentException("Strength must be between 0.0 and 1.0");
@@ -98,24 +126,54 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 		this.strength = strength;
 	}
 
+	/** Returns the current diffusion strength parameter. */
 	public double getStrength() { return strength; }
 
+	/** Returns the audio composer used for latent interpolation. */
 	public AudioComposer getComposer() { return composer; }
 
+	/** Returns the dimensionality of the audio composer's interpolation space. */
 	public int getComposerDimension() { return composer.getEmbeddingDimension(); }
 
+	/**
+	 * Encodes and adds the given raw audio as a composable source.
+	 *
+	 * @param audio the raw audio to encode and add
+	 */
 	public void addAudio(PackedCollection audio) {
 		composer.addAudio(cp(audio));
 	}
 
+	/**
+	 * Adds pre-encoded latent features as a composable source.
+	 *
+	 * @param features the pre-encoded latent features to add
+	 */
 	public void addFeatures(PackedCollection features) {
 		composer.addSource(cp(features));
 	}
 
+	/**
+	 * Generates audio from the given text prompt and seed, writing WAV output to the given path.
+	 *
+	 * @param prompt     the text prompt for conditioning
+	 * @param seed       the random seed for reproducible generation
+	 * @param outputPath the WAV output file path
+	 * @throws IOException if writing the output file fails
+	 */
 	public void generateAudio(String prompt, long seed, String outputPath) throws IOException {
 		generateAudio(null, prompt, seed, outputPath);
 	}
 
+	/**
+	 * Generates audio from an optional latent position and text prompt, writing WAV output.
+	 *
+	 * @param position   optional latent position for sample-based generation; {@code null} for text-only
+	 * @param prompt     the text prompt for conditioning
+	 * @param seed       the random seed
+	 * @param outputPath the WAV output file path
+	 * @throws IOException if writing the output file fails
+	 */
 	public void generateAudio(PackedCollection position, String prompt,
 							  long seed, String outputPath) throws IOException {
 		double[][] audio = generateAudio(position, prompt, seed);
@@ -124,6 +182,14 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 		}
 	}
 
+	/**
+	 * Generates stereo audio from an optional latent position and text prompt.
+	 *
+	 * @param position optional latent position; {@code null} for text-only generation
+	 * @param prompt   the text prompt
+	 * @param seed     the random seed
+	 * @return two-channel audio as a 2D double array
+	 */
 	public double[][] generateAudio(PackedCollection position, String prompt, long seed) {
 		try {
 			return generateAudio(position, getTokenizer().encodeAsLong(prompt), seed);
@@ -134,6 +200,14 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 		}
 	}
 
+	/**
+	 * Generates stereo audio from an optional latent position and pre-tokenized prompt.
+	 *
+	 * @param position  optional latent position; {@code null} for text-only generation
+	 * @param tokenIds  the pre-tokenized prompt token IDs
+	 * @param seed      the random seed
+	 * @return two-channel audio as a 2D double array
+	 */
 	public double[][] generateAudio(PackedCollection position, long[] tokenIds, long seed) {
 		try {
 			if (position == null) {
@@ -178,6 +252,12 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 		}
 	}
 
+	/**
+	 * Decodes the given latent tensor to stereo audio using the autoencoder.
+	 *
+	 * @param latent the latent tensor to decode
+	 * @return two-channel audio as a 2D double array
+	 */
 	private double[][] decodeAudio(PackedCollection latent) {
 		PackedCollection result = getAutoencoder().decode(cp(latent)).evaluate();
 
@@ -195,6 +275,11 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 		return stereoAudio;
 	}
 
+	/**
+	 * Returns the diffusion sampler used for the denoising loop.
+	 *
+	 * @return the {@link DiffusionSampler} instance
+	 */
 	public DiffusionSampler getSampler() {
 		return sampler;
 	}

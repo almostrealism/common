@@ -18,6 +18,23 @@ package org.almostrealism.nio;
 
 import io.almostrealism.code.Memory;
 
+/**
+ * Strategy interface for creating a {@link NativeBuffer} from a foreign {@link io.almostrealism.code.Memory} type.
+ *
+ * <p>Implementations are registered with {@link NativeBufferMemoryProvider} to enable zero-copy or
+ * adapted allocation from cross-provider memory sources.</p>
+ *
+ * @param <T> Foreign memory type to adapt from
+ * @see NativeBufferMemoryProvider#registerAdapter(Class, NativeBufferAllocator)
+ */
 public interface NativeBufferAllocator<T extends Memory> {
+	/**
+	 * Creates a {@link NativeBuffer} backed by or copied from the given source memory.
+	 *
+	 * @param src    Source memory to adapt
+	 * @param offset Element offset within the source
+	 * @param length Number of elements to include
+	 * @return A new {@link NativeBuffer}, or null if this allocator cannot handle the source
+	 */
 	NativeBuffer allocate(T src, int offset, int length);
 }

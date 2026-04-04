@@ -56,8 +56,13 @@ import java.util.List;
  * @see Electrons
  */
 public class Electron {
+	/** The spin state of this electron (up or down). */
 	private Spin s;
+
+	/** The current excitation level index (0 = ground state). */
 	private int excitation;
+
+	/** Energy levels (in electron volts) corresponding to each excitation state above ground. */
 	private double excitationEnergyLevels[];
 
 	/**

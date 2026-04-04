@@ -44,11 +44,22 @@ import java.util.Random;
  */
 public class HarmonicBrush implements SpatialBrush {
 
+	/** The radius of each harmonic cluster in spatial units. */
 	private double radius = 10.0;
+
+	/** The point density in points per second. */
 	private double density = 100.0;
+
+	/** The number of harmonics to generate above the fundamental frequency. */
 	private int harmonicCount = 6;
+
+	/** The intensity multiplier per harmonic step (0.0-1.0). */
 	private double rolloff = 0.7;
+
+	/** The base intensity multiplier applied before rolloff. */
 	private double baseIntensity = 1.0;
+
+	/** The random number generator used for point displacement. */
 	private final Random random = new Random();
 
 	/**

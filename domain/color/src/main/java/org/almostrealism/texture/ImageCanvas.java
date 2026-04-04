@@ -38,13 +38,31 @@ import java.io.OutputStream;
  * @author  Michael Murray
  */
 public class ImageCanvas extends JPanel {
+  /** The width of the canvas in pixels. */
   private final int screenX;
+
+  /** The height of the canvas in pixels. */
 	private final int screenY;
-  private double xScale, yScale;
-  private double xOff, yOff;
-  
+
+  /** The horizontal scale factor applied when mapping world coordinates to screen pixels. */
+  private double xScale;
+
+  /** The vertical scale factor applied when mapping world coordinates to screen pixels. */
+  private double yScale;
+
+  /** The horizontal offset applied to world coordinates before scaling. */
+  private double xOff;
+
+  /** The vertical offset applied to world coordinates before scaling. */
+  private double yOff;
+
+  /** The 2D array of {@link RGB} pixels representing the current image state. */
   private RGB[][] image;
+
+  /** The current background or fill color used for cleared pixels. */
   private RGB color;
+
+  /** The index of the next pixel position to be written during sequential pixel updates. */
   private int next;
   
   /** The integer code for an RGB list image encoding. */
@@ -58,6 +76,12 @@ public class ImageCanvas extends JPanel {
 
   	
   
+	/**
+	 * Constructs a new {@link ImageCanvas} with the specified dimensions and default scale/offset.
+	 *
+	 * @param w the canvas width in pixels
+	 * @param h the canvas height in pixels
+	 */
 	public ImageCanvas(int w, int h) {
 		this(w, h, 1.0, 1.0, 0.0, 0.0);
 	}
@@ -178,11 +202,27 @@ public class ImageCanvas extends JPanel {
 		g.drawImage(img, 0, 0, Color.black, this);
 	}
 
+	/**
+	 * Writes the given image to the output stream using the specified encoding.
+	 *
+	 * @param image    the 2D array of {@link RGB} pixels to encode
+	 * @param o        the output stream to write to
+	 * @param encoding the encoding format (e.g., {@link #JPEGEncoding}, {@link #PPMEncoding})
+	 * @throws IOException if writing fails
+	 */
 	public static void writeImage(RGB[][] image, OutputStream o, int encoding)
 			throws IOException {
 		writeImage(new Provider<>(image), o, encoding);
 	}
 
+	/**
+	 * Evaluates the image producer and writes the resulting image to the output stream.
+	 *
+	 * @param imageProducer an {@link Evaluable} that produces the image pixels
+	 * @param o             the output stream to write to
+	 * @param encoding      the encoding format (e.g., {@link #JPEGEncoding}, {@link #PPMEncoding})
+	 * @throws IOException if writing fails
+	 */
 	public static void writeImage(Evaluable<RGB[][]> imageProducer, OutputStream o, int encoding)
 						throws IOException {
 		RGB[][] image = imageProducer.evaluate();

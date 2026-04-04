@@ -51,7 +51,10 @@ import java.util.regex.Pattern;
  */
 public class RegexPreTokenizer implements PreTokenizer {
 
+    /** Compiled regex pattern used to split input text into segments. */
     private final Pattern pattern;
+
+    /** Human-readable description of this pre-tokenizer instance, including the pattern. */
     private final String description;
 
     /**

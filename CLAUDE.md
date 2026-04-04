@@ -193,6 +193,8 @@ Consult the linked references before writing related code.
 
 **PackedCollection is NOT a Java Array.** It is a handle to potentially GPU-resident memory. Never use `System.arraycopy`, `Arrays.copyOf`, or tight `setMem` loops. Use the Producer pattern: `cp(source).multiply(2.0).evaluate()`. See [docs/internals/packed-collection-examples.md](docs/internals/packed-collection-examples.md).
 
+**PackedCollection and Model are AutoCloseable** via `Destroyable` (a subinterface of `AutoCloseable` in `io.almostrealism.lifecycle`). Both hold GPU/native memory that should be released when no longer needed. Use try-with-resources for short-lived local instances. Do NOT use try-with-resources when the collection or model is captured by a computation graph, stored as a field, passed to a block/layer, or returned from a method — in those cases the caller is responsible for lifecycle management. When in doubt: if you created it just to use it within a single method and it won't escape, close it.
+
 **Code Policy Enforcement:** `CodePolicyViolationDetector` enforces the GPU memory model in CI. Do not circumvent it by extracting code to helpers, naming methods to match the whitelist, or adding suppression comments. Fix the violating code.
 
 **Process Isolation:** Only `IsolatedProcess` breaks expression embedding. Never return null from `getValueAt()`. Call `Process.optimize()` before `Process.get()`.
@@ -209,6 +211,8 @@ Consult the linked references before writing related code.
 - No excessive inline comments
 - No code duplication: if you have 3+ structurally similar lines, refactor before proceeding. Extend and generalize existing code rather than creating copies.
 - **Method placement**: Every method belongs on the class it operates on. A method that traverses an `Expression` tree is a method of `Expression`. A method that collects declarations from a `Scope` tree is a method of `Scope`. Never define general-purpose utility methods as private helpers on a subclass — this prevents reuse and violates basic OOP. If a method doesn't use any instance state of its class, make it `static` at minimum.
+- **No utility/helper/exporter/converter classes.** If you need to add behavior that operates on an existing type, add it as a method on that type. A `PatternElement` that can produce MIDI events has a `toMidiEvents()` method — it does NOT have a `PatternMidiExporter` that operates on it from the outside. Before creating a new class, ask: "Does this behavior belong on an existing type?" If yes, add it there. New classes are for genuinely new concepts, not for wrapping operations on existing concepts. Organize code around the concepts it represents, not around the operations being performed.
+- **Module placement matters.** Code belongs in the module that matches its conceptual domain. MIDI data types and I/O are music concepts and belong in the music module, not the ML module. A model that combines ML and music belongs in a module that has both as dependencies (e.g., compose). Think about what a class *is*, not just what it *uses*.
 - No speculation when debugging. Follow evidence. Never say "the problem might be X" without proof.
 
 ---

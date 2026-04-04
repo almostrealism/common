@@ -23,6 +23,7 @@ import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
+import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.music.notes.NoteSourceProvider;
@@ -34,6 +35,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedChromosome;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -116,28 +118,55 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
+	/** Whether automatic volume adjustment is enabled. */
 	public static final boolean enableAutoVolume = false;
+
+	/** Whether lazy destination computation is enabled. */
 	public static final boolean enableLazyDestination = false;
+
+	/** Whether verbose logging is enabled. */
 	public static boolean enableVerbose = false;
+
+	/** Whether warning logging is enabled. */
 	public static boolean enableWarnings = true;
 
+	/** The list of available note audio choices. */
 	private final List<NoteAudioChoice> choices;
+
+	/** The list of pattern layer managers, one per pattern. */
 	private final List<PatternLayerManager> patterns;
+
+	/** The chromosomes providing genetic parameters, one per pattern. */
 	private final List<ProjectedChromosome> chromosomes;
 
+	/** The volume scaling collection. */
 	private PackedCollection volume;
+
+	/** The destination collection. */
 	private PackedCollection destination;
 
+	/**
+	 * Creates a {@code PatternSystemManager} with no initial choices.
+	 *
+	 * @param chromosomes the list of chromosomes for pattern parameterization
+	 */
 	public PatternSystemManager( List<ProjectedChromosome> chromosomes) {
 		this(new ArrayList<>(), chromosomes);
 	}
 
+	/**
+	 * Creates a {@code PatternSystemManager} with the given choices and chromosomes.
+	 *
+	 * @param choices     the available note audio choices
+	 * @param chromosomes the list of chromosomes for pattern parameterization
+	 */
 	public PatternSystemManager(List<NoteAudioChoice> choices,  List<ProjectedChromosome> chromosomes) {
 		this.choices = choices;
 		this.patterns = new ArrayList<>();
 		this.chromosomes = chromosomes;
 	}
 
+	/** Initializes the volume to 1.0. */
 	public void init() {
 		volume = new PackedCollection(1);
 		volume.setMem(0, 1.0);
@@ -151,18 +180,32 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 				.findFirst().orElse(null);
 	}
 
+	/** Returns the list of note audio choices. */
 	public List<NoteAudioChoice> getChoices() {
 		return choices;
 	}
 
+	/**
+	 * Returns a flat list of all audio sources from all choices.
+	 *
+	 * @return all audio sources
+	 */
 	public List<NoteAudioSource> getAllSources() {
 		return getChoices()
 				.stream()
 				.flatMap(c -> c.getSources().stream()).toList();
 	}
 
+	/** Returns the list of pattern layer managers. */
 	public List<PatternLayerManager> getPatterns() { return patterns; }
 
+	/**
+	 * Returns all pattern elements in {@code [start, end)}, grouped by choice.
+	 *
+	 * @param start the inclusive start position
+	 * @param end   the exclusive end position
+	 * @return a map from choice to list of elements
+	 */
 	public Map<NoteAudioChoice, List<PatternElement>> getPatternElements(double start, double end) {
 		Map<NoteAudioChoice, List<PatternElement>> elements = new HashMap<>();
 
@@ -174,21 +217,39 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		return elements;
 	}
 
+	/**
+	 * Sets the output volume scaling factor.
+	 *
+	 * @param volume the new volume value
+	 */
 	public void setVolume(double volume) {
 		this.volume.setMem(0, volume);
 	}
 
+	/**
+	 * Returns a {@link Settings} snapshot of the current configuration.
+	 *
+	 * @return the current settings
+	 */
 	public Settings getSettings() {
 		Settings settings = new Settings();
 		settings.getPatterns().addAll(patterns.stream().map(PatternLayerManager::getSettings).toList());
 		return settings;
 	}
 
+	/**
+	 * Applies a {@link Settings} snapshot to this manager.
+	 *
+	 * @param settings the settings to apply
+	 */
 	public void setSettings(Settings settings) {
 		patterns.clear();
 		settings.getPatterns().forEach(s -> addPattern(s.getChannel(), s.getDuration(), s.isMelodic()).setSettings(s));
 	}
 
+	/**
+	 * Refreshes the parameters for all patterns, adjusting seed bias based on active layer count.
+	 */
 	public void refreshParameters() {
 		patterns.stream().collect(Collectors.groupingBy(PatternLayerManager::getChannel))
 				.forEach((c, channelPatterns) -> {
@@ -201,14 +262,30 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		patterns.forEach(PatternLayerManager::refresh);
 	}
 
+	/**
+	 * Propagates the keyboard tuning to all choices.
+	 *
+	 * @param tuning the tuning to apply
+	 */
 	public void setTuning(KeyboardTuning tuning) {
 		choices.forEach(c -> c.setTuning(tuning));
 	}
 
+	/**
+	 * Sets the file wave data provider tree for all sources, with no progress reporting.
+	 *
+	 * @param root the file tree to set
+	 */
 	public void setTree(FileWaveDataProviderTree<?> root) {
 		setTree(root, null);
 	}
 
+	/**
+	 * Sets the file wave data provider tree for all sources with optional progress reporting.
+	 *
+	 * @param root     the file tree to set
+	 * @param progress an optional consumer that receives progress values in {@code [0, 1]}
+	 */
 	public void setTree(FileWaveDataProviderTree<?> root, DoubleConsumer progress) {
 		List<NoteAudioSource> sources = getAllSources();
 
@@ -226,6 +303,14 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		});
 	}
 
+	/**
+	 * Adds a new pattern and returns its manager.
+	 *
+	 * @param channel  the channel index
+	 * @param measures the duration in measures
+	 * @param melodic  whether the pattern is melodic
+	 * @return the new {@link PatternLayerManager}
+	 */
 	public PatternLayerManager addPattern(int channel, double measures, boolean melodic) {
 		PatternLayerManager pattern =
 				new PatternLayerManager(choices,
@@ -235,6 +320,52 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		return pattern;
 	}
 
+	/**
+	 * Exports all patterns as MIDI events for the full arrangement duration.
+	 *
+	 * @param context the audio scene context for timing and scale resolution
+	 * @return list of MIDI note events, sorted by onset
+	 */
+	public List<MidiNoteEvent> toMidiEvents(AudioSceneContext context) {
+		return toMidiEvents(context, 0.0, context.getMeasures());
+	}
+
+	/**
+	 * Exports all patterns in the time range {@code [start, end)} measures
+	 * as MIDI events.
+	 *
+	 * <p>Each {@link PatternLayerManager} repeats across the arrangement based
+	 * on its duration. This method iterates over all repetitions that overlap
+	 * with the requested range and collects their MIDI events.</p>
+	 *
+	 * @param context the audio scene context for timing and scale resolution
+	 * @param start   the start of the export range in measures (inclusive)
+	 * @param end     the end of the export range in measures (exclusive)
+	 * @return list of MIDI note events within the range, sorted by onset
+	 */
+	public List<MidiNoteEvent> toMidiEvents(AudioSceneContext context,
+											 double start, double end) {
+		List<MidiNoteEvent> events = new ArrayList<>();
+
+		for (PatternLayerManager pattern : patterns) {
+			double patternDuration = pattern.getDuration();
+			if (patternDuration <= 0) continue;
+
+			int firstRepetition = Math.max(0, (int) Math.floor(start / patternDuration));
+			int lastRepetition = (int) Math.ceil(end / patternDuration);
+
+			for (int rep = firstRepetition; rep < lastRepetition; rep++) {
+				double repStart = rep * patternDuration;
+				if (repStart + patternDuration <= start || repStart >= end) continue;
+				events.addAll(pattern.toMidiEvents(context, repStart));
+			}
+		}
+
+		Collections.sort(events);
+		return events;
+	}
+
+	/** Removes all patterns from this manager. */
 	public void clear() {
 		patterns.clear();
 	}
@@ -306,12 +437,30 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		return op;
 	}
 
+	/**
+	 * Serializable snapshot of all pattern configurations in a {@link PatternSystemManager}.
+	 */
 	public static class Settings {
+		/** The list of pattern layer manager settings. */
 		private List<PatternLayerManager.Settings> patterns = new ArrayList<>();
 
+		/** Returns the list of pattern layer manager settings. */
 		public List<PatternLayerManager.Settings> getPatterns() { return patterns; }
+
+		/** Sets the list of pattern layer manager settings. */
 		public void setPatterns(List<PatternLayerManager.Settings> patterns) { this.patterns = patterns; }
 
+		/**
+		 * Creates a default {@code Settings} for the given channel and pattern configuration.
+		 *
+		 * @param channels           the number of channels
+		 * @param patternsPerChannel the number of patterns per channel
+		 * @param activePatterns     function returning active pattern count for a channel
+		 * @param layersPerPattern   function returning layer count for a channel
+		 * @param minLayerScale      function returning minimum layer scale for a channel
+		 * @param duration           function returning duration for a channel
+		 * @return the default settings
+		 */
 		public static Settings defaultSettings(int channels, int patternsPerChannel,
 											   IntUnaryOperator activePatterns,
 											   IntUnaryOperator layersPerPattern,

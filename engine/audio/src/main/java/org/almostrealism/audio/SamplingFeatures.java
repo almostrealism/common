@@ -62,9 +62,19 @@ import java.util.function.Supplier;
  * @see CellFeatures
  */
 public interface SamplingFeatures extends CodeFeatures {
+	/** Thread-local storage for the current sample rate, overriding the default when set. */
 	ThreadLocal<Integer> sampleRate = new ThreadLocal<>();
+	/** Thread-local storage for the current frame position producer. */
 	ThreadLocal<Producer<PackedCollection>> frames = new ThreadLocal<>();
 
+	/**
+	 * Executes a supplier within a frame-position context, temporarily setting the frame producer.
+	 *
+	 * @param <T> the return type
+	 * @param f   the frame position producer to set for the duration
+	 * @param r   the supplier to execute in the frame context
+	 * @return the result of the supplier
+	 */
 	default <T> T frames(Producer<PackedCollection> f, Supplier<T> r) {
 		Producer<PackedCollection> lastT = frames.get();
 
@@ -76,6 +86,12 @@ public interface SamplingFeatures extends CodeFeatures {
 		}
 	}
 
+	/**
+	 * Returns the current frame position producer from thread-local context.
+	 *
+	 * @return the current frame position producer
+	 * @throws UnsupportedOperationException if no frame context has been set
+	 */
 	default Producer<PackedCollection> frame() {
 		Producer<PackedCollection> f = frames.get();
 		if (f == null) {
@@ -85,8 +101,21 @@ public interface SamplingFeatures extends CodeFeatures {
 		return f;
 	}
 
+	/**
+	 * Returns the current time as a producer, computed as frame index divided by sample rate.
+	 *
+	 * @return a CollectionProducer representing the current time in seconds
+	 */
 	default CollectionProducer time() { return divide(frame(), c(sampleRate())); }
 
+	/**
+	 * Executes a supplier within a sample rate context, temporarily setting the sample rate.
+	 *
+	 * @param <T> the return type
+	 * @param sr  the sample rate to use for the duration
+	 * @param r   the supplier to execute in the sample rate context
+	 * @return the result of the supplier
+	 */
 	default <T> T sampleRate(int sr, Supplier<T> r) {
 		Integer lastSr = sampleRate.get();
 
@@ -98,12 +127,34 @@ public interface SamplingFeatures extends CodeFeatures {
 		}
 	}
 
+	/**
+	 * Returns the current sample rate from thread-local context, or the default if not set.
+	 *
+	 * @return the current sample rate in Hz
+	 */
 	default int sampleRate() { return sampleRate.get() == null ? OutputLine.sampleRate : sampleRate.get(); }
 
+	/**
+	 * Executes a supplier within a combined sample rate and frame context.
+	 *
+	 * @param <T>  the return type
+	 * @param rate the sample rate to use
+	 * @param r    the supplier to execute in the sampling context
+	 * @return the result of the supplier
+	 */
 	default <T> T sampling(int rate, Supplier<T> r) {
 		return sampleRate(rate, () -> frames(integers(), r));
 	}
 
+	/**
+	 * Executes a supplier within a combined sample rate and duration-bounded frame context.
+	 *
+	 * @param <T>      the return type
+	 * @param rate     the sample rate to use
+	 * @param duration the nominal duration in seconds (currently uses unbounded integers)
+	 * @param r        the supplier to execute in the sampling context
+	 * @return the result of the supplier
+	 */
 	default <T> T sampling(int rate, double duration, Supplier<T> r) {
 //		int frames = (int) (rate * duration);
 //		return sampleRate(rate, () -> frames(integers(0, frames), r));
@@ -139,18 +190,55 @@ public interface SamplingFeatures extends CodeFeatures {
 				integers(0, frameCount).add(p(offset)), r));
 	}
 
+	/**
+	 * Converts a duration in seconds to sample frames using the current sample rate.
+	 *
+	 * @param sec the duration in seconds
+	 * @return the equivalent number of sample frames
+	 */
 	default int toFrames(double sec) { return (int) (sampleRate() * sec); }
 
+	/**
+	 * Converts a duration producer in seconds to a frames producer using the current sample rate.
+	 *
+	 * @param sec producer yielding a duration in seconds
+	 * @return a producer yielding the equivalent number of sample frames
+	 */
 	default Producer<PackedCollection> toFrames(Producer<PackedCollection> sec) {
 		return multiply(c(sampleRate()), sec);
 	}
 
+	/**
+	 * Converts a duration in milliseconds to sample frames using the current sample rate.
+	 *
+	 * @param msec the duration in milliseconds
+	 * @return the equivalent number of sample frames
+	 */
 	default int toFramesMilli(int msec) { return (int) (sampleRate() * msec / 1000d); }
 
+	/**
+	 * Converts a duration producer in milliseconds to a frames producer using the current sample rate.
+	 *
+	 * @param msec producer yielding a duration in milliseconds
+	 * @return a producer yielding the equivalent number of sample frames
+	 */
 	default Producer<PackedCollection> toFramesMilli(Producer<PackedCollection> msec) {
 		return multiply(c(sampleRate() / 1000d), msec);
 	}
 
+	/**
+	 * Produces granular synthesis output by sampling input audio at grain-controlled positions.
+	 *
+	 * <p>Each grain is described by a start time, duration, and playback rate. The output
+	 * is interpolated from the input at the computed position, windowed by a sinusoidal envelope.</p>
+	 *
+	 * @param input      the source audio data producer
+	 * @param grain      the grain parameters producer (start, duration, rate per grain)
+	 * @param wavelength the sinusoidal window wavelength
+	 * @param phase      the sinusoidal window phase offset
+	 * @param amp        the sinusoidal window amplitude
+	 * @return a CollectionProducer yielding the granular synthesis output
+	 */
 	default CollectionProducer grains(Producer<PackedCollection> input,
 									  Producer<PackedCollection> grain,
 									  Producer<PackedCollection> wavelength,

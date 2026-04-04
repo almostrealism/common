@@ -23,11 +23,36 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.MemoryBank;
 
+/**
+ * An {@link AdaptProducer} specialization that produces {@link RGB}-compatible memory banks.
+ *
+ * <p>This class wraps an existing {@link Producer} and overrides the destination memory
+ * type so that results are stored in an {@link RGB} bank rather than a generic
+ * {@link PackedCollection} bank. It is used when a general computation pipeline
+ * needs to be adapted to produce typed RGB output.</p>
+ *
+ * @see AdaptProducer
+ * @see RGB#bank(int)
+ * @author Michael Murray
+ */
 public class AdaptProducerRGB extends AdaptProducer<PackedCollection> {
+	/**
+	 * Constructs an {@link AdaptProducerRGB} that wraps the given producer
+	 * with additional argument producers.
+	 *
+	 * @param p    the underlying producer whose output is adapted to RGB memory
+	 * @param args additional argument producers passed to the adapted computation
+	 */
 	public AdaptProducerRGB(Producer<PackedCollection> p, Producer... args) {
 		super(p, args);
 	}
 
+	/**
+	 * Returns an {@link Evaluable} that delegates evaluation to the wrapped producer
+	 * but creates destinations using an {@link RGB} memory bank.
+	 *
+	 * @return an {@link Evaluable} whose {@code createDestination} returns an RGB bank
+	 */
 	@Override
 	public Evaluable<PackedCollection> get() {
 		Evaluable<PackedCollection> e = super.get();

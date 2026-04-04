@@ -21,15 +21,11 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import io.almostrealism.db.DatabaseConnection;
 import io.almostrealism.db.Query;
-import io.almostrealism.persist.LocalResource;
 import io.almostrealism.resource.IOStreams;
-import io.almostrealism.resource.Permissions;
 import io.almostrealism.resource.Resource;
-import io.flowtree.airflow.AirflowJobFactory;
 import io.flowtree.aws.CognitoLogin;
 import io.flowtree.aws.Encryptor;
 import io.flowtree.fs.DistributedResource;
-import io.flowtree.fs.ImageResource;
 import io.flowtree.fs.OutputServer;
 import io.flowtree.fs.ResourceDistributionTask;
 import io.flowtree.job.Job;
@@ -42,18 +38,11 @@ import io.flowtree.node.NodeGroup;
 import io.flowtree.www.TomcatNode;
 import org.almostrealism.auth.Login;
 import org.almostrealism.color.RGB;
-import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputHandler;
-import org.almostrealism.texture.GraphicsConverter;
 
 import javax.swing.*;
 import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -112,7 +101,6 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		 */
 		Resource loadResource(String uri, String exclude);
 	}
-	
 
 	/** Shared set of {@link ResourceProvider} instances consulted when serving resource requests. */
 	protected static Set providers = new HashSet();
@@ -233,7 +221,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 				if (Server.resourceVerbose)
 					Server.this.log("ResourceServer: Received request for " + uri);
 				
-				Object citem = Server.this.cache.get(uri);
+				Object citem = Server.this.resourceManager.getCache().get(uri);
 				
 				i: if (citem == null) {
 //					s: synchronized (Server.this.cIndex) {
@@ -301,25 +289,20 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	/** When {@code true}, verbose logging is emitted for resource requests and transfers. */
 	public static boolean resourceVerbose = true;
 
-	/** Maximum number of resources to retain in the in-memory cache. */
-	private int maxCache = 10;
+	/** Manages the in-memory resource cache and all resource loading operations. */
+	private final ServerResourceManager resourceManager;
 
-	/**
-	 * Optional directory path used to persist cache entries to local storage.
-	 * {@code null} if cache logging is disabled.
-	 */
-	private final String logCache;
+	/** Executes distributed database queries and relays them to peers. */
+	private final ServerQueryExecutor queryExecutor;
 
-	/** In-memory resource cache keyed by URI. */
-	private final Map cache;
+	/** Writes periodic status HTML files and uploads them to the distributed file system. */
+	private final ServerStatusWriter statusWriter;
 
 	/** Index mapping URI prefixes to redirect targets for resource look-ups. */
 	private final Map cIndex;
+
 	/** Keyed collection of objects to include in the server status log output. Values are the display titles. */
 	private final Map logItems;
-
-	/** URIs currently being loaded, used to prevent duplicate concurrent load operations. */
-	private final List loading;
 
 	/** Login handlers (e.g. AWS Cognito) used to authenticate users. */
 	private final List<Login> logins;
@@ -364,59 +347,12 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * Main method which initializes the server.
 	 * The full class name of the JobFactory to use
 	 * can be replaced with "-p" to indicate that
-	 * the server should opperate in passive mode.
-	 * 
+	 * the server should operate in passive mode.
+	 *
 	 * @param args  {path to properties file, full classname for JobFactory}
 	 */
 	public static void main(String[] args) {
-		Properties p = new Properties();
-
-		if (args.length > 0) {
-			try {
-				p.load(new FileInputStream(args[0]));
-			} catch (FileNotFoundException fnf) {
-				Console.root().println("Server: Properties file not found.");
-				System.exit(1);
-			} catch (IOException ioe) {
-				Console.root().println("Server: IO error loading properties file.");
-				System.exit(2);
-			}
-		}
-
-		JobFactory j = null;
-
-		if (args.length < 2) {
-			j = new AirflowJobFactory();
-		} else if (!args[1].equals("-p")) {
-			try {
-				j = (JobFactory) Class.forName(args[1]).newInstance();
-			} catch (InstantiationException ie) {
-				Console.root().warn("Server: " + ie);
-				System.exit(3);
-			} catch (IllegalAccessException ia) {
-				Console.root().warn("Server: " + ia);
-				System.exit(4);
-			} catch (ClassNotFoundException cnf) {
-				Console.root().warn("Server: " + cnf);
-				System.exit(5);
-			} catch (ClassCastException cc) {
-				Console.root().warn("Server: " + cc);
-				System.exit(6);
-			}
-		}
-
-		try {
-			Server s = new Server(p, j);
-			s.start();
-
-			// Keep the JVM alive (all server threads are daemon)
-			Thread.currentThread().join();
-		} catch (IOException ioe) {
-			Console.root().warn("Server: " + ioe);
-			System.exit(7);
-		} catch (InterruptedException ie) {
-			Console.root().println("Server: Interrupted");
-		}
+		ServerLauncher.launch(args);
 	}
 
 	/**
@@ -451,9 +387,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	public Server(Properties p, JobFactory j) throws IOException {
 		this.threads = new ThreadGroup("Network Server");
 		
-		this.cache = Collections.synchronizedMap(new Hashtable());
 		this.cIndex = Collections.synchronizedMap(new Hashtable());
-		this.loading = Collections.synchronizedList(new ArrayList());
 		this.logItems = Collections.synchronizedMap(new Hashtable());
 		
 		if (j == null) {
@@ -502,16 +436,17 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 			}
 		}
 		
+		int maxCache = 10;
 		String cs = p.getProperty("server.cache.max");
-		if (cs != null) this.setMaxCache(Integer.parseInt(cs));
-		
-		this.logCache = p.getProperty("server.cache.logdir");
+		if (cs != null) maxCache = Integer.parseInt(cs);
+
+		this.resourceManager = new ServerResourceManager(this, maxCache,
+				p.getProperty("server.cache.logdir"));
+		this.queryExecutor = new ServerQueryExecutor(this);
+		this.statusWriter = new ServerStatusWriter(this);
 		
 		if (p.getProperty("server.resource", "off").equals("on")) { // TODO  Default maybe should be "on"
-			ResourceServer rs;
-			
 			String rsp = p.getProperty("server.resource.port");
-			
 			if (rsp == null)
 				this.rserver = new ResourceServer();
 			else
@@ -771,12 +706,9 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 */
 	public void printStatus(PrintStream out) {
 		this.group.printStatus(out);
-		
 		Iterator itr = this.logItems.entrySet().iterator();
-		
 		while (itr.hasNext()) {
 			Map.Entry ent = (Map.Entry) itr.next();
-			
 			out.print("<h3>");
 			out.print(ent.getValue());
 			out.print("</h3>");
@@ -853,6 +785,14 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	public void addLogItem(String title, Object o) { this.logItems.put(o, title); }
 	
 	/**
+	 * Returns the optional hostname override used in status filenames and URIs,
+	 * or {@code null} if no override has been configured.
+	 *
+	 * @return  The configured hostname, or {@code null}.
+	 */
+	String getHostname() { return this.hostname; }
+
+	/**
 	 * Starts a background thread that periodically writes a status HTML file and
 	 * activity/sleep graphs. Also starts the {@link NodeGroup} activity monitor.
 	 *
@@ -861,33 +801,10 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @param sleep  Interval between writes, in seconds.
 	 * @param r      Number of monitor samples taken per {@code sleep} interval.
 	 */
-	public void startWritingStatus(final String file, final int sleep, int r) {
-		Server.this.getNodeGroup().startMonitor(Server.MODERATE_PRIORITY, (1000 * sleep) / r);
-		
-		Thread t = new Thread(this.threads, new Runnable() {
-			public void run() {
-				while (true) {
-					try {
-						Thread.sleep(sleep * 1000L);
-
-						Server.this.writeStatus(file);
-						Server.this.getNodeGroup().storeActivityGraph(new File(file + ".ac"));
-						Server.this.getNodeGroup().storeSleepGraph(new File(file + ".sl"));
-						Server.this.getNodeGroup().writeLogFile(sleep / 60);
-					} catch (InterruptedException e) {
-					} catch (IOException ioe) {
-						Server.this.warn("IO error writing status file (" +
-								ioe.getMessage() + ").");
-					}
-				}
-			}
-		});
-		
-		t.setName("Status Output Thread");
-		
-		t.start();
+	public void startWritingStatus(String file, int sleep, int r) {
+		this.statusWriter.startWritingStatus(file, sleep, r);
 	}
-	
+
 	/**
 	 * Writes the current server status as an HTML file and, if a
 	 * {@link ResourceDistributionTask} is active, also uploads the status to the
@@ -898,29 +815,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @throws IOException  If writing the status file fails.
 	 */
 	public void writeStatus(String file) throws IOException {
-		PrintStream p = new PrintStream(new FileOutputStream(file + "-stat.html"));
-		this.printStatus(p);
-		
-		ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
-		
-		if (t != null) {
-			if (Message.verbose)
-				log("Writing status to distributed file system...");
-			
-			int index = file.lastIndexOf("/");
-			if (index >= 0) file = file.substring(index + 1);
-			
-			if (this.hostname != null)
-				file = file + "-" + this.hostname;
-			
-			long time = getStartTime() % 10000;
-			
-			OutputStream out = this.getOutputStream("/files/logs/" + file +
-													"-" + time + "-stat.html");
-			p = new PrintStream(out);
-			this.printStatus(p);
-			out.close();
-		}
+		this.statusWriter.writeStatus(file);
 	}
 	
 	/**
@@ -1068,23 +963,13 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 */
 	public double getAveragePeerJobTime() {
 		NodeProxy[] p = this.group.getServers();
-		
 		double sum = 0.0;
 		int peers = 0;
-		
 		for (int i = 0; i < p.length; i++) {
 			double j = p[i].getJobTime();
-			if (j > 0) {
-				sum += j;
-				peers++;
-			}
+			if (j > 0) { sum += j; peers++; }
 		}
-		
-		if (peers > 0) {
-			return sum / peers;
-		} else {
-			return 0.0;
-		}
+		return peers > 0 ? sum / peers : 0.0;
 	}
 	
 	/**
@@ -1113,15 +998,10 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @throws IOException  If an IO error occurs while building the message.
 	 */
 	public Message getStatusMessage() throws IOException {
-
-		String stat = "jobtime:" +
-				this.group.getAverageJobTime() +
-				";activity:" +
-				this.group.getAverageActivityRating();
-
+		String stat = "jobtime:" + this.group.getAverageJobTime()
+				+ ";activity:" + this.group.getAverageActivityRating();
 		Message m = new Message(Message.ServerStatus, -1);
 		m.setString(stat);
-
 		return m;
 	}
 
@@ -1130,14 +1010,14 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 *
 	 * @param max  Maximum cache size.
 	 */
-	public void setMaxCache(int max) { this.maxCache = max; }
+	public void setMaxCache(int max) { this.resourceManager.setMaxCache(max); }
 
 	/**
 	 * Returns the maximum number of resources retained in the in-memory cache.
 	 *
 	 * @return  Maximum cache size.
 	 */
-	public int getMaxCache() { return this.maxCache; }
+	public int getMaxCache() { return this.resourceManager.getMaxCache(); }
 
 	/**
 	 * Retrieves a resource from the cache by URI.  If the resource is currently
@@ -1148,52 +1028,16 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @return  The cached resource object, or {@code null} if the URI is not in the cache.
 	 */
 	public Object loadFromCache(String uri) {
-		Object s = null;
-
-		for (int i = 0; ; ) {
-			s = this.cache.get(uri);
-
-			if (this.loading.contains(uri)) {
-				try {
-					int sleep = 1000;
-
-					if (i == 0) {
-						sleep = 1000;
-						i++;
-					} else if (i == 1) {
-						sleep = 5000;
-						i++;
-					} else if (i == 2) {
-						sleep = 10000;
-						i++;
-					} else if (i < 6) {
-						sleep = 10000 * (int) Math.pow(2, i);
-						i++;
-					} else {
-						sleep = 1200000;
-					}
-
-					Thread.sleep(sleep);
-
-					log("Waited " + sleep / 1000.0 +
-							" seconds for " + uri);
-				} catch (InterruptedException ie) {}
-			} else if (s == null) {
-				return null;
-			} else {
-				this.loading.remove(uri);
-				return s;
-			}
-		}
+		return this.resourceManager.loadFromCache(uri);
 	}
-	
+
 	/**
 	 * Returns {@code true} if the in-memory cache contains an entry for the given URI.
 	 *
 	 * @param uri  URI to test.
 	 * @return  {@code true} if the URI is cached, {@code false} otherwise.
 	 */
-	public boolean cacheContains(String uri) { return this.cache.containsKey(uri); }
+	public boolean cacheContains(String uri) { return this.resourceManager.cacheContains(uri); }
 	
 	/**
 	 * Returns an OutputStream that can be used to write data to the specified uri on
@@ -1256,13 +1100,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @throws IOException  If an IO error occurs while loading the resource.
 	 */
 	public Resource loadResource(String uri) throws IOException {
-		IOStreams io = this.getResourceStream(uri, null);
-		Resource res = ResourceDistributionTask.getCurrentTask().getResource(uri);
-		if (res == null) res = DistributedResource.createDistributedResource(uri);
-		return this.loadResourceFromIO(res, io, false);
-
-
-//		return this.loadResource(uri, false);
+		return this.resourceManager.loadResource(uri);
 	}
 
 	/**
@@ -1276,19 +1114,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 *          {@code tryLocal} is {@code false}.
 	 */
 	public Resource loadResource(String uri, boolean tryLocal) {
-		Resource res = ResourceDistributionTask.getCurrentTask().getResource(uri);
-		if (res != null) return res;
-		if (!tryLocal) return null;
-
-		res = new LocalResource(uri);
-
-		try {
-			return this.loadResource(res);
-		} catch (IOException e) {
-			warn("IO error loading local resource (" +
-								e.getMessage() + ")");
-			return null;
-		}
+		return this.resourceManager.loadResource(uri, tryLocal);
 	}
 
 	/**
@@ -1300,7 +1126,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @throws IOException  If an IO error occurs while loading the resource.
 	 */
 	public Resource loadResource(Resource r) throws IOException {
-		return this.loadResource(r, null, false);
+		return this.resourceManager.loadResource(r);
 	}
 
 	/**
@@ -1312,7 +1138,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @throws IOException  If an IO error occurs while loading the resource.
 	 */
 	public Resource loadResource(Resource r, boolean noCache) throws IOException {
-		return this.loadResource(r, null, noCache);
+		return this.resourceManager.loadResource(r, noCache);
 	}
 
 	/**
@@ -1327,18 +1153,9 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 */
 	public Resource loadResource(Resource r, String exclude, boolean noCache)
 						throws IOException {
-		if (r instanceof DistributedResource && this.loading.contains(r.getURI()))
-			return null;
-		
-		Object o = this.loadFromCache(r.getURI());
-		if (o != null) return (Resource) o;
-		
-		this.loading.add(r.getURI());
-		
-		IOStreams io = this.getResourceStream(r.getURI(), exclude);
-		return this.loadResourceFromIO(r, io, noCache);
+		return this.resourceManager.loadResource(r, exclude, noCache);
 	}
-	
+
 	/**
 	 * Loads a resource using the provided {@link IOStreams}, or from the resource's own
 	 * URI if the streams are {@code null}. After loading, the resource is optionally
@@ -1352,44 +1169,9 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @throws IOException  If an IO error occurs while loading the resource.
 	 */
 	protected Resource loadResourceFromIO(Resource r, IOStreams io, boolean noCache) throws IOException {
-		if (io != null) {
-			r.load(io);
-		} else if (r.getURI() != null && !r.getURI().startsWith("resource:")) {
-			r.loadFromURI();
-		} else {
-			return DistributedResource.createDistributedResource(r.getURI());
-		}
-		
-		if (!noCache) synchronized (this.cache) {
-			Object c = null;
-			
-			if (this.cache.size() >= this.maxCache)
-				c = this.cache.keySet().iterator().next();
-			
-			if (c != null) {
-				this.cache.remove(c);
-				log("Removed cache of " + c);
-			}
-			
-			this.cache.put(r.getURI(), r);
-		}
-		
-		if (this.logCache != null) {
-			try {
-				String output = "cache/" + System.currentTimeMillis();
-				log("Writing " + output);
-				r.saveLocal(output);
-				log("Done writing " + output);
-			} catch (IOException ioe) {
-				warn("Error writing cache: " + ioe.getMessage());
-			}
-		}
-		
-		this.loading.remove(r.getURI());
-		
-		return r;
+		return this.resourceManager.loadResourceFromIO(r, io, noCache);
 	}
-	
+
 	/**
 	 * Loads the full image at the given URI and returns it as an {@link RGB} array.
 	 *
@@ -1398,7 +1180,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 *          {@code null} if the image could not be loaded.
 	 */
 	public RGB[][] loadImage(String uri) {
-		return this.loadImage(uri, 0, 0, 0, 0, false, false);
+		return this.resourceManager.loadImage(uri);
 	}
 
 	/**
@@ -1413,7 +1195,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 *          or {@code noReturn} is {@code true}.
 	 */
 	public RGB[][] loadImage(String uri, boolean noReturn) {
-		return this.loadImage(uri, 0, 0, 0, 0, noReturn, false);
+		return this.resourceManager.loadImage(uri, noReturn);
 	}
 
 	/**
@@ -1428,9 +1210,9 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 *          {@code null} if the image could not be loaded.
 	 */
 	public RGB[][] loadImage(String uri, int x, int y, int w, int h) {
-		return this.loadImage(uri, x, y, w, h, false, false);
+		return this.resourceManager.loadImage(uri, x, y, w, h);
 	}
-	
+
 	/**
 	 * Loads an image using the cache system managed by this Server object.
 	 * To load an image using SCP, the uri must take the form:
@@ -1441,45 +1223,28 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 *   scp://localhost|root|secure/usr/local/images/test.jpeg
 	 * would log into localhost as root with password "secure" and download the
 	 * jpeg image /usr/local/images/test.jpeg
-	 * 
-	 * An image can be loaded as a resource from a resource server running on
-	 * remote Server instance. To achieve this, preface the uri to load with
+	 *
+	 * <p>An image can be loaded as a resource from a resource server running on
+	 * a remote Server instance. To achieve this, preface the uri to load with
 	 * resource://. For example:
 	 *   resource://10.0.0.1/http://asdf.com/image.jpeg
 	 * Would load the image found at http://asdf.com/image.jpeg from the resource
-	 * server running on 10.0.0.1, instead of from the actual site. This can be used
-	 * with the scp:// prefix as well.
-	 * 
-	 * @param uri  URI of resource (starting with http://, scp://, or resource://).
+	 * server running on 10.0.0.1, instead of from the actual site.
+	 *
+	 * @param uri       URI of resource (starting with http://, scp://, or resource://).
+	 * @param ix        X offset of the sub-region within the image.
+	 * @param iy        Y offset of the sub-region within the image.
+	 * @param iw        Width of the sub-region in pixels.
+	 * @param ih        Height of the sub-region in pixels.
 	 * @param noReturn  Do not convert data to RGB and return it. Simply load data to cache.
-	 * @param noCache  Do not cache the data loaded by this method. Simply load, convert, and return.
+	 * @param noCache   Do not cache the data loaded by this method. Simply load, convert, and return.
 	 * @return  An RGB[][] containing the image data.
 	 */
 	public RGB[][] loadImage(String uri, int ix, int iy, int iw, int ih,
 							boolean noReturn, boolean noCache) {
-		ImageResource res = new ImageResource(uri, null, new Permissions());
-		res.setWidth(iw);
-		res.setHeight(ih);
-		res.setX(ix);
-		res.setY(iy);
-		
-		try {
-			res = (ImageResource) this.loadResource(res, noCache);
-		} catch (IOException ioe) {
-			warn("Error loading image (" + ioe.getMessage() + ")");
-			res = null;
-		}
-		
-		if (res == null) return null;
-		int[] data = (int[]) res.getData();
-		
-		if (!noReturn)
-			return GraphicsConverter.convertToRGBArray(data, 2, 0, 0, data[0], data[1], data[0]);
-		else
-			return null;
+		return this.resourceManager.loadImage(uri, ix, iy, iw, ih, noReturn, noCache);
 	}
 
-	
 	/**
 	 * Queries all connected peers for a resource stream matching the given URI.
 	 *
@@ -1488,7 +1253,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 *          or {@code null} if no peer can satisfy the request.
 	 */
 	public IOStreams getResourceStream(String uri) {
-		return this.getResourceStream(uri, null);
+		return this.resourceManager.getResourceStream(uri);
 	}
 
 	/**
@@ -1501,32 +1266,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 *          if no peer can satisfy the request.
 	 */
 	public IOStreams getResourceStream(String uri, String exclude) {
-		IOStreams io = null;
-
-		NodeProxy[] p = this.getNodeGroup().getServers();
-
-		i: for (int i = 0; i < p.length; i++) {
-			String ad = p[i].toString();
-			int adi = ad.lastIndexOf("/");
-			if (adi > 0) ad = ad.substring(adi + 1);
-			if (ad.equals(exclude)) continue i;
-
-			try {
-				Message m = new Message(Message.ResourceRequest, -2, p[i]);
-				m.setString(uri);
-				String s = (String) m.send(-1);
-
-				if (s != null) {
-					io = this.parseResourceUri(s);
-					if (io != null) return io;
-				}
-			} catch (IOException ioe) {
-				warn("Error making resource request (" +
-									ioe.getMessage() + ")");
-			}
-		}
-
-		return io;
+		return this.resourceManager.getResourceStream(uri, exclude);
 	}
 
 	/**
@@ -1541,27 +1281,9 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @throws IOException  If a network error occurs while connecting or communicating.
 	 */
 	public IOStreams getResourceStream(String host, int port, String uri) throws IOException {
-		if (host == null || host.equals("") || host.equals("localhost"))
-			return null;
-		
-		log("Opening resource stream to " +
-							host + " on " + port + " for " + uri);
-		
-		Socket s = new Socket(host, port);
-		IOStreams io = new IOStreams();
-		io.in = new DataInputStream(s.getInputStream());
-		io.out = new DataOutputStream(s.getOutputStream());
-		
-		io.out.writeUTF(uri);
-		
-		log("Wrote request for " + uri);
-		
-		if (io.in.readInt() > 0)
-			return io;
-		else
-			return null;
+		return this.resourceManager.getResourceStream(host, port, uri);
 	}
-	
+
 	/**
 	 * Parses a {@code resource://} URI and opens an {@link IOStreams} connection to the
 	 * resource server it refers to.  The URI format is:
@@ -1574,18 +1296,15 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 */
 	public IOStreams parseResourceUri(String uri) throws IOException {
 		int index = uri.indexOf("/", 11);
-
 		String serv = uri.substring(11, index);
 		String host = serv;
 		int port = ResourceServer.defaultPort;
-
 		if (serv.contains(ENTRY_SEPARATOR)) {
 			int cindex = serv.indexOf(ENTRY_SEPARATOR);
 			host = serv.substring(0, cindex);
 			port = Integer.parseInt(serv.substring(cindex + ENTRY_SEPARATOR.length()));
 		}
-
-		return this.getResourceStream(host, port, uri.substring(index + 1));
+		return this.resourceManager.getResourceStream(host, port, uri.substring(index + 1));
 	}
 
 	/**
@@ -1612,7 +1331,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @throws IOException  If an IO error occurs while relaying the query.
 	 */
 	public Message executeQuery(Query q) throws IOException {
-		return executeQuery(q, NodeProxy.queryTimeout);
+		return this.queryExecutor.executeQuery(q);
 	}
 
 	/**
@@ -1625,7 +1344,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @throws IOException  If an IO error occurs while relaying the query.
 	 */
 	public Message executeQuery(Query q, long timeout) throws IOException {
-		return executeQuery(q, null, timeout);
+		return this.queryExecutor.executeQuery(q, timeout);
 	}
 
 	/**
@@ -1640,58 +1359,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * @throws IOException  If an IO error occurs while relaying the query.
 	 */
 	public Message executeQuery(Query q, NodeProxy p, long timeout) throws IOException {
-		OutputServer dbs = OutputServer.getCurrentServer();
-		
-		StringBuffer result = new StringBuffer();
-		
-		if (dbs != null) {
-			if (Message.verbose)
-				log("Executing " + q);
-
-			Hashtable h = dbs.getDatabaseConnection().executeQuery(q);
-
-			if (Message.verbose)
-				log("Received " + h.size() +
-									" elements from query.");
-
-			result.append(Query.toString(h));
-
-			if (Message.verbose)
-				log("Query result contains " +
-									result.length() + " characters.");
-		}
-
-		if (q.getRelay() > 0) {
-			if (Message.verbose)
-				log("Relaying Query...");
-
-			q.deincrementRelay();
-
-			NodeProxy[] peers = this.group.getServers();
-
-			i: for (int i = 0; i < peers.length; i++) {
-				if (peers[i] == p) continue i;
-
-				if (Message.verbose)
-					log("Writing " + q);
-
-				peers[i].writeObject(q, -1);
-				Message m = (Message) peers[i].waitForMessage(Message.StringMessage, null, timeout);
-
-				if (Message.verbose)
-					log("Received " + m + " after waiting " +
-										timeout + " msecs.");
-
-				if (m != null && m.getData() != null && m.getData().length() > 0) {
-					if (result.length() > 0) result.append(Query.sep);
-					result.append(m.getData());
-				}
-			}
-		}
-		
-		Message m = new Message(Message.StringMessage, -1);
-		m.setString(result.toString());
-		return m;
+		return this.queryExecutor.executeQuery(q, p, timeout);
 	}
 
 	/**
@@ -1771,57 +1439,12 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	/**
 	 * Constructs a class of the type specified by full name in the first term
 	 * of the specified data string and sets other properties accordingly.
-	 * 
+	 *
 	 * @param data  Encoded job data.
-	 * @return  Instance of Job created.
+	 * @return  Instance of {@link Job} created, or {@code null} if instantiation fails.
 	 */
 	public static Job instantiateJobClass(String data) {
-		int index = data.indexOf(JobFactory.ENTRY_SEPARATOR);
-		String className = data.substring(0, index);
-		
-		Job j = null;
-		
-		try {
-			j = (Job)Class.forName(className).newInstance();
-			
-			boolean end = false;
-
-			while (!end) {
-				data = data.substring(index + JobFactory.ENTRY_SEPARATOR.length());
-				index = data.indexOf(JobFactory.ENTRY_SEPARATOR);
-
-				while (data.charAt(index + JobFactory.ENTRY_SEPARATOR.length()) == '/' || index > 0 && data.charAt(index - 1) == '\\') {
-					index = data.indexOf(JobFactory.ENTRY_SEPARATOR, index + JobFactory.ENTRY_SEPARATOR.length());
-				}
-
-				String s = null;
-
-				if (index <= 0) {
-					s = data;
-					end = true;
-				} else {
-					s = data.substring(0, index);
-				}
-
-				int k = s.indexOf(KEY_VALUE_SEPARATOR);
-				int len = KEY_VALUE_SEPARATOR.length();
-
-				if (k > 0) {
-					String key = s.substring(0, k);
-					String value = s.substring(k + len);
-					j.set(key, value);
-				} else {
-					String key = s;
-					String value = data.substring(index + len);
-					j.set(key, value);
-					end = true;
-				}
-			}
-		} catch (Exception e) {
-			Console.root().warn("Server: " + e);
-		}
-
-		return j;
+		return JobClassLoader.instantiateJobClass(data);
 	}
 	
 	/**

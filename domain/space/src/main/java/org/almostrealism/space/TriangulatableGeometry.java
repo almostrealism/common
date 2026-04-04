@@ -17,7 +17,17 @@
 package org.almostrealism.space;
 
 /**
+ * A concrete geometry class that combines {@link GeometryStack} with {@link Triangulatable}
+ * to provide a base for 3D objects that can be converted to triangle mesh representations.
+ *
+ * <p>When {@link #triangulate()} is called, a new {@link Mesh} is created that inherits
+ * the current geometry settings (location, size, scale, rotation, and transforms) from
+ * this object, providing a starting point for further mesh construction by subclasses.
+ *
  * @author  Michael Murray
+ * @see GeometryStack
+ * @see Triangulatable
+ * @see Mesh
  */
 public class TriangulatableGeometry extends GeometryStack implements Triangulatable {
 	

@@ -24,8 +24,19 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.List;
 import java.util.OptionalLong;
 
+/**
+ * A natural logarithm expression that computes {@code log(input)}.
+ *
+ * <p>Generates code of the form {@code log(input)}. The factory method cancels
+ * {@code log(exp(x))} back to {@code x}. The derivative is {@code 1 / input}.</p>
+ */
 public class Logarithm extends Expression<Double> {
 
+	/**
+	 * Constructs a natural logarithm expression for the given operand.
+	 *
+	 * @param input the operand whose logarithm is computed
+	 */
 	protected Logarithm(Expression<Double> input) {
 		super(Double.class, input);
 	}
@@ -66,6 +77,13 @@ public class Logarithm extends Expression<Double> {
 		return quotient(target.getShape(), delta, u);
 	}
 
+	/**
+	 * Creates a natural logarithm expression, cancelling {@code log(exp(x))} to {@code x}.
+	 *
+	 * @param input the operand
+	 * @param <T>   the result type (always {@link Double})
+	 * @return the simplified expression or a new {@link Logarithm}
+	 */
 	public static <T> Expression<T> of(Expression input) {
 		if (input instanceof Exp) {
 			return (Expression<T>) input.getChildren().get(0);

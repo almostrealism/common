@@ -52,6 +52,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	public static final int DEFAULT_TARGET_BATCH_SIZE =
 			ProtobufDiskStore.DEFAULT_TARGET_BATCH_SIZE;
 
+	/** The underlying disk store that handles batched serialization and index management. */
 	private final ProtobufDiskStore<Audio.WaveDetailData> diskStore;
 
 	/**

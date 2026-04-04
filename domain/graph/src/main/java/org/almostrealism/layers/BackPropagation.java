@@ -22,7 +22,31 @@ import org.almostrealism.graph.Receptor;
 
 import java.util.function.Supplier;
 
+/**
+ * Strategy interface for back-propagating gradients through a neural network layer.
+ *
+ * <p>Implementations compute both the gradient with respect to the layer's input
+ * (for propagating further upstream) and the gradient with respect to the layer's
+ * learnable parameters (for weight updates).</p>
+ *
+ * <p>The primary implementation is {@link DefaultGradientPropagation}, which uses
+ * automatic differentiation to compute gradients. Custom implementations can be
+ * provided for layers that require specialized gradient computation.</p>
+ *
+ * @see DefaultGradientPropagation
+ * @see BackPropagationCell
+ * @author Michael Murray
+ */
 public interface BackPropagation {
+	/**
+	 * Computes and propagates gradients for a layer backward pass.
+	 *
+	 * @param gradient the gradient of the loss with respect to this layer's output
+	 * @param input    the input that was passed to the layer during the forward pass
+	 * @param next     the receptor to receive the gradient with respect to the layer input,
+	 *                 or null if the input gradient is not needed
+	 * @return a supplier of operations that perform the gradient computation and parameter updates
+	 */
 	Supplier<Runnable> propagate(Producer<PackedCollection> gradient,
 								 Producer<PackedCollection> input,
 								 Receptor<PackedCollection> next);

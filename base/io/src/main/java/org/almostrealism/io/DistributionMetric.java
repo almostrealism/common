@@ -63,9 +63,12 @@ public class DistributionMetric extends MetricBase {
 	 */
 	public static int MAX_SUMMARY_ENTRIES = 30;
 
+	/** Minimum percentage of the total required for an entry to appear in summary output. */
 	public static double MIN_SUMMARY_PERCENTAGE = 0.01;
 
+	/** Scale factor applied when converting raw values for display (e.g., 1e9 to convert nanoseconds to seconds). */
 	private double scale;
+	/** Minimum raw value an entry must reach before it is recorded. */
 	private double threshold;
 
 	/**

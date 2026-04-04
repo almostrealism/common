@@ -23,8 +23,20 @@ import io.almostrealism.scope.ArrayVariable;
 
 import java.util.OptionalLong;
 
+/**
+ * An expression that yields the size of an {@link ArrayVariable}.
+ *
+ * <p>Renders to the language-specific variable size name via
+ * {@link io.almostrealism.lang.LanguageOperations#getVariableSizeName}.
+ * Assignment is not supported since the size is computed by the runtime.</p>
+ */
 public class SizeValue extends StaticReference<Integer> {
 
+	/**
+	 * Constructs a size-value expression for the given array variable.
+	 *
+	 * @param referent the array variable whose size this expression represents
+	 */
 	public SizeValue(ArrayVariable<?> referent) {
 		super(Integer.class, null, referent);
 	}

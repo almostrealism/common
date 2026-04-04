@@ -61,9 +61,13 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public abstract class CellAdapter<T> implements Cell<T> {
+	/** The downstream receptor that receives this cell's output. */
 	private Receptor<T> r;
+
+	/** An optional metering receptor that receives copies of all pushed data. */
 	private Receptor<T> meter;
 
+	/** An optional human-readable name for this cell, used in toString and diagnostics. */
 	private String name;
 
 	/**

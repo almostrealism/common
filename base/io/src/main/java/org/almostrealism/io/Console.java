@@ -79,21 +79,34 @@ import java.util.function.UnaryOperator;
  * @see DistributionMetric
  */
 public class Console {
+	/** The global root console instance shared by the entire application. */
 	public static Console root = new Console();
+	/** Whether log output is also forwarded to {@link System#out}; controlled by {@code AR_IO_SYSOUT}. */
 	public static boolean systemOutEnabled = SystemUtils.isEnabled("AR_IO_SYSOUT").orElse(true);
 
+	/** The parent console to which log output is forwarded after local processing. */
 	private Console parent;
+	/** Consumers that receive each formatted log line as it is produced. */
 	private List<Consumer<String>> listeners = new ArrayList<>();
+	/** Transformations applied to each log line before delivery to listeners and the parent. */
 	private List<UnaryOperator<String>> filters = new ArrayList<>();
+	/** Registered providers used to deliver structured alerts externally. */
 	private List<AlertDeliveryProvider> alertDeliveryProviders = new ArrayList<>();
+	/** Optional flag string prepended to log lines to categorize output from this console. */
 	private Optional<String> flag;
 
+	/** Formatter applied to timestamps prepended to each log line. */
 	private DateTimeFormatter format;
+	/** Accumulated log output, appended with each new log line. */
 	private StringBuffer data = new StringBuffer();
+	/** Buffer holding the most recently written line, used for in-place line updates. */
 	private StringBuffer lastLine;
+	/** Whether the last line should be overwritten rather than appended on the next write. */
 	private boolean resetLastLine;
 
+	/** Named metrics registered with this console, keyed by metric name. */
 	private Map<String, MetricBase> metrics = Collections.synchronizedMap(new HashMap<>());
+	/** Named sample lists registered with this console, keyed by sample name. */
 	private Map<String, List<?>> samples = Collections.synchronizedMap(new HashMap<>());
 
 	/**

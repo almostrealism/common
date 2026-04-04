@@ -28,6 +28,7 @@ import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,6 +47,8 @@ import java.util.function.Function;
  *   <li>{@code rmsnorm(weights, epsilon)}</li>
  *   <li>{@code softmax()}, {@code silu()}, {@code relu()}, {@code gelu()},
  *       {@code sigmoid()}, {@code tanh_act()}</li>
+ *   <li>{@code slice(offset, size)} - extract a 1-D sub-range</li>
+ *   <li>{@code lerp(hidden_size)} - linear interpolation from [from|weight|to] input</li>
  *   <li>{@code reshape(shape)}</li>
  *   <li>{@code rope_rotation(shape, freq_cis, position)}</li>
  *   <li>{@code attention(...)}, {@code transformer(...)},
@@ -58,6 +61,7 @@ import java.util.function.Function;
  *   <li>{@code branch name { ... }} - parallel path</li>
  *   <li>{@code accum { ... }} - residual connection</li>
  *   <li>{@code product(blockA, blockB)} - element-wise multiply</li>
+ *   <li>{@code accum_blocks(blockA, blockB)} - element-wise addition</li>
  * </ul>
  */
 public class PdslInterpreter {
@@ -68,9 +72,17 @@ public class PdslInterpreter {
 	 */
 	private static final Features FEATURES = new Features();
 
+	/** Layer definitions keyed by name, built from the parsed program. */
 	private final Map<String, PdslNode.LayerDef> layerDefs;
+
+	/** Config definitions keyed by name, built from the parsed program. */
 	private final Map<String, PdslNode.ConfigDef> configDefs;
+
+	/** Model definitions keyed by name, built from the parsed program. */
 	private final Map<String, PdslNode.ModelDef> modelDefs;
+
+	/** Data block definitions keyed by name, built from the parsed program. */
+	private final Map<String, PdslNode.DataDef> dataDefs;
 
 	/**
 	 * Create an interpreter for the given parsed program.
@@ -81,6 +93,7 @@ public class PdslInterpreter {
 		this.layerDefs = new HashMap<>();
 		this.configDefs = new HashMap<>();
 		this.modelDefs = new HashMap<>();
+		this.dataDefs = new LinkedHashMap<>();
 		for (PdslNode.Definition def : program.getDefinitions()) {
 			if (def instanceof PdslNode.LayerDef) {
 				layerDefs.put(def.getName(), (PdslNode.LayerDef) def);
@@ -88,6 +101,8 @@ public class PdslInterpreter {
 				configDefs.put(def.getName(), (PdslNode.ConfigDef) def);
 			} else if (def instanceof PdslNode.ModelDef) {
 				modelDefs.put(def.getName(), (PdslNode.ModelDef) def);
+			} else if (def instanceof PdslNode.DataDef) {
+				dataDefs.put(def.getName(), (PdslNode.DataDef) def);
 			}
 		}
 	}
@@ -100,6 +115,9 @@ public class PdslInterpreter {
 
 	/** Returns the names of all config definitions. */
 	public Set<String> getConfigNames() { return configDefs.keySet(); }
+
+	/** Returns the names of all data block definitions. */
+	public Set<String> getDataDefNames() { return dataDefs.keySet(); }
 
 	/**
 	 * Build a {@link Block} from a named layer definition.
@@ -116,6 +134,7 @@ public class PdslInterpreter {
 			throw new PdslParseException("Layer '" + name + "' not found");
 		}
 		Environment env = new Environment(null);
+		populateDataDefs(args, env);
 		for (PdslNode.Parameter param : def.getParameters()) {
 			Object value = args.get(param.getName());
 			if (value == null && !args.containsKey(param.getName())) {
@@ -144,6 +163,7 @@ public class PdslInterpreter {
 			throw new PdslParseException("Model '" + name + "' not found");
 		}
 		Environment env = new Environment(null);
+		populateDataDefs(args, env);
 		for (PdslNode.Parameter param : def.getParameters()) {
 			env.set(param.getName(), args.get(param.getName()));
 		}
@@ -173,8 +193,77 @@ public class PdslInterpreter {
 		return result;
 	}
 
+	/**
+	 * Evaluate a named data block, binding external inputs from {@code args}
+	 * and computing all derived views in declaration order.
+	 *
+	 * @param name the data block name
+	 * @param args external input values (name → value)
+	 * @return all data block entries (parameters + derivations) as a map
+	 */
+	public Map<String, Object> evaluateDataDef(String name, Map<String, Object> args) {
+		PdslNode.DataDef def = dataDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("Data block '" + name + "' not found");
+		}
+		Environment env = new Environment(null);
+		Map<String, Object> result = new LinkedHashMap<>();
+		for (PdslNode.Parameter param : def.getParameters()) {
+			if (!args.containsKey(param.getName())) {
+				throw new PdslParseException(
+						"Missing argument '" + param.getName()
+								+ "' for data block '" + name + "'");
+			}
+			Object value = args.get(param.getName());
+			env.set(param.getName(), value);
+			result.put(param.getName(), value);
+		}
+		for (Map.Entry<String, PdslNode.Expression> entry : def.getDerivations().entrySet()) {
+			Object value = evaluateExpression(entry.getValue(), env);
+			env.set(entry.getKey(), value);
+			result.put(entry.getKey(), value);
+		}
+		return result;
+	}
+
+	/**
+	 * Pre-populates an environment with all entries from every data block in this
+	 * program. External inputs are resolved from {@code args}; derived views are
+	 * computed in declaration order so that earlier entries are visible to later ones.
+	 *
+	 * <p>Called at the start of {@link #buildLayer} and {@link #buildModel} so that
+	 * layer bodies can reference data block entries without explicitly declaring them
+	 * as layer parameters.</p>
+	 *
+	 * @param args external input values
+	 * @param env  target environment (mutated in-place)
+	 */
+	private void populateDataDefs(Map<String, Object> args, Environment env) {
+		for (PdslNode.DataDef def : dataDefs.values()) {
+			for (PdslNode.Parameter param : def.getParameters()) {
+				if (!args.containsKey(param.getName())) {
+					throw new PdslParseException(
+							"Missing argument '" + param.getName()
+									+ "' required by data block '" + def.getName() + "'");
+				}
+				env.set(param.getName(), args.get(param.getName()));
+			}
+			for (Map.Entry<String, PdslNode.Expression> entry : def.getDerivations().entrySet()) {
+				Object value = evaluateExpression(entry.getValue(), env);
+				env.set(entry.getKey(), value);
+			}
+		}
+	}
+
 	// ---- Body interpretation ----
 
+	/**
+	 * Interprets each statement in a layer body, appending operations to the given block.
+	 *
+	 * @param stmts List of statements to execute
+	 * @param block Target sequential block
+	 * @param env   Current variable environment
+	 */
 	private void interpretBody(List<PdslNode.Statement> stmts,
 							   SequentialBlock block, Environment env) {
 		for (PdslNode.Statement stmt : stmts) {
@@ -182,6 +271,13 @@ public class PdslInterpreter {
 		}
 	}
 
+	/**
+	 * Interprets each statement in a model body, adding blocks or inputs to the model.
+	 *
+	 * @param stmts List of statements to execute
+	 * @param model Target model under construction
+	 * @param env   Current variable environment
+	 */
 	private void interpretModelBody(List<PdslNode.Statement> stmts,
 									Model model, Environment env) {
 		for (PdslNode.Statement stmt : stmts) {
@@ -209,6 +305,13 @@ public class PdslInterpreter {
 		}
 	}
 
+	/**
+	 * Dispatches a single statement to its specific handler.
+	 *
+	 * @param stmt  Statement to interpret
+	 * @param block Target sequential block
+	 * @param env   Current variable environment
+	 */
 	private void interpretStatement(PdslNode.Statement stmt,
 									SequentialBlock block, Environment env) {
 		if (stmt instanceof PdslNode.ExpressionStatement) {
@@ -223,6 +326,10 @@ public class PdslInterpreter {
 			interpretAccum((PdslNode.AccumStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ProductStatement) {
 			interpretProduct((PdslNode.ProductStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.AccumBlocksStatement) {
+			interpretAccumBlocks((PdslNode.AccumBlocksStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.ConcatBlocksStatement) {
+			interpretConcatBlocks((PdslNode.ConcatBlocksStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ForStatement) {
 			PdslNode.ForStatement forStmt = (PdslNode.ForStatement) stmt;
 			int start = toInt(evaluateExpression(forStmt.getStart(), env));
@@ -243,6 +350,14 @@ public class PdslInterpreter {
 		}
 	}
 
+	/**
+	 * Interprets a {@code let} variable binding, creating an inline branch if the value
+	 * is an {@link PdslNode.InlineBlock}, or evaluating the expression otherwise.
+	 *
+	 * @param let   The let statement
+	 * @param block Target sequential block (used when value is an inline block)
+	 * @param env   Current variable environment (updated with the new binding)
+	 */
 	private void interpretLet(PdslNode.LetStatement let,
 							  SequentialBlock block, Environment env) {
 		if (let.getValue() instanceof PdslNode.InlineBlock) {
@@ -256,6 +371,14 @@ public class PdslInterpreter {
 		}
 	}
 
+	/**
+	 * Interprets a {@code branch} statement, creating a sub-block and registering it in the
+	 * environment under the branch name.
+	 *
+	 * @param branchStmt The branch statement
+	 * @param block      Target sequential block that owns the branch
+	 * @param env        Current variable environment (updated with the branch block)
+	 */
 	private void interpretBranch(PdslNode.BranchStatement branchStmt,
 								 SequentialBlock block, Environment env) {
 		SequentialBlock branch = block.branch();
@@ -265,6 +388,14 @@ public class PdslInterpreter {
 		}
 	}
 
+	/**
+	 * Interprets an {@code accum} (residual connection) statement, adding the sub-block's
+	 * output to the main block's current output.
+	 *
+	 * @param accumStmt The accumulation statement
+	 * @param block     Target sequential block
+	 * @param env       Current variable environment
+	 */
 	private void interpretAccum(PdslNode.AccumStatement accumStmt,
 								SequentialBlock block, Environment env) {
 		// Optimize: single expression → use directly as Block
@@ -282,6 +413,14 @@ public class PdslInterpreter {
 		}
 	}
 
+	/**
+	 * Interprets a {@code product} statement, computing element-wise multiplication of two
+	 * sub-blocks and appending the result to the target block.
+	 *
+	 * @param prodStmt The product statement
+	 * @param block    Target sequential block
+	 * @param env      Current variable environment
+	 */
 	private void interpretProduct(PdslNode.ProductStatement prodStmt,
 								  SequentialBlock block, Environment env) {
 		TraversalPolicy shape = block.getOutputShape();
@@ -290,8 +429,41 @@ public class PdslInterpreter {
 		block.product(left, right);
 	}
 
+	/**
+	 * Interprets an {@code accum_blocks} statement by applying two sub-blocks to the same input
+	 * and accumulating their outputs element-wise.
+	 */
+	private void interpretAccumBlocks(PdslNode.AccumBlocksStatement accumStmt,
+									  SequentialBlock block, Environment env) {
+		TraversalPolicy shape = block.getOutputShape();
+		Block left = expressionToBlock(accumStmt.getLeft(), shape, env);
+		Block right = expressionToBlock(accumStmt.getRight(), shape, env);
+		block.accum(left, right);
+	}
+
+	/**
+	 * Interprets a {@code concat_blocks} statement by applying N sub-blocks to the same input
+	 * and concatenating their outputs.
+	 */
+	private void interpretConcatBlocks(PdslNode.ConcatBlocksStatement concatStmt,
+										SequentialBlock block, Environment env) {
+		TraversalPolicy inputShape = block.getOutputShape();
+		List<Block> subBlocks = new ArrayList<>();
+		for (PdslNode.Expression expr : concatStmt.getBlocks()) {
+			subBlocks.add(expressionToBlock(expr, inputShape, env));
+		}
+		block.add(FEATURES.concatBlocks(inputShape, subBlocks));
+	}
+
 	// ---- Expression evaluation ----
 
+	/**
+	 * Evaluates an AST expression node to a Java value.
+	 *
+	 * @param expr The expression node to evaluate
+	 * @param env  Current variable environment
+	 * @return The evaluated value (may be a Number, String, Boolean, Block, PackedCollection, etc.)
+	 */
 	private Object evaluateExpression(PdslNode.Expression expr, Environment env) {
 		if (expr instanceof PdslNode.NumberLiteral) {
 			return ((PdslNode.NumberLiteral) expr).getValue();
@@ -324,6 +496,14 @@ public class PdslInterpreter {
 		}
 	}
 
+	/**
+	 * Resolves an identifier name to a value using the current environment or config definitions.
+	 *
+	 * @param name Identifier to resolve
+	 * @param env  Current variable environment
+	 * @return The resolved value
+	 * @throws PdslParseException If the identifier is not defined
+	 */
 	private Object resolveIdentifier(String name, Environment env) {
 		Object value = env.get(name);
 		if (value != null) return value;
@@ -336,6 +516,13 @@ public class PdslInterpreter {
 		throw new PdslParseException("Undefined identifier: '" + name + "'");
 	}
 
+	/**
+	 * Evaluates a shape literal to a {@link TraversalPolicy} by resolving each dimension.
+	 *
+	 * @param shape The shape literal node
+	 * @param env   Current variable environment for dimension expressions
+	 * @return The evaluated traversal policy
+	 */
 	private TraversalPolicy evaluateShape(PdslNode.ShapeLiteral shape,
 										  Environment env) {
 		int[] dims = new int[shape.getDimensions().size()];
@@ -345,6 +532,14 @@ public class PdslInterpreter {
 		return FEATURES.shape(dims);
 	}
 
+	/**
+	 * Evaluates a function call expression, dispatching to built-in primitives or
+	 * user-defined layer/model definitions.
+	 *
+	 * @param call The function call node
+	 * @param env  Current variable environment
+	 * @return The result of the function call (a Block, PackedCollection, Number, etc.)
+	 */
 	private Object evaluateFunctionCall(PdslNode.FunctionCall call,
 										Environment env) {
 		String name = call.getName();
@@ -367,6 +562,13 @@ public class PdslInterpreter {
 				"Unknown function '" + name + "' at line " + call.getLine());
 	}
 
+	/**
+	 * Evaluates a binary arithmetic operation ({@code +}, {@code -}, {@code *}, {@code /}).
+	 *
+	 * @param op  The binary operation node
+	 * @param env Current variable environment
+	 * @return The numeric result as a {@code Double}
+	 */
 	private Object evaluateBinaryOp(PdslNode.BinaryOp op, Environment env) {
 		Object left = evaluateExpression(op.getLeft(), env);
 		Object right = evaluateExpression(op.getRight(), env);
@@ -382,6 +584,13 @@ public class PdslInterpreter {
 		}
 	}
 
+	/**
+	 * Evaluates a unary operation (currently only negation {@code -}).
+	 *
+	 * @param op  The unary operation node
+	 * @param env Current variable environment
+	 * @return The numeric result as a {@code Double}
+	 */
 	private Object evaluateUnaryOp(PdslNode.UnaryOp op, Environment env) {
 		Object operand = evaluateExpression(op.getOperand(), env);
 		if ("-".equals(op.getOperator())) {
@@ -390,6 +599,14 @@ public class PdslInterpreter {
 		throw new PdslParseException("Unknown unary operator: " + op.getOperator());
 	}
 
+	/**
+	 * Evaluates a field access expression ({@code config.field}) by looking up
+	 * the field name in the evaluated object (expected to be a config map).
+	 *
+	 * @param access The field access node
+	 * @param env    Current variable environment
+	 * @return The field value from the config map
+	 */
 	private Object evaluateFieldAccess(PdslNode.FieldAccess access,
 									   Environment env) {
 		Object obj = evaluateExpression(access.getObject(), env);
@@ -405,6 +622,14 @@ public class PdslInterpreter {
 				"Cannot access field on " + obj.getClass().getSimpleName());
 	}
 
+	/**
+	 * Evaluates a weight reference expression, returning a prefixed key string
+	 * that the caller resolves against a {@link org.almostrealism.ml.StateDictionary}.
+	 *
+	 * @param ref The weight reference node
+	 * @param env Current variable environment
+	 * @return A {@code "weight:<key>"} string identifying the weight
+	 */
 	private Object evaluateWeightRef(PdslNode.WeightRef ref, Environment env) {
 		Object key = evaluateExpression(ref.getKeyExpression(), env);
 		// WeightRef returns the key string; the loader resolves it via StateDictionary
@@ -413,6 +638,13 @@ public class PdslInterpreter {
 
 	// ---- Built-in function dispatch ----
 
+	/**
+	 * Attempts to resolve and execute a built-in function by name.
+	 *
+	 * @param name Name of the function
+	 * @param args Evaluated arguments
+	 * @return The result of the built-in, or {@code null} if the name is not a built-in
+	 */
 	private Object tryCallBuiltin(String name, List<Object> args) {
 		switch (name) {
 			case "dense": return callDense(args);
@@ -421,16 +653,27 @@ public class PdslInterpreter {
 			case "silu": return callActivation("silu");
 			case "relu": return callActivation("relu");
 			case "gelu": return callActivation("gelu");
+			case "sigmoid": return callActivation("sigmoid");
+			case "tanh_act": return callActivation("tanh_act");
+			case "slice": return callSlice(args);
+			case "lerp": return callLerp(args);
 				case "reshape": return callReshape(args);
 			case "rope_rotation": return callRopeRotation(args);
 			case "attention": return callAttention(args);
 			case "transformer": return callTransformer(args);
 			case "feed_forward": return callFeedForward(args);
 				case "shape": return callShape(args);
+			case "range": return callRange(args);
 			default: return null;
 		}
 	}
 
+	/**
+	 * Builds a dense (fully-connected) layer block from weight and optional bias arguments.
+	 *
+	 * @param args Evaluated arguments: weight tensor, and optionally bias tensor
+	 * @return A dense {@link Block}
+	 */
 	private Object callDense(List<Object> args) {
 		if (args.size() == 1) {
 			return FEATURES.dense((PackedCollection) args.get(0));
@@ -443,6 +686,12 @@ public class PdslInterpreter {
 				"dense() expects 1 or 2 arguments, got " + args.size());
 	}
 
+	/**
+	 * Builds an RMSNorm layer from weight and epsilon arguments.
+	 *
+	 * @param args Evaluated arguments: weights tensor and epsilon value
+	 * @return A shape-dependent {@link CellularLayer} factory
+	 */
 	private Object callRmsnorm(List<Object> args) {
 		if (args.size() == 2) {
 			PackedCollection weights = (PackedCollection) args.get(0);
@@ -454,6 +703,12 @@ public class PdslInterpreter {
 				"rmsnorm() expects 2 arguments (weights, epsilon), got " + args.size());
 	}
 
+	/**
+	 * Builds a softmax activation block.
+	 *
+	 * @param args Must be empty
+	 * @return A softmax {@link Block}
+	 */
 	private Object callSoftmax(List<Object> args) {
 		if (args.isEmpty()) {
 			return FEATURES.softmax();
@@ -462,16 +717,63 @@ public class PdslInterpreter {
 				"softmax() expects 0 arguments, got " + args.size());
 	}
 
+	/**
+	 * Builds an activation block for the given activation type name.
+	 *
+	 * @param type One of {@code "silu"}, {@code "relu"}, or {@code "gelu"}
+	 * @return The corresponding activation {@link Block}
+	 */
 	private Object callActivation(String type) {
 		switch (type) {
 			case "silu": return FEATURES.silu();
 			case "relu": return FEATURES.relu();
 			case "gelu": return FEATURES.gelu();
+			case "sigmoid": return FEATURES.sigmoid();
+			case "tanh_act": return FEATURES.tanh();
 			default:
 				throw new PdslParseException("Unknown activation: " + type);
 		}
 	}
 
+	/**
+	 * Builds a subset (slice) block from offset and size arguments.
+	 *
+	 * @param args two integer arguments: offset, size
+	 * @return a factory that creates a slice block for any input shape
+	 */
+	private Object callSlice(List<Object> args) {
+		if (args.size() == 2) {
+			int offset = toInt(args.get(0));
+			int size = toInt(args.get(1));
+			return (Function<TraversalPolicy, Block>)
+					(inputShape -> FEATURES.subset(inputShape, FEATURES.shape(size), offset));
+		}
+		throw new PdslParseException(
+				"slice() expects 2 arguments (offset, size), got " + args.size());
+	}
+
+	/**
+	 * Builds a lerp (linear interpolation) layer from a hidden-size argument.
+	 *
+	 * @param args one integer argument: hidden_size
+	 * @return a factory that creates the lerp layer for any (3 * hidden_size) input shape
+	 */
+	private Object callLerp(List<Object> args) {
+		if (args.size() == 1) {
+			int hiddenSize = toInt(args.get(0));
+			return (Function<TraversalPolicy, Block>)
+					(inputShape -> FEATURES.lerpLayer(inputShape, hiddenSize));
+		}
+		throw new PdslParseException(
+				"lerp() expects 1 argument (hidden_size), got " + args.size());
+	}
+
+	/**
+	 * Builds a reshape block from one or two shape arguments.
+	 *
+	 * @param args Shape arguments: output shape only, or input shape then output shape
+	 * @return A reshape {@link Block}
+	 */
 	private Object callReshape(List<Object> args) {
 		if (args.size() == 1 && args.get(0) instanceof TraversalPolicy) {
 			TraversalPolicy outputShape = (TraversalPolicy) args.get(0);
@@ -488,6 +790,12 @@ public class PdslInterpreter {
 				"reshape() expects 1 or 2 shape arguments, got " + args.size());
 	}
 
+	/**
+	 * Builds a RoPE rotary position embedding block.
+	 *
+	 * @param args Evaluated arguments: shape, frequency tensor, and position producer
+	 * @return A RoPE rotation {@link Block}
+	 */
 	private Object callRopeRotation(List<Object> args) {
 		if (args.size() == 3) {
 			TraversalPolicy shape = (TraversalPolicy) args.get(0);
@@ -500,6 +808,13 @@ public class PdslInterpreter {
 						+ args.size());
 	}
 
+	/**
+	 * Builds an attention block from 8, 14, or 15 evaluated arguments.
+	 *
+	 * @param args Evaluated arguments matching one of the supported
+	 *             {@link org.almostrealism.ml.AttentionFeatures#attention} overloads
+	 * @return An attention {@link Block}
+	 */
 	private Object callAttention(List<Object> args) {
 		if (args.size() == 8) {
 			// attention(heads, rms_weight, wk, wv, wq, wo, freq_cis, position)
@@ -554,6 +869,13 @@ public class PdslInterpreter {
 				"attention() expects 8, 14, or 15 arguments, got " + args.size());
 	}
 
+	/**
+	 * Builds a full transformer block from evaluated arguments.
+	 *
+	 * @param args Evaluated arguments matching the
+	 *             {@link org.almostrealism.ml.AttentionFeatures#transformer} signature
+	 * @return A transformer {@link Block}
+	 */
 	private Object callTransformer(List<Object> args) {
 		if (args.size() == 19) {
 			return FEATURES.transformer(
@@ -581,6 +903,12 @@ public class PdslInterpreter {
 				"transformer() expects 19 arguments, got " + args.size());
 	}
 
+	/**
+	 * Builds a feed-forward (MLP) block from 4 or 5 evaluated weight arguments.
+	 *
+	 * @param args Evaluated arguments: RMSNorm weight, w1, w2, w3, and optionally epsilon
+	 * @return A feed-forward {@link Block}
+	 */
 	private Object callFeedForward(List<Object> args) {
 		if (args.size() == 4) {
 			// feed_forward(rms, w1, w2, w3)
@@ -602,6 +930,12 @@ public class PdslInterpreter {
 				"feed_forward() expects 4 or 5 arguments, got " + args.size());
 	}
 
+	/**
+	 * Constructs a {@link TraversalPolicy} from a variable number of integer dimension arguments.
+	 *
+	 * @param args Evaluated integer dimension values
+	 * @return The corresponding traversal policy
+	 */
 	private Object callShape(List<Object> args) {
 		int[] dims = new int[args.size()];
 		for (int i = 0; i < args.size(); i++) {
@@ -610,8 +944,35 @@ public class PdslInterpreter {
 		return FEATURES.shape(dims);
 	}
 
+	/**
+	 * Creates a zero-copy sub-view of a {@link PackedCollection} using
+	 * {@link PackedCollection#range(TraversalPolicy, int)}.
+	 *
+	 * @param args [source: PackedCollection, shape: TraversalPolicy, offset: int]
+	 * @return a zero-copy {@link PackedCollection} view of the requested sub-region
+	 */
+	private Object callRange(List<Object> args) {
+		if (args.size() == 3) {
+			PackedCollection source = (PackedCollection) args.get(0);
+			TraversalPolicy shape = (TraversalPolicy) args.get(1);
+			int offset = toInt(args.get(2));
+			return source.range(shape, offset);
+		}
+		throw new PdslParseException(
+				"range() expects 3 arguments (source, shape, offset), got " + args.size());
+	}
+
 	// ---- User-defined layer calls ----
 
+	/**
+	 * Instantiates a user-defined layer by binding arguments to its parameters
+	 * and interpreting its body.
+	 *
+	 * @param name          Name of the layer definition to call
+	 * @param evaluatedArgs Already-evaluated argument values
+	 * @param parentEnv     Parent environment (not mutated)
+	 * @return The result of the layer body (typically a {@link Block})
+	 */
 	private Object callUserLayer(String name, List<Object> evaluatedArgs,
 								 Environment parentEnv) {
 		PdslNode.LayerDef def = layerDefs.get(name);
@@ -633,11 +994,21 @@ public class PdslInterpreter {
 		return buildLayer(name, inputShape, args);
 	}
 
+	/**
+	 * Infers the input shape for a user-defined layer from its return-shape annotation
+	 * or from the shape of the first weight parameter.
+	 *
+	 * @param def  The layer definition
+	 * @param args Bound argument values keyed by parameter name
+	 * @return The inferred input {@link TraversalPolicy}
+	 * @throws PdslParseException If the shape cannot be determined
+	 */
 	private TraversalPolicy inferInputShape(PdslNode.LayerDef def,
 											Map<String, Object> args) {
 		// Try return shape annotation
 		if (def.getReturnShape() != null) {
 			Environment tempEnv = new Environment(null);
+			populateDataDefs(args, tempEnv);
 			for (Map.Entry<String, Object> entry : args.entrySet()) {
 				tempEnv.set(entry.getKey(), entry.getValue());
 			}
@@ -664,6 +1035,12 @@ public class PdslInterpreter {
 
 	// ---- Block construction helpers ----
 
+	/**
+	 * Appends a computed result to a sequential block, unwrapping factory functions if needed.
+	 *
+	 * @param block  Target block
+	 * @param result Block, factory function, or other supported result type
+	 */
 	private void addToBlock(SequentialBlock block, Object result) {
 		if (result instanceof Block) {
 			block.add((Block) result);
@@ -676,6 +1053,12 @@ public class PdslInterpreter {
 		}
 	}
 
+	/**
+	 * Adds a computed result to a model as a block layer, unwrapping factory functions if needed.
+	 *
+	 * @param model  Target model
+	 * @param result Block or factory function to add
+	 */
 	private void addToModel(Model model, Object result) {
 		if (result instanceof Block) {
 			model.add((Block) result);
@@ -688,6 +1071,14 @@ public class PdslInterpreter {
 		}
 	}
 
+	/**
+	 * Evaluates an expression and wraps the result as a {@link Block} with the given input shape.
+	 *
+	 * @param expr       Expression to evaluate (may be an inline block or a named block/factory)
+	 * @param inputShape Input shape for factory-function blocks
+	 * @param env        Current variable environment
+	 * @return The resulting block
+	 */
 	private Block expressionToBlock(PdslNode.Expression expr,
 									TraversalPolicy inputShape, Environment env) {
 		if (expr instanceof PdslNode.InlineBlock) {
@@ -700,6 +1091,13 @@ public class PdslInterpreter {
 		return objectToBlock(result, inputShape);
 	}
 
+	/**
+	 * Converts a generic object to a {@link Block}, applying factory functions if needed.
+	 *
+	 * @param result     Block or factory function
+	 * @param inputShape Input shape to pass to factory functions
+	 * @return The resulting block
+	 */
 	private Block objectToBlock(Object result, TraversalPolicy inputShape) {
 		if (result instanceof Block) return (Block) result;
 		if (result instanceof Function) {
@@ -714,6 +1112,12 @@ public class PdslInterpreter {
 
 	// ---- Type conversion helpers ----
 
+	/**
+	 * Converts a numeric object to an {@code int}.
+	 *
+	 * @param value Number value (Integer, Double, or other Number)
+	 * @return Integer value
+	 */
 	private static int toInt(Object value) {
 		if (value instanceof Integer) return (Integer) value;
 		if (value instanceof Double) return ((Double) value).intValue();
@@ -721,6 +1125,12 @@ public class PdslInterpreter {
 		throw new PdslParseException("Expected int but got " + value);
 	}
 
+	/**
+	 * Converts a numeric object to a {@code double}.
+	 *
+	 * @param value Number value (Double, Integer, or other Number)
+	 * @return Double value
+	 */
 	private static double toDouble(Object value) {
 		if (value instanceof Double) return (Double) value;
 		if (value instanceof Integer) return (Integer) value;
@@ -728,6 +1138,13 @@ public class PdslInterpreter {
 		throw new PdslParseException("Expected number but got " + value);
 	}
 
+	/**
+	 * Converts an object to a {@link Producer} of {@link PackedCollection}, wrapping
+	 * a raw {@link PackedCollection} with {@code p()} if needed.
+	 *
+	 * @param value PackedCollection or already-wrapped Producer
+	 * @return The producer
+	 */
 	private Producer<PackedCollection> toProducer(Object value) {
 		if (value instanceof PackedCollection) {
 			return FEATURES.p((PackedCollection) value);
@@ -742,19 +1159,39 @@ public class PdslInterpreter {
 
 	/** Scoped variable environment with parent chain. */
 	private static class Environment {
+		/** Variable bindings in the current scope. */
 		private final Map<String, Object> bindings = new HashMap<>();
+
+		/** Enclosing scope, or {@code null} for the top-level scope. */
 		private final Environment parent;
 
+		/**
+		 * Creates a new scope with the given parent.
+		 *
+		 * @param parent Enclosing scope, or {@code null} for the top-level scope
+		 */
 		Environment(Environment parent) {
 			this.parent = parent;
 		}
 
+		/**
+		 * Looks up a variable by name, walking the parent chain if not found locally.
+		 *
+		 * @param name Variable name
+		 * @return The bound value, or {@code null} if not defined
+		 */
 		Object get(String name) {
 			if (bindings.containsKey(name)) return bindings.get(name);
 			if (parent != null) return parent.get(name);
 			return null;
 		}
 
+		/**
+		 * Binds a variable name to a value in the current scope.
+		 *
+		 * @param name  Variable name
+		 * @param value Value to bind
+		 */
 		void set(String name, Object value) {
 			bindings.put(name, value);
 		}

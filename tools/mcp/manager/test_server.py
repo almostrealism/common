@@ -11,6 +11,7 @@ import os
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError, URLError
 
 # Ensure the manager package is importable
 _MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -239,6 +240,74 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         result = server.workstream_submit_task(prompt="x" * 50_001)
         self.assertFalse(result["ok"])
         self.assertIn("maximum length", result["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_submit_required_labels(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-3"}
+        server.workstream_submit_task(
+            prompt="Task", required_labels="platform:macos,gpu:true")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["requiredLabels"], {
+            "platform": "macos", "gpu": "true"})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_deduplication_mode_local(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-d1"}
+        server.workstream_submit_task(prompt="Task", deduplication_mode="local")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["deduplicationMode"], "local")
+
+    @patch.object(server, "_controller_post")
+    def test_submit_deduplication_mode_spawn(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-d2"}
+        server.workstream_submit_task(prompt="Task", deduplication_mode="spawn")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["deduplicationMode"], "spawn")
+
+    @patch.object(server, "_controller_post")
+    def test_submit_deduplication_mode_omitted_by_default(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-d3"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("deduplicationMode", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_preserves_job_id_in_next_steps(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "ok": True, "jobId": "job-42", "workstreamId": "ws-x"}
+        result = server.workstream_submit_task(
+            prompt="Task", workstream_id="ws-x")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["workstreamId"], "ws-x")
+        # next_steps should mention the workstream
+        self.assertTrue(any("ws-x" in s for s in result["next_steps"]))
+
+    @patch.object(server, "_controller_post")
+    def test_submit_controller_timeout(self, mock_post):
+        """Simulate controller timeout — returns an error dict."""
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "ok": False, "error": "Internal error contacting controller"}
+        result = server.workstream_submit_task(
+            prompt="Task", workstream_id="ws-test")
+        self.assertFalse(result["ok"])
+        self.assertIn("next_steps", result)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_controller_returns_no_ok_field(self, mock_post):
+        """Controller returns success-like response without explicit 'ok' key."""
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "jobId": "job-99", "workstreamId": "ws-test"}
+        result = server.workstream_submit_task(
+            prompt="Task", workstream_id="ws-test")
+        # Without "ok" key, result.get("ok") is None/falsy, so error next_steps added
+        self.assertIn("next_steps", result)
 
     def test_requires_write_scope(self):
         _grant_scopes("read")
@@ -777,6 +846,71 @@ class TestMemoryStore(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------
+# Controller HTTP helpers
+# -----------------------------------------------------------------------
+
+
+class TestControllerPost(unittest.TestCase):
+
+    @patch("server.urlopen")
+    def test_success_response(self, mock_urlopen):
+        resp = MagicMock()
+        resp.read.return_value = b'{"ok":true,"jobId":"j1"}'
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = resp
+        result = server._controller_post("/api/submit", {"prompt": "test"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["jobId"], "j1")
+
+    @patch("server.urlopen")
+    def test_empty_body_returns_ok(self, mock_urlopen):
+        resp = MagicMock()
+        resp.read.return_value = b""
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = resp
+        result = server._controller_post("/api/test", {})
+        self.assertTrue(result["ok"])
+
+    @patch("server.urlopen")
+    def test_http_error_with_json_body(self, mock_urlopen):
+        error = HTTPError(
+            url="http://test/api/submit", code=400, msg="Bad Request",
+            hdrs=None, fp=None)
+        error.read = lambda: b'{"ok":false,"error":"Missing prompt"}'
+        mock_urlopen.side_effect = error
+        result = server._controller_post("/api/submit", {})
+        self.assertFalse(result["ok"])
+        self.assertIn("Missing prompt", result["error"])
+
+    @patch("server.urlopen")
+    def test_http_error_without_json(self, mock_urlopen):
+        error = HTTPError(
+            url="http://test/api/submit", code=500, msg="Server Error",
+            hdrs=None, fp=None)
+        error.read = lambda: b"Internal Server Error"
+        mock_urlopen.side_effect = error
+        result = server._controller_post("/api/submit", {})
+        self.assertFalse(result["ok"])
+        self.assertIn("500", result["error"])
+
+    @patch("server.urlopen")
+    def test_url_error_returns_unreachable(self, mock_urlopen):
+        mock_urlopen.side_effect = URLError("Connection refused")
+        result = server._controller_post("/api/submit", {})
+        self.assertFalse(result["ok"])
+        self.assertIn("unreachable", result["error"])
+
+    @patch("server.urlopen")
+    def test_timeout_returns_error(self, mock_urlopen):
+        mock_urlopen.side_effect = TimeoutError("timed out")
+        result = server._controller_post("/api/submit", {})
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+
+# -----------------------------------------------------------------------
 # Input validation & auth
 # -----------------------------------------------------------------------
 
@@ -862,13 +996,15 @@ class TestToolRegistration(unittest.TestCase):
         self.assertIn("controller_update_config", tools)
 
     def test_expected_tool_count(self):
-        """Verify all 15 tools are registered."""
+        """Verify all tools are registered."""
         tools = server.mcp._tool_manager._tools
         expected = {
             "controller_health",
             "controller_update_config",
             "workstream_list",
             "workstream_get_status",
+            "workstream_list_jobs",
+            "workstream_get_job",
             "workstream_submit_task",
             "workstream_register",
             "workstream_update_config",
@@ -879,12 +1015,185 @@ class TestToolRegistration(unittest.TestCase):
             "memory_recall",
             "memory_branch_context",
             "memory_store",
+            "send_message",
+            "github_pr_find",
+            "github_pr_review_comments",
+            "github_pr_conversation",
+            "github_pr_reply",
+            "github_list_open_prs",
+            "github_create_pr",
         }
         registered = set(tools.keys())
         missing = expected - registered
         extra = registered - expected
         self.assertFalse(missing, f"Missing tools: {missing}")
         self.assertFalse(extra, f"Unexpected tools: {extra}")
+
+
+# -----------------------------------------------------------------------
+# GitHub PR tools
+# -----------------------------------------------------------------------
+
+
+class TestGithubPrReviewComments(unittest.TestCase):
+    """Tests for github_pr_review_comments (GraphQL-based, paginated)."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _make_graphql_response(self, threads, has_next=False, cursor="abc"):
+        """Build a mock GraphQL response for reviewThreads."""
+        return {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "pageInfo": {
+                                "hasNextPage": has_next,
+                                "endCursor": cursor,
+                            },
+                            "nodes": threads,
+                        }
+                    }
+                }
+            }
+        }
+
+    def _make_thread(self, resolved, comments):
+        """Build a reviewThread node."""
+        return {
+            "isResolved": resolved,
+            "comments": {
+                "nodes": [
+                    {
+                        "databaseId": c.get("id", 1),
+                        "path": c.get("path", "file.py"),
+                        "line": c.get("line", 10),
+                        "originalLine": c.get("originalLine"),
+                        "body": c.get("body", "fix this"),
+                        "author": {"login": c.get("user", "reviewer")},
+                        "createdAt": c.get("createdAt", "2026-01-01T00:00:00Z"),
+                    }
+                    for c in comments
+                ]
+            },
+        }
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_graphql_request")
+    def test_returns_unresolved_comments(self, mock_gql, mock_repo):
+        unresolved = self._make_thread(False, [
+            {"id": 101, "body": "please fix", "user": "alice",
+             "createdAt": "2026-03-01T10:00:00Z"},
+        ])
+        resolved = self._make_thread(True, [
+            {"id": 102, "body": "looks good", "user": "bob",
+             "createdAt": "2026-03-02T10:00:00Z"},
+        ])
+        mock_gql.return_value = self._make_graphql_response(
+            [unresolved, resolved], has_next=False)
+
+        result = server.github_pr_review_comments(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["comments"][0]["id"], 101)
+        self.assertEqual(result["comments"][0]["body"], "please fix")
+        self.assertEqual(result["comments"][0]["user"], "alice")
+        self.assertIsNone(result["comments"][0]["in_reply_to_id"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_graphql_request")
+    def test_paginates_through_multiple_pages(self, mock_gql, mock_repo):
+        page1_thread = self._make_thread(False, [
+            {"id": 1, "body": "page1", "createdAt": "2026-01-01T00:00:00Z"},
+        ])
+        page2_thread = self._make_thread(False, [
+            {"id": 2, "body": "page2", "createdAt": "2026-02-01T00:00:00Z"},
+        ])
+        mock_gql.side_effect = [
+            self._make_graphql_response([page1_thread], has_next=True, cursor="c1"),
+            self._make_graphql_response([page2_thread], has_next=False),
+        ]
+
+        result = server.github_pr_review_comments(pr_number=10)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(result["comments"][0]["id"], 2)
+        self.assertEqual(result["comments"][1]["id"], 1)
+        self.assertEqual(mock_gql.call_count, 2)
+        first_vars = mock_gql.call_args_list[0][0][1]
+        self.assertIsNone(first_vars["cursor"])
+        second_vars = mock_gql.call_args_list[1][0][1]
+        self.assertEqual(second_vars["cursor"], "c1")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_graphql_request")
+    def test_empty_when_all_resolved(self, mock_gql, mock_repo):
+        resolved = self._make_thread(True, [{"id": 1, "body": "done"}])
+        mock_gql.return_value = self._make_graphql_response(
+            [resolved], has_next=False)
+
+        result = server.github_pr_review_comments(pr_number=5)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 0)
+        self.assertEqual(result["comments"], [])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_graphql_request")
+    def test_caps_at_50_comments(self, mock_gql, mock_repo):
+        comments = [
+            {"id": i, "body": f"comment {i}",
+             "createdAt": f"2026-01-{i+1:02d}T00:00:00Z"}
+            for i in range(60)
+        ]
+        thread = self._make_thread(False, comments)
+        mock_gql.return_value = self._make_graphql_response(
+            [thread], has_next=False)
+
+        result = server.github_pr_review_comments(pr_number=1)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 50)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_graphql_request")
+    def test_graphql_error_returns_error(self, mock_gql, mock_repo):
+        mock_gql.return_value = {
+            "errors": [{"message": "Field 'foo' doesn't exist"}]
+        }
+
+        result = server.github_pr_review_comments(pr_number=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("foo", result["error"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("", "", "", {"ok": False, "error": "no repo"}))
+    def test_repo_resolution_error(self, mock_repo):
+        result = server.github_pr_review_comments(pr_number=1)
+        self.assertFalse(result["ok"])
+        self.assertIn("no repo", result["error"])
+
+    def test_requires_read_scope(self):
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            server.github_pr_review_comments(pr_number=1)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_graphql_request")
+    def test_uses_line_fallback_to_originalLine(self, mock_gql, mock_repo):
+        thread = self._make_thread(False, [
+            {"id": 1, "line": None, "originalLine": 42, "body": "outdated"},
+        ])
+        mock_gql.return_value = self._make_graphql_response(
+            [thread], has_next=False)
+
+        result = server.github_pr_review_comments(pr_number=1)
+        self.assertEqual(result["comments"][0]["line"], 42)
 
 
 if __name__ == "__main__":

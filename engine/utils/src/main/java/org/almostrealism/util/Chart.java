@@ -89,17 +89,37 @@ import java.util.List;
  * @author Mike Murray
  */
 public class Chart extends ArrayList<String> {
+	/** Fixed header prefix prepended to every chart line. */
 	private static final String header = "[--------]:";
+
+	/** Formats timestamps on chart lines in {@code hh:mm a} format. */
 	private DateFormat format = new SimpleDateFormat("hh:mm a");
+
+	/** Formats numeric values with three decimal places for chart output. */
 	private static NumberFormat dformat = new DecimalFormat("#.000");
-	
+
+	/** Maximum number of data points retained; older entries are discarded. */
 	private int max = 100;
+
+	/** Scaling factor applied to values when rendering the ASCII bar chart. */
 	private double scale = 0.05;
+
+	/** Maximum number of characters per chart bar line. */
 	private int div = 80;
+
+	/** Minimum gap in entries between recorded min/max events. */
 	private int minMaxOffset = 1;
+
+	/** Number of entries since the last recorded minimum and maximum respectively. */
 	private int sinceLastMin = 0, sinceLastMax = 0;
+
+	/** Running minimum and maximum observed values across all data points. */
 	private double minValue = Double.MAX_VALUE, maxValue;
+
+	/** The most recently completed value and the value currently being accumulated. */
 	private double lastValue, currentValue;
+
+	/** The list of raw data point values in insertion order. */
 	private List<Double> values;
 	
 	/**

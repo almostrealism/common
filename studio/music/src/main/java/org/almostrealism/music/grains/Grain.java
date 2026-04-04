@@ -23,11 +23,29 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
 
+/**
+ * A single audio grain used in granular synthesis.
+ *
+ * <p>A grain is a short audio excerpt defined by its start position within a source,
+ * its duration, and its playback rate. It extends {@link PackedCollection} and stores
+ * three values: {@code start}, {@code duration}, and {@code rate}.</p>
+ *
+ * @see GrainSet
+ * @see GrainProcessor
+ */
 public class Grain extends PackedCollection {
+	/** Creates an uninitialized grain with storage for three values. */
 	public Grain() {
 		super(3);
 	}
 
+	/**
+	 * Creates a grain with the given start position, duration, and playback rate.
+	 *
+	 * @param start    the start position within the source audio, in seconds
+	 * @param duration the duration of the grain, in seconds
+	 * @param rate     the playback rate (1.0 = normal speed)
+	 */
 	public Grain(double start, double duration, double rate) {
 		this();
 		setStart(start);

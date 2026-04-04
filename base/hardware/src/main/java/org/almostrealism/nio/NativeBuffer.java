@@ -30,13 +30,39 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * JNI-backed direct memory buffer used as the native RAM representation for CPU-side hardware execution.
+ *
+ * <p>Each {@link NativeBuffer} wraps a Java NIO direct {@link Buffer} allocated either via
+ * {@link ByteBuffer#allocateDirect} or via shared memory ({@link NIO#mapSharedMemory}).
+ * The raw native pointer to the buffer is exposed for kernel argument passing.</p>
+ *
+ * <p>When the buffer is backed by shared memory, {@link #destroy()} unmaps the region.
+ * Deallocation listeners are called by {@link NativeBufferMemoryProvider} after GC cleanup.</p>
+ *
+ * @see NativeBufferMemoryProvider
+ * @see NIO
+ */
 public class NativeBuffer extends RAM implements Destroyable {
+	/** The memory provider that allocated this buffer. */
 	private final NativeBufferMemoryProvider provider;
+	/** Root byte buffer used for shared memory mapping and capacity queries. */
 	private final ByteBuffer rootBuffer;
+	/** Typed view of the buffer (float, double, or short depending on precision). */
 	private final Buffer buffer;
+	/** Shared memory path, or null if this buffer uses private memory. */
 	private final String sharedLocation;
+	/** Listeners notified when this buffer is deallocated. */
 	private List<Consumer<NativeBuffer>> deallocationListeners;
 
+	/**
+	 * Creates a native buffer backed by the given direct buffers.
+	 *
+	 * @param provider       Memory provider that owns this buffer
+	 * @param rootBuffer     Root byte buffer for capacity and mapping operations
+	 * @param buffer         Typed view used for kernel argument passing
+	 * @param sharedLocation Shared memory path, or null for private allocation
+	 */
 	protected NativeBuffer(NativeBufferMemoryProvider provider,
 						   ByteBuffer rootBuffer, Buffer buffer,
 						   String sharedLocation) {
@@ -77,6 +103,11 @@ public class NativeBuffer extends RAM implements Destroyable {
 	 */
 	public String getSharedLocation() { return sharedLocation; }
 
+	/**
+	 * Synchronizes the shared memory buffer, flushing any pending changes back to the region.
+	 *
+	 * <p>Has no effect if this buffer is not backed by shared memory.</p>
+	 */
 	public void sync() {
 		if (sharedLocation != null) {
 			NIO.syncSharedMemory(rootBuffer, rootBuffer.capacity());
@@ -95,14 +126,31 @@ public class NativeBuffer extends RAM implements Destroyable {
 		return provider.getNumberSize() * (long) buffer.capacity();
 	}
 
+	/**
+	 * Registers a listener to be called when this buffer is deallocated.
+	 *
+	 * @param listener Consumer called with null at deallocation time
+	 */
 	public void addDeallocationListener(Consumer<NativeBuffer> listener) {
 		deallocationListeners.add(listener);
 	}
 
+	/**
+	 * Returns the list of deallocation listeners registered for this buffer.
+	 *
+	 * @return List of deallocation listeners
+	 */
 	public List<Consumer<NativeBuffer>> getDeallocationListeners() {
 		return deallocationListeners;
 	}
 
+	/**
+	 * Allocates or maps a direct {@link ByteBuffer} for the given size.
+	 *
+	 * @param bytes          Number of bytes to allocate
+	 * @param sharedLocation Shared memory path, or null for private allocation
+	 * @return Direct byte buffer backed by private or shared memory
+	 */
 	protected static ByteBuffer buffer(int bytes, String sharedLocation) {
 		if (sharedLocation != null) {
 			ByteBuffer buffer = NIO.mapSharedMemory(sharedLocation, bytes)
@@ -115,6 +163,15 @@ public class NativeBuffer extends RAM implements Destroyable {
 		}
 	}
 
+	/**
+	 * Creates a typed native buffer with the precision determined by the given provider.
+	 *
+	 * @param provider       Provider that determines the number precision
+	 * @param len            Number of elements to allocate
+	 * @param sharedLocation Shared memory path, or null for private allocation
+	 * @return New {@link NativeBuffer} wrapping a typed direct buffer
+	 * @throws HardwareException If the provider's precision is not supported
+	 */
 	public static NativeBuffer create(NativeBufferMemoryProvider provider, int len, String sharedLocation) {
 		if (provider.getPrecision() == Precision.FP16) {
 			ByteBuffer bufferByte = buffer(len * 2, sharedLocation);

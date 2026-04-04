@@ -114,8 +114,15 @@ import java.util.stream.Stream;
  * @see org.almostrealism.graph.Cell
  */
 public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFeatures {
+	/** Shared console for logging audio cell activity. */
 	Console console = Console.root().child();
 
+	/**
+	 * Creates a receptor that accumulates audio data into one or more destination producers.
+	 *
+	 * @param destinations one or more destination producers to receive audio data
+	 * @return receptor that pushes audio to all destinations
+	 */
 	default Receptor<PackedCollection> a(Producer<PackedCollection>... destinations) {
 		if (destinations.length == 1) {
 			return protein -> a(1, destinations[0], protein);
@@ -124,30 +131,66 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		}
 	}
 
+	/**
+	 * Creates a silent audio cell that outputs a constant zero signal.
+	 *
+	 * @return a temporal cell adapter producing silence
+	 */
 	default CollectionTemporalCellAdapter silent() {
 		return CollectionTemporalCellAdapter.from(c(0.0));
 	}
 
+	/**
+	 * Creates a CellList containing a single silent cell.
+	 *
+	 * @return a CellList with one zero-output cell
+	 */
 	default CellList silence() {
 		CellList cells = new CellList();
 		cells.addRoot(silent());
 		return cells;
 	}
 
+	/**
+	 * Creates a CellList from an array of pre-built audio cells.
+	 *
+	 * @param cells the audio cells to add as roots
+	 * @return a CellList containing the provided cells
+	 */
 	default CellList cells(Cell<PackedCollection>... cells) {
 		return cells(cells.length, i -> cells[i]);
 	}
 
+	/**
+	 * Creates a CellList by building cells using a factory function.
+	 *
+	 * @param count  the number of cells to create
+	 * @param cells  factory function mapping index to an audio cell
+	 * @return a CellList containing the created cells
+	 */
 	default CellList cells(int count, IntFunction<Cell<PackedCollection>> cells) {
 		CellList c = new CellList();
 		IntStream.range(0, count).mapToObj(cells).forEach(c::addRoot);
 		return c;
 	}
 
+	/**
+	 * Creates a CellList by combining multiple existing CellLists.
+	 *
+	 * @param cells the CellLists to combine
+	 * @return a CellList aggregating all provided lists
+	 */
 	default CellList cells(CellList... cells) {
 		return all(cells.length, i -> cells[i]);
 	}
 
+	/**
+	 * Creates a CellList that aggregates multiple CellLists into a single flat container.
+	 *
+	 * @param count the number of CellLists to aggregate
+	 * @param cells factory function mapping index to a CellList
+	 * @return a CellList containing all cells from all sub-lists
+	 */
 	default CellList all(int count, IntFunction<CellList> cells) {
 		CellList[] all = new CellList[count];
 		IntStream.range(0, count).forEach(i -> all[i] = cells.apply(i));
@@ -157,6 +200,13 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
+	/**
+	 * Maps each cell in a CellList to a new destination cell, connecting them as receptors.
+	 *
+	 * @param cells the source CellList
+	 * @param dest  factory function mapping index to a destination cell
+	 * @return a new CellList with the destination cells appended
+	 */
 	default CellList map(CellList cells, IntFunction<Cell<PackedCollection>> dest) {
 		CellList c = new CellList(cells);
 
@@ -169,6 +219,13 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return c;
 	}
 
+	/**
+	 * Splits each cell in a CellList into multiple parallel branches, one per destination factory.
+	 *
+	 * @param cells the source CellList to branch
+	 * @param dest  destination factory functions, one per branch
+	 * @return an array of CellLists, each representing one branch
+	 */
 	default CellList[] branch(CellList cells, IntFunction<Cell<PackedCollection>>... dest) {
 		CellList[] c = IntStream.range(0, dest.length).mapToObj(i -> new CellList(cells)).toArray(CellList[]::new);
 
@@ -186,30 +243,78 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return c;
 	}
 
+	/**
+	 * Creates WaveCells from WaveData using the default channel and a fresh PolymorphicAudioData instance.
+	 *
+	 * @param channel the audio channel index to read from each WaveData
+	 * @param waves   the wave data to create cells from
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, WaveData... waves) {
 		return w(channel, (Supplier) PolymorphicAudioData::new, waves);
 	}
 
+	/**
+	 * Creates WaveCells from WaveData using a custom data supplier.
+	 *
+	 * @param channel the audio channel index to read from each WaveData
+	 * @param data    supplier for PolymorphicAudioData instances
+	 * @param waves   the wave data to create cells from
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, Supplier<PolymorphicAudioData> data, WaveData... waves) {
 		return w(channel, data, null, null, waves);
 	}
 
+	/**
+	 * Creates sine-wave cells for each frequency in the collection.
+	 *
+	 * @param frequencies the frequencies to synthesize
+	 * @return a CellList of SineWaveCells
+	 */
 	default CellList w(Collection<Frequency> frequencies) {
 		return w(PolymorphicAudioData::new, frequencies);
 	}
 
+	/**
+	 * Creates sine-wave cells for each frequency in the collection using a custom data supplier.
+	 *
+	 * @param data        supplier for PolymorphicAudioData instances
+	 * @param frequencies the frequencies to synthesize
+	 * @return a CellList of SineWaveCells
+	 */
 	default CellList w(Supplier<PolymorphicAudioData> data, Collection<Frequency> frequencies) {
 		return w(data, frequencies.stream());
 	}
 
+	/**
+	 * Creates sine-wave cells for each frequency using the default data supplier.
+	 *
+	 * @param frequencies the frequencies to synthesize
+	 * @return a CellList of SineWaveCells
+	 */
 	default CellList w(Frequency... frequencies) {
 		return w(PolymorphicAudioData::new, frequencies);
 	}
 
+	/**
+	 * Creates sine-wave cells for each frequency using a custom data supplier.
+	 *
+	 * @param data        supplier for PolymorphicAudioData instances
+	 * @param frequencies the frequencies to synthesize
+	 * @return a CellList of SineWaveCells
+	 */
 	default CellList w(Supplier<PolymorphicAudioData> data, Frequency... frequencies) {
 		return w(data, Stream.of(frequencies));
 	}
 
+	/**
+	 * Creates sine-wave cells for each frequency in the stream using a custom data supplier.
+	 *
+	 * @param data        supplier for PolymorphicAudioData instances
+	 * @param frequencies stream of frequencies to synthesize
+	 * @return a CellList of SineWaveCells
+	 */
 	default CellList w(Supplier<PolymorphicAudioData> data, Stream<Frequency> frequencies) {
 		CellList cells = new CellList();
 		frequencies.map(f -> {
@@ -223,42 +328,125 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
+	/**
+	 * Creates WaveCells by loading audio files at the given paths.
+	 *
+	 * @param channel the audio channel to read from each file
+	 * @param path    file paths to load
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, String... path) {
 		return w(channel, Stream.of(path).map(File::new).toArray(File[]::new));
 	}
 
+	/**
+	 * Creates looping WaveCells by loading audio files at the given paths.
+	 *
+	 * @param channel the audio channel to read from each file
+	 * @param repeat  producer that controls looping behavior
+	 * @param path    file paths to load
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, Producer<PackedCollection> repeat, String... path) {
 		return w(channel, null, repeat, path);
 	}
 
+	/**
+	 * Creates WaveCells with offset and repeat control by loading audio files at the given paths.
+	 *
+	 * @param channel the audio channel to read from each file
+	 * @param offset  producer specifying playback start offset
+	 * @param repeat  producer that controls looping behavior
+	 * @param path    file paths to load
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, String... path) {
 		return w(channel, offset, repeat, Stream.of(path).map(File::new).toArray(File[]::new));
 	}
 
+	/**
+	 * Creates WaveCells by loading audio files.
+	 *
+	 * @param channel the audio channel to read from each file
+	 * @param files   the audio files to load
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, File... files) {
 		return w(channel, (Supplier<PolymorphicAudioData>) PolymorphicAudioData::new, files);
 	}
 
+	/**
+	 * Creates looping WaveCells by loading audio files.
+	 *
+	 * @param channel the audio channel to read from each file
+	 * @param repeat  producer that controls looping behavior
+	 * @param files   the audio files to load
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, Producer<PackedCollection> repeat, File... files) {
 		return w(channel, null, repeat, files);
 	}
 
+	/**
+	 * Creates WaveCells with offset and repeat control by loading audio files.
+	 *
+	 * @param channel the audio channel to read from each file
+	 * @param offset  producer specifying playback start offset
+	 * @param repeat  producer that controls looping behavior
+	 * @param files   the audio files to load
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, File... files) {
 		return w(channel, PolymorphicAudioData::new, offset, repeat, files);
 	}
 
+	/**
+	 * Creates looping WaveCells from WaveData.
+	 *
+	 * @param channel the audio channel index
+	 * @param repeat  producer that controls looping behavior
+	 * @param data    the WaveData sources
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, Producer<PackedCollection> repeat, WaveData... data) {
 		return w(channel, null, repeat, data);
 	}
 
+	/**
+	 * Creates WaveCells with offset and repeat control from WaveData.
+	 *
+	 * @param channel the audio channel index
+	 * @param offset  producer specifying playback start offset
+	 * @param repeat  producer that controls looping behavior
+	 * @param data    the WaveData sources
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, WaveData... data) {
 		return w(channel, PolymorphicAudioData::new, offset, repeat, data);
 	}
 
+	/**
+	 * Creates WaveCells from audio files using a custom data supplier.
+	 *
+	 * @param channel the audio channel to read from each file
+	 * @param data    supplier for PolymorphicAudioData instances
+	 * @param files   the audio files to load
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, Supplier<PolymorphicAudioData> data, File... files) {
 		return w(channel, data, null, null, files);
 	}
 
+	/**
+	 * Creates WaveCells with full playback control from audio files.
+	 *
+	 * @param channel the audio channel to read from each file
+	 * @param data    supplier for PolymorphicAudioData instances
+	 * @param offset  producer specifying playback start offset, or null for none
+	 * @param repeat  producer that controls looping behavior, or null for none
+	 * @param files   the audio files to load
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, Supplier<PolymorphicAudioData> data, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, File... files) {
 		CellList cells = new CellList();
 		Stream.of(files).map(f -> {
@@ -272,6 +460,17 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
+	/**
+	 * Creates WaveCells from raw wave producers with explicit sample rate and frame count.
+	 *
+	 * @param data       supplier for PolymorphicAudioData instances
+	 * @param sampleRate the sample rate in Hz
+	 * @param frames     total number of frames in the wave data
+	 * @param offset     producer specifying playback start offset, or null for none
+	 * @param repeat     producer that controls looping behavior, or null for none
+	 * @param waves      raw wave data producers
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(Supplier<PolymorphicAudioData> data, int sampleRate, int frames,
 					   Producer<PackedCollection> offset,
 					   Producer<PackedCollection> repeat,
@@ -311,6 +510,16 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
+	/**
+	 * Creates WaveCells from WaveData with full playback control.
+	 *
+	 * @param channel the audio channel index
+	 * @param data    supplier for PolymorphicAudioData instances
+	 * @param offset  producer specifying playback start offset, or null for none
+	 * @param repeat  producer that controls looping behavior, or null for none
+	 * @param waves   the WaveData sources
+	 * @return a CellList of WaveCells
+	 */
 	default CellList w(int channel, Supplier<PolymorphicAudioData> data, Producer<PackedCollection> offset, Producer<PackedCollection> repeat, WaveData... waves) {
 		CellList cells = new CellList();
 		Stream.of(waves)
@@ -319,17 +528,44 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
+	/**
+	 * Creates a polyphonic CellList with frequency-based choices using a shared data supplier.
+	 *
+	 * @param count    the number of polyphonic voices
+	 * @param data     supplier for PolymorphicAudioData shared across all voices
+	 * @param decision function mapping voice index to the decision producer
+	 * @param choices  frequencies available as synthesis choices
+	 * @return a CellList of PolymorphicAudioCells
+	 */
 	default CellList poly(int count, Supplier<PolymorphicAudioData> data, IntFunction<CollectionProducer> decision, Frequency... choices) {
 		return poly(count, data, decision, Stream.of(choices)
 				.map(f -> (Function<PolymorphicAudioData, CollectionTemporalCellAdapter>) d -> (CollectionTemporalCellAdapter) w(data, f).get(0)).
 				toArray(Function[]::new));
 	}
 
+	/**
+	 * Creates a polyphonic CellList with custom cell factories and a shared data supplier.
+	 *
+	 * @param count    the number of polyphonic voices
+	 * @param data     supplier for PolymorphicAudioData shared across all voices
+	 * @param decision function mapping voice index to the decision producer
+	 * @param choices  factory functions that build cell adapters from PolymorphicAudioData
+	 * @return a CellList of PolymorphicAudioCells
+	 */
 	default CellList poly(int count, Supplier<PolymorphicAudioData> data, IntFunction<CollectionProducer> decision,
 						  Function<PolymorphicAudioData, CollectionTemporalCellAdapter>... choices) {
 		return poly(count, i -> data.get(), decision, choices);
 	}
 
+	/**
+	 * Creates a polyphonic CellList with custom cell factories and per-voice data allocation.
+	 *
+	 * @param count    the number of polyphonic voices
+	 * @param data     function mapping voice index to its PolymorphicAudioData
+	 * @param decision function mapping voice index to the decision producer
+	 * @param choices  factory functions that build cell adapters from PolymorphicAudioData
+	 * @return a CellList of PolymorphicAudioCells
+	 */
 	default CellList poly(int count, IntFunction<PolymorphicAudioData> data, IntFunction<CollectionProducer> decision,
 						  Function<PolymorphicAudioData, CollectionTemporalCellAdapter>... choices) {
 		CellList cells = new CellList();
@@ -337,6 +573,12 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells;
 	}
 
+	/**
+	 * Sums all cells in a CellList into a single summation cell.
+	 *
+	 * @param cells the CellList to sum
+	 * @return a CellList whose final cell accumulates the sum of all inputs
+	 */
 	default CellList sum(CellList cells) {
 		SummationCell sum = new SummationCell();
 		cells.forEach(c -> c.setReceptor(sum));
@@ -346,6 +588,13 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
+	/**
+	 * Creates a CellList of WaveOutput writer cells that write audio to files.
+	 *
+	 * @param count the number of output files to create
+	 * @param f     function mapping index to the output file
+	 * @return a CellList of writer cells with finalization operations
+	 */
 	default CellList o(int count, IntFunction<File> f) {
 		CellList result = new CellList();
 
@@ -358,6 +607,13 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
+	/**
+	 * Writes each cell in a CellList to a CSV file for debugging or analysis.
+	 *
+	 * @param cells the source CellList to capture
+	 * @param f     function mapping index to the CSV output file
+	 * @return a new CellList with finalization operations that write CSV files
+	 */
 	default CellList csv(CellList cells, IntFunction<File> f) {
 		CellList result = new CellList(cells);
 
@@ -370,6 +626,13 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
+	/**
+	 * Connects each cell in a CellList to a WaveOutput writer and returns the extended list.
+	 *
+	 * @param cells the source CellList
+	 * @param f     function mapping index to the output file
+	 * @return a new CellList including the writer cells and finalization operations
+	 */
 	default CellList o(CellList cells, IntFunction<File> f) {
 		CellList result = new CellList(cells);
 
@@ -384,6 +647,16 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
+	/**
+	 * Attaches a WaveOutput meter to each cell in a CellList for monitoring without replacing the receptor.
+	 *
+	 * <p>If the cell is a {@link CellAdapter}, the output is set as a meter. Otherwise, it is
+	 * set as the receptor. This allows monitoring intermediate signal levels during processing.</p>
+	 *
+	 * @param cells the source CellList to monitor
+	 * @param f     function mapping index to the output file
+	 * @return a new CellList with finalization operations that write the monitored audio
+	 */
 	default CellList om(CellList cells, IntFunction<File> f) {
 		CellList result = new CellList(cells);
 
@@ -402,22 +675,51 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
+	/**
+	 * Creates a factory function that produces identity-filtered cells (pass-through).
+	 *
+	 * @return an IntFunction that creates FilteredCell instances with identity factors
+	 */
 	default IntFunction<Cell<PackedCollection>> fi() {
 		return i -> new FilteredCell<>(i().apply(i));
 	}
 
+	/**
+	 * Creates a factory function that produces identity factors (pass-through, no modification).
+	 *
+	 * @return an IntFunction that creates IdentityFactor instances
+	 */
 	default IntFunction<Factor<PackedCollection>> i() {
 		return i -> new IdentityFactor<>();
 	}
 
+	/**
+	 * Creates a CellList of identity-filtered cells.
+	 *
+	 * @param count the number of cells to create
+	 * @return a CellList of FilteredCells with identity factors
+	 */
 	default CellList fi(int count) {
 		return f(count, i());
 	}
 
+	/**
+	 * Creates a factory function that produces FilteredCells using a given filter factory.
+	 *
+	 * @param filter factory function mapping index to a processing factor
+	 * @return an IntFunction that creates FilteredCell instances
+	 */
 	default IntFunction<Cell<PackedCollection>> fc(IntFunction<Factor<PackedCollection>> filter) {
 		return i -> new FilteredCell<>(filter.apply(i));
 	}
 
+	/**
+	 * Creates a CellList of FilteredCells using a given filter factory.
+	 *
+	 * @param count  the number of cells to create
+	 * @param filter factory function mapping index to a processing factor
+	 * @return a CellList of FilteredCells
+	 */
 	default CellList f(int count, IntFunction<Factor<PackedCollection>> filter) {
 		CellList layer = new CellList();
 
@@ -428,6 +730,13 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return layer;
 	}
 
+	/**
+	 * Applies a filter to each cell in a CellList, inserting FilteredCells as downstream processors.
+	 *
+	 * @param cells  the source CellList
+	 * @param filter factory function mapping index to a processing factor
+	 * @return a new CellList with FilteredCells connected to each source cell
+	 */
 	default CellList f(CellList cells, IntFunction<Factor<PackedCollection>> filter) {
 		CellList layer = new CellList(cells);
 		Iterator<Cell<PackedCollection>> itr = cells.iterator();
@@ -443,10 +752,25 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return layer;
 	}
 
+	/**
+	 * Creates a CellList of adjustable delay cells with unit scale.
+	 *
+	 * @param count the number of delay cells to create
+	 * @param d     function mapping index to a delay time producer
+	 * @return a CellList of AdjustableDelayCells
+	 */
 	default CellList d(int count, IntFunction<Producer<PackedCollection>> d) {
 		return d(count, d, i -> c(1.0));
 	}
 
+	/**
+	 * Creates a CellList of adjustable delay cells with custom scale factors.
+	 *
+	 * @param count the number of delay cells to create
+	 * @param d     function mapping index to a delay time producer
+	 * @param s     function mapping index to a scale factor producer
+	 * @return a CellList of AdjustableDelayCells
+	 */
 	default CellList d(int count,
 					   IntFunction<Producer<PackedCollection>> d,
 					   IntFunction<Producer<PackedCollection>> s) {
@@ -459,32 +783,87 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
+	/**
+	 * Applies adjustable delay with unit scale to each cell in a CellList.
+	 *
+	 * @param cells the source CellList
+	 * @param delay function mapping index to a delay time producer
+	 * @return a new CellList with delay cells connected to each source cell
+	 */
 	default CellList d(CellList cells, IntFunction<Producer<PackedCollection>> delay) {
 		return d(cells, delay, i -> c(1.0));
 	}
 
+	/**
+	 * Applies adjustable delay with custom scale to each cell in a CellList.
+	 *
+	 * @param cells the source CellList
+	 * @param delay function mapping index to a delay time producer
+	 * @param scale function mapping index to a scale factor producer
+	 * @return a new CellList with delay cells connected to each source cell
+	 */
 	default CellList d(CellList cells,
 					   IntFunction<Producer<PackedCollection>> delay,
 					   IntFunction<Producer<PackedCollection>> scale) {
 		return map(cells, i -> new AdjustableDelayCell(OutputLine.sampleRate, delay.apply(i), scale.apply(i)));
 	}
 
+	/**
+	 * Routes each cell through an adapter back into the same CellList (self-routing without transmission).
+	 *
+	 * @param cells   the source CellList
+	 * @param adapter factory function mapping index to a routing adapter cell
+	 * @return a new CellList with routing applied back into itself
+	 */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter) {
 		return m(cells, adapter, cells::get, cells.size());
 	}
 
+	/**
+	 * Routes each cell through an adapter back into the same CellList using a transmission gene.
+	 *
+	 * @param cells        the source CellList
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param transmission function mapping index to the routing gene
+	 * @return a new CellList with gene-controlled routing
+	 */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return m(cells, adapter, cells::get, transmission);
 	}
 
+	/**
+	 * Routes each cell through a list of adapter cells back into the same CellList with a transmission gene.
+	 *
+	 * @param cells        the source CellList
+	 * @param adapter      list of adapter cells (one per source cell)
+	 * @param transmission function mapping index to the routing gene
+	 * @return a new CellList with gene-controlled self-routing
+	 */
 	default CellList mself(CellList cells, List<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return m(cells, adapter, cells, transmission);
 	}
 
+	/**
+	 * Routes each cell through a list of adapter cells to a list of destination cells.
+	 *
+	 * @param cells        the source CellList
+	 * @param adapter      list of adapter cells (one per source cell)
+	 * @param destinations list of destination cells to route to
+	 * @return a new CellList with the routed signal
+	 */
 	default CellList m(CellList cells, List<Cell<PackedCollection>> adapter, List<Cell<PackedCollection>> destinations) {
 		return m(cells, adapter, destinations, null);
 	}
 
+	/**
+	 * Routes each cell through a list of adapter cells to a list of destination cells with a transmission gene.
+	 *
+	 * @param cells        the source CellList
+	 * @param adapter      list of adapter cells (one per source cell)
+	 * @param destinations list of destination cells to route to
+	 * @param transmission function mapping index to the routing gene, or null for full connectivity
+	 * @return a new CellList with gene-controlled routing
+	 */
 	default CellList m(CellList cells, List<Cell<PackedCollection>> adapter, List<Cell<PackedCollection>> destinations, IntFunction<Gene<PackedCollection>> transmission) {
 		CellList result = m(cells, adapter::get, destinations, transmission);
 
@@ -496,25 +875,72 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
+	/**
+	 * Routes each cell through an adapter back into the same CellList using a transmission gene,
+	 * with identity pass-through cells for clean signal separation.
+	 *
+	 * @param cells        the source CellList
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param transmission function mapping index to the routing gene
+	 * @return a new CellList with gene-controlled self-routing and identity pass-through
+	 */
 	default CellList mself(CellList cells, IntFunction<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return m(cells, adapter, cells, transmission, fi());
 	}
 
+	/**
+	 * Routes each cell through an adapter back into the same CellList using a transmission gene
+	 * and a custom pass-through factory.
+	 *
+	 * @param cells        the source CellList
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param transmission function mapping index to the routing gene
+	 * @param passthrough  factory function mapping index to the pass-through cell
+	 * @return a new CellList with gene-controlled self-routing and custom pass-through
+	 */
 	default CellList mself(CellList cells, IntFunction<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission, IntFunction<Cell<PackedCollection>> passthrough) {
 		return m(cells, adapter, cells, transmission, passthrough);
 	}
 
+	/**
+	 * Routes each cell through an adapter to a list of destinations without a transmission gene.
+	 *
+	 * @param cells        the source CellList
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param destinations list of destination cells to route to
+	 * @return a new CellList with all-to-all routing
+	 */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter,
 					   List<Cell<PackedCollection>> destinations) {
 		return m(cells, adapter, destinations::get, null, null, destinations.size());
 	}
 
+	/**
+	 * Routes each cell through an adapter to a list of destinations with a transmission gene.
+	 *
+	 * @param cells        the source CellList
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param destinations list of destination cells to route to
+	 * @param transmission function mapping index to the routing gene, or null for full connectivity
+	 * @return a new CellList with gene-controlled routing
+	 */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter,
 					   List<Cell<PackedCollection>> destinations,
 					   IntFunction<Gene<PackedCollection>> transmission) {
 		return m(cells, adapter, destinations, transmission, null);
 	}
 
+	/**
+	 * Routes each cell through an adapter to a list of destinations with a transmission gene
+	 * and pass-through cells.
+	 *
+	 * @param cells        the source CellList
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param destinations list of destination cells to route to
+	 * @param transmission function mapping index to the routing gene, or null for full connectivity
+	 * @param passthrough  factory function mapping index to pass-through cells, or null for none
+	 * @return a new CellList with gene-controlled routing and pass-through
+	 */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter,
 					   List<Cell<PackedCollection>> destinations,
 					   IntFunction<Gene<PackedCollection>> transmission,
@@ -529,11 +955,29 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
+	/**
+	 * Routes each cell through an adapter to indexed destinations with an explicit destination count.
+	 *
+	 * @param cells            the source CellList
+	 * @param adapter          factory function mapping index to a routing adapter cell
+	 * @param destinations     function mapping index to a destination cell
+	 * @param destinationCount the total number of destinations
+	 * @return a new CellList with routing applied
+	 */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter,
 					   IntFunction<Cell<PackedCollection>> destinations, int destinationCount) {
 		return m(cells, adapter, destinations, null, null, destinationCount);
 	}
 
+	/**
+	 * Routes each cell through an adapter to indexed destinations using a transmission gene.
+	 *
+	 * @param cells        the source CellList
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param destinations function mapping index to a destination cell
+	 * @param transmission function mapping index to the routing gene
+	 * @return a new CellList with gene-controlled routing
+	 */
 	default CellList m(CellList cells, IntFunction<Cell<PackedCollection>> adapter,
 					   IntFunction<Cell<PackedCollection>> destinations,
 					   IntFunction<Gene<PackedCollection>> transmission) {
@@ -573,6 +1017,13 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cleanLayer == null ? layer : cleanLayer;
 	}
 
+	/**
+	 * Appends a value to a list only if it is not already present (identity equality check).
+	 *
+	 * @param <T>  the element type
+	 * @param dest the list to append to
+	 * @param v    the value to append if not already present
+	 */
 	default <T> void append(List<T> dest, T v) {
 		for (T c : dest) {
 			if (c == v) return;
@@ -581,20 +1032,61 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		dest.add(v);
 	}
 
+	/**
+	 * Creates a CellList containing a single ValueSequenceCell that steps through values over time.
+	 *
+	 * @param values   function mapping step index to the value producer for that step
+	 * @param duration producer specifying the duration of each step
+	 * @param steps    the total number of steps in the sequence
+	 * @return a CellList containing the sequence cell
+	 */
 	default CellList seq(IntFunction<Producer<PackedCollection>> values, Producer<PackedCollection> duration, int steps) {
 		CellList cells = new CellList();
 		cells.addRoot(new ValueSequenceCell(values, duration, steps));
 		return cells;
 	}
 
+	/**
+	 * Creates a grid routing that cycles through cells using integer choice indices.
+	 *
+	 * <p>Converts integer choices to normalized double positions within the cell list,
+	 * then delegates to {@link #grid(CellList, double, int, IntToDoubleFunction)}.</p>
+	 *
+	 * @param cells    the CellList of possible audio sources
+	 * @param duration the duration of each segment in seconds
+	 * @param segments the total number of segments
+	 * @param choices  function mapping segment index to a cell index
+	 * @return a CellList with dynamic routing through the cell choices
+	 */
 	default CellList gr(CellList cells, double duration, int segments, IntUnaryOperator choices) {
 		return grid(cells, duration, segments, (IntToDoubleFunction) i -> (2.0 * choices.applyAsInt(i) + 1) / (2.0 * cells.size()));
 	}
 
+	/**
+	 * Creates a grid routing that cycles through cells using double-valued choice positions.
+	 *
+	 * @param cells    the CellList of possible audio sources
+	 * @param duration the duration of each segment in seconds
+	 * @param segments the total number of segments
+	 * @param choices  function mapping segment index to a normalized choice position (0.0 to 1.0)
+	 * @return a CellList with dynamic routing through the cell choices
+	 */
 	default CellList grid(CellList cells, double duration, int segments, IntToDoubleFunction choices) {
 		return grid(cells, duration, segments, (IntFunction<Producer<PackedCollection>>) i -> c(choices.applyAsDouble(i)));
 	}
 
+	/**
+	 * Creates a grid routing that cycles through cells using producer-based choice values.
+	 *
+	 * <p>Uses a ValueSequenceCell to step through choices and a DynamicAudioCell to route
+	 * audio to the selected cell during each segment.</p>
+	 *
+	 * @param cells    the CellList of possible audio sources
+	 * @param duration the duration of each segment in seconds
+	 * @param segments the total number of segments
+	 * @param choices  function mapping segment index to a choice producer
+	 * @return a CellList with dynamic routing through the cell choices
+	 */
 	default CellList grid(CellList cells, double duration, int segments, IntFunction<Producer<PackedCollection>> choices) {
 		PackedCollection out = new PackedCollection(1);
 		List<Function<PolymorphicAudioData, ? extends CollectionTemporalCellAdapter>> cellChoices =
@@ -621,6 +1113,17 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return result;
 	}
 
+	/**
+	 * Creates a circular-buffer TemporalRunner that writes cell output into a destination collection.
+	 *
+	 * <p>Currently only supports single-cell CellLists. The output is written in circular
+	 * fashion, overwriting the oldest data when the buffer is full.</p>
+	 *
+	 * @param cells       the source CellList (must contain exactly one cell)
+	 * @param destination the destination producer for the circular buffer
+	 * @return a TemporalRunner that drives the cell and fills the buffer
+	 * @throws UnsupportedOperationException if cells contains more than one cell
+	 */
 	default TemporalRunner buffer(CellList cells, Producer<PackedCollection> destination) {
 		TraversalPolicy shape = shape(destination);
 
@@ -638,6 +1141,17 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return cells.buffer(shape.getTotalSize());
 	}
 
+	/**
+	 * Exports cell audio output into pre-allocated wave data slots within a PackedCollection.
+	 *
+	 * <p>Each cell in the list writes into a corresponding slice of the destination collection.
+	 * The number of cells must equal the number of collection slots ({@code wavs.getCount()}).</p>
+	 *
+	 * @param cells the source CellList to export
+	 * @param wavs  the destination PackedCollection with one slot per cell
+	 * @return a Supplier that runs the export operation
+	 * @throws IllegalArgumentException if the cell count does not match the slot count
+	 */
 	default Supplier<Runnable> export(CellList cells, PackedCollection wavs) {
 		if (wavs.getCount() != cells.size()) throw new IllegalArgumentException("Destination count must match cell count");
 
@@ -655,6 +1169,18 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return export;
 	}
 
+	/**
+	 * Renders each cell in a CellList to a fixed-duration wave buffer, then returns a new
+	 * CellList of WaveCells backed by those buffers for playback.
+	 *
+	 * <p>The mixdown is run synchronously during setup: each cell is iterated for the specified
+	 * duration, the audio is captured into a PackedCollection timeline, and then WaveCells
+	 * are created to play back the rendered audio.</p>
+	 *
+	 * @param cells   the source CellList to render
+	 * @param seconds the duration to render in seconds
+	 * @return a new CellList of WaveCells backed by the rendered audio
+	 */
 	default CellList mixdown(CellList cells, double seconds) {
 		List<WaveOutput> outputs = IntStream.range(0, cells.size())
 				.mapToObj(i -> new WaveOutput()).toList();
@@ -685,54 +1211,152 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 		return newCells;
 	}
 
+	/**
+	 * Creates a Supplier that iterates a Temporal object for the specified duration in minutes.
+	 *
+	 * @param t       the temporal object to iterate
+	 * @param minutes the duration to run in minutes
+	 * @return a Supplier that runs the temporal object for the specified duration
+	 */
 	default Supplier<Runnable> min(Temporal t, double minutes) {
 		return sec(t, minutes * 60);
 	}
 
+	/**
+	 * Creates a Supplier that iterates a Temporal object for the specified duration in seconds.
+	 *
+	 * @param t       the temporal object to iterate
+	 * @param seconds the duration to run in seconds
+	 * @return a Supplier that runs the temporal object for the specified duration
+	 */
 	default Supplier<Runnable> sec(Temporal t, double seconds) {
 		return iter(t, (int) (seconds * OutputLine.sampleRate));
 	}
 
+	/**
+	 * Creates a Supplier that iterates a Temporal object for the specified duration in seconds,
+	 * with optional reset after completion.
+	 *
+	 * @param t          the temporal object to iterate
+	 * @param seconds    the duration to run in seconds
+	 * @param resetAfter if true, resets the temporal object after iteration completes
+	 * @return a Supplier that runs the temporal object for the specified duration
+	 */
 	default Supplier<Runnable> sec(Temporal t, double seconds, boolean resetAfter) {
 		return iter(t, (int) (seconds * OutputLine.sampleRate), resetAfter);
 	}
 
+	/**
+	 * Creates a ScaleFactor that multiplies audio signals by the given scale value.
+	 *
+	 * @param scale the scaling multiplier
+	 * @return a ScaleFactor for the given value
+	 */
 	default ScaleFactor sf(double scale) {
 		return new ScaleFactor(scale);
 	}
 
+	/**
+	 * Creates a high-pass filter at the default sample rate.
+	 *
+	 * @param frequency the cutoff frequency in Hz
+	 * @param resonance the resonance (Q) factor
+	 * @return an AudioPassFilter configured as a high-pass filter
+	 */
 	default AudioPassFilter hp(double frequency, double resonance) {
 		return hp(OutputLine.sampleRate, frequency, resonance);
 	}
 
+	/**
+	 * Creates a high-pass filter at the specified sample rate.
+	 *
+	 * @param sampleRate the sample rate in Hz
+	 * @param frequency  the cutoff frequency in Hz
+	 * @param resonance  the resonance (Q) factor
+	 * @return an AudioPassFilter configured as a high-pass filter
+	 */
 	default AudioPassFilter hp(int sampleRate, double frequency, double resonance) {
 		return hp(sampleRate, c(frequency), scalar(resonance));
 	}
 
+	/**
+	 * Creates a high-pass filter using producer-based parameters at the default sample rate.
+	 *
+	 * @param <T>       the PackedCollection type
+	 * @param frequency producer for the cutoff frequency in Hz
+	 * @param resonance producer for the resonance (Q) factor
+	 * @return an AudioPassFilter configured as a high-pass filter
+	 */
 	default <T extends PackedCollection> AudioPassFilter hp(Producer<T> frequency, Producer<T> resonance) {
 		return hp(OutputLine.sampleRate, frequency, resonance);
 	}
 
+	/**
+	 * Creates a high-pass filter using producer-based parameters at the specified sample rate.
+	 *
+	 * @param <T>        the PackedCollection type
+	 * @param sampleRate the sample rate in Hz
+	 * @param frequency  producer for the cutoff frequency in Hz
+	 * @param resonance  producer for the resonance (Q) factor
+	 * @return an AudioPassFilter configured as a high-pass filter
+	 */
 	default <T extends PackedCollection> AudioPassFilter hp(int sampleRate, Producer<T> frequency, Producer<T> resonance) {
 		return new AudioPassFilter(sampleRate, (Producer) frequency, (Producer) resonance, true);
 	}
 
+	/**
+	 * Creates a low-pass filter at the default sample rate.
+	 *
+	 * @param frequency the cutoff frequency in Hz
+	 * @param resonance the resonance (Q) factor
+	 * @return an AudioPassFilter configured as a low-pass filter
+	 */
 	default AudioPassFilter lp(double frequency, double resonance) {
 		return lp(OutputLine.sampleRate, frequency, resonance);
 	}
 
+	/**
+	 * Creates a low-pass filter at the specified sample rate.
+	 *
+	 * @param sampleRate the sample rate in Hz
+	 * @param frequency  the cutoff frequency in Hz
+	 * @param resonance  the resonance (Q) factor
+	 * @return an AudioPassFilter configured as a low-pass filter
+	 */
 	default AudioPassFilter lp(int sampleRate, double frequency, double resonance) {
 		return lp(sampleRate, c(frequency), scalar(resonance));
 	}
 
+	/**
+	 * Creates a low-pass filter using producer-based parameters at the default sample rate.
+	 *
+	 * @param <T>       the PackedCollection type
+	 * @param frequency producer for the cutoff frequency in Hz
+	 * @param resonance producer for the resonance (Q) factor
+	 * @return an AudioPassFilter configured as a low-pass filter
+	 */
 	default <T extends PackedCollection> AudioPassFilter lp(Producer<T> frequency, Producer<T> resonance) {
 		return lp(OutputLine.sampleRate, frequency, resonance);
 	}
 
+	/**
+	 * Creates a low-pass filter using producer-based parameters at the specified sample rate.
+	 *
+	 * @param <T>        the PackedCollection type
+	 * @param sampleRate the sample rate in Hz
+	 * @param frequency  producer for the cutoff frequency in Hz
+	 * @param resonance  producer for the resonance (Q) factor
+	 * @return an AudioPassFilter configured as a low-pass filter
+	 */
 	default <T extends PackedCollection> AudioPassFilter lp(int sampleRate, Producer<T> frequency, Producer<T> resonance) {
 		return new AudioPassFilter(sampleRate, (Producer) frequency, (Producer) resonance, false);
 	}
 
+	/**
+	 * Returns a default CellFeatures instance with no additional state.
+	 *
+	 * @return a stateless CellFeatures implementation
+	 */
 	static CellFeatures getInstance() {
 		return new CellFeatures() { };
 	}

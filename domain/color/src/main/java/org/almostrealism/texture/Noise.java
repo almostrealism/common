@@ -16,16 +16,48 @@
 
 package org.almostrealism.texture;
 
+/**
+ * A procedural Perlin-style noise function implementing {@link IntensityMap}.
+ *
+ * <p>This class generates smooth pseudo-random noise by combining random gradient vectors
+ * at integer lattice points. The noise value at a point is computed as a weighted sum of
+ * gradient dot products over the surrounding 2×2×2 lattice cube, using a cubic smoothing
+ * kernel (omega function).</p>
+ *
+ * <p>The UV coordinates are scaled by 10 before noise evaluation, giving approximately
+ * 10 noise periods over the unit UV domain.</p>
+ *
+ * @see Turbulence
+ * @see IntensityMap
+ * @author Michael Murray
+ */
 // TODO  Move to common
 public class Noise implements IntensityMap {
+	/** Scale factor applied to the U coordinate before noise evaluation. */
 	private final double scaleU = 10.0;
+
+	/** Scale factor applied to the V coordinate before noise evaluation. */
 	private final double scaleV = 10.0;
+
+	/** Scale factor applied to the W coordinate before noise evaluation. */
 	private final double scaleW = 10.0;
+
+	/** Random gradient vectors at each lattice point, normalised to the unit sphere. */
 	private final double[][] g;
+
+	/** Permutation table used to hash lattice coordinates to gradient indices. */
 	private final int[] p;
-	
+
+	/**
+	 * Constructs a {@link Noise} instance with 256 lattice points.
+	 */
 	public Noise() { this(256); }
-	
+
+	/**
+	 * Constructs a {@link Noise} instance with {@code n} lattice points.
+	 *
+	 * @param n the number of lattice points; higher values reduce pattern repetition
+	 */
 	public Noise(int n) {
 		this.p = new int[n];
 		
@@ -54,6 +86,17 @@ public class Noise implements IntensityMap {
 		}
 	}
 	
+	/**
+	 * Returns the noise value at the scaled position {@code (scaleU * u, scaleV * v, scaleW * w)}.
+	 *
+	 * <p>The noise is computed by summing weighted gradient contributions from
+	 * all eight corners of the enclosing lattice cube.</p>
+	 *
+	 * @param u the horizontal texture coordinate
+	 * @param v the vertical texture coordinate
+	 * @param w the depth texture coordinate
+	 * @return the noise value at the given position
+	 */
 	public double getIntensity(double u, double v, double w) {
 		u = this.scaleU * u;
 		v = this.scaleV * v;
@@ -76,18 +119,55 @@ public class Noise implements IntensityMap {
 		return n;
 	}
 	
+	/**
+	 * Computes the weighted gradient contribution from the lattice point at {@code (i, j, k)}.
+	 *
+	 * @param i the integer lattice X coordinate
+	 * @param j the integer lattice Y coordinate
+	 * @param k the integer lattice Z coordinate
+	 * @param x the fractional X offset from the lattice point
+	 * @param y the fractional Y offset from the lattice point
+	 * @param z the fractional Z offset from the lattice point
+	 * @return the contribution of this lattice point to the noise value
+	 */
 	protected double omega(double i, double j, double k, double x, double y, double z) {
 		return this.omega(x) * this.omega(y) * this.omega(z) *
 					this.gamma((int) i, (int) j, (int) k, x, y, z);
 	}
 	
+	/**
+	 * Looks up the gradient vector at lattice position {@code (i, j, k)} and computes
+	 * its dot product with the offset {@code (u, v, w)}.
+	 *
+	 * @param i the integer lattice X index
+	 * @param j the integer lattice Y index
+	 * @param k the integer lattice Z index
+	 * @param u the X component of the offset
+	 * @param v the Y component of the offset
+	 * @param w the Z component of the offset
+	 * @return the dot product of the gradient at {@code (i,j,k)} with {@code (u,v,w)}
+	 */
 	protected double gamma(int i, int j, int k, double u, double v, double w) {
 		double[] x = this.g[this.phi(i + this.phi(j + this.phi(k)))];
 		return x[0] * u + x[1] * v + x[2] * w;
 	}
 	
+	/**
+	 * Maps an integer coordinate through the permutation table.
+	 *
+	 * @param t the input integer coordinate
+	 * @return the permuted index into the gradient table
+	 */
 	protected int phi(int t) { return this.p[t % this.p.length]; }
-	
+
+	/**
+	 * Evaluates the cubic smoothing kernel used to weight gradient contributions.
+	 *
+	 * <p>Returns {@code 2t^3 - 3t^2 + 1} for {@code |t| < 1}, and {@code 0} otherwise.</p>
+	 *
+	 * @param t the input value
+	 * @return the smoothing weight for this distance
+	 */
 	protected double omega(double t) {
 		t = Math.abs(t);
 		

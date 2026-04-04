@@ -88,21 +88,52 @@ import java.net.URL;
  * @author Mike Murray
  */
 public class ImageTexture implements Texture {
+  /** Projection type constant for spherical (environment-map) UV projection. */
   public static final int SPHERICAL_PROJECTION = 1;
+
+  /** Projection type constant for planar projection onto the XY plane. */
   public static final int XY_PLANAR_PROJECTION = 2;
+
+  /** Projection type constant for planar projection onto the XZ plane. */
   public static final int XZ_PLANAR_PROJECTION = 3;
+
+  /** Projection type constant for planar projection onto the YZ plane. */
   public static final int YZ_PLANAR_PROJECTION = 4;
-  
+
+  /** The "north pole" reference vector used for spherical UV computation. */
   private final Vector northP = new Vector(0.0, 1.0, 0.0);
+
+  /** The "equator" reference vector used for spherical UV computation. */
   private final Vector equatorP = new Vector(1.0, 0.0, 0.0);
+
+  /** The cross product of {@link #northP} and {@link #equatorP}, used for spherical UV longitude. */
   private final Vector crossP = this.northP.crossProduct(this.equatorP);
-  
+
+  /** The UV projection type (one of the projection type constants). */
   private final int type;
-  
+
+  /** The URL of the source image. */
   private URL url;
-  private int width, height;
-  private double xScale, yScale;
-  private double xOff, yOff;
+
+  /** The width of the loaded image in pixels. */
+  private int width;
+
+  /** The height of the loaded image in pixels. */
+  private int height;
+
+  /** The horizontal scale factor applied to UV coordinates when sampling the image. */
+  private double xScale;
+
+  /** The vertical scale factor applied to UV coordinates when sampling the image. */
+  private double yScale;
+
+  /** The horizontal UV offset applied before image lookup. */
+  private double xOff;
+
+  /** The vertical UV offset applied before image lookup. */
+  private double yOff;
+
+  /** The flat array of packed ARGB pixels loaded from the image. */
   private int[] pixels;
 
   	/**
@@ -162,8 +193,20 @@ public class ImageTexture implements Texture {
   		this.update();
   	}
 
+  	/**
+  	 * Returns the URL of the image loaded by this texture.
+  	 *
+  	 * @return the source image URL
+  	 */
   	public URL getURL() { return url; }
-  	
+
+  	/**
+  	 * Loads the image from {@link #url} and extracts the pixel data using AWT.
+  	 *
+  	 * <p>Called automatically during construction. Must be called again if {@link #url} changes.</p>
+  	 *
+  	 * @throws RuntimeException if the image fails to load
+  	 */
   	protected void update() {
   		Image image = Toolkit.getDefaultToolkit().getImage(this.url);
   		MediaTracker m = new MediaTracker(new Panel());

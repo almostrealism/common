@@ -88,17 +88,37 @@ public class Repeated<T> extends Scope<T> {
 	public static boolean enableLicmDiagnostics =
 			SystemUtils.isEnabled("AR_LICM_DIAGNOSTICS").orElse(false);
 
+	/** The variable incremented on each loop iteration and used as the loop index. */
 	private Variable<Integer, ?> index;
+
+	/** The expression by which the index is incremented each iteration; defaults to 1. */
 	private Expression<Integer> interval;
+
+	/** The boolean guard expression evaluated before each iteration; the loop continues while true. */
 	private Expression<Boolean> condition;
 
+	/**
+	 * Creates an empty {@link Repeated} scope with no index, condition, or interval set.
+	 */
 	public Repeated() { }
 
+	/**
+	 * Creates an empty {@link Repeated} scope with the given name.
+	 *
+	 * @param name the function name for this scope
+	 */
 	public Repeated(String name) {
 		this();
 		setName(name);
 	}
 
+	/**
+	 * Creates a {@link Repeated} scope with the given name and operation metadata.
+	 *
+	 * @param name     the function name for this scope
+	 * @param metadata the operation metadata; must not be {@code null}
+	 * @throws IllegalArgumentException if {@code metadata} is {@code null}
+	 */
 	public Repeated(String name, OperationMetadata metadata) {
 		this(name);
 		if (metadata == null)
@@ -106,10 +126,23 @@ public class Repeated<T> extends Scope<T> {
 		setMetadata(new OperationMetadata(metadata));
 	}
 
+	/**
+	 * Creates a {@link Repeated} scope that increments the index by 1 each iteration.
+	 *
+	 * @param idx       the loop index variable
+	 * @param condition the loop continuation condition
+	 */
 	public Repeated(Variable<Integer, ?> idx, Expression<Boolean> condition) {
 		this(idx, condition, new IntegerConstant(1));
 	}
 
+	/**
+	 * Creates a {@link Repeated} scope with a custom increment interval.
+	 *
+	 * @param idx       the loop index variable
+	 * @param condition the loop continuation condition
+	 * @param interval  the increment applied to the index at the end of each iteration
+	 */
 	public Repeated(Variable<Integer, ?> idx, Expression<Boolean> condition, Expression<Integer> interval) {
 		this();
 		setIndex(idx);
@@ -117,13 +150,46 @@ public class Repeated<T> extends Scope<T> {
 		setCondition(condition);
 	}
 
+	/**
+	 * Returns the loop index variable for this scope.
+	 *
+	 * @return the loop index variable
+	 */
 	public Variable<Integer, ?> getIndex() { return index; }
+
+	/**
+	 * Sets the loop index variable for this scope.
+	 *
+	 * @param index the loop index variable
+	 */
 	public void setIndex(Variable<Integer, ?> index) { this.index = index; }
 
+	/**
+	 * Returns the interval by which the loop index is incremented each iteration.
+	 *
+	 * @return the increment interval expression
+	 */
 	public Expression<Integer> getInterval() { return interval; }
+
+	/**
+	 * Sets the interval by which the loop index is incremented each iteration.
+	 *
+	 * @param interval the increment interval expression
+	 */
 	public void setInterval(Expression<Integer> interval) { this.interval = interval; }
 
+	/**
+	 * Returns the boolean condition expression that controls loop continuation.
+	 *
+	 * @return the loop condition
+	 */
 	public Expression<Boolean> getCondition() { return condition; }
+
+	/**
+	 * Sets the boolean condition expression that controls loop continuation.
+	 *
+	 * @param condition the loop condition
+	 */
 	public void setCondition(Expression<Boolean> condition) { this.condition = condition; }
 
 	@Override
@@ -738,6 +804,12 @@ public class Repeated<T> extends Scope<T> {
 		return !expr.containsStaticReferenceToAny(loopAssignedVariables);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Creates a new {@link Repeated} scope with the same name, metadata, and index,
+	 * then populates it with the provided child scopes.</p>
+	 */
 	@Override
 	public Repeated<T> generate(List<Scope<T>> children) {
 		Repeated<T> scope = getMetadata() == null ? new Repeated<>(getName()) : new Repeated<>(getName(), getMetadata());

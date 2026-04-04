@@ -16,9 +16,29 @@
 
 package io.almostrealism.code;
 
+/**
+ * Enumerates the supported floating-point precisions for computation backends.
+ *
+ * <p>The precision determines the number of bytes per element, the minimum representable
+ * value, machine epsilon, the type name used in generated code (e.g., {@code "float"} for FP32),
+ * and the formatting of numeric literals in generated expressions.</p>
+ *
+ * @see MemoryProvider
+ * @see io.almostrealism.lang.LanguageOperations
+ */
 public enum Precision {
-	FP16, FP32, FP64;
+	/** 16-bit half-precision floating point (bfloat). */
+	FP16,
+	/** 32-bit single-precision floating point. */
+	FP32,
+	/** 64-bit double-precision floating point. */
+	FP64;
 
+	/**
+	 * Returns the number of bytes required to store one element at this precision.
+	 *
+	 * @return the byte count per element (2, 4, or 8)
+	 */
 	public int bytes() {
 		switch (this) {
 			case FP16:
@@ -32,6 +52,11 @@ public enum Precision {
 		}
 	}
 
+	/**
+	 * Returns the most negative finite value representable at this precision.
+	 *
+	 * @return the minimum (most negative) finite floating-point value
+	 */
 	public double minValue() {
 		switch (this) {
 			case FP16:
@@ -45,10 +70,22 @@ public enum Precision {
 		}
 	}
 
+	/**
+	 * Returns the approximate machine epsilon for this precision (non-strict variant).
+	 *
+	 * @return the machine epsilon
+	 */
 	public double epsilon() {
 		return epsilon(false);
 	}
 
+	/**
+	 * Returns the machine epsilon for this precision.
+	 *
+	 * @param strict if {@code true}, returns the exact theoretical epsilon; if {@code false},
+	 *               returns a slightly larger practical value for numerical comparisons
+	 * @return the machine epsilon
+	 */
 	public double epsilon(boolean strict) {
 		switch (this) {
 			case FP16:
@@ -62,6 +99,11 @@ public enum Precision {
 		}
 	}
 
+	/**
+	 * Returns the type name used in generated code for this precision.
+	 *
+	 * @return the type name (e.g., {@code "float"} for FP32, {@code "double"} for FP64)
+	 */
 	public String typeName() {
 		switch (this) {
 			case FP16:
@@ -75,6 +117,13 @@ public enum Precision {
 		}
 	}
 
+	/**
+	 * Returns the generated code literal for the given integer value at this precision.
+	 *
+	 * @param i the integer value to format
+	 * @return the literal string
+	 * @throws UnsupportedOperationException if the value is out of range for this precision
+	 */
 	public String stringForInt(int i) {
 		if (this == Precision.FP16 && (i < -32768 || i > 32767)) {
 			throw new UnsupportedOperationException();
@@ -83,6 +132,13 @@ public enum Precision {
 		return String.valueOf(i);
 	}
 
+	/**
+	 * Returns the generated code literal for the given long value at this precision.
+	 *
+	 * @param l the long value to format
+	 * @return the literal string
+	 * @throws UnsupportedOperationException if the value is out of range for this precision
+	 */
 	public String stringForLong(long l) {
 		if (this == Precision.FP64) {
 			return String.valueOf(l);
@@ -93,6 +149,12 @@ public enum Precision {
 		return stringForInt(Math.toIntExact(l));
 	}
 
+	/**
+	 * Returns the generated code literal for the given double value at this precision.
+	 *
+	 * @param d the double value to format
+	 * @return the literal string, appropriately cast or formatted for the target precision
+	 */
 	public String stringForDouble(double d) {
 		boolean enableCast = false;
 
@@ -105,6 +167,16 @@ public enum Precision {
 		}
 	}
 
+	/**
+	 * Returns the raw string representation of the given double value at this precision,
+	 * without any cast wrapper.
+	 *
+	 * <p>For non-FP64 precisions, the value is cast to {@code float} first. Infinite values
+	 * are replaced with the maximum finite value; NaN is replaced with {@code "0.0"}.
+	 *
+	 * @param d the double value to format
+	 * @return the raw literal string
+	 */
 	public String rawStringForDouble(double d) {
 		if (this != Precision.FP64) {
 			Float f = (float) d;

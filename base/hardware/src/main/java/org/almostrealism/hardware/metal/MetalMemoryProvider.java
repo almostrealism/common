@@ -89,10 +89,15 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	 */
 	public static DistributionMetric deallocationSizes = Hardware.console.distribution("mtlDeallocationSizes", 1024 * 1024);
 
+	/** The data context providing the Metal device for buffer creation. */
 	private final MetalDataContext context;
+	/** Byte size of each numeric element (e.g., 4 for FP32, 2 for FP16). */
 	private final int numberSize;
+	/** Maximum total bytes that may be allocated before allocation fails. */
 	private final long memoryMax;
+	/** True if Metal shared storage mode is used; false for managed (private GPU) storage. */
 	private final boolean shared;
+	/** Cumulative bytes currently allocated and not yet released. */
 	private long memoryUsed;
 
 	/**
@@ -403,11 +408,23 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 		}
 	}
 
+	/**
+	 * Allocates a direct native-order {@link FloatBuffer} of the specified element count.
+	 *
+	 * @param len Number of float elements
+	 * @return A direct {@link FloatBuffer} with native byte order
+	 */
 	private FloatBuffer floatBuffer(int len) {
 		ByteBuffer bufferByte = ByteBuffer.allocateDirect(len * 4).order(ByteOrder.nativeOrder());
 		return bufferByte.asFloatBuffer();
 	}
 
+	/**
+	 * Allocates a direct native-order {@link DoubleBuffer} of the specified element count.
+	 *
+	 * @param len Number of double elements
+	 * @return A direct {@link DoubleBuffer} with native byte order
+	 */
 	private DoubleBuffer doubleBuffer(int len) {
 		ByteBuffer bufferByte = ByteBuffer.allocateDirect(len * 8).order(ByteOrder.nativeOrder());
 		return bufferByte.asDoubleBuffer();

@@ -16,23 +16,28 @@
 
 package io.flowtree.test;
 
-import org.almostrealism.util.TestSuiteBase;
-
 import io.flowtree.Server;
 import io.flowtree.jobs.ExternalProcessJob;
-import org.almostrealism.util.TestUtils;
-import org.junit.Test;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Properties;
 import java.util.stream.IntStream;
 
-public class SubmitJobTest extends TestSuiteBase {
-	@Test(timeout = 10000)
-	public void submitProcess() throws IOException {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
+/**
+ * Manual smoke test: connects to a running FlowTree server at localhost:7766
+ * and submits a batch of {@link ExternalProcessJob} tasks. Run this by hand
+ * only against a dedicated test server — never as part of the automated suite.
+ */
+public class SubmitJobMain {
+	/**
+	 * Connects to a FlowTree server at {@code localhost:7766} and submits a batch
+	 * of {@link ExternalProcessJob} tasks. Run by hand only — never from CI.
+	 *
+	 * @param args  unused
+	 * @throws IOException  if the server connection cannot be established
+	 */
+	public static void main(String[] args) throws IOException {
 		Properties p = new Properties();
 		p.setProperty("server.port", "7701");
 		p.setProperty("nodes.initial", "0");

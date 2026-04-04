@@ -108,12 +108,18 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 	 */
 	public static boolean produceOutput = false;
   
+	/** The index of refraction of the material (e.g., 1.0 for air, 1.5 for glass). */
 	private double indexOfRefraction;
+	/** Red, green, and blue attenuation factors applied to the refracted color. */
 	private double ra, ga, ba;
+	/** The step distance used when sampling material density for variable IOR computation. */
 	private double sampleDistance = 0.01;
+	/** The number of density samples taken along the surface normal for IOR estimation. */
 	private int sampleCount = 1;
+	/** Last-computed red, green, and blue attenuation factors (retained for debugging). */
 	private double lra, lga, lba;
-  
+
+	/** Number of times a ray has entered and exited this material during the current shade call. */
 	private int entered, exited;
 
 	/**
@@ -202,6 +208,24 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 		return GeneratedColorProducer.fromProducer(this, pr);
 	}
 	
+	/**
+	 * Computes the refracted color contribution for a specific ray entry or exit through the surface.
+	 *
+	 * <p>Applies Snell's law to compute the refracted ray direction, then traces it through the scene
+	 * using a {@link LightingEngineAggregator}. If the recursion depth exceeds the maximum allowed
+	 * reflections, black is returned immediately.</p>
+	 *
+	 * @param point           The surface intersection point
+	 * @param viewerDirection The direction from the intersection toward the viewer
+	 * @param lightDirection  The direction of the current light source
+	 * @param light           The current light source
+	 * @param otherLights     Other lights in the scene
+	 * @param surface         The refracting surface
+	 * @param otherSurfaces   Other surfaces in the scene
+	 * @param n               The surface normal at the intersection point
+	 * @param p               The shader context
+	 * @return A producer computing the refracted color contribution
+	 */
 	protected Producer<PackedCollection> shade(Vector point, Vector viewerDirection, Producer<PackedCollection> lightDirection,
 								  Light light, Iterable<Light> otherLights, Curve<PackedCollection> surface,
 								  Curve<PackedCollection> otherSurfaces[], Vector n, ShaderContext p) {

@@ -37,17 +37,48 @@ import java.util.Map;
  */
 // TODO  Should extend io.almostrealism.query.Query
 public class Query implements Externalizable {
+	/** When {@code true}, logs each serialization and deserialization to standard output. */
 	public static boolean verbose = false;
-	
+
+	/**
+	 * Callback interface for receiving individual key-value results from a database query.
+	 */
 	public interface ResultHandler {
+		/**
+		 * Called for each row where the value column contains a {@link String}.
+		 *
+		 * @param key   The key column value
+		 * @param value The string value column value
+		 */
 		void handleResult(String key, String value);
+
+		/**
+		 * Called for each row where the value column contains binary data.
+		 *
+		 * @param key   The key column value
+		 * @param value The binary value column value
+		 */
 		void handleResult(String key, byte[] value);
 	}
-	
+
+	/** Separator character used by {@link #toString(Hashtable)} and {@link #fromString(String)}. */
 	public static final String sep = "%";
-	private String table, col1, col2, val1, val2, con;
+	/** The table to query. */
+	private String table;
+	/** The key column name. */
+	private String col1;
+	/** The value column name. */
+	private String col2;
+	/** Optional filter value for the key column. */
+	private String val1;
+	/** Optional filter value for the value column. */
+	private String val2;
+	/** The SQL WHERE condition. */
+	private String con;
+	/** The relay hop count for distributed query routing. */
 	private int relay;
-	
+
+	/** Optional result handler invoked for each row returned by the query. */
 	private ResultHandler handler;
 	
 	/**
@@ -116,7 +147,18 @@ public class Query implements Externalizable {
 		this.con = con;
 	}
 	
+	/**
+	 * Sets the result handler that will receive each row returned by this query.
+	 *
+	 * @param h The result handler to use, or {@code null} to remove the current handler
+	 */
 	public void setResultHandler(ResultHandler h) { this.handler = h; }
+
+	/**
+	 * Returns the result handler registered for this query.
+	 *
+	 * @return The current result handler, or {@code null} if none is set
+	 */
 	public ResultHandler getResultHandler() { return this.handler; }
 	
 	/**
@@ -135,6 +177,12 @@ public class Query implements Externalizable {
 		}
 	}
 	
+	/**
+	 * Sets the name of the specified column (0 for key, 1 for value).
+	 *
+	 * @param i     Column index: 0 for the key column, any other value for the value column
+	 * @param value The column name to set
+	 */
 	public void setColumn(int i, String value) {
 		if (i == 0)
 			this.col1 = value;
@@ -142,6 +190,12 @@ public class Query implements Externalizable {
 			this.col2 = value;
 	}
 	
+	/**
+	 * Sets a filter value for the specified column (0 for key column, 1 for value column).
+	 *
+	 * @param i     Column index: 0 for the key column, any other value for the value column
+	 * @param value The filter value to set
+	 */
 	public void setValue(int i, String value) {
 		if (i == 0)
 			this.val1 = value;
@@ -149,6 +203,12 @@ public class Query implements Externalizable {
 			this.val2 = value;
 	}
 	
+	/**
+	 * Returns the filter value for the specified column.
+	 *
+	 * @param i Column index: 0 for the key column, any other value for the value column
+	 * @return The filter value for that column, or {@code null} if not set
+	 */
 	public String getValue(int i) {
 		if (i == 0)
 			return this.val1;
@@ -161,6 +221,12 @@ public class Query implements Externalizable {
 	 */
 	public String getCondition() { return this.con; }
 	
+	/**
+	 * Serializes the query fields to a compact byte array for network transmission.
+	 * The first 5 bytes encode the lengths of the four string fields and the relay count.
+	 *
+	 * @return A byte array encoding this query's table, columns, condition, and relay count
+	 */
 	public byte[] getBytes() {
 		byte[] t = this.table.getBytes();
 		byte[] cl1 = this.col1.getBytes();
@@ -191,6 +257,11 @@ public class Query implements Externalizable {
 		return data;
 	}
 	
+	/**
+	 * Deserializes query fields from a byte array previously produced by {@link #getBytes()}.
+	 *
+	 * @param b The byte array to parse
+	 */
 	public void setBytes(byte[] b) {
 		this.relay = b[4];
 		int index = 5;
@@ -211,8 +282,25 @@ public class Query implements Externalizable {
 			System.out.println("Read " + b.length + " bytes " + this);
 	}
 	
+	/**
+	 * Sets the relay hop count for distributed routing of this query.
+	 *
+	 * @param r The relay count to set
+	 */
 	public void setRelay(int r) { this.relay = r; }
+
+	/**
+	 * Returns the relay hop count for this query.
+	 *
+	 * @return The relay count
+	 */
 	public int getRelay() { return this.relay; }
+
+	/**
+	 * Decrements the relay hop count by one and returns the new value.
+	 *
+	 * @return The decremented relay count
+	 */
 	public int deincrementRelay() { return --this.relay; }
 	
 	
@@ -250,6 +338,13 @@ public class Query implements Externalizable {
 						this.col2 + ", " + this.con + ", " + this.relay + "]";
 	}
 	
+	/**
+	 * Serializes a {@link Hashtable} of query results to a {@link #sep}-delimited string
+	 * of alternating key-value pairs.
+	 *
+	 * @param h The hashtable to serialize
+	 * @return A delimited string encoding the entries, or an empty string if the table is empty
+	 */
 	public static String toString(Hashtable h) {
 		if (h.size() <= 0) return "";
 		
@@ -272,6 +367,13 @@ public class Query implements Externalizable {
 		return b.toString();
 	}
 
+	/**
+	 * Converts an object to its string representation, handling {@code byte[]} by
+	 * constructing a new {@link String} from the bytes.
+	 *
+	 * @param o The object to convert
+	 * @return The string representation of {@code o}
+	 */
 	private static String convertToString(Object o) {
 		if (o instanceof byte[]) {
 			return new String((byte[]) o);
@@ -280,12 +382,26 @@ public class Query implements Externalizable {
 		}
 	}
 
+	/**
+	 * Deserializes a {@link #sep}-delimited string of alternating key-value pairs into
+	 * a new {@link Hashtable}.
+	 *
+	 * @param data The delimited string to parse
+	 * @return A hashtable containing the parsed key-value pairs
+	 */
 	public static Hashtable<String, String> fromString(String data) {
 		Hashtable<String, String> h = new Hashtable<>();
 		fromString(data, h);
 		return h;
 	}
 	
+	/**
+	 * Deserializes a {@link #sep}-delimited string of alternating key-value pairs into
+	 * the supplied {@link Hashtable}.
+	 *
+	 * @param data The delimited string to parse
+	 * @param h    The hashtable to populate with the parsed key-value pairs
+	 */
 	public static void fromString(String data, Hashtable<String, String> h) {
 		int index = data.indexOf(Query.sep);
 		String s = data;

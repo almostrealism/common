@@ -73,15 +73,21 @@ public class MetalDataContext extends HardwareDataContext {
 	 */
 	public static final boolean fp16 = SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP32").equals("FP16");
 
+	/** Minimum allocation size in elements below which JVM heap is used instead of Metal buffers. */
 	private final int offHeapSize;
 
+	/** The primary Metal device used for all GPU buffer allocations and kernel execution. */
 	private MTLDevice mainDevice;
 
+	/** Memory provider for Metal-backed GPU buffers (main allocation path). */
 	private MemoryProvider<MetalMemory> mainRam;
+	/** Fallback JVM-backed memory provider for small allocations below {@link #offHeapSize}. */
 	private MemoryProvider<Memory> altRam;
 
+	/** Thread-local compute context, one per thread to avoid contention on Metal command queues. */
 	private ThreadLocal<ComputeContext<MemoryData>> computeContext;
 
+	/** Deferred initialization runnable; invoked on first device access, then set to null. */
 	private Runnable start;
 
 	/**
@@ -120,6 +126,13 @@ public class MetalDataContext extends HardwareDataContext {
 		mainDevice = MTLDevice.createSystemDefaultDevice();
 	}
 
+	/**
+	 * Performs deferred initialization of the Metal device and main memory provider.
+	 *
+	 * <p>Calls {@link #identifyDevices()} to locate the system GPU, then creates a
+	 * {@link MetalMemoryProvider} sized to the configured max reservation. Sets the
+	 * {@code start} field to null to signal that initialization is complete.</p>
+	 */
 	private void start() {
 		if (mainDevice != null) return;
 
@@ -129,6 +142,16 @@ public class MetalDataContext extends HardwareDataContext {
 		start = null;
 	}
 
+	/**
+	 * Creates a new {@link MetalComputeContext} for the given compute requirements.
+	 *
+	 * <p>Triggers deferred device initialization if not yet complete, then constructs
+	 * a {@link MetalComputeContext} backed by the main device.</p>
+	 *
+	 * @param expectations Compute requirements (e.g., profiling); C and PROFILING are not supported
+	 * @return A new {@link MetalComputeContext} initialized with the main Metal device
+	 * @throws UnsupportedOperationException if a C or profiling compute context is requested
+	 */
 	private ComputeContext createContext(ComputeRequirement... expectations) {
 		Optional<ComputeRequirement> cReq = Stream.of(expectations).filter(ComputeRequirement.C::equals).findAny();
 		Optional<ComputeRequirement> pReq = Stream.of(expectations).filter(ComputeRequirement.PROFILING::equals).findAny();

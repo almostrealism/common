@@ -61,8 +61,13 @@ import java.util.function.Supplier;
  */
 public class ModulationRouter implements Temporal {
 
+	/** All registered modulation sources that produce modulation signals. */
 	private final List<ModulationSource> sources;
+
+	/** All active modulation slots connecting sources to destinations. */
 	private final List<ModulationSlot> slots;
+
+	/** Index mapping each destination to the list of slots currently targeting it. */
 	private final Map<ModulationSlot.Destination, List<ModulationSlot>> destinationMap;
 
 	/**

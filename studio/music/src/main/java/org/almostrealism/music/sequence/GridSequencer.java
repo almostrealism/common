@@ -42,15 +42,33 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.IntFunction;
 
+/**
+ * A grid-based step sequencer that schedules audio samples at regular intervals.
+ *
+ * <p>{@code GridSequencer} plays back a list of audio samples in a repeating grid
+ * pattern, with each step controlled by a {@link ParameterFunctionSequence} that
+ * determines the selection value for each step position.</p>
+ *
+ * @deprecated This class uses legacy {@link WaveOutput} and CellList APIs. Use
+ *             pattern-based rendering instead.
+ */
+@Deprecated
 public class GridSequencer implements StatelessSource, TempoAware, CellFeatures {
+	/** The tempo in BPM. */
 	private Frequency bpm;
+	/** The duration of each step in beats. */
 	private double stepSize;
+	/** The number of steps in one grid cycle. */
 	private int stepCount;
+	/** The total number of beats in the sequence. */
 	private int totalBeats;
+	/** The list of audio sample providers. */
 	private List<WaveDataProvider> samples;
 
+	/** The parameterized sequence controlling step selection values. */
 	private ParameterFunctionSequence sequence;
 
+	/** Creates a {@code GridSequencer} with default tempo (120 BPM), 16 steps, and no samples. */
 	public GridSequencer() {
 		setBpm(120);
 		setStepSize(1.0);
@@ -59,31 +77,45 @@ public class GridSequencer implements StatelessSource, TempoAware, CellFeatures 
 		setSamples(new ArrayList<>());
 	}
 
+	/** Initializes the parameter sequence with random functions for each step. */
 	public void initParamSequence() {
 		sequence = ParameterFunctionSequence.random(getStepCount());
 	}
 
+	/** Returns the tempo in BPM. */
 	public double getBpm() { return bpm.asBPM(); }
 
+	/** Sets the tempo in BPM. */
 	@Override
 	public void setBpm(double bpm) { this.bpm = bpm(bpm); }
 
+	/** Returns the step size in beats. */
 	public double getStepSize() { return stepSize; }
+	/** Sets the step size in beats. */
 	public void setStepSize(double stepSize) { this.stepSize = stepSize; }
 
+	/** Returns the number of steps in one grid cycle. */
 	public int getStepCount() { return stepCount; }
+	/** Sets the number of steps in one grid cycle. */
 	public void setStepCount(int stepCount) { this.stepCount = stepCount; }
 
+	/** Returns the total number of beats in the sequence. */
 	public int getTotalBeats() { return totalBeats; }
+	/** Sets the total number of beats in the sequence. */
 	public void setTotalBeats(int totalBeats) { this.totalBeats = totalBeats; }
 
+	/** Returns the list of audio sample providers. */
 	public List<WaveDataProvider> getSamples() { return samples; }
+	/** Sets the list of audio sample providers. */
 	public void setSamples(List<WaveDataProvider> samples) { this.samples = samples; }
 
+	/** Returns the parameterized sequence controlling step selection. */
 	public ParameterFunctionSequence getSequence() { return sequence; }
 
+	/** Sets the parameterized sequence controlling step selection. */
 	public void setSequence(ParameterFunctionSequence sequence) { this.sequence = sequence; }
 
+	/** Returns the total duration of the sequence in seconds. */
 	@JsonIgnore
 	public double getDuration() { return bpm.l(getTotalBeats()); }
 
@@ -95,9 +127,20 @@ public class GridSequencer implements StatelessSource, TempoAware, CellFeatures 
 		throw new UnsupportedOperationException();
 	}
 
+	/** Returns the total number of audio frames for the full sequence duration. */
 	@Deprecated
 	public int getCount() { return (int) (getDuration() * OutputLine.sampleRate); }
 
+	/**
+	 * Creates a {@link WaveDataProviderList} by rendering the grid sequence.
+	 *
+	 * @param x             the x parameter producer
+	 * @param y             the y parameter producer
+	 * @param z             the z parameter producer
+	 * @param playbackRates the playback rates (currently ignored)
+	 * @return the rendered wave data provider list
+	 * @deprecated Use pattern-based rendering instead.
+	 */
 	@Deprecated
 	public WaveDataProviderList create(Producer<PackedCollection> x, Producer<PackedCollection> y, Producer<PackedCollection> z, List<Frequency> playbackRates) {
 		PackedCollection export = new PackedCollection(getCount());

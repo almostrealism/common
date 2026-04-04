@@ -18,6 +18,7 @@ package org.almostrealism.audio.synth.test;
 
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.CellFeatures;
+import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.line.BufferOutputLine;

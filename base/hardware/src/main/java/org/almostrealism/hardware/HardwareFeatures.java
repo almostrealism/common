@@ -219,8 +219,19 @@ import java.util.stream.IntStream;
  * @see DefaultComputer
  */
 public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
+	/** True if hardware output monitoring is enabled via the {@code AR_HARDWARE_OUTPUT_MONITORING} environment variable. */
 	boolean outputMonitoring = SystemUtils.isEnabled("AR_HARDWARE_OUTPUT_MONITORING").orElse(false);
 
+	/**
+	 * Creates a looping operation that executes the given computation the specified number of times.
+	 *
+	 * <p>If the computation is a non-compilable {@link OperationList}, wraps it in a Java-level
+	 * loop. Otherwise creates a compiled {@link Loop}.</p>
+	 *
+	 * @param c          The computation to execute repeatedly
+	 * @param iterations Number of times to execute the computation
+	 * @return A supplier that produces the looping runnable
+	 */
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {
 		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
 			return () -> {
@@ -268,6 +279,11 @@ public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns a default {@link HardwareFeatures} instance with no additional state.
+	 *
+	 * @return Anonymous implementation of {@link HardwareFeatures}
+	 */
 	static HardwareFeatures getInstance() {
 		return new HardwareFeatures() { };
 	}

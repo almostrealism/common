@@ -49,14 +49,29 @@ import java.util.Set;
  */
 public class MidiSynthesizerBridge implements MidiInputListener {
 
+	/** The target polyphonic synthesizer that receives note events. */
 	private final PolyphonicSynthesizer synthesizer;
-	private int channel;  // -1 for omni (respond to all channels)
+
+	/** MIDI channel to listen on; -1 means omni (respond to all channels). */
+	private int channel;
+
+	/** Curve applied to incoming MIDI velocity values before forwarding to the synthesizer. */
 	private VelocityCurve velocityCurve;
+
+	/** Minimum effective velocity after curve application; velocities below this are ignored. */
 	private double velocityFloor;
+
+	/** Whether sustain pedal (CC64) processing is active. */
 	private boolean sustainEnabled;
+
+	/** True while the sustain pedal is depressed. */
 	private boolean sustainPedalDown;
-	private final Set<Integer> sustainedNotes;  // Notes held by sustain pedal
-	private double pitchBendRange;  // Maximum bend range in semitones (up and down)
+
+	/** Set of note numbers held by the sustain pedal after the corresponding key has been released. */
+	private final Set<Integer> sustainedNotes;
+
+	/** Maximum pitch-bend range in semitones applied in either direction. */
+	private double pitchBendRange;
 
 	/**
 	 * Creates a bridge to the specified synthesizer.

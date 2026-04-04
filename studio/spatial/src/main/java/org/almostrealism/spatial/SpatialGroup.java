@@ -30,6 +30,7 @@ import java.util.List;
  * @see SpatialValue
  */
 public class SpatialGroup extends SpatialElement {
+	/** The child spatial elements contained in this group. */
 	private List<SpatialElement> elements;
 
 	/**

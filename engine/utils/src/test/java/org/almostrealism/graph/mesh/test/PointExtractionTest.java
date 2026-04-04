@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph.mesh.test;
 
+import io.almostrealism.collect.Shape;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;

@@ -28,7 +28,20 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * GPU-compatible operation that tracks the duration of consecutive silence in an audio
+ * stream. The silence counter is incremented when the sample amplitude falls at or below
+ * the configured minimum value, and reset to zero when the sample is audible.
+ */
 public class SilenceDurationComputation extends OperationComputationAdapter<PackedCollection> {
+	/**
+	 * Creates a silence duration computation.
+	 *
+	 * @param silenceDuration running counter of consecutive silent frames (single element)
+	 * @param silenceSettings collection providing the silence threshold
+	 *                        (element 0 = minimum audible amplitude)
+	 * @param value           the audio sample value to evaluate
+	 */
 	public SilenceDurationComputation(Producer<PackedCollection> silenceDuration,
 									  Producer<PackedCollection> silenceSettings,
 									  Producer<PackedCollection> value) {

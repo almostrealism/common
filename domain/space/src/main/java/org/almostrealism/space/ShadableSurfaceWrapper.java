@@ -24,5 +24,10 @@ import org.almostrealism.color.ShadableSurface;
  * @author Michael Murray
  */
 public interface ShadableSurfaceWrapper {
+	/**
+	 * Returns the wrapped {@link ShadableSurface}.
+	 *
+	 * @return the underlying surface
+	 */
 	ShadableSurface getSurface();
 }

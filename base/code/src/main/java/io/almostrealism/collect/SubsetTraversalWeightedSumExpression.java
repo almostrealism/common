@@ -16,8 +16,35 @@
 
 package io.almostrealism.collect;
 
+/**
+ * A {@link WeightedSumExpression} that accumulates values from a sliding window (group)
+ * over an input collection, multiplied by corresponding weights.
+ *
+ * <p>This implements the kernel/convolution pattern: for each output position, a group of
+ * input elements (defined by the window shape and its anchor positions) are multiplied by
+ * weight elements and summed. The index mapping for each group member is provided by
+ * {@link SubsetTraversalIndexMapping} instances constructed from the geometry shapes.</p>
+ *
+ * <p>Multiple constructor overloads allow the weight window to be:
+ * <ul>
+ *   <li>Fixed to position {@code 0} (the weight is not traversed)</li>
+ *   <li>Traversed with its own set of anchor positions</li>
+ *   <li>Fully specified with separate shapes for input and weight windows</li>
+ * </ul>
+ * </p>
+ */
 public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression {
 
+	/**
+	 * Creates a subset weighted sum where the input is traversed over all positions but the
+	 * weight window is not traversed (it is always read from position 0).
+	 *
+	 * @param inputPositions the anchor positions for the input window
+	 * @param inputShape     the shape of the input operand
+	 * @param groupShape     the shape of one sliding window
+	 * @param input          the input operand expression
+	 * @param weights        the weight operand expression
+	 */
 	public SubsetTraversalWeightedSumExpression(TraversalPolicy inputPositions,
 												TraversalPolicy inputShape, TraversalPolicy groupShape,
 												TraversableExpression input, TraversableExpression weights) {
@@ -26,6 +53,16 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 				inputShape, groupShape, input, weights);
 	}
 
+	/**
+	 * Creates a subset weighted sum with separate anchor positions for the input and weight windows.
+	 *
+	 * @param inputPositions  the anchor positions for the input window
+	 * @param weightPositions the anchor positions for the weight window
+	 * @param inputShape      the shape of the input operand
+	 * @param groupShape      the shared window shape for both input and weights
+	 * @param input           the input operand expression
+	 * @param weights         the weight operand expression
+	 */
 	public SubsetTraversalWeightedSumExpression(TraversalPolicy inputPositions, TraversalPolicy weightPositions,
 												TraversalPolicy inputShape, TraversalPolicy groupShape,
 												TraversableExpression input, TraversableExpression weights) {
@@ -33,6 +70,18 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 				inputPositions, weightPositions, inputShape, groupShape, input, weights);
 	}
 
+	/**
+	 * Creates a subset weighted sum with an explicit output shape and separate anchor positions
+	 * for the input and weight windows (using a common window shape for both).
+	 *
+	 * @param shape           the explicit output shape
+	 * @param inputPositions  the anchor positions for the input window
+	 * @param weightPositions the anchor positions for the weight window
+	 * @param inputShape      the shape of the input operand
+	 * @param groupShape      the shared window shape for both input and weights
+	 * @param input           the input operand expression
+	 * @param weights         the weight operand expression
+	 */
 	public SubsetTraversalWeightedSumExpression(TraversalPolicy shape,
 												TraversalPolicy inputPositions, TraversalPolicy weightPositions,
 												TraversalPolicy inputShape, TraversalPolicy groupShape,
@@ -41,6 +90,20 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 				groupShape, groupShape, input, weights);
 	}
 
+	/**
+	 * Full constructor allowing independent window shapes for the input and weight operands.
+	 *
+	 * @param shape            the output shape
+	 * @param inputPositions   the anchor positions for the input window
+	 * @param weightPositions  the anchor positions for the weight window
+	 * @param inputShape       the shape of the input operand
+	 * @param weightShape      the shape of the weight operand
+	 * @param inputGroupShape  the window shape used when traversing the input
+	 * @param weightGroupShape the window shape used when traversing the weights
+	 * @param input            the input operand expression
+	 * @param weights          the weight operand expression
+	 * @throws IllegalArgumentException if the input and weight group shapes have different total sizes
+	 */
 	public SubsetTraversalWeightedSumExpression(TraversalPolicy shape,
 												TraversalPolicy inputPositions, TraversalPolicy weightPositions,
 												TraversalPolicy inputShape, TraversalPolicy weightShape,
@@ -57,11 +120,26 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		return super.delta(target);
 	}
 
+	/**
+	 * Builds a {@link MemberIndexGenerator} that creates one {@link SubsetTraversalIndexMapping}
+	 * per group member, routing each (memberIndex, operandIndex) pair to the appropriate geometry.
+	 *
+	 * @param resultShape      the output shape
+	 * @param inputPositions   anchor positions for the input
+	 * @param weightPositions  anchor positions for the weights
+	 * @param inputShape       shape of the input operand
+	 * @param weightShape      shape of the weight operand
+	 * @param inputGroupShape  window shape for the input
+	 * @param weightGroupShape window shape for the weights
+	 * @return the member index generator
+	 * @throws IllegalArgumentException if the dimension counts of the shapes are inconsistent
+	 */
 	private static MemberIndexGenerator indexGenerator(
 			TraversalPolicy resultShape,
 			TraversalPolicy inputPositions, TraversalPolicy weightPositions,

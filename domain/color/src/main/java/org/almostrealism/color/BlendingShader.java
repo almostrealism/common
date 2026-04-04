@@ -69,7 +69,11 @@ import org.almostrealism.geometry.RayFeatures;
  * @author Michael Murray
  */
 public class BlendingShader implements Shader<LightingContext>, RGBFeatures, RayFeatures {
-  private Producer<PackedCollection> hotColor, coldColor;
+  /** The color applied to fully-lit areas (where N dot L is maximum). */
+  private Producer<PackedCollection> hotColor;
+
+  /** The color applied to fully-shadowed areas (where N dot L is minimum). */
+  private Producer<PackedCollection> coldColor;
 
 	/**
 	 * Constructs a new BlendingShader using white as a hot color

@@ -49,8 +49,10 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	/** Integer code for YZ plane. **/
 	public static final int YZ = 8;
   
+	/** The plane orientation type ({@link #XY}, {@link #XZ}, or {@link #YZ}). */
 	private int type;
 
+	/** Producer that evaluates to the outward-facing surface normal of this plane. */
 	private Producer<PackedCollection> normal;
 
 	/**

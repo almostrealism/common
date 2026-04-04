@@ -93,13 +93,25 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 	/** Compute requirements for fitness evaluations (e.g., GPU acceleration). */
 	public static ComputeRequirement[] computeRequirements = {};
 
+	/** The fitness computation used to evaluate the target organism. */
 	private final HealthComputation<T, S> health;
+
+	/** Supplies the target organism for each evaluation. */
 	private final Supplier<T> target;
+
+	/** Optional callback invoked with the computed fitness score. */
 	private final Consumer<S> healthListener;
+
+	/** Optional callback invoked when an exception occurs during evaluation. */
 	private Consumer<Exception> errorListener;
+
+	/** Aggregator for tracking statistics across multiple evaluations. */
 	private final HealthScoring scoring;
+
+	/** Action to run after each evaluation completes (even on failure). */
 	private final Runnable cleanup;
 
+	/** Optional heap for memory management during evaluation. */
 	private Heap heap;
 
 	/**

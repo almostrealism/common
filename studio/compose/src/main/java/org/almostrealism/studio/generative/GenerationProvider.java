@@ -20,12 +20,43 @@ import org.almostrealism.audio.notes.NoteAudio;
 
 import java.util.List;
 
+/**
+ * Service-provider interface for ML audio generation back-ends. Implementations
+ * connect the studio to specific generative model inference services.
+ */
 public interface GenerationProvider {
+	/**
+	 * Refreshes the generative model for the given generator using the provided audio sources.
+	 *
+	 * @param requestId   unique identifier for this refresh request
+	 * @param generatorId the ID of the generator to refresh
+	 * @param sources     audio samples to use as conditioning inputs
+	 * @return {@code true} if the refresh succeeded
+	 */
 	boolean refresh(String requestId, String generatorId, List<NoteAudio> sources);
 
+	/**
+	 * Returns the current generation status for the given generator.
+	 *
+	 * @param id the generator ID to query
+	 * @return the current {@link GeneratorStatus}
+	 */
 	GeneratorStatus getStatus(String id);
 
+	/**
+	 * Generates a list of audio samples for the given generator.
+	 *
+	 * @param requestId   unique identifier for this generation request
+	 * @param generatorId the ID of the generator to use
+	 * @param count       the number of audio samples to generate
+	 * @return the generated {@link NoteAudio} list, or {@code null} on failure
+	 */
 	List<NoteAudio> generate(String requestId, String generatorId, int count);
 
+	/**
+	 * Returns the audio sample rate used by this provider.
+	 *
+	 * @return sample rate in Hz
+	 */
 	int getSampleRate();
 }

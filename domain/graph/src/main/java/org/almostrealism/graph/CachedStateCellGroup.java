@@ -22,7 +22,24 @@ import org.almostrealism.time.Temporal;
 import java.util.ArrayList;
 import java.util.function.Supplier;
 
+/**
+ * A group of {@link CachedStateCell} instances that tick together as a unit.
+ *
+ * <p>{@code CachedStateCellGroup} collects multiple cached state cells and
+ * implements {@link Temporal} to tick all of them in sequence. This is useful
+ * when multiple cells need to be advanced in lockstep during temporal processing.</p>
+ *
+ * @param <T> the type of data processed by each cell
+ * @see CachedStateCell
+ * @see org.almostrealism.time.Temporal
+ * @author Michael Murray
+ */
 public class CachedStateCellGroup<T> extends ArrayList<CachedStateCell<T>> implements Temporal {
+	/**
+	 * Ticks all cells in this group in sequence.
+	 *
+	 * @return a combined operation that ticks each cell in order
+	 */
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("CachedStateCellGroup Tick");

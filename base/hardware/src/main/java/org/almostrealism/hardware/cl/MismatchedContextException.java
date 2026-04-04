@@ -39,10 +39,24 @@ import org.jocl.CLException;
  * @see HardwareException
  */
 public class MismatchedContextException extends HardwareException {
+	/**
+	 * Creates a mismatched context exception identifying the target and actual contexts.
+	 *
+	 * @param targetContext The context the operation was intended for
+	 * @param actualContext The context that is actually in effect, or null if none
+	 * @param cause         The underlying {@link CLException}
+	 */
 	public MismatchedContextException(CLDataContext targetContext, CLDataContext actualContext, CLException cause) {
 		super(text(targetContext, actualContext), cause);
 	}
 
+	/**
+	 * Formats a human-readable message describing the context mismatch.
+	 *
+	 * @param targetContext The expected context
+	 * @param actualContext The actual active context, or null if none
+	 * @return Formatted error message
+	 */
 	protected static String text(CLDataContext targetContext, CLDataContext actualContext) {
 		if (actualContext == null) {
 			return "Attempting to use " + name(targetContext) + " when no context supporting OpenCL is in effect";
@@ -51,6 +65,12 @@ public class MismatchedContextException extends HardwareException {
 		}
 	}
 
+	/**
+	 * Returns a short display name for the given context, using only the class name portion.
+	 *
+	 * @param ctx Context to describe
+	 * @return Short name string for the context
+	 */
 	public static String name(CLDataContext ctx) {
 		String name = String.valueOf(ctx.toString());
 		if (name.contains(".")) {

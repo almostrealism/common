@@ -45,6 +45,7 @@ package io.almostrealism.frames;
  * @author  Michael Murray
  */
 public class CoordinationFrame {
+	/** The two predicates asserted to be equivalent or coordinated with each other. */
 	private Predicate a, b;
 
 	/**

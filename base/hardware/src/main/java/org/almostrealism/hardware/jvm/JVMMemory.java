@@ -60,7 +60,9 @@ import java.util.Arrays;
  * @see org.almostrealism.hardware.mem.RAM
  */
 public class JVMMemory implements Memory {
+	/** The memory provider that allocated this instance, used for provider-based dispatch. */
 	private JVMMemoryProvider provider;
+	/** The Java heap array backing this memory region. */
 	protected double data[];
 
 	/**

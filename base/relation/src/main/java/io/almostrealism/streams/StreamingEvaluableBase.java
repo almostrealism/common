@@ -47,6 +47,7 @@ import java.util.function.Consumer;
  * @author  Michael Murray
  */
 public abstract class StreamingEvaluableBase<T> implements StreamingEvaluable<T> {
+	/** The consumer that receives computed values as they become available. */
 	private Consumer<T> downstream;
 
 	/**

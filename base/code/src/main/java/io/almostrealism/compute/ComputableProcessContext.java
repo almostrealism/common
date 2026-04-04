@@ -49,6 +49,7 @@ import java.util.List;
  * @author Michael Murray
  */
 public class ComputableProcessContext extends ParallelProcessContext {
+	/** The hardware or language requirements that must be satisfied for this context. */
 	private List<ComputeRequirement> requirements;
 
 	/**

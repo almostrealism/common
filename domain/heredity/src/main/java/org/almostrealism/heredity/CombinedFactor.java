@@ -59,6 +59,7 @@ import java.util.function.Supplier;
  * @see CellularTemporalFactor
  */
 public class CombinedFactor<T> implements CellularTemporalFactor<T> {
+	/** The first factor applied to the input; its output is passed as input to factor {@code b}. */
 	private Factor<T> a, b;
 
 	/**

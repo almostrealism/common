@@ -208,7 +208,9 @@ public class FourierTransform extends CollectionProducerComputationBase {
 	 */
 	public static boolean enableRelative = true;
 
+	/** Counter used to generate unique variable names within generated kernel scopes. */
 	private int varIdx = 0;
+	/** Whether this transform computes the inverse FFT (true) or the forward FFT (false). */
 	private final boolean inverse;
 
 	/**
@@ -282,12 +284,28 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		return new FourierTransform(getShape().length(0), getShape().length(2), inverse, (Producer) children.get(1));
 	}
 
+	/**
+	 * Declares a fixed-size array parameter on the given scope and returns it.
+	 *
+	 * @param method the scope to which the parameter is added
+	 * @param name   the parameter variable name
+	 * @param size   the number of elements in the array
+	 * @return the newly declared array variable
+	 */
 	protected ArrayVariable<Double> addParameter(Scope<?> method, String name, int size) {
 		ArrayVariable<Double> source = new ArrayVariable<>(Double.class, name, e(size));
 		method.getParameters().add(source);
 		return source;
 	}
 
+	/**
+	 * Generates the top-level transform scope that orchestrates radix-2 and radix-4 sub-scopes.
+	 *
+	 * @param outputPosition the kernel index expression for the current output element
+	 * @param size           the number of complex samples processed by this scope
+	 * @param totalSize      the total FFT size (may be larger than {@code size} in split transforms)
+	 * @return the generated scope ready for compilation
+	 */
 	protected Scope<?> calculateTransform(Expression<Integer> outputPosition, int size, int totalSize) {
 		OperationMetadata calculateTransformMetadata = new OperationMetadata
 				(getFunctionName() + "_calculateTransform", "Calculate Transform");
@@ -310,6 +328,17 @@ public class FourierTransform extends CollectionProducerComputationBase {
 							outputPosition, size, totalSize);
 	}
 
+	/**
+	 * Populates a previously created transform scope with the butterfly computation body.
+	 *
+	 * @param calculateTransform the scope to populate
+	 * @param output             the output array variable written by this scope
+	 * @param input              the input array variable read by this scope
+	 * @param len                expression for the total signal length
+	 * @param inverseTransform   integer variable flag: non-zero selects inverse transform
+	 * @param isFirstSplit       expression flag indicating the first radix-4 split pass
+	 * @param outputPosition     kernel index expression for the current output element
+	 */
 	protected Scope<?> populateCalculateTransform(Scope<?> calculateTransform,
 												 ArrayVariable<Double> output, ArrayVariable<Double> input,
 												 Expression<?> len, Variable<Integer, ?> inverseTransform,
@@ -508,6 +537,16 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		return calculateTransform;
 	}
 
+	/**
+	 * Generates the recursive radix-2/radix-4 butterfly decomposition scope called
+	 * from within the main transform scope.
+	 *
+	 * @param calculateTransform the parent scope that will invoke this recursion
+	 * @param radix2             array variable for the radix-2 half-signal
+	 * @param radix4Part1        array variable for the first radix-4 quarter-signal
+	 * @param radix4Part2        array variable for the second radix-4 quarter-signal
+	 * @param radix2FFT          array variable accumulating the radix-2 sub-transform result
+	 */
 	protected Scope recursion(Scope<?> calculateTransform,
 								 ArrayVariable<Double> radix2,
 								 ArrayVariable<Double> radix4Part1, ArrayVariable<Double> radix4Part2,
@@ -553,6 +592,14 @@ public class FourierTransform extends CollectionProducerComputationBase {
 	}
 
 
+	/**
+	 * Generates the radix-2 Cooley-Tukey butterfly scope for a given size.
+	 *
+	 * @param outputPosition the kernel index expression for the current output element
+	 * @param size           the number of complex samples in this radix-2 pass
+	 * @param totalSize      the total FFT size
+	 * @return the generated radix-2 scope
+	 */
 	protected Scope<?> radix2(Expression<Integer> outputPosition, int size, int totalSize) {
 		OperationMetadata radix2Metadata = new OperationMetadata
 				(getFunctionName() + "_radix2", "Radix 2");
@@ -573,6 +620,19 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		return populateRadix2(radix2, output, input, len.ref(), inverseTransform, isFirstSplit.ref(), size);
 	}
 
+	/**
+	 * Populates a radix-2 scope with the butterfly computation statements.
+	 *
+	 * @param <T>              the return type of the scope
+	 * @param radix2           the scope to populate
+	 * @param output           the output array variable
+	 * @param input            the input array variable
+	 * @param len              expression for the total signal length
+	 * @param inverseTransform integer variable flag: non-zero selects inverse transform
+	 * @param isFirstSplit     expression flag for the first split pass
+	 * @param size             the number of complex samples in this radix-2 pass
+	 * @return the populated scope
+	 */
 	protected <T> Scope<T> populateRadix2(Scope<T> radix2, ArrayVariable<Double> output, ArrayVariable<Double> input,
 							  Expression<?> len, Variable<Integer, ?> inverseTransform,
 							  Expression<?> isFirstSplit, int size) {
@@ -680,6 +740,20 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		return radix2;
 	}
 
+	/**
+	 * Generates the recursive sub-scope for a radix-2 pass, splitting the signal
+	 * into even and odd halves and combining their transforms using twiddle factors.
+	 *
+	 * @param radix2           the parent radix-2 scope that will call this recursion
+	 * @param evenFft          array variable accumulating the even sub-transform result
+	 * @param even             array variable holding the even-indexed input samples
+	 * @param oddFft           array variable accumulating the odd sub-transform result
+	 * @param odd              array variable holding the odd-indexed input samples
+	 * @param halfN            expression for half the current signal length
+	 * @param inverseTransform integer variable flag: non-zero selects inverse transform
+	 * @param size             the total number of complex samples in this radix-2 pass
+	 * @return the generated recursion scope
+	 */
 	protected Scope recursionRadix2(Scope<?> radix2,
 									ArrayVariable<Double> evenFft, ArrayVariable<Double> even,
 									ArrayVariable<Double> oddFft, ArrayVariable<Double> odd,

@@ -86,7 +86,10 @@ import java.util.function.Function;
  * @author Michael Murray
  */
 public class GraphicsConverter {
+	/** Constant identifying 32-bit-per-pixel image data layout. */
 	public static final int image32Bit = 2;
+
+	/** Constant identifying 8-bit-per-pixel image data layout. */
 	public static final int image8Bit = 4;
 	
 	/**
@@ -109,6 +112,15 @@ public class GraphicsConverter {
 		        		(float)Math.min(1.0, Math.abs(color.getBlue())));
 	}
 	
+	/**
+	 * Extracts the pixel data from a {@link RenderedImage} as an array of packed 32-bit RGB integers.
+	 *
+	 * <p>The returned array begins with the width at index 0 and height at index 1,
+	 * followed by the packed pixel values in row-major order.</p>
+	 *
+	 * @param im the rendered image to extract pixels from
+	 * @return an array of length {@code 2 + width * height} with dimensions and pixel data
+	 */
 	public static int[] extract32BitImage(RenderedImage im) {
 		int w = im.getWidth();
 		int h = im.getHeight();
@@ -130,6 +142,16 @@ public class GraphicsConverter {
 		return rgb;
 	}
 	
+	/**
+	 * Extracts the pixel data from a {@link RenderedImage} as an array of packed 8-bit pixel bytes.
+	 *
+	 * <p>The array begins with the width encoded as 4 big-endian bytes (indices 0–3) and the
+	 * height as 4 big-endian bytes (indices 4–7). Each subsequent byte encodes one pixel with
+	 * 2 bits per channel (R, G, B) packed into 6 bits.</p>
+	 *
+	 * @param im the rendered image to extract pixels from
+	 * @return an array of length {@code 8 + width * height} with header and pixel data
+	 */
 	public static byte[] extract8BitImage(RenderedImage im) {
 		int w = im.getWidth();
 		int h = im.getHeight();
@@ -169,6 +191,18 @@ public class GraphicsConverter {
 		return rgb;
 	}
 	
+	/**
+	 * Converts a region of a flat pixel array into a 2D {@link RGB} array.
+	 *
+	 * @param pixel  the flat packed-ARGB pixel array
+	 * @param off    the offset into {@code pixel} at which the image data starts
+	 * @param x      the left column of the region to extract
+	 * @param y      the top row of the region to extract
+	 * @param w      the width of the region in pixels
+	 * @param h      the height of the region in pixels
+	 * @param imageW the total width of the source image (stride)
+	 * @return a 2D array of {@link RGB} values indexed as {@code [column][row]}
+	 */
 	public static RGB[][] convertToRGBArray(int[] pixel, int off, int x, int y, int w, int h, int imageW) {
 		RGB[][] rgb = new RGB[w][h];
 		
@@ -191,15 +225,42 @@ public class GraphicsConverter {
 		return rgb;
 	}
 
+	/**
+	 * Loads an image file as a flat {@link PackedCollection} of RGB values.
+	 *
+	 * <p>Pixels are stored in {@code [row, col, channel]} order with shape {@code [height, width, 3]}.</p>
+	 *
+	 * @param file the image file to load
+	 * @return a {@link PackedCollection} containing the image RGB data
+	 * @throws IOException if the file cannot be read
+	 */
 	public static PackedCollection loadRgb(File file) throws IOException {
 		// TODO Delegate to to the PackedCollection, and apply an RGB postprocessor for the elements
 		return loadRgb(file, false);
 	}
 
+	/**
+	 * Loads an image file as a {@link PackedCollection} with channels in the first dimension.
+	 *
+	 * <p>Pixels are stored in {@code [channel, row, col]} order with shape {@code [3, height, width]}.</p>
+	 *
+	 * @param file the image file to load
+	 * @return a {@link PackedCollection} with channels-first layout
+	 * @throws IOException if the file cannot be read
+	 */
 	public static PackedCollection loadChannels(File file) throws IOException {
 		return loadRgb(file, true);
 	}
 
+	/**
+	 * Loads an image file as a {@link PackedCollection} of RGB values, with configurable axis layout.
+	 *
+	 * @param file          the image file to load
+	 * @param channelsFirst {@code true} to use {@code [channel, row, col]} layout; {@code false} for
+	 *                      {@code [row, col, channel]} layout
+	 * @return a {@link PackedCollection} containing the image RGB data in the specified layout
+	 * @throws IOException if the file cannot be read
+	 */
 	public static PackedCollection loadRgb(File file, boolean channelsFirst) throws IOException {
 		BufferedImage image = ImageIO.read(file);
 
@@ -215,6 +276,18 @@ public class GraphicsConverter {
 		return dest;
 	}
 
+	/**
+	 * Loads a region of a {@link BufferedImage} into a pre-allocated {@link PackedCollection}.
+	 *
+	 * @param rgbDestination the destination collection (must have 3 dimensions)
+	 * @param bufferedImage  the source image
+	 * @param xOff          the horizontal pixel offset within the source image
+	 * @param yOff          the vertical pixel offset within the source image
+	 * @param w             the width of the region to load
+	 * @param h             the height of the region to load
+	 * @param channelsFirst  {@code true} to write channels as the first dimension
+	 * @throws IllegalArgumentException if the destination does not have 3 dimensions
+	 */
 	public static void loadRgb(PackedCollection rgbDestination,
 							   BufferedImage bufferedImage,
 							   int xOff, int yOff, int w, int h,
@@ -246,6 +319,13 @@ public class GraphicsConverter {
 		}
 	}
 
+	/**
+	 * Loads an image file as a grayscale {@link PackedCollection} with shape {@code [height, width, 1]}.
+	 *
+	 * @param file the image file to load
+	 * @return a {@link PackedCollection} containing the averaged grayscale values
+	 * @throws IOException if the file cannot be read
+	 */
 	public static PackedCollection loadGrayscale(File file) throws IOException {
 		BufferedImage image = ImageIO.read(file);
 
@@ -258,6 +338,19 @@ public class GraphicsConverter {
 		return dest;
 	}
 
+	/**
+	 * Loads a region of a {@link BufferedImage} as grayscale into a pre-allocated {@link PackedCollection}.
+	 *
+	 * <p>The grayscale value is computed as the average of the R, G, and B channels.</p>
+	 *
+	 * @param rgbDestination the destination collection (must have 3 dimensions, with 1 channel)
+	 * @param bufferedImage  the source image
+	 * @param xOff           the horizontal pixel offset within the source image
+	 * @param yOff           the vertical pixel offset within the source image
+	 * @param w              the width of the region to load
+	 * @param h              the height of the region to load
+	 * @throws IllegalArgumentException if the destination does not have 3 dimensions
+	 */
 	public static void loadGrayscale(
 								PackedCollection rgbDestination,
 							    BufferedImage bufferedImage,
@@ -285,6 +378,20 @@ public class GraphicsConverter {
 		}
 	}
 
+	/**
+	 * Computes a luminance histogram of a region of a {@link BufferedImage}.
+	 *
+	 * <p>The luminance of each pixel is computed as the average of R, G, and B channels (each
+	 * in [0, 1]), then mapped to one of the {@code buckets} bins.</p>
+	 *
+	 * @param bufferedImage the source image
+	 * @param xoff          the horizontal pixel offset of the region
+	 * @param yoff          the vertical pixel offset of the region
+	 * @param w             the width of the region
+	 * @param h             the height of the region
+	 * @param buckets       the number of histogram bins
+	 * @return a double array of length {@code buckets} with the pixel count per bin
+	 */
 	public static double[] histogram(BufferedImage bufferedImage,
 									 int xoff, int yoff, int w, int h,
 									 int buckets) {
@@ -478,6 +585,16 @@ public class GraphicsConverter {
 				new MemoryImageSource(image.length, image[0].length, data, 0, image.length));
 	}
 
+	/**
+	 * Converts a {@link PackedCollection} of RGB values into an AWT {@link BufferedImage}.
+	 *
+	 * <p>The collection must have shape {@code [3, h, w]} (channels-first) or {@code [h, w, 3]}
+	 * (channels-last) depending on the {@code channelsFirst} parameter.</p>
+	 *
+	 * @param values        the collection of RGB pixel values
+	 * @param channelsFirst {@code true} if the channel dimension is first; {@code false} if last
+	 * @return a {@link BufferedImage} of type {@link BufferedImage#TYPE_INT_ARGB}
+	 */
 	// TODO  Accelerated
 	public static BufferedImage convertToAWTImage(PackedCollection values, boolean channelsFirst) {
 		int axis = channelsFirst ? 1 : 0;

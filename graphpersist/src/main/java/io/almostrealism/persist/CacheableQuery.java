@@ -19,6 +19,15 @@ package io.almostrealism.persist;
 import io.almostrealism.query.Query;
 
 /**
+ * Abstract base class for queries whose results are {@link Cacheable} values.
+ *
+ * <p>Combines the {@link Query} contract with the requirement that results implement
+ * {@link Cacheable}, enabling the results to be serialized to and restored from a cache.</p>
+ *
+ * @param <D> The database or data source type
+ * @param <K> The key type used to parameterize the query
+ * @param <V> The result type, which must be {@link Cacheable}
+ *
  * @author  Michael Murray
  */
 public abstract class CacheableQuery<D, K, V extends Cacheable> implements Query<D, K, V> {

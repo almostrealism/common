@@ -62,7 +62,9 @@ import org.almostrealism.collect.PackedCollection;
  * @see GeneParameters
  */
 public class ChoiceGene implements Gene<PackedCollection>, GeneParameters, ScalarFeatures, CollectionFeatures {
+	/** The discrete set of candidate values that continuous gene outputs are mapped onto. */
 	private PackedCollection choices;
+	/** The underlying gene providing continuous factor values used to index into {@code choices}. */
 	private Gene<PackedCollection> values;
 
 	/**

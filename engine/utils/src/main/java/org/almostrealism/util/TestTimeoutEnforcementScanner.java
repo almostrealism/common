@@ -59,9 +59,16 @@ public class TestTimeoutEnforcementScanner {
 	 * A test method that is missing a timeout value.
 	 */
 	public static class Violation {
+		/** The file containing the {@code @Test} annotation without a timeout. */
 		private final Path file;
+
+		/** The 1-based line number of the {@code @Test} annotation. */
 		private final int lineNumber;
+
+		/** The raw annotation line text. */
 		private final String line;
+
+		/** The name of the test method that follows the annotation, or empty if not detected. */
 		private final String methodName;
 
 		/**
@@ -136,7 +143,10 @@ public class TestTimeoutEnforcementScanner {
 			"TestDepth.java"
 	);
 
+	/** Accumulated violations found during the most recent {@link #scan()} call. */
 	private final List<Violation> violations = new ArrayList<>();
+
+	/** Root directory from which test source files are recursively scanned. */
 	private final Path rootDir;
 
 	/**

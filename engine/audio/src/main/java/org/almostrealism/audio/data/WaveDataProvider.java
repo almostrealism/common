@@ -89,6 +89,15 @@ public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>,
 	 */
 	String getKey();
 
+	/**
+	 * Returns the number of frames for the given playback rate and target sample rate.
+	 * If the provider's sample rate matches {@code sampleRate}, delegates to
+	 * {@link #getCount(double)}; otherwise adjusts the playback rate to account for resampling.
+	 *
+	 * @param playbackRate relative playback rate (1.0 = normal speed)
+	 * @param sampleRate   target sample rate in Hz
+	 * @return frame count at the given playback rate and target sample rate
+	 */
 	default int getCount(double playbackRate, int sampleRate) {
 		if (getSampleRate() == sampleRate) {
 			return getCount(playbackRate);
@@ -97,14 +106,42 @@ public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>,
 		return getCount(playbackRate * getSampleRate() / (double) sampleRate);
 	}
 
+	/**
+	 * Returns the number of frames for the given playback rate at the provider's native sample rate.
+	 *
+	 * @param playbackRate relative playback rate (1.0 = normal speed)
+	 * @return frame count at the given playback rate
+	 */
 	int getCount(double playbackRate);
 
+	/**
+	 * Returns the native duration of the audio in seconds at normal (1.0) playback rate.
+	 *
+	 * @return duration in seconds
+	 */
 	double getDuration();
 
+	/**
+	 * Returns the duration of the audio in seconds at the given playback rate.
+	 *
+	 * @param playbackRate relative playback rate (1.0 = normal speed)
+	 * @return duration in seconds at the given rate
+	 */
 	double getDuration(double playbackRate);
 
+	/**
+	 * Returns the number of audio channels provided (e.g., 1 for mono, 2 for stereo).
+	 *
+	 * @return channel count
+	 */
 	int getChannelCount();
 
+	/**
+	 * Returns audio data resampled to the target sample rate if necessary.
+	 *
+	 * @param sampleRate desired output sample rate in Hz
+	 * @return WaveData at the given sample rate
+	 */
 	default WaveData get(int sampleRate) {
 		if (getSampleRate() == sampleRate) {
 			return get();
@@ -122,6 +159,14 @@ public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>,
 		return result;
 	}
 
+	/**
+	 * Returns raw PCM data for the specified channel, resampled to the given sample rate if necessary.
+	 *
+	 * @param channel      channel index (0-based)
+	 * @param playbackRate relative playback rate (1.0 = normal speed)
+	 * @param sampleRate   desired output sample rate in Hz
+	 * @return channel audio data at the given playback rate and sample rate
+	 */
 	default PackedCollection getChannelData(int channel, double playbackRate, int sampleRate) {
 		if (getSampleRate() == sampleRate) {
 			return getChannelData(channel, playbackRate);
@@ -130,6 +175,14 @@ public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>,
 		return getChannelData(channel, playbackRate * getSampleRate() / (double) sampleRate);
 	}
 
+	/**
+	 * Returns raw PCM data for the specified channel at the given playback rate
+	 * at the provider's native sample rate.
+	 *
+	 * @param channel      channel index (0-based)
+	 * @param playbackRate relative playback rate (1.0 = normal speed)
+	 * @return channel audio data
+	 */
 	PackedCollection getChannelData(int channel, double playbackRate);
 
 	@Override

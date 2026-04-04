@@ -73,14 +73,22 @@ public class Electrons {
 	 */
 	public static final double spectralBandwidth = 0.001;
 
+	/** The electrons in this group, one per orbital slot (with spin). */
 	private Electron e[];
 
+	/** Precomputed tensor of all possible absorption energies for this electron configuration. */
 	private Tensor<Double> absorptionEnergies;
+
+	/** Maps each valid excitation configuration to its required absorption energy (in eV). */
 	private Hashtable<ExcitationConfiguration, Double> configurationMap;
 
+	/** Precomputed lists of excitation configurations reachable from each ground-state slot. */
 	private List<ExcitationConfiguration> configurations[];
+
+	/** Precomputed array of absorption energies corresponding to each entry in {@link #configurations}. */
 	private double energies[];
 
+	/** The currently excited configuration of this electron group, or {@code null} if in ground state. */
 	private ExcitationConfiguration excited;
 
 	/**
@@ -245,6 +253,14 @@ public class Electrons {
 		this.excited = null;
 	}
 
+	/**
+	 * Recomputes all valid excitation configurations and their associated absorption energies.
+	 * <p>
+	 * Iterates over all combinations of electron excitation levels, calculates the total energy
+	 * for each combination, and builds {@link #configurationMap}, {@link #configurations}, and
+	 * {@link #energies} for use during photon absorption matching.
+	 * </p>
+	 */
 	protected synchronized void refreshAbsorptionEnergies() {
 		int cursor[] = new int[e.length];
 
@@ -310,6 +326,12 @@ public class Electrons {
 		for (int i = 0; i < el.size(); i++) energies[i] = el.get(i);
 	}
 
+	/**
+	 * Creates a copy of the given integer array.
+	 *
+	 * @param c  the array to clone
+	 * @return   a new array with the same contents
+	 */
 	private int[] clone(int c[]) {
 		int d[] = new int[c.length];
 		System.arraycopy(c, 0, d, 0, c.length);
@@ -324,6 +346,7 @@ public class Electrons {
 	 * </p>
 	 */
 	public static class ExcitationConfiguration implements Validity {
+		/** Excitation level indices for each electron, indexed parallel to the electron array. */
 		private int cursor[];
 
 		/** Default constructor for serialization. */

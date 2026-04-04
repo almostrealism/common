@@ -66,13 +66,29 @@ import org.almostrealism.hardware.Input;
  */
 public class Triangle extends AbstractSurface implements ParticleGroup, TriangleFeatures {
 
+	/** Shared instance of {@link TriangleFeatures} for constructing triangle computation producers. */
 	private static final TriangleFeatures triangleFeat = TriangleFeatures.getInstance();
 
+	/** Shared vertex data provider when this triangle is part of a mesh. */
 	private Mesh.VertexData vertexData;
-	private int ind1, ind2, ind3;
-	
+
+	/** Index of the first vertex in the vertex data provider. */
+	private int ind1;
+
+	/** Index of the second vertex in the vertex data provider. */
+	private int ind2;
+
+	/** Index of the third vertex in the vertex data provider. */
+	private int ind3;
+
 	/** First vertex of the triangle. */
-	private Vector p1, p2, p3;
+	private Vector p1;
+
+	/** Second vertex of the triangle. */
+	private Vector p2;
+
+	/** Third vertex of the triangle. */
+	private Vector p3;
 
 	/** Smooth shading flag - when true, normals are interpolated across the triangle. */
 	private boolean smooth;
@@ -497,6 +513,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		return new Constant<>(zero);
 	}
 
+	/**
+	 * Returns a string representation of this triangle, showing the three vertex positions.
+	 *
+	 * @return a string in the form "Triangle: p1 p2 p3"
+	 */
 	public String toString() {
 		return "Triangle: " + this.p1 + " " + this.p2 + " " + this.p3;
 	}

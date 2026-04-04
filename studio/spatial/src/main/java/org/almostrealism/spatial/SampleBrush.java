@@ -48,18 +48,33 @@ import java.util.List;
  */
 public class SampleBrush implements SpatialBrush {
 
+	/** The source wave details providing frequency data. */
 	private WaveDetails sourceWave;
+
+	/** The packed frequency data extracted from the source wave. */
 	private PackedCollection sourceFreqData;
+
+	/** The number of frequency bins per frame in the source data. */
 	private int sourceFreqBinCount;
+
+	/** The total number of frequency frames in the source data. */
 	private int sourceFreqFrameCount;
+
+	/** The frequency sample rate of the source data in Hz. */
 	private double sourceFreqSampleRate;
 
 	// Stroke state
+	/** The position at which the current stroke began. */
 	private Vector strokeStartPosition;
+
+	/** The index of the last frequency frame painted during the current stroke. */
 	private int lastPaintedFrame;
 
 	// Configurable parameters (required by interface but not used for sample painting)
+	/** The brush radius (not used for sample painting, required by interface). */
 	private double radius = 10.0;
+
+	/** The brush density (not used for sample painting, required by interface). */
 	private double density = 100.0;
 
 	/**

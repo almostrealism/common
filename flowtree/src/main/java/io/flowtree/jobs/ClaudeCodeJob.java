@@ -17,13 +17,14 @@
 package io.flowtree.jobs;
 
 import io.flowtree.JsonFieldExtractor;
-import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.util.KeyUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -34,8 +35,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 /**
@@ -73,12 +77,36 @@ import java.util.Map;
  *
  * @author Michael Murray
  * @see GitManagedJob
+ * @see ClaudeCodeJobFactory
  */
 public class ClaudeCodeJob extends GitManagedJob {
     /** Sentinel string used to delimit multiple prompts in the serialized wire format. */
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
     /** Default comma-separated list of tools permitted for Claude Code sessions. */
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
+
+    /**
+     * Deduplication mode that runs an inline Claude Code session before the
+     * commit is finalised.  The session receives an aggressive prompt listing
+     * all new method names and is instructed to remove any duplicates it finds.
+     * This mode is safe to test incrementally because it executes within the
+     * existing job lifecycle and cannot spawn additional jobs.
+     */
+    public static final String DEDUP_LOCAL = "local";
+
+    /**
+     * Deduplication mode that submits a separate {@link ClaudeCodeJob} to the
+     * same workstream after the current job's commit has been pushed.
+     * Requires a workstream URL to be configured on this job.
+     */
+    public static final String DEDUP_SPAWN = "spawn";
+
+    /**
+     * Deduplication mode that disables the deduplication scan entirely.
+     * Use this to explicitly opt out when the default {@link #DEDUP_LOCAL}
+     * behaviour is not desired.
+     */
+    public static final String DEDUP_NONE = "none";
 
     /** The prompt submitted to Claude Code for this job. */
     private String prompt;
@@ -104,6 +132,13 @@ public class ClaudeCodeJob extends GitManagedJob {
     private int enforcementAttempt;
     /** Description of a git-tampering rule violation detected during this job. */
     private String gitTamperingViolation;
+    /**
+     * Controls post-work deduplication behaviour.
+     * Defaults to {@link #DEDUP_LOCAL} (inline session before committing).
+     * {@link #DEDUP_SPAWN} submits a follow-up job to the same workstream.
+     * {@link #DEDUP_NONE} disables deduplication entirely.
+     */
+    private String deduplicationMode = DEDUP_LOCAL;
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
@@ -408,6 +443,30 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
+     * Returns the deduplication mode for this job.
+     *
+     * @return {@link #DEDUP_LOCAL}, {@link #DEDUP_SPAWN}, or {@link #DEDUP_NONE}
+     */
+    public String getDeduplicationMode() {
+        return deduplicationMode;
+    }
+
+    /**
+     * Sets the deduplication mode for this job.
+     *
+     * <p>The default is {@link #DEDUP_LOCAL} (inline session before commit).
+     * Use {@link #DEDUP_SPAWN} to submit a separate agent job after committing
+     * (requires a workstream URL). Use {@link #DEDUP_NONE} to disable
+     * deduplication entirely.</p>
+     *
+     * @param deduplicationMode {@link #DEDUP_LOCAL}, {@link #DEDUP_SPAWN},
+     *                          or {@link #DEDUP_NONE}
+     */
+    public void setDeduplicationMode(String deduplicationMode) {
+        this.deduplicationMode = deduplicationMode;
+    }
+
+    /**
      * Returns the Claude Code session ID from the last execution.
      * Can be used to resume the session later.
      */
@@ -480,11 +539,14 @@ public class ClaudeCodeJob extends GitManagedJob {
     protected void doWork() {
         executeSingleRun();
 
-        // Enforcement loop: when enforceChanges is enabled and the agent
-        // produced no file changes, restart the session with an escalating
-        // counter so the agent cannot simply declare "no fix needed."
-        if (enforceChanges) {
-            while (enforcementAttempt < MAX_ENFORCEMENT_RETRIES && !hasUncommittedChanges()) {
+        // Enforcement loop: when enforceChanges is enabled and the agent produced no
+        // file changes, restart the session.  Git integrity violations are a completely
+        // separate concern -- if the agent committed (HEAD moved), exit immediately and
+        // let the tampering-detection path in GitManagedJob.run() handle it.
+        if (enforceChanges && !hasAgentCommitted()) {
+            while (enforcementAttempt < MAX_ENFORCEMENT_RETRIES
+                    && !hasUncommittedChanges()
+                    && !hasAgentCommitted()) {
                 enforcementAttempt++;
                 log("Enforcement loop: attempt " + enforcementAttempt
                     + " produced no changes -- restarting (attempt "
@@ -492,7 +554,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 executeSingleRun();
             }
 
-            if (!hasUncommittedChanges()) {
+            if (!hasUncommittedChanges() && !hasAgentCommitted()) {
                 warn("Enforcement loop: exhausted " + MAX_ENFORCEMENT_RETRIES
                     + " retries without producing changes");
             }
@@ -513,9 +575,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         // about the violation and the consequences of repeating it.
         executeSingleRun();
 
-        // Clear the violation so it doesn't persist into further retries
-        // (onGitTampering won't be called again — the caller handles the
-        // second-chance logic).
+        // Clear the violation so it doesn't persist into further retries.
         gitTamperingViolation = null;
 
         return true;
@@ -590,9 +650,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             }
 
             // Set resolved workstream URL for MCP servers (ar-messages, ar-github).
-            // resolveWorkstreamUrl() replaces the 0.0.0.0 placeholder with the
-            // actual controller host from FLOWTREE_ROOT_HOST, which is required
-            // when the agent runs in a Docker container.
             String wsUrl = resolveWorkstreamUrl();
             if (wsUrl != null && !wsUrl.isEmpty()) {
                 pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
@@ -721,13 +778,43 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
     }
 
+    /**
+     * Pattern that matches new Java method declarations in a unified diff.
+     *
+     * <p>Matches lines beginning with {@code +} (new content) followed by
+     * optional whitespace, an access modifier, optional other modifiers and
+     * generic type parameters, a return type, and then the method name
+     * immediately before an opening parenthesis.  Constructors and interface
+     * default methods are included intentionally — the deduplication agent
+     * decides whether they constitute genuine duplicates.</p>
+     */
+    private static final Pattern NEW_METHOD_PATTERN = Pattern.compile(
+            "^\\+[ \\t]+(?:public|private|protected)\\b.*\\b(\\w+)[ \\t]*\\(");
+
+    /** Maximum number of method names included in a single deduplication prompt. */
+    private static final int MAX_DEDUP_METHODS = 50;
+
     @Override
     protected boolean validateChanges() throws Exception {
-        if (!isProtectTestFiles()) {
-            return true;
+        // Test-hiding audit (only when protect-test-files is enabled)
+        if (isProtectTestFiles() && !runTestHidingAudit()) {
+            return false;
         }
 
-        // Use the existing detect-test-hiding.sh script for diff auditing
+        // Deduplication check: scan new Java methods and queue a follow-up job
+        submitDeduplicationJobIfNeeded();
+
+        return true;
+    }
+
+    /**
+     * Runs the detect-test-hiding.sh audit script against the base branch.
+     *
+     * @return {@code false} if test-hiding violations were found (exit code 2),
+     *         {@code true} otherwise (including script-not-found and other errors)
+     * @throws Exception if the process cannot be started
+     */
+    private boolean runTestHidingAudit() throws Exception {
         Path auditScript = resolveWorkingPath("tools/ci/agent-protection/detect-test-hiding.sh");
         if (auditScript == null || !Files.exists(auditScript)) {
             log("detect-test-hiding.sh not found, skipping validation");
@@ -736,7 +823,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
         ProcessBuilder pb = new ProcessBuilder("bash", auditScript.toString(),
-            "origin/" + baseBranch);
+                "origin/" + baseBranch);
         String workDir = getWorkingDirectory();
         if (workDir != null) {
             pb.directory(new File(workDir));
@@ -744,20 +831,351 @@ public class ClaudeCodeJob extends GitManagedJob {
         pb.redirectErrorStream(true);
         GitOperations.augmentPath(pb);
         Process p = pb.start();
-        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        String auditOutput = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = p.waitFor();
 
         if (code == 2) {
-            // Exit code 2 = violations found
-            warn("Test-hiding violations detected - aborting commit:\n" + output);
+            warn("Test-hiding violations detected - aborting commit:\n" + auditOutput);
             return false;
         } else if (code != 0) {
-            warn("detect-test-hiding.sh exited with code " + code + ": " + output);
-            // Non-violation error (code 1 = bad args); don't block on script bugs
+            warn("detect-test-hiding.sh exited with code " + code + ": " + auditOutput);
         }
 
         log("Test integrity check passed");
         return true;
+    }
+
+    /**
+     * Runs the appropriate deduplication action based on {@link #deduplicationMode}.
+     *
+     * <p>When the mode is {@link #DEDUP_LOCAL}, an inline Claude Code session
+     * is executed with the deduplication prompt before the commit is finalised.
+     * When the mode is {@link #DEDUP_SPAWN}, a follow-up job is posted to the
+     * same workstream (fire-and-forget).  {@link #DEDUP_NONE} skips the scan
+     * entirely.</p>
+     */
+    private void submitDeduplicationJobIfNeeded() {
+        if (DEDUP_NONE.equals(deduplicationMode)) {
+            return;
+        }
+
+        List<String> newMethods = extractNewMethodNames();
+        if (newMethods.isEmpty()) {
+            log("Deduplication scan: no new Java methods detected");
+            return;
+        }
+
+        log("Deduplication scan: found " + newMethods.size() + " new method(s) -- mode=" + deduplicationMode);
+
+        List<String> capped = newMethods.size() > MAX_DEDUP_METHODS
+                ? newMethods.subList(0, MAX_DEDUP_METHODS) : newMethods;
+        boolean truncated = newMethods.size() > MAX_DEDUP_METHODS;
+        String dedupPrompt = buildDeduplicationPrompt(capped, truncated, newMethods.size());
+
+        if (DEDUP_LOCAL.equals(deduplicationMode)) {
+            runLocalDeduplication(dedupPrompt);
+        } else if (DEDUP_SPAWN.equals(deduplicationMode)) {
+            spawnDeduplicationJob(dedupPrompt, newMethods.size());
+        } else {
+            warn("Unknown deduplicationMode '" + deduplicationMode + "' -- skipping");
+        }
+    }
+
+    /**
+     * Runs a deduplication Claude Code session inline, before this job's
+     * changes are committed.
+     *
+     * <p>The original prompt is temporarily replaced with the deduplication
+     * prompt so that all existing session machinery (MCP config, tool
+     * allowlist, budget limits) is reused unchanged.  The original prompt is
+     * always restored — even if the session throws.</p>
+     *
+     * <p>Running inline means the deduplication pass and the original work
+     * are both committed together, making the behaviour easy to observe and
+     * the implementation easy to tune without spawning additional jobs or
+     * risking feedback loops.</p>
+     *
+     * @param dedupPrompt the deduplication prompt to run
+     */
+    private void runLocalDeduplication(String dedupPrompt) {
+        String originalPrompt = this.prompt;
+
+        // Preserve the primary agent's commit.txt so the dedup session cannot
+        // overwrite it.  executeSingleRun() deletes any stale commit.txt at
+        // startup, so we read the content now and write it back in finally.
+        Path commitFile = resolveWorkingPath("commit.txt");
+        String savedCommitMessage = null;
+        if (commitFile != null && Files.exists(commitFile)) {
+            try {
+                savedCommitMessage = Files.readString(commitFile, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                warn("Could not read commit.txt before dedup run: " + e.getMessage());
+            }
+        }
+
+        try {
+            this.prompt = dedupPrompt;
+            log("Running inline deduplication session");
+            executeSingleRun();
+        } finally {
+            this.prompt = originalPrompt;
+
+            // Restore the primary agent's commit message, discarding whatever
+            // the dedup session wrote.
+            if (commitFile != null) {
+                try {
+                    if (savedCommitMessage != null) {
+                        Files.writeString(commitFile, savedCommitMessage, StandardCharsets.UTF_8);
+                        log("Restored primary commit message from commit.txt");
+                    } else {
+                        Files.deleteIfExists(commitFile);
+                    }
+                } catch (IOException e) {
+                    warn("Could not restore commit.txt after dedup run: " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    /**
+     * Posts a deduplication job to the same workstream via the controller API.
+     *
+     * <p>This is fire-and-forget: errors are logged but do not affect the
+     * outcome of the current job.  Requires a workstream URL to be configured.</p>
+     *
+     * @param dedupPrompt the deduplication prompt
+     * @param methodCount the total number of new methods detected
+     */
+    private void spawnDeduplicationJob(String dedupPrompt, int methodCount) {
+        String wsUrl = resolveWorkstreamUrl();
+        if (wsUrl == null || wsUrl.isEmpty()) {
+            warn("Deduplication mode is 'spawn' but no workstream URL is configured -- skipping");
+            return;
+        }
+
+        String controllerBase = extractControllerBaseUrl(wsUrl);
+        String workstreamId = extractWorkstreamId(wsUrl);
+        if (controllerBase == null || workstreamId == null) {
+            warn("Cannot parse workstream URL for deduplication job: " + wsUrl);
+            return;
+        }
+
+        try {
+            ObjectNode payload = outputMapper.createObjectNode();
+            payload.put("prompt", dedupPrompt);
+            payload.put("workstreamId", workstreamId);
+            payload.put("description", "Deduplication audit: " + methodCount + " new method(s)");
+            payload.put("automated", true);
+            String json = outputMapper.writeValueAsString(payload);
+
+            log("Spawning deduplication job on workstream " + workstreamId);
+            postJson(controllerBase + "/api/submit", json);
+        } catch (Exception e) {
+            warn("Failed to spawn deduplication job: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Scans the working tree for new Java method declarations introduced since
+     * the base branch.
+     *
+     * <p>Two sources are checked:
+     * <ol>
+     *   <li>The unified diff of tracked {@code .java} files against
+     *       {@code origin/<baseBranch>} — new lines ({@code +}) that contain
+     *       a method declaration are parsed via {@link #NEW_METHOD_PATTERN}.</li>
+     *   <li>Untracked {@code .java} files reported by {@code git ls-files --others}
+     *       — every method declaration in these entirely new files is included.</li>
+     * </ol>
+     *
+     * @return deduplicated list of new method names, order-preserving
+     */
+    private List<String> extractNewMethodNames() {
+        Set<String> seen = new LinkedHashSet<>();
+        String workDir = getWorkingDirectory();
+        String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
+
+        // Tracked Java files: diff working tree against remote base branch
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    GitOperations.resolveGitCommand(),
+                    "diff", "origin/" + baseBranch, "--", "*.java");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            GitOperations.augmentPath(pb);
+            Process p = pb.start();
+            String diff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            p.waitFor();
+            extractMethodNamesFromDiff(diff, seen);
+        } catch (IOException | InterruptedException e) {
+            warn("Deduplication scan: failed to diff tracked Java files: " + e.getMessage());
+        }
+
+        // Untracked Java files: every method in these files is new
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    GitOperations.resolveGitCommand(),
+                    "ls-files", "--others", "--exclude-standard", "--", "*.java");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            GitOperations.augmentPath(pb);
+            Process p = pb.start();
+            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            p.waitFor();
+            for (String rel : listing.split("\n")) {
+                rel = rel.trim();
+                if (!rel.isEmpty()) {
+                    extractMethodNamesFromFile(rel, workDir, seen);
+                }
+            }
+        } catch (IOException | InterruptedException e) {
+            warn("Deduplication scan: failed to list untracked Java files: " + e.getMessage());
+        }
+
+        return new ArrayList<>(seen);
+    }
+
+    /**
+     * Parses new-line entries ({@code +} prefix) from a unified diff and adds
+     * any Java method names found to {@code sink}.
+     *
+     * @param diff  the unified diff output
+     * @param sink  the set to add discovered method names to
+     */
+    private static void extractMethodNamesFromDiff(String diff, Set<String> sink) {
+        for (String line : diff.split("\n")) {
+            if (line.startsWith("+++") || line.startsWith("---")) {
+                continue;
+            }
+            Matcher m = NEW_METHOD_PATTERN.matcher(line);
+            if (m.find()) {
+                sink.add(m.group(1));
+            }
+        }
+    }
+
+    /**
+     * Reads a Java source file and adds all method names declared with a
+     * public/private/protected access modifier to {@code sink}.
+     *
+     * @param relativePath  path relative to the working directory (or absolute)
+     * @param workDir       working directory, or {@code null}
+     * @param sink          the set to add discovered method names to
+     */
+    private void extractMethodNamesFromFile(String relativePath,
+                                             String workDir,
+                                             Set<String> sink) {
+        File file = (workDir != null)
+                ? new File(workDir, relativePath) : new File(relativePath);
+        if (!file.exists()) return;
+
+        try {
+            String source = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            // Synthesise a diff-like representation so the same pattern applies
+            for (String line : source.split("\n")) {
+                Matcher m = NEW_METHOD_PATTERN.matcher("+ " + line);
+                if (m.find()) {
+                    sink.add(m.group(1));
+                }
+            }
+        } catch (IOException e) {
+            warn("Deduplication scan: cannot read " + relativePath + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Builds the aggressive deduplication prompt that is sent to the follow-up
+     * agent session.
+     *
+     * @param methodNames  the (possibly capped) list of new method names
+     * @param truncated    {@code true} if the list was capped due to size
+     * @param totalCount   the total number of methods found (before capping)
+     * @return the full prompt string
+     */
+    private static String buildDeduplicationPrompt(List<String> methodNames,
+                                                    boolean truncated,
+                                                    int totalCount) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("DEDUPLICATION AUDIT — MANDATORY PRE-COMMIT REVIEW\n\n");
+        sb.append("A prior agent session has committed changes that introduce the ");
+        sb.append("following new methods");
+        if (truncated) {
+            sb.append(" (showing ").append(methodNames.size())
+              .append(" of ").append(totalCount).append(" total)");
+        }
+        sb.append(":\n\n");
+        for (String name : methodNames) {
+            sb.append("  - ").append(name).append("\n");
+        }
+        sb.append("\n");
+        sb.append("Your job is to determine whether any of these methods duplicate ");
+        sb.append("functionality that already exists elsewhere in the codebase. ");
+        sb.append("This is a mandatory review step — do not skip it and do not ");
+        sb.append("conclude quickly that a method is unique without actually searching.\n\n");
+        sb.append("CRITICAL ASSUMPTION: For every method in the list above, you MUST ");
+        sb.append("assume it is a clone of an existing method until you have proven ");
+        sb.append("otherwise. This is not a pessimistic assumption — it is statistically ");
+        sb.append("accurate. The majority of methods introduced by agent sessions are ");
+        sb.append("duplicates of functionality that already exists elsewhere. The agent ");
+        sb.append("re-implemented things it could not find by search. The clone may not ");
+        sb.append("be an exact copy: it may be renamed, slightly generalised, or placed ");
+        sb.append("in a different class — but it performs the same operation on the same ");
+        sb.append("data.\n\n");
+        sb.append("For each method:\n");
+        sb.append("1. Search the codebase for methods that perform the same logical ");
+        sb.append("operation. Use Grep to search by keyword, not just by name.\n");
+        sb.append("2. If a duplicate exists: remove the new method entirely and replace ");
+        sb.append("all call sites with the existing method.\n");
+        sb.append("3. Only after a thorough search may you conclude a method is ");
+        sb.append("genuinely new.\n\n");
+        sb.append("IMPORTANT — editing rules:\n");
+        sb.append("- Use the Edit tool to remove duplicate methods surgically. ");
+        sb.append("Remove only the duplicate method body and its declaration; ");
+        sb.append("preserve all other changes in the file.\n");
+        sb.append("- NEVER use git restore, git checkout --, git reset, or any ");
+        sb.append("other git command to revert a file. Those commands discard ALL ");
+        sb.append("changes in that file, not just the duplicate method, and will ");
+        sb.append("destroy work that must be preserved.\n\n");
+        sb.append("Do not rationalise keeping a duplicate because it is 'slightly ");
+        sb.append("different'. Slight differences are how duplicates hide. If the ");
+        sb.append("logical purpose is the same, merge them. The codebase already has ");
+        sb.append("too many near-identical copies of the same logic; every one you ");
+        sb.append("remove improves maintainability for every future session.");
+        return sb.toString();
+    }
+
+    /**
+     * Extracts the controller base URL (scheme + host + port) from a workstream URL.
+     *
+     * <p>Workstream URLs follow the pattern
+     * {@code http://host:port/api/workstreams/{id}/jobs/{jobId}}.
+     * This method returns everything before {@code /api/workstreams/}.</p>
+     *
+     * @param workstreamUrl the full workstream URL
+     * @return the controller base URL, or {@code null} if the URL cannot be parsed
+     */
+    static String extractControllerBaseUrl(String workstreamUrl) {
+        int idx = workstreamUrl.indexOf("/api/workstreams/");
+        if (idx < 0) return null;
+        return workstreamUrl.substring(0, idx);
+    }
+
+    /**
+     * Extracts the workstream identifier from a workstream URL.
+     *
+     * <p>Workstream URLs follow the pattern
+     * {@code http://host:port/api/workstreams/{id}/jobs/{jobId}}.
+     * This method returns the {@code {id}} segment.</p>
+     *
+     * @param workstreamUrl the full workstream URL
+     * @return the workstream ID, or {@code null} if the URL cannot be parsed
+     */
+    static String extractWorkstreamId(String workstreamUrl) {
+        int start = workstreamUrl.indexOf("/api/workstreams/");
+        if (start < 0) return null;
+        start += "/api/workstreams/".length();
+        int end = workstreamUrl.indexOf("/", start);
+        return end < 0 ? workstreamUrl.substring(start) : workstreamUrl.substring(start, end);
     }
 
     @Override
@@ -799,6 +1217,9 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Resolves a path relative to the working directory.
+     *
+     * @param filename the path relative to the working directory
+     * @return the resolved {@link Path}
      */
     private Path resolveWorkingPath(String filename) {
         String workDir = getWorkingDirectory();
@@ -892,6 +1313,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
         sb.append("::protectTests:=").append(isProtectTestFiles());
         sb.append("::enforceChanges:=").append(enforceChanges);
+        if (deduplicationMode != null) {
+            sb.append("::dedupMode:=").append(deduplicationMode);
+        }
         return sb.toString();
     }
 
@@ -925,6 +1349,9 @@ public class ClaudeCodeJob extends GitManagedJob {
             case "enforceChanges":
                 this.enforceChanges = Boolean.parseBoolean(value);
                 break;
+            case "dedupMode":
+                this.deduplicationMode = value;
+                break;
             default:
                 // Delegate to parent for git-related properties
                 super.set(key, value);
@@ -932,7 +1359,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Output record for ClaudeCodeJob results.
+     * Output record produced by a completed {@link ClaudeCodeJob}.
      */
     public static class ClaudeCodeJobOutput extends JobOutput {
         /** The prompt that was submitted to Claude Code for this job. */
@@ -951,7 +1378,8 @@ public class ClaudeCodeJob extends GitManagedJob {
          * @param sessionId  the Claude Code session identifier
          * @param exitCode   the process exit code
          */
-        public ClaudeCodeJobOutput(String taskId, String prompt, String output, String sessionId, int exitCode) {
+        public ClaudeCodeJobOutput(String taskId, String prompt, String output,
+                                   String sessionId, int exitCode) {
             super(taskId, "", "", output);
             this.prompt = prompt;
             this.sessionId = sessionId;
@@ -992,638 +1420,31 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Factory for producing {@link ClaudeCodeJob} instances from a list of prompts.
+     * Backward-compatible alias for {@link ClaudeCodeJobFactory}.
      *
-     * <p>Each prompt becomes a separate job, allowing the Flowtree system to
-     * distribute prompts across multiple nodes. When a node finishes a prompt,
-     * it becomes idle and can pick up the next job.</p>
+     * <p>New code should reference {@link ClaudeCodeJobFactory} directly.
+     * This subclass exists so that existing call sites using
+     * {@code new ClaudeCodeJob.Factory(...)} and serialized wire-format
+     * strings containing {@code ClaudeCodeJob$Factory} continue to work.</p>
      */
-    public static class Factory extends AbstractJobFactory {
-        /** Cached decoded list of prompts; populated lazily from the serialized properties. */
-        private List<String> prompts;
-        /** Short human-readable description for jobs created by this factory. */
-        private String description;
-        /** Index of the next prompt to be dispatched as a job. */
-        private int index;
-        /** Comma-separated list of tools Claude Code is permitted to invoke. */
-        private String allowedTools = DEFAULT_TOOLS;
-        /** Maximum number of agentic turns Claude Code may take per job. */
-        private int maxTurns = 50;
-        /** Maximum spend budget per job in US dollars. */
-        private double maxBudgetUsd = 10.0;
-        /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
-        private String arManagerUrl;
-        /** Bearer token for authenticating against the ar-manager service. */
-        private String arManagerToken;
-        /** Optional planning document text to inject into the Claude Code system prompt. */
-        private String planningDocument;
-        /** Whether jobs created by this factory must produce at least one staged file change. */
-        private boolean enforceChanges;
-
+    public static class Factory extends ClaudeCodeJobFactory {
         /**
          * Default constructor for deserialization.
          */
-        public Factory() {
-            super(KeyUtils.generateKey());
-            // Persist taskId in properties so it survives wire serialization.
-            // AbstractJobFactory.encode() does NOT serialize the taskId field,
-            // so without this the deserialized factory would get a new random ID.
-            set("factoryTaskId", super.getTaskId());
-
-            // Store default for pushToOrigin so isPushToOrigin() returns true
-            // even before setPushToOrigin() is explicitly called.
-            set("push", String.valueOf(true));
-        }
-
-        /**
-         * Returns the stable task identifier for this factory. The ID is
-         * persisted in the serialized properties map so that it survives
-         * wire serialisation and deserialisation.
-         *
-         * @return the factory's task ID
-         */
-        @Override
-        public String getTaskId() {
-            String stored = get("factoryTaskId");
-            return stored != null ? stored : super.getTaskId();
-        }
+        public Factory() { super(); }
 
         /**
          * Creates a factory with the specified prompts.
          *
          * @param prompts the prompts to process
          */
-        public Factory(String... prompts) {
-            this();
-            if (prompts.length > 0) {
-                setPrompts(prompts);
-            }
-        }
+        public Factory(String... prompts) { super(prompts); }
 
         /**
          * Creates a factory with the specified prompts list.
-         * Use this when you have an existing list of prompts.
          *
          * @param prompts the list of prompts to process
          */
-        public Factory(List<String> prompts) {
-            this();
-            setPrompts(prompts.toArray(new String[0]));
-        }
-
-        /**
-         * Sets the list of prompts for this factory by encoding and persisting
-         * them to the serialized properties map.
-         *
-         * @param prompts  the prompts to encode and store
-         */
-        public void setPrompts(String... prompts) {
-            String code = String.join(PROMPT_SEPARATOR, prompts);
-            set("prompts", base64Encode(code));
-        }
-
-        /**
-         * Returns the list of prompts configured for this factory, decoding
-         * them from the serialized properties map on the first access.
-         *
-         * @return the list of prompts; never {@code null}
-         */
-        public List<String> getPrompts() {
-            if (prompts == null) {
-                String code = base64Decode(get("prompts"));
-                prompts = code == null ? new ArrayList<>() : new ArrayList<>(List.of(code.split(PROMPT_SEPARATOR)));
-            }
-            return prompts;
-        }
-
-        /**
-         * Returns the short description for jobs created by this factory.
-         */
-        public String getDescription() {
-            if (description == null) {
-                description = base64Decode(get("desc"));
-            }
-            return description;
-        }
-
-        /**
-         * Sets a short human-readable description for jobs created by this factory.
-         *
-         * @param description a concise label (e.g., "Resolve test failures")
-         */
-        public void setDescription(String description) {
-            this.description = description;
-            set("desc", base64Encode(description));
-        }
-
-        /**
-         * Returns the comma-separated list of tools Claude Code is permitted to invoke.
-         *
-         * @return the allowed tools string
-         */
-        public String getAllowedTools() {
-            return allowedTools;
-        }
-
-        /**
-         * Sets the comma-separated list of tools Claude Code is permitted to invoke.
-         *
-         * @param allowedTools  the tool names, comma-separated
-         */
-        public void setAllowedTools(String allowedTools) {
-            this.allowedTools = allowedTools;
-            set("tools", allowedTools);
-        }
-
-        /**
-         * Returns the working directory for jobs created by this factory.
-         * Reads from the serialized properties map, using the same key
-         * and encoding as {@link GitManagedJob}.
-         */
-        public String getWorkingDirectory() {
-            return base64Decode(get("workDir"));
-        }
-
-        /**
-         * Sets the working directory for jobs created by this factory.
-         *
-         * @param workingDirectory  absolute path to the working directory
-         */
-        public void setWorkingDirectory(String workingDirectory) {
-            set("workDir", base64Encode(workingDirectory));
-        }
-
-        /**
-         * Returns the git repository URL for automatic checkout.
-         */
-        public String getRepoUrl() {
-            return base64Decode(get("repoUrl"));
-        }
-
-        /**
-         * Sets the git repository URL. When set, the agent will clone
-         * this repo if no working directory is specified.
-         *
-         * @param repoUrl the git clone URL
-         */
-        public void setRepoUrl(String repoUrl) {
-            set("repoUrl", base64Encode(repoUrl));
-        }
-
-        /**
-         * Returns the default workspace path for repo checkouts.
-         */
-        public String getDefaultWorkspacePath() {
-            return base64Decode(get("defaultWsPath"));
-        }
-
-        /**
-         * Sets the default workspace path for repo checkouts.
-         *
-         * @param defaultWorkspacePath the absolute path for repo checkouts
-         */
-        public void setDefaultWorkspacePath(String defaultWorkspacePath) {
-            set("defaultWsPath", base64Encode(defaultWorkspacePath));
-        }
-
-        /**
-         * Returns the maximum number of agentic turns Claude Code may take per job.
-         *
-         * @return the turn limit
-         */
-        public int getMaxTurns() {
-            return maxTurns;
-        }
-
-        /**
-         * Sets the maximum number of agentic turns Claude Code may take per job.
-         *
-         * @param maxTurns  the turn limit
-         */
-        public void setMaxTurns(int maxTurns) {
-            this.maxTurns = maxTurns;
-            set("maxTurns", String.valueOf(maxTurns));
-        }
-
-        /**
-         * Returns the maximum spend budget per job in US dollars.
-         *
-         * @return the budget cap in USD
-         */
-        public double getMaxBudgetUsd() {
-            return maxBudgetUsd;
-        }
-
-        /**
-         * Sets the maximum spend budget per job in US dollars.
-         *
-         * @param maxBudgetUsd  the budget cap in USD; negative values disable the limit
-         */
-        public void setMaxBudgetUsd(double maxBudgetUsd) {
-            this.maxBudgetUsd = maxBudgetUsd;
-            set("maxBudget", String.valueOf(maxBudgetUsd));
-        }
-
-        /**
-         * Returns the target branch for git operations.
-         */
-        public String getTargetBranch() {
-            return base64Decode(get("branch"));
-        }
-
-        /**
-         * Sets the target branch for git operations.
-         * When set, each job will commit and push its changes to this branch.
-         *
-         * @param targetBranch the branch name (e.g., "feature/my-work")
-         */
-        public void setTargetBranch(String targetBranch) {
-            set("branch", base64Encode(targetBranch));
-        }
-
-        /**
-         * Returns the base branch for new branch creation.
-         */
-        public String getBaseBranch() {
-            return base64Decode(get("baseBranch"));
-        }
-
-        /**
-         * Sets the base branch used as the starting point when the target
-         * branch does not yet exist. Defaults to {@code "master"}.
-         *
-         * @param baseBranch the branch name to base new branches on
-         */
-        public void setBaseBranch(String baseBranch) {
-            set("baseBranch", base64Encode(baseBranch));
-        }
-
-        /**
-         * Returns whether to push commits to origin. Defaults to {@code true}.
-         */
-        public boolean isPushToOrigin() {
-            return Boolean.parseBoolean(get("push"));
-        }
-
-        /**
-         * Sets whether jobs produced by this factory should push their commits
-         * to the remote origin.
-         *
-         * @param pushToOrigin  {@code true} to push, {@code false} to commit locally only
-         */
-        public void setPushToOrigin(boolean pushToOrigin) {
-            set("push", String.valueOf(pushToOrigin));
-        }
-
-        /**
-         * Returns the git user name for commits.
-         */
-        public String getGitUserName() {
-            return base64Decode(get("gitUserName"));
-        }
-
-        /**
-         * Sets the git user name for commits made by jobs from this factory.
-         *
-         * @param gitUserName the name to use in git commits
-         */
-        public void setGitUserName(String gitUserName) {
-            set("gitUserName", base64Encode(gitUserName));
-        }
-
-        /**
-         * Returns the git user email for commits.
-         */
-        public String getGitUserEmail() {
-            return base64Decode(get("gitUserEmail"));
-        }
-
-        /**
-         * Sets the git user email for commits made by jobs from this factory.
-         *
-         * @param gitUserEmail the email to use in git commits
-         */
-        public void setGitUserEmail(String gitUserEmail) {
-            set("gitUserEmail", base64Encode(gitUserEmail));
-        }
-
-        /**
-         * Returns the workstream URL for jobs created by this factory.
-         */
-        public String getWorkstreamUrl() {
-            return base64Decode(get("workstreamUrl"));
-        }
-
-        /**
-         * Sets the workstream URL for jobs created by this factory.
-         * This single URL is used for both status reporting and
-         * messaging (by appending {@code /messages}).
-         *
-         * @param workstreamUrl the controller URL for the workstream
-         */
-        public void setWorkstreamUrl(String workstreamUrl) {
-            set("workstreamUrl", base64Encode(workstreamUrl));
-        }
-
-        /** Returns the ar-manager HTTP URL. */
-        public String getArManagerUrl() {
-            return arManagerUrl;
-        }
-
-        /**
-         * Sets the ar-manager HTTP URL for agent jobs.
-         *
-         * @param arManagerUrl the ar-manager service URL
-         */
-        public void setArManagerUrl(String arManagerUrl) {
-            this.arManagerUrl = arManagerUrl;
-            set("arManagerUrl", base64Encode(arManagerUrl));
-        }
-
-        /** Returns the ar-manager auth token. */
-        public String getArManagerToken() {
-            return arManagerToken;
-        }
-
-        /**
-         * Sets the HMAC temporary auth token for ar-manager.
-         *
-         * @param arManagerToken the bearer token
-         */
-        public void setArManagerToken(String arManagerToken) {
-            this.arManagerToken = arManagerToken;
-            set("arManagerToken", base64Encode(arManagerToken));
-        }
-
-        /**
-         * Returns the planning document path for jobs.
-         */
-        public String getPlanningDocument() {
-            return planningDocument;
-        }
-
-        /**
-         * Sets the planning document path for jobs created by this factory.
-         *
-         * @param planningDocument path relative to the working directory
-         */
-        public void setPlanningDocument(String planningDocument) {
-            this.planningDocument = planningDocument;
-            set("planDoc", base64Encode(planningDocument));
-        }
-
-        /**
-         * Returns whether test file protection is enabled for jobs.
-         */
-        public boolean isProtectTestFiles() {
-            return "true".equals(get("protectTests"));
-        }
-
-        /**
-         * Sets whether to protect test files that exist on the base branch.
-         *
-         * @param protectTestFiles true to block staging of existing test/CI files
-         */
-        public void setProtectTestFiles(boolean protectTestFiles) {
-            set("protectTests", String.valueOf(protectTestFiles));
-        }
-
-        /**
-         * Returns whether enforcement mode is enabled for jobs.
-         * When enabled, jobs will loop until code changes are produced.
-         */
-        public boolean isEnforceChanges() {
-            return "true".equals(get("enforceChanges"));
-        }
-
-        /**
-         * Sets whether enforcement mode is enabled for jobs.
-         * When enabled, the agent session restarts with escalating warnings
-         * if it finishes without producing any code changes.
-         *
-         * @param enforceChanges true to require code changes for completion
-         */
-        public void setEnforceChanges(boolean enforceChanges) {
-            this.enforceChanges = enforceChanges;
-            set("enforceChanges", String.valueOf(enforceChanges));
-        }
-
-
-        /**
-         * Returns whether a pull request should be automatically created
-         * upon successful job completion.
-         */
-        public boolean isAutoCreatePr() {
-            return "true".equals(get("autoCreatePr"));
-        }
-
-        /**
-         * Sets whether to automatically create a GitHub pull request when
-         * the job completes successfully. The controller will create the PR
-         * using the GitHub token associated with the workstream's organization.
-         *
-         * @param autoCreatePr true to auto-create a PR on success
-         */
-        public void setAutoCreatePr(boolean autoCreatePr) {
-            set("autoCreatePr", String.valueOf(autoCreatePr));
-        }
-
-        /**
-         * Returns the dependent repository URLs for jobs.
-         */
-        public List<String> getDependentRepos() {
-            String encoded = get("dependentRepos");
-            if (encoded == null || encoded.isEmpty()) {
-                return null;
-            }
-            String decoded = base64Decode(encoded);
-            if (decoded == null || decoded.isEmpty()) {
-                return null;
-            }
-            return new ArrayList<>(List.of(decoded.split(",")));
-        }
-
-        /**
-         * Sets the dependent repository URLs for jobs created by this factory.
-         *
-         * @param dependentRepos list of git clone URLs
-         */
-        public void setDependentRepos(List<String> dependentRepos) {
-            if (dependentRepos != null && !dependentRepos.isEmpty()) {
-                set("dependentRepos", base64Encode(String.join(",", dependentRepos)));
-            }
-        }
-
-        /**
-         * Returns the Python requirements for the managed venv.
-         *
-         * @return pip requirements.txt content, or null
-         */
-        public String getPythonRequirements() {
-            return base64Decode(get("pyReqs"));
-        }
-
-        /**
-         * Sets the Python package requirements (pip requirements.txt content)
-         * that will be installed in a managed venv on the receiving node
-         * before the job executes.
-         *
-         * @param requirements the requirements.txt content
-         */
-        public void setPythonRequirements(String requirements) {
-            set("pyReqs", base64Encode(requirements));
-        }
-
-        @Override
-        public Job nextJob() {
-            List<String> p = getPrompts();
-            if (index >= p.size()) return null;
-
-            String workingDirectory = getWorkingDirectory();
-            String repoUrl = getRepoUrl();
-            String defaultWorkspacePath = getDefaultWorkspacePath();
-            String targetBranch = getTargetBranch();
-            String baseBranch = getBaseBranch();
-            String gitUserName = getGitUserName();
-            String gitUserEmail = getGitUserEmail();
-            String workstreamUrl = getWorkstreamUrl();
-
-            ClaudeCodeJob job = new ClaudeCodeJob(getTaskId(), p.get(index++));
-            job.setAllowedTools(allowedTools);
-            job.setWorkingDirectory(workingDirectory);
-            job.setMaxTurns(maxTurns);
-            job.setMaxBudgetUsd(maxBudgetUsd);
-
-            // Description for notifications
-            String desc = getDescription();
-            if (desc != null) {
-                job.setDescription(desc);
-            }
-
-            // Repository URL for automatic checkout
-            if (repoUrl != null) {
-                job.setRepoUrl(repoUrl);
-            }
-            if (defaultWorkspacePath != null) {
-                job.setDefaultWorkspacePath(defaultWorkspacePath);
-            }
-
-            // Git management settings
-            if (targetBranch != null) {
-                job.setTargetBranch(targetBranch);
-                job.setPushToOrigin(isPushToOrigin());
-            }
-            if (baseBranch != null) {
-                job.setBaseBranch(baseBranch);
-            }
-            if (gitUserName != null) {
-                job.setGitUserName(gitUserName);
-            }
-            if (gitUserEmail != null) {
-                job.setGitUserEmail(gitUserEmail);
-            }
-
-            // Workstream URL (status reporting + messaging)
-            if (workstreamUrl != null) {
-                job.setWorkstreamUrl(workstreamUrl);
-            }
-
-            // ar-manager config
-            if (arManagerUrl != null) {
-                job.setArManagerUrl(arManagerUrl);
-            }
-            if (arManagerToken != null) {
-                job.setArManagerToken(arManagerToken);
-            }
-
-            // Planning document
-            if (planningDocument != null) {
-                job.setPlanningDocument(planningDocument);
-            }
-
-            // Dependent repos
-            List<String> depRepos = getDependentRepos();
-            if (depRepos != null && !depRepos.isEmpty()) {
-                job.setDependentRepos(depRepos);
-            }
-
-            // Test file protection
-            job.setProtectTestFiles(isProtectTestFiles());
-
-            // Enforcement mode
-            job.setEnforceChanges(isEnforceChanges());
-
-            // Python environment requirements
-            String pyReqs = getPythonRequirements();
-            if (pyReqs != null) {
-                job.setPythonRequirements(pyReqs);
-            }
-
-            // Required labels for Node routing
-            for (Map.Entry<String, String> entry : getRequiredLabels().entrySet()) {
-                job.setRequiredLabel(entry.getKey(), entry.getValue());
-            }
-
-            return job;
-        }
-
-        @Override
-        public Job createJob(String data) {
-            return null; // Not used - jobs created via nextJob()
-        }
-
-        @Override
-        public double getCompleteness() {
-            List<String> p = getPrompts();
-            return p.isEmpty() ? 1.0 : index / (double) p.size();
-        }
-
-        /**
-         * Deserializes a property from the wire format.
-         *
-         * <p>Git-related properties (workDir, repoUrl, branch, etc.) are
-         * stored directly in the {@link AbstractJobFactory} properties map
-         * and decoded on read by the corresponding getter methods.  This
-         * avoids duplicating the decode logic that also exists in
-         * {@link GitManagedJob#set(String, String)}.</p>
-         */
-        @Override
-        public void set(String key, String value) {
-            super.set(key, value);
-
-            switch (key) {
-                case "tools":
-                    this.allowedTools = value;
-                    break;
-                case "maxTurns":
-                    this.maxTurns = Integer.parseInt(value);
-                    break;
-                case "maxBudget":
-                    this.maxBudgetUsd = Double.parseDouble(value);
-                    break;
-                case "arManagerUrl":
-                    this.arManagerUrl = base64Decode(value);
-                    break;
-                case "arManagerToken":
-                    this.arManagerToken = base64Decode(value);
-                    break;
-                case "planDoc":
-                    this.planningDocument = base64Decode(value);
-                    break;
-                case "enforceChanges":
-                    this.enforceChanges = Boolean.parseBoolean(value);
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        @Override
-        public String toString() {
-            return "ClaudeCodeJob.Factory[prompts=" + getPrompts().size() +
-                   ", tools=" + allowedTools +
-                   ", branch=" + getTargetBranch() +
-                   ", completeness=" + getCompleteness() + "]";
-        }
+        public Factory(List<String> prompts) { super(prompts); }
     }
 }

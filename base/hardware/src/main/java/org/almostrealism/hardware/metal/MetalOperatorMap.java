@@ -46,10 +46,14 @@ import java.util.Map;
  * @see InstructionSet
  */
 public class MetalOperatorMap implements InstructionSet {
+	/** The compute context providing the Metal device and command runner for kernel execution. */
 	private MetalComputeContext context;
+	/** The compiled Metal program (MSL) containing the kernel function used by all operators in this map. */
 	private MetalProgram prog;
 
+	/** Thread-local map from function name to operator, one per thread to avoid contention. */
 	private ThreadLocal<Map<String, MetalOperator>> operators;
+	/** Master list of all operators ever created by this instruction set, used for cleanup. */
 	private List<MetalOperator> allOperators;
 
 	/**

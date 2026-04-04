@@ -110,6 +110,7 @@ package org.almostrealism.time;
  * @author Michael Murray
  */
 public class Frequency {
+	/** The frequency value in Hertz (cycles per second). */
 	private final double hertz;
 
 	/**

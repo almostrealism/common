@@ -33,6 +33,7 @@ import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.music.pattern.RenderedNoteAudio;
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.graph.temporal.WaveCell;
 import org.almostrealism.graph.temporal.WaveCellData;

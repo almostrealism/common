@@ -25,11 +25,19 @@ import org.almostrealism.projection.PinholeCamera;
  * @author Dan Chivers
  */
 public class CameraPositioner {
+    /** The pinhole camera to be repositioned. */
     private final PinholeCamera camera;
+
+    /** The scene whose bounding solid is used to determine the camera position. */
     private final Scene scene;
+
+    /** The axis direction along which the camera is oriented. */
     private final Vector cameraDirection;
 
+    /** The computed world-space location to place the camera. */
     private Vector location;
+
+    /** The viewing direction from the camera towards the scene centre. */
     private Vector direction;
 
     /**
@@ -58,6 +66,10 @@ public class CameraPositioner {
         calculatePosition();
     }
 
+    /**
+     * Computes the camera location and viewing direction based on the scene bounding solid
+     * and the configured camera direction axis.
+     */
     private void calculatePosition() {
         // Scene bounding sphere.
         BoundingSolid sceneBounds = scene.calculateBoundingSolid();
@@ -83,10 +95,20 @@ public class CameraPositioner {
         direction = sceneMidpoint.subtract(location);
     }
 
+    /**
+     * Returns the computed world-space camera location.
+     *
+     * @return the camera position
+     */
     public Vector getLocation() {
         return location;
     }
 
+    /**
+     * Returns the computed viewing direction from the camera towards the scene centre.
+     *
+     * @return the viewing direction vector
+     */
     public Vector getViewingDirection() {
         return direction;
     }

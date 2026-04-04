@@ -71,6 +71,7 @@ import org.jocl.CLException;
  * @see HardwareOperator
  */
 public class HardwareException extends RuntimeException {
+	/** The compiled program source or name associated with this exception, if available. */
 	private String program;
 
 	/**

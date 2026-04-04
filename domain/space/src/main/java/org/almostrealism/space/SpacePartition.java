@@ -66,47 +66,118 @@ import org.almostrealism.geometry.TransformMatrix;
  * @see Mesh
  */
 public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
-	public static int l, r, s;
-	
+	/** Debug counter for surfaces assigned to the left child. */
+	public static int l;
+
+	/** Debug counter for surfaces assigned to the right child. */
+	public static int r;
+
+	/** Debug counter for spanning surfaces stored at a node. */
+	public static int s;
+
+	/**
+	 * Internal BSP tree node that recursively partitions surfaces by an axis-aligned plane.
+	 */
 	private class Node {
-		public static final int LEFT = 1, RIGHT = 2, SPANNING = 4;
+		/** Classification constant: surface is entirely on the negative side of the splitting plane. */
+		public static final int LEFT = 1;
+
+		/** Classification constant: surface is entirely on the positive side of the splitting plane. */
+		public static final int RIGHT = 2;
+
+		/** Classification constant: surface spans the splitting plane. */
+		public static final int SPANNING = 4;
+
+		/** Candidate offset values tried during adaptive partitioning. */
 		private final double[] offsetValues = {0.0, 0.0, 0.0, 0.2, 0.2, 0.2};
+
+		/** Maximum recursion depth before surfaces are stored at the current node. */
 		private final int maxDepth = 4;
+
+		/** Maximum offset magnitude tried during adaptive partitioning. */
 		private final double maxOffset = 0.2;
-		
+
+		/** The axis-aligned plane type used for splitting (XY, XZ, or YZ). */
 		private final int plane;
+
+		/** Offset along the splitting axis. */
 		private final double offset;
-		private Node left, right;
+
+		/** Left child node (negative side of the splitting plane). */
+		private Node left;
+
+		/** Right child node (positive side of the splitting plane). */
+		private Node right;
+
+		/** Indices into the parent's surface list for surfaces stored at this node. */
 		private int[] surfaces;
+
+		/** Cached array of surface objects for this node (built lazily). */
 		private ShadableSurface[] scache;
+
+		/** Depth of this node in the BSP tree. */
 		private final int depth;
+
+		/** Signed orientation value used during partitioning. */
 		private double orient;
 		
+		/**
+		 * Constructs a root node splitting on the given plane type at offset 0 with depth 0.
+		 *
+		 * @param plane the plane type constant
+		 */
 		public Node(int plane) {
 			this.plane = plane;
 			this.offset = 0.0;
 			this.depth = 0;
 		}
-		
+
+		/**
+		 * Constructs a node splitting on the given plane type at offset 0 with the specified depth.
+		 *
+		 * @param plane the plane type constant
+		 * @param depth the recursion depth of this node
+		 */
 		public Node(int plane, int depth) {
 			this.plane = plane;
 			this.offset = 0.0;
 			this.depth = depth;
 		}
-		
+
+		/**
+		 * Constructs a node splitting on the given plane type at the specified offset and depth.
+		 *
+		 * @param plane  the plane type constant
+		 * @param offset the signed offset along the splitting axis
+		 * @param depth  the recursion depth of this node
+		 */
 		public Node(int plane, double offset, int depth) {
 			this.plane = plane;
 			this.offset = offset;
 			this.depth = depth;
 		}
-		
+
+		/** Sets the orientation sign used during adaptive partitioning. */
 		public void setOrientation(double orient) { this.orient = orient; }
-		
+
+		/** Returns the left child node, or {@code null} if not yet created. */
 		public Node getLeft() { return this.left; }
+
+		/** Returns the right child node, or {@code null} if not yet created. */
 		public Node getRight() { return this.right; }
+
+		/** Sets the surface index array for this node. */
 		public void setSurfaces(int[] s) { this.surfaces = s; }
+
+		/** Returns the surface index array for this node. */
 		public int[] getSurfaces() { return this.surfaces; }
-		
+
+		/**
+		 * Adds the surface at the given index to the BSP tree, routing it to the
+		 * appropriate child or storing it at this node if it spans the splitting plane.
+		 *
+		 * @param s the surface index in the parent {@link SpacePartition}
+		 */
 		public void add(int s) {
 			ShadableSurface sr = SpacePartition.this.getSurface(s);
 			
@@ -162,6 +233,11 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			}
 		}
 		
+		/**
+		 * Appends the given surface index to the list of surfaces stored at this node.
+		 *
+		 * @param s the surface index to store
+		 */
 		protected void addSurface(int s) {
 			if (this.surfaces == null) {
 				this.surfaces = new int[] {s};
@@ -175,6 +251,11 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			this.scache = new ShadableSurface[this.surfaces.length];
 		}
 		
+		/**
+		 * Creates the next child node by cycling to the next plane type and incrementing the depth.
+		 *
+		 * @return a new {@link Node} on the next axis-aligned plane
+		 */
 		public Node nextNode() {
 			int p = -1;
 			
@@ -191,10 +272,19 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			return new Node(p, off, this.depth + 1);
 		}
 		
+		/** Initialises the right child node using {@link #nextNode()}. */
 		public void initRight() { this.right = this.nextNode(); }
-		
+
+		/** Initialises the left child node using {@link #nextNode()}. */
 		public void initLeft() { this.left = this.nextNode(); }
-		
+
+		/**
+		 * Classifies a ray as {@link #LEFT}, {@link #RIGHT}, or {@link #SPANNING}
+		 * relative to this node's splitting plane.
+		 *
+		 * @param r the ray to classify
+		 * @return the classification constant
+		 */
 		public int checkRay(Ray r) {
 			Vector o = r.getOrigin();
 			
@@ -211,6 +301,12 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			}
 		}
 		
+		/**
+		 * Returns {@code true} if the ray spans this node's splitting plane.
+		 *
+		 * @param r the ray to test
+		 * @return {@code true} if the ray crosses the splitting plane
+		 */
 		public boolean isSpanning(Ray r) {
 			Vector o = r.getOrigin();
 			
@@ -221,6 +317,12 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			}
 		}
 		
+		/**
+		 * Classifies a vertex position as {@link #LEFT}, {@link #RIGHT}, or {@link #SPANNING}.
+		 *
+		 * @param v the vertex position to classify
+		 * @return the classification constant
+		 */
 		public int checkSide(Vector v) {
 			if (this.isLeft(v))
 				return Node.LEFT;
@@ -230,6 +332,14 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 				return Node.SPANNING;
 		}
 		
+		/**
+		 * Returns {@code true} if the vector is on the right (positive) side of the splitting
+		 * plane at the specified offset.
+		 *
+		 * @param v   the vertex position to test
+		 * @param off the plane offset value to use instead of {@link #offset}
+		 * @return true if the vertex is to the right of the offset plane
+		 */
 		public boolean isRight(Vector v, double off) {
 			if (this.plane == Plane.XY) {
 				return (v.getZ() > (off + Intersection.e));
@@ -242,6 +352,13 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			}
 		}
 		
+		/**
+		 * Returns {@code true} if the vector is on the left (negative) side of the splitting plane.
+		 *
+		 * @param v   the vector to test
+		 * @param off the signed offset along the splitting axis
+		 * @return {@code true} if the vector is on the left side
+		 */
 		public boolean isLeft(Vector v, double off) {
 			if (this.plane == Plane.XY) {
 				return (v.getZ() < (off - Intersection.e));
@@ -254,9 +371,28 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			}
 		}
 		
+		/**
+		 * Returns {@code true} if the vector is on the right (positive) side using this node's offset.
+		 *
+		 * @param v the vector to test
+		 * @return {@code true} if the vector is on the right side
+		 */
 		public boolean isRight(Vector v) { return this.isRight(v, this.offset); }
+
+		/**
+		 * Returns {@code true} if the vector is on the left (negative) side using this node's offset.
+		 *
+		 * @param v the vector to test
+		 * @return {@code true} if the vector is on the left side
+		 */
 		public boolean isLeft(Vector v) { return this.isLeft(v, this.offset); }
-		
+
+		/**
+		 * Returns the closest ray-surface intersection in this subtree, or {@code null} if none.
+		 *
+		 * @param r the ray to test
+		 * @return a {@link ShadableIntersection} or {@code null} (currently unimplemented)
+		 */
 		public ShadableIntersection intersectAt(Producer r) {
 			return null; // TODO
 			/*
@@ -344,6 +480,7 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 		}
 	}
 	
+	/** The root node of the BSP tree, or {@code null} if the tree has not been built. */
 	private Node root;
 
 	/**

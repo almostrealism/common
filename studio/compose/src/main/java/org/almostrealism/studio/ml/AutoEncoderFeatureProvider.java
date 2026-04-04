@@ -22,9 +22,19 @@ import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDataFeatureProvider;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Computes audio features by encoding wave data through an {@link AutoEncoder},
+ * producing a transposed latent representation for use in similarity analysis.
+ */
 public class AutoEncoderFeatureProvider implements WaveDataFeatureProvider, CodeFeatures {
+	/** The autoencoder used to encode audio into latent feature vectors. */
 	private final AutoEncoder autoencoder;
 
+	/**
+	 * Creates a feature provider backed by the given autoencoder.
+	 *
+	 * @param autoencoder the autoencoder to use for feature extraction
+	 */
 	public AutoEncoderFeatureProvider(AutoEncoder autoencoder) {
 		this.autoencoder = autoencoder;
 	}

@@ -47,5 +47,15 @@ package org.almostrealism.hardware.metal;
  */
 @FunctionalInterface
 public interface MetalCommand {
+	/**
+	 * Executes this Metal compute command using the provided pre-allocated buffers and queue.
+	 *
+	 * <p>Implementations should encode all GPU work into a command buffer obtained from
+	 * {@code queue}, then commit and wait for completion.</p>
+	 *
+	 * @param offset Pre-allocated integer buffer containing per-argument byte offsets
+	 * @param size Pre-allocated integer buffer containing per-argument element counts
+	 * @param queue The Metal command queue for obtaining command buffers
+	 */
 	void run(MTLBuffer offset, MTLBuffer size, MTLCommandQueue queue);
 }

@@ -33,6 +33,8 @@ import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
 
+import org.almostrealism.heredity.ProjectedGenome;
+
 import java.io.File;
 import java.util.List;
 import java.util.Random;

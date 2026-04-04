@@ -23,10 +23,27 @@ import org.almostrealism.optimize.HealthComputation;
 
 import java.util.function.Consumer;
 
+/**
+ * Health computation interface for audio generation evaluation. Combines
+ * temporal cellular computation with destroyable lifecycle management, and
+ * provides access to multi-channel audio output and wave-details processing.
+ *
+ * @param <T> the type of {@link TemporalCellular} target being evaluated
+ */
 public interface AudioHealthComputation<T extends TemporalCellular>
 		extends HealthComputation<T, AudioHealthScore>, Destroyable {
 
+	/**
+	 * Returns the multi-channel audio output used to capture rendered audio
+	 * during health evaluation.
+	 */
 	MultiChannelAudioOutput getOutput();
 
+	/**
+	 * Sets a consumer that receives {@link WaveDetails} metadata for each
+	 * rendered audio segment.
+	 *
+	 * @param processor the wave-details consumer, or {@code null} to disable
+	 */
 	void setWaveDetailsProcessor(Consumer<WaveDetails> processor);
 }

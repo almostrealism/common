@@ -31,6 +31,10 @@ import org.almostrealism.io.Alert;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
+import com.slack.api.methods.response.conversations.ConversationsListResponse;
+import com.slack.api.model.Conversation;
+import com.slack.api.model.ConversationType;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;

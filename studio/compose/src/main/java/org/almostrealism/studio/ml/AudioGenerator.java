@@ -53,11 +53,19 @@ import java.util.function.DoubleConsumer;
  */
 public class AudioGenerator extends ConditionalAudioSystem {
 
+	/** Target duration in seconds for generated audio. */
 	private double audioDurationSeconds;
+
+	/** Optional consumer notified of generation progress as a value in [0, 1]. */
 	private DoubleConsumer progressMonitor;
 
+	/** Composer used to interpolate between latent audio representations. */
 	private final AudioComposer composer;
+
+	/** The underlying diffusion generator that drives latent denoising. */
 	private final AudioDiffusionGenerator generator;
+
+	/** Strength parameter controlling how much the seed audio is preserved (0 = preserve, 1 = full noise). */
 	private double strength;
 
 	/**
@@ -106,12 +114,26 @@ public class AudioGenerator extends ConditionalAudioSystem {
 		);
 	}
 
+	/** Returns the target audio generation duration in seconds. */
 	public double getAudioDuration() { return audioDurationSeconds; }
+
+	/**
+	 * Sets the target audio generation duration in seconds.
+	 *
+	 * @param seconds the desired duration
+	 */
 	public void setAudioDurationSeconds(double seconds) {
 		this.audioDurationSeconds = seconds;
 	}
 
+	/** Returns the progress monitor consumer, or {@code null} if not configured. */
 	public DoubleConsumer getProgressMonitor() { return progressMonitor; }
+
+	/**
+	 * Sets the progress monitor consumer that receives generation progress in [0, 1].
+	 *
+	 * @param monitor the progress consumer
+	 */
 	public void setProgressMonitor(DoubleConsumer monitor) {
 		this.progressMonitor = monitor;
 		generator.getSampler().setProgressCallback(monitor);

@@ -179,13 +179,23 @@ import java.util.stream.IntStream;
  * @see io.almostrealism.compute.Process
  */
 public class ProcessArgumentMap implements ProcessArgumentEvaluator {
+	/** If true, fall back to the original argument producer when no substitution is registered for a position. */
 	public static boolean enableSubstitutionFallback = false;
 
+	/** Ordered list of kernel arguments, one per slot in the argument array. */
 	private List<ArrayVariable<?>> arguments;
+	/** Maps process tree position keys to their corresponding argument variables. */
 	private Map<ProcessTreePositionKey, ArrayVariable<?>> argumentsByPosition;
+	/** Maps argument variables to their positions in the process tree. */
 	private Map<ArrayVariable<?>, ProcessTreePositionKey> positionsForArguments;
+	/** Dynamic substitutions replacing original producers at specific tree positions. */
 	private Map<ProcessTreePositionKey, Producer> substitutions;
 
+	/**
+	 * Creates a copy of an existing argument map, sharing the same position mappings.
+	 *
+	 * @param existing The source map to copy
+	 */
 	public ProcessArgumentMap(ProcessArgumentMap existing) {
 		this.arguments = new ArrayList<>(existing.getArguments());
 		this.argumentsByPosition = new HashMap<>(existing.getArgumentsByPosition());
@@ -193,6 +203,12 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		this.substitutions = new HashMap<>();
 	}
 
+	/**
+	 * Creates an argument map by traversing the given process tree and mapping each process to its argument.
+	 *
+	 * @param process The root of the process tree to traverse
+	 * @param arguments Ordered list of argument variables to map against the tree
+	 */
 	public ProcessArgumentMap(Process<?, ?> process, List<ArrayVariable<?>> arguments) {
 		this.arguments = arguments;
 		this.argumentsByPosition = new HashMap<>();
@@ -202,16 +218,34 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		addChildren(new ProcessTreePositionKey(), process);
 	}
 
+	/** Returns the ordered list of argument variables for this map. */
 	public List<ArrayVariable<?>> getArguments() { return arguments; }
 
+	/**
+	 * Returns the mapping from process tree positions to argument variables.
+	 *
+	 * @return Map from position key to argument variable
+	 */
 	public Map<ProcessTreePositionKey, ArrayVariable<?>> getArgumentsByPosition() {
 		return argumentsByPosition;
 	}
 
+	/**
+	 * Returns the mapping from argument variables to their process tree positions.
+	 *
+	 * @return Map from argument variable to position key
+	 */
 	public Map<ArrayVariable<?>, ProcessTreePositionKey> getPositionsForArguments() {
 		return positionsForArguments;
 	}
 
+	/**
+	 * Recursively traverses the process tree rooted at {@code process}, recording the
+	 * argument variable matching each subtree position.
+	 *
+	 * @param key Position key representing the current node in the tree
+	 * @param process The process node to process
+	 */
 	protected void addChildren(ProcessTreePositionKey key, Process<?, ?> process) {
 		ArrayVariable<?> argument = getArgumentForProcess(process);
 
@@ -225,16 +259,38 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 				addChildren(key.append(i), children.get(i)));
 	}
 
+	/**
+	 * Returns the direct children of a process node.
+	 *
+	 * @param process The process node
+	 * @return Mutable list of child process nodes
+	 */
 	protected List<Process<?, ?>> children(Process<?, ?> process) {
 		return new ArrayList<>(process.getChildren());
 	}
 
+	/**
+	 * Returns the argument variable that matches the given process, or null if none matches.
+	 *
+	 * @param process The process to find an argument for
+	 * @return The matching {@link ArrayVariable}, or null
+	 */
 	public ArrayVariable<?> getArgumentForProcess(Process<?, ?> process) {
 		return arguments.stream()
 				.filter(arg -> match(process, arg.getProducer()))
 				.findFirst().orElse(null);
 	}
 
+	/**
+	 * Returns the producer registered for the given tree position, or null if none is found.
+	 *
+	 * <p>If a substitution exists for the key, it is returned. If {@code allowFallback} is true
+	 * and no substitution exists, the original argument producer is returned as a fallback.</p>
+	 *
+	 * @param key Tree position to look up
+	 * @param allowFallback If true, fall back to the original argument producer when no substitution exists
+	 * @return Producer for the position, or null if none is found
+	 */
 	public Supplier<Evaluable<?>> getProducerForPosition(ProcessTreePositionKey key, boolean allowFallback) {
 		if (substitutions.containsKey(key)) {
 			return substitutions.get(key);
@@ -245,14 +301,32 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		return null;
 	}
 
+	/**
+	 * Registers a producer substitution for the given tree position.
+	 *
+	 * @param key Tree position to substitute at
+	 * @param producer Replacement producer to use during argument evaluation
+	 */
 	public void put(ProcessTreePositionKey key, Producer producer) {
 		substitutions.put(key, producer);
 	}
 
+	/**
+	 * Traverses the given process tree and registers each {@link Producer} as a substitution
+	 * at its corresponding tree position.
+	 *
+	 * @param process Root of the process tree to traverse
+	 */
 	public void putSubstitutions(Process<?, ?> process) {
 		addProducers(new ProcessTreePositionKey(), process);
 	}
 
+	/**
+	 * Recursively registers producers from a process tree as substitutions.
+	 *
+	 * @param key Current position in the tree
+	 * @param process Current process node
+	 */
 	protected void addProducers(ProcessTreePositionKey key, Process<?, ?> process) {
 		if (process instanceof Producer) {
 			put(key, (Producer) process);
@@ -293,6 +367,17 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		return (Evaluable) producer.get();
 	}
 
+	/**
+	 * Returns true if the given process supplier matches the given argument producer supplier.
+	 *
+	 * <p>Matching rules differ based on producer type: {@link RootDelegateProviderSupplier} arguments
+	 * match by comparing the root delegate; {@link MemoryDataDestinationProducer} arguments are matched
+	 * by destination identity; other arguments are matched by direct instance equality.</p>
+	 *
+	 * @param process Process node being tested
+	 * @param argumentProducer Argument producer being matched against the process
+	 * @return True if the process matches the argument producer
+	 */
 	public static boolean match(Supplier<?> process, Supplier<?> argumentProducer) {
 		if (argumentProducer instanceof RootDelegateProviderSupplier) {
 			if (process instanceof Computation) {

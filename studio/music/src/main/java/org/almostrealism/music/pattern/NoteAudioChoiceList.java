@@ -20,5 +20,13 @@ import org.almostrealism.music.notes.NoteAudioChoice;
 
 import java.util.ArrayList;
 
+/**
+ * A typed {@link ArrayList} of {@link NoteAudioChoice} instances.
+ *
+ * <p>Used as a strongly-typed collection for note audio choices within
+ * the pattern system configuration and serialization.</p>
+ *
+ * @see NoteAudioChoice
+ */
 public class NoteAudioChoiceList extends ArrayList<NoteAudioChoice> {
 }

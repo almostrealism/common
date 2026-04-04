@@ -108,55 +108,122 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class MixdownManager implements Setup, Destroyable, CellFeatures, OptimizeFactorFeatures {
+	/** Default mixdown duration in seconds. */
 	public static final int mixdownDuration = 140;
 
+	/** When {@code true}, mixdown processing is enabled. */
 	public static boolean enableMixdown = false;
+
+	/** When {@code true}, only source cells (no effects chain) are produced. */
 	public static boolean enableSourcesOnly = false;
+
+	/** When {@code true}, the cleanup pass is disabled. */
 	public static boolean disableClean = false;
 
+	/** When {@code true}, the main high-pass filter boost is applied. */
 	public static boolean enableMainFilterUp = true;
+
+	/** When {@code true}, the automation manager drives volume and effects. */
 	public static boolean enableAutomationManager = true;
 
+	/** When {@code true}, per-channel EFX filters are applied. */
 	public static boolean enableEfxFilters = true;
+
+	/** When {@code true}, EFX delay processing is applied. */
 	public static boolean enableEfx = true;
+
+	/** When {@code true}, reverb is applied to configured channels. */
 	public static boolean enableReverb = true;
+
+	/** When {@code true}, channel transmission (send/return) is active. */
 	public static boolean enableTransmission = true;
+
+	/** When {@code true}, wet-in level adjustment is applied. */
 	public static boolean enableWetInAdjustment = true;
+
+	/** When {@code true}, the master low-pass filter rolloff is applied. */
 	public static boolean enableMasterFilterDown = true;
+
+	/** When {@code true}, the riser audio element is rendered during setup. */
 	public static boolean enableRiser = false;
 
+	/** When {@code true}, wet (effects-processed) sources are mixed into the output. */
 	public static boolean enableWetSources = true;
 
+	/** Global reverb wet-level multiplier applied during reverb processing. */
 	protected static double reverbLevel = 2.0;
 
+	/** The automation manager providing time-varying parameter curves. */
 	private final AutomationManager automation;
+
+	/** The time cell used for clock-driven effects. */
 	private final TimeCell clock;
+
+	/** Audio sample rate for this mixdown. */
 	private final int sampleRate;
 
+	/** Scale factor collection for per-frame volume adjustment. */
 	private final PackedCollection volumeAdjustmentScale;
+
+	/** Scale factor collection for the main high-pass filter adjustment. */
 	private final PackedCollection mainFilterUpAdjustmentScale;
+
+	/** Scale factor collection for the master low-pass filter adjustment. */
 	private final PackedCollection mainFilterDownAdjustmentScale;
+
+	/** Scale factor collection for the reverb level adjustment. */
 	private final PackedCollection reverbAdjustmentScale;
 
+	/** Chromosome providing simple (non-automated) per-channel volume genes. */
 	private final Chromosome<PackedCollection> volumeSimple;
+
+	/** Chromosome providing simple per-channel main-filter-up genes. */
 	private final Chromosome<PackedCollection> mainFilterUpSimple;
+
+	/** Chromosome providing simple per-channel wet-in level genes. */
 	private final Chromosome<PackedCollection> wetInSimple;
 
+	/** Chromosome controlling the channel-to-channel transmission matrix. */
 	private final Chromosome<PackedCollection> transmission;
+
+	/** Chromosome controlling the wet-out levels for each channel. */
 	private final Chromosome<PackedCollection> wetOut;
+
+	/** Chromosome controlling the delay network parameters. */
 	private final Chromosome<PackedCollection> delay;
 
+	/** Chromosome providing simple (non-automated) delay dynamics genes. */
 	private final Chromosome<PackedCollection> delayDynamicsSimple;
 
+	/** Chromosome controlling reverb parameters. */
 	private final Chromosome<PackedCollection> reverb;
+
+	/** Chromosome providing automation curves for the reverb parameters. */
 	private final Chromosome<PackedCollection> reverbAutomation;
+
+	/** Fixed filter chromosome applied to the wet signal path. */
 	private final FixedFilterChromosome wetFilter;
+
+	/** Chromosome providing simple per-channel master-filter-down genes. */
 	private final Chromosome<PackedCollection> mainFilterDownSimple;
 
+	/** Channel indices to which reverb is applied. */
 	private List<Integer> reverbChannels;
 
+	/** Resources held by this manager that must be destroyed with it. */
 	private final List<Destroyable> dependencies;
 
+	/**
+	 * Creates a mixdown manager with the given chromosome, channel count, delay layers,
+	 * automation manager, clock, and sample rate.
+	 *
+	 * @param chromosome   the projected chromosome providing gene values for all parameters
+	 * @param channels     the number of audio channels to mix
+	 * @param delayLayers  the number of delay network layers
+	 * @param automation   the automation manager providing time-varying parameter curves
+	 * @param clock        the time cell used for clock-driven effects
+	 * @param sampleRate   the audio sample rate
+	 */
 	public MixdownManager(ProjectedChromosome chromosome,
 						  int channels, int delayLayers,
 						  AutomationManager automation,
@@ -212,28 +279,55 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		this.dependencies = new ArrayList<>();
 	}
 
+	/** Returns the automation manager that drives time-varying parameter curves. */
 	public AutomationManager getAutomationManager() { return automation; }
 
+	/**
+	 * Sets the global volume adjustment scale factor.
+	 *
+	 * @param scale the scale factor to apply to all volume adjustments
+	 */
 	public void setVolumeAdjustmentScale(double scale) {
 		volumeAdjustmentScale.set(0, scale);
 	}
 
+	/**
+	 * Sets the main high-pass filter adjustment scale factor.
+	 *
+	 * @param scale the scale factor to apply to main filter-up adjustments
+	 */
 	public void setMainFilterUpAdjustmentScale(double scale) {
 		mainFilterUpAdjustmentScale.set(0, scale);
 	}
 
+	/**
+	 * Sets the master low-pass filter adjustment scale factor.
+	 *
+	 * @param scale the scale factor to apply to master filter-down adjustments
+	 */
 	public void setMainFilterDownAdjustmentScale(double scale) {
 		mainFilterDownAdjustmentScale.set(0, scale);
 	}
 
+	/**
+	 * Sets the reverb level adjustment scale factor.
+	 *
+	 * @param scale the scale factor to apply to reverb level adjustments
+	 */
 	public void setReverbAdjustmentScale(double scale) {
 		reverbAdjustmentScale.set(0, scale);
 	}
 
+	/** Returns the list of channel indices to which reverb is applied. */
 	public List<Integer> getReverbChannels() {
 		return reverbChannels;
 	}
 
+	/**
+	 * Sets the list of channel indices to which reverb is applied.
+	 *
+	 * @param reverbChannels the channel indices
+	 */
 	public void setReverbChannels(List<Integer> reverbChannels) {
 		this.reverbChannels = reverbChannels;
 	}
@@ -351,12 +445,34 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		return new OperationList("Mixdown Manager Setup");
 	}
 
+	/**
+	 * Builds the full mixdown cell graph for the given sources, delivering output
+	 * to all channels of the provided output using an identity channel mapping.
+	 *
+	 * @param sources      the source cell list to process
+	 * @param output       the multi-channel audio output receptor
+	 * @param audioChannel the stereo channel to route output to
+	 * @return the assembled cell graph
+	 */
 	public CellList cells(CellList sources,
 						  MultiChannelAudioOutput output,
 						  ChannelInfo.StereoChannel audioChannel) {
 		return cells(sources, null, null, output, audioChannel, i -> i);
 	}
 
+	/**
+	 * Builds the full mixdown cell graph for the given sources, wet sources, and riser,
+	 * delivering output to the provided output via the given channel index mapping.
+	 * Tracks all assembled cells as dependencies for cleanup.
+	 *
+	 * @param sources       the dry source cell list
+	 * @param wetSources    the pre-filtered wet source cell list, or {@code null}
+	 * @param riser         the riser cell list to mix in at the end, or {@code null}
+	 * @param output        the multi-channel audio output receptor
+	 * @param audioChannel  the stereo channel to route output to
+	 * @param channelIndex  mapping from cell index to pattern channel index
+	 * @return the assembled cell graph
+	 */
 	public CellList cells(CellList sources, CellList wetSources, CellList riser,
 						  MultiChannelAudioOutput output,
 						  ChannelInfo.StereoChannel audioChannel,
@@ -367,6 +483,18 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		return cells;
 	}
 
+	/**
+	 * Assembles the full effects chain cell graph for the given sources, wet sources, and riser.
+	 * Called by {@link #cells(CellList, CellList, CellList, MultiChannelAudioOutput, ChannelInfo.StereoChannel, IntUnaryOperator)}.
+	 *
+	 * @param sources       the dry source cell list
+	 * @param wetSources    the pre-filtered wet source cell list, or {@code null}
+	 * @param riser         the riser cell list to mix in, or {@code null}
+	 * @param output        the multi-channel audio output receptor
+	 * @param audioChannel  the stereo channel to route output to
+	 * @param channelIndex  mapping from cell index to pattern channel index
+	 * @return the assembled cell graph
+	 */
 	protected CellList createCells(CellList sources, CellList wetSources, CellList riser,
 								   MultiChannelAudioOutput output,
 								   ChannelInfo.StereoChannel audioChannel,
@@ -498,6 +626,20 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		return main;
 	}
 
+	/**
+	 * Creates the EFX (effects) cell graph that combines main, EFX delay, reverb, and riser cells,
+	 * routing the final mix to the output receptors.
+	 *
+	 * @param main          the summed main cell
+	 * @param efx           the wet EFX cell list, or {@code null} if disabled
+	 * @param reverb        the reverb cell list, or {@code null} if disabled
+	 * @param riser         the riser cell list, or {@code null} if disabled
+	 * @param sourceCount   number of original source cells (used for stem routing)
+	 * @param output        the multi-channel audio output receptor
+	 * @param audioChannel  the stereo channel to route output to
+	 * @param channelIndex  mapping from cell index to pattern channel index
+	 * @return the fully connected EFX cell graph
+	 */
 	public CellList createEfx(CellList main, CellList efx, CellList reverb,
 							  CellList riser, int sourceCount,
 							  MultiChannelAudioOutput output,
@@ -627,60 +769,139 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		return g(gene);
 	}
 
+	/**
+	 * Mixdown configuration holding the gene range bounds for all parameter chromosomes,
+	 * including volume, filters, delay, reverb, and wet-in settings.
+	 */
 	public static class Configuration implements OptimizeFactorFeatures {
+		/** Functions providing the minimum and maximum choice factor for each channel. */
 		public IntToDoubleFunction minChoice, maxChoice;
+
+		/** Scalar minimum and maximum bounds for the choice factor. */
 		public double minChoiceValue, maxChoiceValue;
 
+		/** Minimum and maximum duration (in seconds) of the repeat speed-up ramp. */
 		public double repeatSpeedUpDurationMin, repeatSpeedUpDurationMax;
 
+		/** Per-channel minimum and maximum functions for the X automation axis. */
 		public IntToDoubleFunction minX, maxX;
+
+		/** Per-channel minimum and maximum functions for the Y automation axis. */
 		public IntToDoubleFunction minY, maxY;
+
+		/** Per-channel minimum and maximum functions for the Z automation axis. */
 		public IntToDoubleFunction minZ, maxZ;
+
+		/** Scalar minimum and maximum bounds for the X automation axis. */
 		public double minXValue, maxXValue;
+
+		/** Scalar minimum and maximum bounds for the Y automation axis. */
 		public double minYValue, maxYValue;
+
+		/** Scalar minimum and maximum bounds for the Z automation axis. */
 		public double minZValue, maxZValue;
 
+		/** Per-channel minimum and maximum volume functions. */
 		public IntToDoubleFunction minVolume, maxVolume;
+
+		/** Scalar minimum and maximum bounds for the volume initial value. */
 		public double minVolumeValue, maxVolumeValue;
+
+		/** Minimum and maximum period durations for the periodic volume envelope. */
 		public double periodicVolumeDurationMin, periodicVolumeDurationMax;
+
+		/** Minimum and maximum durations for the overall volume polynomial envelope. */
 		public double overallVolumeDurationMin, overallVolumeDurationMax;
+
+		/** Minimum and maximum exponents for the overall volume polynomial envelope. */
 		public double overallVolumeExponentMin, overallVolumeExponentMax;
+
+		/** Minimum and maximum time offsets for the overall volume envelope. */
 		public double overallVolumeOffsetMin, overallVolumeOffsetMax;
 
+		/** Minimum and maximum period durations for the periodic main filter-up envelope. */
 		public double periodicFilterUpDurationMin, periodicFilterUpDurationMax;
+
+		/** Minimum and maximum durations for the overall main filter-up polynomial envelope. */
 		public double overallFilterUpDurationMin, overallFilterUpDurationMax;
+
+		/** Minimum and maximum exponents for the overall main filter-up polynomial envelope. */
 		public double overallFilterUpExponentMin, overallFilterUpExponentMax;
+
+		/** Minimum and maximum time offsets for the overall main filter-up envelope. */
 		public double overallFilterUpOffsetMin, overallFilterUpOffsetMax;
 
+		/** Minimum and maximum transmission (send) levels in the delay network. */
 		public double minTransmission, maxTransmission;
+
+		/** Minimum and maximum delay times in seconds. */
 		public double minDelay, maxDelay;
 
+		/** Minimum and maximum durations of the periodic speed-up envelope. */
 		public double periodicSpeedUpDurationMin, periodicSpeedUpDurationMax;
+
+		/** Minimum and maximum speed-up percentage for the periodic speed-up envelope. */
 		public double periodicSpeedUpPercentageMin, periodicSpeedUpPercentageMax;
+
+		/** Minimum and maximum durations of the periodic slow-down envelope. */
 		public double periodicSlowDownDurationMin, periodicSlowDownDurationMax;
+
+		/** Minimum and maximum slow-down percentage for the periodic slow-down envelope. */
 		public double periodicSlowDownPercentageMin, periodicSlowDownPercentageMax;
+
+		/** Minimum and maximum durations for the overall polynomial speed-up envelope. */
 		public double overallSpeedUpDurationMin, overallSpeedUpDurationMax;
+
+		/** Minimum and maximum exponents for the overall polynomial speed-up envelope. */
 		public double overallSpeedUpExponentMin, overallSpeedUpExponentMax;
 
+		/** Minimum and maximum period durations for the periodic wet-in envelope. */
 		public double periodicWetInDurationMin, periodicWetInDurationMax;
+
+		/** Minimum and maximum durations for the overall wet-in polynomial envelope. */
 		public double overallWetInDurationMin, overallWetInDurationMax;
+
+		/** Minimum and maximum exponents for the overall wet-in polynomial envelope. */
 		public double overallWetInExponentMin, overallWetInExponentMax;
+
+		/** Minimum and maximum time offsets for the overall wet-in envelope. */
 		public double overallWetInOffsetMin, overallWetInOffsetMax;
 
+		/** Minimum and maximum wet-out send levels per delay layer. */
 		public double minWetOut, maxWetOut;
+
+		/** Minimum and maximum high-pass filter cutoff frequency (Hz). */
 		public double minHighPass, maxHighPass;
+
+		/** Minimum and maximum low-pass filter cutoff frequency (Hz). */
 		public double minLowPass, maxLowPass;
 
+		/** Minimum and maximum period durations for the periodic master filter-down envelope. */
 		public double periodicMasterFilterDownDurationMin, periodicMasterFilterDownDurationMax;
+
+		/** Minimum and maximum durations for the overall master filter-down polynomial envelope. */
 		public double overallMasterFilterDownDurationMin, overallMasterFilterDownDurationMax;
+
+		/** Minimum and maximum exponents for the overall master filter-down polynomial envelope. */
 		public double overallMasterFilterDownExponentMin, overallMasterFilterDownExponentMax;
+
+		/** Minimum and maximum time offsets for the overall master filter-down envelope. */
 		public double overallMasterFilterDownOffsetMin, overallMasterFilterDownOffsetMax;
 
+		/** Available offset values (in seconds) for time-offset gene choices. */
 		public double[] offsetChoices;
+
+		/** Available repeat count values for repeat-count gene choices. */
 		public double[] repeatChoices;
 
+		/** Creates a configuration with default scale factor of 1. */
 		public Configuration() { this(1); }
 
+		/**
+		 * Creates a configuration with all parameter bounds scaled by the given factor.
+		 *
+		 * @param scale the scale factor applied to volume bounds
+		 */
 		public Configuration(int scale) {
 			double offset = 30;
 			double duration = 0;

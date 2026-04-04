@@ -31,15 +31,28 @@ import org.almostrealism.hardware.mem.Heap;
  */
 @Deprecated
 public class AudioProcessingUtils {
+	/** Maximum audio duration in seconds supported by the audio buffer. */
 	public static final int MAX_SECONDS = 180;
+
+	/** Maximum audio duration in seconds supported by the filter envelope processor. */
 	public static final int MAX_SECONDS_FILTER = 90;
 
+	/** When true, uses {@link MultiOrderFilterEnvelopeProcessor}; when false, uses {@link FilterEnvelopeProcessor}. */
 	public static boolean enableMultiOrderFilter = true;
 
+	/** Shared summation provider for mixing multiple audio signals. */
 	private static final AudioSumProvider sum;
+
+	/** Compiled evaluable that reverses the sample order of an audio buffer. */
 	private static final Evaluable<PackedCollection> reverse;
+
+	/** Compiled evaluable applying a segmented volume envelope to a layer. */
 	private static final Evaluable<PackedCollection> layerEnv;
+
+	/** Shared filter envelope processor (low-pass with ADSR-controlled cutoff). */
 	private static final EnvelopeProcessor filterEnv;
+
+	/** Compiled evaluable applying an ADSR volume envelope to an audio signal. */
 	private static final Evaluable<PackedCollection> volumeEnv;
 
 	static {
@@ -85,26 +98,53 @@ public class AudioProcessingUtils {
 		}
 	}
 
+	/**
+	 * Returns the shared audio summation provider.
+	 *
+	 * @return the AudioSumProvider singleton
+	 */
 	public static AudioSumProvider getSum() {
 		return sum;
 	}
 
+	/**
+	 * Returns the compiled evaluable that reverses the sample order of an audio buffer.
+	 *
+	 * @return the reverse evaluable
+	 */
 	public static Evaluable<PackedCollection> getReverse() { return reverse; }
 
+	/**
+	 * Returns the compiled evaluable that applies a segmented volume envelope.
+	 *
+	 * @return the layer envelope evaluable
+	 */
 	public static Evaluable<PackedCollection> getLayerEnv() {
 		return layerEnv;
 	}
 
+	/**
+	 * Returns the compiled evaluable that applies an ADSR volume envelope.
+	 *
+	 * @return the volume envelope evaluable
+	 */
 	public static Evaluable<PackedCollection> getVolumeEnv() {
 		return volumeEnv;
 	}
 
+	/**
+	 * Returns the shared filter envelope processor.
+	 *
+	 * @return the filter envelope processor
+	 */
 	public static EnvelopeProcessor getFilterEnv() {
 		return filterEnv;
 	}
 
+	/** Forces static initialization of all shared audio processing resources. */
 	public static void init() { }
 
+	/** Releases resources held by the filter envelope processor, if it implements {@link Destroyable}. */
 	public static void destroy() {
 		if (filterEnv instanceof Destroyable) {
 			((Destroyable) filterEnv).destroy();

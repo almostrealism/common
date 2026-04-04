@@ -16,6 +16,16 @@
 
 package org.almostrealism.studio.generative;
 
+/**
+ * Lifecycle status of an ML audio generator.
+ */
 public enum GeneratorStatus {
-	NONE, IN_PROGRESS, READY
+	/** The generator has not been initialised or has been reset. */
+	NONE,
+
+	/** The generator is currently being trained or refreshed. */
+	IN_PROGRESS,
+
+	/** The generator is trained and ready to produce audio samples. */
+	READY
 }

@@ -31,10 +31,23 @@ import java.util.List;
  * @see AudioSynthesizer
  */
 public class OvertoneSeries implements RelativeFrequencySet {
+	/** Number of sub-octave (below fundamental) overtones to generate. */
 	private final int subCount;
+
+	/** Number of harmonic overtones above the fundamental to generate. */
 	private final int superCount;
+
+	/** Number of inharmonic frequencies to intersperse within the overtone series. */
 	private final int inharmonicCount;
 
+	/**
+	 * Creates an OvertoneSeries with the specified sub-octave, harmonic, and inharmonic counts.
+	 *
+	 * @param subCount       number of sub-harmonic overtones below the fundamental
+	 * @param superCount     number of harmonic overtones above the fundamental
+	 * @param inharmonicCount number of inharmonic frequencies (must not exceed superCount)
+	 * @throws IllegalArgumentException if inharmonicCount exceeds superCount
+	 */
 	public OvertoneSeries(int subCount, int superCount, int inharmonicCount) {
 		this.subCount = subCount;
 		this.superCount = superCount;

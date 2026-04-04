@@ -40,8 +40,13 @@ import java.util.function.Function;
  * @see CollectionFeatures
  */
 public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatures {
+	/** When true, uses an index-projection computation as the delta alternate for max operations. */
 	boolean enableIndexProjectionDeltaAlt = true;
+
+	/** When true, enables a unary (single-input) form of the weighted sum computation. */
 	boolean enableUnaryWeightedSum = false;
+
+	/** When true, enables subdivision of inputs, tied to {@link #enableUnaryWeightedSum}. */
 	boolean enableSubdivide = enableUnaryWeightedSum;
 
 	/**
@@ -168,6 +173,15 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 		return mean(sq(subtractMean(input)));
 	}
 
+	/**
+	 * Attempts to apply the given operation to the input by subdividing it into chunks
+	 * based on the preferred work subdivision unit from {@link KernelPreferences}.
+	 * Returns null if no valid subdivision size is found.
+	 *
+	 * @param input     the collection to subdivide and process
+	 * @param operation a function from a slice producer to a result producer
+	 * @return a producer for the subdivided result, or null if subdivision is not applicable
+	 */
 	default CollectionProducer subdivide(
 			Producer<PackedCollection> input, Function<Producer<PackedCollection>, CollectionProducer> operation) {
 		TraversalPolicy shape = shape(input);
@@ -186,6 +200,15 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 		return null;
 	}
 
+	/**
+	 * Applies the given operation to slices of the input collection, each of size {@code sliceSize}.
+	 * Returns null if the input size is not evenly divisible by {@code sliceSize}.
+	 *
+	 * @param input     the collection to slice and process
+	 * @param operation a function from a slice producer to a result producer
+	 * @param sliceSize the number of elements per slice
+	 * @return a producer for the aggregated result, or null if the sizes are incompatible
+	 */
 	default CollectionProducer subdivide(
 			Producer<PackedCollection> input, Function<Producer<PackedCollection>, CollectionProducer> operation, int sliceSize) {
 		TraversalPolicy shape = shape(input);

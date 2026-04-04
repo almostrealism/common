@@ -28,17 +28,41 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 
+/**
+ * A parameterized filter (frequency) envelope that shapes note audio using an ADSR curve.
+ *
+ * <p>The envelope modulates a low-pass or band-pass filter cutoff frequency over the
+ * duration of a note. The ADSR parameters are selected from a {@link ParameterSet} using
+ * the inherited selection functions, then scaled by the {@link Mode}-specific maximum values.</p>
+ *
+ * @see ParameterizedVolumeEnvelope
+ * @see ParameterizedEnvelopeAdapter
+ */
 public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
+	/** Base automation adjustment factor. */
 	public static double adjustmentBase = 0.8;
+
+	/** Automation scaling factor for the sustain/release adjustment. */
 	public static double adjustmentAutomation = 0.5;
 
+	/** The operating mode that sets maximum envelope values. */
 	private Mode mode;
 
+	/** Creates a {@code ParameterizedFilterEnvelope} in {@link Mode#STANDARD_NOTE} mode. */
 	public ParameterizedFilterEnvelope() {
 		super();
 		mode = Mode.STANDARD_NOTE;
 	}
 
+	/**
+	 * Creates a {@code ParameterizedFilterEnvelope} with the given mode and ADSR selection functions.
+	 *
+	 * @param mode             the operating mode
+	 * @param attackSelection  function selecting the attack duration
+	 * @param decaySelection   function selecting the decay duration
+	 * @param sustainSelection function selecting the sustain level
+	 * @param releaseSelection function selecting the release duration
+	 */
 	public ParameterizedFilterEnvelope(Mode mode, ParameterFunction attackSelection, ParameterFunction decaySelection,
 									   ParameterFunction sustainSelection, ParameterFunction releaseSelection) {
 		super(attackSelection, decaySelection, sustainSelection, releaseSelection);
@@ -54,31 +78,48 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 		return new Filter(params, voicing);
 	}
 
+	/**
+	 * A concrete {@link NoteAudioFilter} implementation that applies a filter envelope to audio.
+	 */
 	public class Filter implements NoteAudioFilter {
+		/** The parameter set controlling envelope values. */
 		private final ParameterSet params;
+
+		/** The signal path voicing used to select mode-specific maximum values. */
 		private final ChannelInfo.Voicing voicing;
 
+		/**
+		 * Creates a Filter with the given parameters and voicing.
+		 *
+		 * @param params the parameter set
+		 * @param voicing the signal path voicing
+		 */
 		public Filter(ParameterSet params, ChannelInfo.Voicing voicing) {
 			this.params = params;
 			this.voicing = voicing;
 		}
 
+		/** Returns the signal path voicing used by this filter. */
 		public ChannelInfo.Voicing getVoicing() {
 			return voicing;
 		}
 
+		/** Returns the computed attack duration in seconds. */
 		public double getAttack() {
 			return mode.getMaxAttack(getVoicing()) * getAttackSelection().positive().apply(params);
 		}
 
+		/** Returns the computed decay duration in seconds. */
 		public double getDecay() {
 			return mode.getMaxDecay(getVoicing()) * getDecaySelection().positive().apply(params);
 		}
 
+		/** Returns the computed sustain level. */
 		public double getSustain() {
 			return mode.getMaxSustain(getVoicing()) * getSustainSelection().positive().apply(params);
 		}
 
+		/** Returns the computed release duration in seconds. */
 		public double getRelease() {
 			return mode.getMaxRelease(getVoicing()) * getReleaseSelection().positive().apply(params);
 		}
@@ -131,9 +172,21 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 		}
 	}
 
+	/**
+	 * Defines the operating mode that sets the maximum ADSR envelope values.
+	 */
 	public enum Mode {
-		STANDARD_NOTE, NOTE_LAYER;
+		/** Mode for standard (single) notes with shorter envelope times. */
+		STANDARD_NOTE,
+		/** Mode for note layers with longer envelope times. */
+		NOTE_LAYER;
 
+		/**
+		 * Returns the maximum attack duration for this mode and voicing.
+		 *
+		 * @param voicing the signal path voicing
+		 * @return the maximum attack in seconds
+		 */
 		public double getMaxAttack(ChannelInfo.Voicing voicing) {
 			switch (this) {
 				case NOTE_LAYER:
@@ -144,6 +197,12 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 			}
 		}
 
+		/**
+		 * Returns the maximum decay duration for this mode.
+		 *
+		 * @param voicing the signal path voicing (unused in current implementation)
+		 * @return the maximum decay in seconds
+		 */
 		public double getMaxDecay(ChannelInfo.Voicing voicing) {
 			switch (this) {
 				case NOTE_LAYER:
@@ -154,6 +213,12 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 			}
 		}
 
+		/**
+		 * Returns the maximum sustain level for this mode and voicing.
+		 *
+		 * @param voicing the signal path voicing
+		 * @return the maximum sustain level
+		 */
 		public double getMaxSustain(ChannelInfo.Voicing voicing) {
 			switch (this) {
 				case NOTE_LAYER:
@@ -164,6 +229,12 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 			}
 		}
 
+		/**
+		 * Returns the maximum release duration for this mode and voicing.
+		 *
+		 * @param voicing the signal path voicing
+		 * @return the maximum release in seconds
+		 */
 		public double getMaxRelease(ChannelInfo.Voicing voicing) {
 			switch (this) {
 				case NOTE_LAYER:
@@ -175,6 +246,12 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 		}
 	}
 
+	/**
+	 * Creates a randomly initialized {@code ParameterizedFilterEnvelope} for the given mode.
+	 *
+	 * @param mode the operating mode
+	 * @return a new randomly initialized instance
+	 */
 	public static ParameterizedFilterEnvelope random(Mode mode) {
 		return new ParameterizedFilterEnvelope(mode,
 				ParameterFunction.random(), ParameterFunction.random(),

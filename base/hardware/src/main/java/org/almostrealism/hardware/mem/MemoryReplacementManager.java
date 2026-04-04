@@ -149,18 +149,36 @@ import java.util.function.BiConsumer;
  * @see OperationList
  */
 public class MemoryReplacementManager implements ConsoleFeatures {
+	/** Memory provider that arguments must reside in for the kernel to accept them without replacement. */
 	private final MemoryProvider target;
+	/** Factory for creating temporary buffers used during memory replacement. */
 	private final TempMemoryFactory tempFactory;
+	/** Maximum element count for a memory block to be eligible for aggregation and replacement. */
 	private final int aggregationThreshold;
 
+	/** Operations to copy data from original memory into temporary replacements before kernel execution. */
 	private final OperationList prepare;
+	/** Operations to copy results from temporary replacements back to original memory after kernel execution. */
 	private final OperationList postprocess;
 
+	/**
+	 * Creates a replacement manager with a default aggregation threshold of 1M elements.
+	 *
+	 * @param target Target memory provider; arguments not in this provider will be replaced
+	 * @param tempFactory Factory for creating temporary replacement buffers
+	 */
 	public MemoryReplacementManager(MemoryProvider target,
 									TempMemoryFactory tempFactory) {
 		this(target, tempFactory, 1024 * 1024);
 	}
 
+	/**
+	 * Creates a replacement manager with a custom aggregation threshold.
+	 *
+	 * @param target Target memory provider; arguments not in this provider will be replaced
+	 * @param tempFactory Factory for creating temporary replacement buffers
+	 * @param aggregationThreshold Maximum element count for aggregation eligibility
+	 */
 	public MemoryReplacementManager(MemoryProvider target,
 									TempMemoryFactory tempFactory,
 									int aggregationThreshold) {
@@ -172,12 +190,28 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 		this.postprocess = new OperationList();
 	}
 
+	/** Returns the pre-execution operation list that copies data into temporary replacements. */
 	public OperationList getPrepare() { return prepare; }
+	/** Returns the post-execution operation list that copies results back from temporary replacements. */
 	public OperationList getPostprocess() { return postprocess; }
+	/**
+	 * Returns true if no replacements have been registered.
+	 *
+	 * @return True if both prepare and postprocess lists are empty
+	 */
 	public boolean isEmpty() {
 		return prepare.isEmpty() && postprocess.isEmpty();
 	}
 
+	/**
+	 * Processes an argument array, replacing memory blocks not in the target provider with temporary copies.
+	 *
+	 * <p>Groups arguments by their root delegate, then creates temporary buffers and
+	 * registers pre/post-processing copy operations for each group.</p>
+	 *
+	 * @param args Kernel arguments to process
+	 * @return New argument array with out-of-provider arguments replaced by temporary copies
+	 */
 	public Object[] processArguments(Object[] args) {
 		Map<MemoryData, Replacement> replacements = new HashMap<>();
 
@@ -229,10 +263,21 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 		return result;
 	}
 
+	/**
+	 * Represents a group of memory data blocks sharing a common root delegate, eligible for aggregation.
+	 */
 	protected class Replacement {
+		/** The common root delegate for all children in this replacement group. */
 		private MemoryData root;
+		/** Memory data blocks within this group that need to be replaced. */
 		private List<MemoryData> children;
 
+		/**
+		 * Processes this replacement group by creating a temporary buffer and registering copy operations.
+		 *
+		 * @param tempFactory Factory for creating the temporary buffer
+		 * @param tempChildren Callback that maps each child to its temporary slice
+		 */
 		protected void processChildren(TempMemoryFactory tempFactory, BiConsumer<MemoryData, MemoryData> tempChildren) {
 			int start = children.stream().mapToInt(MemoryData::getOffset).min().getAsInt();
 			int end = children.stream().mapToInt(md -> md.getOffset() + md.getMemLength()).max().getAsInt();
@@ -252,7 +297,17 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Factory interface for creating temporary memory buffers used during argument replacement.
+	 */
 	public interface TempMemoryFactory {
+		/**
+		 * Creates a temporary {@link MemoryData} buffer for holding replacement data.
+		 *
+		 * @param memLength Total number of elements in the buffer
+		 * @param atomicLength Number of elements per atomic unit (granularity)
+		 * @return New temporary memory buffer
+		 */
 		MemoryData apply(int memLength, int atomicLength);
 	}
 
