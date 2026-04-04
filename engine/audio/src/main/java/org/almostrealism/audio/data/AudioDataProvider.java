@@ -35,6 +35,11 @@ public interface AudioDataProvider extends DataResource, Setup {
 	@Override
 	String getIdentifier();
 
+	/**
+	 * Returns the audio sample rate in Hz.
+	 *
+	 * @return sample rate in Hz
+	 */
 	int getSampleRate();
 
 	default Supplier<Runnable> setup() { return new OperationList(); }

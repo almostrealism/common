@@ -21,25 +21,62 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.AverageColor;
 
 /**
- * @author  Michael Murray
+ * A {@link ColorBuffer} backed by 2D {@link RGB} arrays for the front and back surfaces.
+ *
+ * <p>Colors are stored in a grid indexed by UV coordinates. When retrieving a color,
+ * bilinear interpolation is approximated using distance-weighted averaging over the
+ * nine neighbouring cells (3×3 neighbourhood). Colors added to the buffer are scaled
+ * by the configured scale factor {@code m}.</p>
+ *
+ * @see ColorBuffer
+ * @author Michael Murray
  */
 public class ArrayColorBuffer implements ColorBuffer {
+	/** Current pixel position; may be used externally to track the active sample position. */
 	public double[] position;
+
+	/** Tracks whether this is the first retrieval, used to trigger optional diagnostic output. */
 	boolean first;
-	
+
+	/** The color depth in bits for stored colors. */
 	public int colorDepth = 48;
-	private RGB[][] front, back;
+
+	/** The front-surface color grid, indexed as {@code front[x][y]}. */
+	private RGB[][] front;
+
+	/** The back-surface color grid, indexed as {@code back[x][y]}. */
+	private RGB[][] back;
+
+	/** The scale factor applied to each color sample when it is added to the buffer. */
 	private double m = 1.0;
+
+	/** An optional additional scale factor applied during retrieval when not in direct mode. */
 	private final double k = 1.0;
+
+	/** When {@code true}, the V coordinate is flipped (1 - v) during direct-mode retrieval. */
 	private final boolean invertV = false;
+
+	/** When {@code true}, uses direct cell lookup without distance-weighted interpolation. */
 	private final boolean direct = false;
-	
+
+	/**
+	 * Initialises the front and back color grids to the specified dimensions and sets the scale factor.
+	 *
+	 * @param w the grid width (number of columns)
+	 * @param h the grid height (number of rows)
+	 * @param m the scale factor applied to colors when added to the buffer
+	 */
 	public void setColorBufferSize(int w, int h, double m) {
 		this.front = new RGB[w][h];
 		this.back = new RGB[w][h];
 		this.m = m;
 	}
 	
+	/**
+	 * Returns the dimensions of the color buffer as an integer array {@code [width, height]}.
+	 *
+	 * @return a 2-element array with the width and height of the buffer, or {@code [0, 0]} if unset
+	 */
 	public int[] getColorBufferDimensions() {
 		if (this.front == null)
 			return new int[2];
@@ -47,9 +84,16 @@ public class ArrayColorBuffer implements ColorBuffer {
 			return new int[] {this.front.length, this.front[0].length};
 	}
 	
+	/** {@inheritDoc} */
 	public void setScale(double m) { this.m = m; }
+
+	/** {@inheritDoc} */
 	public double getScale() { return this.m; }
-	
+
+	/**
+	 * Resets all cells in both the front and back buffers to {@code null},
+	 * effectively clearing all accumulated color samples.
+	 */
 	public void clear() {
 		this.front = new RGB[this.front.length][this.front[0].length];
 		this.back = new RGB[this.back.length][this.back[0].length];
@@ -173,6 +217,17 @@ public class ArrayColorBuffer implements ColorBuffer {
 		}
 	}
 	
+	/**
+	 * Adds a color sample scaled by {@link #m} at the cell corresponding to the given UV coordinates.
+	 *
+	 * <p>The color is added (accumulated) to any existing color at that cell.
+	 * UV values outside [0, 1) are rejected with a console message.</p>
+	 *
+	 * @param u     the horizontal texture coordinate in [0, 1)
+	 * @param v     the vertical texture coordinate in [0, 1)
+	 * @param front {@code true} to add to the front buffer, {@code false} for the back buffer
+	 * @param c     the color to accumulate
+	 */
 	public void addColor(double u, double v, boolean front, RGB c) {
 		if (front && this.front == null) return;
 		if (!front && this.back == null) return;

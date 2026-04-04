@@ -22,6 +22,7 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.collect.PackedCollection;
@@ -80,8 +81,21 @@ import java.util.List;
  * @author Michael Murray
  */
 public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
-	CHORD, SEQUENCE;
+	/** All scale positions play simultaneously as a chord at each element position. */
+	CHORD,
+	/** Scale positions are traversed sequentially across element repetitions. */
+	SEQUENCE;
 
+	/**
+	 * Converts a pattern element into a list of renderable note audio destinations.
+	 *
+	 * @param element      the pattern element to render
+	 * @param melodic      whether the pattern is melodic
+	 * @param offset       the measure offset for this pattern repetition
+	 * @param context      the audio scene context
+	 * @param audioContext the note audio context
+	 * @return list of rendered note audio destinations
+	 */
 	public List<RenderedNoteAudio> getNoteDestinations(PatternElement element,
 													   boolean melodic, double offset,
 													   AudioSceneContext context,
@@ -142,6 +156,153 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 		return destinations;
 	}
 
+	/**
+	 * Converts a pattern element's note destinations to MIDI events.
+	 *
+	 * <p>This mirrors the traversal logic of {@link #getNoteDestinations} but
+	 * produces {@link MidiNoteEvent} objects instead of {@link RenderedNoteAudio}.
+	 * Pitch is resolved from {@link KeyPosition#position()} plus
+	 * {@link MidiNoteEvent#PITCH_OFFSET}. Duration is computed from the element's
+	 * duration strategy, with a fallback to the repeat duration when no audio
+	 * sample is available for natural duration.</p>
+	 *
+	 * @param element  the pattern element to convert
+	 * @param melodic  whether this is melodic (pitched) content
+	 * @param offset   the pattern repetition offset in measures
+	 * @param context  the audio scene context for timing and scale resolution
+	 * @param instrument MIDI instrument number (0-127, or 128 for drums)
+	 * @return list of MIDI note events
+	 */
+	public List<MidiNoteEvent> toMidiEvents(PatternElement element,
+											 boolean melodic, double offset,
+											 AudioSceneContext context,
+											 int instrument) {
+		List<MidiNoteEvent> events = new ArrayList<>();
+		double sampleRate = OutputLine.sampleRate;
+
+		for (int i = 0; i < element.getRepeatCount(); i++) {
+			double relativePosition = element.getPosition() + i * element.getRepeatDuration();
+			double actualPosition = offset + relativePosition;
+
+			List<KeyPosition<?>> keys = new ArrayList<>();
+			context.getScaleForPosition().apply(actualPosition).forEach(keys::add);
+
+			int velocity = resolveVelocity(element);
+
+			if (!melodic) {
+				if (element.getScalePositions().size() > 1) {
+					warn("Multiple scale position for non-melodic material");
+				}
+
+				long onsetTicks = framesToTicks(context.frameForPosition(actualPosition), sampleRate);
+				long durationTicks = computeDurationTicks(element, relativePosition, context);
+				int pitch = keys.isEmpty() ? 0 : resolvePitch(keys.get(0));
+				events.add(new MidiNoteEvent(pitch, onsetTicks, durationTicks, velocity, instrument));
+			} else if (this == CHORD) {
+				for (double p : element.getScalePositions()) {
+					if (keys.isEmpty()) break;
+					int keyIndex = Math.min((int) (p * keys.size()), keys.size() - 1);
+
+					long onsetTicks = framesToTicks(context.frameForPosition(actualPosition), sampleRate);
+					long durationTicks = computeDurationTicks(element, relativePosition, context);
+					int pitch = resolvePitch(keys.get(keyIndex));
+					events.add(new MidiNoteEvent(pitch, onsetTicks, durationTicks, velocity, instrument));
+
+					keys.remove(keyIndex);
+				}
+			} else if (this == SEQUENCE) {
+				double p = element.getScalePositions().get(i % element.getScalePositions().size());
+				if (keys.isEmpty()) break;
+
+				int keyIndex = Math.min((int) (p * keys.size()), keys.size() - 1);
+				long onsetTicks = framesToTicks(context.frameForPosition(actualPosition), sampleRate);
+				long durationTicks = computeDurationTicks(element, relativePosition, context);
+				int pitch = resolvePitch(keys.get(keyIndex));
+				events.add(new MidiNoteEvent(pitch, onsetTicks, durationTicks, velocity, instrument));
+			}
+		}
+
+		return events;
+	}
+
+	/**
+	 * Converts a {@link KeyPosition} to a MIDI pitch number (0-127).
+	 *
+	 * @param key the key position to convert
+	 * @return MIDI pitch number, clamped to [0, 127]
+	 */
+	private static int resolvePitch(KeyPosition<?> key) {
+		int midiPitch = key.position() + MidiNoteEvent.PITCH_OFFSET;
+		return Math.max(0, Math.min(127, midiPitch));
+	}
+
+	/**
+	 * Resolves MIDI velocity from the element's automation parameters.
+	 *
+	 * <p>If automation parameters are available, the first value is interpreted
+	 * as a velocity scale factor (0.0-1.0) and mapped to the MIDI range.
+	 * Otherwise, {@link MidiNoteEvent#DEFAULT_VELOCITY} is returned.</p>
+	 */
+	private static int resolveVelocity(PatternElement element) {
+		PackedCollection automation = element.getAutomationParameters();
+		if (automation != null && automation.getMemLength() > 0) {
+			double level = automation.toDouble(0);
+			if (level > 0.0 && level <= 1.0) {
+				return Math.max(1, Math.min(127, (int) (level * 127)));
+			}
+		}
+		return MidiNoteEvent.DEFAULT_VELOCITY;
+	}
+
+	/**
+	 * Computes note duration in ticks based on the element's duration strategy.
+	 *
+	 * <p>For {@link NoteDurationStrategy#FIXED}, the fixed duration is converted
+	 * to ticks via the context's time-for-duration function. For
+	 * {@link NoteDurationStrategy#NO_OVERLAP}, the duration extends to the
+	 * next repeat position. For {@link NoteDurationStrategy#NONE}, the repeat
+	 * duration is used as a fallback.</p>
+	 */
+	private static long computeDurationTicks(PatternElement element,
+											  double relativePosition,
+											  AudioSceneContext context) {
+		double durationMeasures;
+
+		switch (element.getDurationStrategy()) {
+			case FIXED:
+				durationMeasures = element.getNoteDurationSelection();
+				break;
+			case NO_OVERLAP:
+				durationMeasures = element.getRepeatDuration();
+				break;
+			default:
+				durationMeasures = element.getRepeatDuration();
+				break;
+		}
+
+		double durationSeconds = context.getTimeForDuration().applyAsDouble(durationMeasures);
+		return Math.max(1, (long) (durationSeconds * MidiNoteEvent.TIME_RESOLUTION));
+	}
+
+	/**
+	 * Converts an absolute frame position to MIDI ticks.
+	 */
+	private static long framesToTicks(int frames, double sampleRate) {
+		double seconds = frames / sampleRate;
+		return (long) (seconds * MidiNoteEvent.TIME_RESOLUTION);
+	}
+
+	/**
+	 * Creates a single {@link RenderedNoteAudio} for the given element and voicing details.
+	 *
+	 * @param element         the pattern element
+	 * @param details         the voicing details for this note
+	 * @param automationLevel the automation level factor
+	 * @param audioContext    the note audio context
+	 * @param context         the audio scene context
+	 * @param actualPosition  the actual measure position (offset + element position + repetition)
+	 * @return the rendered note audio
+	 */
 	private RenderedNoteAudio createRenderedNote(PatternElement element,
 												 ElementVoicingDetails details,
 												 Factor<PackedCollection> automationLevel,

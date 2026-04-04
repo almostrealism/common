@@ -55,6 +55,11 @@ is a thin orchestration facade that:
 | `project_create_branch` | pipeline | Create branch + dispatch project-manager |
 | `project_verify_branch` | pipeline | Dispatch verify-completion workflow |
 | `project_commit_plan` | pipeline | Commit a plan document to a branch |
+| `github_pr_review_comments` | pipeline | Get unresolved review thread comments on a PR |
+
+**Planned:** Add `github_dismiss_code_scanning_alert` — dismiss GitHub Advanced Security
+code-scanning alerts by alert number (e.g., to close bot-generated scanner warnings on
+resolved issues). Requires `security_events: write` permission on the PAT.
 
 ### Tier 3: Memory
 

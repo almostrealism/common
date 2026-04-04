@@ -32,25 +32,62 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Manages a chord progression over a fixed duration by dividing it into regions
+ * with independently selected scales and chord positions.
+ *
+ * <p>Each region has a length selected from a binary-ratio grid and a scale
+ * selected by a {@link ChordPositionFunction}. Regions are refreshed via
+ * {@link #refreshParameters()} using the current chromosome values.</p>
+ *
+ * @see ChordPositionFunction
+ * @see PatternLayerManager
+ */
 public class ChordProgressionManager implements CodeFeatures {
+	/** Maximum number of regions supported. */
 	public static final int MAX_SIZE = 64;
 
+	/** The projected chromosome providing genetic parameter values. */
 	private final ProjectedChromosome chromosome;
 
+	/** The musical key (scale) for this progression. */
 	private Scale<?> key;
+
+	/** The number of notes per chord. */
 	private int chordDepth;
+
+	/** The number of regions in this progression. */
 	private int size;
+
+	/** The total duration in measures. */
 	private double duration;
+
+	/** Functions selecting the length of each region. */
 	private List<ParameterFunction> regionLengthSelection;
+
+	/** Functions selecting the chord positions for each region. */
 	private List<ChordPositionFunction> chordSelection;
 
+	/** The computed list of regions after the last {@link #refreshParameters()} call. */
 	private List<Region> regions;
 
+	/**
+	 * Creates a {@code ChordProgressionManager} with the given number of parameters
+	 * and a default C major key.
+	 *
+	 * @param parameters the number of genome parameters
+	 */
 	public ChordProgressionManager(int parameters) {
 		this(new ProjectedGenome(parameters).addChromosome(),
 				WesternScales.major(WesternChromatic.C1, 1));
 	}
 
+	/**
+	 * Creates a {@code ChordProgressionManager} with the given chromosome and key.
+	 *
+	 * @param chromosome the projected chromosome
+	 * @param key        the musical key
+	 */
 	public ChordProgressionManager(ProjectedChromosome chromosome, Scale<?> key) {
 		this.chromosome = chromosome;
 		setKey(key);
@@ -58,6 +95,7 @@ public class ChordProgressionManager implements CodeFeatures {
 		init();
 	}
 
+	/** Initializes selection functions and chromosome genes. */
 	private void init() {
 		regionLengthSelection = IntStream.range(0, MAX_SIZE)
 				.mapToObj(i -> ParameterFunction.random())
@@ -70,6 +108,11 @@ public class ChordProgressionManager implements CodeFeatures {
 		chromosome.addGene(3);
 	}
 
+	/**
+	 * Returns the current {@link ParameterSet} derived from the chromosome.
+	 *
+	 * @return the parameter set
+	 */
 	protected ParameterSet getParams() {
 		chromosome.getResultant(0, 0, c(1.0)).evaluate().toDouble();
 
@@ -80,6 +123,12 @@ public class ChordProgressionManager implements CodeFeatures {
 		return params;
 	}
 
+	/**
+	 * Returns the length for the region at the given index.
+	 *
+	 * @param index the zero-based region index
+	 * @return the region length in measures
+	 */
 	protected double getRegionLength(int index) {
 		List<Double> choices = new ArrayList<>();
 		int last = 1;
@@ -94,6 +143,13 @@ public class ChordProgressionManager implements CodeFeatures {
 		return choices.get((int) (choice * choices.size()));
 	}
 
+	/**
+	 * Returns the scale for the region at the given index and position.
+	 *
+	 * @param index    the zero-based region index
+	 * @param position the start position of the region
+	 * @return the selected scale
+	 */
 	protected Scale<?> getScale(int index, double position) {
 		List<KeyPosition<?>> notes = new ArrayList<>();
 		getKey().forEach(notes::add);
@@ -108,6 +164,12 @@ public class ChordProgressionManager implements CodeFeatures {
 		return new StaticScale<>(result.toArray(new KeyPosition[0]));
 	}
 
+	/**
+	 * Recomputes the list of regions using the current chromosome parameters.
+	 *
+	 * <p>Must be called before using {@link #forPosition(double)} to ensure regions
+	 * reflect the latest genetic values.</p>
+	 */
 	public void refreshParameters() {
 		regions = new ArrayList<>();
 		double length = 0.0;
@@ -121,6 +183,11 @@ public class ChordProgressionManager implements CodeFeatures {
 		}
 	}
 
+	/**
+	 * Returns a {@link Settings} snapshot of the current configuration.
+	 *
+	 * @return the current settings
+	 */
 	public Settings getSettings() {
 		Settings settings = new Settings();
 
@@ -138,6 +205,11 @@ public class ChordProgressionManager implements CodeFeatures {
 		return settings;
 	}
 
+	/**
+	 * Applies a {@link Settings} snapshot to this manager.
+	 *
+	 * @param settings the settings to apply
+	 */
 	public void setSettings(Settings settings) {
 		WesternChromatic root = settings.getRoot();
 
@@ -156,37 +228,59 @@ public class ChordProgressionManager implements CodeFeatures {
 		setChordSelection(settings.getChordSelection());
 	}
 
+	/** Returns the musical key for this progression. */
 	public Scale<?> getKey() { return key; }
+
+	/** Sets the musical key for this progression. */
 	public void setKey(Scale<?> scale) { this.key = scale; }
 
+	/** Returns the chord depth (number of notes per chord). */
 	public int getChordDepth() { return chordDepth; }
+
+	/** Sets the chord depth. */
 	public void setChordDepth(int chordDepth) { this.chordDepth = chordDepth; }
 
+	/** Returns the number of regions. */
 	public int getSize() { return size; }
+
+	/** Sets the number of regions; must not exceed {@link #MAX_SIZE}. */
 	public void setSize(int size) {
 		if (size > MAX_SIZE) throw new IllegalArgumentException();
 		this.size = size;
 	}
 
+	/** Returns the total duration in measures. */
 	public double getDuration() { return duration; }
+
+	/** Sets the total duration in measures. */
 	public void setDuration(double duration) { this.duration = duration; }
 
+	/** Returns the list of region length selection functions. */
 	public List<ParameterFunction> getRegionLengthSelection() {
 		return regionLengthSelection;
 	}
 
+	/** Sets the list of region length selection functions. */
 	public void setRegionLengthSelection(List<ParameterFunction> regionLengthSelection) {
 		this.regionLengthSelection = regionLengthSelection;
 	}
 
+	/** Returns the list of chord position selection functions. */
 	public List<ChordPositionFunction> getChordSelection() {
 		return chordSelection;
 	}
 
+	/** Sets the list of chord position selection functions. */
 	public void setChordSelection(List<ChordPositionFunction> chordSelection) {
 		this.chordSelection = chordSelection;
 	}
 
+	/**
+	 * Returns the scale for the region that contains the given position.
+	 *
+	 * @param position the position in measures (wrapped to duration if needed)
+	 * @return the scale for the containing region
+	 */
 	public Scale<?> forPosition(double position) {
 		while (position >= duration) position -= duration;
 		for (Region region : regions) {
@@ -199,6 +293,12 @@ public class ChordProgressionManager implements CodeFeatures {
 		return getKey();
 	}
 
+	/**
+	 * Returns a string representation of the regions using {@code X} for the start
+	 * and {@code _} for each additional unit.
+	 *
+	 * @return a visual region string
+	 */
 	public String getRegionString() {
 		StringBuilder sb = new StringBuilder();
 		for (Region region : regions) {
@@ -209,70 +309,131 @@ public class ChordProgressionManager implements CodeFeatures {
 		return sb.toString();
 	}
 
+	/**
+	 * A time region with a fixed start, length, and scale.
+	 */
 	public class Region {
+		/** The start position of this region in measures. */
 		private final double start;
+
+		/** The length of this region in measures. */
 		private final double length;
+
+		/** The scale associated with this region. */
 		private final Scale<?> scale;
 
+		/**
+		 * Creates a {@code Region} with the given start, length, and scale.
+		 *
+		 * @param start  the start position in measures
+		 * @param length the length in measures
+		 * @param scale  the musical scale for this region
+		 */
 		public Region(double start, double length, Scale<?> scale) {
 			this.start = start;
 			this.length = length;
 			this.scale = scale;
 		}
 
+		/** Returns the musical scale for this region. */
 		public Scale<?> getScale() {
 			return scale;
 		}
 
+		/**
+		 * Returns {@code true} if the given position is within this region.
+		 *
+		 * @param position the position to check
+		 * @return {@code true} if contained
+		 */
 		public boolean contains(double position) {
 			return position >= start && position < start + length;
 		}
 	}
 
+	/**
+	 * Serializable snapshot of all configuration parameters for a {@link ChordProgressionManager}.
+	 */
 	public static class Settings {
+		/** The scale type (MAJOR or MINOR). */
 		private ScaleType scaleType;
+
+		/** The root pitch of the key. */
 		private WesternChromatic root;
 
+		/** The number of regions. */
 		private int size;
+
+		/** The total duration in measures. */
 		private double duration;
+
+		/** The chord depth. */
 		private int chordDepth;
 
+		/** The region length selection functions. */
 		private List<ParameterFunction> regionLengthSelection;
+
+		/** The chord position selection functions. */
 		private List<ChordPositionFunction> chordSelection;
 
+		/** Creates an empty {@code Settings} instance. */
 		public Settings() { }
 
+		/** Returns the scale type. */
 		public ScaleType getScaleType() { return scaleType; }
+
+		/** Sets the scale type. */
 		public void setScaleType(ScaleType scaleType) { this.scaleType = scaleType; }
 
+		/** Returns the root pitch. */
 		public WesternChromatic getRoot() { return root; }
+
+		/** Sets the root pitch. */
 		public void setRoot(WesternChromatic root) { this.root = root; }
 
+		/** Returns the number of regions. */
 		public int getSize() { return size; }
+
+		/** Sets the number of regions. */
 		public void setSize(int size) { this.size = size; }
 
+		/** Returns the total duration in measures. */
 		public double getDuration() { return duration; }
+
+		/** Sets the total duration in measures. */
 		public void setDuration(double duration) { this.duration = duration; }
 
+		/** Returns the chord depth. */
 		public int getChordDepth() { return chordDepth; }
+
+		/** Sets the chord depth. */
 		public void setChordDepth(int chordDepth) { this.chordDepth = chordDepth; }
 
+		/** Returns the region length selection functions. */
 		public List<ParameterFunction> getRegionLengthSelection() {
 			return regionLengthSelection;
 		}
 
+		/** Sets the region length selection functions. */
 		public void setRegionLengthSelection(List<ParameterFunction> regionLengthSelection) {
 			this.regionLengthSelection = regionLengthSelection;
 		}
 
+		/** Returns the chord position selection functions. */
 		public List<ChordPositionFunction> getChordSelection() {
 			return chordSelection;
 		}
 
+		/** Sets the chord position selection functions. */
 		public void setChordSelection(List<ChordPositionFunction> chordSelection) {
 			this.chordSelection = chordSelection;
 		}
 
+		/**
+		 * Creates a default {@code Settings} instance with D minor, 16 regions, and 8-measure duration.
+		 *
+		 * @return a new default settings instance
+		 */
 		public static Settings defaultSettings() {
 			Settings settings = new Settings();
 			settings.setScaleType(ScaleType.MINOR);
@@ -290,7 +451,13 @@ public class ChordProgressionManager implements CodeFeatures {
 		}
 	}
 
+	/**
+	 * The scale type for a chord progression key.
+	 */
 	public enum ScaleType {
-		MAJOR, MINOR
+		/** Major scale type. */
+		MAJOR,
+		/** Minor scale type. */
+		MINOR
 	}
 }

@@ -35,9 +35,16 @@ package org.almostrealism.persist.assets;
  * @see Asset
  */
 public class AssetInfo {
+	/** File name of this asset (e.g., {@code weights.pb}). */
 	private String name;
+
+	/** Download URL for this asset, or {@code null} if the asset is local-only. */
 	private String url;
+
+	/** Expected file size in bytes, or {@code 0} if unknown. */
 	private long size;
+
+	/** MD5 hex-digest for integrity verification, or {@code null} if not available. */
 	private String md5;
 
 	/**

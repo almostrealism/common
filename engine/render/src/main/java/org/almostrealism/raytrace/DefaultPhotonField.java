@@ -33,27 +33,69 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 
+/**
+ * {@link DefaultPhotonField} is the standard implementation of {@link PhotonField} that
+ * simulates a collection of photons propagating through space and interacting with absorbers.
+ *
+ * <p>Each photon is stored as an {@code Object[]} tuple containing:</p>
+ * <ol>
+ *   <li>Position as a {@link org.almostrealism.algebra.Vector}</li>
+ *   <li>Direction (momentum) as a {@link org.almostrealism.algebra.Vector}</li>
+ *   <li>Energy as a {@code double[]}</li>
+ *   <li>Remaining distance to the next absorber (or -1.0 if not yet computed) as a {@code double[]}</li>
+ * </ol>
+ *
+ * <p>On each {@link #tick(double)} call, all photons are advanced by {@code direction * C * dt},
+ * then checked for absorption. The absorber may also emit new photons during the tick.</p>
+ *
+ * <p>Performance metrics (photon set size, wall-clock time, and cost rate) are tracked via
+ * {@link Chart} instances and can optionally be written to a CSV file.</p>
+ *
+ * @see PhotonField
+ * @see org.almostrealism.physics.Absorber
+ * @author Michael Murray
+ */
 // TODO  Consider creating a custom list for photon set (tick creates many many double[][]).
 public class DefaultPhotonField implements PhotonField {
+	/** Fraction of ticks for which verbose photon movement output is logged (0.0 disables logging). */
 	public static double verbose = 0.01;
+	/** When true, emitted photon directions are validated to have unit length. */
 	public static boolean checkLength = true;
+	/** Epsilon used when validating that emitted direction vectors have length approximately 1.0. */
 	public static double ep = Math.pow(10.0, -10.0);
-	
+
+	/** The simulation clock providing current time and tick interval. */
 	private Clock clock;
+	/** The live set of photons, each stored as an Object[] tuple. */
 	private final Set<Object[]> photons;
+	/** The single absorber that all photons interact with. */
 	private Absorber absorber;
+	/** The time step granularity for this field's updates. */
 	private long delta = 1;
+	/** Maximum photon lifetime expressed as a distance (lifetime * C). */
 	private double lifetime = Double.MAX_VALUE - 1.0;
+	/** When true, distance-to-absorber is tracked for efficient intersection skipping. */
 	private boolean trace = true;
-	
+
+	/** Chart recording photon set size over time. */
 	private final Chart sizeChart;
+	/** Chart recording wall-clock time per simulation hour. */
 	private final Chart timeChart;
+	/** Chart recording estimated cost rate per simulation hour. */
 	private final Chart costChart;
+	/** Total number of ticks processed; used to determine log frequency. */
 	private long tot = 0, log = 500;
+	/** True before the first tick; used to capture the start time. */
 	private boolean first;
+	/** System time (ms) when the first tick was processed. */
 	private long start;
+	/** Optional path to a file where the size chart data is periodically written. */
 	private String file;
 	
+	/**
+	 * Creates a new {@link DefaultPhotonField} with an empty photon set and
+	 * initializes the three performance charts with a capacity of 500,000 entries each.
+	 */
 	public DefaultPhotonField() {
 		this.photons = new HashSet();
 

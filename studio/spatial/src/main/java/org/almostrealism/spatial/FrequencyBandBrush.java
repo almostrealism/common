@@ -38,10 +38,19 @@ import java.util.Random;
  */
 public class FrequencyBandBrush implements SpatialBrush {
 
+	/** The horizontal spread (time axis) of the band in spatial units. */
 	private double radius = 20.0;
+
+	/** The point density in points per second. */
 	private double density = 100.0;
+
+	/** The vertical spread (frequency axis) of the band in spatial units. */
 	private double bandwidth = 2.0;
+
+	/** The base intensity multiplier applied to all generated points. */
 	private double baseIntensity = 1.0;
+
+	/** The random number generator used for point placement within the band. */
 	private final Random random = new Random();
 
 	/**

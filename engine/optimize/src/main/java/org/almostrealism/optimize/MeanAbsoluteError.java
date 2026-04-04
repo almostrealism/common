@@ -72,7 +72,10 @@ import org.almostrealism.collect.PackedCollection;
  * @author Michael Murray
  */
 public class MeanAbsoluteError implements LossProvider, CodeFeatures {
+	/** The shape of model output tensors, used to normalize the loss. */
 	private final TraversalPolicy outputShape;
+
+	/** Compiled evaluable that computes element-wise absolute differences. */
 	private final Evaluable<PackedCollection> loss;
 
 	/**

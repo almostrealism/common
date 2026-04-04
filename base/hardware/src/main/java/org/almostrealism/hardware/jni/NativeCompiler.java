@@ -239,33 +239,61 @@ import java.util.function.Consumer;
  * @see CompilerCommandProvider
  */
 public class NativeCompiler implements Destroyable, ConsoleFeatures {
+	/** If true, log each compilation and library load operation. Controlled by {@code AR_HARDWARE_COMPILER_LOGGING}. */
 	public static boolean enableVerbose = SystemUtils.isEnabled("AR_HARDWARE_COMPILER_LOGGING").orElse(false);
 
+	/** Metric tracking native compilation time for JNI kernels. */
 	public static TimingMetric compileTime = Hardware.console.timing("jniCompile");
 
+	/** Placeholder token in library path format strings that is replaced with the class name. */
 	public static final String LIB_NAME_REPLACE = "%NAME%";
 
+	/** C standard I/O include directive prepended to every generated source file. */
 	private static final String STDIO = "#include <stdio.h>\n";
+	/** C standard library include directive prepended to every generated source file. */
 	private static final String STDLIB = "#include <stdlib.h>\n";
+	/** C string library include directive prepended to every generated source file. */
 	private static final String STR = "#include <string.h>\n";
+	/** C math library include directive prepended to every generated source file. */
 	private static final String MATH = "#include <math.h>\n";
+	/** JNI header include directive prepended to every generated source file. */
 	private static final String JNI = "#include <jni.h>\n";
+	/** OpenCL header include directive; uses platform-specific path on macOS. */
 	private static final String OPENCL = System.getProperty("os.name").toLowerCase().startsWith("mac os") ?
 								"#include <OpenCL/cl.h>\n" : "#include <cl.h>\n";
 
+	/** Counter used to generate unique class names for compiled runnable operations. */
 	private static int runnableCount;
+	/** Counter used to assign unique directory names for kernel data files. */
 	private static int dataCount;
+	/** Counter tracking how many instruction set monitoring files have been written. */
 	private static int monitorOutputCount;
 
+	/** Numeric precision used for type name and PI constant declaration in generated code. */
 	private Precision precision;
 
+	/** Generator responsible for invoking the native compiler and linker toolchain. */
 	private LinkedLibraryGenerator libraryGenerator;
+	/** Directory where generated C source files and compiled shared libraries are written. */
 	private final String libDir;
+	/** Format string for the output library filename; use {@link #LIB_NAME_REPLACE} as the name placeholder. */
 	private final String libFormat;
+	/** Directory where kernel data files (e.g., weight dumps) are written; may be null. */
 	private final String dataDir;
 
+	/** Fixed C header prepended to every generated source file, including standard includes and the PI constant. */
 	private final String header;
 
+	/**
+	 * Creates a native compiler that generates and compiles C kernel code via JNI.
+	 *
+	 * @param precision Numeric precision used for generated type names and constants
+	 * @param libraryGenerator Generator that invokes the native compiler and linker
+	 * @param libDir Directory for generated C sources and compiled shared libraries
+	 * @param libFormat Filename format string for output libraries (use {@code %NAME%} as placeholder)
+	 * @param dataDir Directory for kernel data files; may be null if data persistence is not needed
+	 * @param cl If true, includes the OpenCL header in generated source files
+	 */
 	public NativeCompiler(Precision precision, LinkedLibraryGenerator libraryGenerator,
 						  String libDir, String libFormat, String dataDir, boolean cl) {
 		this.libraryGenerator = libraryGenerator;
@@ -285,12 +313,23 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 				pi + "\n";
 	}
 
+	/** Returns the numeric precision used when generating kernel source code. */
 	public Precision getPrecision() { return precision; }
 
+	/** Returns the directory path where compiled shared libraries and C sources are written. */
 	public String getLibraryDirectory() { return libDir; }
 
+	/** Returns the directory path where kernel data files are written; may be null. */
 	public String getDataDirectory() { return dataDir; }
 
+	/**
+	 * Creates and returns a new uniquely named subdirectory under the data directory.
+	 *
+	 * <p>The directory is created immediately on disk. Used to store data files
+	 * associated with a specific kernel invocation.</p>
+	 *
+	 * @return New {@link File} for the reserved subdirectory
+	 */
 	public File reserveDataDirectory() {
 		File data = new File(getDataDirectory() + "/" + dataCount++);
 		if (!data.exists()) {
@@ -300,10 +339,23 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		return data;
 	}
 
+	/**
+	 * Returns the absolute path to the C source file for the given class name.
+	 *
+	 * @param name Class name (used as filename stem)
+	 * @return Absolute path to the {@code .c} source file
+	 */
 	protected String getInputFile(String name) {
 		return libDir + "/" + name + ".c";
 	}
 
+	/**
+	 * Returns the absolute path to the output file (shared library or object) for the given class name.
+	 *
+	 * @param name Class name (used as filename stem)
+	 * @param lib If true, format the filename as a shared library using {@link #libFormat}; otherwise use name directly
+	 * @return Absolute path to the output file
+	 */
 	protected String getOutputFile(String name, boolean lib) {
 		if (lib) {
 			return libDir + "/" + libFormat.replaceAll(LIB_NAME_REPLACE, name);
@@ -312,6 +364,16 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Reserves a unique pre-generated operation class as a compilation target.
+	 *
+	 * <p>Loads a pre-generated class named {@code GeneratedOperationN} (where N is a sequential counter)
+	 * via reflection. These classes are generated at build time and act as empty stubs that native
+	 * code is compiled into.</p>
+	 *
+	 * @return A {@link BaseGeneratedOperation} instance acting as the compilation target slot
+	 * @throws HardwareException if the class cannot be found or instantiated
+	 */
 	public synchronized BaseGeneratedOperation reserveLibraryTarget() {
 		try {
 			BaseGeneratedOperation gen = (BaseGeneratedOperation)
@@ -324,14 +386,42 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Compiles and loads native code for the given instruction set target.
+	 *
+	 * <p>Delegates to {@link #compileAndLoad(Class, String)} using the target's class.</p>
+	 *
+	 * @param target The {@link NativeInstructionSet} whose class will hold the compiled function
+	 * @param code C source code to compile
+	 */
 	public void compile(NativeInstructionSet target, String code) {
 		compileAndLoad(target.getClass(), code);
 	}
 
+	/**
+	 * Compiles native code for the given class and returns the path to the compiled library.
+	 *
+	 * @param target Class used as the compilation target (its name becomes the filename stem)
+	 * @param code C source code to compile
+	 * @return Absolute path to the compiled shared library
+	 */
 	public String compile(Class target, String code) {
 		return compile(target.getName(), code, true);
 	}
 
+	/**
+	 * Writes C source to disk and invokes the native compiler toolchain.
+	 *
+	 * <p>Writes the fixed header followed by {@code code} to a {@code .c} file in
+	 * {@link #libDir}, then calls the {@link LinkedLibraryGenerator} to produce the
+	 * output file.</p>
+	 *
+	 * @param name Stem name used for the source and output filenames
+	 * @param code C source code (without headers)
+	 * @param lib If true, format the output as a shared library; otherwise as a plain object
+	 * @return Absolute path to the compiled output file
+	 * @throws HardwareException if I/O or compilation fails
+	 */
 	public String compile(String name, String code, boolean lib) {
 		if (HardwareOperator.enableVerboseLog) {
 			log("Compiling native code for " + name + "\nSource:\n" + code);
@@ -354,6 +444,16 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		return result;
 	}
 
+	/**
+	 * Compiles native code for the given class, then loads the resulting shared library into the JVM.
+	 *
+	 * <p>If instruction set monitoring is enabled and the code is large enough, writes the source
+	 * to the configured monitoring output directory before compiling.</p>
+	 *
+	 * @param target Class used as the compilation target
+	 * @param code C source code to compile and load
+	 * @throws HardwareException if compilation or library loading fails
+	 */
 	public void compileAndLoad(Class target, String code) {
 		if (HardwareOperator.enableInstructionSetMonitoring ||
 				(HardwareOperator.enableLargeInstructionSetMonitoring && code.length() > 50000)) {
@@ -383,6 +483,15 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns a {@link Consumer} that runs a native compiler command and validates its exit code.
+	 *
+	 * <p>The consumer starts the process using {@link ProcessBuilder}, inherits its I/O, waits for
+	 * completion, and throws a {@link HardwareException} if the exit value is non-zero.</p>
+	 *
+	 * @param name Name of the compilation target, included in error messages
+	 * @return Consumer that accepts a compiler command line and runs it
+	 */
 	protected Consumer<List<String>> runner(String name) {
 		return command -> {
 			try {
@@ -410,6 +519,16 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 	@Override
 	public Console console() { return Hardware.console; }
 
+	/**
+	 * Creates a factory for {@link NativeCompiler} instances with the given precision and CL flag.
+	 *
+	 * <p>Reads compiler configuration from system properties and environment variables:
+	 * {@code AR_HARDWARE_LIB_FORMAT}, {@code AR_HARDWARE_NATIVE_COMPILER}, {@code AR_HARDWARE_NATIVE_LINKER}.</p>
+	 *
+	 * @param precision Numeric precision for generated kernel code
+	 * @param cl If true, include the OpenCL header in generated source files
+	 * @return Factory that constructs configured {@link NativeCompiler} instances
+	 */
 	public static Factory<NativeCompiler> factory(Precision precision, boolean cl) {
 		return () -> {
 			String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");

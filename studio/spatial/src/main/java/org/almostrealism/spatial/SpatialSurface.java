@@ -30,6 +30,7 @@ import org.almostrealism.space.AbstractSurface;
  * @see AbstractSurface
  */
 public class SpatialSurface extends AbstractSurface {
+	/** The spatial element wrapped by this surface. */
 	private SpatialElement element;
 
 	/**

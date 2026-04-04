@@ -44,6 +44,7 @@ import java.util.stream.Stream;
  * @author  Michael Murray
  */
 public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface implements NodeGroup<T>, Iterable<T> {
+	/** The ordered list of child surfaces belonging to this group. */
 	private final ArrayList<T> surfaces;
 
 	/** Constructs a {@link SurfaceGroup} object with no {@link Gradient} objects. */

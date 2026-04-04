@@ -106,12 +106,18 @@ import java.util.function.Supplier;
  * @see IndexSequence
  */
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
+	/** If true, kernel series caching is enabled; disable via {@code AR_HARDWARE_KERNEL_CACHE=false}. */
 	public static boolean enableCache = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_CACHE").orElse(true);
+	/** If true, verbose diagnostic output is emitted when cache decisions are made. */
 	public static boolean enableVerbose = false;
 
+	/** Maximum number of expression slots per cache entry; limits concurrent tracked expressions. */
 	public static int defaultMaxExpressions = 16;
+	/** Default maximum number of cached entries per series. */
 	public static int defaultMaxEntries = 32; // 16;
+	/** Minimum expression node count for a series to be considered for matching. */
 	public static int minNodeCountMatch = 12; // 6;
+	/** Minimum expression node count for a series to be considered for caching. */
 	public static int minNodeCountCache = 128;
 
 	static {
@@ -120,13 +126,20 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		}
 	}
 
+	/** Operation metadata used for identification in profiling and logging. */
 	private OperationMetadata metadata;
+	/** Number of elements in the traversal sequence this cache covers. */
 	private int count;
+	/** If true, the count is fixed at compile time and cannot vary at runtime. */
 	private boolean fixed;
+	/** Cache manager backing the serialized sequence data for kernel reuse. */
 	private MemoryDataCacheManager cacheManager;
 
+	/** Map from series signature to cache entry index for O(1) lookup. */
 	private Map<String, Integer> cache;
+	/** LRU frequency cache of expression trees that have been matched against. */
 	private FrequencyCache<String, Expression> expressions;
+	/** Set of series signatures that have previously failed to match; avoids repeated matching attempts. */
 	private Set<String> matchFailures;
 
 	/**

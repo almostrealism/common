@@ -25,9 +25,16 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * No-operation generation provider that echoes back the supplied source audio rather
+ * than invoking a real generative model. Useful for testing and environments without
+ * ML back-end access.
+ */
 public class NoOpGenerationProvider implements GenerationProvider {
+	/** Audio sources indexed by generator ID, stored during refresh. */
 	private final Map<String, List<NoteAudio>> sources;
 
+	/** Creates a no-op provider with an empty source map. */
 	public NoOpGenerationProvider() {
 		sources = new HashMap<>();
 	}

@@ -48,12 +48,22 @@ import org.almostrealism.ml.Tokenizer;
  */
 public abstract class ConditionalAudioSystem implements Destroyable, CodeFeatures {
 
+	/** Maximum audio generation duration in seconds. */
 	public static double MAX_DURATION = 11.0;
 
+	/** Audio sample rate used throughout the system. */
 	protected static final int SAMPLE_RATE = 44100;
+
+	/** Number of diffusion sampling steps. */
 	protected static final int NUM_STEPS = 8;
+
+	/** Maximum log-SNR value for the diffusion schedule. */
 	protected static final float LOGSNR_MAX = -6.0f;
+
+	/** Minimum sigma value for the noise schedule. */
 	protected static final float SIGMA_MIN = 0.0f;
+
+	/** Maximum sigma value for the noise schedule. */
 	protected static final float SIGMA_MAX = 1.0f;
 
 	/** Standard latent dimensions for audio diffusion models. */
@@ -62,13 +72,22 @@ public abstract class ConditionalAudioSystem implements Destroyable, CodeFeature
 	/** Standard latent time steps for audio diffusion models. */
 	public static final int LATENT_TIME_STEPS = 256;
 
-	// Model dimensions
+	/** Traversal policy representing a single latent tensor [1 x LATENT_DIMENSIONS x LATENT_TIME_STEPS]. */
 	protected static final TraversalPolicy DIT_X_SHAPE = new TraversalPolicy(1, LATENT_DIMENSIONS, LATENT_TIME_STEPS);
+
+	/** Total number of elements in a single latent tensor. */
 	protected static final int DIT_X_SIZE = LATENT_DIMENSIONS * LATENT_TIME_STEPS;
 
+	/** Tokenizer for encoding text conditioning inputs. */
 	private final Tokenizer tokenizer;
+
+	/** Conditioner that generates attention inputs from token embeddings. */
 	private final AudioAttentionConditioner conditioner;
+
+	/** Autoencoder used to encode audio into latent space and decode back. */
 	private final AutoEncoder autoencoder;
+
+	/** The diffusion transformer model that generates audio in latent space. */
 	private final DiffusionModel ditModel;
 
 	/**

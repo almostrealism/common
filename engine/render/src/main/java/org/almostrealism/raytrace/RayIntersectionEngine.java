@@ -52,10 +52,14 @@ import java.util.List;
  * @see IntersectionalLightingEngine
  */
 public class RayIntersectionEngine implements Engine {
+	/** When true, the aggregator uses an accelerated (non-kernel-wrapped) evaluation path. */
 	public static boolean enableAcceleratedAggregator = false;
 
+	/** The scene containing all surfaces and lights to render. */
 	private Scene<? extends ShadableSurface> scene;
+	/** Shader parameters providing additional context for shading calculations. */
 	private ShaderContext sparams;
+	/** Fog parameters for atmospheric scattering effects. */
 	private FogParameters fparams;
 	
 	/**

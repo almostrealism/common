@@ -20,12 +20,50 @@ import io.almostrealism.expression.Expression;
 
 import java.util.OptionalLong;
 
+/**
+ * Provides structural constraints and services for kernel expression simplification.
+ *
+ * <p>A {@code KernelStructureContext} is associated with a compiled kernel and exposes
+ * the maximum kernel index, an optional {@link KernelSeriesProvider} for converting
+ * expressions to series form, and an optional {@link KernelTraversalProvider} for
+ * index reordering. These are used during expression simplification to produce
+ * kernel-specific optimisations.</p>
+ *
+ * @see KernelIndex
+ * @see KernelSeriesProvider
+ * @see KernelTraversalProvider
+ */
 public interface KernelStructureContext {
+	/**
+	 * Returns the maximum valid kernel index for this context, or empty if unbounded.
+	 *
+	 * @return the kernel maximum as an {@link OptionalLong}
+	 */
 	OptionalLong getKernelMaximum();
 
+	/**
+	 * Returns the {@link KernelSeriesProvider} for this context, or {@code null} if none.
+	 *
+	 * @return the series provider, or {@code null}
+	 */
 	KernelSeriesProvider getSeriesProvider();
+
+	/**
+	 * Returns the {@link KernelTraversalProvider} for this context, or {@code null} if none.
+	 *
+	 * @return the traversal provider, or {@code null}
+	 */
 	KernelTraversalProvider getTraversalProvider();
 
+	/**
+	 * Returns {@code true} if the given kernel size is compatible with this context.
+	 *
+	 * <p>A size is valid when it matches the kernel maximum (if set) and the series
+	 * provider's maximum length (if set).</p>
+	 *
+	 * @param size the kernel size to check
+	 * @return {@code true} if the size is valid for this context
+	 */
 	default boolean isValidKernelSize(long size) {
 		if ((getKernelMaximum().isPresent() && size !=
 				getKernelMaximum().getAsLong()) ||
@@ -37,6 +75,13 @@ public interface KernelStructureContext {
 		return true;
 	}
 
+	/**
+	 * Simplifies the given expression using this context, optionally converting the
+	 * result to a series representation via the {@link KernelSeriesProvider}.
+	 *
+	 * @param expression the expression to simplify
+	 * @return the simplified (and optionally series-converted) expression
+	 */
 	default Expression<?> simplify(Expression<?> expression) {
 		Expression<?> e = expression.simplify(this);
 		if (getSeriesProvider() != null) {
@@ -45,6 +90,12 @@ public interface KernelStructureContext {
 		return e;
 	}
 
+	/**
+	 * Returns a {@link NoOpKernelStructureContext} that carries the same kernel maximum
+	 * but has no series or traversal providers.
+	 *
+	 * @return a no-op context with the same kernel maximum
+	 */
 	default NoOpKernelStructureContext asNoOp() {
 		return getKernelMaximum().stream()
 				.mapToObj(NoOpKernelStructureContext::new)

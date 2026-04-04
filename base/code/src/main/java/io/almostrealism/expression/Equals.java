@@ -28,15 +28,43 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+/**
+ * An equality comparison expression ({@code ==}) between two sub-expressions.
+ *
+ * <p>Provides several simplification passes: constant folding, bounds-based static
+ * resolution, Mask propagation, quotient expansion, and constant consolidation across
+ * both sides of the equality.</p>
+ */
 public class Equals extends Comparison {
+	/**
+	 * When {@code true}, bounds information is used to statically resolve comparisons
+	 * where the operands cannot be equal given their known ranges.
+	 */
 	public static boolean enableBoundedComparison = true;
+
+	/**
+	 * When {@code true}, constant terms are moved to the right-hand side and
+	 * non-constant terms are consolidated on the left before constructing the node.
+	 */
 	public static boolean enableConsolidateConstants = true;
+
+	/**
+	 * When {@code true}, a quotient on the left side is expanded by multiplying both
+	 * sides by the denominator before creating the equality node.
+	 */
 	public static boolean enableExpandQuotient = false;
 
+	/**
+	 * Constructs an equality comparison between the given operands.
+	 *
+	 * @param left  the left-hand side
+	 * @param right the right-hand side
+	 */
 	protected Equals(Expression<?> left, Expression<?> right) {
 		super(left, right);
 	}
 
+	/** {@inheritDoc} Returns {@code left == right}. */
 	public String getExpression(LanguageOperations lang) {
 		return getChildren().get(0).getWrappedExpression(lang) + " == " + getChildren().get(1).getWrappedExpression(lang);
 	}
@@ -93,10 +121,25 @@ public class Equals extends Comparison {
 		return Equals.of(children.get(0), children.get(1));
 	}
 
+	/**
+	 * Creates and post-processes an equality expression.
+	 *
+	 * @param left  the left-hand side
+	 * @param right the right-hand side
+	 * @return a simplified or constant-folded expression
+	 */
 	public static Expression of(Expression<?> left, Expression<?> right) {
 		return Expression.process(create(left, right));
 	}
 
+	/**
+	 * Creates an equality expression, applying constant folding, bounds checking,
+	 * Mask propagation, quotient expansion, and constant consolidation.
+	 *
+	 * @param left  the left-hand side
+	 * @param right the right-hand side
+	 * @return the simplified expression
+	 */
 	protected static Expression create(Expression<?> left, Expression<?> right) {
 		if (left.longValue().isPresent() && right.longValue().isPresent()) {
 			return new BooleanConstant(left.longValue().getAsLong() == right.longValue().getAsLong());
@@ -166,6 +209,13 @@ public class Equals extends Comparison {
 		return new Equals(left, right);
 	}
 
+	/**
+	 * Extracts the additive terms from an expression: if it is a {@link Sum} the
+	 * children are returned; otherwise a singleton list containing the expression is returned.
+	 *
+	 * @param exp the expression to decompose
+	 * @return the list of additive terms
+	 */
 	protected static List<Expression<?>> extractTerms(Expression<?> exp) {
 		if (exp instanceof Sum) {
 			return ((Sum) exp).getChildren();
@@ -174,6 +224,15 @@ public class Equals extends Comparison {
 		}
 	}
 
+	/**
+	 * Uses the known bounds of {@code value} to determine statically whether it can
+	 * equal {@code anchor}. Returns a {@link BooleanConstant}(false) when the bounds
+	 * rule out equality; returns {@code null} when bounds are insufficient to decide.
+	 *
+	 * @param value  the expression whose bounds are checked
+	 * @param anchor the constant anchor expression
+	 * @return a false-constant expression if equality is impossible, or {@code null}
+	 */
 	protected static Expression<?> checkBounds(Expression<?> value, Expression<?> anchor) {
 		OptionalLong a = anchor.longValue();
 		if (!a.isPresent()) return null;

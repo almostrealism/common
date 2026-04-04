@@ -63,12 +63,25 @@ import java.util.stream.Stream;
  * @see AssetGroup
  */
 public class AssetGroupInfo {
+	/** Identifier name for this asset group (e.g., the model name). */
 	private String name;
+
+	/** Version string for this asset group, or {@code null} if unversioned. */
 	private String version;
+
+	/** Map from asset filename to its metadata. */
 	private Map<String, AssetInfo> assets;
 
+	/** Default constructor for JSON deserialization. */
 	public AssetGroupInfo() {}
 
+	/**
+	 * Constructs an asset group info from a list of assets.
+	 *
+	 * @param name    Group name
+	 * @param version Version string
+	 * @param assets  List of asset metadata entries
+	 */
 	public AssetGroupInfo(String name, String version, List<AssetInfo> assets) {
 		setName(name);
 		setVersion(version);
@@ -78,19 +91,33 @@ public class AssetGroupInfo {
 		}
 	}
 
+	/** Returns the group name. @return Group name */
 	public String getName() { return name; }
+
+	/** Sets the group name. @param name Group name */
 	public void setName(String name) {
 		this.name = name;
 	}
 
+	/** Returns the version string, or {@code null} if unversioned. @return Version */
 	public String getVersion() { return version; }
+
+	/** Sets the version string. @param version Version string */
 	public void setVersion(String version) { this.version = version; }
 
+	/** Returns the asset metadata map keyed by filename. @return Assets map */
 	public Map<String, AssetInfo> getAssets() { return assets; }
+
+	/** Sets the asset metadata map. @param assets Assets map */
 	public void setAssets(Map<String, AssetInfo> assets) {
 		this.assets = assets;
 	}
 
+	/**
+	 * Returns the sum of all asset sizes in bytes.
+	 *
+	 * @return Total download size in bytes
+	 */
 	public long getTotalSize() {
 		if (assets == null) return 0;
 
@@ -99,6 +126,12 @@ public class AssetGroupInfo {
 				.sum();
 	}
 
+	/**
+	 * Returns a new {@code AssetGroupInfo} containing only the assets that match the given filter.
+	 *
+	 * @param filter Predicate to select assets; only assets for which this returns {@code true} are included
+	 * @return A new {@code AssetGroupInfo} with the same name and version but a filtered asset set
+	 */
 	public AssetGroupInfo subset(Predicate<AssetInfo> filter) {
 		return new AssetGroupInfo(getName(), getVersion(),
 				getAssets().values().stream()
@@ -106,10 +139,25 @@ public class AssetGroupInfo {
 						.collect(Collectors.toList()));
 	}
 
+	/**
+	 * Creates an {@code AssetGroupInfo} from all files in a local directory, using the directory name as the group name.
+	 *
+	 * @param directory The directory whose files become the assets
+	 * @return A new {@code AssetGroupInfo} with no version and one {@link AssetInfo} per file in the directory
+	 */
 	public static AssetGroupInfo forDirectory(File directory) {
 		return forDirectory(directory.getName(), directory);
 	}
 
+	/**
+	 * Creates an {@code AssetGroupInfo} from all files in a local directory.
+	 *
+	 * <p>If {@code directory} is not a directory, an empty asset group is returned.</p>
+	 *
+	 * @param name      The group name to assign
+	 * @param directory The directory whose files become the assets
+	 * @return A new {@code AssetGroupInfo} with no version and one {@link AssetInfo} per file in the directory
+	 */
 	public static AssetGroupInfo forDirectory(String name, File directory) {
 		if (directory.isDirectory()) {
 			return new AssetGroupInfo(name, null,

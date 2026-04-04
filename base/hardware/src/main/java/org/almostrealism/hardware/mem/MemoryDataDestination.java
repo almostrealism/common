@@ -83,8 +83,14 @@ import java.util.function.IntFunction;
  */
 // TODO  Should implement StreamingEvaluable
 public class MemoryDataDestination<T extends MemoryData> implements Evaluable<T> {
+	/** Factory that creates output destinations for a given element count. */
 	private final IntFunction<Multiple<T>> provider;
 
+	/**
+	 * Creates a destination evaluable backed by the given factory.
+	 *
+	 * @param provider Factory that creates destinations for a given count
+	 */
 	public MemoryDataDestination(IntFunction<Multiple<T>> provider) {
 		this.provider = provider;
 	}

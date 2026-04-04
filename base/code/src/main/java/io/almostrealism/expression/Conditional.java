@@ -27,10 +27,39 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/**
+ * A ternary conditional expression that evaluates to one of two branches
+ * depending on a boolean condition.
+ *
+ * <p>Generates code of the form {@code condition ? positive : negative}.
+ * When {@link #enableSimplification} is active and a kernel series provider is
+ * available, the condition may be resolved statically and the result replaced
+ * with the appropriate branch expression or an equivalent arithmetic form.</p>
+ *
+ * @param <T> the numeric type of the conditional result
+ */
 public class Conditional<T extends Number> extends Expression<T> {
+	/**
+	 * When {@code true}, enables algebraic simplification of conditional expressions
+	 * when the condition can be statically resolved through the kernel series provider.
+	 */
 	public static boolean enableSimplification = false;
+
+	/**
+	 * When {@code true}, logs a warning if the positive branch value equals the
+	 * right-hand side of an equality condition, which may indicate a redundant branch.
+	 */
 	public static boolean enableInputBranchWarning = false;
 
+	/**
+	 * Constructs a conditional expression with the given condition and branch expressions.
+	 *
+	 * @param type     the Java numeric type of the result
+	 * @param condition the boolean-valued guard expression
+	 * @param positive  the expression yielded when the condition is true
+	 * @param negative  the expression yielded when the condition is false
+	 * @throws IllegalArgumentException if the condition already has a statically known boolean value
+	 */
 	protected Conditional(Class<T> type, Expression<Boolean> condition,
 						  Expression<Double> positive, Expression<Double> negative) {
 		super(type, condition, positive, negative);
@@ -127,10 +156,32 @@ public class Conditional<T extends Number> extends Expression<T> {
 				children.get(1), children.get(2));
 	}
 
+	/**
+	 * Creates and post-processes a conditional expression for the given branches.
+	 * Delegates to {@link #create} and then applies {@link Expression#process}.
+	 *
+	 * @param condition the boolean guard expression
+	 * @param positive  the branch used when the condition is true
+	 * @param negative  the branch used when the condition is false
+	 * @return a simplified or restructured expression representing the conditional
+	 */
 	public static Expression of(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
 		return Expression.process(create(condition, positive, negative));
 	}
 
+	/**
+	 * Constructs a conditional expression, applying constant-folding and structural
+	 * optimizations before returning the result.
+	 *
+	 * <p>If the condition has a statically known boolean value the corresponding branch
+	 * is returned directly. If both branches are equal a single constant is returned.
+	 * If one branch is zero the expression is converted to a {@link Mask}.</p>
+	 *
+	 * @param condition the boolean guard expression
+	 * @param positive  the branch used when the condition is true
+	 * @param negative  the branch used when the condition is false
+	 * @return the optimized expression representing the conditional
+	 */
 	public static Expression create(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
 		Optional<Boolean> cond = condition.booleanValue();
 

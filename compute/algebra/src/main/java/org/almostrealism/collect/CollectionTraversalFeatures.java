@@ -38,6 +38,7 @@ import java.util.stream.Collectors;
  * @see CollectionFeatures
  */
 public interface CollectionTraversalFeatures extends ShapeFeatures {
+	/** When true, repeat operations are permitted even for producers with variable (non-fixed) counts. */
 	boolean enableVariableRepeat = false;
 
 	/**
@@ -99,6 +100,17 @@ public interface CollectionTraversalFeatures extends ShapeFeatures {
 		return new ReshapeProducer(shape, producer);
 	}
 
+	/**
+	 * Aligns the traversal axes of a list of producers so they can be combined element-wise.
+	 * Producers with mismatched shapes are traversed or repeated as needed before being
+	 * passed to the processor function.
+	 *
+	 * @param <T>       the return type of the resulting producer
+	 * @param <P>       the specific producer type returned by the processor
+	 * @param producers the list of producers to align
+	 * @param processor a function that receives the aligned shape and producer list and returns a combined producer
+	 * @return a Producer for the result of applying the processor to the aligned producers
+	 */
 	default <T, P extends Producer<PackedCollection>> Producer<PackedCollection> alignTraversalAxes(
 			List<Producer<PackedCollection>> producers, BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor) {
 		return TraversalPolicy
@@ -116,18 +128,48 @@ public interface CollectionTraversalFeatures extends ShapeFeatures {
 						processor);
 	}
 
+	/**
+	 * Returns the shape with the largest total number of elements among all given producers.
+	 *
+	 * @param <PackedCollection> the collection type of the producers
+	 * @param producers          the list of producers to compare
+	 * @return the shape with the greatest total element count
+	 */
 	default <PackedCollection> TraversalPolicy largestTotalSize(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).max(Comparator.comparing(TraversalPolicy::getTotalSizeLong)).get();
 	}
 
+	/**
+	 * Returns the lowest traversal count among all given producers.
+	 *
+	 * @param <PackedCollection> the collection type of the producers
+	 * @param producers          the list of producers to compare
+	 * @return the minimum count across all producers
+	 */
 	default <PackedCollection> long lowestCount(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).min().getAsLong();
 	}
 
+	/**
+	 * Returns the highest traversal count among all given producers.
+	 *
+	 * @param <PackedCollection> the collection type of the producers
+	 * @param producers          the list of producers to compare
+	 * @return the maximum count across all producers
+	 */
 	default <PackedCollection> long highestCount(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).max().getAsLong();
 	}
 
+	/**
+	 * Determines the output shape for an operation combining the given producers.
+	 * Selects the shape with the largest total size, then adjusts the traversal axis
+	 * so that the count matches the highest count across all inputs.
+	 *
+	 * @param <PackedCollection> the collection type of the producers
+	 * @param producers          the input producers whose shapes determine the output shape
+	 * @return the output traversal policy for the combined operation
+	 */
 	default <PackedCollection> TraversalPolicy outputShape(Producer<PackedCollection>... producers) {
 		TraversalPolicy result = largestTotalSize(List.of(producers));
 

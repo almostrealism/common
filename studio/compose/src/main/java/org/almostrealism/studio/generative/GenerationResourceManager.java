@@ -21,18 +21,66 @@ import org.almostrealism.audio.notes.NoteAudioProvider;
 
 import java.io.File;
 
+/**
+ * Resource manager for persisting and retrieving ML model files and generated audio
+ * associated with a generation session.
+ */
 public interface GenerationResourceManager {
+	/**
+	 * Stores a model file under the given identifier and version tag.
+	 *
+	 * @param id   the model identifier
+	 * @param vers the version tag
+	 * @param file the model file to store
+	 */
 	void storeModel(String id, String vers, File file);
 
+	/**
+	 * Loads the model with the given identifier into the destination file.
+	 *
+	 * @param id   the model identifier
+	 * @param dest the destination file to write the model to
+	 */
 	void loadModel(String id, File dest);
 
+	/**
+	 * Returns {@code true} if a model with the given identifier is available.
+	 *
+	 * @param id the model identifier to check
+	 */
 	boolean isModelAvailable(String id);
 
+	/**
+	 * Returns {@code true} if a model with the given version tag is available.
+	 *
+	 * @param vers the version tag to check
+	 */
 	boolean isModelVersionAvailable(String vers);
 
+	/**
+	 * Stores the audio file under the given identifier and returns a provider for it.
+	 *
+	 * @param id   the audio identifier
+	 * @param file the audio file to store
+	 * @return a {@link NoteAudioProvider} for the stored audio
+	 */
 	NoteAudioProvider storeAudio(String id, File file);
 
+	/**
+	 * Stores wave data under the given identifier and returns a provider for it.
+	 *
+	 * @param id       the audio identifier
+	 * @param waveData the wave data to store
+	 * @return a {@link NoteAudioProvider} for the stored audio
+	 */
 	NoteAudioProvider storeAudio(String id, WaveData waveData);
 
+	/**
+	 * Returns a provider for the audio stored under the given identifier, or
+	 * {@code null} if no such audio exists.
+	 *
+	 * @param id the audio identifier
+	 * @return the audio provider, or {@code null}
+	 */
 	NoteAudioProvider getAudio(String id);
 }

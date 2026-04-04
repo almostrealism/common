@@ -38,28 +38,79 @@ public interface RigidBody {
 	 * @return {intersection point, normal to intersection} or a zero length array if there is no intersection.
 	 */
 	Vector[] intersect(RigidBody b);
+	/**
+	 * Draws a 2D projection of this rigid body onto the specified {@link Graphics} context.
+	 *
+	 * @param c      the camera defining the view projection
+	 * @param g      the graphics context to draw into
+	 * @param ox     x-axis offset for the drawing origin
+	 * @param oy     y-axis offset for the drawing origin
+	 * @param scale  scale factor for the projection
+	 */
 	void draw(Camera c, Graphics g, double ox, double oy, double scale);
 
+	/**
+	 * Updates any visual or derived state of this rigid body to reflect the current physics state.
+	 */
 	void updateModel();
-	
+
+	/**
+	 * Returns the physics state object for this rigid body.
+	 *
+	 * @return the {@link State} holding position, momentum, velocity, force, and torque
+	 */
 	State getState();
 	
+	/**
+	 * Mutable physics state for one simulated rigid body.
+	 * <p>
+	 * All vectors use the same coordinate system and units as the containing simulation.
+	 * Momentum vectors are maintained in parallel with velocity vectors so that impulses
+	 * can be applied correctly without accumulating floating-point drift.
+	 * </p>
+	 */
 	class State {
+		/** {@code true} once {@link #init} has been called; prevents double-initialization. */
 		private boolean inited = false;
+
+		/** Elapsed simulation time; {@code -1.0} before initialization. */
 		private double elapsed = -1.0;
-		
+
+		/** Listeners notified each time {@link #update(double)} advances the state. */
 		protected ArrayList<Temporal> listeners;
-		
+
+		/** Coefficient of restitution (bounciness) for collision response. */
 		public double e;
 
-		public double mass;        // mass value
+		/** Mass of the simulated body in simulation mass units. */
+		public double mass;
+
+		/** Moment of inertia matrix; transforms angular velocity to angular momentum. */
 		public TransformMatrix in; // moment of inertia matrix
 
-		public Vector x, r; // location and rotation
-		public Vector p, l; // linear and angular momentum
+		/** Position in world space. */
+		public Vector x;
 
-		public Vector v, w; // linear and angular velocity
-		public Vector f, t; // force and torque
+		/** Orientation represented as a rotation vector. */
+		public Vector r;
+
+		/** Linear momentum (mass * velocity). */
+		public Vector p;
+
+		/** Angular momentum (inertia * angular velocity). */
+		public Vector l;
+
+		/** Linear velocity. */
+		public Vector v;
+
+		/** Angular velocity. */
+		public Vector w;
+
+		/** Net force currently applied to the body. */
+		public Vector f;
+
+		/** Net torque currently applied to the body. */
+		public Vector t;
 		
 		/**
 		 * Initializes this RigidBody object with the specified location, rotation,
@@ -120,6 +171,12 @@ public interface RigidBody {
 			for (Temporal t : listeners) t.tick().get().run();
 		}
 		
+		/**
+		 * Applies a linear impulse to the body by directly modifying its linear momentum.
+		 * Linear velocity is immediately recomputed from the updated momentum.
+		 *
+		 * @param impulse  the impulse vector to add to linear momentum
+		 */
 		public void linearImpulse(Vector impulse) {
 			System.out.print(this.toString() + ": " + impulse.toString() + " (" + this.p.toString() + " -->");
 			
@@ -129,13 +186,30 @@ public interface RigidBody {
 			System.out.println(this.p +") " + this.v);
 		}
 		
+		/**
+		 * Applies an angular impulse to the body by directly modifying its angular momentum.
+		 * Angular velocity is immediately recomputed from the updated momentum.
+		 *
+		 * @param impulse  the angular impulse vector to add to angular momentum
+		 */
 		public void angularImpulse(Vector impulse) {
 			this.l.addTo(impulse);
 			this.w = this.in.getInverse().transformAsOffset(this.l);
 		}
 		
+		/**
+		 * Registers a listener that is notified each time the state is updated.
+		 *
+		 * @param l  the listener to add
+		 */
 		public void addUpdateListener(Temporal l) { this.listeners.add(l); }
 		
+		/**
+		 * Sets the mass of this body and recomputes its linear and angular momentum
+		 * to remain consistent with the current velocities.
+		 *
+		 * @param mass  the new mass value
+		 */
 		public void setMass(double mass) {
 			this.mass = mass;
 			this.p = this.v.multiply(this.mass);
@@ -149,11 +223,21 @@ public interface RigidBody {
 		public void setLocation(Vector x) { this.x = x; }
 		public void setRotation(Vector r) { this.r = r; }
 		
+		/**
+		 * Sets the linear velocity and updates linear momentum accordingly.
+		 *
+		 * @param v  the new linear velocity vector
+		 */
 		public void setLinearVelocity(Vector v) {
 			this.v = v;
 			this.p = this.v.multiply(this.mass);
 		}
 		
+		/**
+		 * Sets the angular velocity and updates angular momentum accordingly.
+		 *
+		 * @param w  the new angular velocity vector
+		 */
 		public void setAngularVelocity(Vector w) {
 			this.w = w;
 			this.l = this.w.multiply(this.mass);
@@ -171,6 +255,11 @@ public interface RigidBody {
 		public Vector getForce() { return this.f; }
 		public Vector getTorque() { return this.t; }
 		
+		/**
+		 * Returns a string representation of this state showing position, momentum, velocity, and force.
+		 *
+		 * @return a formatted string of the form {@code {position momentum velocity force}}
+		 */
 		public String toString() {
 			return "{" + this.x + " " + this.p + " " + this.v + " " + this.f + "}";
 		}

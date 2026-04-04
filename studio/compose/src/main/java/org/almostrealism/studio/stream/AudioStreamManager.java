@@ -68,22 +68,41 @@ import java.util.Map;
 // TODO  AudioStreamManager really no longer needs to support separate named channels
 // TODO  since one will surely be sufficient for all normal playback
 public class AudioStreamManager implements ConsoleFeatures {
+	/** Default HTTP port used by the {@link AudioServer}. */
 	public static final int PORT = 7799;
 
+	/** Default live-stream buffer duration in seconds. */
 	public static double defaultLiveDuration = 180.0;
 
+	/** Map from channel name to its active streaming player. */
 	private final Map<String, StreamingAudioPlayer> audioStreams;
+
+	/** HTTP audio server used for DAW and streaming client connections. */
 	public AudioServer server;
 
+	/**
+	 * Creates an audio stream manager and starts an {@link AudioServer} on the default port.
+	 *
+	 * @throws IOException if the server cannot bind to the port
+	 */
 	public AudioStreamManager() throws IOException {
 		this.audioStreams = new HashMap<>();
 		this.server = new AudioServer(PORT);
 	}
 
+	/** Starts the underlying {@link AudioServer} to accept client connections. */
 	public void start() throws IOException { server.start(); }
 
+	/** Returns the underlying {@link AudioServer}. */
 	public AudioServer getServer() { return server; }
 
+	/**
+	 * Returns the {@link SampleMixer} for the given named stream, or {@code null}
+	 * if the stream does not exist.
+	 *
+	 * @param stream the stream channel name
+	 * @return the sample mixer, or {@code null}
+	 */
 	public SampleMixer getMixer(String stream) {
 		BufferedAudioPlayer player = getPlayer(stream);
 		if (player == null) return null;
@@ -91,10 +110,25 @@ public class AudioStreamManager implements ConsoleFeatures {
 		return player.getMixer();
 	}
 
+	/**
+	 * Returns the {@link BufferedAudioPlayer} for the given named channel.
+	 *
+	 * @param channel the channel name
+	 * @return the buffered audio player
+	 */
 	public BufferedAudioPlayer getPlayer(String channel) {
 		return audioStreams.get(channel).getPlayer().getPlayer();
 	}
 
+	/**
+	 * Creates a player for the given named channel, registers it with the server,
+	 * and returns the underlying {@link BufferedAudioPlayer}.
+	 *
+	 * @param channel     the stream channel name
+	 * @param playerCount the number of audio sources the player can mix
+	 * @param inputRecord optional output line for recording the mixed audio
+	 * @return the buffered audio player
+	 */
 	public BufferedAudioPlayer addPlayer(String channel, int playerCount,
 										 OutputLine inputRecord) {
 		DelegatedAudioLine line = new DelegatedAudioLine();
@@ -102,6 +136,15 @@ public class AudioStreamManager implements ConsoleFeatures {
 		return addPlayer(playerCount, line, inputRecord);
 	}
 
+	/**
+	 * Creates a player delivering audio to the given output line and returns the
+	 * underlying {@link BufferedAudioPlayer}.
+	 *
+	 * @param playerCount the number of audio sources the player can mix
+	 * @param out         the audio output line
+	 * @param inputRecord optional output line for recording the mixed audio
+	 * @return the buffered audio player
+	 */
 	public BufferedAudioPlayer addPlayer(int playerCount,
 										 AudioLine out, OutputLine inputRecord) {
 		int maxFrames = (int) (out.getSampleRate() * defaultLiveDuration);

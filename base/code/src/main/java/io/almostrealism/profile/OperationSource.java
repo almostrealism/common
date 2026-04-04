@@ -40,8 +40,13 @@ import java.util.Objects;
  * @author Michael Murray
  */
 public class OperationSource {
+	/** The source code string for the operation. */
 	private String source;
+
+	/** Unique keys identifying each argument position. */
 	private List<String> argumentKeys;
+
+	/** Human-readable names for each argument. */
 	private List<String> argumentNames;
 
 	/** Default constructor for deserialization. */

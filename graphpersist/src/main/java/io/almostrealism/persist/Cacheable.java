@@ -19,10 +19,25 @@ package io.almostrealism.persist;
 import java.io.Serializable;
 
 /**
+ * Interface for objects that can be serialized to and restored from a cache.
+ *
+ * <p>Implementors convert their state to a {@link Serializable} snapshot via
+ * {@link #toCache()} and restore state from such a snapshot via {@link #fromCache(Serializable)}.</p>
+ *
  * @author  Michael Murray
  */
 public interface Cacheable {
+	/**
+	 * Returns a {@link Serializable} snapshot of the current state for caching.
+	 *
+	 * @return A serializable representation of this object's state
+	 */
 	Serializable toCache();
-	
+
+	/**
+	 * Restores the object's state from a previously cached snapshot.
+	 *
+	 * @param s The serializable snapshot to restore from
+	 */
 	void fromCache(Serializable s);
 }

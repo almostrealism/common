@@ -46,33 +46,78 @@ import java.util.function.Supplier;
  * @see BasicDelayCell
  */
 public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle, CodeFeatures {
+	/** When true, wraps tick operations in an isolated process for debugging. */
 	public static boolean enableIsolation = false;
 
+	/** Overall output gain applied to the summed delay network output. */
 	private final double gain;
+
+	/** Number of parallel delay lines in the network. */
 	private final int size;
+
+	/** Maximum number of frames any single delay line can hold. */
 	private final int maxDelayFrames;
+
+	/** When true, uses parallel (each-traversal) operations; when false, uses sequential. */
 	private final boolean parallel;
 
+	/** The Householder feedback matrix used to mix delay line outputs. */
 	private final double[][] matrix;
 
+	/** The incoming audio producer whose output is fed into the network. */
 	private Producer<PackedCollection> input;
+
+	/** Temporary storage for the values read from each delay line at the current tick. */
 	private final PackedCollection delayIn;
+
+	/** Temporary storage for the values written to each delay line at the current tick. */
 	private final PackedCollection delayOut;
+
+	/** Circular delay buffers; shape is (size, maxDelayFrames). */
 	private final PackedCollection delayBuffer;
+
+	/** Length of each delay line's circular buffer in frames. */
 	private final PackedCollection bufferLengths;
+
+	/** Current write index into each delay line's circular buffer. */
 	private final PackedCollection bufferIndices;
+
+	/** Flattened feedback matrix of shape (size, size) used for matrix-vector multiplication. */
 	private final PackedCollection feedback;
+
+	/** Single-frame output holding the summed delay network result. */
 	private final PackedCollection output;
 
-
+	/**
+	 * Creates a DelayNetwork with 128 delay lines and a 1.5-second maximum delay.
+	 *
+	 * @param sampleRate audio sample rate in Hz
+	 * @param parallel   true to use parallel each-traversal operations
+	 */
 	public DelayNetwork(int sampleRate, boolean parallel) {
 		this(128, sampleRate, parallel);
 	}
 
+	/**
+	 * Creates a DelayNetwork with the specified number of delay lines and a 1.5-second maximum delay.
+	 *
+	 * @param size       number of parallel delay lines
+	 * @param sampleRate audio sample rate in Hz
+	 * @param parallel   true to use parallel each-traversal operations
+	 */
 	public DelayNetwork(int size, int sampleRate, boolean parallel) {
 		this(0.1, size, 1.5, sampleRate, parallel);
 	}
 
+	/**
+	 * Creates a DelayNetwork with full control over all parameters.
+	 *
+	 * @param gain       overall output gain scaling factor
+	 * @param size       number of parallel delay lines
+	 * @param duration   maximum delay time in seconds
+	 * @param sampleRate audio sample rate in Hz
+	 * @param parallel   true to use parallel each-traversal operations
+	 */
 	public DelayNetwork(double gain, int size, double duration, int sampleRate, boolean parallel) {
 		this.gain = gain;
 		this.size = size;
@@ -179,14 +224,35 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 		this.bufferIndices.fill(0.0);
 	}
 
+	/**
+	 * Generates a Householder reflection matrix from a random unit vector, scaled by {@code scale/size}.
+	 *
+	 * @param size  matrix dimension and length of the random vector
+	 * @param scale overall scale factor applied to each element (divided by size)
+	 * @return a size-by-size Householder feedback matrix
+	 */
 	public double[][] randomHouseholderMatrix(int size, double scale) {
 		return householderMatrix(rand(size), scale / size);
 	}
 
+	/**
+	 * Generates a Householder reflection matrix from the given unit-vector producer.
+	 *
+	 * @param v     producer of the reflection vector (will be normalized before use)
+	 * @param scale overall scale factor applied to each matrix element
+	 * @return the resulting Householder matrix as a 2D double array
+	 */
 	public double[][] householderMatrix(Producer<PackedCollection> v, double scale) {
 		return householderMatrix((normalize(v).evaluate()).toArray(), scale);
 	}
 
+	/**
+	 * Constructs a scaled Householder reflection matrix H = scale * (I - 2*v*v^T).
+	 *
+	 * @param v     the unit-length reflection vector
+	 * @param scale overall scale factor applied to each element
+	 * @return the resulting Householder matrix as a 2D double array
+	 */
 	public double[][] householderMatrix(double[] v, double scale) {
 		int size = v.length;
 		double[][] householder = new double[size][size];
@@ -212,7 +278,12 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 		return householder;
 	}
 
-	// Method to calculate transpose of a matrix
+	/**
+	 * Returns the transpose of the given matrix.
+	 *
+	 * @param matrix the input matrix (rows x columns)
+	 * @return a new matrix (columns x rows) that is the transpose of the input
+	 */
 	public static double[][] transpose(double[][] matrix) {
 		int rows = matrix.length;
 		int columns = matrix[0].length;
@@ -227,7 +298,13 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 		return transpose;
 	}
 
-	// Method to multiply two matrices
+	/**
+	 * Multiplies two matrices and returns the result.
+	 *
+	 * @param firstMatrix  the left operand matrix (r1 x c1)
+	 * @param secondMatrix the right operand matrix (c1 x c2)
+	 * @return the product matrix (r1 x c2)
+	 */
 	public static double[][] multiplyMatrices(double[][] firstMatrix, double[][] secondMatrix) {
 		int r1 = firstMatrix.length;
 		int c1 = firstMatrix[0].length;

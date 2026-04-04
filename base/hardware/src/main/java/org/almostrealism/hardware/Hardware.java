@@ -458,17 +458,24 @@ import java.util.function.Consumer;
  * @author  Michael Murray
  */
 public final class Hardware {
+	/** If true, log detailed initialization and backend configuration messages. */
 	public static boolean enableVerbose = false;
+	/** If true, new compute contexts default to kernel-friendly mode, enabling GPU dispatch. */
 	public static boolean defaultKernelFriendly = true;
 
+	/** Root console for hardware-layer logging and timing metrics. */
 	public static Console console = Console.root().child()
 			.addFilter(ConsoleFeatures.duplicateFilter(10 * 60 * 1000L));
 
+	/** Memory scale factor: {@code MEMORY_SCALE=N} sets max memory to {@code 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
 	protected static final int MEMORY_SCALE;
 
+	/** If true, use 64-bit epsilon values for floating-point comparisons. Controlled by {@code AR_HARDWARE_EPSILON_64}. */
 	private static final boolean epsilon64 = SystemUtils.isEnabled("AR_HARDWARE_EPSILON_64").orElse(false);
+	/** If true, kernel operations are dispatched asynchronously to a background executor. Controlled by {@code AR_HARDWARE_ASYNC}. */
 	private static final boolean async = SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(true);
 
+	/** Singleton Hardware instance for the current JVM process, initialized once in the static initializer. */
 	private static final Hardware local;
 
 	static {
@@ -555,23 +562,49 @@ public final class Hardware {
 		local = new Hardware(requirements, location, nioMem);
 	}
 
+	/** Display name for this hardware instance, used in log messages. */
 	private final String name;
+	/** True if memory is allocated on the JVM heap (volatile), meaning data may be modified by the GC. */
 	private final boolean memVolatile;
+	/** Reference-counting guard that prevents native kernel memory from being deallocated during dispatch. */
 	private final KernelMemoryGuard kernelMemoryGuard;
+	/** Maximum number of elements (not bytes) that may be allocated across all memory providers. */
 	private long maxReservation;
+	/** Location strategy for CL memory allocation (DEVICE, HEAP, HOST, or DELEGATE). */
 	private Location location;
+	/** Optional NIO-based memory provider for Metal/NIO shared memory mode; null if not enabled. */
 	private NativeBufferMemoryProvider nioMemory;
 
+	/** High-level orchestrator for submitting and sequencing hardware operations. */
 	private DefaultComputer computer;
+	/** All active data contexts (one per backend driver), ordered by priority. */
 	private List<DataContext<MemoryData>> contexts;
+	/** Thread-local override for the active data context; null if no override is in effect. */
 	private ThreadLocal<DataContext<MemoryData>> explicitDataCtx = new ThreadLocal<>();
+	/** Thread-local override for the active compute context; null if no override is in effect. */
 	private ThreadLocal<ComputeContext<MemoryData>> explicitComputeCtx = new ThreadLocal<>();
+	/** Weak references to registered context lifecycle listeners; entries are cleaned up on GC. */
 	private final List<WeakReference<ContextListener>> contextListeners;
 
+	/**
+	 * Creates a Hardware instance with the given backend requirements, using a default name.
+	 *
+	 * @param type List of required compute backends (e.g., JNI, MTL, CL)
+	 * @param location CL memory location strategy
+	 * @param nioMemory If true, NIO-based shared memory is enabled
+	 */
 	private Hardware(List<ComputeRequirement> type, Location location, boolean nioMemory) {
 		this("local", type, location, nioMemory);
 	}
 
+	/**
+	 * Creates a named Hardware instance and initializes all configured backend data contexts.
+	 *
+	 * @param name Display name for logging
+	 * @param reqs List of required compute backends to initialize
+	 * @param location CL memory location strategy
+	 * @param nioMemory If true, NIO-based shared memory is enabled for Metal/NIO mode
+	 */
 	private Hardware(String name, List<ComputeRequirement> reqs, Location location, boolean nioMemory) {
 		this.name = name;
 		this.maxReservation = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
@@ -613,6 +646,15 @@ public final class Hardware {
 		cleanup.start();
 	}
 
+	/**
+	 * Resolves the global precision and delegates to {@link #processRequirements(List, Precision)}.
+	 *
+	 * <p>If shared memory or uniform precision is required, the precision is downgraded to the
+	 * most restrictive maximum supported by any of the listed backends.</p>
+	 *
+	 * @param requirements List of compute requirements to process
+	 * @return The number of data contexts successfully initialized
+	 */
 	private int processRequirements(List<ComputeRequirement> requirements) {
 		Precision precision = Precision.valueOf(SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP64"));
 
@@ -627,6 +669,17 @@ public final class Hardware {
 		return processRequirements(requirements, precision);
 	}
 
+	/**
+	 * Processes compute requirements and initializes data contexts for each supported backend.
+	 *
+	 * <p>Iterates over the requirement list, creating and initializing the appropriate
+	 * {@link DataContext} for each recognized compute requirement (JNI, MTL, CL, etc.).
+	 * Returns the number of successfully created contexts.</p>
+	 *
+	 * @param requirements List of compute requirements to process
+	 * @param precision Numeric precision to use for all created contexts
+	 * @return The number of data contexts successfully initialized
+	 */
 	private int processRequirements(List<ComputeRequirement> requirements, Precision precision) {
 		if (enableVerbose) {
 			System.out.println("Hardware[" + getName() + "]: Processing Hardware Requirements...");
@@ -1262,6 +1315,13 @@ public final class Hardware {
 		return nioMemory;
 	}
 
+	/**
+	 * Filters data contexts to those that satisfy all the given compute requirements.
+	 *
+	 * @param contexts The candidate list of data contexts
+	 * @param requirements Requirements that each context must satisfy to be included
+	 * @return A new list containing only contexts that satisfy all requirements
+	 */
 	private static List<DataContext<MemoryData>> filterContexts(List<DataContext<MemoryData>> contexts, ComputeRequirement... requirements) {
 		List<DataContext<MemoryData>> filtered = new ArrayList<>();
 
@@ -1278,6 +1338,13 @@ public final class Hardware {
 		return filtered;
 	}
 
+	/**
+	 * Checks whether a single {@link DataContext} satisfies a given {@link ComputeRequirement}.
+	 *
+	 * @param context The data context to test
+	 * @param requirement The requirement to check against
+	 * @return True if the context satisfies the requirement
+	 */
 	private static boolean supported(DataContext<MemoryData> context, ComputeRequirement requirement) {
 		switch (requirement) {
 			case CPU:

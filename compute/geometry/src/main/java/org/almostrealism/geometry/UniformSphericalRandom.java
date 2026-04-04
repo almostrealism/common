@@ -34,6 +34,7 @@ import org.almostrealism.algebra.VectorFeatures;
  * @see Vector
  */
 public class UniformSphericalRandom implements Evaluable<Vector>, VectorFeatures {
+	/** The shared singleton instance of this class. */
 	private static final UniformSphericalRandom local = new UniformSphericalRandom();
 
 	/**

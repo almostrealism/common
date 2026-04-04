@@ -23,7 +23,19 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/**
+ * A minimum expression that returns the smaller of two numeric sub-expressions.
+ *
+ * <p>Generates code using the language-specific {@code min()} function.
+ * Constant operands are folded at factory time.</p>
+ */
 public class Min extends BinaryExpression<Double> {
+	/**
+	 * Constructs a minimum expression for the two given operands.
+	 *
+	 * @param a the first operand
+	 * @param b the second operand
+	 */
 	protected Min(Expression<Double> a, Expression<Double> b) {
 		super(Double.class, a, b);
 	}
@@ -60,12 +72,26 @@ public class Min extends BinaryExpression<Double> {
 		return Min.of(children.get(0), children.get(1));
 	}
 
+	/**
+	 * Creates a minimum expression, delegating to {@link #create} for constant folding.
+	 *
+	 * @param a the first operand
+	 * @param b the second operand
+	 * @return the simplified minimum expression
+	 */
 	public static Expression<Double> of(Expression<?> a, Expression<?> b) {
 		// TODO
 //		return ExpressionCache.match(create(a, b));
 		return create(a, b);
 	}
 
+	/**
+	 * Creates a minimum expression, folding to a constant when both operands are constant.
+	 *
+	 * @param a the first operand
+	 * @param b the second operand
+	 * @return a constant if both operands are constant, otherwise a {@link Min}
+	 */
 	public static Expression create(Expression<?> a, Expression<?> b) {
 		OptionalDouble aVal = a.doubleValue();
 		OptionalDouble bVal = b.doubleValue();

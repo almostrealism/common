@@ -71,9 +71,16 @@ public class IncrementalSimilarityComputation {
 	/** Default projection dimensions (0 = no projection, use raw embeddings). */
 	public static final int DEFAULT_PROJECTION_DIMENSIONS = 0;
 
+	/** Factory used for exact per-frame cosine similarity computation in phase 2. */
 	private final WaveDetailsFactory factory;
+
+	/** All audio samples to be compared pairwise. */
 	private final List<WaveDetails> details;
+
+	/** Minimum approximate similarity required for a pair to proceed to exact computation. */
 	private final double threshold;
+
+	/** Number of random projection dimensions used by the approximate index; 0 disables projection. */
 	private final int projectionDimensions;
 
 	/**
@@ -181,14 +188,39 @@ public class IncrementalSimilarityComputation {
 	 * Result of an incremental similarity computation, providing statistics
 	 * about the approximate filtering effectiveness and timing breakdown.
 	 */
+	/**
+	 * Result of an incremental similarity computation, providing statistics
+	 * about the approximate filtering effectiveness and timing breakdown.
+	 */
 	public static class Result {
+		/** Total number of valid pairs in the N*(N-1)/2 comparison space. */
 		private final long totalPairs;
+
+		/** Number of pairs that were compared exactly in phase 2. */
 		private final long exactPairs;
+
+		/** Time in nanoseconds spent building the ApproximateSimilarityIndex. */
 		private final long indexTimeNanos;
+
+		/** Time in nanoseconds spent filtering candidate pairs using the approximate threshold. */
 		private final long filterTimeNanos;
+
+		/** Time in nanoseconds spent computing exact similarity for candidate pairs. */
 		private final long exactTimeNanos;
+
+		/** Total wall-clock time in nanoseconds for the complete computation. */
 		private final long totalTimeNanos;
 
+		/**
+		 * Creates a Result with timing and filtering statistics.
+		 *
+		 * @param totalPairs      total number of N*(N-1)/2 pairs considered
+		 * @param exactPairs      number of pairs that received exact computation
+		 * @param indexTimeNanos  time spent building the approximate index in nanoseconds
+		 * @param filterTimeNanos time spent filtering candidates in nanoseconds
+		 * @param exactTimeNanos  time spent on exact computation in nanoseconds
+		 * @param totalTimeNanos  total wall-clock time in nanoseconds
+		 */
 		Result(long totalPairs, long exactPairs,
 			   long indexTimeNanos, long filterTimeNanos,
 			   long exactTimeNanos, long totalTimeNanos) {

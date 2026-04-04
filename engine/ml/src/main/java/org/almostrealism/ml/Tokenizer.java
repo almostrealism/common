@@ -18,6 +18,16 @@ package org.almostrealism.ml;
 
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Common interface for text tokenizers used in language model inference.
+ *
+ * <p>Tokenizers convert between human-readable text and sequences of integer token IDs.
+ * Implementations handle model-specific vocabulary and encoding rules (e.g., BPE, SentencePiece).
+ * </p>
+ *
+ * @see org.almostrealism.ml.qwen3.Qwen3Tokenizer
+ * @see org.almostrealism.ml.tokenization.ByteLevelBPETokenizer
+ */
 public interface Tokenizer {
 
 	/**
@@ -69,10 +79,30 @@ public interface Tokenizer {
 		return decodeAsLong(longTokens);
 	}
 
+	/**
+	 * Encodes text into a {@link org.almostrealism.collect.PackedCollection} of token IDs.
+	 * <p>
+	 * The default implementation throws {@link UnsupportedOperationException}.
+	 * Implementations that support GPU-resident token tensors should override this method.
+	 * </p>
+	 *
+	 * @param text the text to encode
+	 * @return a packed collection containing the token IDs
+	 */
 	default PackedCollection encode(String text) {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Decodes a {@link org.almostrealism.collect.PackedCollection} of token IDs back to text.
+	 * <p>
+	 * The default implementation throws {@link UnsupportedOperationException}.
+	 * Implementations that support GPU-resident token tensors should override this method.
+	 * </p>
+	 *
+	 * @param tokens a packed collection containing the token IDs
+	 * @return the decoded text
+	 */
 	default String decode(PackedCollection tokens) {
 		throw new UnsupportedOperationException();
 	}

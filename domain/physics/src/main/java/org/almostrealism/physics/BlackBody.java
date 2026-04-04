@@ -28,9 +28,13 @@ import org.almostrealism.collect.PackedCollection;
  */
 public class BlackBody implements Absorber, PhysicalConstants {
 //	public static double verbose = 0.08;
+	/** Probability threshold above which verbose absorption logging is printed (set above 1.0 to disable). */
 	public static double verbose = 1.1;
 
+	/** Running total of all energy absorbed by this black body, in electron volts. */
 	protected double energy;
+
+	/** The simulation clock used to compute the average flux over time. */
 	private Clock clock;
 
 	@Override

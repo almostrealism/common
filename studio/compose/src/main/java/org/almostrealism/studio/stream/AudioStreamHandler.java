@@ -28,19 +28,43 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Objects;
 
+/**
+ * HTTP audio handler that streams rendered audio from an {@link AudioProcessor} as
+ * a WAV response. Optionally caches the rendered bytes in memory to serve subsequent
+ * requests without re-rendering.
+ */
 public class AudioStreamHandler implements HttpAudioHandler, CodeFeatures {
+	/** When {@code true}, the rendered audio is cached in memory for subsequent requests. */
 	public static boolean enableByteCache = false;
+
+	/** Duration in seconds of the internal render buffer used per processing iteration. */
 	public static double bufferDuration = 1.0;
 
+	/** Internal buffer used per rendering pass. */
 	private final PackedCollection buffer;
+
+	/** Total number of audio frames to render per full stream request. */
 	private final int totalFrames;
+
+	/** Audio sample rate for the rendered stream. */
 	private final int sampleRate;
 
+	/** The audio processor that generates audio for each buffer pass. */
 	private final AudioProcessor processor;
+
+	/** Compiled update runnable produced by the processor; lazily initialised. */
 	private Runnable update;
 
+	/** Cached byte representation of the rendered WAV stream; {@code null} if not yet cached. */
 	private byte[] data;
 
+	/**
+	 * Creates a stream handler wrapping the given audio processor.
+	 *
+	 * @param audioProcessor the processor that generates audio samples
+	 * @param totalFrames    total number of frames to render per request
+	 * @param sampleRate     audio sample rate
+	 */
 	public AudioStreamHandler(AudioProcessor audioProcessor,
 							  int totalFrames, int sampleRate) {
 		this.totalFrames = totalFrames;
@@ -49,6 +73,9 @@ public class AudioStreamHandler implements HttpAudioHandler, CodeFeatures {
 		this.processor = audioProcessor;
 	}
 
+	/**
+	 * Renders the full audio stream and caches the result as a byte array if not already cached.
+	 */
 	public synchronized void load() {
 		if (data != null) {
 			return;
@@ -64,6 +91,12 @@ public class AudioStreamHandler implements HttpAudioHandler, CodeFeatures {
 		}
 	}
 
+	/**
+	 * Renders the full audio stream as a WAV file to the given output stream.
+	 *
+	 * @param out the output stream to write WAV data to
+	 * @throws IOException if writing fails
+	 */
 	protected void write(OutputStream out) throws IOException {
 		int written = 0;
 

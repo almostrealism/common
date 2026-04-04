@@ -56,8 +56,14 @@ import java.util.function.DoubleUnaryOperator;
  * @author Michael Murray
  */
 public enum NoteDurationStrategy implements ConsoleFeatures {
-	NONE, FIXED, NO_OVERLAP;
+	/** Use the note's original natural duration with no modification. */
+	NONE,
+	/** Use a fixed duration from the element's {@code noteDurationSelection}, clamped to the original. */
+	FIXED,
+	/** Extend the note until the next note position to prevent gaps without overlap. */
+	NO_OVERLAP;
 
+	/** Returns the effective note duration in seconds based on this strategy. */
 	public double getLength(DoubleUnaryOperator timeForDuration,
 							double position, double nextPosition,
 							double originalDurationSeconds, double durationSelection) {

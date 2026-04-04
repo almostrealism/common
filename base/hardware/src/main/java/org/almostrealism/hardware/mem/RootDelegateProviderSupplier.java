@@ -36,9 +36,16 @@ import java.util.function.Supplier;
  */
 public class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>,
 		Delegated<Provider>, OperationInfo {
+	/** Provider wrapping the root delegate of the tracked memory data. */
 	private Provider provider;
+	/** Metadata for profiling and identification of this supplier. */
 	private OperationMetadata metadata;
 
+	/**
+	 * Creates a supplier that wraps the root delegate of the given memory data.
+	 *
+	 * @param mem Memory data whose root delegate will be provided
+	 */
 	public RootDelegateProviderSupplier(MemoryData mem) {
 		MemoryData root = mem.getRootDelegate();
 		this.provider = new Provider<>(root);

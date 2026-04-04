@@ -28,20 +28,54 @@ import java.nio.ShortBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Memory provider for CPU-side native direct buffers, backed by JNI-allocated {@link NativeBuffer} instances.
+ *
+ * <p>Manages allocation of typed NIO direct buffers with FP16, FP32, or FP64 precision.
+ * Supports optional shared-memory naming to enable zero-copy data transfer between processes.</p>
+ *
+ * <p>Allocation is bounded by {@code memoryMax}; exceeding this limit throws a
+ * {@link org.almostrealism.hardware.HardwareException}. Custom allocators and writers can be registered
+ * via {@link #registerAdapter(Class, NativeBufferAllocator)} and
+ * {@link #registerAdapter(Class, NativeBufferWriter)} to support cross-provider memory access.</p>
+ *
+ * @see NativeBuffer
+ * @see NIO
+ * @see HardwareMemoryProvider
+ */
 public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuffer> {
+	/** Registered custom allocators for adapting foreign memory types. */
 	private static final Map<Class, NativeBufferAllocator> allocationAdapters = new HashMap<>();
+	/** Registered custom writers for adapting foreign memory types. */
 	private static final Map<Class, NativeBufferWriter> writeAdapters = new HashMap<>();
 
+	/** Numeric precision for element storage in this provider's buffers. */
 	private final Precision precision;
+	/** Maximum number of bytes that may be allocated by this provider at any one time. */
 	private final long memoryMax;
+	/** If true, new allocations use named shared memory when a name is available. */
 	private final boolean shared;
 
+	/** Total bytes currently allocated across all active buffers in this provider. */
 	private long memoryUsed;
 
+	/**
+	 * Creates a native buffer provider with shared memory enabled.
+	 *
+	 * @param precision Numeric precision for buffer elements
+	 * @param memoryMax Maximum bytes that may be allocated
+	 */
 	public NativeBufferMemoryProvider(Precision precision, long memoryMax) {
 		this(precision, memoryMax, true);
 	}
 
+	/**
+	 * Creates a native buffer provider with optional shared memory support.
+	 *
+	 * @param precision Numeric precision for buffer elements
+	 * @param memoryMax Maximum bytes that may be allocated
+	 * @param shared    If true, use named shared memory when a memory name is available
+	 */
 	public NativeBufferMemoryProvider(Precision precision, long memoryMax, boolean shared) {
 		this.precision = precision;
 		this.memoryMax = memoryMax;
@@ -194,10 +228,24 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 		}
 	}
 
+	/**
+	 * Registers a custom allocator that can create a {@link NativeBuffer} from a foreign memory type.
+	 *
+	 * @param <T>       Foreign memory type
+	 * @param cls       Class of the foreign memory type
+	 * @param allocator Allocator that converts the foreign memory to a native buffer
+	 */
 	public static <T extends Memory> void registerAdapter(Class<T> cls, NativeBufferAllocator<T> allocator) {
 		allocationAdapters.put(cls, allocator);
 	}
 
+	/**
+	 * Registers a custom writer that can copy data from a foreign memory type into a {@link NativeBuffer}.
+	 *
+	 * @param <T>    Foreign memory type
+	 * @param cls    Class of the foreign memory type
+	 * @param writer Writer that copies from the foreign memory into a native buffer
+	 */
 	public static <T extends Memory> void registerAdapter(Class<T> cls, NativeBufferWriter<T> writer) {
 		writeAdapters.put(cls, writer);
 	}

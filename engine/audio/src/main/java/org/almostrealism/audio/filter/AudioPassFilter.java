@@ -74,20 +74,48 @@ import java.util.function.Supplier;
  * @see DelayNetwork
  */
 public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecycle, GeometryFeatures {
+	/** Minimum allowed cutoff frequency in Hz; inputs below this are clamped to prevent instability. */
 	public static final double MIN_FREQUENCY = 10.0;
+
+	/** Maximum allowed input sample value; inputs are clamped to [-MAX_INPUT, MAX_INPUT] before filtering. */
 	public static final double MAX_INPUT = 0.99;
 
+	/** Filter state data including biquad coefficients and sample history. */
 	private final AudioFilterData data;
+
+	/** Producer supplying the cutoff frequency in Hz; clamped to [MIN_FREQUENCY, 20000]. */
 	private Producer<PackedCollection> frequency;
+
+	/** Producer supplying the filter resonance (Q factor). */
 	private Producer<PackedCollection> resonance;
+
+	/** The audio signal producer connected to this filter's input. */
 	private Producer<PackedCollection> input;
 
+	/** True for high-pass filtering; false for low-pass. */
 	private final boolean high;
 
+	/**
+	 * Creates an AudioPassFilter with a new PolymorphicAudioData backing store.
+	 *
+	 * @param sampleRate audio sample rate in Hz
+	 * @param frequency  producer supplying the cutoff frequency in Hz
+	 * @param resonance  producer supplying the resonance (Q factor)
+	 * @param high       true for high-pass; false for low-pass
+	 */
 	public AudioPassFilter(int sampleRate, Producer<PackedCollection> frequency, Producer<PackedCollection> resonance, boolean high) {
 		this(sampleRate, new PolymorphicAudioData(), frequency, resonance, high);
 	}
 
+	/**
+	 * Creates an AudioPassFilter with an explicit filter data backing store.
+	 *
+	 * @param sampleRate audio sample rate in Hz
+	 * @param data       backing store for biquad filter state and coefficients
+	 * @param frequency  producer supplying the cutoff frequency in Hz
+	 * @param resonance  producer supplying the resonance (Q factor)
+	 * @param high       true for high-pass; false for low-pass
+	 */
 	public AudioPassFilter(int sampleRate, AudioFilterData data, Producer<PackedCollection> frequency, Producer<PackedCollection> resonance, boolean high) {
 		this.data = data;
 		this.frequency = bound(frequency, MIN_FREQUENCY, 20000);
@@ -96,25 +124,47 @@ public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecy
 		setSampleRate(sampleRate);
 	}
 
+	/** Returns the cutoff frequency producer. */
 	public Producer<PackedCollection> getFrequency() { return frequency; }
+
+	/**
+	 * Replaces the cutoff frequency producer.
+	 *
+	 * @param frequency new frequency producer in Hz
+	 */
 	public void setFrequency(Producer<PackedCollection> frequency) {
 		this.frequency = frequency;
 	}
 
+	/** Returns the resonance (Q factor) producer. */
 	public Producer<PackedCollection> getResonance() {
 		return resonance;
 	}
+
+	/**
+	 * Replaces the resonance producer.
+	 *
+	 * @param resonance new resonance producer
+	 */
 	public void setResonance(Producer<PackedCollection> resonance) {
 		this.resonance = resonance;
 	}
 
+	/** Returns the audio sample rate in Hz. */
 	public int getSampleRate() {
 		return (int) data.sampleRate().toDouble(0);
 	}
+
+	/**
+	 * Sets the audio sample rate used in coefficient calculations.
+	 *
+	 * @param sampleRate new sample rate in Hz
+	 */
 	public void setSampleRate(int sampleRate) {
 		data.setSampleRate(sampleRate);
 	}
 
+	/** Returns true if this is a high-pass filter; false if it is a low-pass filter. */
 	public boolean isHigh() {
 		return high;
 	}

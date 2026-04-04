@@ -26,19 +26,61 @@ import org.almostrealism.hardware.NullProcessor;
 
 import java.util.function.IntFunction;
 
+/**
+ * A {@link RankedChoiceEvaluableForMemoryData} specialization that produces {@link RGB}-compatible
+ * memory banks and handles null results as black when configured to tolerate nulls.
+ *
+ * <p>This evaluable selects among multiple candidate producers based on ranked choice logic
+ * inherited from {@code RankedChoiceEvaluableForMemoryData}. When no candidate produces a
+ * non-null result and {@code tolerateNull} is {@code true}, a black {@link RGB} value is
+ * returned instead of throwing a {@link NullPointerException}.</p>
+ *
+ * @see RankedChoiceEvaluableForMemoryData
+ * @see NullProcessor
+ * @author Michael Murray
+ */
 public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryData<PackedCollection> implements NullProcessor<PackedCollection>, RGBFeatures {
+	/**
+	 * Constructs a {@link RankedChoiceEvaluableForRGB} with the given error tolerance
+	 * and default null-intolerance (nulls throw {@link NullPointerException}).
+	 *
+	 * @param e the error tolerance used in ranked choice selection
+	 */
 	public RankedChoiceEvaluableForRGB(double e) {
 		super(e);
 	}
 
+	/**
+	 * Constructs a {@link RankedChoiceEvaluableForRGB} with the given error tolerance
+	 * and configurable null tolerance.
+	 *
+	 * @param e            the error tolerance used in ranked choice selection
+	 * @param tolerateNull {@code true} to return black instead of throwing on null results
+	 */
 	public RankedChoiceEvaluableForRGB(double e, boolean tolerateNull) {
 		super(e, tolerateNull);
 	}
 
+	/**
+	 * Returns a hardware-accelerated {@link Evaluable} that operates over 3-component
+	 * {@link RGB} memory banks.
+	 *
+	 * @return an accelerated evaluable using {@link RGB} constructors and banks
+	 */
 	public Evaluable<PackedCollection> getAccelerated() {
 		return getAccelerated(3, RGB::new, (IntFunction) RGB::bank);
 	}
 
+	/**
+	 * Returns a replacement value when a null result is encountered.
+	 *
+	 * <p>If {@code tolerateNull} is {@code true}, a black {@link RGB} is returned.
+	 * Otherwise a {@link NullPointerException} is thrown.</p>
+	 *
+	 * @param args the evaluation arguments (unused in the replacement logic)
+	 * @return a black {@link RGB} when null is tolerated
+	 * @throws NullPointerException if null tolerance is disabled
+	 */
 	@Override
 	public PackedCollection replaceNull(Object[] args) {
 		if (tolerateNull) {
@@ -48,6 +90,12 @@ public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryD
 		}
 	}
 
+	/**
+	 * Creates an {@link RGB} memory bank of the given size as the output destination.
+	 *
+	 * @param size the number of RGB elements to allocate
+	 * @return an {@link RGB} bank of the specified size
+	 */
 	@Override
 	public MemoryBank<PackedCollection> createDestination(int size) { return (MemoryBank) RGB.bank(size); }
 }

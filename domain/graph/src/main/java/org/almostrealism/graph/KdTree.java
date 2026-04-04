@@ -31,32 +31,52 @@ import java.util.List;
  * @author Rednaxela
  */
 public abstract class KdTree<T> {
-    // Static variables
+    /** Maximum number of points stored in a leaf node before it is split. */
     private static final int           bucketSize = 24;
 
-    // All types
+    /** The number of spatial dimensions for each stored point. */
     private final int                  dimensions;
+
+    /** The parent node, or {@code null} for the root. */
     private final KdTree<T>            parent;
 
-    // Root only
+    /** Stack of recently removed point coordinates (root only); used when {@link #sizeLimit} is set. */
     private final LinkedList<double[]> locationStack;
+
+    /** Maximum total number of points retained; oldest points are discarded when exceeded (root only). */
     private final Integer              sizeLimit;
 
-    // Leaf only
+    /** Coordinate arrays for points stored in this leaf node. */
     private double[][]                 locations;
+
+    /** User data associated with each point in this leaf node. */
     private Object[]                   data;
+
+    /** The number of points currently stored in this leaf node. */
     private int                        locationCount;
 
-    // Stem only
-    private KdTree<T>                  left, right;
+    /** Left child subtree (stem only); holds points whose split-dimension value is less than {@link #splitValue}. */
+    private KdTree<T>                  left;
+
+    /** Right child subtree (stem only); holds points whose split-dimension value is greater than or equal to {@link #splitValue}. */
+    private KdTree<T>                  right;
+
+    /** The axis index on which this stem node splits its children. */
     private int                        splitDimension;
+
+    /** The coordinate value along {@link #splitDimension} at which this stem node divides left and right subtrees. */
     private double                     splitValue;
 
-    // Bounds
-    private double[]                   minLimit, maxLimit;
+    /** Minimum coordinate bounds for all points within this subtree, per dimension. */
+    private double[]                   minLimit;
+
+    /** Maximum coordinate bounds for all points within this subtree, per dimension. */
+    private double[]                   maxLimit;
+
+    /** When {@code true}, all points in this subtree share the same coordinates. */
     private boolean                    singularity;
 
-    // Temporary
+    /** Transient traversal state used during nearest-neighbour search. */
     private Status                     status;
 
     /**
@@ -289,16 +309,32 @@ public abstract class KdTree<T> {
      * Enumeration representing the status of a node during the running
      */
     private enum Status {
-        NONE, LEFTVISITED, RIGHTVISITED, ALLVISITED
+        /** No children of this node have been visited yet. */
+        NONE,
+        /** The left child has been visited but the right child has not. */
+        LEFTVISITED,
+        /** The right child has been visited but the left child has not. */
+        RIGHTVISITED,
+        /** Both children of this node have been visited. */
+        ALLVISITED
     }
 
     /**
      * Stores a distance and value to output
      */
     public static class Entry<T> {
+        /** The squared-Euclidean (or plain Euclidean, depending on subclass) distance to the query point. */
         public final double distance;
+
+        /** The user data associated with the matched point. */
         public final T      value;
 
+        /**
+         * Constructs an Entry pairing a distance with its associated value.
+         *
+         * @param distance the distance from the query point to this entry's point
+         * @param value    the user data stored at this point
+         */
         private Entry(double distance, T value) {
             this.distance = distance;
             this.value = value;
@@ -405,11 +441,31 @@ public abstract class KdTree<T> {
         return results;
     }
 
-    // Override in subclasses
+    /**
+     * Computes the distance between two points.
+     *
+     * @param p1 the first point coordinates
+     * @param p2 the second point coordinates
+     * @return the distance (or a monotone proxy) between {@code p1} and {@code p2}
+     */
     protected abstract double pointDist(double[] p1, double[] p2);
 
+    /**
+     * Computes the minimum distance from a point to an axis-aligned bounding region.
+     *
+     * @param point the query point coordinates
+     * @param min   the minimum corner of the bounding region
+     * @param max   the maximum corner of the bounding region
+     * @return the minimum distance (or a monotone proxy) from the point to the region
+     */
     protected abstract double pointRegionDist(double[] point, double[] min, double[] max);
 
+    /**
+     * Returns a weight hint for the given axis, used to guide split-dimension selection.
+     *
+     * @param i the zero-based axis index
+     * @return the weight for axis {@code i}; default is 1.0
+     */
     protected double getAxisWeightHint(int i) {
         return 1.0;
     }
@@ -418,15 +474,30 @@ public abstract class KdTree<T> {
      * Internal class for child nodes
      */
     private class ChildNode extends KdTree<T> {
+        /**
+         * Creates a child node attached to the given parent.
+         *
+         * @param parent the parent node in the tree
+         * @param right  {@code true} if this is the right child; {@code false} for left
+         */
         private ChildNode(KdTree<T> parent, boolean right) {
             super(parent, right);
         }
 
-        // Distance measurements are always called from the root node
+        /**
+         * {@inheritDoc}
+         *
+         * <p>Distance measurements are always delegated to the root node.</p>
+         */
         protected double pointDist(double[] p1, double[] p2) {
             throw new IllegalStateException();
         }
 
+        /**
+         * {@inheritDoc}
+         *
+         * <p>Distance measurements are always delegated to the root node.</p>
+         */
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             throw new IllegalStateException();
         }
@@ -436,22 +507,36 @@ public abstract class KdTree<T> {
      * Class for tree with Weighted Squared Euclidean distancing
      */
     public static class WeightedSqrEuclid<T> extends KdTree<T> {
+        /** Per-axis weights applied when computing squared-Euclidean distances. */
         private double[] weights;
 
+        /**
+         * Creates a weighted squared-Euclidean KD-tree with all weights initialised to 1.0.
+         *
+         * @param dimensions the number of spatial dimensions
+         * @param sizeLimit  the maximum number of points to retain, or {@code null} for unlimited
+         */
         public WeightedSqrEuclid(int dimensions, Integer sizeLimit) {
             super(dimensions, sizeLimit);
             this.weights = new double[dimensions];
             Arrays.fill(this.weights, 1.0);
         }
 
+        /**
+         * Sets the per-axis weights used in distance computation.
+         *
+         * @param weights an array of length {@code dimensions} with the weight for each axis
+         */
         public void setWeights(double[] weights) {
             this.weights = weights;
         }
 
+        /** {@inheritDoc} */
         protected double getAxisWeightHint(int i) {
             return weights[i];
         }
 
+        /** {@inheritDoc} */
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -465,6 +550,7 @@ public abstract class KdTree<T> {
             return d;
         }
 
+        /** {@inheritDoc} */
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 
@@ -490,10 +576,17 @@ public abstract class KdTree<T> {
      * Class for tree with Unweighted Squared Euclidean distancing
      */
     public static class SqrEuclid<T> extends KdTree<T> {
+        /**
+         * Creates an unweighted squared-Euclidean KD-tree.
+         *
+         * @param dimensions the number of spatial dimensions
+         * @param sizeLimit  the maximum number of points to retain, or {@code null} for unlimited
+         */
         public SqrEuclid(int dimensions, Integer sizeLimit) {
             super(dimensions, sizeLimit);
         }
 
+        /** {@inheritDoc} */
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -507,6 +600,7 @@ public abstract class KdTree<T> {
             return d;
         }
 
+        /** {@inheritDoc} */
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 
@@ -532,22 +626,36 @@ public abstract class KdTree<T> {
      * Class for tree with Weighted Manhattan distancing
      */
     public static class WeightedManhattan<T> extends KdTree<T> {
+        /** Per-axis weights applied when computing Manhattan distances. */
         private double[] weights;
 
+        /**
+         * Creates a weighted Manhattan KD-tree with all weights initialised to 1.0.
+         *
+         * @param dimensions the number of spatial dimensions
+         * @param sizeLimit  the maximum number of points to retain, or {@code null} for unlimited
+         */
         public WeightedManhattan(int dimensions, Integer sizeLimit) {
             super(dimensions, sizeLimit);
             this.weights = new double[dimensions];
             Arrays.fill(this.weights, 1.0);
         }
 
+        /**
+         * Sets the per-axis weights used in distance computation.
+         *
+         * @param weights an array of length {@code dimensions} with the weight for each axis
+         */
         public void setWeights(double[] weights) {
             this.weights = weights;
         }
 
+        /** {@inheritDoc} */
         protected double getAxisWeightHint(int i) {
             return weights[i];
         }
 
+        /** {@inheritDoc} */
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -561,6 +669,7 @@ public abstract class KdTree<T> {
             return d;
         }
 
+        /** {@inheritDoc} */
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 
@@ -586,10 +695,17 @@ public abstract class KdTree<T> {
      * Class for tree with Manhattan distancing
      */
     public static class Manhattan<T> extends KdTree<T> {
+        /**
+         * Creates an unweighted Manhattan KD-tree.
+         *
+         * @param dimensions the number of spatial dimensions
+         * @param sizeLimit  the maximum number of points to retain, or {@code null} for unlimited
+         */
         public Manhattan(int dimensions, Integer sizeLimit) {
             super(dimensions, sizeLimit);
         }
 
+        /** {@inheritDoc} */
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -603,6 +719,7 @@ public abstract class KdTree<T> {
             return d;
         }
 
+        /** {@inheritDoc} */
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 
@@ -628,13 +745,29 @@ public abstract class KdTree<T> {
      * Class for tracking up to 'size' closest values
      */
     private static class ResultHeap {
+        /** User-data array for the heap's current candidates. */
         private final Object[] data;
+
+        /** Distance array parallel to {@link #data}; the heap is ordered by descending distance. */
         private final double[] distance;
+
+        /** The maximum number of entries this heap will retain. */
         private final int      size;
+
+        /** The number of entries currently in the heap. */
         private int            values;
+
+        /** The data of the last entry removed by {@link #removeLargest()}. */
         public Object          removedData;
+
+        /** The distance of the last entry removed by {@link #removeLargest()}. */
         public double          removedDist;
 
+        /**
+         * Creates a result heap that retains the {@code size} smallest distances seen.
+         *
+         * @param size the maximum number of results to keep
+         */
         public ResultHeap(int size) {
             this.data = new Object[size];
             this.distance = new double[size];
@@ -642,6 +775,13 @@ public abstract class KdTree<T> {
             this.values = 0;
         }
 
+        /**
+         * Adds a candidate entry. If the heap is full and this entry is farther than the
+         * current maximum, it is ignored.
+         *
+         * @param dist  the distance of the candidate
+         * @param value the user data of the candidate
+         */
         public void addValue(double dist, Object value) {
             // If there is still room in the heap
             if (values < size) {
@@ -661,6 +801,12 @@ public abstract class KdTree<T> {
             }
         }
 
+        /**
+         * Removes the entry with the largest distance from the heap, storing it in
+         * {@link #removedData} and {@link #removedDist}.
+         *
+         * @throws IllegalStateException if the heap is empty
+         */
         public void removeLargest() {
             if (values == 0) {
                 throw new IllegalStateException();
@@ -674,6 +820,11 @@ public abstract class KdTree<T> {
             downHeapify(0);
         }
 
+        /**
+         * Restores the max-heap property by bubbling element {@code c} toward the root.
+         *
+         * @param c the index of the element to bubble up
+         */
         private void upHeapify(int c) {
             for (int p = (c - 1) / 2; c != 0 && distance[c] > distance[p]; c = p, p = (c - 1) / 2) {
                 Object pData = data[p];
@@ -685,6 +836,11 @@ public abstract class KdTree<T> {
             }
         }
 
+        /**
+         * Restores the max-heap property by pushing element {@code p} toward the leaves.
+         *
+         * @param p the index of the element to push down
+         */
         private void downHeapify(int p) {
             for (int c = p * 2 + 1; c < values; p = c, c = p * 2 + 1) {
                 if (c + 1 < values && distance[c] < distance[c + 1]) {
@@ -705,6 +861,12 @@ public abstract class KdTree<T> {
             }
         }
 
+        /**
+         * Returns the maximum distance currently in the heap, or
+         * {@link Double#POSITIVE_INFINITY} if the heap is not yet full.
+         *
+         * @return the current worst-case distance among stored neighbours
+         */
         public double getMaxDist() {
             if (values < size) {
                 return Double.POSITIVE_INFINITY;

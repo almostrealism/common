@@ -34,5 +34,10 @@ package org.almostrealism.music.pattern;
  * @author Michael Murray
  */
 public enum ElementParity {
-	NONE, LEFT, RIGHT
+	/** No position adjustment; the element is placed at the base position. */
+	NONE,
+	/** The element is placed before the base position (position minus scale). */
+	LEFT,
+	/** The element is placed after the base position (position plus scale). */
+	RIGHT
 }

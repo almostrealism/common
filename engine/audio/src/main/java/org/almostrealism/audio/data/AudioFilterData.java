@@ -81,6 +81,9 @@ public interface AudioFilterData extends BaseAudioData {
 	default Producer<PackedCollection> getOutputHistory1() { return p(outputHistory1()); }
 	default Producer<PackedCollection> getOutputHistory2() { return p(outputHistory2()); }
 
+	/**
+	 * Resets all filter state to zero, clearing coefficients and history buffers.
+	 */
 	default void reset() {
 		c().setMem(0, 0.0);
 		a1().setMem(0, 0.0);

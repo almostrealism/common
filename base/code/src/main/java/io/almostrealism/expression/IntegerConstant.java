@@ -28,9 +28,22 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+/**
+ * A constant {@link Integer} expression node that holds a literal integer value.
+ *
+ * <p>Renders using the precision-specific integer formatter. The value is also exposed
+ * as an {@link java.util.OptionalInt} and a {@link io.almostrealism.sequence.KernelSeries}
+ * with constant periodicity.</p>
+ */
 public class IntegerConstant extends Constant<Integer> {
+	/** The literal integer value held by this constant. */
 	private int value;
 
+	/**
+	 * Constructs a constant expression for the given integer value.
+	 *
+	 * @param value the literal integer value
+	 */
 	public IntegerConstant(Integer value) {
 		super(Integer.class);
 		this.value = value;

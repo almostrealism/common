@@ -34,12 +34,22 @@ import org.almostrealism.geometry.RayFeatures;
  * @author  Michael Murray
  */
 public class RigidBodyStateShader<T extends ShaderContext> implements Shader<T>, RGBFeatures, RayFeatures {
+	/** Type code indicating that shading is driven by the body's linear velocity magnitude. */
 	public static final int VELOCITY = 1;
+
+	/** Type code indicating that shading is driven by the body's net force magnitude. */
 	public static final int FORCE = 2;
-	
+
+	/** The state property type code; either {@link #VELOCITY} or {@link #FORCE}. */
 	private final int type;
+
+	/** Minimum value of the state property, mapped to zero intensity. */
 	private final double min;
+
+	/** Maximum value of the state property, mapped to full intensity. */
 	private final double max;
+
+	/** The underlying shader used to shade the surface after the light direction has been modified. */
 	private final Shader<T> shader;
 	
 	/**

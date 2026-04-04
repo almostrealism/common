@@ -31,18 +31,52 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
+/**
+ * A {@link Block} that distributes a single forward input to multiple parallel child
+ * {@link CellularPropagation} branches and aggregates their backward gradients.
+ *
+ * <p>During the forward pass every {@link #append(CellularPropagation) appended} child
+ * receives the same input producer. Any downstream receptor set on the entry cell also
+ * receives the input directly.</p>
+ *
+ * <p>During the backward pass each child pushes its gradient into a shared accumulator
+ * buffer ({@link #gradient}). Once all gradients have been summed the backward cell
+ * pushes the accumulated gradient upstream and then zeroes the buffer for the next step.</p>
+ *
+ * @see Block
+ * @see SequentialBlock
+ * @author Michael Murray
+ */
 public class BranchBlock implements Block {
+	/** The common input/output shape for this branch point. */
 	private final TraversalPolicy shape;
 
+	/** The lazily constructed entry cell returned by {@link #getForward()}. */
 	private Cell<PackedCollection> entry;
+
+	/** Receptor that fans out each push to all children and the optional downstream. */
 	private final Receptor<PackedCollection> push;
+
+	/** The optional downstream receptor attached to the entry cell. */
 	private Receptor<PackedCollection> downstream;
 
+	/** The lazily constructed backward cell returned by {@link #getBackward()}. */
 	private Cell<PackedCollection> backwards;
+
+	/** The child propagation units whose forward cells receive input and backward cells provide gradients. */
 	private List<CellularPropagation<PackedCollection>> children;
+
+	/** Accumulated gradient sum from all child backward passes. */
 	private final PackedCollection gradient;
+
+	/** Receptor that adds each child's gradient into {@link #gradient}. */
 	private final Receptor<PackedCollection> aggregator;
 
+	/**
+	 * Creates a new branch block for data of the given shape.
+	 *
+	 * @param shape the input (and output) shape for this branch point
+	 */
 	public BranchBlock(TraversalPolicy shape) {
 		this.shape = shape;
 
@@ -73,25 +107,40 @@ public class BranchBlock implements Block {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Supplier<Runnable> setup() {
 		return new OperationList("BranchBlock Setup");
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public TraversalPolicy getInputShape() {
 		return shape;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public TraversalPolicy getOutputShape() {
 		return shape;
 	}
 
+	/**
+	 * Returns an unmodifiable view of the child propagation units appended to this block.
+	 *
+	 * @return an unmodifiable list of child {@link CellularPropagation} instances
+	 */
 	public List<CellularPropagation<PackedCollection>> getChildren() {
 		return Collections.unmodifiableList(children);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns a lazily constructed entry cell that fans out each push to all child forward
+	 * cells and any downstream receptor. The receptor set on the returned cell becomes
+	 * the optional downstream pass-through.</p>
+	 */
 	@Override
 	public Cell<PackedCollection> getForward() {
 		if (entry == null) {
@@ -120,6 +169,13 @@ public class BranchBlock implements Block {
 		return entry;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns a lazily constructed backward cell. When pushed with a gradient, it accumulates
+	 * the gradient into the shared buffer, then forwards the accumulated value upstream and
+	 * clears the buffer.</p>
+	 */
 	@Override
 	public Cell<PackedCollection> getBackward() {
 		if (backwards == null) {
@@ -135,12 +191,27 @@ public class BranchBlock implements Block {
 		return backwards;
 	}
 
+	/**
+	 * Appends a child propagation unit to this branch.
+	 *
+	 * <p>The child's backward cell is wired to push its gradient into the shared
+	 * {@link #aggregator} for accumulation.</p>
+	 *
+	 * @param <T> the concrete type of the child propagation
+	 * @param l   the child to append
+	 * @return {@code l}, for fluent chaining
+	 */
 	public <T extends CellularPropagation<PackedCollection>> T append(T l) {
 		children.add(l);
 		l.getBackward().setReceptor(aggregator);
 		return l;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Releases the backward cell and the gradient accumulation buffer.</p>
+	 */
 	@Override
 	public void destroy() {
 		Destroyable.destroy(backwards);

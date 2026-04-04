@@ -150,4 +150,24 @@ public class PdslLoader {
 		PdslInterpreter interpreter = new PdslInterpreter(program);
 		return interpreter.evaluateConfig(configName);
 	}
+
+	/**
+	 * Evaluate a data block from the program, binding external inputs from
+	 * {@code args} and computing all derived views in declaration order.
+	 *
+	 * <p>This is useful when Java code needs access to the derived
+	 * {@link org.almostrealism.collect.PackedCollection} sub-views produced by
+	 * {@code range()} expressions without building a full layer.
+	 *
+	 * @param program  the parsed PDSL program
+	 * @param dataName the data block name
+	 * @param args     external input values (name → value)
+	 * @return all data block entries (parameters + derivations) as a map
+	 */
+	public Map<String, Object> evaluateDataDef(PdslNode.Program program,
+											   String dataName,
+											   Map<String, Object> args) {
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		return interpreter.evaluateDataDef(dataName, args);
+	}
 }

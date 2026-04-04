@@ -57,14 +57,28 @@ import org.almostrealism.model.SequentialBlock;
  */
 public class OobleckEncoder extends SequentialBlock {
 
+	/** Downsampling strides for each of the five encoder blocks. */
 	private static final int[] STRIDES = {4, 8, 8, 16, 16};
+
+	/** Number of output channels for each encoder block. */
 	private static final int[] OUT_CHANNELS = {128, 256, 512, 1024, 2048};
+
+	/** Channel count at the encoder input and the first encoder block. */
 	private static final int BASE_CHANNELS = 128;
+
+	/** Channel count at the encoder output (before the final projection). */
 	private static final int LATENT_DIM = 128;
+
+	/** Number of residual blocks within each encoder block. */
 	private static final int NUM_RES_BLOCKS = 3;
 
+	/** Weights loaded from the Stable Audio Open checkpoint format. */
 	private final StateDictionary stateDict;
+
+	/** Batch size this encoder was configured for. */
 	private final int batchSize;
+
+	/** Output latent sequence length after all downsampling strides are applied. */
 	private final int outputLength;
 
 	/**
@@ -83,6 +97,13 @@ public class OobleckEncoder extends SequentialBlock {
 		buildEncoder(batchSize, seqLength);
 	}
 
+	/**
+	 * Computes the output latent sequence length from a given audio sequence length
+	 * by applying each encoder stride in order.
+	 *
+	 * @param seqLength Input audio sequence length
+	 * @return Corresponding output latent sequence length
+	 */
 	private static int computeOutputLength(int seqLength) {
 		int length = seqLength;
 		for (int stride : STRIDES) {
@@ -93,6 +114,13 @@ public class OobleckEncoder extends SequentialBlock {
 		return length;
 	}
 
+	/**
+	 * Assembles the full encoder model from input projection through five encoder blocks
+	 * and final output projection, using weights from {@link #stateDict}.
+	 *
+	 * @param batchSize Batch size for all layer shapes
+	 * @param seqLength Input audio sequence length
+	 */
 	private void buildEncoder(int batchSize, int seqLength) {
 		String l0 = "encoder.layers.0";
 		PackedCollection l0_g = stateDict.get(l0 + ".weight_g");
@@ -129,6 +157,18 @@ public class OobleckEncoder extends SequentialBlock {
 		add(wnConv1d(batchSize, inChannels, LATENT_DIM, currentLength, 3, 1, 1, l7_g, l7_v, l7_b));
 	}
 
+	/**
+	 * Builds one encoder block: {@value #NUM_RES_BLOCKS} residual blocks, then a Snake
+	 * activation, then a strided Conv1d for downsampling.
+	 *
+	 * @param batchSize   Batch size
+	 * @param inChannels  Number of input channels
+	 * @param outChannels Number of output channels after the strided convolution
+	 * @param seqLength   Input sequence length before downsampling
+	 * @param stride      Downsampling stride (also the kernel size)
+	 * @param layerIdx    Index into the {@code encoder.layers} naming scheme
+	 * @return Assembled encoder block
+	 */
 	private Block buildEncoderBlock(int batchSize, int inChannels, int outChannels,
 									int seqLength, int stride, int layerIdx) {
 		String prefix = String.format("encoder.layers.%d", layerIdx);
@@ -157,6 +197,16 @@ public class OobleckEncoder extends SequentialBlock {
 		return block;
 	}
 
+	/**
+	 * Builds one residual block: two Snake+Conv1d pairs whose output is added to
+	 * the block input (skip connection).
+	 *
+	 * @param batchSize Batch size
+	 * @param channels  Number of channels (constant throughout)
+	 * @param seqLength Sequence length (constant throughout)
+	 * @param prefix    Weight key prefix (e.g., {@code encoder.layers.1.layers.0})
+	 * @return Assembled residual block
+	 */
 	private Block buildResidualBlock(int batchSize, int channels, int seqLength, String prefix) {
 		TraversalPolicy inputShape = shape(batchSize, channels, seqLength);
 		SequentialBlock mainPath = new SequentialBlock(inputShape);

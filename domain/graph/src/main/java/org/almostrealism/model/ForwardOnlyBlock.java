@@ -23,33 +23,59 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
+/**
+ * A {@link Block} adapter that exposes only the forward pass of an existing block.
+ *
+ * <p>The backward cell is replaced with a no-op so that gradients are not propagated
+ * through this block. This is useful when a block must appear in a {@link SequentialBlock}
+ * pipeline but should not participate in backpropagation (e.g., frozen inference layers).</p>
+ *
+ * @see Block
+ * @see SequentialBlock
+ * @author Michael Murray
+ */
 public class ForwardOnlyBlock implements Block {
+	/** The wrapped block whose forward cell is exposed. */
 	private final Block block;
 
+	/**
+	 * Creates a forward-only wrapper around the given block.
+	 *
+	 * @param block the block whose forward cell will be exposed; its backward cell is ignored
+	 */
 	public ForwardOnlyBlock(Block block) {
 		this.block = block;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Supplier<Runnable> setup() {
 		return new OperationList();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public TraversalPolicy getInputShape() {
 		return block.getInputShape();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public TraversalPolicy getOutputShape() {
 		return block.getOutputShape();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Cell<PackedCollection> getForward() {
 		return block.getForward();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @return a no-op cell that discards all gradient pushes without propagating them
+	 */
 	@Override
 	public Cell<PackedCollection> getBackward() {
 		return Cell.of((input, next) -> new OperationList());

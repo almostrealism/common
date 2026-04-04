@@ -17,7 +17,6 @@
 package io.flowtree.node;
 
 import io.flowtree.Server;
-import io.flowtree.fs.OutputServer;
 import io.flowtree.job.Job;
 import io.flowtree.job.JobFactory;
 import io.flowtree.msg.Connection;
@@ -45,7 +44,6 @@ import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 
 /**
@@ -69,9 +67,8 @@ import java.util.Properties;
  * <h2>Job Distribution</h2>
  * <p>The run loop iterates registered {@link JobFactory} instances,
  * calls {@code nextJob()} to produce {@link Job} objects, and hands
- * each job to {@link #getLeastActiveNode()} via {@link Node#addJob(Job)}.
- * Jobs enter the child Node's queue unconditionally -- label matching
- * happens later in the Node's worker thread.</p>
+ * each job to {@link #routeJob(Job)}, which routes to a label-matching worker
+ * Node or falls back to the relay Node if none is available locally.</p>
  *
  * <h2>Peer Connection Establishment</h2>
  * <p>Child Nodes request peer connections automatically through their
@@ -88,39 +85,166 @@ import java.util.Properties;
  */
 public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener,
 														Node.ActivityListener {
+	/**
+	 * Separator token used between key and value when encoding
+	 * {@link JobFactory} configuration entries into a string payload.
+	 */
 	public static final String KEY_VALUE_SEPARATOR = ":=";
 
+	/**
+	 * Additive offset applied to the raw average-activity computation in
+	 * {@link #getAverageActivityRating()}. A negative value biases the reported
+	 * activity lower so that a lightly loaded group still appears willing to accept
+	 * more work from peers.
+	 */
 	private double activityO = -0.2;
-	
+
+	/**
+	 * Maximum number of {@link NodeProxy} entries permitted for the same remote
+	 * endpoint before the oldest duplicate is forcibly dropped.
+	 */
 	private final int maxDuplicateConnections = 2;
 
+	/**
+	 * Legacy single-factory job source. Tasks are now managed via {@link #tasks}
+	 * together with {@link #addTask(JobFactory)}; this field is retained only for
+	 * backwards compatibility and may be {@code null}.
+	 *
+	 * @deprecated Use {@link #tasks} with {@link #addTask(JobFactory)} instead.
+	 */
 	@Deprecated
 	private final JobFactory defaultFactory;
-	
+
+	/**
+	 * Worker {@link Node} instances owned by this group. Each node executes jobs
+	 * whose required labels are satisfied by the node's own labels.
+	 */
 	private final List<Node> nodes;
+
+	/**
+	 * Dedicated relay {@link Node} labelled {@code role=relay} whose sole purpose
+	 * is to forward jobs that cannot be satisfied by any local worker node to a
+	 * capable peer over an established {@link Connection}.
+	 */
+	private final Node relayNode;
+
+	/**
+	 * Live socket-level connections to remote servers, each wrapped in a
+	 * {@link NodeProxy} that handles message framing and optional encryption.
+	 */
 	private final List<NodeProxy> servers;
+
+	/**
+	 * Proxies currently being initialised inside {@link #addServer(NodeProxy)}.
+	 * A proxy is present in this list from the moment it enters that method until
+	 * initialisation completes, so that re-entrant callbacks (e.g.
+	 * {@link #connect(NodeProxy)}) can skip still-pending proxies.
+	 */
 	private final List connecting;
+
+	/**
+	 * Active {@link JobFactory} instances registered as tasks for this group.
+	 * The run loop polls each factory every iteration to produce new
+	 * {@link Job} objects up to {@link #maxTasks} factories per cycle.
+	 */
 	private final List<JobFactory> tasks;
+
+	/**
+	 * String-encoded task representations received while their
+	 * {@link JobFactory} class was unavailable. Entries are retained so
+	 * they can be reported by {@link #taskList()} and potentially replayed.
+	 */
 	private final List cachedTasks;
+
+	/**
+	 * External {@link NodeProxy.EventListener} instances that must be notified
+	 * whenever a server connection is removed from this group.
+	 */
 	private final List plisteners;
-	private int jobsPerTask = 1, maxTasks = 10;
-	
+
+	/**
+	 * Number of {@link Job} objects to request from each {@link JobFactory} per
+	 * run-loop iteration, scaled by the factory's priority.
+	 */
+	private int jobsPerTask = 1;
+
+	/**
+	 * Upper bound on the number of active task factories processed per
+	 * run-loop iteration.
+	 */
+	private int maxTasks = 10;
+
+	/**
+	 * Password used to authenticate and/or encrypt communication with remote
+	 * servers via {@link NodeProxy}. {@code null} means no authentication.
+	 */
 	private char[] passwd;
+
+	/**
+	 * Name of the symmetric encryption algorithm applied to server communication,
+	 * as understood by {@link NodeProxy}. {@code null} means no encryption.
+	 */
 	private final String crypt;
-	
-	private final Chart activityGraph;
-	private final Chart throughputGraph;
-	private final int tpFreq = 5;
-	private int tpLast = 0;
-	private double activitySum, totalActivitySum;
-	private int activityDivisor, totalActivityDiv;
-	
+
+	/**
+	 * Renders HTML status pages and maintains the activity and throughput
+	 * time-series charts for this group.
+	 */
+	private final NodeGroupStatusRenderer statusRenderer;
+
+	/**
+	 * Dispatches incoming {@link Message} objects to the appropriate handler
+	 * on behalf of this group.
+	 */
+	private final NodeGroupMessageHandler messageHandler;
+
+	/**
+	 * Propagates configuration parameters to all child {@link Node}s and
+	 * handles the {@link #setParam(String, String)} dispatch table.
+	 */
+	private final NodeGroupNodeConfig nodeConfig;
+
+	/**
+	 * Computes aggregate performance and connectivity metrics over the child
+	 * node collection (completed jobs, time worked, activity ratings, etc.).
+	 */
+	private final NodeGroupMetrics metrics;
+
+	/**
+	 * The thread that drives the group's main run loop ({@link #run()}).
+	 */
 	private final Thread thread;
+
+	/**
+	 * Background daemon thread that periodically samples the group's activity
+	 * and sleep metrics without blocking the main run loop.
+	 */
 	private final Thread monitor;
+
+	/**
+	 * When {@code true} the run loop exits at the next opportunity.
+	 * Set by {@link #stop()}.
+	 */
 	private boolean stop;
+
+	/**
+	 * Counter that increments each run-loop iteration while no server connections
+	 * are present. When it exceeds 200 the group considers itself isolated and
+	 * calls {@link #becameIsolated()}.
+	 */
 	private int isolationTime;
+
+	/**
+	 * Interval in milliseconds between successive monitor-thread samples of
+	 * activity and sleep metrics. Defaults to 30 seconds.
+	 */
 	private int monitorSleep = 30000;
-	
+
+	/**
+	 * Counter of consecutive iterations where {@link #nextJob()} returned
+	 * {@code null}. Used to suppress per-iteration log noise; a summary is printed
+	 * every 21 null results.
+	 */
 	private int jobWasNull = 1;
 	
 	/**
@@ -145,7 +269,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		
 		int nodeCount = Integer.parseInt(p.getProperty("nodes.initial", "1"));
 		int nodeMaxJobs = Integer.parseInt(p.getProperty("nodes.jobs.max", "4"));
-		int nodeMaxPeers = Integer.parseInt(p.getProperty("nodes.peers.max", "2"));
+		int nodeMaxPeers = Integer.parseInt(p.getProperty("nodes.peers.max", "10"));
+		int relayMaxPeers = Integer.parseInt(p.getProperty("nodes.relay.peers.max", "10"));
 		
 		int serverCount = Integer.parseInt(p.getProperty("servers.total", "0"));
 		
@@ -163,116 +288,54 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			System.out.println("NodeGroup: Added node " + i + " (" + n + ")");
 		}
 
-		// Load labels from properties (nodes.labels.<key>=<value>)
-		String labelPrefix = "nodes.labels.";
-		for (Object keyObj : p.keySet()) {
-			String key = (String) keyObj;
-			if (key.startsWith(labelPrefix)) {
-				String labelKey = key.substring(labelPrefix.length());
-				String labelValue = p.getProperty(key);
-				this.setLabel(labelKey, labelValue);
-				for (Node n : this.nodes) {
-					n.setLabel(labelKey, labelValue);
-				}
-			}
-		}
+		this.relayNode = new Node(this, nodeCount, nodeMaxJobs, relayMaxPeers);
+		this.relayNode.setLabel("role", "relay");
+		System.out.println("NodeGroup: Added relay node (index " + nodeCount + ")");
 
-		// Load labels from environment variable (FLOWTREE_NODE_LABELS=key1:value1,key2:value2)
-		String envLabels = System.getenv("FLOWTREE_NODE_LABELS");
-		if (envLabels != null && !envLabels.isEmpty()) {
-			for (String pair : envLabels.split(",")) {
-				String[] parts = pair.split(":", 2);
-				if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
-					this.setLabel(parts[0].trim(), parts[1].trim());
-					for (Node n : this.nodes) {
-						n.setLabel(parts[0].trim(), parts[1].trim());
-					}
-				}
-			}
-		}
+		NodeGroupNodeConfig.applyNodeLabels(this, this.nodes, p);
 
-		// Auto-detect platform label if not explicitly set
-		if (this.getLabels().get("platform") == null) {
-			String os = System.getProperty("os.name", "").toLowerCase();
-			String platform = os.contains("mac") ? "macos" : "linux";
-			this.setLabel("platform", platform);
-			for (Node n : this.nodes) {
-				n.setLabel("platform", platform);
-			}
-			System.out.println("NodeGroup: Auto-detected platform label: platform=" + platform);
-		}
+		this.plisteners = new ArrayList();
+		super.sleepGraph = new Chart(Integer.MAX_VALUE - 1);
+
+		Chart activityChart = new Chart(Integer.MAX_VALUE - 1);
+		this.statusRenderer = new NodeGroupStatusRenderer(this, activityChart, 5);
+		this.messageHandler = new NodeGroupMessageHandler(this);
+		this.nodeConfig = new NodeGroupNodeConfig(this, this.nodes);
 
 		this.setParam(p);
-		
+
 		this.servers = new ArrayList(serverCount);
+		NodeGroupNodeConfig.initServerConnections(this, p, serverCount);
 
-		String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-		String rootPort = System.getenv("FLOWTREE_ROOT_PORT");
-
-		if (rootHost != null) {
-			if (rootPort == null) rootPort = String.valueOf(Server.defaultPort);
-			startPersistentHost(rootHost, Integer.parseInt(rootPort));
-		}
-		
-		if (serverCount > 0) System.out.println("NodeGroup: Opening server connections...");
-		
-		for (int i = 0; i < serverCount; i++) {
-			String host = p.getProperty("servers." + i + ".host", "localhost");
-			int port = Integer.parseInt(p.getProperty("servers." + i + ".port", "7777"));
-			
-			try {
-				System.out.println("NodeGroup: Connecting to server " + i + " (" + host + ":" + port + ")...");
-				
-				Socket s = new Socket(host, port);
-				// s.setKeepAlive(true);
-				
-				this.addServer(s);
-			} catch (UnknownHostException uh) {
-				System.out.println("NodeGroup: Server " + i + " is unknown host");
-			} catch (IOException ioe) {
-				System.out.println("NodeGroup: IO error while connecting to server " +
-								i + " -- " + ioe.getMessage());
-			} catch (SecurityException se) {
-				System.out.println("NodeGroup: Security exception while connecting to server " + i +
-								" (" + se.getMessage() + ")");
-			}
-		}
-		
 		super.rssfile = p.getProperty("group.rss.file");
 		String rsslink = p.getProperty("group.rss.url");
-		
+
 		if (rssfile != null) {
 			SimpleDateFormat df = new SimpleDateFormat("h:mm a 'on' EEEE, MMMM d");
 			super.log = new RSSFeed("Network Node Group Log", "Started at " + df.format(new Date()));
-			
+
 			if (rsslink != null) super.log.setLink(rsslink);
 		}
-		
-		this.plisteners = new ArrayList();
-		this.activityGraph = new Chart(Integer.MAX_VALUE - 1);
-		this.throughputGraph = new Chart();
-		super.sleepGraph = new Chart(Integer.MAX_VALUE - 1);
-		
+		this.metrics = new NodeGroupMetrics(this.nodes);
+
 		Client c = Client.getCurrentClient();
 		ThreadGroup g = null;
 		if (c != null) g = c.getServer().getThreadGroup();
 		this.thread = new Thread(g, this);
 		this.thread.setName("Node Group Thread");
 		this.thread.setPriority(Server.MODERATE_PRIORITY);
-		
+
 		this.monitor = new Thread(new Runnable() {
+			/** {@inheritDoc} */
 			public void run() {
 				while (true) {
 					try {
 						Thread.sleep(NodeGroup.this.monitorSleep);
 					} catch (InterruptedException ie) { }
-					
+
 					double aar = NodeGroup.this.getAverageActivityRating();
-					NodeGroup.this.activitySum += aar;
-					NodeGroup.this.totalActivitySum += aar;
-					NodeGroup.this.activityDivisor++;
-					NodeGroup.this.totalActivityDiv++;
-					
+					NodeGroup.this.statusRenderer.recordActivitySample(aar);
+
 					int s = NodeGroup.this.getSleep();
 					NodeGroup.this.sleepSum += s;
 					NodeGroup.this.totalSleepSum += s;
@@ -281,10 +344,10 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				}
 			}
 		});
-		
+
 		this.monitor.setDaemon(true);
 	}
-	
+
 	/**
 	 * Starts the thread that manages the activity of this NodeGroup and the threads
 	 * for the child nodes stored by this NodeGroup.
@@ -296,10 +359,21 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		synchronized (this.nodes) {
 			nodes.forEach(Node::start);
 		}
+
+		this.relayNode.start();
 		
 		return this;
 	}
 	
+	/**
+	 * Starts the background monitor thread at the specified scheduler priority
+	 * and sampling interval. The monitor periodically records the group's
+	 * average activity and sleep metrics so that status polls can report
+	 * meaningful interval averages even when no poll has occurred recently.
+	 *
+	 * @param priority  Thread priority for the monitor (see {@link Thread#setPriority}).
+	 * @param sleep     Sampling interval in milliseconds between successive metric reads.
+	 */
 	public void startMonitor(int priority, int sleep) {
 		this.monitorSleep = sleep;
 		this.monitor.setPriority(priority);
@@ -318,6 +392,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			Iterator itr = this.nodes.iterator();
 			while (itr.hasNext()) ((Node)itr.next()).stop();
 		}
+
+		this.relayNode.stop();
 	}
 	
 	/**
@@ -331,6 +407,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return false;
 	}
 	
+	/**
+	 * Applies every entry in the supplied {@link Properties} object as a named
+	 * parameter by delegating to {@link #setParam(String, String)}. Numeric
+	 * parse errors are logged but do not abort processing of the remaining entries.
+	 *
+	 * @param p  Properties whose entries are applied as group configuration parameters.
+	 */
 	public void setParam(Properties p) {
 		Iterator itr = p.entrySet().iterator();
 		while (itr.hasNext()) {
@@ -347,68 +430,37 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}
 	}
 	
+	/**
+	 * Applies a single named configuration parameter to this group and propagates
+	 * relevant parameters to all child nodes. Recognised keys are documented in
+	 * {@link NodeGroupNodeConfig}.
+	 *
+	 * @param name   The property key.
+	 * @param value  The string value to apply.
+	 * @return {@code true} if the key was recognised and applied;
+	 *         {@code false} if it is unknown to this group.
+	 * @throws NumberFormatException  If {@code value} cannot be parsed as the
+	 *         numeric type required by the named property.
+	 */
 	public boolean setParam(String name, String value) {
-		String msg = null;
-		
-		if (name.equals("nodes.acs")) {
-			msg = "ActivitySleepC = " + value;
-			this.setActivitySleepC(Double.parseDouble(value));
-		} else if (name.equals("nodes.pasc")) {
-			msg = "PeerActivitySleepC = " + value;
-			this.setPeerActivitySleepC(Double.parseDouble(value));
-		} else if (name.equals("nodes.parp")) {
-			msg = "ParentalRelayP = " + value;
-			this.setParentalRelayP(Double.parseDouble(value));
-		} else if (name.equals("nodes.prc")) {
-			msg = "PeerRelayC = " + value;
-			this.setPeerRelayC(Double.parseDouble(value));
-		} else if (name.equals("nodes.mjp")) {
-			msg = "MinimumJobP = " + value;
-			this.setMinimumJobP(Double.parseDouble(value));
-		} else if (name.equals("nodes.mfj")) {
-			msg = "MaxFailedJobs = " + value;
-			this.setMaxFailedJobs(Integer.parseInt(value));
-		} else if (name.equals("group.aco")) {
-			msg = "ActivityOffset = " + value;
-			this.activityO = Double.parseDouble(value);
-		} else if (name.equals("group.msc")) {
-			msg = "MaxSleepC = " + value;
-			this.setMaxSleepC(Double.parseDouble(value));
-		} else if (name.equals("network.msg.verbose")) {
-			Message.verbose = Boolean.parseBoolean(value);
-		} else if (name.equals("network.msg.dverbose")) {
-			Message.dverbose = Boolean.parseBoolean(value);
-		} else if (name.equals("network.msg.sverbose")) {
-			Message.sverbose = Boolean.parseBoolean(value);
-		} else if (name.equals("group.nverbose")) {
-			this.verbose = Boolean.parseBoolean(value);
-		} else if (name.equals("group.taskjobs")) {
-			msg = "JobsPerTask = " + value;
-			this.jobsPerTask = Integer.parseInt(value);
-		} else if (name.equals("group.taskmax")) {
-			msg = "MaxTasks = " + value;
-			this.maxTasks = Integer.parseInt(value);
-		} else if (name.equals("nodes.workingDirectory")) {
-			msg = "WorkingDirectory = " + value;
-			System.setProperty("flowtree.workingDirectory", value);
-		} else if (name.equals("nodes.relay")) {
-			msg = "RelayP = " + value;
-			this.setRelayProbability(Double.parseDouble(value));
-		} else if (name.equals("nodes.wp")) {
-			msg = "WeightPeers = " + value;
-			this.setWeightPeers(Boolean.parseBoolean(value));
-		} else {
-			return false;
-		}
-		
-		if (msg != null) {
-			System.out.println("NodeGroup: " + msg);
-			if (this.activityGraph != null) this.activityGraph.addMessage(msg);
-		}
-		
-		return true;
+		return this.nodeConfig.setParam(name, value);
 	}
 	
+	/**
+	 * Retrieves a named object from this group or its child nodes.
+	 * Supported keys:
+	 * <ul>
+	 *   <li>{@code group.tasks} — returns {@link #taskList()} as a {@code String[]}.</li>
+	 *   <li>{@code group.tasks.<i>} — returns the {@link JobFactory} at index {@code i}
+	 *       from the tasks list.</li>
+	 *   <li>{@code node.<i>} — returns the child {@link Node} at index {@code i}.</li>
+	 *   <li>{@code node.<i>.<subkey>} — delegates {@link Node#getObject(String)} on
+	 *       child {@code i} using {@code subkey}.</li>
+	 * </ul>
+	 *
+	 * @param key  Hierarchical dot-separated key identifying the object.
+	 * @return The requested object, or {@code null} if the key is not recognised.
+	 */
 	// TODO Add tasks object value to documentation.
 	@Override
 	public Object getObject(String key) {
@@ -443,6 +495,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 */
 	public Node[] getNodes() { return this.nodes.toArray(new Node[0]); }
 	
+	/**
+	 * Returns a live view of the child {@link Node} collection managed by this
+	 * group. Callers must synchronize on the returned collection when iterating
+	 * while the group is running.
+	 *
+	 * @return  The mutable, live collection of child nodes.
+	 */
 	public Collection<Node> nodes() { return nodes; }
 	
 	/**
@@ -451,6 +510,14 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	@Override
 	public JobFactory getJobFactory() { return this.defaultFactory; }
 	
+	/**
+	 * Returns a snapshot of all registered tasks as strings, combining the
+	 * string representations of active {@link JobFactory} instances in
+	 * {@link #tasks} with the raw encoded strings stored in
+	 * {@link #cachedTasks}.
+	 *
+	 * @return  Array of task descriptions; never {@code null}.
+	 */
 	public String[] taskList() {
 		List l = new ArrayList();
 		
@@ -463,6 +530,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return (String[]) l.toArray(new String[0]);
 	}
 	
+	/**
+	 * Adds an encoded task string to the cached-task list if it is not already
+	 * present. Cached tasks are retained as raw strings when the corresponding
+	 * {@link JobFactory} class cannot be instantiated at reception time.
+	 *
+	 * @param task  Encoded task string to cache.
+	 */
 	public void addCachedTask(String task) {
 		if (!this.cachedTasks.contains(task)) this.cachedTasks.add(task);
 	}
@@ -470,53 +544,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	/**
 	 * @return  The Node object stored by this NodeGroup object with the lowest connectivity rating.
 	 */
-	public Node getLeastConnectedNode() {
-		Node n = null;
-		
-		synchronized (this.nodes) {
-			Iterator itr = this.nodes.iterator();
-			
-			while (itr.hasNext()) {
-				Node next = (Node)itr.next();
-				
-				if (n == null || n.getConnectivityRating() > next.getConnectivityRating())
-					n = next;
-			}
-		}
-		
-		return n;
-	}
-	
+	public Node getLeastConnectedNode() { return this.metrics.getLeastConnectedNode(); }
+
 	/**
 	 * @return  The {@link Node} with the lowest activity rating.
 	 */
-	public Node getLeastActiveNode() {
-		List<Node> l = new ArrayList<Node>();
-		double rating = -1.0;
-		
-		synchronized (this.nodes) {
-			Iterator<Node> itr = this.nodes.iterator();
-			
-			while (itr.hasNext()) {
-				Node next = itr.next();
-				double a = next.getActivityRating();
-				
-				if (rating == -1.0 || rating > a) {
-					l.clear();
-					l.add(next);
-					rating = a;
-				} else if (a == rating) {
-					l.add(next);
-				}
-			}
-		}
-		
-		if (l.size() > 0)
-			return l.get(random.nextInt(l.size()));
-		else
-			return null;
-	}
-	
+	public Node getLeastActiveNode() { return this.metrics.getLeastActiveNode(); }
+
 	/**
 	 * Finds the least active child Node whose labels satisfy the
 	 * job's required labels. Returns null if no child qualifies.
@@ -524,30 +558,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @param j the job to match
 	 * @return a suitable Node, or null
 	 */
-	public Node findNodeForJob(Job j) {
-		Map<String, String> requirements = j.getRequiredLabels();
-
-		List<Node> candidates = new ArrayList<>();
-		double rating = -1.0;
-
-		synchronized (this.nodes) {
-			for (Node n : this.nodes) {
-				if (n.satisfies(requirements)) {
-					double a = n.getActivityRating();
-					if (rating == -1.0 || rating > a) {
-						candidates.clear();
-						candidates.add(n);
-						rating = a;
-					} else if (a == rating) {
-						candidates.add(n);
-					}
-				}
-			}
-		}
-
-		if (candidates.isEmpty()) return null;
-		return candidates.get(random.nextInt(candidates.size()));
-	}
+	public Node findNodeForJob(Job j) { return this.metrics.findNodeForJob(j); }
 
 	/**
 	 * Adds the specified socket connection as a server for this NodeGroup to communicate with.
@@ -564,6 +575,20 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return this.addServer(s, false);
 	}
 	
+	/**
+	 * Wraps the supplied socket in a {@link NodeProxy} and registers it as a
+	 * server connection. The {@code server} flag controls how the NodeProxy
+	 * performs the initial handshake (client-side vs. server-side role).
+	 * Encryption and authentication errors are caught and logged; in those cases
+	 * the method returns {@code false} without throwing.
+	 *
+	 * @param s       Socket connected to the remote server.
+	 * @param server  {@code true} if this side initiated the listen socket
+	 *                (server role in the handshake).
+	 * @return {@code true} if the proxy was successfully added;
+	 *         {@code false} if a cryptographic error prevented proxy creation.
+	 * @throws IOException  If an I/O error occurs while constructing the proxy.
+	 */
 	public synchronized boolean addServer(Socket s, boolean server) throws IOException {
 		try {
 			return this.addServer(new NodeProxy(s, this.passwd, this.crypt, server));
@@ -582,6 +607,17 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return false;
 	}
 	
+	/**
+	 * Registers a fully constructed {@link NodeProxy} as a live server connection.
+	 * If the same remote endpoint already has {@link #maxDuplicateConnections}
+	 * entries the oldest duplicate is removed first. All registered
+	 * {@link NodeProxy.EventListener}s (including task factories that implement
+	 * the interface) are wired to the new proxy, and the proxy's queued messages
+	 * are flushed immediately.
+	 *
+	 * @param pr  The proxy to register.
+	 * @return Always {@code true} once the proxy is successfully registered.
+	 */
 	public synchronized boolean addServer(NodeProxy pr) {
 		this.connecting.add(pr);
 		
@@ -622,8 +658,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		
 		String msg = "Added server " + (this.servers.size() - 1);
 		this.displayMessage(msg + " - " + pr);
-		if (this.activityGraph != null)
-			this.activityGraph.addMessage(msg);
+		this.statusRenderer.addActivityMessage(msg);
 		
 		pr.flushQueue();
 		
@@ -672,6 +707,16 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		return tot;
 	}
 
+	/**
+	 * Starts a background daemon thread that monitors the server list and
+	 * reconnects to the specified host whenever no active server connections
+	 * remain. The thread waits 30 seconds between each connection attempt to
+	 * avoid tight reconnect loops. This is the mechanism used when the
+	 * {@code FLOWTREE_ROOT_HOST} environment variable is set.
+	 *
+	 * @param host  Hostname or IP address of the root server.
+	 * @param port  TCP port of the root server.
+	 */
 	public void startPersistentHost(String host, int port){
 		new Thread(() -> {
 			w: while (true) {
@@ -702,6 +747,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}, "Persistent Host Attempt").start();
 	}
 	
+	/**
+	 * Returns a snapshot of the job currently executing in each child node,
+	 * in index order. Entries are {@code null} for nodes that are idle.
+	 *
+	 * @return  Array of job descriptions (or {@code null} per idle slot),
+	 *          one element per child node.
+	 */
 	public String[] getCurrentWork() {
 		synchronized (this.nodes) {
 			String[] w = new String[this.nodes.size()];
@@ -722,6 +774,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}
 	}
 	
+	/**
+	 * Returns a snapshot array of all currently registered server proxies.
+	 * The array is a copy, so it is safe to iterate without holding the
+	 * internal lock after the call returns.
+	 *
+	 * @return  Array of active {@link NodeProxy} connections; never {@code null}.
+	 */
 	public NodeProxy[] getServers() {
 		synchronized (this.servers) {
 			return this.servers.toArray(new NodeProxy[0]);
@@ -766,7 +825,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		
 		try {
 			Message m = new Message(Message.ConnectionRequest, id, p);
-			m.setLocalNode(this.nodes.get(id));
+			Node localNode = id < this.nodes.size() ? this.nodes.get(id) : this.relayNode;
+			m.setLocalNode(localNode);
 			c = (Connection)m.send(-1);
 		} catch (SocketException se) {
 			this.displayMessage("Removing server " + p + " (" + se.getMessage() + ")");
@@ -775,70 +835,43 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			System.out.println("NodeGroup: " + ioe);
 			return null;
 		}
-		
-		// boolean b = c.confirm();
-		
+
 		return c;
 	}
 	
+	/**
+	 * Decodes an encoded task string into a fully initialised
+	 * {@link JobFactory}. The string format is:
+	 * <pre>
+	 *   &lt;ClassName&gt;&lt;ENTRY_SEP&gt;&lt;key1&gt;:=&lt;value1&gt;&lt;ENTRY_SEP&gt;...
+	 * </pre>
+	 * The first token is the fully-qualified class name; subsequent tokens are
+	 * key-value pairs applied to the factory via {@link JobFactory#set(String, String)}.
+	 * Returns {@code null} if the class cannot be found or instantiated.
+	 *
+	 * @param data  Encoded representation of the {@link JobFactory}.
+	 * @return  The constructed and configured factory, or {@code null} on failure.
+	 */
+	/**
+	 * Decodes an encoded task string into a fully initialised
+	 * {@link JobFactory}. Delegates to
+	 * {@link NodeGroupNodeConfig#createTask(String, String)}.
+	 *
+	 * @param data  Encoded representation of the {@link JobFactory}.
+	 * @return  The constructed and configured factory, or {@code null} on failure.
+	 */
 	protected JobFactory createTask(String data) {
-		int index = data.indexOf(JobFactory.ENTRY_SEPARATOR);
-		String className = data.substring(0, index);
-		
-		Class c = null;
-		JobFactory j = null;
-		
-		try {
-			c = Class.forName(className);
-			j = (JobFactory)c.newInstance();
-			
-			boolean end = false;
-
-			while (!end) {
-				data = data.substring(index + JobFactory.ENTRY_SEPARATOR.length());
-				index = data.indexOf(JobFactory.ENTRY_SEPARATOR);
-
-				while (data.charAt(index + JobFactory.ENTRY_SEPARATOR.length()) == '/' || index > 0 && data.charAt(index - 1) == '\\') {
-					index = data.indexOf(JobFactory.ENTRY_SEPARATOR, index + 1);
-				}
-
-				String s = null;
-
-				if (index <= 0) {
-					s = data;
-					end = true;
-				} else {
-					s = data.substring(0, index);
-				}
-
-				String key = s.substring(0, s.indexOf(KEY_VALUE_SEPARATOR));
-				String value = s.substring(s.indexOf(KEY_VALUE_SEPARATOR) + KEY_VALUE_SEPARATOR.length());
-
-				j.set(key, value);
-			}
-		} catch (ClassNotFoundException cnf) {
-			System.out.println("NodeGroup: Class not found: " + className);
-		} catch (ClassCastException cce) {
-			System.out.println("NodeGroup: Error casting " +
-					Optional.ofNullable(c).map(Class::getName).orElse(null) +
-					" to JobFactory");
-		} catch (Exception e) {
-			System.out.println("NodeGroup: " + e);
-		}
-		
-		return j;
+		return NodeGroupNodeConfig.createTask(data, KEY_VALUE_SEPARATOR);
 	}
 	
 	/**
 	 * Adds the specified {@link JobFactory} as a task for this {@link NodeGroup}.
-	 * 
+	 *
 	 * @param f  JobFactory to use as task.
 	 * @return  True if added, false otherwise.
 	 */
 	public boolean addTask(JobFactory f) {
-		if (this.activityGraph != null)
-			this.activityGraph.addMessage("Added task " + f.getTaskId());
-		
+		this.statusRenderer.addActivityMessage("Added task " + f.getTaskId());
 		return this.tasks.add(f);
 	}
 	
@@ -926,182 +959,247 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	
 	/**
 	 * Sets the component which will display the last status message printed by this node.
-	 * 
+	 *
 	 * @param label  JLabel component to display status messages.
 	 */
 	public void setStatusLabel(JLabel label) {
 		super.setStatusLabel(label);
-		
-		
+
 		if (this.nodes == null) return;
 		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) ((Node)itr.next()).setStatusLabel(label);
+		while (itr.hasNext()) ((Node) itr.next()).setStatusLabel(label);
 	}
-	
+
+	/**
+	 * Propagates the activity-sleep coefficient to every child node.
+	 * This coefficient scales how much a node's sleep time adapts to its
+	 * current activity rating.
+	 *
+	 * @param acs  Activity-sleep coefficient to apply to all child nodes.
+	 */
 	public void setActivitySleepC(double acs) {
 		if (this.nodes == null) return;
-		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) ((Node)itr.next()).setActivitySleepC(acs);
+		this.nodeConfig.setActivitySleepC(acs);
 	}
-	
+
+	/**
+	 * Propagates the peer-activity-sleep coefficient to every child node.
+	 * This coefficient adjusts how much a node's sleep time responds to
+	 * the activity levels of its connected peers.
+	 *
+	 * @param pacs  Peer-activity-sleep coefficient to apply to all child nodes.
+	 */
 	public void setPeerActivitySleepC(double pacs) {
 		if (this.nodes == null) return;
-		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) ((Node)itr.next()).setPeerActivitySleepC(pacs);
+		this.nodeConfig.setPeerActivitySleepC(pacs);
 	}
-	
+
+	/**
+	 * Propagates the parental-relay probability to every child node.
+	 * This probability governs how often a node relays a job upward to its
+	 * parent (this group) rather than to a peer.
+	 *
+	 * @param parp  Parental relay probability in the range [0.0, 1.0].
+	 */
 	public void setParentalRelayP(double parp) {
 		if (this.nodes == null) return;
-		Iterator<Node> itr = this.nodes.iterator();
-		while (itr.hasNext()) itr.next().setParentalRelayP(parp);
+		this.nodeConfig.setParentalRelayP(parp);
 	}
-	
+
 	/**
-	 * Sets the peer relay coefficient for each child of this node group
-	 * to the specified double value.
+	 * Propagates the peer relay coefficient to every child node.
+	 *
+	 * @param prc  Peer relay coefficient to apply to all child nodes.
 	 */
 	public void setPeerRelayC(double prc) {
 		if (this.nodes == null) return;
-		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) ((Node)itr.next()).setPeerRelayC(prc);
+		this.nodeConfig.setPeerRelayC(prc);
 	}
-	
+
+	/**
+	 * Propagates the minimum-job probability to every child node.
+	 * This is the lower-bound probability used when deciding whether to
+	 * execute or relay the next job.
+	 *
+	 * @param mjp  Minimum job-execution probability in the range [0.0, 1.0].
+	 */
 	public void setMinimumJobP(double mjp) {
 		if (this.nodes == null) return;
-		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) ((Node)itr.next()).setMinimumJobP(mjp);
+		this.nodeConfig.setMinimumJobP(mjp);
 	}
-	
+
 	/**
 	 * Sets the max number of failed jobs to be stored by each child
 	 * of this node group.
+	 *
+	 * @param mfj  Maximum number of failed jobs to retain per child node.
 	 */
 	public void setMaxFailedJobs(int mfj) {
 		if (this.nodes == null) return;
-		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) ((Node)itr.next()).setMaxFailedJobs(mfj);
+		this.nodeConfig.setMaxFailedJobs(mfj);
 	}
-	
+
 	/**
 	 * Sets the relay probability (0.0 - 1.0) for each child of this node group
 	 * to the specified double value.
+	 *
+	 * @param r  Relay probability in the range [0.0, 1.0].
 	 */
 	public void setRelayProbability(double r) {
 		if (this.nodes == null) return;
-		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) ((Node)itr.next()).setRelayProbability(r);
+		this.nodeConfig.setRelayProbability(r);
 	}
-	
+
 	/**
+	 * Propagates the peer-weighting flag to every child node.
+	 *
 	 * @param w  True if peers to relay should be chosen using weighted probability.
 	 */
 	public void setWeightPeers(boolean w) {
 		if (this.nodes == null) return;
-		
-		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) ((Node)itr.next()).setWeightPeers(w);
+		this.nodeConfig.setWeightPeers(w);
 	}
-	
+
+	/**
+	 * Sets the activity-offset bias applied to the group's activity rating.
+	 * A negative value shifts the effective baseline, reducing the reported
+	 * activity when the group is lightly loaded.
+	 *
+	 * @param o  The offset to apply to the activity rating.
+	 */
+	void setActivityOffset(double o) { this.activityO = o; }
+
+	/**
+	 * Sets the number of {@link io.flowtree.job.Job} objects requested from
+	 * each factory per run-loop cycle.
+	 *
+	 * @param n  Jobs to request per factory per cycle.
+	 */
+	void setJobsPerTask(int n) { this.jobsPerTask = n; }
+
+	/**
+	 * Sets the maximum number of task factories processed per run-loop cycle.
+	 *
+	 * @param n  Upper bound on factory iterations per cycle.
+	 */
+	void setMaxTasks(int n) { this.maxTasks = n; }
+
+	/**
+	 * Returns the {@link NodeGroupStatusRenderer} that builds HTML status pages
+	 * and maintains the activity time-series charts for this group.
+	 *
+	 * @return the status renderer; never {@code null}
+	 */
+	NodeGroupStatusRenderer getStatusRenderer() { return this.statusRenderer; }
+
+	/**
+	 * Routes a job directly from the message handler without going through the
+	 * full {@link #run()} dispatch path.  Used by {@link NodeGroupMessageHandler}
+	 * to forward inbound {@link io.flowtree.msg.Message#Job} messages.
+	 *
+	 * @param j  The job to route; must not be {@code null}.
+	 */
+	void routeJobFromHandler(Job j) { routeJob(j); }
+
+	/**
+	 * Returns the dedicated relay {@link Node} that forwards jobs unable to be
+	 * satisfied by any local worker node.
+	 *
+	 * @return  The relay node; never {@code null} after construction.
+	 */
+	Node getRelayNode() { return this.relayNode; }
+
+	/**
+	 * Returns a snapshot copy of the active task-factory list, safe to iterate
+	 * without holding the internal lock.  Used by {@link NodeGroupStatusRenderer}.
+	 *
+	 * @return  Copy of the current task-factory list; never {@code null}.
+	 */
+	List<JobFactory> getTasksCopy() {
+		synchronized (this.tasks) {
+			return new ArrayList<>(this.tasks);
+		}
+	}
+
+	/**
+	 * Returns the sleep-time trend chart for this group, used by the status
+	 * renderer to record sleep samples.
+	 *
+	 * @return  The sleep chart, or {@code null} if not initialised.
+	 */
+	Chart getSleepGraph() { return super.sleepGraph; }
+
+	/**
+	 * Returns the current interval sleep-time accumulator for the status renderer.
+	 *
+	 * @return  Sum of sleep values sampled in the current interval.
+	 */
+	double getSleepSum() { return super.sleepSum; }
+
+	/**
+	 * Returns the sample count for the current sleep-time interval.
+	 *
+	 * @return  Number of samples in the current interval.
+	 */
+	int getSleepDiv() { return super.sleepDiv; }
+
+	/**
+	 * Resets the per-interval sleep-time metrics after the renderer has consumed
+	 * them to record a chart entry.
+	 */
+	void resetSleepMetrics() {
+		super.sleepSum = 0.0;
+		super.sleepDiv = 0;
+	}
+
 	/**
 	 * @return  The number of jobs completed by all the children of this node.
 	 */
-	public int getCompletedJobCount() {
-		int t = 0;
-		
-		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) t += ((Node)itr.next()).getCompletedJobCount();
-		
-		return t;
-	}
-	
+	public int getCompletedJobCount() { return this.metrics.getCompletedJobCount(); }
+
 	/**
 	 * @return  The total time the nodes in this node group have worked, measured in msecs.
 	 */
-	public double getTimeWorked() {
-		double t = 0;
-		
-		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) t += ((Node)itr.next()).getTimeWorked();
-		
-		return t - (t % 1);
-	}
-	
-	public double getTimeCommunicated() {
-		double t = 0;
-		
-		Iterator itr = this.nodes.iterator();
-		while (itr.hasNext()) t += ((Node)itr.next()).getTimeCommunicated();
-		
-		return t - (t % 1);
-	}
-	
+	public double getTimeWorked() { return this.metrics.getTimeWorked(); }
+
+	/**
+	 * Returns the total time all child nodes in this group have spent on
+	 * network communication, measured in milliseconds (truncated to whole
+	 * milliseconds).
+	 *
+	 * @return  Total communication time in milliseconds across all child nodes.
+	 */
+	public double getTimeCommunicated() { return this.metrics.getTimeCommunicated(); }
+
 	/**
 	 * @return  The average time for a node in this node group to complete a job.
 	 *          (-1.0 if no jobs have been completed).
 	 */
-	public double getAverageJobTime() {
-		Iterator itr = this.nodes.iterator();
-		
-		int i = 0;
-		double tot = 0.0;
-		
-		while (itr.hasNext()) {
-			Node n = (Node) itr.next();
-			
-			tot += n.getTimeWorked();
-			i += n.getCompletedJobCount();
-		}
-		
-		if (i == 0) {
-			return -1.0;
-		} else {
-			return tot / i;
-		}
-	}
-	
+	public double getAverageJobTime() { return this.metrics.getAverageJobTime(); }
+
 	/**
 	 * @return  The average connectivity rating for the nodes in this node group.
 	 */
-	public double getAverageConnectivityRating() {
-		Iterator itr = this.nodes.iterator();
-		
-		int i = 0;
-		double tot = 0.0;
-		
-		while (itr.hasNext()) {
-			tot += ((Node)itr.next()).getConnectivityRating();
-			i++;
-		}
-		
-		if (i == 0)
-			return 0.0;
-		else
-			return tot / i;
-	}
-	
+	public double getAverageConnectivityRating() { return this.metrics.getAverageConnectivityRating(); }
+
 	/**
 	 * @return  The value of this.getAverageActivityRating.
 	 */
 	@Override
 	public double getActivityRating() { return this.getAverageActivityRating(); }
-	
+
+	/**
+	 * Computes the mean activity rating across all child nodes, with
+	 * {@link #activityO} added as a bias offset.  A negative offset means this
+	 * group always appears slightly less busy than the raw average would
+	 * suggest, making it more attractive as a job recipient.
+	 *
+	 * @return  Biased average activity rating; 0.0 if no child nodes exist.
+	 */
 	public double getAverageActivityRating() {
-		Iterator itr = this.nodes.iterator();
-		
-		int i = 0;
-		double tot = 0.0;
-		
-		while (itr.hasNext()) {
-			tot += ((Node)itr.next()).getActivityRating();
-			i++;
-		}
-		
-		if (i == 0)
-			return 0.0;
-		else
-			return tot / i + this.activityO;
+		return this.metrics.getAverageActivityRating(this.activityO);
 	}
-	
+
 	/**
 	 * @return  The ratio of the average activity rating reported by known servers to
 	 *          the average node's activity rating.
@@ -1109,191 +1207,53 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	public double getPeerActivityRatio() {
 		return this.getAveragePeerActivityRating() / this.getAverageActivityRating();
 	}
-	
+
 	/**
 	 * @return  The average activity rating reported by the servers connected
 	 *          to this node group. (0.0 if no peers have reported an activity
 	 *          rating measurement).
 	 */
-	public double getAveragePeerActivityRating() {
-		NodeProxy[] p = this.getServers();
-		
-		double sum = 0.0;
-		int peers = 0;
-		
-		for (int i = 0; i < p.length; i++) {
-			double j = p[i].getActivityRating();
-			if (j > 0) {
-				sum += j;
-				peers++;
-			}
-		}
-		
-		if (peers > 0) {
-			return sum / peers;
-		} else {
-			return 0.0;
-		}
-	}
+	public double getAveragePeerActivityRating() { return NodeGroupMetrics.getAveragePeerActivityRating(this.getServers()); }
 	
 	/**
 	 * Prints the status of this network node group to standard out.
 	 */
-	public void printStatus() { this.printStatus(System.out); }
-	
+	public void printStatus() { this.statusRenderer.printStatus(System.out); }
+
 	/**
 	 * Prints the status of this network node group using the specified PrintStream object.
-	 * 
+	 *
 	 * @param out  PrintStream to use.
 	 */
-	public void printStatus(PrintStream out) {
-		out.println("<html>");
-		out.println("<head><title>");
-		out.println("Node Group Status");
-		out.println("</title></head><body>");
-		out.println(this.getStatus("<br>\n"));
-		out.println("</body></html>");
-		
-		// HtmlFormat.printPage(out, "Node Group Status", this.getStatus("<br>\n"));
-	}
-	
+	public void printStatus(PrintStream out) { this.statusRenderer.printStatus(out); }
+
 	/**
-	 * @return  A String containing status information for this network node group.
-	 *          The string is formatted with HTML.
+	 * Returns a string containing status information for this network node group,
+	 * formatted as HTML. Delegates to {@link NodeGroupStatusRenderer#getStatus(String)}.
+	 *
+	 * @param nl  Newline token to use between sections (typically {@code "<br>\n"}).
+	 * @return    The rendered HTML status string.
 	 */
-	public String getStatus(String nl) {
-		if (Message.verbose) System.out.println("NodeGroup: Starting status check.");
-		
-		StringBuffer buf = new StringBuffer();
-		
-		Date now = new Date();
-		
-		buf.append(now + nl + nl);
-		
-		buf.append("<center><h1>Network Node Group Status</h1>");
-		buf.append("<p><h3>" + this + "</h3>" + nl);
-		buf.append("<b>Sleep time:</b> " + Node.formatTime(super.getSleep()) + "</p></center>" + nl);
-		
-		NodeProxy[] s = this.getServers();
-		if (Message.verbose) System.out.println("NodeGroup.getStatus: Got server list.");
-		
-		buf.append("<table><tr><td><h3>Servers</h3></td><td><h3>TaskList</h3></td></tr><tr>");
-		
-		buf.append("<td>");
-		
-		for (int i = 0; i < s.length; i++)
-			buf.append("\t" + s[i].toString(true) + nl);
-		
-		buf.append("</td><td>");
-		
-		Iterator itr;
-		
-		itr = ((List)((ArrayList)this.tasks).clone()).iterator();
-		while (itr.hasNext())
-			buf.append("\t" + ((JobFactory)itr.next()).getName() + nl);
-		
-		buf.append("</td></tr></table>");
-		
-		itr = this.nodes.iterator();
-		while (itr.hasNext()) buf.append(((Node)itr.next()).getStatus(nl));
-		
-		buf.append(nl);
-		
-		if (this.activityGraph != null) {
-			double a = 0.0;
-			
-			if (this.activityDivisor > 0) {
-				a = this.activitySum / this.activityDivisor;
-				this.activitySum = 0.0;
-				this.activityDivisor = 0;
-			} else {
-				a = this.getActivityRating();
-			}
-			
-			this.activityGraph.addEntry(a);
-		}
-		
-		if (this.sleepGraph != null) {
-			double sl = 0.0;
-			
-			if (this.sleepDiv > 0) {
-				sl = this.sleepSum / this.sleepDiv;
-				this.sleepSum = 0.0;
-				this.sleepDiv = 0;
-			} else {
-				sl = this.getSleep();
-			}
-			
-			this.sleepGraph.addEntry(sl);
-		}
-		
-		if (this.activityGraph != null) {
-			buf.append("<b>Activity Rating</b>" + nl);
-			buf.append("Running Total Average = ");
-			buf.append(this.totalActivitySum / this.totalActivityDiv);
-			buf.append(nl);
-			buf.append("<pre><font size=\"-2\">" + nl);
-			this.activityGraph.print(buf);
-			buf.append("</font></pre>" + nl);
-		}
-		
-		if (Message.verbose) System.out.println("NodeGroup: Getting dbs info...");
-		
-		OutputServer dbs = OutputServer.getCurrentServer();
-		if (dbs != null) {
-			if (this.tpLast % this.tpFreq == 0) {
-				this.throughputGraph.addEntry(dbs.getThroughput());
-				this.tpLast = 1;
-			} else {
-				this.tpLast++;
-			}
-			
-			synchronized (dbs) {
-				buf.append("<b>DBS Throughput</b>" + nl);
-				buf.append("Running Total Average = ");
-				buf.append(dFormat.format(dbs.getTotalAverageThroughput()));
-				buf.append(" jobs per minute.");
-				buf.append(nl);
-				buf.append("Average Job Time = ");
-				buf.append(dFormat.format(dbs.getTotalAverageJobTime() / 60000.0));
-				buf.append(" minutes per job.");
-				buf.append(nl);
-				buf.append("<pre><font size=\"-2\">" + nl);
-				this.throughputGraph.print(buf);
-				buf.append("</font></pre>" + nl);
-			}
-		}
-		
-		if (Message.verbose) System.out.println("NodeGroup: Returning status check.");
-		
-		return buf.toString();
-	}
-	
+	public String getStatus(String nl) { return this.statusRenderer.getStatus(nl); }
+
 	/**
 	 * Stores the elements in the activity rating graph maintained by this node group.
 	 * The data will be output by the Graph class (net.sf.j3d.util) and the format should
 	 * be newline separated decimal values, with each new line representing a uniform
 	 * increment of time.
-	 * 
+	 *
 	 * @param f  File representing location to store activity rating data.
 	 * @return  True if the file was written, false if no activity data is being collected.
 	 * @throws IOException  If an IO error occurs writing the file.
 	 */
-	public boolean storeActivityGraph(File f) throws IOException {
-		if (this.activityGraph != null) {
-			this.activityGraph.storeValues(f);
-			return true;
-		}
-		
-		return false;
-	}
-	
+	public boolean storeActivityGraph(File f) throws IOException { return this.statusRenderer.storeActivityGraph(f); }
+
 	/**
 	 * Stores the elements in the sleep time graph maintained by this node group.
 	 * The data will be output by the Graph class (net.sf.j3d.util) and the format should
 	 * be newline separated integer values, with each new line representing a uniform
 	 * increment of time.
-	 * 
+	 *
 	 * @param f  File representing location to store sleep time data.
 	 * @return  True if the file was written, false if no sleep time data is being collected.
 	 * @throws IOException  If an IO error occurs writing the file.
@@ -1303,10 +1263,24 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			this.sleepGraph.storeValues(f);
 			return true;
 		}
-		
+
 		return false;
 	}
 	
+	/**
+	 * Main run loop for the NodeGroup management thread. Each iteration:
+	 * <ol>
+	 *   <li>Calls {@link #iteration(Node)} to adjust the group's sleep time and
+	 *       notify {@link Node.ActivityListener}s.</li>
+	 *   <li>Sleeps for the computed interval (longer when isolated).</li>
+	 *   <li>Detects network isolation and invokes
+	 *       {@link #becameIsolated()} after 200 consecutive isolated cycles.</li>
+	 *   <li>Calls {@link #nextJob()} on the default factory and routes any
+	 *       resulting job via {@link #routeJob(Job)}.</li>
+	 *   <li>Polls all registered task {@link JobFactory}s, routing their jobs
+	 *       and removing completed factories.</li>
+	 * </ol>
+	 */
 	public void run() {
 		while (!this.stop) {
 			this.iteration(this);
@@ -1320,12 +1294,6 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 					Thread.sleep(sleep);
 				else
 					Thread.sleep(sleep * 10L);
-				
-//				double aar = this.getAverageActivityRating();
-//				this.activitySum += aar;
-//				this.totalActivitySum += aar;
-//				this.activityDivisor++;
-//				this.totalActivityDiv++;
 			} catch (InterruptedException ie) {
 				System.out.println("NodeGroup: " + ie);
 			}
@@ -1363,8 +1331,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			}
 			
 			if (j != null) {
-				Node target = this.getLeastActiveNode();
-				if (target != null) target.addJob(j);
+				routeJob(j);
 			}
 
 			addJobs(defaultFactory);
@@ -1383,6 +1350,28 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		}
 	}
 
+	/**
+	 * Routes a job to the most appropriate child {@link Node}. If a Node exists
+	 * whose labels satisfy the job's requirements it receives the job directly.
+	 * Otherwise the job is queued on the relay Node so the activity thread can
+	 * forward it to a capable peer.
+	 *
+	 * @param j the job to route
+	 */
+	private void routeJob(Job j) {
+		Node target = findNodeForJob(j);
+		if (target == null) target = this.relayNode;
+		target.addJob(j);
+	}
+
+	/**
+	 * Requests up to {@code jobsPerTask * f.getPriority()} jobs from the given
+	 * {@link JobFactory} and routes each non-null result via
+	 * {@link #routeJob(Job)}. Runtime exceptions thrown by the factory are
+	 * caught and logged so a misbehaving factory cannot abort the run loop.
+	 *
+	 * @param f  The factory from which jobs are requested.
+	 */
 	private void addJobs(JobFactory f) {
 		double t = this.jobsPerTask * f.getPriority();
 
@@ -1404,12 +1393,18 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				if (this.verbose)
 					System.out.println("NodeGroup: " + f + "  nextJob = " + j);
 
-				Node n = this.getLeastActiveNode();
-				if (n != null) n.addJob(j);
+				routeJob(j);
 			}
 		}
 	}
 	
+	/**
+	 * Registers an external listener that will be notified when a server
+	 * connection is removed from this group. Useful for components that
+	 * maintain state tied to specific {@link NodeProxy} instances.
+	 *
+	 * @param l  Listener to register.
+	 */
 	public void addProxyEventListener(NodeProxy.EventListener l) { this.plisteners.add(l); }
 	
 	/**
@@ -1427,194 +1422,61 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	public int disconnect(NodeProxy p) { return this.removeServer(p); }
 	
 	/**
-	 * @see NodeProxy.EventListener#recievedMessage(Message, int)
+	 * Dispatches an incoming {@link Message} to the appropriate handler via
+	 * {@link NodeGroupMessageHandler}. Only messages addressed to receiver
+	 * {@code -1} (the group itself) are processed; all others return {@code false}.
+	 *
+	 * @param m         The received message.
+	 * @param receiver  ID of the intended recipient; must be {@code -1} for this
+	 *                  method to handle the message.
+	 * @return {@code true} if the message was handled; {@code false} otherwise.
 	 */
 	public boolean recievedMessage(Message m, int receiver) {
-		if (receiver == -1) {
-			NodeProxy p = m.getNodeProxy();
-			
-			int type = m.getType();
-			int remoteId = m.getSender();
-			
-			if (type == Message.Job) {
-				System.out.println("NodeGroup: Received job. Data = " + m.getData());
-				Node target = this.getLeastActiveNode();
-				if (target != null) {
-					target.addJob(this.defaultFactory.createJob(m.getData()));
-				} else {
-					System.out.println("NodeGroup: No local nodes available, ignoring received job");
-				}
-			} else if (type == Message.StringMessage) {
-				System.out.println("Message from " + p.toString() + ": " + m.getData());
-			} else if (type == Message.ConnectionRequest) {
-				try {
-					Node n = this.getLeastConnectedNode();
-					Connection c;
-					
-					if (n != null && n.getPeers().length < n.getMaxPeers() && !n.isConnected(p)) {
-						System.out.println("NodeGroup: Constructing connection...");
-						c = new Connection(n, p, remoteId);
-					} else {
-						c = null;
-					}
-					
-					if (c != null && n.connect(c)) {
-						Message response = new Message(Message.ConnectionConfirmation, n.getId(), p);
-						response.setString("true");
-						response.send(remoteId);
-					} else {
-					//	Message response = new Message(-1, -1, p);
-					//	response.setString("false");
-					//	response.send(remoteId);
-					}
-				} catch (IOException ioe) {
-					System.out.println("NodeGroup: " + ioe);
-				}
-			} else if (type == Message.ConnectionConfirmation) {
-				if (m.getData() == null) {
-					try {
-						Message response = new Message(Message.ConnectionConfirmation, -1, p);
-						response.setString("true");
-						response.send(remoteId);
-					} catch (IOException ioe) {
-						System.out.println("NodeGroup: " + ioe);
-					}
-				}
-			} else if (type == Message.ServerStatus) {
-				String[] s = m.getData().split(";");
-				
-				boolean h = false;
-				
-				for (int i = 0; i < s.length; i++) {
-					int index = s[i].indexOf(JobFactory.ENTRY_SEPARATOR);
-					String v = "";
-					if (index > 0 && index < s[i].length() - 1) v = s[i].substring(index + JobFactory.ENTRY_SEPARATOR.length());
-					
-					try {
-						if (s[i].startsWith("jobtime" + JobFactory.ENTRY_SEPARATOR)) {
-							p.setJobTime(Double.parseDouble(v));
-							h = true;
-						} else if (s[i].startsWith("activity" + JobFactory.ENTRY_SEPARATOR)) {
-							p.setActivityRating(Double.parseDouble(v));
-							h = true;
-						} else {
-							System.out.println("NodeGroup: Unknown status type '" + s[i] + "'");
-						}
-					} catch (NumberFormatException nfe) {
-						System.out.println("NodeGroup: Could not parse status item '" +
-											s[i] + "' (" + nfe.getMessage() + ")");
-					}
-				}
-
-				return h;
-			} else if (type == Message.ServerStatusQuery) {
-				if (m.getData().equals("peers")) {
-					try {
-						Message response = new Message(Message.ServerStatus, -1, p);
-						
-						NodeProxy[] svs = this.getServers();
-						
-						StringBuffer b = new StringBuffer();
-						b.append("peers:");
-						boolean f = false;
-						int j = 0;
-						for (int i = 0; i < svs.length; i++) {
-							if (svs[i] != p) {
-								if (f) {
-									b.append("," + svs[i]);
-								} else {
-									b.append(svs[i]);
-									f = true;
-								}
-							} else {
-								j++;
-							}
-						}
-						
-						if (Message.verbose)
-							System.out.println("NodeGroup: Reported " + (svs.length - j) +
-												" peers for status query (Excluded " + p + ").");
-						
-						response.setString(b.toString());
-						response.send(remoteId);
-					} catch (IOException ioe) {
-						System.out.println("NodeGroup: Error sending server status (" +
-											ioe.getMessage() + ")");
-					}
-				}
-			} else if (type == Message.ResourceRequest) {
-				try {
-					Message response = new Message(Message.ResourceUri, -1, p);
-					
-					Server s = OutputServer.getCurrentServer().getNodeServer();
-					String r = s.getResourceUri(m.getData());
-					System.out.println("NodeGroup: Sending resource uri (" + r + ")");
-					response.setString(r);
-					response.send(remoteId);
-				} catch (IOException ioe) {
-					System.out.println("NodeGroup: Error sending resource uri (" +
-										ioe.getMessage() + ")");
-				}
-			} else if (type == Message.Task) {
-				if (m.getData() != null)
-					this.addTask(m.getData());
-				else
-					this.displayMessage("Received null task.");
-			} else if (type == Message.Kill) {
-				int i = m.getData().indexOf(JobFactory.ENTRY_SEPARATOR);
-				String task = m.getData().substring(0, i);
-				int relay = Integer.parseInt(m.getData().substring(i + JobFactory.ENTRY_SEPARATOR.length()));
-				
-				this.sendKill(task, relay--);
-			} else {
-				return false;
-			}
-			
-			return true;
-		} else {
-			return false;
-		}
+		return this.messageHandler.recievedMessage(m, receiver);
 	}
-	
+
+	/**
+	 * Returns a human-readable summary of this group, listing the number of
+	 * child nodes, active server connections, and queued jobs.
+	 *
+	 * @return  A descriptive string such as
+	 *          {@code "Network Node Group: 2 children and 1 server connection."}.
+	 */
 	public String toString() {
 		StringBuffer b = new StringBuffer();
 		b.append("Network Node Group: ");
-		
-		int nodes = 0;
-		
-		if (this.nodes != null) nodes = this.nodes.size();
-		
+		int nodes = this.nodes != null ? this.nodes.size() : 0;
 		if (nodes > 0) {
 			b.append(nodes);
 			b.append(" child");
 			if (nodes > 1) b.append("ren");
 		}
-		
-		int servers = 0;
-		
-		if (this.servers != null) servers = this.servers.size();
-		
+		int servers = this.servers != null ? this.servers.size() : 0;
 		if (servers > 0) {
 			if (nodes > 0) b.append(" and ");
 			b.append(servers);
 			b.append(" server connection");
 			if (servers > 1) b.append("s");
 		}
-		
 		b.append(".");
-		
-		int jobs = 0;
-		if (this.jobs != null) jobs = this.jobs.size();
-		
+		int jobs = this.jobs != null ? this.jobs.size() : 0;
 		if (jobs > 0) {
 			b.append(" ");
 			b.append(jobs);
 			b.append(" jobs in queue.");
 		}
-		
 		return b.toString();
 	}
 	
+	/**
+	 * Called at the start of each run-loop cycle. Adjusts the node's sleep
+	 * time proportionally to its current activity rating, then notifies all
+	 * registered {@link Node.ActivityListener}s that an iteration has occurred.
+	 * This is the primary feedback mechanism that lets the group self-throttle
+	 * under load.
+	 *
+	 * @param n  The node (always {@code this} group) whose sleep time is updated.
+	 */
 	public void iteration(Node n) {
 		n.setSleep((int) (n.getActivityRating() * n.getSleep()));
 		

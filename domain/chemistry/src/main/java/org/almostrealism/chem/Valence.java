@@ -26,14 +26,31 @@ import java.util.Set;
  * @author  Michael Murray
  */
 public class Valence {
+	/** The sampled valence electron groups, one per constructed atom instance. */
     private List<Electrons> atoms;
 
+	/** Default constructor for bean deserialization. */
     public Valence() { }
 
+	/**
+	 * Constructs a valence model from the given atomic material with a single sample.
+	 *
+	 * @param a  the atomic material whose valence shell is modeled
+	 */
     public Valence(Atomic a) {
         this(a, 1);
     }
 
+	/**
+	 * Constructs a valence model by sampling the given atomic material the specified number of times.
+	 * <p>
+	 * Each sample constructs a new {@link Atom} via {@link Atomic#construct()} and extracts its
+	 * valence-shell electrons. Multiple samples improve statistical accuracy of absorption predictions.
+	 * </p>
+	 *
+	 * @param a        the atomic material whose valence shell is modeled
+	 * @param samples  number of atom samples to create
+	 */
     public Valence(Atomic a, int samples) {
         atoms = new ArrayList<>();
 
@@ -46,6 +63,17 @@ public class Valence {
 	public List<Electrons> getAtoms() { return atoms; }
 	public void setAtoms(List<Electrons> atoms) { this.atoms = atoms; }
 
+	/**
+	 * Attempts to absorb the given photon into one of the sampled electron groups.
+	 * <p>
+	 * Each atom sample is tried in random order. The first sample that successfully absorbs
+	 * the photon's energy causes this method to return {@code true}. If no sample absorbs the
+	 * photon, returns {@code false}.
+	 * </p>
+	 *
+	 * @param p  the photon to absorb
+	 * @return   {@code true} if the photon was absorbed by a valence electron group
+	 */
 	public boolean absorb(Photon p) {
     	Set<Integer> excludes = new HashSet<>();
 
@@ -63,6 +91,16 @@ public class Valence {
 		return false;
 	}
 
+	/**
+	 * Emits a photon from the first electron group that has energy to release.
+	 * <p>
+	 * Iterates through all sampled electron groups and returns a photon for the first
+	 * group that returns a positive emission energy. Returns {@code null} if no group
+	 * is ready to emit.
+	 * </p>
+	 *
+	 * @return  the emitted photon, or {@code null} if no emission is available
+	 */
 	public Photon emit() {
     	for (Electrons e : atoms) {
     		double eV = e.emit();

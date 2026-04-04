@@ -285,24 +285,58 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 		return new PackedCollectionPad(shape, position, collection);
 	}
 
+	/**
+	 * Applies a mapping function independently to each element of the collection,
+	 * using the collection's natural element shape (last dimension).
+	 *
+	 * @param collection the collection to map over
+	 * @param mapper     a function that receives each element as a producer and returns the mapped result
+	 * @return a computation producing the mapped collection
+	 */
 	default CollectionProducerComputation map(
 			Producer<?> collection,
 			Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return new PackedCollectionMap(collection, mapper);
 	}
 
+	/**
+	 * Applies a mapping function independently to each item of the collection,
+	 * where each item has the specified shape.
+	 *
+	 * @param itemShape  the shape of each item within the collection
+	 * @param collection the collection to map over
+	 * @param mapper     a function that receives each item as a producer and returns the mapped result
+	 * @return a computation producing the mapped collection
+	 */
 	default CollectionProducerComputation map(
 			TraversalPolicy itemShape, Producer<?> collection,
 			Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return new PackedCollectionMap(shape(collection).replace(itemShape), collection, mapper);
 	}
 
+	/**
+	 * Reduces the entire collection to a scalar (shape 1) by applying the given mapper
+	 * to the entire collection as a single item. This is equivalent to {@code map(shape(1), collection, mapper)}.
+	 *
+	 * @param collection the collection to reduce
+	 * @param mapper     a function that maps the entire collection to a single-element result
+	 * @return a computation producing the reduced scalar result
+	 */
 	default CollectionProducerComputation reduce(
 			Producer<?> collection,
 			Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		return map(shape(1), collection, mapper);
 	}
 
+	/**
+	 * Computes the cumulative product of the elements of the input collection.
+	 * If {@code pad} is true, the result is shifted by one position with 1.0 prepended
+	 * (making element i the product of input elements 0 through i-1).
+	 *
+	 * @param input the input collection
+	 * @param pad   if true, prepend 1.0 and compute the exclusive cumulative product
+	 * @return a producer for the cumulative product collection
+	 */
 	default CollectionProducer cumulativeProduct(Producer<PackedCollection> input, boolean pad) {
 		return func(shape(input), inputs -> args -> {
 			PackedCollection in = inputs[0];

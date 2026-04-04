@@ -69,7 +69,10 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal {
+	/** The internal buffer that accumulates pushed values between ticks. */
 	private final T cachedValue;
+
+	/** The snapshot of {@link #cachedValue} forwarded downstream when {@link #tick()} is called. */
 	private final T outValue;
 
 	/**

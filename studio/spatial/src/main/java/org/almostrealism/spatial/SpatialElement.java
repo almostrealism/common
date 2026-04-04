@@ -29,6 +29,7 @@ import org.almostrealism.algebra.Vector;
  * @see TemporalSpatialContext
  */
 public class SpatialElement implements Spatial {
+	/** The 3D position of this element in the spatial visualization system. */
 	private Vector position;
 
 	/**

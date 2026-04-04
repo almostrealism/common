@@ -24,26 +24,74 @@ import io.almostrealism.expression.StaticReference;
 import java.util.Objects;
 import java.util.OptionalLong;
 
+/**
+ * A named {@link Index} with an optional numeric limit (exclusive upper bound).
+ *
+ * <p>{@code DefaultIndex} is a concrete index variable that can represent any iteration
+ * dimension in a kernel computation. It extends {@link StaticReference} so it can be used
+ * directly as an {@link io.almostrealism.expression.Expression} in generated code.</p>
+ *
+ * <p>The limit (if set) defines the exclusive upper bound of valid index values.
+ * The {@link #upperBound} is {@code limit - 1} when the limit is present.</p>
+ *
+ * @see Index
+ * @see IndexChild
+ * @see io.almostrealism.kernel.KernelIndex
+ */
 public class DefaultIndex extends StaticReference<Integer> implements Index {
+	/** The exclusive upper bound of this index, or empty if unbounded. */
 	private OptionalLong limit;
 
+	/**
+	 * Creates an unbounded index with the given name.
+	 *
+	 * @param name the index variable name
+	 */
 	public DefaultIndex(String name) {
 		this(name, null);
 	}
 
+	/**
+	 * Creates a bounded index with the given name and integer limit.
+	 *
+	 * @param name the index variable name
+	 * @param limit the exclusive upper bound (number of valid values)
+	 */
 	public DefaultIndex(String name, int limit) {
 		this(name, (long) limit);
 	}
 
+	/**
+	 * Creates a bounded index with the given name and long limit, or an unbounded index if limit is {@code null}.
+	 *
+	 * @param name the index variable name
+	 * @param limit the exclusive upper bound, or {@code null} for no limit
+	 */
 	public DefaultIndex(String name, Long limit) {
 		super(Integer.class, name);
 		this.limit = limit == null ? OptionalLong.empty() : OptionalLong.of(limit);
 	}
 
+	/**
+	 * Sets the limit (exclusive upper bound) for this index.
+	 *
+	 * @param limit the new limit as an {@code int}
+	 */
 	public void setLimit(int limit) { this.limit = OptionalLong.of(limit); }
 
+	/**
+	 * Sets the limit (exclusive upper bound) for this index.
+	 *
+	 * @param limit the new limit as a {@code long}
+	 */
 	public void setLimit(long limit) { this.limit = OptionalLong.of(limit); }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns the configured limit if present; otherwise falls back to computing it from
+	 * the upper bound.
+	 */
 	@Override
 	public OptionalLong getLimit() {
 		if (limit.isPresent()) {
@@ -76,6 +124,12 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 		return indexValues.getIndex(getName());
 	}
 
+	/**
+	 * Returns a new {@code DefaultIndex} with the same name but the given limit.
+	 *
+	 * @param limit the new exclusive upper bound
+	 * @return a new bounded index
+	 */
 	public DefaultIndex withLimit(long limit) {
 		return new DefaultIndex(getName(), limit);
 	}

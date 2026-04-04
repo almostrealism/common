@@ -65,13 +65,22 @@ import java.util.function.Supplier;
  */
 public class Variable<T, V extends Variable<T, ?>>
 		implements Nameable, Delegated<V>, Describable, ConsoleFeatures {
+	/** The name of this variable as it appears in generated code. */
 	private String name;
+
+	/** The physical scope that determines the memory allocation strategy for this variable. */
 	private PhysicalScope physicalScope;
+
+	/** A hint used to order this variable relative to others during code generation. */
 	private int sortHint;
 
+	/** The Java class representing the type of data this variable holds. */
 	private Class<?> type;
+
+	/** An optional supplier that produces evaluable values for this variable. */
 	private Supplier<Evaluable<? extends T>> producer;
 
+	/** An optional delegate variable to which operations are forwarded. */
 	private V delegate;
 
 	/**
@@ -110,6 +119,7 @@ public class Variable<T, V extends Variable<T, ?>>
 		setProducer(producer);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void setName(String n) { this.name = n; }
 
@@ -190,6 +200,11 @@ public class Variable<T, V extends Variable<T, ?>>
 	 */
 	public int getSortHint() { return sortHint; }
 
+	/**
+	 * Sets the producer function for this variable.
+	 *
+	 * @param producer the supplier that produces evaluable values; may be {@code null}
+	 */
 	private void setProducer(Supplier<Evaluable<? extends T>> producer) {
 		this.producer = producer;
 	}
@@ -201,6 +216,11 @@ public class Variable<T, V extends Variable<T, ?>>
 	 */
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
+	/**
+	 * Sets the type of data this variable holds.
+	 *
+	 * @param type the Java class representing the data type; may be {@code null}
+	 */
 	private void setType(Class<?> type) {
 		this.type = type;
 	}

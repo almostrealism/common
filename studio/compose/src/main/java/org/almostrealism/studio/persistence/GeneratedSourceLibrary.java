@@ -37,19 +37,44 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.DoubleStream;
 
+/**
+ * Library of synthesized audio source models backed by a {@link LibraryDestination}.
+ * Models are keyed by a compound string identifier and can be serialised to and
+ * deserialised from Protocol Buffers format.
+ */
 public class GeneratedSourceLibrary {
+	/** Destination used for persistent storage of this library's data. */
 	private final LibraryDestination library;
+
+	/** Map from compound key to audio synthesis model. */
 	private final Map<String, AudioSynthesisModel> models;
 
+	/**
+	 * Creates a generated source library backed by the given destination.
+	 *
+	 * @param library the library destination for persistence
+	 */
 	public GeneratedSourceLibrary(LibraryDestination library) {
 		this.library = library;
 		this.models = new HashMap<>();
 	}
 
+	/**
+	 * Adds a model to the library under the given key.
+	 *
+	 * @param key   the compound key identifying the model
+	 * @param model the synthesis model to add
+	 */
 	public void add(String key, AudioSynthesisModel model) {
 		models.put(key, model);
 	}
 
+	/**
+	 * Returns a stateless audio source backed by the model with the given key.
+	 *
+	 * @param key the model key
+	 * @return an audio synthesizer configured with the model
+	 */
 	public StatelessSource getSource(String key) {
 		AudioSynthesizer synth = new AudioSynthesizer();
 
@@ -60,8 +85,20 @@ public class GeneratedSourceLibrary {
 		return synth;
 	}
 
+	/**
+	 * Returns the synthesis model for the given key, or {@code null} if not found.
+	 *
+	 * @param key the compound model key
+	 */
 	public AudioSynthesisModel getModel(String key) { return models.get(key); }
 
+	/**
+	 * Returns the synthesis model for the given audio provider, creating and caching
+	 * an interpolated model if one does not already exist.
+	 *
+	 * @param provider the note audio provider whose model to retrieve
+	 * @return the synthesis model for the provider
+	 */
 	public AudioSynthesisModel getModel(NoteAudioProvider provider) {
 		KeyboardTuning tuning = provider.getTuning();
 		KeyPosition<?> root = provider.getRoot();
@@ -79,6 +116,13 @@ public class GeneratedSourceLibrary {
 		return getModel(key);
 	}
 
+	/**
+	 * Returns an audio synthesizer configured with the model for the given note audio input.
+	 *
+	 * @param modelInput the note audio whose model to use
+	 * @return a stateless audio source
+	 * @throws UnsupportedOperationException if the input is not a {@link NoteAudioProvider}
+	 */
 	public StatelessSource getSynthesizer(NoteAudio modelInput) {
 		if (!(modelInput instanceof NoteAudioProvider provider)) {
 			throw new UnsupportedOperationException();
@@ -89,6 +133,12 @@ public class GeneratedSourceLibrary {
 		return synth;
 	}
 
+	/**
+	 * Serialises all models in this library to the configured destination using
+	 * Protocol Buffers. Data is flushed in batches.
+	 *
+	 * @throws IOException if writing to the destination fails
+	 */
 	public void save() throws IOException {
 		try (LibraryDestination.Writer out = library.out()) {
 			Audio.AudioLibraryData.Builder data = Audio.AudioLibraryData.newBuilder();
@@ -123,11 +173,19 @@ public class GeneratedSourceLibrary {
 		}
 	}
 
+	/** Loads all models from the configured destination into this library. */
 	public void load() {
 		library.load().stream().map(Audio.AudioLibraryData::getModelsList).flatMap(List::stream)
 				.forEach(d -> models.put(d.getKey(), convert(d)));
 	}
 
+	/**
+	 * Converts a model and its key to a Protocol Buffers message.
+	 *
+	 * @param key   the compound key
+	 * @param model the model to convert
+	 * @return the serialised message
+	 */
 	public Audio.SynthesizerModelData convert(String key, InterpolatedAudioSynthesisModel model) {
 		Audio.SynthesizerModelData.Builder data = Audio.SynthesizerModelData.newBuilder();
 		data.setKey(key);
@@ -137,6 +195,12 @@ public class GeneratedSourceLibrary {
 		return data.build();
 	}
 
+	/**
+	 * Converts a Protocol Buffers message back into an interpolated synthesis model.
+	 *
+	 * @param data the serialised model data
+	 * @return the reconstructed model
+	 */
 	public InterpolatedAudioSynthesisModel convert(Audio.SynthesizerModelData data) {
 		return new InterpolatedAudioSynthesisModel(
 				data.getFrequencyRatiosList().stream().mapToDouble(Double::doubleValue).toArray(),

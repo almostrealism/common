@@ -18,15 +18,41 @@ package org.almostrealism.music.filter;
 
 import org.almostrealism.music.data.ParameterFunction;
 
+/**
+ * Abstract base class for parameterized ADSR envelope implementations.
+ *
+ * <p>Stores four {@link ParameterFunction}s that select the attack, decay, sustain,
+ * and release envelope parameters from a {@link ParameterSet}. Concrete subclasses
+ * implement {@link #createFilter} to produce the actual audio filter.</p>
+ *
+ * @see ParameterizedVolumeEnvelope
+ * @see ParameterizedFilterEnvelope
+ */
 public abstract class ParameterizedEnvelopeAdapter implements ParameterizedEnvelope {
+	/** Selects the attack duration from a parameter set. */
 	private ParameterFunction attackSelection;
+
+	/** Selects the decay duration from a parameter set. */
 	private ParameterFunction decaySelection;
+
+	/** Selects the sustain level from a parameter set. */
 	private ParameterFunction sustainSelection;
+
+	/** Selects the release duration from a parameter set. */
 	private ParameterFunction releaseSelection;
 
+	/** Creates a {@code ParameterizedEnvelopeAdapter} with null selection functions. */
 	public ParameterizedEnvelopeAdapter() {
 	}
 
+	/**
+	 * Creates a {@code ParameterizedEnvelopeAdapter} with the given selection functions.
+	 *
+	 * @param attackSelection  function selecting the attack duration
+	 * @param decaySelection   function selecting the decay duration
+	 * @param sustainSelection function selecting the sustain level
+	 * @param releaseSelection function selecting the release duration
+	 */
 	public ParameterizedEnvelopeAdapter(ParameterFunction attackSelection,
 										ParameterFunction decaySelection,
 										ParameterFunction sustainSelection,
@@ -38,15 +64,27 @@ public abstract class ParameterizedEnvelopeAdapter implements ParameterizedEnvel
 	}
 
 
+	/** Returns the function that selects the attack duration. */
 	public ParameterFunction getAttackSelection() { return attackSelection; }
+
+	/** Sets the function that selects the attack duration. */
 	public void setAttackSelection(ParameterFunction attackSelection) { this.attackSelection = attackSelection; }
 
+	/** Returns the function that selects the decay duration. */
 	public ParameterFunction getDecaySelection() { return decaySelection; }
+
+	/** Sets the function that selects the decay duration. */
 	public void setDecaySelection(ParameterFunction decaySelection) { this.decaySelection = decaySelection; }
 
+	/** Returns the function that selects the sustain level. */
 	public ParameterFunction getSustainSelection() { return sustainSelection; }
+
+	/** Sets the function that selects the sustain level. */
 	public void setSustainSelection(ParameterFunction sustainSelection) { this.sustainSelection = sustainSelection; }
 
+	/** Returns the function that selects the release duration. */
 	public ParameterFunction getReleaseSelection() { return releaseSelection; }
+
+	/** Sets the function that selects the release duration. */
 	public void setReleaseSelection(ParameterFunction releaseSelection) { this.releaseSelection = releaseSelection; }
 }

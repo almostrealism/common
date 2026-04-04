@@ -34,7 +34,10 @@ import java.util.Objects;
  */
 public class SimilarityNode implements Node {
 
+	/** Unique content identifier (typically an MD5 hash) for this audio sample. */
 	private final String identifier;
+
+	/** Map from peer identifiers to precomputed similarity scores for this sample. */
 	private final Map<String, Double> similarities;
 
 	/**

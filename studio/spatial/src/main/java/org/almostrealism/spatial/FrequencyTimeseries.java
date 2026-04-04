@@ -73,7 +73,10 @@ public abstract class FrequencyTimeseries implements SpatialTimeseries, ConsoleF
 	 */
 	public static double frequencyScale = 1;
 
+	/** Cached spatial elements generated from the frequency data. */
 	private List<SpatialValue> elements;
+
+	/** The duration of the context used to generate the cached elements. */
 	private double contextDuration;
 
 	/**

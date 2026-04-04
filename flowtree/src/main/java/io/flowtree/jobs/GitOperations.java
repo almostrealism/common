@@ -104,10 +104,16 @@ public class GitOperations implements ConsoleFeatures {
     private static final String EXTRA_PATH_HOME_LOCAL =
             System.getProperty("user.home") + File.separator + ".local" + File.separator + "bin";
 
+    /** Directory in which git commands are executed; {@code null} uses the JVM cwd. */
     private final String workingDirectory;
+
+    /** Identifier used in log message formatting. */
     private final String taskId;
 
+    /** Git author and committer name applied via {@code GIT_AUTHOR_NAME} and {@code GIT_COMMITTER_NAME}. */
     private String gitUserName;
+
+    /** Git author and committer email applied via {@code GIT_AUTHOR_EMAIL} and {@code GIT_COMMITTER_EMAIL}. */
     private String gitUserEmail;
 
     /**

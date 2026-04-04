@@ -25,9 +25,23 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Minimal HTTP server that listens for POST requests on {@code /test} and logs the body.
+ * <p>
+ * This server is intended for development and testing purposes. It binds to port 8080
+ * and responds with a JSON {@code {"status": "ok"}} on successful POST requests.
+ * Non-POST requests receive a 405 Method Not Allowed response.
+ * </p>
+ */
 public class SimpleEventServer implements ConsoleFeatures {
+	/** HTTP method constant for POST requests. */
 	public static final String POST = "POST";
 
+	/**
+	 * Starts the HTTP server, binding to port 8080 and registering the {@code /test} handler.
+	 *
+	 * @throws IOException  if the server cannot bind to port 8080
+	 */
 	public void start() throws IOException {
 		HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
 

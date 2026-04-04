@@ -30,19 +30,49 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
 
+/**
+ * Global configuration flags and thresholds that control the behaviour of
+ * {@link Scope} construction, simplification, expression caching, and kernel
+ * sequence evaluation during code generation.
+ *
+ * <p>Most settings are controlled via system properties (e.g. {@code AR_SCOPE_SIMPLIFICATION},
+ * {@code AR_SCOPE_CACHING}) and can be overridden at runtime for testing or tuning purposes.</p>
+ *
+ * @see Scope
+ * @see ExpressionCache
+ * @see SimplificationSettings
+ * @see CachingSettings
+ */
 public class ScopeSettings {
+	/** When {@code true}, common sub-expression replacement is enabled during simplification. */
 	public static final boolean enableReplacements = true;
 
+	/**
+	 * When {@code true}, instruction-set sub-expressions are eligible for reuse across
+	 * compilation units. Controlled by {@code AR_INSTRUCTION_SET_REUSE}.
+	 */
 	public static boolean enableInstructionSetReuse =
 			SystemUtils.isEnabled("AR_INSTRUCTION_SET_REUSE").orElse(true);
 
+	/** When {@code true}, masking is applied to instance-level reference expressions. */
 	public static boolean enableInstanceReferenceMasking = false;
 
+	/** When {@code true}, kernel sequence results are cached to avoid recomputation. */
 	public static boolean enableKernelSeqCache = false;
+
+	/** When {@code true}, batch evaluation of sequences is enabled. */
 	public static boolean enableBatchEvaluation = false;
+
+	/** When {@code true}, arithmetic sequences are used during expression evaluation. */
 	public static boolean enableArithmeticSequence = true;
+
+	/** When {@code true}, sequence computation results are validated against original expressions. */
 	public static boolean enableSequenceValidation = false;
+
+	/** Maximum number of elements per cache item for kernel sequence caching. */
 	public static int maxCacheItemSize = 16;
+
+	/** Maximum number of items stored in the kernel sequence cache. */
 	public static int maxCacheItems = 128;
 
 	/**
@@ -89,22 +119,42 @@ public class ScopeSettings {
 	 */
 	public static int maxConditionSize = 32;
 
+	/**
+	 * When {@code true}, expression tree warnings (oversized trees, excessive nodes)
+	 * are emitted to the log. Controlled by {@code AR_EXPRESSION_WARNINGS}.
+	 */
 	public static boolean enableExpressionWarnings =
 			SystemUtils.isEnabled("AR_EXPRESSION_WARNINGS").orElse(true);
 
+	/**
+	 * When {@code true}, expressions are reviewed after simplification to verify they
+	 * produce correct results. Controlled by {@code AR_EXPRESSION_REVIEW}.
+	 */
 	public static boolean enableExpressionReview =
 			SystemUtils.isEnabled("AR_EXPRESSION_REVIEW").orElse(false);
 
+	/** Running count of expressions that were simplified during this JVM session. */
 	public static long simplificationCount = 0;
+
+	/** Running count of expression children that have not yet been simplified. */
 	public static long unsimplifiedChildren = 0;
+
+	/** Running count of expressions that were added to an {@link ExpressionCache} during this session. */
 	public static long cacheCount = 0;
 
+	/** Maximum number of elements in a kernel series before it is truncated. */
 	public static int maxKernelSeriesCount = ParallelismTargetOptimization.maxCount << 2;
+
+	/** Upper bound on the number of operations evaluated during sequence computation. */
 	public static int sequenceComputationLimit = maxKernelSeriesCount;
 
+	/** Optional listener that records scope simplification timing; {@code null} when disabled. */
 	public static ScopeTimingListener timing;
 
+	/** The active simplification strategy, initialised from {@code AR_SCOPE_SIMPLIFICATION}. */
 	private static SimplificationSettings simplification;
+
+	/** The active expression caching strategy, initialised from {@code AR_SCOPE_CACHING}. */
 	private static CachingSettings caching;
 
 	static {
@@ -137,6 +187,13 @@ public class ScopeSettings {
 		}
 	}
 
+	/**
+	 * Reviews the supplied child expressions and increments the {@link #unsimplifiedChildren}
+	 * counter if any child could still be simplified. A diagnostic message is logged every
+	 * 100 occurrences when {@link #enableExpressionReview} is enabled.
+	 *
+	 * @param children the list of child expressions to inspect
+	 */
 	public static void reviewChildren(List<Expression<?>> children) {
 		if (!enableExpressionReview) return;
 
@@ -158,11 +215,31 @@ public class ScopeSettings {
 		}
 	}
 
+	/**
+	 * Reviews the result of a simplification step by comparing the output sequence of
+	 * {@code simplified} against the original {@code expression} for the first index
+	 * found in the simplified result. Returns {@code simplified} unchanged.
+	 *
+	 * @param <T>        the expression type
+	 * @param expression the original unsimplified expression
+	 * @param simplified the expression after simplification
+	 * @return {@code simplified} (validation is a side effect only)
+	 */
 	public static <T> Expression<T> reviewSimplification(Expression<?> expression, Expression<T> simplified) {
 		Index target = simplified.getIndices().stream().findFirst().orElse(null);
 		return reviewSimplification(target, expression, simplified);
 	}
 
+	/**
+	 * Reviews the result of a simplification step using the specified index target, comparing
+	 * the output sequence at index value 0 when the index has a finite limit.
+	 *
+	 * @param <T>        the expression type
+	 * @param target     the index to use when evaluating the sequences; may be {@code null}
+	 * @param expression the original unsimplified expression
+	 * @param simplified the expression after simplification
+	 * @return {@code simplified} (validation is a side effect only)
+	 */
 	public static <T> Expression<T> reviewSimplification(Index target, Expression<?> expression, Expression<T> simplified) {
 		if (!enableSequenceValidation || target == null) return simplified;
 
@@ -177,6 +254,17 @@ public class ScopeSettings {
 		return simplified;
 	}
 
+	/**
+	 * Reviews the result of a simplification step at the provided index values by comparing
+	 * the output sequences of the original and simplified expressions. Throws if they diverge.
+	 *
+	 * @param <T>        the expression type
+	 * @param values     the index values at which to evaluate both expressions; may be {@code null}
+	 * @param expression the original unsimplified expression
+	 * @param simplified the expression after simplification
+	 * @return {@code simplified} (validation is a side effect only)
+	 * @throws UnsupportedOperationException if the sequences are not congruent
+	 */
 	public static <T> Expression<T> reviewSimplification(IndexValues values, Expression<?> expression, Expression<T> simplified) {
 		if (!enableSequenceValidation || values == null) return simplified;
 
@@ -192,6 +280,15 @@ public class ScopeSettings {
 		return simplified;
 	}
 
+	/**
+	 * Returns {@code true} if the given expression should be simplified using series-based
+	 * techniques at the specified tree depth. Increments {@link #simplificationCount} when
+	 * the active {@link SimplificationSettings} approves the expression.
+	 *
+	 * @param expression the expression to evaluate
+	 * @param depth      the current recursion depth within the expression tree
+	 * @return {@code true} if series simplification should be applied
+	 */
 	public static boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
 		boolean s = simplification.isSeriesSimplificationTarget(expression, depth);
 		if (s) {
@@ -201,12 +298,29 @@ public class ScopeSettings {
 		return s;
 	}
 
+	/**
+	 * Returns {@code true} if deep (recursive) simplification is currently enabled.
+	 *
+	 * @return {@code false} always (deep simplification is not currently activated)
+	 */
 	public static boolean isDeepSimplification() {
 		return false;
 	}
 
+	/**
+	 * Returns the maximum number of entries that each per-depth sub-cache inside
+	 * an {@link ExpressionCache} can hold.
+	 *
+	 * @return the expression cache capacity
+	 */
 	public static int getExpressionCacheSize() { return 300; }
 
+	/**
+	 * Returns the minimum hit count for an expression to be included in the list of
+	 * frequently occurring expressions returned by {@link ExpressionCache#getFrequentExpressions()}.
+	 *
+	 * @return the frequency threshold
+	 */
 	public static int getExpressionCacheFrequencyThreshold() { return 2; }
 
 	/**
@@ -284,12 +398,21 @@ public class ScopeSettings {
 		return 12;
 	}
 
+	/**
+	 * Logs the current simplification and cache counts to the scope console.
+	 */
 	public static void printStats() {
 		Scope.console.features(ScopeSettings.class)
 				.log("Simplification Count = " + simplificationCount +
 						" | Cache Count = " + cacheCount);
 	}
 
+	/**
+	 * Returns a short description of the active caching and simplification strategies,
+	 * useful for logging and profiling output.
+	 *
+	 * @return a combined short description of the form {@code <caching>_<simplification>}
+	 */
 	public static String shortDesc() {
 		return caching.shortDesc() + "_" + simplification.shortDesc();
 	}

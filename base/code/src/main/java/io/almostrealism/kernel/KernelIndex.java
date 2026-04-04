@@ -31,41 +31,83 @@ import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+/**
+ * The primary index variable in a GPU/CPU kernel, representing the global thread identifier
+ * along a specific axis.
+ *
+ * <p>Each kernel thread is identified by a {@code KernelIndex} whose value ranges from
+ * {@code 0} to {@code kernelMaximum - 1}. The kernel axis allows multi-dimensional indexing
+ * to be expressed when a backend supports multiple dispatch dimensions.</p>
+ *
+ * <p>During expression simplification, if the kernel maximum is known to be 1, the index
+ * is replaced by the constant {@code 0}. If the context has changed, a new {@code KernelIndex}
+ * bound to the new context is returned.</p>
+ *
+ * @see KernelIndexChild
+ * @see KernelStructureContext
+ */
 public class KernelIndex extends DefaultIndex {
+	/** Cached arithmetic sequence used when {@code enableArithmeticSequence} is disabled. */
 	private static IndexSequence kernelSeq;
 
+	/** The structure context that provides the kernel maximum for this index. */
 	private KernelStructureContext context;
+
+	/** The dispatch axis along which this index varies. */
 	private int axis;
 
+	/**
+	 * Creates a {@link KernelIndex} with no context and axis 0.
+	 */
 	public KernelIndex() {
 		this(null);
 	}
 
+	/**
+	 * Creates a {@link KernelIndex} bound to the given context on axis 0.
+	 *
+	 * @param context the kernel structure context; may be {@code null}
+	 */
 	public KernelIndex(KernelStructureContext context) {
 		this(context, 0);
 	}
 
+	/**
+	 * Creates a {@link KernelIndex} bound to the given context and axis.
+	 *
+	 * @param context the kernel structure context; may be {@code null}
+	 * @param axis    the dispatch axis index
+	 */
 	public KernelIndex(KernelStructureContext context, int axis) {
 		super(null);
 		this.context = context;
 		this.axis = axis;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public String getName() { return "kernel" + axis; }
 
+	/** {@inheritDoc} */
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		return lang.kernelIndex(axis);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public KernelStructureContext getStructureContext() {
 		return context;
 	}
 
+	/**
+	 * Returns the dispatch axis along which this index varies.
+	 *
+	 * @return the kernel axis index
+	 */
 	public int getKernelAxis() { return axis; }
 
+	/** {@inheritDoc} */
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
 		if (context == null) context = this.context;
@@ -73,15 +115,21 @@ public class KernelIndex extends DefaultIndex {
 		return context.getKernelMaximum().stream().map(i -> i - 1).findFirst();
 	}
 
-	/** @return  zero */
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @return zero (kernel indices always start at 0)
+	 */
 	@Override
 	public OptionalLong lowerBound(KernelStructureContext context) {
 		return OptionalLong.of(0);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public boolean isValue(IndexValues values) { return values.getKernelIndex() != null; }
 
+	/** {@inheritDoc} */
 	@Override
 	public Expression<Integer> withIndex(Index index, Expression<?> e) {
 		OptionalInt v = e.intValue();
@@ -89,6 +137,7 @@ public class KernelIndex extends DefaultIndex {
 		return super.withIndex(index, e);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Expression<Integer> withIndex(Index index, int value) {
 		if (index instanceof KernelIndexChild) {
@@ -101,6 +150,7 @@ public class KernelIndex extends DefaultIndex {
 		return new IntegerConstant(value);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public KernelIndex withLimit(long limit) {
 		if (context != null) {
@@ -110,11 +160,13 @@ public class KernelIndex extends DefaultIndex {
 		return new KernelIndex(new NoOpKernelStructureContext(limit), axis);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public KernelSeries kernelSeries() {
 		return KernelSeries.infinite(1);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Number value(IndexValues values) {
 		Number idx = values.getKernelIndex();
@@ -122,6 +174,7 @@ public class KernelIndex extends DefaultIndex {
 		throw new UnsupportedOperationException();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public IndexSequence sequence(Index index, long len, long limit) {
 		if (ScopeSettings.enableArithmeticSequence ||
@@ -136,6 +189,7 @@ public class KernelIndex extends DefaultIndex {
 		return kernelSeq.subset(len);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Expression<Integer> simplify(KernelStructureContext context, int depth) {
 		if (context.getKernelMaximum().isPresent() && context.getKernelMaximum().getAsLong() == 1) {
@@ -147,6 +201,11 @@ public class KernelIndex extends DefaultIndex {
 		return super.simplify(context, depth);
 	}
 
+	/**
+	 * Lazily initialises the shared kernel sequence cache to at least the specified length.
+	 *
+	 * @param len the required minimum sequence length
+	 */
 	protected synchronized static void updateKernelSeq(long len) {
 		if (len > Integer.MAX_VALUE) return;
 

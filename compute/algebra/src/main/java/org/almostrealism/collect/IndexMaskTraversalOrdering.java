@@ -61,6 +61,7 @@ import java.util.OptionalInt;
  * @see io.almostrealism.collect.TraversalOrdering
  */
 public class IndexMaskTraversalOrdering implements TraversalOrdering {
+	/** The collection of physical indices that defines this traversal ordering. */
 	private final PackedCollection mask;
 
 	/**

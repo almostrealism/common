@@ -35,17 +35,37 @@ import org.almostrealism.heredity.IdentityFactor;
  */
 public class StatelessSourceNoteAudioTuned extends StatelessSourceNoteAudioAdapter
 											implements KeyboardTuned {
+	/** The keyboard tuning used to derive the frequency for a given key position. */
 	private KeyboardTuning tuning;
 
+	/**
+	 * Creates a {@code StatelessSourceNoteAudioTuned} with the given source and duration.
+	 *
+	 * @param source   the stateless audio source
+	 * @param duration the note duration in seconds
+	 */
 	public StatelessSourceNoteAudioTuned(StatelessSource source, double duration) {
 		this(source, new BufferDetails(OutputLine.sampleRate, duration));
 	}
 
+	/**
+	 * Creates a {@code StatelessSourceNoteAudioTuned} with the given source and buffer details.
+	 *
+	 * @param source the stateless audio source
+	 * @param buffer the buffer configuration
+	 */
 	public StatelessSourceNoteAudioTuned(StatelessSource source,
 										 BufferDetails buffer) {
 		this(source, buffer, new IdentityFactor<>());
 	}
 
+	/**
+	 * Creates a {@code StatelessSourceNoteAudioTuned} with the given source, buffer, and params.
+	 *
+	 * @param source the stateless audio source
+	 * @param buffer the buffer configuration
+	 * @param params the parameter factor
+	 */
 	public StatelessSourceNoteAudioTuned(StatelessSource source,
 										 BufferDetails buffer,
 										 Factor<PackedCollection> params) {

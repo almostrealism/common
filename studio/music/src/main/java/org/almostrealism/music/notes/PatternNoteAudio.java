@@ -25,8 +25,25 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.DoubleFunction;
 
+/**
+ * Represents a note audio source that can generate audio for a given key position.
+ *
+ * <p>Implementations provide sample rate, duration, and audio producers for rendering
+ * notes within the pattern system. The audio may be rendered in full or as a partial
+ * frame range for real-time playback.</p>
+ *
+ * @see PatternNoteLayer
+ * @see NoteAudioChoice
+ */
 public interface PatternNoteAudio {
 
+	/**
+	 * Returns a {@link BufferDetails} describing the sample rate and duration for this note.
+	 *
+	 * @param target         the key position target
+	 * @param audioSelection function mapping a double to a {@link PatternNoteAudio}
+	 * @return the buffer details
+	 */
 	default BufferDetails getBufferDetails(KeyPosition<?> target,
 										   DoubleFunction<PatternNoteAudio> audioSelection) {
 		return new BufferDetails(
@@ -34,23 +51,64 @@ public interface PatternNoteAudio {
 				getDuration(target, audioSelection));
 	}
 
+	/**
+	 * Returns the sample rate for the given target using no audio selection function.
+	 *
+	 * @param target the key position target
+	 * @return the sample rate in Hz
+	 */
 	default int getSampleRate(KeyPosition<?> target) {
 		return getSampleRate(target, null);
 	}
 
+	/**
+	 * Returns the sample rate for the given target and selection function.
+	 *
+	 * @param target         the key position target
+	 * @param audioSelection function mapping a double to a {@link PatternNoteAudio}
+	 * @return the sample rate in Hz
+	 */
 	int getSampleRate(KeyPosition<?> target,
 					  DoubleFunction<PatternNoteAudio> audioSelection);
 
+	/**
+	 * Returns the duration of this note for the given target and selection function.
+	 *
+	 * @param target         the key position target
+	 * @param audioSelection function mapping a double to a {@link PatternNoteAudio}
+	 * @return the duration in seconds
+	 */
 	double getDuration(KeyPosition<?> target, DoubleFunction<PatternNoteAudio> audioSelection);
 
+	/**
+	 * Returns the audio producer for this note on the given channel, with no selection function.
+	 *
+	 * @param target  the key position target
+	 * @param channel the audio channel index
+	 * @return a producer for the audio
+	 */
 	default Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel) {
 		return getAudio(target, channel, null);
 	}
 
+	/**
+	 * Wraps this note audio in a {@link PatternNoteLayer} with the given filter.
+	 *
+	 * @param filter the audio filter to apply
+	 * @return a new {@link PatternNoteLayer}
+	 */
 	default PatternNoteLayer filter(NoteAudioFilter filter) {
 		return new PatternNoteLayer(this, filter);
 	}
 
+	/**
+	 * Returns the audio producer for this note on the given channel.
+	 *
+	 * @param target         the key position target
+	 * @param channel        the audio channel index
+	 * @param audioSelection function mapping a double to a {@link PatternNoteAudio}
+	 * @return a producer for the audio
+	 */
 	Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel,
 										   DoubleFunction<PatternNoteAudio> audioSelection);
 

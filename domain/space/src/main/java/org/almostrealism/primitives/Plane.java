@@ -23,12 +23,37 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.physics.Volume;
 
+/**
+ * An infinite-extent physical plane used as a base for absorption and pinhole-camera
+ * surfaces.
+ *
+ * <p>The plane is characterised by its surface normal, an "up" orientation vector,
+ * a physical thickness (the absorption slab depth), and width/height extents that
+ * bound the active region.  It implements {@link org.almostrealism.physics.Volume}
+ * so that photon-absorption physics can query whether a point lies inside the volume.</p>
+ *
+ * @author  Michael Murray
+ */
 public class Plane implements Volume<RGB>, CodeFeatures {
+	/** Stores the last computed distance value for debugging purposes. */
 	public static double d = 0.0;
-	
-	protected double w, h;
+
+	/** Width of the active region (typically in micrometres). */
+	protected double w;
+
+	/** Height of the active region (typically in micrometres). */
+	protected double h;
+
+	/** Half-thickness of the plane slab used for photon absorption tests. */
 	protected double thick = 0.5;
-	protected double[] up, across;
+
+	/** Unit vector pointing "up" across the surface; defines the V axis. */
+	protected double[] up;
+
+	/** Unit vector pointing "across" the surface; defined as {@code up} cross {@code normal}. */
+	protected double[] across;
+
+	/** Producer that evaluates to the outward surface-normal vector. */
 	protected Producer<PackedCollection> normal;
 	
 	/** @param t  The thickness of the plane (usually measured in micrometers). */
@@ -77,6 +102,12 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	 */
 	public double[] getOrientation() { return this.up; }
 	
+	/**
+	 * Returns the vector that points across the surface (i.e., the U axis),
+	 * computing it from {@link #up} and {@link #normal} on first call.
+	 *
+	 * @return the cached across vector
+	 */
 	public double[] getAcross() {
 		if (this.across == null)
 			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();

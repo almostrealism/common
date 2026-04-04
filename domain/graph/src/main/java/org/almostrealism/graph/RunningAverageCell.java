@@ -21,10 +21,35 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
+/**
+ * A cell that computes a running average of received values within each tick period.
+ *
+ * <p>{@code RunningAverageCell} accumulates all values pushed to it between ticks,
+ * computing their mean and storing it as the cached value. On each tick, the average
+ * is transferred downstream and the accumulators are reset.</p>
+ *
+ * <p>This is useful for smoothing noisy signals or computing per-frame averages
+ * in temporal processing pipelines.</p>
+ *
+ * @see CollectionCachedStateCell
+ * @author Michael Murray
+ */
 public class RunningAverageCell extends CollectionCachedStateCell {
+	/** Running total of all values accumulated since the last tick. */
 	private double total;
+
+	/** Count of values pushed since the last tick. */
 	private int pushes;
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Accumulates the incoming value into the running total and updates
+	 * the cached value to the current running average.</p>
+	 *
+	 * @param protein the data producer to accumulate
+	 * @return a supplier that performs the accumulation
+	 */
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		return () -> () -> {
@@ -39,6 +64,14 @@ public class RunningAverageCell extends CollectionCachedStateCell {
 		};
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Resets the running total and push count, then delegates to the
+	 * parent tick to transfer the average downstream.</p>
+	 *
+	 * @return a supplier that performs the tick and resets the accumulators
+	 */
 	@Override
 	public Supplier<Runnable> tick() {
 		Supplier<Runnable> tick = super.tick();

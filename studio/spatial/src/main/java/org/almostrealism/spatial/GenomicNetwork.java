@@ -37,7 +37,10 @@ import java.io.File;
  * @see SpatialGenomic
  */
 public class GenomicNetwork extends GenomicTimeseries {
+	/** The network/model index used to identify this generated audio. */
 	private int index;
+
+	/** The audio health score containing the output file and quality metrics. */
 	private AudioHealthScore healthScore;
 
 	/**

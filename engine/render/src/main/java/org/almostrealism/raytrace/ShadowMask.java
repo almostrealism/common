@@ -73,8 +73,11 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class ShadowMask implements Evaluable<RGB>, Supplier<Evaluable<? extends RGB>> {
+	/** The light source whose shadow contribution is being tested. */
 	private Light light;
+	/** The scene surfaces that can cast shadows onto the test point. */
 	private Iterable<Intersectable> surfaces;
+	/** Evaluable providing the 3D position of the surface point to test for shadow. */
 	private Evaluable<? extends PackedCollection> point;
 
 	/**

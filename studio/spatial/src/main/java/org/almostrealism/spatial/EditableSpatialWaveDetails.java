@@ -45,6 +45,7 @@ import java.util.List;
 public class EditableSpatialWaveDetails extends SpatialWaveDetails
 		implements EditableSpatialTimeseries {
 
+	/** Whether the frequency data has been modified since the last {@link #clear()} or {@link #clearModified()}. */
 	private boolean modified;
 
 	/**

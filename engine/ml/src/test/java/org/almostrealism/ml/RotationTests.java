@@ -446,4 +446,64 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 			}
 		}
 	}
+
+	/**
+	 * Verify that {@link RotationFeatures#computeRopeFreqs} produces a frequency tensor
+	 * with the correct shape and numerically correct cos/sin values.
+	 *
+	 * <p>This test is the direct guard against reverting {@code computeRopeFreqs} to a
+	 * manual Java loop. If the CollectionProducer implementation is broken, this test
+	 * will fail with wrong values — do NOT work around a failure by switching to Java math.</p>
+	 */
+	@Test(timeout = 30000)
+	public void computeRopeFreqsShape() {
+		double theta = 10000.0;
+		int headDim = 8;
+		int seqLen = 4;
+		int freqDim = headDim / 2;
+
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, seqLen);
+
+		assertEquals("Shape dim 0 (seqLen)", seqLen, freqCis.getShape().length(0));
+		assertEquals("Shape dim 1 (freqDim)", freqDim, freqCis.getShape().length(1));
+		assertEquals("Shape dim 2 (cos/sin pair)", 2, freqCis.getShape().length(2));
+	}
+
+	/**
+	 * Verify that {@link RotationFeatures#computeRopeFreqs} produces numerically correct
+	 * cos/sin values matching the expected RoPE formula.
+	 *
+	 * <p>For position {@code pos} and frequency index {@code f}:
+	 * <pre>
+	 * invFreq[f] = theta^(-2f/headDim)
+	 * angle      = pos * invFreq[f]
+	 * freqCis[pos, f, 0] = cos(angle)
+	 * freqCis[pos, f, 1] = sin(angle)
+	 * </pre>
+	 */
+	@Test(timeout = 30000)
+	public void computeRopeFreqsValues() {
+		double theta = 10000.0;
+		int headDim = 8;
+		int seqLen = 4;
+		int freqDim = headDim / 2;
+
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, seqLen);
+
+		for (int pos = 0; pos < seqLen; pos++) {
+			for (int f = 0; f < freqDim; f++) {
+				double invFreq = Math.pow(theta, -2.0 * f / headDim);
+				double angle = pos * invFreq;
+
+				double expectedCos = Math.cos(angle);
+				double expectedSin = Math.sin(angle);
+
+				double actualCos = freqCis.valueAt(pos, f, 0);
+				double actualSin = freqCis.valueAt(pos, f, 1);
+
+				assertEquals("cos[" + pos + "," + f + "]", expectedCos, actualCos, 1e-6);
+				assertEquals("sin[" + pos + "," + f + "]", expectedSin, actualSin, 1e-6);
+			}
+		}
+	}
 }

@@ -50,7 +50,10 @@ import org.almostrealism.geometry.RayFeatures;
  * @see org.almostrealism.geometry.ShadableIntersection
  */
 public class DiffuseShader implements Shader<ShaderContext>, RGBFeatures, RayFeatures {
+	/** Default singleton instance of {@link DiffuseShader} for convenience. */
 	public static DiffuseShader defaultDiffuseShader = new DiffuseShader();
+
+	/** When true, diagnostic output is written during shading evaluation. */
 	public static boolean produceOutput = false;
 
 	/** Constructs a new {@link DiffuseShader}. */

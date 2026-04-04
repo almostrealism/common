@@ -73,6 +73,7 @@ import java.util.TreeSet;
  * @see PhysicalConstants
  */
 public class Orbital implements Comparable<Orbital>, PhysicalConstants {
+	/** Registry of all defined orbitals, ordered by the natural ordering of this class. */
 	private static TreeSet<Orbital> all = new TreeSet<>();
 
 	static {
@@ -94,6 +95,10 @@ public class Orbital implements Comparable<Orbital>, PhysicalConstants {
 		all.addAll(Arrays.asList(f7a(), f7b(), f7c(), f7d(), f7e(), f7f(), f7g()));
 	}
 
+	/**
+	 * The quantum numbers that uniquely identify this orbital:
+	 * principal (n), angular momentum (l), and magnetic (m).
+	 */
 	private int principal, angular, magnetic;
 
 	/**

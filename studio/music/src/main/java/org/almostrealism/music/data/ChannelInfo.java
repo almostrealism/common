@@ -56,31 +56,77 @@ import java.util.Objects;
  * @author Michael Murray
  */
 public class ChannelInfo {
+	/** Zero-based index of the pattern channel. */
 	private final int patternChannel;
+
+	/** Whether this is a regular pattern channel or a rise/swell channel. */
 	private final Type type;
+
+	/** Whether this is the dry (MAIN) or wet (effects-send) signal path. */
 	private final Voicing voicing;
+
+	/** The stereo channel (LEFT or RIGHT) for this info. */
 	private final StereoChannel audioChannel;
 
+	/**
+	 * Creates a PATTERN-type channel info with the given pattern channel index.
+	 *
+	 * @param patternChannel the pattern channel index
+	 */
 	public ChannelInfo(int patternChannel) {
 		this(patternChannel, Type.PATTERN, null, null);
 	}
 
+	/**
+	 * Creates a PATTERN-type channel info with the given pattern channel index and stereo channel.
+	 *
+	 * @param patternChannel the pattern channel index
+	 * @param stereoChannel the stereo channel
+	 */
 	public ChannelInfo(int patternChannel, StereoChannel stereoChannel) {
 		this(patternChannel, Type.PATTERN, stereoChannel);
 	}
 
+	/**
+	 * Creates a channel info with no specific pattern channel but with a voicing and stereo channel.
+	 *
+	 * @param voicing the signal path voicing
+	 * @param stereoChannel the stereo channel
+	 */
 	public ChannelInfo(Voicing voicing, StereoChannel stereoChannel) {
 		this(-1, voicing, stereoChannel);
 	}
 
+	/**
+	 * Creates a PATTERN-type channel info with the given pattern channel, voicing, and stereo channel.
+	 *
+	 * @param patternChannel the pattern channel index
+	 * @param voicing the signal path voicing
+	 * @param stereoChannel the stereo channel
+	 */
 	public ChannelInfo(int patternChannel, Voicing voicing, StereoChannel stereoChannel) {
 		this(patternChannel, Type.PATTERN, voicing, stereoChannel);
 	}
 
+	/**
+	 * Creates a channel info with the given pattern channel, type, and stereo channel.
+	 *
+	 * @param patternChannel the pattern channel index
+	 * @param type the channel type
+	 * @param stereoChannel the stereo channel
+	 */
 	public ChannelInfo(int patternChannel, Type type, StereoChannel stereoChannel) {
 		this(patternChannel, type, Voicing.MAIN, stereoChannel);
 	}
 
+	/**
+	 * Creates a fully specified channel info.
+	 *
+	 * @param patternChannel the pattern channel index
+	 * @param type the channel type
+	 * @param voicing the signal path voicing
+	 * @param audioChannel the stereo channel
+	 */
 	public ChannelInfo(int patternChannel, Type type, Voicing voicing, StereoChannel audioChannel) {
 		this.patternChannel = patternChannel;
 		this.type = type;
@@ -111,19 +157,42 @@ public class ChannelInfo {
 		return Objects.hash(getPatternChannel(), getVoicing());
 	}
 
+	/**
+	 * The signal path voicing: dry (MAIN) or wet/effects-send (WET).
+	 */
 	public enum Voicing {
-		MAIN, WET
+		/** Dry signal path. */
+		MAIN,
+		/** Wet (effects-send) signal path. */
+		WET
 	}
 
+	/**
+	 * The stereo channel in an audio signal pair.
+	 */
 	public enum StereoChannel {
-		LEFT, RIGHT;
+		/** Left stereo channel (index 0). */
+		LEFT,
+		/** Right stereo channel (index 1). */
+		RIGHT;
 
+		/**
+		 * Returns the zero-based index of this stereo channel.
+		 *
+		 * @return 0 for LEFT, 1 for RIGHT
+		 */
 		public int getIndex() {
 			return this == LEFT ? 0 : 1;
 		}
 	}
 
+	/**
+	 * The type of audio channel in the arrangement.
+	 */
 	public enum Type {
-		PATTERN, RISE
+		/** A regular pattern channel. */
+		PATTERN,
+		/** A rise or swell channel. */
+		RISE
 	}
 }

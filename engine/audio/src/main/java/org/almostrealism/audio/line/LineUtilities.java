@@ -50,6 +50,7 @@ import java.nio.ByteOrder;
  * @see PackedCollection
  */
 public class LineUtilities {
+	/** The most recently used AudioFormat, cached to avoid recomputing the default format. */
 	protected static AudioFormat lastFormat;
 	
 	/**
@@ -65,6 +66,14 @@ public class LineUtilities {
 		return getLine(lastFormat, BufferDefaults.defaultBufferSize);
 	}
 
+	/**
+	 * Returns the number of audio frames in the given sample collection.
+	 * For 1D collections, the length is the frame count directly.
+	 * For higher-dimensional collections, the second dimension is used.
+	 *
+	 * @param sample the audio data collection
+	 * @return number of audio frames
+	 */
 	public static int frameCount(PackedCollection sample) {
 		if (sample.getShape().getDimensions() == 1) {
 			return sample.getShape().length(0);
@@ -73,6 +82,12 @@ public class LineUtilities {
 		}
 	}
 
+	/**
+	 * Returns a SourceDataOutputLine for the specified format with the default buffer size.
+	 *
+	 * @param format the audio format for the line
+	 * @return an OutputLine backed by a native audio line
+	 */
 	public static OutputLine getLine(AudioFormat format) {
 		return getLine(format, 1024);
 	}
@@ -281,6 +296,11 @@ public class LineUtilities {
 		return frameBytes;
 	}
 	
+	/**
+	 * Returns the most recently used AudioFormat, or null if no line has been opened yet.
+	 *
+	 * @return the last AudioFormat used, or {@code null}
+	 */
 	public static AudioFormat getAudioFormat() {
 		return lastFormat;
 	}

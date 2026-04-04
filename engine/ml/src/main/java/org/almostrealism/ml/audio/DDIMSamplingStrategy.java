@@ -34,7 +34,10 @@ import org.almostrealism.collect.PackedCollection;
  */
 public class DDIMSamplingStrategy implements SamplingStrategy {
 
+	/** Noise scheduler that provides alpha values and DDIM timestep conversion. */
 	private final DiffusionNoiseScheduler scheduler;
+
+	/** Stochasticity parameter: 0 produces fully deterministic DDIM; 1 reproduces DDPM. */
 	private final double eta;
 
 	/**

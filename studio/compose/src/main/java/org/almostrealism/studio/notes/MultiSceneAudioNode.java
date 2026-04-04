@@ -21,9 +21,19 @@ import org.almostrealism.music.notes.NoteAudioNode;
 import java.util.List;
 
 // TODO  Rename to MultiNoteAudioNode
+/**
+ * Composite audio node that aggregates multiple scene or note audio nodes as children.
+ * Each child slot corresponds to one scene or audio source in a multi-scene project.
+ */
 public class MultiSceneAudioNode implements NoteAudioNode {
+	/** The per-scene child audio nodes. */
 	private final NoteAudioNode[] children;
 
+	/**
+	 * Creates a multi-scene node with the given number of scene slots.
+	 *
+	 * @param sceneCount the number of scene slots
+	 */
 	public MultiSceneAudioNode(int sceneCount) {
 		children = new NoteAudioNode[sceneCount];
 
@@ -32,10 +42,22 @@ public class MultiSceneAudioNode implements NoteAudioNode {
 		}
 	}
 
+	/**
+	 * Sets the child scene audio node for the given slot.
+	 *
+	 * @param sceneIndex the zero-based slot index
+	 * @param scene      the scene node to place in the slot
+	 */
 	public void setScene(int sceneIndex, SceneAudioNode scene) {
 		children[sceneIndex] = scene;
 	}
 
+	/**
+	 * Sets an audio provider node for the given slot.
+	 *
+	 * @param sceneIndex the zero-based slot index
+	 * @param node       the audio provider node to place in the slot
+	 */
 	public void setNote(int sceneIndex, AudioProviderNode node) {
 		children[sceneIndex] = node;
 	}

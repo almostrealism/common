@@ -45,6 +45,7 @@ package io.almostrealism.frames;
  * @author  Michael Murray
  */
 public class CausalFrame {
+	/** The cause predicate {@code a} and effect predicate {@code b} of this causal relation. */
 	private Predicate a, b;
 
 	/**

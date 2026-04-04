@@ -23,6 +23,7 @@ package org.almostrealism.hardware.metal;
  * @see MetalDataContext
  */
 public class MetalDeviceInfo {
+	/** The Metal device whose capabilities are described by this info object. */
 	private MTLDevice device;
 
 	/**

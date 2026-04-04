@@ -73,16 +73,33 @@ import java.lang.ref.ReferenceQueue;
  * @see HardwareMemoryProvider
  */
 public abstract class MemoryReference<T extends Memory> extends PhantomReference<T> {
+	/** Stack trace captured at allocation time, stored for post-GC leak reporting. */
 	private StackTraceElement[] allocationStackTrace;
 
+	/**
+	 * Creates a phantom reference for the given memory object, registered with the given queue.
+	 *
+	 * @param referent The memory object to track
+	 * @param q        Reference queue that receives this reference after GC
+	 */
 	public MemoryReference(T referent, ReferenceQueue<? super T> q) {
 		super(referent, q);
 	}
 
+	/**
+	 * Returns the allocation stack trace captured when the tracked memory was created.
+	 *
+	 * @return Stack trace elements, or null if stack tracing was disabled
+	 */
 	public StackTraceElement[] getAllocationStackTrace() {
 		return allocationStackTrace;
 	}
 
+	/**
+	 * Sets the allocation stack trace for leak reporting.
+	 *
+	 * @param allocationStackTrace Stack trace from the allocation site
+	 */
 	public void setAllocationStackTrace(StackTraceElement[] allocationStackTrace) {
 		this.allocationStackTrace = allocationStackTrace;
 	}

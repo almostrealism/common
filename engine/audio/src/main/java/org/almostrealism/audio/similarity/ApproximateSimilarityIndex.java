@@ -51,9 +51,13 @@ import java.util.Random;
  */
 public class ApproximateSimilarityIndex {
 
+	/** Random seed used for reproducible random projections. */
 	private static final long DEFAULT_SEED = 42L;
 
+	/** Ordered list of audio identifiers corresponding to rows in the embedding matrix. */
 	private final List<String> identifiers;
+
+	/** 2D embedding matrix (identifiers.size() x dimensions) for approximate similarity. */
 	private final double[][] embeddings;
 
 	/**

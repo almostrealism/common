@@ -50,12 +50,31 @@ package org.almostrealism.audio.tone;
  * @see WesternChromatic
  */
 public class WesternScales {
+	/** Private constructor — this class is a static factory and is not meant to be instantiated. */
 	private WesternScales() { }
 
+	/**
+	 * Creates a Western major scale starting at the given root note.
+	 *
+	 * <p>The major scale uses the interval pattern W-W-H-W-W-W-H (2-2-1-2-2-2-1 semitones).</p>
+	 *
+	 * @param root   the root note of the major scale
+	 * @param octaves the number of octaves to span
+	 * @return a Scale containing the notes of the major scale
+	 */
 	public static Scale<WesternChromatic> major(WesternChromatic root, int octaves) {
 		return new SetIntervalScale<>(root, octaves, 2, 2, 1, 2, 2, 2, 1);
 	}
 
+	/**
+	 * Creates a Western natural minor scale starting at the given root note.
+	 *
+	 * <p>The natural minor scale uses the interval pattern W-H-W-W-H-W-W (2-1-2-2-1-2-2 semitones).</p>
+	 *
+	 * @param root    the root note of the minor scale
+	 * @param octaves the number of octaves to span
+	 * @return a Scale containing the notes of the minor scale
+	 */
 	public static Scale<WesternChromatic> minor(WesternChromatic root, int octaves) {
 		return new SetIntervalScale<>(root, octaves, 2, 1, 2, 2, 1, 2, 2);
 	}

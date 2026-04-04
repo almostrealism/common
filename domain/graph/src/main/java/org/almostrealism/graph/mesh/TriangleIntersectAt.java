@@ -66,29 +66,88 @@ import org.almostrealism.geometry.RayFeatures;
  * @see LessThanCollection
  */
 public class TriangleIntersectAt extends LessThanCollection {
+	/**
+	 * Creates an intersection test from compact triangle and ray producers.
+	 *
+	 * @param t the packed triangle data (vertices, normal)
+	 * @param r the ray to test against the triangle
+	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
+	 */
 	private static TriangleIntersectAt create(Producer<PackedCollection> t,
 											  Producer<Ray> r) {
 		return create(TriangleFeatures.getInstance().abc(t), TriangleFeatures.getInstance().def(t), TriangleFeatures.getInstance().jkl(t),
 				TriangleFeatures.getInstance().normal(t), RayFeatures.getInstance().origin(r), RayFeatures.getInstance().direction(r));
 	}
 
+	/**
+	 * Creates an intersection test from unpacked triangle edge vectors and ray components.
+	 *
+	 * @param abc       first edge vector of the triangle
+	 * @param def       second edge vector of the triangle
+	 * @param jkl       third vertex of the triangle
+	 * @param normal    the triangle's surface normal
+	 * @param origin    the ray origin
+	 * @param direction the ray direction
+	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
+	 */
 	private static TriangleIntersectAt create(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
 											  CollectionProducer normal, CollectionProducer origin, CollectionProducer direction) {
 		return create(abc, def, jkl, normal, origin, direction, s(jkl, origin));
 	}
 
+	/**
+	 * Creates an intersection test with a pre-computed {@code s} vector.
+	 *
+	 * @param abc       first edge vector
+	 * @param def       second edge vector
+	 * @param jkl       third vertex
+	 * @param normal    surface normal
+	 * @param origin    ray origin
+	 * @param direction ray direction
+	 * @param s         the pre-computed {@code s = jkl - origin} vector
+	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
+	 */
 	private static TriangleIntersectAt create(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
 											  CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
 											  Producer<PackedCollection> s) {
 		return create(abc, def, jkl, normal, origin, direction, f(abc, h(def, direction)), q(abc, s), s);
 	}
 
+	/**
+	 * Creates an intersection test with pre-computed intermediate scalars {@code f} and {@code q}.
+	 *
+	 * @param abc       first edge vector
+	 * @param def       second edge vector
+	 * @param jkl       third vertex
+	 * @param normal    surface normal
+	 * @param origin    ray origin
+	 * @param direction ray direction
+	 * @param f         the determinant proxy {@code f = dot(abc, h)}
+	 * @param q         the cross-product helper {@code q = cross(abc, s)}
+	 * @param s         the vector {@code s = jkl - origin}
+	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
+	 */
 	private static TriangleIntersectAt create(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
 											  CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
 											  CollectionProducer f, CollectionProducer q, Producer<PackedCollection> s) {
 		return createv(abc, def, jkl, normal, origin, direction, f, q, s, v(direction, f.pow(-1.0), q));
 	}
 
+	/**
+	 * Creates an intersection test with the pre-computed barycentric coordinate {@code v}.
+	 *
+	 * @param abc       first edge vector
+	 * @param def       second edge vector
+	 * @param jkl       third vertex
+	 * @param normal    surface normal
+	 * @param origin    ray origin
+	 * @param direction ray direction
+	 * @param f         the determinant proxy
+	 * @param q         the cross-product helper
+	 * @param s         the vector {@code s = jkl - origin}
+	 * @param v         the barycentric coordinate {@code v}
+	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
+	 */
 	private static TriangleIntersectAt createv(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
 											   CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
 											   CollectionProducer f, CollectionProducer q, Producer<PackedCollection> s,
@@ -96,6 +155,22 @@ public class TriangleIntersectAt extends LessThanCollection {
 		return createu(abc, def, jkl, normal, origin, direction, f, q, s, u(s, h(def, direction), f.pow(-1.0)), v);
 	}
 
+	/**
+	 * Creates an intersection test with pre-computed barycentric coordinates {@code u} and {@code v}.
+	 *
+	 * @param abc       first edge vector
+	 * @param def       second edge vector
+	 * @param jkl       third vertex
+	 * @param normal    surface normal
+	 * @param origin    ray origin
+	 * @param direction ray direction
+	 * @param f         the determinant proxy
+	 * @param q         the cross-product helper
+	 * @param s         the vector {@code s = jkl - origin}
+	 * @param u         the barycentric coordinate {@code u}
+	 * @param v         the barycentric coordinate {@code v}
+	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
+	 */
 	private static TriangleIntersectAt createu(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
 											   CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
 											   CollectionProducer f, CollectionProducer q, Producer<PackedCollection> s,
@@ -103,6 +178,16 @@ public class TriangleIntersectAt extends LessThanCollection {
 		return createt(f, u, v, t(def, f.pow(-1.0), q));
 	}
 
+	/**
+	 * Final assembly step: creates the intersection test given the determinant proxy and all
+	 * barycentric parameters.
+	 *
+	 * @param f the determinant proxy used to guard against back-face hits
+	 * @param u the barycentric coordinate {@code u}
+	 * @param v the barycentric coordinate {@code v}
+	 * @param t the candidate intersection distance parameter
+	 * @return the assembled {@code TriangleIntersectAt}
+	 */
 	private static TriangleIntersectAt createt(CollectionProducer f,
 											   Producer<PackedCollection> u,
 											   Producer<PackedCollection> v,

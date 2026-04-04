@@ -193,11 +193,22 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	 */
 	private boolean replaceLoop;
 
+	/** The traversable expression referencing the primary input argument during scope preparation. */
 	private TraversableExpression<Double> inputArg;
-	private DefaultIndex row, ref;
+
+	/** The loop row index used to iterate over input elements during aggregation kernel generation. */
+	private DefaultIndex row;
+
+	/** The reference index used for index cache lookups and offset calculations. */
+	private DefaultIndex ref;
+
+	/** The unique integer offset used when loop replacement is active. */
 	private Expression<Integer> uniqueOffset;
+
+	/** The unique numeric index used when loop replacement is active. */
 	private Expression<? extends Number> uniqueIndex;
 
+	/** Cache mapping variable prefix strings to index expressions for repeated aggregation operations. */
 	private Map<String, Expression<?>> indexCache;
 
 	/**
@@ -323,6 +334,15 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		}
 	}
 
+	/**
+	 * Generates the kernel scope for this aggregation computation.
+	 * When loop replacement is active (i.e., a unique index has been identified),
+	 * produces an optimized scope that reads a single element directly instead of
+	 * iterating. Otherwise delegates to the parent implementation.
+	 *
+	 * @param context the kernel structure context for scope generation
+	 * @return the kernel scope implementing the aggregation operation
+	 */
 	@Override
 	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		if (uniqueIndex == null) return super.getScope(context);
@@ -335,6 +355,13 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		return scope;
 	}
 
+	/**
+	 * Looks up a previously computed index expression from the cache.
+	 * Returns null if the cache is disabled or the expression is too large to cache.
+	 *
+	 * @param index the index expression to look up
+	 * @return the cached expression, or null if not found or caching is disabled
+	 */
 	protected Expression<?> checkCache(Expression<?> index) {
 		if (indexCache == null || index.countNodes() > 100) return null;
 
@@ -349,6 +376,14 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		return null;
 	}
 
+	/**
+	 * Stores a computed index expression result in the cache for future reuse.
+	 * Does nothing if the cache is disabled or the expression is too large to cache.
+	 *
+	 * @param index the index expression used as the cache key
+	 * @param result the computed expression value to store
+	 * @return the result expression, unchanged
+	 */
 	protected Expression<Double> cache(Expression<?> index, Expression<Double> result) {
 		if (indexCache == null || index.countNodes() > 100) return result;
 

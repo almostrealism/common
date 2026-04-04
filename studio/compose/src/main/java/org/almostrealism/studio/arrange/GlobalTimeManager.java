@@ -63,28 +63,47 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class GlobalTimeManager implements Setup, Temporal, ConsoleFeatures {
+	/** Maximum number of reset points that can be registered. */
 	public static final int MAX_RESETS = 32;
 
+	/** The underlying time cell that tracks the current frame position. */
 	private final TimeCell clock;
+
+	/** Ordered list of measure numbers where the clock resets to zero. */
 	private final List<Integer> resets;
+
+	/** Function that converts a measure number to its corresponding audio frame index. */
 	private final IntUnaryOperator frameForMeasure;
 
+	/**
+	 * Creates a global time manager using the given function to convert measure numbers to frames.
+	 *
+	 * @param frameForMeasure function mapping measure number to audio frame index
+	 */
 	public GlobalTimeManager(IntUnaryOperator frameForMeasure) {
 		this.clock = new TimeCell(MAX_RESETS);
 		this.frameForMeasure = frameForMeasure;
 		this.resets = new ArrayList<>();
 	}
 
+	/** Returns the underlying {@link TimeCell} used for time tracking. */
 	public TimeCell getClock() {
 		return clock;
 	}
 
+	/**
+	 * Registers a reset point at the given measure number, keeping the list sorted.
+	 *
+	 * @param measure the measure number where the clock should reset
+	 * @throws IllegalArgumentException if the maximum number of resets has been reached
+	 */
 	public void addReset(int measure) {
 		if (resets.size() >= MAX_RESETS) throw new IllegalArgumentException("Maximum number of resets exceeded");
 		resets.add(measure);
 		resets.sort(Integer::compareTo);
 	}
 
+	/** Returns the ordered list of registered reset measure numbers. */
 	public List<Integer> getResets() { return resets; }
 
 	@Override

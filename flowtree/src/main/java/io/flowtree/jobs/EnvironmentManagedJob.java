@@ -23,6 +23,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.util.Comparator;
+import java.util.stream.Stream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,6 +61,18 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
      * Defaults to {@code ~/.flowtree/venv}.
      */
     public static final String VENV_DIR_PROPERTY = "flowtree.venvDirectory";
+
+    /**
+     * Candidate Python executables tried in order when creating a new venv.
+     * Higher-version interpreters are preferred so that packages requiring
+     * Python ≥3.10 (e.g. {@code mcp}) can always be installed.
+     */
+    private static final String[] PYTHON_CANDIDATES = {
+        "python3.13", "python3.12", "python3.11", "python3.10", "python3"
+    };
+
+    /** Stamp file inside the venv that records which Python created it. */
+    private static final String PYTHON_STAMP = ".python-exe";
 
     /** Requirements text (pip requirements.txt format). */
     private String pythonRequirements;
@@ -140,10 +155,25 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
 
         venvPath = resolveVenvPath();
         Path hashFile = venvPath.resolve(".requirements-hash");
+        Path stampFile = venvPath.resolve(PYTHON_STAMP);
         String currentHash = sha256(pythonRequirements);
+        String pythonExe = findPython();
+
+        boolean venvExists = Files.exists(venvPath.resolve("bin").resolve("python3"));
+
+        // Recreate the venv if it was built with a different Python executable
+        // (e.g. system upgraded from 3.9 → 3.11, or a higher version is now available)
+        if (venvExists) {
+            if (!Files.exists(stampFile)
+                    || !pythonExe.equals(Files.readString(stampFile, StandardCharsets.UTF_8).trim())) {
+                log("Python executable changed to " + pythonExe + " — recreating venv");
+                deleteDirectory(venvPath);
+                venvExists = false;
+            }
+        }
 
         // Check if venv exists and requirements are unchanged
-        if (Files.exists(venvPath.resolve("bin").resolve("python3"))) {
+        if (venvExists) {
             if (Files.exists(hashFile)) {
                 String installedHash = Files.readString(hashFile, StandardCharsets.UTF_8).trim();
                 if (currentHash.equals(installedHash)) {
@@ -153,9 +183,10 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
             }
             log("Python requirements changed — reinstalling");
         } else {
-            log("Creating Python venv at " + venvPath);
+            log("Creating Python venv at " + venvPath + " using " + pythonExe);
             Files.createDirectories(venvPath.getParent());
-            runProcess("python3", "-m", "venv", venvPath.toAbsolutePath().toString());
+            runProcess(pythonExe, "-m", "venv", venvPath.toAbsolutePath().toString());
+            Files.writeString(stampFile, pythonExe, StandardCharsets.UTF_8);
         }
 
         // Write requirements to a temp file and install
@@ -164,6 +195,7 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
             Files.writeString(reqFile, pythonRequirements, StandardCharsets.UTF_8);
 
             String pip = venvPath.resolve("bin").resolve("pip3").toAbsolutePath().toString();
+            runProcess(pip, "install", "--upgrade", "pip");
             runProcess(pip, "install", "--no-cache-dir", "-r", reqFile.toAbsolutePath().toString());
 
             // Record the hash so subsequent jobs skip reinstall
@@ -171,6 +203,49 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
             log("Python requirements installed successfully");
         } finally {
             Files.deleteIfExists(reqFile);
+        }
+    }
+
+    /**
+     * Returns the best Python executable available on the host.
+     *
+     * <p>Tries {@link #PYTHON_CANDIDATES} in order and returns the first
+     * one that can be launched successfully.  Preferring higher versions
+     * ensures packages with {@code Requires-Python >=3.10} (e.g. {@code mcp})
+     * can always be installed.</p>
+     *
+     * @return a Python executable name or path
+     */
+    private String findPython() {
+        for (String candidate : PYTHON_CANDIDATES) {
+            try {
+                Process p = new ProcessBuilder(candidate, "--version")
+                        .redirectErrorStream(true)
+                        .start();
+                p.getInputStream().transferTo(OutputStream.nullOutputStream());
+                if (p.waitFor() == 0) {
+                    return candidate;
+                }
+            } catch (IOException | InterruptedException ignored) {
+                // this candidate is not available — try the next one
+            }
+        }
+        return "python3";
+    }
+
+    /**
+     * Recursively deletes a directory tree.
+     *
+     * @param dir the root directory to delete
+     * @throws IOException if a file cannot be deleted
+     */
+    private void deleteDirectory(Path dir) throws IOException {
+        if (!Files.exists(dir)) return;
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder())
+                .forEach(p -> {
+                    try { Files.delete(p); } catch (IOException ignored) { }
+                });
         }
     }
 

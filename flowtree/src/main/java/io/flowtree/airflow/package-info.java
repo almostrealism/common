@@ -15,9 +15,15 @@
  */
 
 /**
- * 
- */
-/**
+ * Integration layer between Apache Airflow and the FlowTree workflow engine.
+ *
+ * <p>Classes in this package expose a lightweight Jetty HTTP endpoint (default
+ * port 7070) that Airflow (or any HTTP client) can use to submit shell commands
+ * as FlowTree {@link io.flowtree.job.Job} instances. The
+ * {@link io.flowtree.airflow.AirflowJobFactory} owns the singleton endpoint and
+ * enqueues {@link io.flowtree.airflow.AirflowJob} objects that are subsequently
+ * dispatched to FlowTree worker nodes for execution.
+ *
  * @author  Michael Murray
  */
 package io.flowtree.airflow;

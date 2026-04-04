@@ -49,18 +49,37 @@ import java.util.Set;
  * @author  Michael Murray
  */
 public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, RGBFeatures, Porous {
-	private boolean shadeFront, shadeBack;
+	/** Whether the front face of this surface should be shaded. */
+	private boolean shadeFront;
 
+	/** Whether the back face of this surface should be shaded. */
+	private boolean shadeBack;
+
+	/** The base colour of this surface (used by shaders). */
 	private RGB color;
 
-	private double rindex = 1.0, reflectP = 1.0, refractP = 0.0;
+	/** Index of refraction of this surface's material. */
+	private double rindex = 1.0;
+
+	/** Fraction of incident light that is reflected. */
+	private double reflectP = 1.0;
+
+	/** Fraction of incident light that is refracted. */
+	private double refractP = 0.0;
+
+	/** Porosity value (fraction of light that passes through without interaction). */
 	private double porosity;
 
+	/** Ordered list of textures applied to this surface. */
 	private Texture[] textures;
+
+	/** The set of shaders used to compute the surface colour. */
 	private ShaderSet shaders = new ShaderSet();
 
+	/** The parent surface group that owns this surface, or {@code null} if none. */
 	private AbstractSurface parent;
 
+	/** An optional input operator that supplies a vector value to shading computations. */
 	private Operator<Vector> in;
 	
 	/**
@@ -75,6 +94,11 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		this.setColor(new RGB(0.0, 0.0, 0.0));
 	}
 
+	/**
+	 * Constructs an {@link AbstractSurface} with the given colour and default shading flags.
+	 *
+	 * @param color the initial surface colour
+	 */
 	public AbstractSurface(RGB color) {
 		this.setShadeFront(true);
 		this.setShadeBack(false);
@@ -84,6 +108,13 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		this.setColor(color);
 	}
 
+	/**
+	 * Constructs an {@link AbstractSurface} with the given colour, optionally omitting the
+	 * default diffuse shader.
+	 *
+	 * @param color                  the initial surface colour
+	 * @param addDefaultDiffuseShader {@code true} to keep the default diffuse shader; {@code false} to remove it
+	 */
 	public AbstractSurface(RGB color, boolean addDefaultDiffuseShader) {
 		this(color);
 		if (!addDefaultDiffuseShader)
@@ -185,25 +216,47 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		return m;
 	}
 	
+	/** Sets the index of refraction for this surface's material. */
 	public void setIndexOfRefraction(double n) { this.rindex = n; }
+
+	/** Returns the index of refraction for this surface's material. */
 	public double getIndexOfRefraction() { return this.rindex; }
+
+	/** Returns the index of refraction at the specified point (always returns the uniform value). */
 	public double getIndexOfRefraction(Vector p) { return this.rindex; }
-	
+
+	/** Sets the fraction of incident light that is specularly reflected. */
 	public void setReflectedPercentage(double p) { this.reflectP = p; }
+
+	/** Sets the fraction of incident light that is refracted through this surface. */
 	public void setRefractedPercentage(double p) { this.refractP = p; }
-	
+
+	/** Returns the fraction of incident light that is specularly reflected. */
 	public double getReflectedPercentage() { return this.reflectP; }
+
+	/** Returns the fraction of incident light reflected at the specified point (always uniform). */
 	public double getReflectedPercentage(Vector p) { return this.reflectP; }
+
+	/** Returns the fraction of incident light that is refracted. */
 	public double getRefractedPercentage() { return this.refractP; }
+
+	/** Returns the fraction of incident light refracted at the specified point (always uniform). */
 	public double getRefractedPercentage(Vector p) { return this.refractP; }
-	
+
+	/** Sets the porosity (fraction of light that passes through without interaction). */
 	public void setPorosity(double p) { this.porosity = p; }
 
+	/** Returns the porosity of this surface. */
 	@Override
 	public double getPorosity() { return porosity; }
 
+	/** Sets the input vector from a constant {@link Vector} value. */
 	public void setInput(Vector v) { this.in = new Constant<>(v); }
+
+	/** Sets the input operator that supplies a vector to shading computations. */
 	public void setInput(Operator<Vector> in) { this.in = in; }
+
+	/** Returns the input operator, or {@code null} if none has been set. */
 	public Operator<Vector> getInput() { return this.in; }
 
 	/**
@@ -547,6 +600,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	/** Returns the color of this {@link AbstractSurface} as an {@link RGB} object. */
 	public RGB getColor() { return this.color; }
 
+	/** Returns the colour of this surface at the given point, applying the surface transform. */
 	@Override
 	public Producer<PackedCollection> getValueAt(Producer<PackedCollection> point) { return getColorAt(point, true); }
 	
@@ -573,6 +627,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		return colorAt;
 	}
 
+	/** Returns {@code null}: subclasses should override to provide tight bounding solids. */
 	@Override
 	public BoundingSolid calculateBoundingSolid() { return null; }
 }

@@ -54,7 +54,11 @@ import java.util.ListIterator;
  * @see ContinuousField
  */
 public class ShadableIntersection extends Intersection implements ContinuousField, RayFeatures {
+	/** The incident ray direction at this intersection. */
 	private final Producer<PackedCollection> incident;
+
+	/** A ray whose origin is the intersection point and whose direction is the surface normal,
+	 *  wrapped with a rank adapter to carry the parametric distance. */
 	private final Producer<PackedCollection> normal;
 
 	/**

@@ -16,6 +16,27 @@
 
 package org.almostrealism.texture;
 
+/**
+ * Provides a scalar intensity value for a 3D position expressed as UV texture coordinates
+ * plus an optional depth (W) coordinate.
+ *
+ * <p>Implementations model procedural textures such as {@link Noise}, {@link Turbulence},
+ * and {@link CosineIntensityMap} that map a spatial position to a single floating-point
+ * intensity in the range [0, 1] (or beyond, depending on the implementation).</p>
+ *
+ * @see Noise
+ * @see Turbulence
+ * @see CosineIntensityMap
+ * @author Michael Murray
+ */
 public interface IntensityMap {
+	/**
+	 * Returns the intensity at the specified 3D texture coordinate.
+	 *
+	 * @param u the horizontal texture coordinate
+	 * @param v the vertical texture coordinate
+	 * @param w the depth texture coordinate
+	 * @return the intensity value at {@code (u, v, w)}
+	 */
 	double getIntensity(double u, double v, double w);
 }

@@ -533,6 +533,15 @@ jobs:
       - name: Build (skip tests)
         run: mvn install -DskipTests
 
+      - name: Check exempt file lengths
+        run: bash scripts/check-exempt-file-lengths.sh
+
+      - name: Check for PDSL code in Java string literals
+        run: python3 scripts/check-pdsl-in-strings.py
+
+      - name: Check for direct System.out/err logging in test sources
+        run: bash scripts/check-direct-logging.sh
+
       - name: Run Checkstyle
         id: check
         continue-on-error: true

@@ -24,8 +24,21 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalLong;
 
+/**
+ * A special expression representing the smallest representable finite floating-point value
+ * for the current precision.
+ *
+ * <p>Renders to the language-specific literal for the minimum floating-point value
+ * and always evaluates to {@link io.almostrealism.code.Precision#FP64} minimum during
+ * numeric evaluation. The upper bound is reported as zero since the value is negative.</p>
+ */
 public class MinimumValue extends StaticReference<Double> {
 
+	/**
+	 * Constructs a minimum-value expression.
+	 * The reference name is {@code null}; the rendered value is determined by
+	 * {@link io.almostrealism.lang.LanguageOperations#getPrecision()} at code-generation time.
+	 */
 	public MinimumValue() {
 		super(Double.class, null);
 	}

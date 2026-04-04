@@ -60,6 +60,7 @@ import java.util.logging.Logger;
  * @param <T> the protobuf message type
  */
 public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
+	/** Logger for this class. */
 	private static final Logger log = Logger.getLogger(ProtobufDiskStore.class.getName());
 
 	/** Default maximum bytes of data to hold in memory. */
@@ -68,23 +69,46 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	/** Default target size per batch file in bytes. */
 	public static final int DEFAULT_TARGET_BATCH_SIZE = 4 * 1024 * 1024;
 
+	/** Root directory where batch files and the index file are stored. */
 	private final File rootDir;
+
+	/** Protobuf parser used to deserialize records from batch files. */
 	private final Parser<T> parser;
+
+	/** Maximum bytes of deserialized record data to keep in the in-memory batch cache. */
 	private final long maxMemoryBytes;
+
+	/** Target byte size for each batch file before a new batch is started. */
 	private final int targetBatchSize;
 
+	/** Filename of the persisted HNSW vector index within the root directory. */
 	private static final String HNSW_FILE_NAME = "hnsw.bin";
 
+	/** Maps each record ID to its location (batch ID + byte offset) on disk. */
 	private final Map<String, RecordPointer> index;
+
+	/** LRU-like cache of recently accessed deserialized batches, keyed by batch ID. */
 	private final FrequencyCache<Integer, ParsedBatch<T>> batchCache;
+
+	/** Monotonically increasing counter used to assign unique batch file IDs. */
 	private final AtomicInteger nextBatchId;
+
+	/** Batch ID for records that have been added but not yet flushed to disk. */
 	private int pendingBatchId;
+
+	/** Estimated byte size of all pending (unflushed) records. */
 	private long pendingBatchBytes;
+
+	/** In-memory buffer of records waiting to be flushed to the current pending batch. */
 	private final List<PendingRecord<T>> pendingRecords;
+
+	/** Whether this store has been closed; no further mutations are permitted after closing. */
 	private boolean closed;
 
+	/** Optional HNSW vector index for approximate nearest-neighbor search over stored vectors. */
 	private HnswIndex hnswIndex;
 
+	/** Optional callback invoked each time a batch file is loaded from disk, receiving the batch ID. */
 	private Consumer<Integer> loadListener;
 
 	/**
@@ -613,9 +637,21 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * the byte offset within that file.
 	 */
 	static class RecordPointer {
+		/** ID of the batch file containing this record. */
 		final int batchId;
+
+		/**
+		 * Byte offset of this record within the batch file,
+		 * or {@code -1} if the record is still in the pending (unflushed) buffer.
+		 */
 		final long byteOffset;
 
+		/**
+		 * Creates a record pointer.
+		 *
+		 * @param batchId    Batch file identifier
+		 * @param byteOffset Byte offset within the batch, or {@code -1} if pending
+		 */
 		RecordPointer(int batchId, long byteOffset) {
 			this.batchId = batchId;
 			this.byteOffset = byteOffset;
@@ -628,9 +664,18 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * @param <T> the protobuf message type
 	 */
 	static class PendingRecord<T extends Message> {
+		/** Record identifier. */
 		final String id;
+
+		/** The protobuf message waiting to be flushed. */
 		final T record;
 
+		/**
+		 * Creates a pending record entry.
+		 *
+		 * @param id     Record identifier
+		 * @param record The protobuf message to persist
+		 */
 		PendingRecord(String id, T record) {
 			this.id = id;
 			this.record = record;
@@ -643,9 +688,18 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * @param <T> the protobuf message type
 	 */
 	static class ParsedBatch<T> {
+		/** The batch file identifier this parsed batch corresponds to. */
 		final int batchId;
+
+		/** All deserialized records from this batch, keyed by record ID. */
 		final Map<String, T> records;
 
+		/**
+		 * Creates a parsed batch.
+		 *
+		 * @param batchId Batch file identifier
+		 * @param records Deserialized records keyed by ID
+		 */
 		ParsedBatch(int batchId, Map<String, T> records) {
 			this.batchId = batchId;
 			this.records = records;

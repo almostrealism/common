@@ -11,7 +11,7 @@ COPY common/ /app/common/
 ENV PYTHONPATH=/app/common
 
 # Copy application code
-COPY manager/server.py manager/oauth.py ./
+COPY manager/server.py manager/oauth.py manager/github_api.py ./
 
 # Token file mount point
 RUN mkdir -p /config

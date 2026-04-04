@@ -25,20 +25,44 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.ToDoubleFunction;
 
+/**
+ * Priority-based thread pool executor that can suspend low-priority tasks when high-priority
+ * work is submitted.
+ *
+ * <p>Tasks are queued in a {@link PriorityBlockingQueue} ordered by a configurable priority
+ * function. When a minimum priority threshold is active, worker threads will yield their current
+ * low-priority task back to the queue and wait until either the threshold changes or a
+ * sufficiently high-priority task arrives.</p>
+ *
+ * @see TaskAbandonedException
+ */
 public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements ConsoleFeatures {
+	/** Monotonically increasing counter for generating unique thread group names. */
 	private static long id = 0;
 
+	/** Monitor used for priority-based suspension and resumption of worker threads. */
 	private final Object suspensionLock = new Object();
 
+	/** Minimum priority required for a task to begin execution; -1.0 means no restriction. */
     private volatile double minPriorityThreshold;
+	/** Flag set when a high-priority task is submitted, used to wake suspended low-priority workers. */
 	private volatile boolean highPriorityTaskAdded;
 
+	/** Function mapping a {@link Runnable} to its scheduling priority (higher is more urgent). */
     private ToDoubleFunction<Runnable> priority;
 
+	/**
+	 * Creates a single-threaded executor with a default uniform priority of 0.5 for all tasks.
+	 */
 	public SuspendableThreadPoolExecutor() {
 		this(r -> 0.5);
 	}
 
+	/**
+	 * Creates a single-threaded executor using the given priority function.
+	 *
+	 * @param priority Function that computes the priority of a runnable (higher = more urgent)
+	 */
 	public SuspendableThreadPoolExecutor(ToDoubleFunction<Runnable> priority) {
 		this(1, 1, 60L, TimeUnit.SECONDS,
 				new PriorityBlockingQueue<>(100,
@@ -46,6 +70,15 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
 		setPriority(priority);
 	}
 
+	/**
+	 * Creates a configurable executor backed by the given priority queue.
+	 *
+	 * @param corePoolSize Minimum number of worker threads to keep alive
+	 * @param maximumPoolSize Maximum number of worker threads
+	 * @param keepAliveTime Idle thread keep-alive time
+	 * @param unit Time unit for {@code keepAliveTime}
+	 * @param queue Priority-ordered work queue
+	 */
     public SuspendableThreadPoolExecutor(int corePoolSize, int maximumPoolSize,
                                          long keepAliveTime, TimeUnit unit,
                                          PriorityBlockingQueue<? extends Runnable> queue) {
@@ -55,22 +88,48 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
         minPriorityThreshold = -1.0;
     }
 
+	/**
+	 * Returns the current priority function.
+	 *
+	 * @return Priority function mapping runnables to numeric priority values
+	 */
     public ToDoubleFunction<Runnable> getPriority() {
         return priority;
     }
 
+	/**
+	 * Sets the priority function used to order tasks and enforce suspension thresholds.
+	 *
+	 * @param priority New priority function; higher values indicate more urgent tasks
+	 */
     public void setPriority(ToDoubleFunction<Runnable> priority) {
         this.priority = priority;
     }
 
+	/**
+	 * Suspends execution of tasks below the given minimum priority.
+	 *
+	 * <p>Tasks already executing are not interrupted, but new tasks below the threshold will
+	 * block until the threshold is lowered or a high-priority task arrives.</p>
+	 *
+	 * @param minPriority Minimum priority threshold; tasks below this value will wait
+	 */
     public void suspendTasks(double minPriority) {
         setPriorityThreshold(minPriority);
     }
 
+	/**
+	 * Resumes execution of all suspended tasks by removing the priority threshold.
+	 */
     public void resumeAllTasks() {
         setPriorityThreshold(-1.0);
     }
 
+	/**
+	 * Sets the minimum priority threshold, waking any suspended threads to re-evaluate.
+	 *
+	 * @param minPriority New threshold; -1.0 disables suspension
+	 */
     public void setPriorityThreshold(double minPriority) {
         if (minPriority == minPriorityThreshold) {
             return;
@@ -82,8 +141,13 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
         }
     }
 
-    public double getPriorityThreshold() { 
-        return minPriorityThreshold; 
+	/**
+	 * Returns the current minimum priority threshold.
+	 *
+	 * @return Current threshold; -1.0 means no suspension is active
+	 */
+    public double getPriorityThreshold() {
+        return minPriorityThreshold;
     }
 
     @Override
@@ -150,6 +214,14 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
         super.afterExecute(r, t);
     }
 
+	/**
+	 * Creates a thread factory for a new suspension-aware thread pool with the given pool ID.
+	 *
+	 * <p>The factory's thread group suppresses stack traces for {@link TaskAbandonedException}.</p>
+	 *
+	 * @param id Pool identifier used in thread group and thread names
+	 * @return Thread factory producing named threads in the pool's thread group
+	 */
 	public static ThreadFactory threadFactory(long id) {
 		return threadFactory(new ThreadGroup("SuspendableThreadPool-" + id) {
 			@Override
@@ -164,6 +236,12 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
 		});
 	}
 
+	/**
+	 * Creates a thread factory that produces named threads in the given thread group.
+	 *
+	 * @param group Thread group for all created threads
+	 * @return Thread factory with sequential thread naming
+	 */
 	public static ThreadFactory threadFactory(ThreadGroup group) {
 		return new ThreadFactory() {
 			int id = 0;
@@ -175,7 +253,17 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
 		};
 	}
 
+	/**
+	 * Exception thrown when a worker abandons its current task to allow higher-priority work to proceed.
+	 *
+	 * <p>The abandoned task is re-queued before this exception is thrown, so no work is lost.</p>
+	 */
 	protected static class TaskAbandonedException extends RuntimeException {
+		/**
+		 * Creates a task abandonment exception with a descriptive message.
+		 *
+		 * @param message Description of why the task was abandoned
+		 */
 		public TaskAbandonedException(String message) { super(message); }
 	}
 }

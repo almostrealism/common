@@ -53,11 +53,19 @@ import java.util.Optional;
  * @see WaveDataProvider
  */
 public class SoundData {
+	/** The library destination for temporary file creation from in-memory wave data. */
 	private LibraryDestination library;
+
+	/** The path to the main audio file on disk. */
 	private String file;
+
+	/** Optional list of stem file paths (individual component tracks). */
 	private List<String> stemFiles;
 
+	/** The unique identifier for this audio data. */
 	private String key;
+
+	/** The in-memory wave data, if available. */
 	private WaveData data;
 
 	/**

@@ -146,9 +146,17 @@ import java.util.stream.IntStream;
  */
 // TODO  Should extend Repeated
 public class Loop extends OperationComputationAdapter<Void> implements ExpressionFeatures {
+	/** The computation to execute on each iteration. */
 	private final Computation atom;
+	/** Number of times to execute the atom computation. */
 	private final int iterations;
 
+	/**
+	 * Creates a loop that executes the given computation the specified number of times.
+	 *
+	 * @param atom       The computation to execute repeatedly
+	 * @param iterations Number of times to execute the computation
+	 */
 	public Loop(Computation<Void> atom, int iterations) {
 		this.atom = atom;
 		this.iterations = iterations;

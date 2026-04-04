@@ -183,7 +183,9 @@ public class WindowComputation extends CollectionProducerComputationBase {
 		FLATTOP
 	}
 
+	/** The window function applied to the output samples. */
 	private final Type windowType;
+	/** The number of output coefficients (samples) in the window. */
 	private final int windowSize;
 
 	/**

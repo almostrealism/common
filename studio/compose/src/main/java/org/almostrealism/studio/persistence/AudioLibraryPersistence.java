@@ -132,6 +132,12 @@ public class AudioLibraryPersistence {
 	 */
 	private static final Deque<Long> singleDetailCallTimestamps = new ArrayDeque<>();
 
+	/**
+	 * Returns a consumer that saves each {@link WaveDetails} to the given destination.
+	 *
+	 * @param destination directory or file path for persisted wave detail data
+	 * @return a consumer that calls {@link #saveWaveDetails(WaveDetails, String)}
+	 */
 	public static Consumer<WaveDetails> saveWaveDetails(String destination) {
 		return details -> {
 			try {
@@ -142,6 +148,14 @@ public class AudioLibraryPersistence {
 		};
 	}
 
+	/**
+	 * Saves a single {@link WaveDetails} to the given file or directory.
+	 * If {@code destination} is a directory, the file is named using the details identifier.
+	 *
+	 * @param details     the wave details to serialize
+	 * @param destination file path or directory path
+	 * @throws IOException if writing fails
+	 */
 	public static void saveWaveDetails(WaveDetails details, String destination) throws IOException {
 		File f = new File(destination);
 		if (f.isDirectory()) {
@@ -151,6 +165,13 @@ public class AudioLibraryPersistence {
 		encode(details, true).writeTo(new FileOutputStream(f));
 	}
 
+	/**
+	 * Loads a single {@link WaveDetails} from the given protobuf file.
+	 *
+	 * @param source path to the serialized wave detail file
+	 * @return the decoded WaveDetails
+	 * @throws IOException if reading or parsing fails
+	 */
 	public static WaveDetails loadWaveDetails(String source) throws IOException {
 		return decode(Audio.WaveDetailData.newBuilder().mergeFrom(new FileInputStream(source)).build());
 	}
@@ -187,10 +208,26 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/**
+	 * Saves the library to protobuf files using the given output stream supplier,
+	 * without embedding raw audio data.
+	 *
+	 * @param library the library to save
+	 * @param out     supplier of output streams for each batch file
+	 * @throws IOException if writing fails
+	 */
 	public static void saveLibrary(AudioLibrary library, Supplier<OutputStream> out) throws IOException {
 		saveLibrary(library, false, out);
 	}
 
+	/**
+	 * Saves the library to protobuf files using the given output stream supplier.
+	 *
+	 * @param library      the library to save
+	 * @param includeAudio whether to embed raw PCM audio in each entry
+	 * @param out          supplier of output streams for each batch file
+	 * @throws IOException if writing fails
+	 */
 	public static void saveLibrary(AudioLibrary library, boolean includeAudio, Supplier<OutputStream> out) throws IOException {
 		Audio.AudioLibraryData.Builder data = Audio.AudioLibraryData.newBuilder();
 		List<WaveDetails> details = library.allDetails().toList();
@@ -220,6 +257,14 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/**
+	 * Saves a list of wave recordings to protobuf files via the given output stream supplier.
+	 * Data is flushed in batches to limit memory usage.
+	 *
+	 * @param recordings the recordings to save
+	 * @param out        supplier of output streams for each batch file
+	 * @throws IOException if writing fails
+	 */
 	public static void saveRecordings(List<Audio.WaveRecording> recordings, Supplier<OutputStream> out) throws IOException {
 		Audio.AudioLibraryData.Builder data = Audio.AudioLibraryData.newBuilder();
 
@@ -293,10 +338,28 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/**
+	 * Creates a new {@link AudioLibrary} for the given root and sample rate, then loads
+	 * data from the given input stream supplier.
+	 *
+	 * @param root       directory containing audio sample files
+	 * @param sampleRate target sample rate
+	 * @param in         supplier of input streams for each batch file
+	 * @return the populated library
+	 * @throws IOException if reading fails
+	 */
 	public static AudioLibrary loadLibrary(File root, int sampleRate, Supplier<InputStream> in) throws IOException {
 		return loadLibrary(new AudioLibrary(root, sampleRate), in);
 	}
 
+	/**
+	 * Loads data from the given input stream supplier into the library, including similarities.
+	 *
+	 * @param library the library to populate
+	 * @param in      supplier of input streams for each batch file
+	 * @return the populated library
+	 * @throws IOException if reading fails
+	 */
 	public static AudioLibrary loadLibrary(AudioLibrary library, Supplier<InputStream> in) throws IOException {
 		return loadLibrary(library, in, true);
 	}
@@ -344,6 +407,13 @@ public class AudioLibraryPersistence {
 		return library;
 	}
 
+	/**
+	 * Loads wave detail data for a single recording by key from the given data prefix.
+	 *
+	 * @param key        the recording key to look up
+	 * @param dataPrefix path prefix for protobuf library files
+	 * @return ordered list of wave detail data for the recording
+	 */
 	public static List<Audio.WaveDetailData> loadRecording(String key, String dataPrefix) {
 		try {
 			return loadRecording(key, new LibraryDestination(dataPrefix), false);
@@ -352,6 +422,13 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/**
+	 * Loads wave detail data for a recording group by group key from the given data prefix.
+	 *
+	 * @param key        the group key to look up
+	 * @param dataPrefix path prefix for protobuf library files
+	 * @return ordered list of wave detail data for the group
+	 */
 	public static List<Audio.WaveDetailData> loadRecordingGroup(String key, String dataPrefix) {
 		try {
 			return loadRecording(key, new LibraryDestination(dataPrefix), true);
@@ -360,10 +437,28 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/**
+	 * Loads wave detail data for a recording or recording group from the given destination.
+	 *
+	 * @param key         the recording or group key
+	 * @param destination the library destination to read from
+	 * @param group       if {@code true}, match by group key; otherwise match by recording key
+	 * @return ordered list of wave detail data
+	 * @throws IOException if reading fails
+	 */
 	public static List<Audio.WaveDetailData> loadRecording(String key, LibraryDestination destination, boolean group) throws IOException {
 		return loadRecording(key, destination.in(), group);
 	}
 
+	/**
+	 * Loads wave detail data for a recording or recording group from the given input stream supplier.
+	 *
+	 * @param key   the recording or group key
+	 * @param in    supplier of input streams for each batch file
+	 * @param group if {@code true}, match by group key; otherwise match by recording key
+	 * @return ordered list of wave detail data
+	 * @throws IOException if reading fails
+	 */
 	public static List<Audio.WaveDetailData> loadRecording(String key, Supplier<InputStream> in, boolean group) throws IOException {
 		InputStream input = in.get();
 
@@ -396,6 +491,12 @@ public class AudioLibraryPersistence {
 				.toList();
 	}
 
+	/**
+	 * Returns the set of all recording keys found in the library files at the given prefix.
+	 *
+	 * @param dataPrefix path prefix for protobuf library files
+	 * @return set of recording keys
+	 */
 	public static Set<String> listRecordings(String dataPrefix) {
 		try {
 			return listRecordings(new LibraryDestination(dataPrefix), false);
@@ -404,15 +505,39 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/**
+	 * Returns recording keys or group keys found in the given destination.
+	 *
+	 * @param destination the library destination to scan
+	 * @param group       if {@code true}, return group keys; otherwise return individual recording keys
+	 * @return set of matching keys
+	 * @throws IOException if reading fails
+	 */
 	public static Set<String> listRecordings(LibraryDestination destination, boolean group) throws IOException {
 		return listRecordings(destination.in(), group);
 	}
 
+	/**
+	 * Returns a map from group key to the set of recording keys within the group.
+	 *
+	 * @param destination   the library destination to scan
+	 * @param includeSilent whether to include silent recordings
+	 * @return map from group key to member recording keys
+	 * @throws IOException if reading fails
+	 */
 	public static Map<String, Set<String>> listRecordingsGrouped(LibraryDestination destination,
 																 boolean includeSilent) throws IOException {
 		return listRecordingsGrouped(destination.in(), includeSilent);
 	}
 
+	/**
+	 * Returns recording keys or group keys from the given input stream supplier.
+	 *
+	 * @param in    supplier of input streams for each batch file
+	 * @param group if {@code true}, return group keys; otherwise return individual keys
+	 * @return set of matching keys
+	 * @throws IOException if reading fails
+	 */
 	public static Set<String> listRecordings(Supplier<InputStream> in, boolean group) throws IOException {
 		if (group) {
 			return listRecordingsGrouped(in, true).keySet();
@@ -421,17 +546,43 @@ public class AudioLibraryPersistence {
 		}
 	}
 
+	/**
+	 * Returns a map from group key to the set of recording keys within the group
+	 * from the given input stream supplier.
+	 *
+	 * @param in            supplier of input streams for each batch file
+	 * @param includeSilent whether to include silent recordings
+	 * @return map from group key to member recording keys
+	 * @throws IOException if reading fails
+	 */
 	public static Map<String, Set<String>> listRecordingsGrouped(Supplier<InputStream> in,
 																 boolean includeSilent) throws IOException {
 		return listRecordings(in, includeSilent, null);
 	}
 
+	/**
+	 * Returns the flat set of all individual recording keys from the given input stream supplier.
+	 *
+	 * @param in supplier of input streams for each batch file
+	 * @return set of recording keys
+	 * @throws IOException if reading fails
+	 */
 	public static Set<String> listRecordingsFlat(Supplier<InputStream> in) throws IOException {
 		Set<String> keys = new HashSet<>();
 		listRecordings(in, true, keys::add);
 		return keys;
 	}
 
+	/**
+	 * Scans all batch files and builds a map from group key to member recording keys,
+	 * optionally reporting all individual keys via a consumer.
+	 *
+	 * @param in            supplier of input streams for each batch file
+	 * @param includeSilent whether to include silent recordings
+	 * @param keys          optional consumer notified of each individual recording key; may be {@code null}
+	 * @return map from group key to the set of member recording keys
+	 * @throws IOException if reading fails
+	 */
 	protected static Map<String, Set<String>> listRecordings(Supplier<InputStream> in,
 															 boolean includeSilent,
 															 Consumer<String> keys) throws IOException {
@@ -567,10 +718,25 @@ public class AudioLibraryPersistence {
 		return identifier -> loadSingleDetail(dataPrefix, identifier);
 	}
 
+	/**
+	 * Encodes a {@link WaveDetails} to its protobuf representation, optionally embedding raw audio.
+	 *
+	 * @param details      the wave details to encode
+	 * @param includeAudio if {@code true}, raw PCM audio is embedded using FP32 precision
+	 * @return the serialized protobuf message
+	 */
 	public static Audio.WaveDetailData encode(WaveDetails details, boolean includeAudio) {
 		return encode(details, includeAudio ? Precision.FP32 : null);
 	}
 
+	/**
+	 * Encodes a {@link WaveDetails} into a protobuf {@link Audio.WaveDetailData},
+	 * including raw audio data only when {@code audioPrecision} is non-null.
+	 *
+	 * @param details        the wave details to encode
+	 * @param audioPrecision the numeric precision for audio data, or {@code null} to omit audio
+	 * @return the protobuf-encoded wave detail data
+	 */
 	public static Audio.WaveDetailData encode(WaveDetails details, Precision audioPrecision) {
 		Audio.WaveDetailData.Builder data = Audio.WaveDetailData.newBuilder()
 				.setSampleRate(details.getSampleRate())
@@ -597,6 +763,13 @@ public class AudioLibraryPersistence {
 		return data.build();
 	}
 
+	/**
+	 * Decodes a protobuf {@link Audio.WaveDetailData} into a {@link WaveDetails},
+	 * including all similarity data.
+	 *
+	 * @param data the protobuf data to decode
+	 * @return the decoded {@link WaveDetails}
+	 */
 	public static WaveDetails decode(Audio.WaveDetailData data) {
 		return decode(data, true);
 	}
@@ -678,6 +851,12 @@ public class AudioLibraryPersistence {
 		return new PrototypeIndexData(proto.getComputedAt(), communities);
 	}
 
+	/**
+	 * Assembles a {@link WaveData} from a list of sequentially ordered wave detail data entries.
+	 *
+	 * @param data ordered list of wave detail data to concatenate
+	 * @return the assembled WaveData, or {@code null} if the list is empty
+	 */
 	public static WaveData toWaveData(List<Audio.WaveDetailData> data) {
 		if (data == null || data.isEmpty()) return null;
 

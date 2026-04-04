@@ -32,16 +32,47 @@ import org.almostrealism.auth.Login;
 import java.security.SecureRandom;
 import java.util.HashMap;
 
+/**
+ * An AWS Cognito-backed implementation of the {@link Login} interface that
+ * validates user credentials against an Amazon Cognito User Pool.
+ *
+ * <p>The client is constructed for the {@code us-west-2} region. Password
+ * verification uses the {@code ADMIN_NO_SRP_AUTH} flow against a hard-coded
+ * Cognito app client id and authenticates against the {@code us-east-2} region.
+ * The default pool is discovered dynamically by listing the first result from
+ * {@link #getDefaultPool()}.
+ *
+ * @author  Michael Murray
+ */
 public class CognitoLogin implements Login {
+
+	/** The AWS Cognito Identity Provider client used to manage user-pool operations. */
 	private final AWSCognitoIdentityProvider c;
+
+	/** The AWS credentials provider used to authenticate all Cognito API calls. */
 	private final AWSCredentialsProvider p;
 
+	/**
+	 * Constructs a new {@link CognitoLogin} that will authenticate using the
+	 * supplied credentials provider. The provided {@link Encryptor} is accepted
+	 * for interface compatibility but is not directly used by this constructor.
+	 *
+	 * @param e the encryptor (unused by this constructor, reserved for future use)
+	 * @param p AWS credentials provider used to authorise API calls
+	 */
 	public CognitoLogin(Encryptor e, AWSCredentialsProvider p) {
 		this.p = p;
 		c = AWSCognitoIdentityProviderClientBuilder.standard().withRegion(Region.US_West_2.toString())
 				.withCredentials(p).build();
 	}
 
+	/**
+	 * Returns the id of the first user pool visible to the configured credentials.
+	 * The listing is limited to 10 results; the id of the very first pool found is
+	 * returned. Returns {@code null} if no pools are available.
+	 *
+	 * @return the id of the first Cognito user pool, or {@code null} if none exist
+	 */
 	public String getDefaultPool() {
 		ListUserPoolsRequest req = new ListUserPoolsRequest();
 		req.setMaxResults(10);
@@ -54,6 +85,17 @@ public class CognitoLogin implements Login {
 		return null;
 	}
 
+	/**
+	 * Verifies a username and password against the default Cognito user pool using
+	 * the {@code ADMIN_NO_SRP_AUTH} authentication flow. A random SRP_A value is
+	 * generated to satisfy the protocol requirement even though the server-side
+	 * SRP computation is bypassed.
+	 *
+	 * @param user     the username to authenticate
+	 * @param password the plaintext password to verify
+	 * @return {@code true} if the credentials are accepted and a session token is
+	 *         returned by Cognito; {@code false} if the credentials are rejected
+	 */
 	@Override
 	public boolean checkPassword(String user, String password) {
 		HashMap<String, String> map = new HashMap<>();

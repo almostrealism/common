@@ -29,12 +29,14 @@ import java.util.Map;
  */
 public class PdslLexer {
 
+	/** Mapping from reserved word strings to their corresponding token types. */
 	private static final Map<String, PdslToken.Type> KEYWORDS = new HashMap<>();
 
 	static {
 		KEYWORDS.put("layer", PdslToken.Type.LAYER);
 		KEYWORDS.put("model", PdslToken.Type.MODEL);
 		KEYWORDS.put("config", PdslToken.Type.CONFIG);
+		KEYWORDS.put("data", PdslToken.Type.DATA);
 		KEYWORDS.put("let", PdslToken.Type.LET);
 		KEYWORDS.put("return", PdslToken.Type.RETURN);
 		KEYWORDS.put("if", PdslToken.Type.IF);
@@ -44,6 +46,8 @@ public class PdslLexer {
 		KEYWORDS.put("branch", PdslToken.Type.BRANCH);
 		KEYWORDS.put("accum", PdslToken.Type.ACCUM);
 		KEYWORDS.put("product", PdslToken.Type.PRODUCT);
+		KEYWORDS.put("accum_blocks", PdslToken.Type.ACCUM_BLOCKS);
+		KEYWORDS.put("concat_blocks", PdslToken.Type.CONCAT_BLOCKS);
 		KEYWORDS.put("weight", PdslToken.Type.WEIGHT);
 		KEYWORDS.put("scalar", PdslToken.Type.SCALAR);
 		KEYWORDS.put("int", PdslToken.Type.INT_TYPE);
@@ -54,9 +58,16 @@ public class PdslLexer {
 		KEYWORDS.put("null", PdslToken.Type.NULL_LITERAL);
 	}
 
+	/** The complete PDSL source text being lexed. */
 	private final String source;
+
+	/** Current character position within {@link #source}. */
 	private int pos;
+
+	/** Current 1-based line number, incremented on each newline. */
 	private int line;
+
+	/** Current 1-based column number within the current line. */
 	private int column;
 
 	/**
@@ -99,6 +110,10 @@ public class PdslLexer {
 		return tokens;
 	}
 
+	/**
+	 * Advances past whitespace characters and both line ({@code //}) and
+	 * block ({@code /* ... *\/}) comments, updating {@link #line} and {@link #column}.
+	 */
 	private void skipWhitespaceAndComments() {
 		while (pos < source.length()) {
 			char ch = source.charAt(pos);
@@ -133,6 +148,12 @@ public class PdslLexer {
 		}
 	}
 
+	/**
+	 * Reads a run of alphanumeric and underscore characters, returning either a keyword
+	 * token or an {@link PdslToken.Type#IDENTIFIER} token if the word is not reserved.
+	 *
+	 * @return The recognized keyword or identifier token
+	 */
 	private PdslToken readIdentifierOrKeyword() {
 		int startLine = line;
 		int startCol = column;
@@ -147,6 +168,12 @@ public class PdslLexer {
 		return new PdslToken(type, word, startLine, startCol);
 	}
 
+	/**
+	 * Reads an integer or floating-point numeric literal, including optional scientific notation
+	 * (e.g., {@code 1.5e-3}), and returns a {@link PdslToken.Type#NUMBER} token.
+	 *
+	 * @return The numeric literal token
+	 */
 	private PdslToken readNumber() {
 		int startLine = line;
 		int startCol = column;
@@ -185,6 +212,13 @@ public class PdslLexer {
 		return new PdslToken(PdslToken.Type.NUMBER, sb.toString(), startLine, startCol);
 	}
 
+	/**
+	 * Reads a double-quoted string literal, handling basic escape sequences
+	 * ({@code \n}, {@code \t}, {@code \\}, {@code \"}), and returns a
+	 * {@link PdslToken.Type#STRING} token with the unescaped value.
+	 *
+	 * @return The string literal token
+	 */
 	private PdslToken readString() {
 		int startLine = line;
 		int startCol = column;
@@ -210,6 +244,14 @@ public class PdslLexer {
 		return new PdslToken(PdslToken.Type.STRING, sb.toString(), startLine, startCol);
 	}
 
+	/**
+	 * Reads a single operator or delimiter token from the current position,
+	 * handling two-character sequences such as {@code ->}, {@code ..}, {@code ==},
+	 * {@code !=}, {@code <=}, and {@code >=}.
+	 *
+	 * @return The operator or delimiter token
+	 * @throws PdslParseException if the character is not a recognized operator or delimiter
+	 */
 	private PdslToken readOperatorOrDelimiter() {
 		int startLine = line;
 		int startCol = column;
@@ -271,6 +313,9 @@ public class PdslLexer {
 		}
 	}
 
+	/**
+	 * Advances {@link #pos} and {@link #column} by one character.
+	 */
 	private void advance() {
 		pos++;
 		column++;

@@ -29,21 +29,49 @@ import java.io.OutputStream;
 import java.util.Hashtable;
 import java.util.Map;
 
+/**
+ * Downloads files from a remote host via SCP using JSch, with connection retry and a
+ * small LRU-style downloader cache keyed by host/user/password.
+ *
+ * <p>The downloader maintains a single SSH session per instance; concurrent downloads are
+ * serialised via {@code synchronized} on the instance. Sessions are reconnected automatically
+ * on failure up to the configured retry count.</p>
+ */
 public class ScpDownloader implements UserInfo {
+	/** Maximum number of cached downloader instances. */
 	private static final int maxCache = 5;
+	/** Cache of live {@link ScpDownloader} instances keyed by "host|user|password". */
 	private static Map cache;
-	
+
+	/** The JSch SSH library instance used to create sessions. */
 	private final JSch sch;
+	/** The active SSH session, or {@code null} if not connected. */
 	private Session session;
+	/** Remote host name or IP address. */
 	private final String host;
+	/** SSH user name. */
 	private final String user;
+	/** SSH password. */
 	private final String passwd;
-	
+
+	/** Local directory to which downloaded files are written. */
 	private File ddir;
+	/** Number of connection/download attempts before giving up. */
 	private int retry = 3;
-	
+
+	/** {@code true} while a download stream is active, used to serialize concurrent calls. */
 	private boolean streamOpen = false;
-	
+
+	/**
+	 * Constructs a new {@link ScpDownloader} connected to the given host.
+	 *
+	 * <p>Retries connection up to {@link #retry} times before throwing.</p>
+	 *
+	 * @param host   The remote host name or IP
+	 * @param user   The SSH user name
+	 * @param passwd The SSH password
+	 * @throws IOException If a connection cannot be established after all retries
+	 */
 	public ScpDownloader(String host, String user, String passwd) throws IOException {
 		this.host = host;
 		this.user = user;
@@ -66,9 +94,25 @@ public class ScpDownloader implements UserInfo {
 		this.setDownloadDir("temp/");
 	}
 	
+	/**
+	 * Sets the local directory to which downloaded files are written.
+	 *
+	 * @param dir The download directory path
+	 */
 	public void setDownloadDir(String dir) { this.ddir = new File(dir); }
+
+	/**
+	 * Sets the number of connection/download retry attempts.
+	 *
+	 * @param retry The maximum number of attempts
+	 */
 	public void setRetry(int retry) { this.retry = retry; }
-	
+
+	/**
+	 * Establishes a new SSH session to the remote host.
+	 *
+	 * @throws IOException If the JSch session cannot be opened
+	 */
 	public void init() throws IOException {
 		try {
 			this.session = this.sch.getSession(this.user, this.host, 22);
@@ -80,6 +124,9 @@ public class ScpDownloader implements UserInfo {
 		}
 	}
 	
+	/**
+	 * Disconnects the current SSH session and sets it to {@code null}.
+	 */
 	public void dispose() {
 		if (this.session != null) {
 			this.session.disconnect();
@@ -87,6 +134,14 @@ public class ScpDownloader implements UserInfo {
 		}
 	}
 	
+	/**
+	 * Downloads the remote file at the given path, writing its contents to the provided
+	 * output stream.  Blocks if another download is currently in progress.
+	 *
+	 * @param file The remote file path to download
+	 * @param fout The output stream to write the downloaded data to
+	 * @throws IOException If the download fails after all retries
+	 */
 	public synchronized void download(String file, OutputStream fout) throws IOException {
 		while (this.streamOpen) {
 			try {
@@ -138,6 +193,14 @@ public class ScpDownloader implements UserInfo {
 		this.notify();
 	}
 	
+	/**
+	 * Downloads the remote file at the given path to a temporary local file in the download
+	 * directory and returns its canonical path.
+	 *
+	 * @param file The remote file path to download
+	 * @return The canonical local file path of the downloaded file
+	 * @throws IOException If the download fails
+	 */
 	public String download(String file) throws IOException {
 		String orig = file;
 		
@@ -165,6 +228,19 @@ public class ScpDownloader implements UserInfo {
 		return ofile.getCanonicalPath();
 	}
 	
+	/**
+	 * Returns a cached {@link ScpDownloader} for the given host/user/password combination,
+	 * creating and caching a new one if no matching entry exists.
+	 *
+	 * <p>The cache holds at most {@link #maxCache} downloaders; if the limit is reached, an
+	 * arbitrary existing entry is evicted before the new one is added.</p>
+	 *
+	 * @param host   The remote host name or IP
+	 * @param user   The SSH user name
+	 * @param passwd The SSH password
+	 * @return A connected {@link ScpDownloader} for the given credentials
+	 * @throws IOException If a new connection cannot be established
+	 */
 	public static synchronized ScpDownloader getDownloader(String host, String user, String passwd) throws IOException {
 		if (ScpDownloader.cache == null) ScpDownloader.cache = new Hashtable();
 		
@@ -189,6 +265,13 @@ public class ScpDownloader implements UserInfo {
 		}
 	}
 	
+	/**
+	 * Reads the SCP acknowledgement byte from the input stream.
+	 *
+	 * @param in The input stream to read from
+	 * @return 0 on success, 1 on error, 2 on fatal error, -1 on stream end
+	 * @throws IOException If reading from the stream fails
+	 */
 	private static int checkAck(InputStream in) throws IOException{
 		int b = in.read();
 		// b may be 0 for success,
@@ -215,26 +298,36 @@ public class ScpDownloader implements UserInfo {
 		return b;
 	}
 	
+	/** {@inheritDoc} Always returns {@code null}; passphrases are not used. */
 	public String getPassphrase() { return null; }
+
+	/** {@inheritDoc} Returns the SSH password provided at construction time. */
 	public String getPassword() { return this.passwd; }
-	
+
+	/** {@inheritDoc} */
 	public boolean promptPassword(String message) {
 		System.out.println("ScpDownloader: " + message);
 		return (this.passwd != null);
 	}
 	
+	/** {@inheritDoc} Always returns {@code true}. */
 	public boolean promptPassphrase(String message) {
 		System.out.println("ScpDownloader: " + message);
 		return true;
 	}
 	
+	/** {@inheritDoc} Always returns {@code true}. */
 	public boolean promptYesNo(String message) {
 		System.out.println("ScpDownloader: " + message);
 		return true;
 	}
 	
+	/** {@inheritDoc} Logs the message to standard output. */
 	public void showMessage(String message) { System.out.println("ScpDownloader: " + message); }
-	
+
+	/**
+	 * Disposes the SSH session when this object is garbage collected.
+	 */
 	protected void finalize() {
 		System.out.println("ScpDownloader: Disposing " + this);
 		this.dispose();

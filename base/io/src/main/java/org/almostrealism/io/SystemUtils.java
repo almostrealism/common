@@ -68,6 +68,7 @@ import java.util.OptionalInt;
  * @see Console
  */
 public class SystemUtils {
+	/** Utility class — not instantiable. */
 	private SystemUtils() { }
 
 	/**

@@ -27,16 +27,45 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+/**
+ * An expression that renders as a pre-formed code string or variable reference.
+ *
+ * <p>Holds a raw expression string that is emitted verbatim by the code generator.
+ * Optionally tracks a {@link Variable} referent so that variable dependencies are
+ * correctly reported during scope building.</p>
+ *
+ * @param <T> the type of the referenced value
+ */
 public class StaticReference<T> extends Expression<T> {
+	/** The raw code string emitted for this reference. */
 	private String expression;
+
+	/**
+	 * The variable this reference points to, or {@code null} if it is a free-form
+	 * code string rather than a scoped variable reference.
+	 */
 	private Variable referent;
 
+	/**
+	 * Constructs a static reference that renders as the given expression string.
+	 *
+	 * @param type       the type of the referenced value
+	 * @param expression the raw code string to emit
+	 */
 	public StaticReference(Class<T> type, String expression) {
 		super(type);
 		this.expression = expression;
 		init();
 	}
 
+	/**
+	 * Constructs a static reference that renders as the given expression string and
+	 * tracks the given variable as a dependency.
+	 *
+	 * @param type       the type of the referenced value
+	 * @param expression the raw code string to emit
+	 * @param referent   the variable this reference depends on
+	 */
 	public StaticReference(Class<T> type, String expression, Variable referent) {
 		super(type);
 		this.expression = expression;

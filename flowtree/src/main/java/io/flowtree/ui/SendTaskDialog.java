@@ -31,26 +31,55 @@ import java.awt.*;
  * @author  Michael Murray
  */
 public class SendTaskDialog extends JPanel {
+	/** Drop-down options for the rendering job tile size (pixels per tile edge). */
 	public static final String[] jobSizeOptions = {"1", "4", "9", "16", "25", "36", "49", "64", "81", "100"};
 
+	/** Enclosing frame that hosts this panel. */
 	private final JFrame frame;
+
+	/** {@code true} when the dialog frame is currently visible. */
 	private boolean open;
 
+	/** The FlowTree server to which the rendering task will be sent. */
 	private final Server server;
+
+	/** Index of the peer server in the peer list to receive the task. */
 	private final int index;
 
+	/** Panel containing the render-option input fields. */
 	private final JPanel renderPanel;
+
+	/** Panel containing the submit and cancel buttons. */
 	private final JPanel buttonPanel;
+
+	/** Text fields for the target host and port (currently unused). */
 	private JTextField hostField, portField;
+
+	/** Drop-down for selecting the rendering job tile size. */
 	private final JComboBox jobSizeField;
+
+	/** Formatted text field for the output image width in pixels. */
 	private final JFormattedTextField widthField;
+
+	/** Formatted text field for the output image height in pixels. */
 	private final JFormattedTextField heightField;
+
+	/** Formatted text field for the super-sample width. */
 	private final JFormattedTextField ssWidthField;
+
+	/** Formatted text field for the super-sample height. */
 	private final JFormattedTextField ssHeightField;
+
+	/** Button that reads the form values and submits the rendering task. */
 	private final JButton submitButton;
+
+	/** Button that closes the dialog without submitting. */
 	private final JButton cancelButton;
 
+	/** Screen width in pixels, used to centre the wait window. */
 	private static final int screenWidth;
+
+	/** Screen height in pixels, used to centre the wait window. */
 	private static final int screenHeight;
 
 	static {
@@ -111,6 +140,12 @@ public class SendTaskDialog extends JPanel {
 		this.frame.setSize(300, 200);
 	}
 
+	/**
+	 * Reads the form values, prompts for the scene URI, and dispatches the
+	 * rendering task to the configured server peer. The job factory
+	 * instantiation is currently stubbed out pending a reflection-based loader;
+	 * only the wait window is displayed and then hidden.
+	 */
 	public void submit() {
 		final int jobSize = Integer.parseInt(SendTaskDialog.jobSizeOptions[this.jobSizeField.getSelectedIndex()]);
 

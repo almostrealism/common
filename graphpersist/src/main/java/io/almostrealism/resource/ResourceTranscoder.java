@@ -18,6 +18,22 @@ package io.almostrealism.resource;
 
 import java.io.IOException;
 
+/**
+ * Converts a {@link Resource} of type {@code IN} to a {@link Resource} of type {@code OUT}.
+ *
+ * <p>Implementations may, for example, decode a binary image resource into a structured
+ * data resource, or re-encode data in a different format.</p>
+ *
+ * @param <IN>  The input resource type
+ * @param <OUT> The output resource type
+ */
 public interface ResourceTranscoder<IN extends Resource, OUT extends Resource> {
+	/**
+	 * Converts the given input resource to the output resource type.
+	 *
+	 * @param r The input resource to transcode
+	 * @return The transcoded output resource
+	 * @throws IOException If reading or writing during transcoding fails
+	 */
 	OUT transcode(IN r) throws IOException;
 }

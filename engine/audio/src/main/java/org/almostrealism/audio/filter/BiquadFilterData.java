@@ -40,8 +40,15 @@ import org.almostrealism.collect.PackedCollection;
  * @see BiquadFilterCell
  */
 public interface BiquadFilterData extends CodeFeatures {
+	/** Total number of memory slots in the biquad filter state. */
 	int SIZE = 9;
 
+	/**
+	 * Returns the memory slot at the given index for direct access.
+	 *
+	 * @param index slot index (0–{@value #SIZE}-1)
+	 * @return the PackedCollection at that slot
+	 */
 	PackedCollection get(int index);
 
 	default PackedCollection b0() { return get(0); }

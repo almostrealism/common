@@ -226,9 +226,12 @@ public class TemporalRunner implements OperationComputation<Void>, Setup, Tempor
 	 */
 	public static boolean enableIsolation = false;
 
+	/** Suppliers for the compiled setup and per-tick execution runnables. */
 	private Supplier<Runnable> setup, run;
+	/** The materialized setup and per-tick runnables produced from their respective suppliers. */
 	private Runnable s, r;
 
+	/** Optional profile for recording per-operation timing of temporal execution. */
 	private OperationProfile profile;
 
 	/**

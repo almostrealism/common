@@ -27,8 +27,22 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/**
+ * A power expression that computes {@code base^exponent} using the language-specific
+ * {@code pow()} function.
+ *
+ * <p>Provides algebraic strength-reduction: when the exponent is a small integer constant
+ * and the base computation is cheap, the expression is rewritten as a series of
+ * multiplications to avoid the expensive {@code pow()} library call.</p>
+ */
 public class Exponent extends Expression<Double> {
 
+	/**
+	 * Constructs an exponent expression.
+	 *
+	 * @param base     the base expression
+	 * @param exponent the exponent expression
+	 */
 	protected Exponent(Expression<Double> base, Expression<Double> exponent) {
 		super(Double.class, base, exponent);
 	}
@@ -91,6 +105,13 @@ public class Exponent extends Expression<Double> {
 		return product(ts, self, sum(ts, term1, term2));
 	}
 
+	/**
+	 * Creates and post-processes a power expression for the given base and exponent.
+	 *
+	 * @param base     the base expression
+	 * @param exponent the exponent expression
+	 * @return a simplified or constant-folded expression
+	 */
 	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
 		return Expression.process(create(base, exponent));
 	}

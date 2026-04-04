@@ -122,6 +122,7 @@ import java.util.stream.Stream;
  */
 public class PackedCollectionSubset
 		extends IndexProjectionProducerComputation {
+	/** The position expressions specifying the starting offset within each dimension of the source collection. */
 	private Expression[] pos;
 
 	/**

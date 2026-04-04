@@ -65,13 +65,22 @@ import java.nio.file.Path;
  */
 public class AudioDiffusionGenerator implements ConsoleFeatures, CollectionFeatures {
 
+	/** Audio sample rate used for encoding and decoding. */
 	private static final int SAMPLE_RATE = 44100;
 
+	/** The diffusion model that generates latent noise predictions. */
 	private final DiffusionModel diffusionModel;
+
+	/** The autoencoder used to decode latent tensors back into audio. */
 	private final AutoEncoder autoEncoder;
+
+	/** The diffusion sampler that drives the denoising loop. */
 	private final DiffusionSampler sampler;
+
+	/** The shape of the latent tensor produced and consumed by the diffusion model. */
 	private final TraversalPolicy latentShape;
 
+	/** When {@code true}, generation progress is logged at each step. */
 	private boolean verbose = true;
 
 	/**
@@ -245,7 +254,7 @@ public class AudioDiffusionGenerator implements ConsoleFeatures, CollectionFeatu
 		if (verbose) log("Decoding latent to audio...");
 
 		long start = System.currentTimeMillis();
-		PackedCollection audioData = autoEncoder.decode(() -> args -> latent).get().evaluate();
+		PackedCollection audioData = autoEncoder.decode(cp(latent)).get().evaluate();
 
 		int audioLength = (int) (audioData.getMemLength() / 2); // 2 channels
 
@@ -262,6 +271,12 @@ public class AudioDiffusionGenerator implements ConsoleFeatures, CollectionFeatu
 		return new WaveData(stereoData, SAMPLE_RATE);
 	}
 
+	/**
+	 * Normalizes the given audio in-place so that its peak amplitude does not exceed 1.0,
+	 * leaving a small amount of headroom.
+	 *
+	 * @param audio the audio to normalize
+	 */
 	private void normalizeAudio(WaveData audio) {
 		PackedCollection data = audio.getData();
 

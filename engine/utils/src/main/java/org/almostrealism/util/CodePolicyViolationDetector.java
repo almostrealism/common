@@ -53,12 +53,30 @@ public class CodePolicyViolationDetector {
 	 * A detected violation with location and description.
 	 */
 	public static class Violation {
+		/** The source file containing the violation. */
 		private final Path file;
+
+		/** The line number (1-based) of the violating code. */
 		private final int lineNumber;
+
+		/** The raw source line that triggered the violation. */
 		private final String line;
+
+		/** Short rule code identifying which policy was violated. */
 		private final String rule;
+
+		/** Human-readable description of the violation and suggested fix. */
 		private final String description;
 
+		/**
+		 * Creates a new violation record.
+		 *
+		 * @param file        the file containing the violation
+		 * @param lineNumber  the 1-based line number
+		 * @param line        the raw source line
+		 * @param rule        short rule code
+		 * @param description human-readable description and suggested fix
+		 */
 		public Violation(Path file, int lineNumber, String line, String rule, String description) {
 			this.file = file;
 			this.lineNumber = lineNumber;
@@ -177,32 +195,39 @@ public class CodePolicyViolationDetector {
 	/**
 	 * Patterns that indicate PackedCollection CPU-loop violations.
 	 */
+	/** Detects {@code setMem()} calls inside a {@code for} loop block (DOTALL). */
 	private static final Pattern SETMEM_IN_LOOP = Pattern.compile(
 			"for\\s*\\([^)]*\\)\\s*\\{[^}]*\\.setMem\\s*\\([^)]*\\)",
 			Pattern.DOTALL
 	);
 
+	/** Detects {@code setMem(index, expr.toDouble(index))} on a single line. */
 	private static final Pattern SETMEM_WITH_INDEX = Pattern.compile(
 			"\\.setMem\\s*\\(\\s*\\w+\\s*,.*\\.toDouble\\s*\\(\\s*\\w+\\s*\\)"
 	);
 
+	/** Detects a {@code for} loop that calls both {@code toDouble()} and {@code setMem} (DOTALL). */
 	private static final Pattern TODOUBLE_LOOP = Pattern.compile(
 			"for\\s*\\([^)]*\\)\\s*\\{[^}]*\\.toDouble\\s*\\([^)]*\\)[^}]*\\.setMem",
 			Pattern.DOTALL
 	);
 
+	/** Detects calls to {@code System.arraycopy}. */
 	private static final Pattern SYSTEM_ARRAYCOPY = Pattern.compile(
 			"System\\.arraycopy\\s*\\("
 	);
 
+	/** Detects calls to {@code Arrays.copyOf}. */
 	private static final Pattern ARRAYS_COPYOF = Pattern.compile(
 			"Arrays\\.copyOf\\s*\\("
 	);
 
+	/** Detects import statements that reference {@code PackedCollection}. */
 	private static final Pattern PACKED_COLLECTION_IMPORT = Pattern.compile(
 			"import.*PackedCollection"
 	);
 
+	/** Detects a {@code toArray()} call followed by {@code setMem()} in a multi-line pattern. */
 	private static final Pattern TOARRAY_SETMEM_PATTERN = Pattern.compile(
 			"\\.toArray\\s*\\([^)]*\\)[^;]*;[^}]*\\.setMem\\s*\\(",
 			Pattern.DOTALL
@@ -255,9 +280,17 @@ public class CodePolicyViolationDetector {
 			Pattern.MULTILINE
 	);
 
+	/** Accumulated violations found during the most recent {@link #scan()} call. */
 	private final List<Violation> violations = new ArrayList<>();
+
+	/** Root directory from which Java source files are recursively scanned. */
 	private final Path rootDir;
 
+	/**
+	 * Creates a detector that will scan Java source files under the given directory.
+	 *
+	 * @param rootDir  the root directory to scan
+	 */
 	public CodePolicyViolationDetector(Path rootDir) {
 		this.rootDir = rootDir;
 	}
@@ -315,6 +348,13 @@ public class CodePolicyViolationDetector {
 		return this;
 	}
 
+	/**
+	 * Checks a single file for PackedCollection GPU memory model violations.
+	 *
+	 * @param file     the file being checked
+	 * @param content  the full file content as a string
+	 * @param lines    the file content split into lines
+	 */
 	private void checkPackedCollectionViolations(Path file, String content, List<String> lines) {
 		// Skip files in domains where CPU loops are legitimate
 		if (isLegitimeCpuDomain(file)) {
@@ -701,6 +741,13 @@ public class CodePolicyViolationDetector {
 		}
 	}
 
+	/**
+	 * Returns {@code true} if the line at {@code currentLine} is inside a {@code for} loop body.
+	 *
+	 * @param lines        all lines of the file
+	 * @param currentLine  0-based index of the line to check
+	 * @return             whether the line is nested inside a {@code for} loop
+	 */
 	private boolean isInsideForLoop(List<String> lines, int currentLine) {
 		int braceDepth = 0;
 		for (int i = currentLine; i >= 0; i--) {
@@ -716,6 +763,14 @@ public class CodePolicyViolationDetector {
 		return false;
 	}
 
+	/**
+	 * Returns {@code true} if the surrounding context of the given line suggests
+	 * that a CPU-side manipulation loop is being used (e.g., combined with {@code toDouble()}).
+	 *
+	 * @param lines        all lines of the file
+	 * @param currentLine  0-based index of the line to check
+	 * @return             whether the context looks like a CPU manipulation loop
+	 */
 	private boolean looksLikeCpuManipulationLoop(List<String> lines, int currentLine) {
 		// Look at surrounding context for signs of CPU manipulation
 		String context = getContext(lines, currentLine, 5);
@@ -725,6 +780,14 @@ public class CodePolicyViolationDetector {
 				(context.contains("for") && context.contains(".setMem("));
 	}
 
+	/**
+	 * Returns a multi-line string containing the lines within {@code radius} of {@code centerLine}.
+	 *
+	 * @param lines       all lines of the file
+	 * @param centerLine  0-based index of the center line
+	 * @param radius      number of lines before and after to include
+	 * @return            the context string
+	 */
 	private String getContext(List<String> lines, int centerLine, int radius) {
 		int start = Math.max(0, centerLine - radius);
 		int end = Math.min(lines.size(), centerLine + radius + 1);
@@ -735,6 +798,13 @@ public class CodePolicyViolationDetector {
 		return sb.toString();
 	}
 
+	/**
+	 * Counts the number of lines in {@code content} up to but not including {@code position}.
+	 *
+	 * @param content   the full file content
+	 * @param position  the character offset to count up to
+	 * @return          the 1-based line number at the given position
+	 */
 	private int countLines(String content, int position) {
 		int count = 1;
 		for (int i = 0; i < position && i < content.length(); i++) {
@@ -743,6 +813,13 @@ public class CodePolicyViolationDetector {
 		return count;
 	}
 
+	/**
+	 * Counts occurrences of character {@code c} in string {@code s}.
+	 *
+	 * @param s  the string to search
+	 * @param c  the character to count
+	 * @return   the number of occurrences
+	 */
 	private int countChar(String s, char c) {
 		int count = 0;
 		for (int i = 0; i < s.length(); i++) {
@@ -751,6 +828,12 @@ public class CodePolicyViolationDetector {
 		return count;
 	}
 
+	/**
+	 * Returns {@code true} if the given path matches any of the exclusion patterns.
+	 *
+	 * @param path  the path to test
+	 * @return      whether the path should be skipped during scanning
+	 */
 	private boolean isExcluded(Path path) {
 		String pathStr = path.toString();
 		for (String excluded : EXCLUDED_PATHS) {

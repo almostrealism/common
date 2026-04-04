@@ -49,6 +49,15 @@ import java.util.stream.Collectors;
  */
 public class ProfileAnalyzerCLI {
 
+    /**
+     * Entry point for the profile analyzer CLI.
+     *
+     * <p>Parses the command-line arguments, dispatches to the appropriate analysis
+     * routine, and prints results as JSON to standard output. Exits with status 1
+     * on bad arguments or analysis errors.</p>
+     *
+     * @param args command-line arguments: {@code <command> <file> [args...]}
+     */
     public static void main(String[] args) {
         if (args.length < 2) {
             printUsage();
@@ -123,6 +132,9 @@ public class ProfileAnalyzerCLI {
         }
     }
 
+    /**
+     * Prints the command usage summary to standard error.
+     */
     private static void printUsage() {
         System.err.println("Usage: ProfileAnalyzerCLI <command> <file> [args...]");
         System.err.println("Commands:");
@@ -135,6 +147,12 @@ public class ProfileAnalyzerCLI {
         System.err.println("  source <file> <node_key> [max_lines]     - Get generated source code for a node");
     }
 
+    /**
+     * Loads the profile from the given file and prints a JSON summary to standard output.
+     *
+     * @param filePath path to the serialized {@code OperationProfileNode} file
+     * @throws IOException if the file cannot be read
+     */
     private static void printSummary(String filePath) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
@@ -185,6 +203,14 @@ public class ProfileAnalyzerCLI {
         System.out.println(json);
     }
 
+    /**
+     * Loads the profile and prints the {@code limit} slowest operations, optionally filtered by category.
+     *
+     * @param filePath path to the serialized profile file
+     * @param limit    maximum number of results to include
+     * @param category {@code "compile"}, {@code "run"}, or {@code "all"} (default)
+     * @throws IOException if the file cannot be read
+     */
     private static void printSlowest(String filePath, int limit, String category) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
@@ -239,6 +265,13 @@ public class ProfileAnalyzerCLI {
         System.out.println(json);
     }
 
+    /**
+     * Loads the profile and prints the compile/run time breakdown for the node identified by {@code nodeKey}.
+     *
+     * @param filePath path to the serialized profile file
+     * @param nodeKey  the key of the node to report on
+     * @throws IOException if the file cannot be read
+     */
     private static void printBreakdown(String filePath, String nodeKey) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
@@ -314,6 +347,14 @@ public class ProfileAnalyzerCLI {
         System.out.println(json);
     }
 
+    /**
+     * Loads the profile and prints the direct children of the node identified by {@code nodeKey},
+     * or of the root node if {@code nodeKey} is {@code null}.
+     *
+     * @param filePath path to the serialized profile file
+     * @param nodeKey  the key of the parent node, or {@code null} for the root
+     * @throws IOException if the file cannot be read
+     */
     private static void printChildren(String filePath, String nodeKey) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
@@ -362,6 +403,13 @@ public class ProfileAnalyzerCLI {
         System.out.println(json);
     }
 
+    /**
+     * Loads the profile and prints all nodes whose names contain {@code pattern} (case-insensitive).
+     *
+     * @param filePath path to the serialized profile file
+     * @param pattern  the substring to search for in node names
+     * @throws IOException if the file cannot be read
+     */
     private static void searchOperations(String filePath, String pattern) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
@@ -708,6 +756,13 @@ public class ProfileAnalyzerCLI {
         System.out.println(json);
     }
 
+    /**
+     * Counts the number of non-overlapping occurrences of {@code target} in {@code text}.
+     *
+     * @param text   the string to search within
+     * @param target the substring to count
+     * @return the number of times {@code target} appears in {@code text}
+     */
     private static int countOccurrences(String text, String target) {
         int count = 0;
         int idx = 0;
@@ -718,6 +773,12 @@ public class ProfileAnalyzerCLI {
         return count;
     }
 
+    /**
+     * Recursively collects all nodes in the profile tree rooted at {@code node} into {@code nodes}.
+     *
+     * @param node  the root of the subtree to collect
+     * @param nodes the accumulator list to which nodes are added
+     */
     private static void collectNodes(OperationProfileNode node, List<OperationProfileNode> nodes) {
         nodes.add(node);
         if (node.getChildren() != null) {
@@ -727,6 +788,12 @@ public class ProfileAnalyzerCLI {
         }
     }
 
+    /**
+     * Counts the total number of nodes in the subtree rooted at {@code node}.
+     *
+     * @param node the root of the subtree
+     * @return the total node count including {@code node} itself
+     */
     private static int countNodes(OperationProfileNode node) {
         int count = 1;
         if (node.getChildren() != null) {
@@ -737,6 +804,12 @@ public class ProfileAnalyzerCLI {
         return count;
     }
 
+    /**
+     * Counts the number of nodes in the subtree rooted at {@code node} that have associated source code.
+     *
+     * @param node the root of the subtree
+     * @return the number of nodes with at least one {@code OperationSource} entry
+     */
     private static int countCompiledNodes(OperationProfileNode node) {
         int count = hasSource(node) ? 1 : 0;
         if (node.getChildren() != null) {
@@ -747,6 +820,13 @@ public class ProfileAnalyzerCLI {
         return count;
     }
 
+    /**
+     * Searches the subtree rooted at {@code node} for the first node whose key equals {@code key}.
+     *
+     * @param node the root of the subtree to search
+     * @param key  the node key to match
+     * @return the matching node, or {@code null} if not found
+     */
     private static OperationProfileNode findByKey(OperationProfileNode node, String key) {
         if (key.equals(node.getKey())) {
             return node;
@@ -762,6 +842,12 @@ public class ProfileAnalyzerCLI {
         return null;
     }
 
+    /**
+     * Returns {@code true} if the given node has at least one associated {@code OperationSource} entry.
+     *
+     * @param node the node to inspect
+     * @return {@code true} if node-level source code is available
+     */
     private static boolean hasSource(OperationProfileNode node) {
         Map<String, List<OperationSource>> sources = node.getOperationSources();
         if (sources == null || sources.isEmpty()) {
@@ -771,11 +857,29 @@ public class ProfileAnalyzerCLI {
         return sourceList != null && !sourceList.isEmpty();
     }
 
+    /**
+     * Returns the best available duration for the given node.
+     *
+     * <p>Prefers the measured duration when positive; falls back to the self duration otherwise.</p>
+     *
+     * @param node the profile node
+     * @return the effective duration in seconds
+     */
     private static double getNodeDuration(OperationProfileNode node) {
         double measured = node.getMeasuredDuration();
         return measured > 0 ? measured : node.getSelfDuration();
     }
 
+    /**
+     * Returns the total duration for the given node filtered by the specified category.
+     *
+     * <p>When {@code category} is {@code "all"}, delegates to {@link #getNodeDuration(OperationProfileNode)}.
+     * Otherwise sums the metric entries whose keys end with {@code " " + category}.</p>
+     *
+     * @param node     the profile node
+     * @param category {@code "compile"}, {@code "run"}, or {@code "all"}
+     * @return the category-filtered duration in seconds
+     */
     private static double getCategoryDuration(OperationProfileNode node, String category) {
         if ("all".equals(category)) {
             return getNodeDuration(node);
@@ -791,6 +895,16 @@ public class ProfileAnalyzerCLI {
                 .sum();
     }
 
+    /**
+     * Returns the total invocation count for the given node filtered by the specified category.
+     *
+     * <p>When {@code category} is {@code "all"}, sums all metric counts. Otherwise sums only
+     * counts whose keys end with {@code " " + category}.</p>
+     *
+     * @param node     the profile node
+     * @param category {@code "compile"}, {@code "run"}, or {@code "all"}
+     * @return the category-filtered invocation count
+     */
     private static int getCategoryCounts(OperationProfileNode node, String category) {
         Map<String, Integer> counts = node.getMetricCounts();
         if (counts == null) return 0;
@@ -806,6 +920,15 @@ public class ProfileAnalyzerCLI {
                 .sum();
     }
 
+    /**
+     * Formats a duration in seconds as a human-readable string with appropriate units.
+     *
+     * <p>Values below 1 ms are expressed in microseconds; below 1 s in milliseconds;
+     * otherwise in seconds.</p>
+     *
+     * @param seconds the duration to format
+     * @return a formatted duration string
+     */
     private static String formatDuration(double seconds) {
         if (seconds < 0.001) {
             return String.format("%.1fus", seconds * 1000000);
@@ -816,11 +939,24 @@ public class ProfileAnalyzerCLI {
         }
     }
 
+    /**
+     * Rounds a double value to the specified number of decimal places.
+     *
+     * @param value  the value to round
+     * @param places the number of decimal places to retain
+     * @return the rounded value
+     */
     private static double round(double value, int places) {
         double scale = Math.pow(10, places);
         return Math.round(value * scale) / scale;
     }
 
+    /**
+     * Escapes special characters in a string for safe embedding in a JSON value.
+     *
+     * @param s the string to escape; {@code null} is treated as an empty string
+     * @return the escaped string
+     */
     private static String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")

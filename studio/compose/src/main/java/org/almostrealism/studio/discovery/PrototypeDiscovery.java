@@ -75,15 +75,32 @@ import java.util.function.Consumer;
  */
 public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
+	/** Default audio sample rate used when loading audio files for analysis. */
 	private static final int DEFAULT_SAMPLE_RATE = 44100;
 
+	/** Path prefix for the library protobuf batch files. */
 	private final String dataPrefix;
+
+	/** Path to the directory containing raw audio sample files, or {@code null}. */
 	private final String samplesDir;
+
+	/** Maximum number of prototype clusters to discover. */
 	private final int maxClusters;
+
+	/** When {@code true}, cluster results are revealed (logged or persisted) after discovery. */
 	private final boolean reveal;
 
+	/** The loaded audio library used as the source for prototype discovery. */
 	private AudioLibrary library;
 
+	/**
+	 * Creates a prototype discovery pipeline.
+	 *
+	 * @param dataPrefix  path prefix for library protobuf batch files
+	 * @param samplesDir  path to the audio samples directory, or {@code null}
+	 * @param maxClusters maximum number of clusters to discover
+	 * @param reveal      if {@code true}, discovery results are persisted and logged
+	 */
 	public PrototypeDiscovery(String dataPrefix, String samplesDir, int maxClusters, boolean reveal) {
 		this.dataPrefix = dataPrefix;
 		this.samplesDir = samplesDir;
@@ -227,6 +244,12 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		}
 	}
 
+	/**
+	 * Returns {@code true} if the given wave details contain non-null feature data.
+	 *
+	 * @param details the wave details to check
+	 * @return {@code true} if feature data is present
+	 */
 	private boolean hasFeatures(WaveDetails details) {
 		return details != null && details.getFeatureData() != null;
 	}
@@ -246,6 +269,12 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		return provider != null ? provider.getKey() : null;
 	}
 
+	/**
+	 * Computes pairwise similarity scores for any pair of wave details that does not yet
+	 * have a similarity entry, updating the similarity maps in place.
+	 *
+	 * @param allDetails the list of all wave details to process
+	 */
 	private void computeMissingSimilarities(List<WaveDetails> allDetails) {
 		log("Computing similarities for " + allDetails.size() + " samples...");
 		int count = 0;
@@ -267,6 +296,13 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		}
 	}
 
+	/**
+	 * Returns the filename component of the given path for display purposes.
+	 * Returns {@code "unknown"} if the path is {@code null}.
+	 *
+	 * @param path the full file path
+	 * @return the filename portion of the path
+	 */
 	private String getDisplayName(String path) {
 		if (path == null) return "unknown";
 		int lastSlash = path.lastIndexOf('/');
@@ -276,6 +312,12 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		return path;
 	}
 
+	/**
+	 * Opens the platform's file manager and selects the given file path.
+	 * Supports macOS (Finder), Windows (Explorer), and Linux (xdg-open).
+	 *
+	 * @param path the absolute file path to reveal
+	 */
 	private void revealInFinder(String path) {
 		try {
 			File f = new File(path);
@@ -349,6 +391,15 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	/** Default number of nearest neighbors for HNSW-based sparse graph. */
 	public static final int DEFAULT_K_NEIGHBORS = 20;
 
+	/**
+	 * Executes the full prototype discovery pipeline on the given library.
+	 *
+	 * @param library        the audio library to analyze
+	 * @param maxPrototypes  maximum number of prototypes to return
+	 * @param statusCallback optional callback for progress messages
+	 * @return prototypes sorted by community size (largest first)
+	 * @throws PrototypeDiscoveryException if discovery fails or times out
+	 */
 	private List<PrototypeResult> doDiscoverPrototypes(AudioLibrary library,
 													   int maxPrototypes,
 													   Consumer<String> statusCallback)
@@ -574,10 +625,21 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	 * or other unrecoverable conditions.
 	 */
 	public static class PrototypeDiscoveryException extends Exception {
+		/**
+		 * Creates an exception with the given message.
+		 *
+		 * @param message the detail message
+		 */
 		public PrototypeDiscoveryException(String message) {
 			super(message);
 		}
 
+		/**
+		 * Creates an exception with the given message and cause.
+		 *
+		 * @param message the detail message
+		 * @param cause   the underlying cause
+		 */
 		public PrototypeDiscoveryException(String message, Throwable cause) {
 			super(message, cause);
 		}
@@ -585,6 +647,13 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 	// ── CLI entry point ──────────────────────────────────────────────────
 
+	/**
+	 * CLI entry point for the prototype discovery tool.
+	 *
+	 * @param args command-line arguments: {@code --data}, {@code --samples},
+	 *             {@code --clusters}, {@code --reveal}, {@code --help}
+	 * @throws Exception if discovery fails
+	 */
 	public static void main(String[] args) throws Exception {
 		// Parse arguments
 		String dataPrefix = null;
@@ -627,6 +696,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		discovery.run();
 	}
 
+	/** Prints usage information for the CLI entry point. */
 	private static void printUsage() {
 		System.out.println("Prototype Discovery - Find representative samples from pre-computed library data");
 		System.out.println();

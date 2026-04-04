@@ -63,10 +63,19 @@ import java.util.Random;
  */
 public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 
+	/** The clean (noise-free) input samples that will be corrupted for training. */
 	private final List<PackedCollection> samples;
+
+	/** The noise scheduler used to sample timesteps and add noise to clean samples. */
 	private final DiffusionNoiseScheduler scheduler;
+
+	/** Number of times each sample is repeated within a single epoch. */
 	private final int repeatFactor;
+
+	/** Random number generator for deterministic and non-deterministic shuffling. */
 	private final Random shuffleRandom;
+
+	/** Optional extra arguments appended after the timestep for each training sample. */
 	private PackedCollection[] extraArguments;
 
 	/**
@@ -153,7 +162,10 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 	 * Iterator that generates diffusion training samples on-the-fly.
 	 */
 	private class DiffusionIterator implements Iterator<ValueTarget<PackedCollection>> {
+		/** Index into the samples list for the current iteration position. */
 		private int sampleIndex = 0;
+
+		/** Current repetition count for the sample at {@link #sampleIndex}. */
 		private int repeatIndex = 0;
 
 		@Override
@@ -203,6 +215,12 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 					.withArguments(arguments);
 		}
 
+		/**
+		 * Creates a single-element tensor holding the normalized timestep value {@code t / numSteps}.
+		 *
+		 * @param t The integer diffusion timestep
+		 * @return A one-element {@link PackedCollection} containing the normalized timestep
+		 */
 		private PackedCollection createTimestepTensor(int t) {
 			double normalizedT = (double) t / scheduler.getNumSteps();
 			PackedCollection timestep = new PackedCollection(1);

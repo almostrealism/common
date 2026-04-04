@@ -65,12 +65,22 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	/** Global counter for assigning unique IDs to metadata instances. */
 	private static long opIndex = 0;
 
+	/** Unique identifier assigned sequentially at construction time. */
 	private long id;
+
+	/** Human-readable name, short summary, and detailed description for this operation. */
 	private String displayName, shortDescription, longDescription;
+
+	/** The output shape of the operation, if known. */
 	private TraversalPolicy shape;
+
+	/** An optional string identifying the execution context (e.g. thread or device). */
 	private String contextName;
+
+	/** A compact signature string uniquely identifying the operation within its context. */
 	private String signature;
 
+	/** Child operations nested within this metadata node. */
 	private List<OperationMetadata> children;
 
 	/** Default constructor for deserialization. */

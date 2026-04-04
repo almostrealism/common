@@ -41,17 +41,64 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/**
+ * An addition expression that computes the sum of two or more sub-expressions.
+ *
+ * <p>Generates code of the form {@code a + b + c}. Multiple simplification passes are
+ * applied during factory construction including zero-pruning, constant folding, opposite-term
+ * cancellation, coefficient extraction, and mod-pattern detection. The static flags on this
+ * class control which passes are active.</p>
+ *
+ * @param <T> the numeric result type
+ */
 public class Sum<T extends Number> extends NAryExpression<T> {
+	/**
+	 * When {@code true}, arithmetic generators are allowed to reorder their operands
+	 * to aid further simplification.
+	 */
 	public static boolean enableGenerateReordering = false;
 
+	/**
+	 * When {@code true}, a repeated sum (i.e. {@code a + a}) is always flattened to
+	 * {@code 2 * a} regardless of whether the addend is a constant.
+	 */
 	public static boolean enableFlattenRepeatedSumAlways = false;
+
+	/**
+	 * When {@code true}, a repeated sum is flattened only when one of the operands
+	 * is a known constant.
+	 */
 	public static boolean enableFlattenRepeatedSumConstants = true;
 
+	/**
+	 * Maximum tree depth allowed for the opposite-term cancellation check
+	 * ({@code a + (-a) = 0}).
+	 */
 	public static int maxOppositeDetectionDepth = 10;
+
+	/**
+	 * Maximum number of children considered during the distinct-expression coefficient
+	 * extraction pass.
+	 */
 	public static int maxDistinctDetectionWidth = 8;
+
+	/**
+	 * Maximum number of children considered during the coefficient-extraction
+	 * simplification pass.
+	 */
 	public static int maxCoefficientExtractionWidth = 8;
+
+	/**
+	 * Maximum number of expression nodes allowed in the modulo-pattern detection pass.
+	 */
 	public static int maxModDetectionNodes = 8;
 
+	/**
+	 * Constructs a sum expression from a list of numeric operands.
+	 *
+	 * @param values the operands; must not contain zero-valued expressions
+	 * @throws IllegalArgumentException if any operand has a statically known value of zero
+	 */
 	protected Sum(List<Expression<? extends Number>> values) {
 		super((Class<T>) type(values), "+", (List) values);
 
@@ -60,6 +107,11 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 	}
 
+	/**
+	 * Constructs a sum expression from a varargs array of numeric operands.
+	 *
+	 * @param values the operands
+	 */
 	protected Sum(Expression<? extends Number>... values) {
 		super((Class<T>) type(List.of(values)), "+", values);
 	}
@@ -228,10 +280,25 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 	}
 
+	/**
+	 * Creates and post-processes a sum expression.
+	 *
+	 * @param values the operand expressions to add together
+	 * @param <T>    the numeric result type
+	 * @return a simplified or constant-folded expression
+	 */
 	public static <T> Expression<T> of(Expression... values) {
 		return Expression.process(create(values));
 	}
 
+	/**
+	 * Checks for a repeated-operand pattern (e.g. {@code a + a}) and, when enabled,
+	 * returns an equivalent {@code 2 * a} expression.
+	 *
+	 * @param values the candidate operands (checked only for pairs)
+	 * @param <T>    the numeric result type
+	 * @return the simplified expression, or {@code null} if no simplification applies
+	 */
 	protected static <T> Expression<T> checkRepeated(Expression<?>... values) {
 		if (values.length != 2) return null;
 
@@ -266,6 +333,15 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return null;
 	}
 
+	/**
+	 * Creates a sum expression, applying all active simplification passes including
+	 * zero-pruning, arithmetic-generator combination, opposite-term cancellation,
+	 * constant collection, coefficient extraction, and mod-pattern detection.
+	 *
+	 * @param values the operand expressions to add together
+	 * @param <T>    the numeric result type
+	 * @return the simplified expression or a new {@link Sum}
+	 */
 	protected static <T> Expression<T> create(Expression<?>... values) {
 		if (values.length >= 2 &&
 				values[0] instanceof ArithmeticGenerator &&
@@ -387,6 +463,17 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return (Expression) new Sum(operands.stream().sorted(depthOrder()).collect(Collectors.toList()));
 	}
 
+	/**
+	 * Attempts to extract a scalar coefficient from the given target expression by examining
+	 * sibling terms in {@code children} that are multiples of the target.
+	 *
+	 * @param target      the expression whose coefficient is being gathered
+	 * @param targetIndex the index of {@code target} in {@code children}, or {@code -1}
+	 * @param children    all sibling operands in the enclosing sum
+	 * @param prune       when {@code true}, removes processed operands from {@code children}
+	 * @return a {@link Term} with the combined coefficient, or {@code null} if no coefficient
+	 *         could be extracted
+	 */
 	private static Optional<Term> extractCoefficients(Expression<?> target, int targetIndex, List<Expression<?>> children, boolean prune) {
 		double constant = 0.0;
 
@@ -480,6 +567,14 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return Mod.of(pos, ExpressionFeatures.getInstance().e(Math.abs(n.getAsLong())), false);
 	}
 
+	/**
+	 * Returns {@code true} if the two expressions are arithmetic opposites
+	 * (i.e. one is the negation of the other via a {@link Minus} wrapper).
+	 *
+	 * @param a the first expression
+	 * @param b the second expression
+	 * @return {@code true} if {@code a + b == 0}
+	 */
 	private static boolean checkOpposite(Expression a, Expression b) {
 		if (a.treeDepth() > maxOppositeDetectionDepth || b.treeDepth() > maxOppositeDetectionDepth) {
 			return false;
@@ -494,18 +589,41 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return false;
 	}
 
+	/**
+	 * Internal value object that pairs a scalar coefficient with an expression term
+	 * for the coefficient-extraction simplification pass.
+	 */
 	private static class Term {
+		/** The scalar multiplier for this term. */
 		private double coefficient;
+
+		/** The expression that this term represents (stripped of its coefficient). */
 		private Expression<?> expression;
 
+		/**
+		 * Constructs a term with the given coefficient and expression.
+		 *
+		 * @param coefficient the scalar multiplier
+		 * @param expression  the expression for this term
+		 */
 		public Term(double coefficient, Expression<?> expression) {
 			this.coefficient = coefficient;
 			this.expression = expression;
 		}
 
+		/** Returns the scalar coefficient for this term. */
 		public double getCoefficient() { return coefficient; }
+
+		/** Returns the expression for this term, stripped of its coefficient. */
 		public Expression<?> getExpression() { return expression; }
 
+		/**
+		 * Produces the final expression for this term by multiplying the expression
+		 * by its coefficient, using floating-point or integer multiplication.
+		 *
+		 * @param fp {@code true} to use a double coefficient, {@code false} for a long coefficient
+		 * @return the scaled expression
+		 */
 		public Expression<?> result(boolean fp) {
 			if (fp) {
 				return expression.multiply(coefficient);

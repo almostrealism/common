@@ -71,10 +71,14 @@ import java.util.stream.IntStream;
  * @see ProjectedGenome
  */
 public class ProjectedGene extends TransformableGene implements VectorFeatures {
+	/** The shared source data from which this gene projects its factor values. */
 	private final PackedCollection source;
+	/** Projection weight matrix; rows correspond to factors, columns to source elements. */
 	private final PackedCollection weights;
+	/** Per-factor value ranges used to clamp or scale projected outputs. */
 	private final PackedCollection ranges;
 
+	/** Cache of the most recently computed factor values for this gene. */
 	private PackedCollection values;
 
 	/**

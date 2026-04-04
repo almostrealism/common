@@ -24,8 +24,16 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * A {@link Factor} that scales audio feature data by decision weights derived from
+ * a conditioning value vector. Used in attention-conditioned audio generation to
+ * modulate feature contributions based on an external control signal.
+ */
 public class ComposableAudioFeatures implements Factor<PackedCollection>, Destroyable, CodeFeatures {
+	/** The audio feature data to be scaled, shaped {@code (T, B)}. */
 	private Producer<PackedCollection> features;
+
+	/** The weight tensor shaped {@code (T, B, L)} used to compute scaling factors. */
 	private Producer<PackedCollection> weights;
 
 	/**
@@ -43,6 +51,11 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 		this.weights = weights;
 	}
 
+	/**
+	 * Returns the traversal policy (shape) of the feature data.
+	 *
+	 * @return the feature shape
+	 */
 	public TraversalPolicy getFeatureShape() { return shape(features); }
 
 	/**

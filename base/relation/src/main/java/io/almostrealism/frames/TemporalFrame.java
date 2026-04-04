@@ -44,6 +44,7 @@ package io.almostrealism.frames;
  * @author  Michael Murray
  */
 public class TemporalFrame {
+	/** The earlier predicate {@code a} and later predicate {@code b} of this temporal relation. */
 	private Predicate a, b;
 
 	/**

@@ -35,11 +35,26 @@ import org.almostrealism.collect.PackedCollection;
  * @see WaveData
  */
 public class InterpolatedAudioSynthesisModel implements AudioSynthesisModel, CellFeatures {
+	/** Ordered frequency ratio values corresponding to each row of the level data. */
 	private final double[] frequencyRatios;
+
+	/** Audio sample rate in Hz used for interpolation timing. */
 	private final double sampleRate;
+
+	/** 2D packed collection (frequencyRatios.length x samples) of FFT-derived level values. */
 	private final PackedCollection levelData;
+
+	/** Number of time samples in each row of the level data matrix. */
 	private final int samples;
 
+	/**
+	 * Creates an InterpolatedAudioSynthesisModel from pre-computed frequency data.
+	 *
+	 * @param frequencyRatios sorted array of frequency ratio values; length determines the first dimension of levelData
+	 * @param sampleRate      audio sample rate in Hz
+	 * @param levelData       2D packed collection with shape [frequencyRatios.length, samples]
+	 * @throws IllegalArgumentException if levelData dimensions do not match frequencyRatios length
+	 */
 	public InterpolatedAudioSynthesisModel(double[] frequencyRatios,
 										   double sampleRate,
 										   PackedCollection levelData) {
@@ -80,6 +95,16 @@ public class InterpolatedAudioSynthesisModel implements AudioSynthesisModel, Cel
 				traverse(1, time), sampleRate);
 	}
 
+	/**
+	 * Creates an InterpolatedAudioSynthesisModel by performing FFT analysis on the given NoteAudio.
+	 * The model captures harmonic levels across the frequency range, normalized relative to
+	 * the fundamental frequency of the root note.
+	 *
+	 * @param audio  the source audio used for spectral analysis
+	 * @param root   the root key position whose audio is analyzed
+	 * @param tuning the keyboard tuning used to determine the fundamental frequency
+	 * @return a new model built from the spectral data
+	 */
 	public static InterpolatedAudioSynthesisModel create(NoteAudio audio, KeyPosition<?> root, KeyboardTuning tuning) {
 		PackedCollection frequencies = new WaveData(audio.getAudio(root, -1).evaluate(), audio.getSampleRate()).fft(-1, true);
 

@@ -30,11 +30,28 @@ import org.dcache.oncrpc4j.rpc.OncRpcSvcBuilder;
 
 import java.io.IOException;
 
+/**
+ * Starts an NFS server (v3 and v4.1) backed by a {@link GraphFileSystem}.
+ *
+ * <p>On construction, the server registers NFSv4.1, NFSv3, and Mount protocol handlers
+ * on the standard NFS port (2049) via ONC-RPC over TCP. Call {@link #start()} to begin
+ * accepting connections.</p>
+ */
 public class NetworkFileSystemServer {
+	/** The NFS port on which all protocol handlers are registered. */
 	private final int port = 2049;
-	
+
+	/** The underlying ONC-RPC service that listens for and dispatches NFS requests. */
 	private final OncRpcSvc nfs;
 
+	/**
+	 * Constructs the NFS server, wiring together the resource graph and file system manager
+	 * into NFS v3, v4.1, and Mount protocol handlers.
+	 *
+	 * @param graph The resource graph backing the virtual file system
+	 * @param fs    The file system manager providing factory, search, directory, and deletion services
+	 * @throws IOException If the ONC-RPC service cannot be built
+	 */
 	public NetworkFileSystemServer(Graph<Resource> graph, FileSystemManager fs) throws IOException {
 		VirtualFileSystem vfs = new GraphFileSystem(graph, fs, fs, fs, fs);
 
@@ -51,8 +68,18 @@ public class NetworkFileSystemServer {
 		nfs.register(new OncRpcProgram(100005, 3), ms);
 	}
 	
+	/**
+	 * Returns the TCP port on which the NFS service listens.
+	 *
+	 * @return The NFS port (always {@code 2049})
+	 */
 	public int getPort() { return port; }
 
+	/**
+	 * Starts the ONC-RPC service and begins accepting NFS client connections.
+	 *
+	 * @throws IOException If the service cannot bind to the port
+	 */
 	public void start() throws IOException {
 		nfs.start();
 	}

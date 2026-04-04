@@ -28,13 +28,31 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+/**
+ * A constant {@link Long} expression node that holds a literal long integer value.
+ *
+ * <p>Renders using the language-specific long formatter. Can be constructed from
+ * either an {@link Integer} or a {@link Long}, and exposes the value as both
+ * {@link java.util.OptionalInt} (when in range) and {@link java.util.OptionalLong}.</p>
+ */
 public class LongConstant extends Constant<Long> {
+	/** The literal long value held by this constant. */
 	private long value;
 
+	/**
+	 * Constructs a long constant from an integer value by widening conversion.
+	 *
+	 * @param value the integer value to store as a long
+	 */
 	public LongConstant(Integer value) {
 		this(value.longValue());
 	}
 
+	/**
+	 * Constructs a long constant for the given long value.
+	 *
+	 * @param value the literal long value
+	 */
 	public LongConstant(Long value) {
 		super(Long.class);
 		this.value = value;
