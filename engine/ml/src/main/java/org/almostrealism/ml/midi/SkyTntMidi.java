@@ -400,6 +400,10 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		PdslLoader loader = new PdslLoader();
 		int hiddenSize = freqCis.getShape().length(1) * 2 * numHeads;
 		TraversalPolicy inputShape = new TraversalPolicy(1, hiddenSize);
+		// NOTE: Model is intentionally not closed via try-with-resources here.
+		// CompiledModel.forward() depends on the blocks added to this Model;
+		// closing the Model would free those blocks and cause NullPointerExceptions
+		// during inference. Lifecycle management is the caller's responsibility.
 		Model model = new Model(inputShape);
 
 		for (int i = 0; i < numLayers; i++) {

@@ -17,6 +17,7 @@
 package org.almostrealism.ml.midi;
 
 import javax.sound.midi.InvalidMidiDataException;
+import javax.sound.midi.MetaMessage;
 import javax.sound.midi.MidiEvent;
 import javax.sound.midi.MidiMessage;
 import javax.sound.midi.MidiSystem;
@@ -182,6 +183,119 @@ public class MidiFileReader {
 		}
 
 		MidiSystem.write(sequence, 1, output);
+	}
+
+	/**
+	 * Write a list of {@link SkyTntMidiEvent} objects to a standard MIDI file.
+	 *
+	 * <p>All six SkyTNT V2 event types are handled:</p>
+	 * <ul>
+	 *   <li>{@link SkyTntMidiEvent.EventType#NOTE} — writes NOTE_ON at onset
+	 *       and NOTE_OFF at onset + duration, assigning a unique channel per
+	 *       (track, channel) combination.</li>
+	 *   <li>{@link SkyTntMidiEvent.EventType#PATCH_CHANGE} — writes a PROGRAM_CHANGE.</li>
+	 *   <li>{@link SkyTntMidiEvent.EventType#CONTROL_CHANGE} — writes a CC message.</li>
+	 *   <li>{@link SkyTntMidiEvent.EventType#SET_TEMPO} — writes a tempo meta-message
+	 *       (type 0x51), converting BPM to microseconds per beat.</li>
+	 *   <li>{@link SkyTntMidiEvent.EventType#TIME_SIGNATURE} — writes a time-signature
+	 *       meta-message (type 0x58).</li>
+	 *   <li>{@link SkyTntMidiEvent.EventType#KEY_SIGNATURE} — writes a key-signature
+	 *       meta-message (type 0x59).</li>
+	 * </ul>
+	 *
+	 * @param events       SkyTNT events to write
+	 * @param output       the output MIDI file
+	 * @param ticksPerBeat MIDI PPQ resolution (must match the value used during detokenization)
+	 * @throws IOException              if the file cannot be written
+	 * @throws InvalidMidiDataException if a MIDI message cannot be constructed
+	 */
+	public void writeSkyTntEvents(List<SkyTntMidiEvent> events, File output, int ticksPerBeat)
+			throws IOException, InvalidMidiDataException {
+		Sequence sequence = new Sequence(Sequence.PPQ, ticksPerBeat);
+		Track track = sequence.createTrack();
+
+		// Map (skyTntTrack, skyTntChannel) → MIDI output channel (0-15, 9 reserved for drums)
+		Map<Long, Integer> channelMap = new HashMap<>();
+		int[] nextMidiChannel = {0};
+
+		for (SkyTntMidiEvent event : events) {
+			long tick = event.getTick();
+
+			switch (event.getEventType()) {
+				case NOTE: {
+					int midiChannel = resolveChannel(event, channelMap, nextMidiChannel);
+					int velocity = Math.max(1, event.getVelocity());
+					track.add(new MidiEvent(
+							new ShortMessage(NOTE_ON, midiChannel, event.getPitch(), velocity), tick));
+					track.add(new MidiEvent(
+							new ShortMessage(NOTE_OFF, midiChannel, event.getPitch(), 0),
+							tick + Math.max(1, event.getDurationTicks())));
+					break;
+				}
+				case PATCH_CHANGE: {
+					int midiChannel = resolveChannel(event, channelMap, nextMidiChannel);
+					track.add(new MidiEvent(
+							new ShortMessage(PROGRAM_CHANGE, midiChannel, event.getPatch(), 0), tick));
+					break;
+				}
+				case CONTROL_CHANGE: {
+					int midiChannel = resolveChannel(event, channelMap, nextMidiChannel);
+					track.add(new MidiEvent(
+							new ShortMessage(0xB0, midiChannel, event.getController(), event.getCcValue()),
+							tick));
+					break;
+				}
+				case SET_TEMPO: {
+					int microsPerBeat = event.getBpm() > 0
+							? 60_000_000 / event.getBpm()
+							: 500_000;  // default 120 BPM
+					byte[] data = {
+							(byte) (microsPerBeat >> 16 & 0xFF),
+							(byte) (microsPerBeat >> 8 & 0xFF),
+							(byte) (microsPerBeat & 0xFF)
+					};
+					track.add(new MidiEvent(new MetaMessage(0x51, data, 3), tick));
+					break;
+				}
+				case TIME_SIGNATURE: {
+					// dd encodes denominator - 1: 0→denom 2, 1→4, 2→8, 3→16 (MIDI log2)
+					byte[] data = {
+							(byte) (event.getNn() + 1),
+							(byte) (event.getDd() + 1),
+							(byte) 24,
+							(byte) 8
+					};
+					track.add(new MidiEvent(new MetaMessage(0x58, data, 4), tick));
+					break;
+				}
+				case KEY_SIGNATURE: {
+					// sf is offset by 7: 0=7 flats, 7=C, 14=7 sharps
+					byte[] data = {(byte) (event.getSf() - 7), (byte) event.getMi()};
+					track.add(new MidiEvent(new MetaMessage(0x59, data, 2), tick));
+					break;
+				}
+				default:
+					break;
+			}
+		}
+
+		MidiSystem.write(sequence, 1, output);
+	}
+
+	/**
+	 * Resolve the output MIDI channel for a SkyTNT event, assigning a new channel
+	 * if the (track, channel) pair has not been seen before.
+	 */
+	private static int resolveChannel(SkyTntMidiEvent event,
+			Map<Long, Integer> channelMap, int[] nextMidiChannel) {
+		long channelKey = ((long) event.getTrack() << 16) | event.getChannel();
+		Integer midiChannel = channelMap.get(channelKey);
+		if (midiChannel == null) {
+			while (nextMidiChannel[0] == DRUM_CHANNEL) nextMidiChannel[0]++;
+			midiChannel = nextMidiChannel[0] <= 15 ? nextMidiChannel[0]++ : 0;
+			channelMap.put(channelKey, midiChannel);
+		}
+		return midiChannel;
 	}
 
 	/**

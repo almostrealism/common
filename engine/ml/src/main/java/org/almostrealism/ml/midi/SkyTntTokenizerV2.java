@@ -329,7 +329,7 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         int time1Abs = (int) (t / 16);
         int time2 = (int) (t % 16);
         int time1Delta = Math.max(0, Math.min(127, time1Abs - prevTime1));
-        time2 = Math.max(0, Math.min(15, time2));
+        time2 = Math.max(0, time2);
         return new int[]{time1Delta, time2};
     }
 

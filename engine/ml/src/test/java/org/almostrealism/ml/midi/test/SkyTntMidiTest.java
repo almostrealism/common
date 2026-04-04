@@ -294,7 +294,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 	 * @param rng    random number generator
 	 * @return populated StateDictionary
 	 */
-	private static StateDictionary createSyntheticWeights(SkyTntConfig config, Random rng) {
+	static StateDictionary createSyntheticWeights(SkyTntConfig config, Random rng) {
 		Map<String, PackedCollection> weights = new HashMap<>();
 
 		// LM head (shared)
@@ -318,7 +318,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 	}
 
 	/** Add per-layer weights for one transformer to the weight map. */
-	private static void addLayerWeights(Map<String, PackedCollection> weights,
+	static void addLayerWeights(Map<String, PackedCollection> weights,
 										String prefix, int numLayers,
 										int hiddenSize, int ffnSize, Random rng) {
 		for (int i = 0; i < numLayers; i++) {
@@ -336,7 +336,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 	}
 
 	/** Create a PackedCollection filled with small random values. */
-	private static PackedCollection rand(Random rng, int... dims) {
+	static PackedCollection rand(Random rng, int... dims) {
 		TraversalPolicy shape = new TraversalPolicy(dims);
 		PackedCollection c = new PackedCollection(shape);
 		int size = shape.getTotalSize();
