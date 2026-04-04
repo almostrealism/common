@@ -23,6 +23,8 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -136,6 +138,27 @@ public class PdslLoader {
 		args.put("state_dict", stateDict);
 
 		return interpreter.buildModel(modelName, inputShape, args);
+	}
+
+	/**
+	 * Parse a PDSL program from a classpath resource.
+	 *
+	 * <p>The resource path must be absolute (e.g. {@code "/pdsl/midi/skytnt_block.pdsl"}).
+	 * An {@link IllegalStateException} is thrown if the resource cannot be found or read.</p>
+	 *
+	 * @param classpathResource absolute classpath path to the .pdsl resource
+	 * @return the parsed program
+	 * @throws IllegalStateException if the resource is not found or cannot be read
+	 */
+	public PdslNode.Program parseResource(String classpathResource) {
+		try (InputStream is = PdslLoader.class.getResourceAsStream(classpathResource)) {
+			if (is == null) {
+				throw new IllegalStateException("PDSL resource not found on classpath: " + classpathResource);
+			}
+			return parse(new String(is.readAllBytes(), StandardCharsets.UTF_8));
+		} catch (IOException e) {
+			throw new IllegalStateException("Failed to load PDSL resource: " + classpathResource, e);
+		}
 	}
 
 	/**
