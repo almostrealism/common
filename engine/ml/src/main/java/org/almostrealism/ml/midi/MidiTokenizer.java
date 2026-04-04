@@ -143,9 +143,9 @@ public class MidiTokenizer {
 	}
 
 	/**
-	 * Clamp a value to the given range [min, max].
+	 * Clamps {@code value} to the inclusive range [{@code min}, {@code max}].
 	 */
-	private static int clamp(int value, int min, int max) {
+	static int clamp(int value, int min, int max) {
 		return Math.max(min, Math.min(max, value));
 	}
 }
