@@ -905,8 +905,8 @@
         </module>
 
         <!-- Detect fully-qualified class references that should use imports.
-             Matches common java.* and javax.* packages used inline (not in
-             import statements). Uses severity=warning until existing violations
+             Matches common java.* packages used inline (not in import
+             statements). Uses severity=warning until existing violations
              are cleaned up.
              Note: ErrorProne was considered but cannot be added because pom.xml
              modifications are not permitted, and ErrorProne lacks a built-in check

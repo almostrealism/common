@@ -548,7 +548,14 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         if (decoded == null || decoded.isEmpty()) {
             return null;
         }
-        return new ArrayList<>(List.of(decoded.split(",")));
+        List<String> repos = new ArrayList<>();
+        for (String repo : decoded.split(",")) {
+            String normalized = repo.trim();
+            if (!normalized.isEmpty()) {
+                repos.add(normalized);
+            }
+        }
+        return repos.isEmpty() ? null : repos;
     }
 
     /**
@@ -559,9 +566,11 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
      * @param dependentRepos list of git clone URLs
      */
     public void setDependentRepos(List<String> dependentRepos) {
-        if (dependentRepos != null && !dependentRepos.isEmpty()) {
-            set("dependentRepos", GitManagedJob.base64Encode(String.join(",", dependentRepos)));
+        if (dependentRepos == null || dependentRepos.isEmpty()) {
+            set("dependentRepos", null);
+            return;
         }
+        set("dependentRepos", GitManagedJob.base64Encode(String.join(",", dependentRepos)));
     }
 
     /**

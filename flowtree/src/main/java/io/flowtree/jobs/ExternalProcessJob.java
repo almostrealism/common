@@ -161,7 +161,7 @@ public class ExternalProcessJob implements Job, ConsoleFeatures {
         String script = "commands/" + KeyUtils.generateKey() + ".sh";
         try (BufferedWriter out = new BufferedWriter(new FileWriter(script))) {
             out.write("#!/bin/sh\n");
-            log("!/bin/sh");
+            log("#!/bin/sh");
             for (String cmd : commands) {
                 out.write(cmd + "\n");
                 log(cmd);

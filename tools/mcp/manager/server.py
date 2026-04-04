@@ -1657,13 +1657,20 @@ def _resolve_branch_context(
     if require_branch and not branch:
         missing.append("branch")
     if missing:
+        if require_branch:
+            next_steps = [
+                "Provide repo_url and branch directly, or",
+                "Provide workstream_id to resolve them from the workstream config",
+            ]
+        else:
+            next_steps = [
+                "Provide repo_url directly, or",
+                "Provide workstream_id to resolve the repo URL from the workstream config",
+            ]
         return ("", "", {
             "ok": False,
             "error": f"Either ({' + '.join(missing)}) or workstream_id is required",
-            "next_steps": [
-                "Provide repo_url and branch directly, or",
-                "Provide workstream_id to resolve them from the workstream config",
-            ],
+            "next_steps": next_steps,
         })
 
     return (repo_url, branch, None)

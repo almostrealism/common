@@ -465,6 +465,11 @@ public class SlackListener implements ConsoleFeatures {
             }
         }
 
+        // Dependent repos
+        if (workstream.getDependentRepos() != null) {
+            factory.setDependentRepos(workstream.getDependentRepos());
+        }
+
         // Planning document
         if (workstream.getPlanningDocument() != null) {
             factory.setPlanningDocument(workstream.getPlanningDocument());

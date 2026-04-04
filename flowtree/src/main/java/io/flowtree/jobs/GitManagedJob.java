@@ -413,11 +413,12 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
-     * Clones or syncs dependent repositories alongside the primary repo.
+     * Clones dependent repositories alongside the primary repo and records their paths.
      *
      * <p>Each dependent repo is cloned as a sibling directory of the
      * primary working directory. If a repo is already cloned, this
-     * method ensures it is up-to-date with origin.</p>
+     * method reuses the existing clone. Branch checkout and synchronization
+     * with origin are handled separately by {@link #prepareDependentReposBranches()}.</p>
      */
     private void prepareDependentRepos() throws IOException, InterruptedException {
         if (dependentRepos == null || dependentRepos.isEmpty()) {
@@ -456,31 +457,33 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         for (String depPath : dependentRepoPaths) {
             log("Preparing dependent repo branch: " + depPath);
 
+            GitOperations gitOps = new GitOperations(depPath, taskId);
+
             // Fetch latest
-            executeGitInDir(depPath, "fetch", "origin");
+            gitOps.execute("fetch", "origin");
 
             // Check out target branch or create it
-            String currentBranch = executeGitWithOutputInDir(depPath,
+            String currentBranch = gitOps.executeWithOutput(
                 "rev-parse", "--abbrev-ref", "HEAD").trim();
             if (!targetBranch.equals(currentBranch)) {
-                boolean exists = executeGitInDir(depPath, "rev-parse",
+                boolean exists = gitOps.execute("rev-parse",
                     "--verify", targetBranch) == 0
-                    || executeGitInDir(depPath, "rev-parse",
+                    || gitOps.execute("rev-parse",
                         "--verify", "origin/" + targetBranch) == 0;
 
                 if (exists) {
-                    executeGitInDir(depPath, "checkout", targetBranch);
+                    gitOps.execute("checkout", targetBranch);
                 } else {
                     String startPoint = "origin/" + baseBranch;
                     log("Creating branch " + targetBranch + " from "
                         + startPoint + " in " + depPath);
-                    executeGitInDir(depPath, "checkout", "-b",
+                    gitOps.execute("checkout", "-b",
                         targetBranch, "--no-track", startPoint);
                 }
             }
 
             // Pull latest (fast-forward only, ignore failure for new branches)
-            executeGitInDir(depPath, "pull", "--ff-only", "origin", targetBranch);
+            gitOps.execute("pull", "--ff-only", "origin", targetBranch);
         }
     }
 
@@ -492,9 +495,16 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     private void handleDependentRepoGitOperations() throws IOException, InterruptedException {
         for (String depPath : dependentRepoPaths) {
+            GitOperations gitOps = new GitOperations(depPath, taskId);
+            if (gitUserName != null && !gitUserName.isEmpty()) {
+                gitOps.setGitUserName(gitUserName);
+            }
+            if (gitUserEmail != null && !gitUserEmail.isEmpty()) {
+                gitOps.setGitUserEmail(gitUserEmail);
+            }
+
             // Check for changes
-            String statusOutput = executeGitWithOutputInDir(depPath,
-                "status", "--porcelain");
+            String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
             List<String> changedFiles = new ArrayList<>();
             for (String line : statusOutput.split("\n")) {
                 if (line.length() > 3) {
@@ -516,13 +526,20 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             log("Committing " + changedFiles.size() + " changes in dependent repo: " + depPath);
 
             // Stage all changes (apply same size guardrail)
+            boolean anyStagedInDep = false;
             for (String file : changedFiles) {
                 File f = new File(depPath, file);
                 if (f.exists() && f.length() > maxFileSizeBytes) {
                     log("SKIP (size) in dependent repo: " + file);
                     continue;
                 }
-                executeGitInDir(depPath, "add", file);
+                gitOps.execute("add", file);
+                anyStagedInDep = true;
+            }
+
+            if (!anyStagedInDep) {
+                log("No files staged in dependent repo (all skipped): " + depPath);
+                continue;
             }
 
             // Read commit message from primary working directory's commit.txt
@@ -546,27 +563,21 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 }
             }
 
-            // Commit with identity
-            List<String> args = new ArrayList<>();
-            if (gitUserName != null && !gitUserName.isEmpty()) {
-                args.add("-c");
-                args.add("user.name=" + gitUserName);
+            int commitExitCode = gitOps.execute("commit", "-m", commitMessage);
+            if (commitExitCode != 0) {
+                log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
+                continue;
             }
-            if (gitUserEmail != null && !gitUserEmail.isEmpty()) {
-                args.add("-c");
-                args.add("user.email=" + gitUserEmail);
-            }
-            args.add("commit");
-            args.add("-m");
-            args.add(commitMessage);
-
-            executeGitInDir(depPath, args.toArray(new String[0]));
 
             // Push
             if (pushToOrigin && !dryRun) {
                 String refspec = targetBranch + ":" + targetBranch;
-                executeGitInDir(depPath, "push", "-u", "origin", refspec);
-                log("Pushed dependent repo: " + depPath);
+                int pushExitCode = gitOps.execute("push", "-u", "origin", refspec);
+                if (pushExitCode == 0) {
+                    log("Pushed dependent repo: " + depPath);
+                } else {
+                    throw new IOException("Git push failed for dependent repo: " + depPath);
+                }
             }
         }
     }
@@ -583,55 +594,6 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             return defaultWorkspacePath;
         }
         return null;
-    }
-
-    /**
-     * Executes a git command in a specific directory.
-     */
-    private int executeGitInDir(String dir, String... args) throws IOException, InterruptedException {
-        List<String> command = new ArrayList<>();
-        command.add("git");
-        command.add("-C");
-        command.add(dir);
-        command.addAll(Arrays.asList(args));
-
-        ProcessBuilder pb = new ProcessBuilder(command);
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                log("[dep-git] " + line);
-            }
-        }
-        return process.waitFor();
-    }
-
-    /**
-     * Executes a git command in a specific directory and returns stdout.
-     */
-    private String executeGitWithOutputInDir(String dir, String... args)
-            throws IOException, InterruptedException {
-        List<String> command = new ArrayList<>();
-        command.add("git");
-        command.add("-C");
-        command.add(dir);
-        command.addAll(Arrays.asList(args));
-
-        ProcessBuilder pb = new ProcessBuilder(command);
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
-        process.waitFor();
-        return output.toString();
     }
 
     /**

@@ -319,8 +319,10 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     relevant documentation. The Consultant highlights which memories are
     still accurate and flags any that may be outdated.
 
-    Results are scoped to the current repository by default so that
-    memories from unrelated projects are not returned.
+    Results are scoped to the current repository on a best-effort basis.
+    When git context detection succeeds, memories from unrelated projects
+    are filtered out. If detection fails, results may include cross-project
+    memories.
 
     Args:
         query: What to search for.

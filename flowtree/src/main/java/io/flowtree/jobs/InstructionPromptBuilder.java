@@ -527,8 +527,9 @@ public class InstructionPromptBuilder {
             sb.append("The following additional repositories have been checked out ");
             sb.append("alongside the primary working directory. They are on the same ");
             sb.append("branch (").append(targetBranch != null ? targetBranch : "default");
-            sb.append(") and any changes you make in them will be committed and pushed ");
-            sb.append("automatically when the job completes.\n\n");
+            sb.append(") and any changes you make in them will be committed ");
+            sb.append("automatically when the job completes, and pushed when enabled by ");
+            sb.append("job configuration.\n\n");
             for (String depPath : dependentRepoPaths) {
                 sb.append("- `").append(depPath).append("`\n");
             }
