@@ -6,6 +6,7 @@
 package org.almostrealism.audio.data;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.computations.FourierTransform;
 
@@ -35,7 +36,7 @@ import java.util.Random;
  * @see WaveDetails
  * @see FourierTransform
  */
-public class FrequencyToAudioConverter implements TemporalFeatures {
+public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatures {
 
 	/** Random number generator used for phase initialization during synthesis. */
 	private final Random random;
@@ -125,8 +126,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures {
 		details.setData(output);
 		details.setChannelCount(1);
 
-		System.out.println("[FrequencyToAudioConverter] Converted " + freqFrames +
-				" frames to " + outputLength + " samples");
+		log("Converted " + freqFrames + " frames to " + outputLength + " samples");
 	}
 
 	/**

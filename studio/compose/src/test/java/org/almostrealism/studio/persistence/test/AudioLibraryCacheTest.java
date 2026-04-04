@@ -776,6 +776,134 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 				AudioLibrary.computeEmbeddingVector(null));
 	}
 
+	// ── get() behavior tests ─────────────────────────────────────────────
+
+	/**
+	 * Verifies that {@link AudioLibrary#get(String)} returns incomplete entries
+	 * (entries with freq data but no feature data). This is essential for the
+	 * drawing-to-generation pipeline where entries are included before feature
+	 * computation.
+	 */
+	@Test(timeout = 5000)
+	public void getReturnsIncompleteDetails() {
+		WaveDetails incomplete = new WaveDetails("incomplete-get-id", 44100);
+		incomplete.setFreqData(new PackedCollection(1));
+		// No featureData — entry is incomplete
+		library.include(incomplete);
+
+		WaveDetails retrieved = library.get("incomplete-get-id");
+		Assert.assertNotNull("get() should return incomplete entries from cache", retrieved);
+		Assert.assertEquals("incomplete-get-id", retrieved.getIdentifier());
+		Assert.assertNull("Feature data should still be null", retrieved.getFeatureData());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#get(String)} returns entries that have
+	 * only raw audio data (no freq or feature data), such as freshly converted
+	 * drawings.
+	 */
+	@Test(timeout = 5000)
+	public void getReturnsEntryWithOnlyAudioData() {
+		WaveDetails audioOnly = new WaveDetails("audio-only-id", 44100);
+		audioOnly.setData(new PackedCollection(1024));
+		audioOnly.setFrameCount(1024);
+		library.include(audioOnly);
+
+		WaveDetails retrieved = library.get("audio-only-id");
+		Assert.assertNotNull("get() should return entries with only audio data", retrieved);
+		Assert.assertNotNull("Audio data should be present", retrieved.getData());
+	}
+
+	// ── Identifier-based getDetails tests ────────────────────────────────
+
+	/**
+	 * Verifies that {@link AudioLibrary#getDetailsNow(String)} returns
+	 * empty when no data exists for an unknown identifier.
+	 */
+	@Test(timeout = 5000)
+	public void getDetailsNowReturnsEmptyForUnknown() {
+		Assert.assertFalse("Should be empty for unknown identifier",
+				library.getDetailsNow("unknown-id").isPresent());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#getDetailsNow(String)} returns a
+	 * result for a complete entry already in the cache.
+	 */
+	@Test(timeout = 10000)
+	public void getDetailsNowReturnsCompleteEntry() {
+		WaveDetails details = createCompleteDetails("now-complete-id");
+		library.include(details);
+
+		Assert.assertTrue("Should return present for complete entry",
+				library.getDetailsNow("now-complete-id").isPresent());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#getDetailsAwait(String, long)}
+	 * returns null when no data exists for an unknown identifier.
+	 */
+	@Test(timeout = 5000)
+	public void getDetailsAwaitReturnsNullForUnknown() {
+		Assert.assertNull("Should return null for unknown identifier",
+				library.getDetailsAwait("unknown-await-id", 2));
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#getDetailsAwait(String, long)}
+	 * returns a complete entry that is already in the cache.
+	 */
+	@Test(timeout = 10000)
+	public void getDetailsAwaitReturnsCompleteEntry() {
+		WaveDetails details = createCompleteDetails("await-complete-id");
+		library.include(details);
+
+		WaveDetails result = library.getDetailsAwait("await-complete-id", 5);
+		Assert.assertNotNull("Should return complete entry", result);
+		Assert.assertEquals("await-complete-id", result.getIdentifier());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#resolveProvider(String)} creates
+	 * a provider from cached data when no file tree entry exists.
+	 */
+	@Test(timeout = 5000)
+	public void resolveProviderFromCachedData() {
+		WaveDetails details = new WaveDetails("cached-provider-id", 44100);
+		details.setData(new PackedCollection(100));
+		details.setFrameCount(100);
+		library.include(details);
+
+		// resolveProvider is protected, but we can verify via getDetailsAwait
+		// which uses it internally - it should not return null
+		// Since there's no feature provider, it won't compute features,
+		// but the provider resolution itself should work
+		WaveDetails result = library.getDetailsAwait("cached-provider-id", 5);
+		Assert.assertNotNull("Should resolve provider from cached audio data", result);
+	}
+
+	// ── File-path delegate tests ─────────────────────────────────────────
+
+	/**
+	 * Verifies that {@link AudioLibrary#getDetailsForFileNow(String)} returns
+	 * empty for a non-existent file.
+	 */
+	@Test(timeout = 10000)
+	public void getDetailsForFileNowReturnsEmptyForMissingFile() {
+		Assert.assertFalse("Should be empty for non-existent file",
+				library.getDetailsForFileNow("/nonexistent/path.wav").isPresent());
+	}
+
+	/**
+	 * Verifies that {@link AudioLibrary#getDetailsForFileNow(String, boolean)}
+	 * returns empty for a non-existent file.
+	 */
+	@Test(timeout = 10000)
+	public void getDetailsForFileNowPersistentReturnsEmptyForMissingFile() {
+		Assert.assertFalse("Should be empty for non-existent file",
+				library.getDetailsForFileNow("/nonexistent/path.wav", true).isPresent());
+	}
+
 	// ── Test helpers ─────────────────────────────────────────────────────
 
 	/**

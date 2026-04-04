@@ -196,16 +196,43 @@ public class WaveDetailsFactory implements CodeFeatures {
 	}
 
 	/**
-	 * Computes FFT analysis and feature extraction for an existing WaveDetails, updating it in place.
+	 * Computes missing analysis data (FFT and/or features) for existing
+	 * {@link WaveDetails}.
 	 *
-	 * @param existing the WaveDetails to analyze; must have its wave data already loaded
-	 * @return the updated WaveDetails, or null if the input is null
+	 * <p>This method transparently handles two input scenarios:</p>
+	 * <ul>
+	 *   <li><b>Audio waveform present</b> ({@code data} is non-null): FFT is
+	 *       computed from the waveform, then features are extracted via the
+	 *       autoencoder.</li>
+	 *   <li><b>Only frequency data present</b> ({@code data} is null but
+	 *       {@code freqData} is non-null): an audio waveform is first
+	 *       synthesized from the frequency magnitudes via
+	 *       {@link FrequencyToAudioConverter}, then features are extracted.
+	 *       This path is used for spatial drawings, which produce frequency
+	 *       data directly. The synthesized audio is not persisted — it is
+	 *       only needed as an intermediate step for autoencoder encoding.</li>
+	 * </ul>
+	 *
+	 * @param existing the WaveDetails to complete (modified in place)
+	 * @return the same WaveDetails instance with missing fields populated,
+	 *         or null if the input is null
+	 *
+	 * @see FrequencyToAudioConverter
+	 * @see AutoEncoderFeatureProvider
 	 */
 	public WaveDetails forExisting(WaveDetails existing) {
 		if (existing == null) return null;
 
+		// If no audio waveform is available but frequency data exists,
+		// synthesize audio via IFFT so that feature extraction can proceed.
+		// This is the normal path for spatial drawings.
+		if (existing.getData() == null && existing.getFreqData() != null) {
+			new FrequencyToAudioConverter().convert(existing);
+		}
+
+		if (existing.getData() == null) return existing;
+
 		WaveData data = existing.getWaveData();
-		if (data == null) return existing;
 
 		if (existing.getFreqFrameCount() <= 1) {
 			PackedCollection fft = null;
@@ -233,7 +260,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 		}
 
 		if (featureProvider != null && existing.getFeatureData() == null) {
-			PackedCollection features = prepareFeatures(new DynamicWaveDataProvider(existing.getIdentifier(), data));
+			PackedCollection features = featureProvider.computeFeatures(data);
 			existing.setFeatureSampleRate(featureProvider.getFeatureSampleRate());
 			existing.setFeatureChannelCount(1);
 			existing.setFeatureBinCount(features.getShape().length(1));
