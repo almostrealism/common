@@ -34,6 +34,7 @@ jobs:
       engine_changed: ${{ steps.filter.outputs.engine_changed }}
       extern_changed: ${{ steps.filter.outputs.extern_changed }}
       studio_changed: ${{ steps.filter.outputs.studio_changed }}
+      flowtree_changed: ${{ steps.filter.outputs.flowtree_changed }}
     steps:
       - name: Record pipeline start time
         id: timing
@@ -47,7 +48,7 @@ jobs:
         run: |
           set_all_flags_true() {
             echo "code=true" >> "$GITHUB_OUTPUT"
-            for layer in base compute domain engine extern studio; do
+            for layer in base compute domain engine extern studio flowtree; do
               echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
             done
           }
@@ -96,7 +97,7 @@ jobs:
           # Each layer flag indicates whether files in that directory were
           # modified. Test jobs use these flags to skip when their layer
           # (and all layers below it) are unmodified.
-          for layer in base compute domain engine extern studio; do
+          for layer in base compute domain engine extern studio flowtree; do
             LAYER_FILES=$(git diff --name-only "$BASE" HEAD -- "${layer}/" || true)
             if [ -n "$LAYER_FILES" ]; then
               echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
@@ -714,6 +715,51 @@ jobs:
           path: coverage-data/
           retention-days: 1
 
+  test-flowtree:
+    needs: [changes, build]
+    if: >-
+      needs.build.result == 'success' &&
+      needs.changes.outputs.flowtree_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Run FlowTree Tests
+        run: |
+          set -o pipefail
+          mvn test -pl flowtree \
+           -DAR_TEST_PROFILE=pipeline \
+           2>&1 | tee "${{ runner.temp }}/mvn-flowtree-test.log"
+
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-flowtree
+          path: coverage-data/
+          retention-days: 1
+          if-no-files-found: ignore
+
   test-media:
     needs: [changes, build, test]
     # Layer gate: studio tests run when any layer is modified.
@@ -942,7 +988,7 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
-    needs: [test-media]
+    needs: [test, test-media, test-flowtree]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -974,6 +1020,10 @@ jobs:
 
       - name: Merge Coverage Data
         run: |
+          # Ensure the directory exists even when no coverage artifacts were uploaded
+          # (e.g. when test jobs were skipped on this branch).
+          mkdir -p all-coverage
+
           # Find all jacoco.exec files and create a file list
           find all-coverage -name "jacoco.exec" > exec-files.txt
           echo "Found coverage files:"
