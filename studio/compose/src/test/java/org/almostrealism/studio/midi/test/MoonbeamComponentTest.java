@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi.test;
+package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -24,7 +24,7 @@ import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.FundamentalMusicEmbedding;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.HeadGroupConfig;
-import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
+import org.almostrealism.studio.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
@@ -313,7 +313,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 		long buildTime = System.currentTimeMillis() - buildStart;
 		log("[MoonbeamComponentTest] 1-layer model build: " + buildTime + " ms");
 
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		long fwdStart = System.currentTimeMillis();
 		MidiCompoundToken result = autoregressive.next();
@@ -354,7 +354,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 		long buildTime = System.currentTimeMillis() - buildStart;
 		log("[MoonbeamComponentTest] 2-layer model build: " + buildTime + " ms");
 
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos(),
 				new MidiCompoundToken(100, 50, 5, 7, 0, 80)
@@ -408,7 +408,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 		long buildTime = System.currentTimeMillis() - buildStart;
 		log("[MoonbeamComponentTest] 15-layer model build: " + buildTime + " ms");
 
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		long fwdStart = System.currentTimeMillis();
 		MidiCompoundToken result = autoregressive.next();
@@ -448,7 +448,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 		long buildTime = System.currentTimeMillis() - buildStart;
 		log("[MoonbeamComponentTest] model build: " + buildTime + " ms");
 
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		long stepStart = System.currentTimeMillis();
 		MidiCompoundToken result = autoregressive.next();

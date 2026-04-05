@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi;
+package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -26,6 +26,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import javax.sound.midi.InvalidMidiDataException;
+
+import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.ml.midi.MidiCompoundToken;
+import org.almostrealism.ml.midi.MoonbeamMidi;
+import org.almostrealism.ml.midi.MoonbeamConfig;
+import org.almostrealism.ml.midi.CompoundMidiEmbedding;
+import org.almostrealism.ml.midi.GRUDecoder;
 
 /**
  * Autoregressive generation model for compound MIDI tokens.
@@ -47,7 +54,7 @@ import javax.sound.midi.InvalidMidiDataException;
  * <h2>Usage</h2>
  * <pre>{@code
  * MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
- * MoonbeamMidiGenerator generator = model.createAutoregressiveModel();
+ * MoonbeamMidiGenerator generator = new MoonbeamMidiGenerator(model);
  * generator.setPrompt(new MidiCompoundToken[]{ MidiCompoundToken.sos(), token1, token2 });
  *
  * List<MidiCompoundToken> generated = new ArrayList<>();

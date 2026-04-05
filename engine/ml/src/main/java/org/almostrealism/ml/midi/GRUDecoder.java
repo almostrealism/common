@@ -26,9 +26,6 @@ import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -303,12 +300,7 @@ public class GRUDecoder implements LayerFeatures {
 
 			// Load gru_block.pdsl to derive per-gate weight sub-views
 			PdslLoader loader = new PdslLoader();
-			PdslNode.Program gruBlockProgram;
-			try (InputStream is = GRUDecoder.class.getResourceAsStream("/pdsl/gru_block.pdsl")) {
-				gruBlockProgram = loader.parse(new String(is.readAllBytes(), StandardCharsets.UTF_8));
-			} catch (IOException e) {
-				throw new IllegalStateException("Cannot load gru_block.pdsl from classpath", e);
-			}
+			PdslNode.Program gruBlockProgram = loader.parseResource("/pdsl/gru_block.pdsl");
 
 			final int dh = config.decoderHiddenSize;
 			// State layout: [x | h0 | h1 | ... | hL]  (slot 0 = x, slot l+1 = h_l)

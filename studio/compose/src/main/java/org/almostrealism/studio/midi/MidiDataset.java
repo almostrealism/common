@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi;
+package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -27,6 +27,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+
+import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.ml.midi.MidiCompoundToken;
+import org.almostrealism.ml.midi.MoonbeamConfig;
+import org.almostrealism.ml.midi.MidiTrainingConfig;
+import org.almostrealism.ml.midi.GRUDecoder;
 
 /**
  * Training dataset for the Moonbeam MIDI model.

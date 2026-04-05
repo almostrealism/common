@@ -14,11 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi;
+package org.almostrealism.studio.midi;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import org.almostrealism.ml.midi.MidiCompoundToken;
+import org.almostrealism.music.midi.MidiNoteEvent;
 
 /**
  * Tokenizes MIDI note events into compound token sequences for the
@@ -143,9 +146,9 @@ public class MidiTokenizer {
 	}
 
 	/**
-	 * Clamp a value to the given range [min, max].
+	 * Clamps {@code value} to the inclusive range [{@code min}, {@code max}].
 	 */
-	private static int clamp(int value, int min, int max) {
+	static int clamp(int value, int min, int max) {
 		return Math.max(min, Math.min(max, value));
 	}
 }

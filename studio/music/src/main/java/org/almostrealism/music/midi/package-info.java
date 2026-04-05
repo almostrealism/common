@@ -17,8 +17,10 @@
 /**
  * MIDI data types for the music composition layer.
  *
- * <p>Provides {@link org.almostrealism.music.midi.MidiNoteEvent}, the canonical
- * representation of a single MIDI note (pitch, onset, duration, velocity, instrument)
- * used across the music and ML modules.</p>
+ * <p>The canonical MIDI event representation is
+ * {@link org.almostrealism.music.midi.MidiNoteEvent}, defined in the {@code ar-music} module.
+ * It covers all standard event types (NOTE, PATCH_CHANGE, CONTROL_CHANGE, SET_TEMPO,
+ * TIME_SIGNATURE, KEY_SIGNATURE) and provides backward-compatible accessors for
+ * note-centric use cases such as pattern export.</p>
  */
 package org.almostrealism.music.midi;

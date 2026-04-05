@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi.test;
+package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -23,12 +23,12 @@ import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.GRUDecoder;
-import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
+import org.almostrealism.studio.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
-import org.almostrealism.ml.midi.MidiDataset;
-import org.almostrealism.ml.midi.MidiFileReader;
-import org.almostrealism.ml.midi.MidiNoteEvent;
-import org.almostrealism.ml.midi.MidiTokenizer;
+import org.almostrealism.studio.midi.MidiDataset;
+import org.almostrealism.studio.midi.MidiFileReader;
+import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.studio.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MidiTrainingConfig;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
@@ -319,7 +319,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		List<MidiCompoundToken> generated = autoregressive.generate(5);
 		Assert.assertFalse("Should generate tokens", generated.isEmpty());
@@ -365,7 +365,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 		List<MidiNoteEvent> readEvents = reader.read(promptFile);
 		List<MidiCompoundToken> promptTokens = tokenizer.tokenize(readEvents);
 
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 		autoregressive.setPrompt(promptTokens.toArray(new MidiCompoundToken[0]));
 
 		List<MidiCompoundToken> generated = autoregressive.generate(3);
@@ -401,12 +401,12 @@ public class MidiTrainingTest extends TestSuiteBase {
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
 
-		MoonbeamMidiGenerator gen1 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen1 = new MoonbeamMidiGenerator(model);
 		gen1.setTemperature(1.0);
 		gen1.setSeed(42);
 		List<MidiCompoundToken> output1 = gen1.generate(5);
 
-		MoonbeamMidiGenerator gen2 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen2 = new MoonbeamMidiGenerator(model);
 		gen2.setTemperature(1.0);
 		gen2.setSeed(12345);
 		List<MidiCompoundToken> output2 = gen2.generate(5);
@@ -471,11 +471,11 @@ public class MidiTrainingTest extends TestSuiteBase {
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
 
-		MoonbeamMidiGenerator gen1 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen1 = new MoonbeamMidiGenerator(model);
 		gen1.setTemperature(0.0);
 		List<MidiCompoundToken> output1 = gen1.generate(3);
 
-		MoonbeamMidiGenerator gen2 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen2 = new MoonbeamMidiGenerator(model);
 		gen2.setTemperature(0.0);
 		List<MidiCompoundToken> output2 = gen2.generate(3);
 
@@ -499,12 +499,12 @@ public class MidiTrainingTest extends TestSuiteBase {
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
 
-		MoonbeamMidiGenerator gen1 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen1 = new MoonbeamMidiGenerator(model);
 		gen1.setTemperature(0.8);
 		gen1.setSeed(99);
 		List<MidiCompoundToken> output1 = gen1.generate(5);
 
-		MoonbeamMidiGenerator gen2 = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen2 = new MoonbeamMidiGenerator(model);
 		gen2.setTemperature(0.8);
 		gen2.setSeed(99);
 		List<MidiCompoundToken> output2 = gen2.generate(5);
@@ -529,7 +529,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
 
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 		autoregressive.generate(2);
 
 		String summary = model.getProfilingSummary();
@@ -561,7 +561,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 		File outputFile = File.createTempFile("moonbeam_gen_output", ".mid");
 		outputFile.deleteOnExit();
 
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 		autoregressive.generateFromFile(inputFile, outputFile, 3);
 
 		Assert.assertTrue("Output file should exist", outputFile.exists());
@@ -579,7 +579,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		File outputFile = File.createTempFile("moonbeam_unconditional", ".mid");
 		outputFile.deleteOnExit();
