@@ -876,6 +876,26 @@ def _parse_required_labels(required_labels: str) -> dict:
     return result
 
 
+def _parse_dependent_repos(dependent_repos: str) -> list:
+    """Parse a comma-separated list of repo URLs into a Python list.
+
+    Also accepts a JSON array string (e.g. '["url1","url2"]').
+    Empty entries are dropped. Returns an empty list if the input is empty.
+    """
+    if not dependent_repos:
+        return []
+    stripped = dependent_repos.strip()
+    if stripped.startswith("["):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+            if isinstance(parsed, list):
+                return [str(r).strip() for r in parsed if str(r).strip()]
+        except ValueError:
+            pass
+    return [r.strip() for r in stripped.split(",") if r.strip()]
+
+
 @mcp.tool()
 def workstream_submit_task(
     prompt: str,
@@ -995,6 +1015,7 @@ def workstream_register(
     planning_document: str = "",
     channel_name: str = "",
     required_labels: str = "",
+    dependent_repos: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1015,6 +1036,11 @@ def workstream_register(
             that all jobs in this workstream must match by default
             (e.g., "platform:macos,gpu:true"). Job-level labels always override
             these workstream-level defaults.
+        dependent_repos: Comma-separated list of git clone URLs for additional
+            repositories that agents should clone alongside the primary repo
+            (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
+            Also accepts a JSON array string. Dependent repos follow the same
+            branch lifecycle as the primary repo (create/checkout/pull/commit/push).
 
     Returns:
         Dictionary with workstreamId and channel info on success.
@@ -1042,6 +1068,10 @@ def workstream_register(
         labels_map = _parse_required_labels(required_labels)
         if labels_map:
             payload["requiredLabels"] = labels_map
+    if dependent_repos:
+        repos_list = _parse_dependent_repos(dependent_repos)
+        if repos_list:
+            payload["dependentRepos"] = repos_list
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -1074,6 +1104,7 @@ def workstream_update_config(
     planning_document: str = "",
     channel_name: str = "",
     required_labels: str = "",
+    dependent_repos: str = "",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -1092,6 +1123,11 @@ def workstream_update_config(
             that all jobs in this workstream must match by default
             (e.g., "platform:macos,gpu:true"). Job-level labels always override
             these workstream-level defaults.
+        dependent_repos: Comma-separated list of git clone URLs for additional
+            repositories that agents should clone alongside the primary repo
+            (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
+            Also accepts a JSON array string. Dependent repos follow the same
+            branch lifecycle as the primary repo (create/checkout/pull/commit/push).
 
     Returns:
         Dictionary confirming the update.
@@ -1121,6 +1157,10 @@ def workstream_update_config(
         labels_map = _parse_required_labels(required_labels)
         if labels_map:
             payload["requiredLabels"] = labels_map
+    if dependent_repos:
+        repos_list = _parse_dependent_repos(dependent_repos)
+        if repos_list:
+            payload["dependentRepos"] = repos_list
 
     if not payload:
         return {
@@ -1128,7 +1168,8 @@ def workstream_update_config(
             "error": "No fields to update. Provide at least one field.",
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
-                "repo_url, planning_document, channel_name, or required_labels",
+                "repo_url, planning_document, channel_name, required_labels, "
+                "or dependent_repos",
             ],
         }
 
