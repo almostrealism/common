@@ -429,6 +429,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 jobThreadTs.put(event.getJobId(), ts);
             }
         }
+
+        // Persist the Slack message ts so it can be used to construct message links
+        if (statsStore != null && event.getJobId() != null) {
+            String linkTs = jobThreadTs.get(event.getJobId());
+            if (linkTs != null) {
+                statsStore.updateJobSlackTs(event.getJobId(), linkTs);
+            }
+        }
     }
 
     @Override
