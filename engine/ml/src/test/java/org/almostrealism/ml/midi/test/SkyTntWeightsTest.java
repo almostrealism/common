@@ -16,12 +16,10 @@
 
 package org.almostrealism.ml.midi.test;
 
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
-import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
 
@@ -80,38 +78,38 @@ public class SkyTntWeightsTest extends TestSuiteBase implements ConsoleFeatures 
 		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
 
 		// Top-level tensors
-		assertPresent(stateDict, "net.embed_tokens.weight");
-		assertPresent(stateDict, "net.norm.weight");
-		assertPresent(stateDict, "net_token.embed_tokens.weight");
-		assertPresent(stateDict, "net_token.norm.weight");
-		assertPresent(stateDict, "lm_head.weight");
+		MoonbeamWeightVerificationTest.assertPresent(stateDict,"net.embed_tokens.weight");
+		MoonbeamWeightVerificationTest.assertPresent(stateDict,"net.norm.weight");
+		MoonbeamWeightVerificationTest.assertPresent(stateDict,"net_token.embed_tokens.weight");
+		MoonbeamWeightVerificationTest.assertPresent(stateDict,"net_token.norm.weight");
+		MoonbeamWeightVerificationTest.assertPresent(stateDict,"lm_head.weight");
 
 		// All net layer keys (12 layers)
 		for (int i = 0; i < NET_LAYERS; i++) {
 			String p = "net.layers." + i;
-			assertPresent(stateDict, p + ".self_attn.q_proj.weight");
-			assertPresent(stateDict, p + ".self_attn.k_proj.weight");
-			assertPresent(stateDict, p + ".self_attn.v_proj.weight");
-			assertPresent(stateDict, p + ".self_attn.o_proj.weight");
-			assertPresent(stateDict, p + ".mlp.gate_proj.weight");
-			assertPresent(stateDict, p + ".mlp.up_proj.weight");
-			assertPresent(stateDict, p + ".mlp.down_proj.weight");
-			assertPresent(stateDict, p + ".input_layernorm.weight");
-			assertPresent(stateDict, p + ".post_attention_layernorm.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".self_attn.q_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".self_attn.k_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".self_attn.v_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".self_attn.o_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".mlp.gate_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".mlp.up_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".mlp.down_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".input_layernorm.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".post_attention_layernorm.weight");
 		}
 
 		// All net_token layer keys (3 layers)
 		for (int i = 0; i < NET_TOKEN_LAYERS; i++) {
 			String p = "net_token.layers." + i;
-			assertPresent(stateDict, p + ".self_attn.q_proj.weight");
-			assertPresent(stateDict, p + ".self_attn.k_proj.weight");
-			assertPresent(stateDict, p + ".self_attn.v_proj.weight");
-			assertPresent(stateDict, p + ".self_attn.o_proj.weight");
-			assertPresent(stateDict, p + ".mlp.gate_proj.weight");
-			assertPresent(stateDict, p + ".mlp.up_proj.weight");
-			assertPresent(stateDict, p + ".mlp.down_proj.weight");
-			assertPresent(stateDict, p + ".input_layernorm.weight");
-			assertPresent(stateDict, p + ".post_attention_layernorm.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".self_attn.q_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".self_attn.k_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".self_attn.v_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".self_attn.o_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".mlp.gate_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".mlp.up_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".mlp.down_proj.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".input_layernorm.weight");
+			MoonbeamWeightVerificationTest.assertPresent(stateDict,p + ".post_attention_layernorm.weight");
 		}
 
 		log("All expected weight keys present. Total loaded: " + stateDict.size());
@@ -130,80 +128,57 @@ public class SkyTntWeightsTest extends TestSuiteBase implements ConsoleFeatures 
 		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
 
 		// Embedding and LM head: [3406, 1024]
-		assertShape(stateDict, "net.embed_tokens.weight", VOCAB_SIZE * HIDDEN);
-		assertShape(stateDict, "net_token.embed_tokens.weight", VOCAB_SIZE * HIDDEN);
-		assertShape(stateDict, "lm_head.weight", VOCAB_SIZE * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.embed_tokens.weight", VOCAB_SIZE * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.embed_tokens.weight", VOCAB_SIZE * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"lm_head.weight", VOCAB_SIZE * HIDDEN);
 
 		// Final norms: [1024]
-		assertShape(stateDict, "net.norm.weight", HIDDEN);
-		assertShape(stateDict, "net_token.norm.weight", HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.norm.weight", HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.norm.weight", HIDDEN);
 
 		// net layer 0 attention: [1024, 1024]
-		assertShape(stateDict, "net.layers.0.self_attn.q_proj.weight", HIDDEN * HIDDEN);
-		assertShape(stateDict, "net.layers.0.self_attn.k_proj.weight", HIDDEN * HIDDEN);
-		assertShape(stateDict, "net.layers.0.self_attn.v_proj.weight", HIDDEN * HIDDEN);
-		assertShape(stateDict, "net.layers.0.self_attn.o_proj.weight", HIDDEN * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.0.self_attn.q_proj.weight", HIDDEN * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.0.self_attn.k_proj.weight", HIDDEN * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.0.self_attn.v_proj.weight", HIDDEN * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.0.self_attn.o_proj.weight", HIDDEN * HIDDEN);
 
 		// net layer 0 FFN: gate/up [4096, 1024], down [1024, 4096]
-		assertShape(stateDict, "net.layers.0.mlp.gate_proj.weight",
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.0.mlp.gate_proj.weight",
 				NET_FFN_INTERMEDIATE * HIDDEN);
-		assertShape(stateDict, "net.layers.0.mlp.up_proj.weight",
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.0.mlp.up_proj.weight",
 				NET_FFN_INTERMEDIATE * HIDDEN);
-		assertShape(stateDict, "net.layers.0.mlp.down_proj.weight",
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.0.mlp.down_proj.weight",
 				HIDDEN * NET_FFN_INTERMEDIATE);
 
 		// net layer 0 norms: [1024]
-		assertShape(stateDict, "net.layers.0.input_layernorm.weight", HIDDEN);
-		assertShape(stateDict, "net.layers.0.post_attention_layernorm.weight", HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.0.input_layernorm.weight", HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.0.post_attention_layernorm.weight", HIDDEN);
 
 		// net last layer (11) — verify all 12 layers were extracted
-		assertShape(stateDict, "net.layers.11.self_attn.q_proj.weight", HIDDEN * HIDDEN);
-		assertShape(stateDict, "net.layers.11.mlp.gate_proj.weight",
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.11.self_attn.q_proj.weight", HIDDEN * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net.layers.11.mlp.gate_proj.weight",
 				NET_FFN_INTERMEDIATE * HIDDEN);
 
 		// net_token layer 0 attention: [1024, 1024]
-		assertShape(stateDict, "net_token.layers.0.self_attn.q_proj.weight", HIDDEN * HIDDEN);
-		assertShape(stateDict, "net_token.layers.0.self_attn.k_proj.weight", HIDDEN * HIDDEN);
-		assertShape(stateDict, "net_token.layers.0.self_attn.v_proj.weight", HIDDEN * HIDDEN);
-		assertShape(stateDict, "net_token.layers.0.self_attn.o_proj.weight", HIDDEN * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.layers.0.self_attn.q_proj.weight", HIDDEN * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.layers.0.self_attn.k_proj.weight", HIDDEN * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.layers.0.self_attn.v_proj.weight", HIDDEN * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.layers.0.self_attn.o_proj.weight", HIDDEN * HIDDEN);
 
 		// net_token layer 0 FFN: all [1024, 1024]
-		assertShape(stateDict, "net_token.layers.0.mlp.gate_proj.weight",
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.layers.0.mlp.gate_proj.weight",
 				NET_TOKEN_FFN_INTERMEDIATE * HIDDEN);
-		assertShape(stateDict, "net_token.layers.0.mlp.up_proj.weight",
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.layers.0.mlp.up_proj.weight",
 				NET_TOKEN_FFN_INTERMEDIATE * HIDDEN);
-		assertShape(stateDict, "net_token.layers.0.mlp.down_proj.weight",
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.layers.0.mlp.down_proj.weight",
 				HIDDEN * NET_TOKEN_FFN_INTERMEDIATE);
 
 		// net_token last layer (2)
-		assertShape(stateDict, "net_token.layers.2.self_attn.q_proj.weight", HIDDEN * HIDDEN);
-		assertShape(stateDict, "net_token.layers.2.mlp.gate_proj.weight",
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.layers.2.self_attn.q_proj.weight", HIDDEN * HIDDEN);
+		MoonbeamWeightVerificationTest.assertShape(stateDict,"net_token.layers.2.mlp.gate_proj.weight",
 				NET_TOKEN_FFN_INTERMEDIATE * HIDDEN);
 
 		log("All sampled weight shapes verified correctly.");
 	}
 
-	/**
-	 * Assert that a weight key is present in the dictionary (non-null).
-	 *
-	 * @param stateDict the loaded dictionary
-	 * @param key       the weight key to check
-	 */
-	private void assertPresent(StateDictionary stateDict, String key) {
-		Assert.assertNotNull("Missing weight key: " + key, stateDict.get(key));
-	}
-
-	/**
-	 * Assert that a weight key is present and has the expected total element count.
-	 *
-	 * @param stateDict    the loaded dictionary
-	 * @param key          the weight key to check
-	 * @param expectedSize expected total number of float32 elements
-	 */
-	private void assertShape(StateDictionary stateDict, String key, int expectedSize) {
-		PackedCollection weight = stateDict.get(key);
-		Assert.assertNotNull("Missing weight key: " + key, weight);
-		Assert.assertEquals("Wrong element count for " + key,
-				expectedSize, weight.getMemLength());
-	}
 }

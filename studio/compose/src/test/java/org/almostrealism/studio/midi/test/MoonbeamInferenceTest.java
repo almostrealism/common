@@ -14,16 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi.test;
+package org.almostrealism.studio.midi.test;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.GRUDecoder;
-import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
+import org.almostrealism.studio.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
-import org.almostrealism.ml.midi.MidiNoteEvent;
-import org.almostrealism.ml.midi.MidiTokenizer;
+import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.studio.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
 import org.almostrealism.util.TestDepth;
@@ -158,7 +158,7 @@ public class MoonbeamInferenceTest extends TestSuiteBase implements ConsoleFeatu
 		Assert.assertNotNull("Compiled transformer should exist",
 				model.getCompiledTransformer());
 
-		MoonbeamMidiGenerator gen = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator gen = new MoonbeamMidiGenerator(model);
 		gen.setTemperature(0.8);
 		gen.setTopP(0.95);
 		gen.setSeed(42);

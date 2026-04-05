@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi;
+package org.almostrealism.studio.midi;
 
 import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.MetaMessage;
@@ -31,6 +31,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.almostrealism.music.midi.MidiNoteEvent;
 
 /**
  * Reads and writes standard MIDI files, converting between the

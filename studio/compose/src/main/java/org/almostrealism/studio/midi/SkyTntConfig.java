@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi;
+package org.almostrealism.studio.midi;
 
 /**
  * Hyperparameter configuration for the SkyTNT midi-model.

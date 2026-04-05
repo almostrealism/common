@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi;
+package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -36,6 +36,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+
+import org.almostrealism.music.midi.MidiNoteEvent;
 
 /**
  * SkyTNT midi-model (tv2o-medium) inference implementation.

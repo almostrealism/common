@@ -14,10 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi.test;
+package org.almostrealism.studio.midi.test;
 
-import org.almostrealism.ml.midi.MidiNoteEvent;
-import org.almostrealism.ml.midi.SkyTntTokenizerV2;
+import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.studio.midi.SkyTntTokenizerV2;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;

@@ -14,14 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi;
+package org.almostrealism.music.midi;
 
 /**
  * Unified representation of a MIDI event, covering all standard event types.
  *
  * <p>This class serves as the single canonical MIDI event type for both the
- * Moonbeam tokenizer ({@link MidiTokenizer}) and the SkyTNT V2 tokenizer
- * ({@link SkyTntTokenizerV2}), as well as the pattern-to-MIDI export pipeline.</p>
+ * Moonbeam tokenizer ({@link org.almostrealism.studio.midi.MidiTokenizer}) and the SkyTNT V2 tokenizer
+ * ({@link org.almostrealism.studio.midi.SkyTntTokenizerV2}), as well as the pattern-to-MIDI export pipeline.</p>
  *
  * <p>Supported event types are defined by {@link EventType}: {@code NOTE},
  * {@code PATCH_CHANGE}, {@code CONTROL_CHANGE}, {@code SET_TEMPO},
@@ -44,9 +44,9 @@ package org.almostrealism.ml.midi;
  * The getter {@link #getOnset()} is an alias for {@link #getTick()} provided for
  * backward compatibility with the Moonbeam tokenizer.</p>
  *
- * @see MidiTokenizer
- * @see SkyTntTokenizerV2
- * @see MidiFileReader
+ * @see org.almostrealism.studio.midi.MidiTokenizer
+ * @see org.almostrealism.studio.midi.SkyTntTokenizerV2
+ * @see org.almostrealism.studio.midi.MidiFileReader
  */
 public class MidiNoteEvent implements Comparable<MidiNoteEvent> {
 
@@ -284,7 +284,7 @@ public class MidiNoteEvent implements Comparable<MidiNoteEvent> {
     /**
      * Returns the absolute onset time in ticks.
      * This is an alias for {@link #getTick()} provided for backward compatibility
-     * with the Moonbeam tokenizer ({@link MidiTokenizer}).
+     * with the Moonbeam tokenizer ({@link org.almostrealism.studio.midi.MidiTokenizer}).
      */
     public long getOnset() { return tick; }
 
@@ -310,7 +310,7 @@ public class MidiNoteEvent implements Comparable<MidiNoteEvent> {
     /**
      * Returns the note duration in ticks.
      * This is an alias for {@link #getDurationTicks()} provided for backward
-     * compatibility with the Moonbeam tokenizer ({@link MidiTokenizer}).
+     * compatibility with the Moonbeam tokenizer ({@link org.almostrealism.studio.midi.MidiTokenizer}).
      */
     public long getDuration() { return durationTicks; }
 
@@ -343,7 +343,7 @@ public class MidiNoteEvent implements Comparable<MidiNoteEvent> {
      *
      * <p>Returns {@link #DRUM_INSTRUMENT} (128) when {@link #getChannel()} equals
      * {@link #DRUM_CHANNEL} (9), otherwise returns {@link #getPatch()}. This
-     * matches the convention used by {@link MidiTokenizer} and {@link MidiFileReader}.</p>
+     * matches the convention used by {@link org.almostrealism.studio.midi.MidiTokenizer} and {@link org.almostrealism.studio.midi.MidiFileReader}.</p>
      */
     public int getInstrument() {
         return channel == DRUM_CHANNEL ? DRUM_INSTRUMENT : patch;

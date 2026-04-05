@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi.test;
+package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -25,11 +25,11 @@ import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.dsl.PdslNode;
-import org.almostrealism.ml.midi.MidiFileReader;
-import org.almostrealism.ml.midi.SkyTntConfig;
-import org.almostrealism.ml.midi.SkyTntMidi;
-import org.almostrealism.ml.midi.MidiNoteEvent;
-import org.almostrealism.ml.midi.SkyTntTokenizerV2;
+import org.almostrealism.studio.midi.MidiFileReader;
+import org.almostrealism.studio.midi.SkyTntConfig;
+import org.almostrealism.studio.midi.SkyTntMidi;
+import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.studio.midi.SkyTntTokenizerV2;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;

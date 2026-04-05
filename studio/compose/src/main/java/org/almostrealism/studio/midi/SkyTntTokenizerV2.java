@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi;
+package org.almostrealism.studio.midi;
 
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+
+import org.almostrealism.music.midi.MidiNoteEvent;
 
 /**
  * SkyTNT V2 MIDI tokenizer: converts between {@link MidiNoteEvent} sequences

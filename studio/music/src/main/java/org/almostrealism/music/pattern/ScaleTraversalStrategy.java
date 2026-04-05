@@ -22,7 +22,7 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.audio.line.OutputLine;
-import org.almostrealism.ml.midi.MidiNoteEvent;
+import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.collect.PackedCollection;

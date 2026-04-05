@@ -14,11 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi;
+package org.almostrealism.studio.midi;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import org.almostrealism.ml.midi.MidiCompoundToken;
+import org.almostrealism.music.midi.MidiNoteEvent;
 
 /**
  * Tokenizes MIDI note events into compound token sequences for the

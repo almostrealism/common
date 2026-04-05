@@ -22,7 +22,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
-import org.almostrealism.ml.midi.MidiNoteEvent;
+import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.music.notes.PatternNote;
 import org.almostrealism.music.notes.PatternNoteAudio;

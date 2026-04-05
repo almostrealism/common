@@ -23,7 +23,7 @@ import org.almostrealism.music.arrange.ChannelSection;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.music.data.ParameterSet;
-import org.almostrealism.ml.midi.MidiNoteEvent;
+import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.collect.PackedCollection;

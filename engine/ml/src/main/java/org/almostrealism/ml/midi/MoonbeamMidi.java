@@ -54,8 +54,8 @@ import java.util.Map;
  * // Load model
  * MoonbeamMidi model = new MoonbeamMidi("/path/to/weights");
  *
- * // Generate unconditionally
- * MoonbeamMidiGenerator gen = model.createAutoregressiveModel();
+ * // Generate unconditionally (via MoonbeamMidiGenerator in studio/compose)
+ * MoonbeamMidiGenerator gen = new MoonbeamMidiGenerator(model);
  * gen.setTemperature(0.8);
  * gen.setTopP(0.95);
  * gen.generateUnconditional(new File("output.mid"), 100);
@@ -80,7 +80,7 @@ import java.util.Map;
  * model.saveLoraAdapter(Paths.get("lora.pb"), trainConfig);
  * }</pre>
  *
- * @see MoonbeamMidiGenerator
+ * @see org.almostrealism.studio.midi.MoonbeamMidiGenerator
  * @see MoonbeamConfig
  * @see CompoundMidiEmbedding
  * @see GRUDecoder
@@ -210,15 +210,6 @@ public class MoonbeamMidi implements AttentionFeatures {
 	}
 
 	/**
-	 * Create a {@link MoonbeamMidiGenerator} for compound token generation.
-	 *
-	 * @return a new autoregressive model ready for inference
-	 */
-	public MoonbeamMidiGenerator createAutoregressiveModel() {
-		return new MoonbeamMidiGenerator(this);
-	}
-
-	/**
 	 * Run a forward pass through the compiled transformer.
 	 *
 	 * <p>Before calling this method, the caller must update {@link #position}
@@ -227,7 +218,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 	 * @param embeddedInput embedded token of shape (1, hiddenSize)
 	 * @return transformer hidden state of shape (1, hiddenSize)
 	 */
-	PackedCollection forward(PackedCollection embeddedInput) {
+	public PackedCollection forward(PackedCollection embeddedInput) {
 		return compiledTransformer.forward(embeddedInput);
 	}
 
@@ -236,7 +227,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 	 *
 	 * @param step the current position in the sequence
 	 */
-	void setPosition(int step) {
+	public void setPosition(int step) {
 		position.setMem(0, (double) step);
 	}
 
@@ -248,7 +239,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 	 *
 	 * @param token the compound token providing attribute values
 	 */
-	void setAttributePositions(MidiCompoundToken token) {
+	public void setAttributePositions(MidiCompoundToken token) {
 		if (token.isSpecial()) {
 			for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
 				attributePositions[i].setMem(0, 0.0);

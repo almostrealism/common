@@ -14,14 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi.test;
+package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiCompoundToken;
-import org.almostrealism.ml.midi.MidiTokenizer;
+import org.almostrealism.studio.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.io.Console;

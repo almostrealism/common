@@ -26,9 +26,6 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -79,7 +76,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	@Test
 	public void testSkytntBlockParsing() {
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(loadBlockSource());
+		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
 
 		Assert.assertNotNull("Program should not be null", program);
 		Assert.assertFalse("Program should have definitions",
@@ -98,7 +95,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	@Test
 	public void testSkytntLmHeadParsing() {
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(loadLmHeadSource());
+		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
 
 		Assert.assertNotNull("Program should not be null", program);
 
@@ -115,7 +112,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	@Test
 	public void testSkytntFfnBlock() {
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(loadBlockSource());
+		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("norm_weights", new PackedCollection(new TraversalPolicy(DIM)));
@@ -160,7 +157,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	@Test
 	public void testSkytntNormBlock() {
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(loadLmHeadSource());
+		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("norm_weights", new PackedCollection(new TraversalPolicy(DIM)));
@@ -178,7 +175,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	@Test
 	public void testSkytntLmHeadBlock() {
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(loadLmHeadSource());
+		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("norm_weights", new PackedCollection(new TraversalPolicy(DIM)));
@@ -205,7 +202,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	 */
 	private Block buildSkytntBlock(int heads, int headSize, int ffnDim) {
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(loadBlockSource());
+		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("heads", heads);
@@ -226,26 +223,4 @@ public class SkyTntPdslTest extends TestSuiteBase {
 				new TraversalPolicy(1, DIM), args);
 	}
 
-	/** Load the skytnt_block.pdsl source from the classpath. */
-	private String loadBlockSource() {
-		return loadResource("/pdsl/midi/skytnt_block.pdsl");
-	}
-
-	/** Load the skytnt_lm_head.pdsl source from the classpath. */
-	private String loadLmHeadSource() {
-		return loadResource("/pdsl/midi/skytnt_lm_head.pdsl");
-	}
-
-	/** Load a classpath resource as a UTF-8 string. */
-	private String loadResource(String path) {
-		try (InputStream is = getClass().getResourceAsStream(path)) {
-			if (is == null) {
-				throw new IllegalStateException(
-						"Test resource not found on classpath: " + path);
-			}
-			return new String(is.readAllBytes(), StandardCharsets.UTF_8);
-		} catch (IOException e) {
-			throw new IllegalStateException("Failed to load resource: " + path, e);
-		}
-	}
 }
