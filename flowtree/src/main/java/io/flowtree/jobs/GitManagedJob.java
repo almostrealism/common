@@ -25,6 +25,7 @@ import org.almostrealism.io.JobOutput;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -146,6 +147,10 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * {@link #repoUrl} is set but no explicit {@link #workingDirectory} is provided.
      */
     private String defaultWorkspacePath;
+    /** Dependent repository URLs to clone alongside the primary repo. */
+    private List<String> dependentRepos;
+    /** Resolved filesystem paths for dependent repos after cloning. */
+    private List<String> dependentRepoPaths = new ArrayList<>();
 
     // ---- Git operation flags ----
 
@@ -341,12 +346,16 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 workingDirectory = repoSetup.resolveAndClone();
             }
 
+            // Clone/sync dependent repos alongside the primary repo
+            prepareDependentRepos();
+
             // Prepare working directory: stash dirty files, fetch, checkout branch,
             // pull latest, and merge base branch.
             if (targetBranch != null && !targetBranch.isEmpty()) {
                 originalBranch = getCurrentBranch();
                 if (repoSetup == null) repoSetup = new GitRepositorySetup(this);
                 repoSetup.prepare();
+                prepareDependentReposBranches();
             }
 
             // Prepare execution environment (Python venv, etc.)
@@ -388,6 +397,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 if (validateChanges()) {
                     commitHandler = new GitCommitHandler(this);
                     commitHandler.handle(repoSetup.hasMergeConflicts());
+                    handleDependentRepoGitOperations();
                 } else {
                     warn("Change validation failed - skipping git operations");
                 }
@@ -400,6 +410,186 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             fireJobCompleted(error);
             future.complete(null);
         }
+    }
+
+    /**
+     * Clones dependent repositories alongside the primary repo and records their paths.
+     *
+     * <p>Each dependent repo is cloned as a sibling directory of the
+     * primary working directory. If a repo is already cloned, this
+     * method reuses the existing clone. Branch checkout and synchronization
+     * with origin are handled separately by {@link #prepareDependentReposBranches()}.</p>
+     */
+    private void prepareDependentRepos() throws IOException, InterruptedException {
+        if (dependentRepos == null || dependentRepos.isEmpty()) {
+            return;
+        }
+
+        String parentDir = resolveParentDirectory();
+        if (parentDir == null) {
+            warn("Cannot resolve parent directory for dependent repos");
+            return;
+        }
+
+        for (String depRepoUrl : dependentRepos) {
+            String repoName = WorkspaceResolver.extractRepoName(depRepoUrl);
+            String depPath = parentDir + "/" + repoName;
+
+            File depDir = new File(depPath);
+            if (new File(depDir, ".git").exists()) {
+                log("Dependent repo already cloned: " + depPath);
+            } else {
+                log("Cloning dependent repo: " + depRepoUrl + " into " + depPath);
+                GitOperations gitOps = new GitOperations(parentDir, taskId);
+                gitOps.cloneRepository(depRepoUrl, depPath);
+            }
+
+            dependentRepoPaths.add(depPath);
+        }
+    }
+
+    /**
+     * Prepares branch state for all dependent repos: fetch, checkout
+     * the target branch (creating it from the base branch if needed),
+     * and pull latest changes.
+     */
+    private void prepareDependentReposBranches() throws IOException, InterruptedException {
+        for (String depPath : dependentRepoPaths) {
+            log("Preparing dependent repo branch: " + depPath);
+
+            GitOperations gitOps = new GitOperations(depPath, taskId);
+
+            // Fetch latest
+            gitOps.execute("fetch", "origin");
+
+            // Check out target branch or create it
+            String currentBranch = gitOps.executeWithOutput(
+                "rev-parse", "--abbrev-ref", "HEAD").trim();
+            if (!targetBranch.equals(currentBranch)) {
+                boolean exists = gitOps.execute("rev-parse",
+                    "--verify", targetBranch) == 0
+                    || gitOps.execute("rev-parse",
+                        "--verify", "origin/" + targetBranch) == 0;
+
+                if (exists) {
+                    int checkoutExit = gitOps.execute("checkout", targetBranch);
+                    if (checkoutExit != 0) {
+                        throw new IOException("git checkout " + targetBranch
+                            + " failed (exit " + checkoutExit + ") in " + depPath);
+                    }
+                } else {
+                    String startPoint = "origin/" + baseBranch;
+                    log("Creating branch " + targetBranch + " from "
+                        + startPoint + " in " + depPath);
+                    int createExit = gitOps.execute("checkout", "-b",
+                        targetBranch, "--no-track", startPoint);
+                    if (createExit != 0) {
+                        throw new IOException("git checkout -b " + targetBranch
+                            + " failed (exit " + createExit + ") in " + depPath);
+                    }
+                    // New branch — remote doesn't exist yet, skip pull
+                    continue;
+                }
+            }
+
+            // Pull latest (fast-forward only); remote branch is known to exist here
+            int pullExit = gitOps.execute("pull", "--ff-only", "origin", targetBranch);
+            if (pullExit != 0) {
+                throw new IOException("git pull --ff-only origin " + targetBranch
+                    + " failed (exit " + pullExit + ") in " + depPath);
+            }
+        }
+    }
+
+    /**
+     * Handles git operations (stage, commit, push) for all dependent
+     * repos. Uses the same commit message pattern as the primary repo,
+     * reading {@code commit.txt} from the primary working directory if
+     * it exists.
+     */
+    private void handleDependentRepoGitOperations() throws IOException, InterruptedException {
+        for (String depPath : dependentRepoPaths) {
+            GitOperations gitOps = new GitOperations(depPath, taskId);
+            if (gitUserName != null && !gitUserName.isEmpty()) {
+                gitOps.setGitUserName(gitUserName);
+            }
+            if (gitUserEmail != null && !gitUserEmail.isEmpty()) {
+                gitOps.setGitUserEmail(gitUserEmail);
+            }
+
+            // Check for changes
+            String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
+            List<String> changedFiles = new ArrayList<>();
+            for (String line : statusOutput.split("\n")) {
+                if (line.length() > 3) {
+                    String file = line.substring(3).trim();
+                    if (file.contains(" -> ")) {
+                        file = file.split(" -> ")[1];
+                    }
+                    if (!file.isEmpty()) {
+                        changedFiles.add(file);
+                    }
+                }
+            }
+
+            if (changedFiles.isEmpty()) {
+                log("No changes in dependent repo: " + depPath);
+                continue;
+            }
+
+            log("Committing " + changedFiles.size() + " changes in dependent repo: " + depPath);
+
+            // Stage all changes (apply same size guardrail)
+            boolean anyStagedInDep = false;
+            for (String file : changedFiles) {
+                File f = new File(depPath, file);
+                if (f.exists() && f.length() > maxFileSizeBytes) {
+                    log("SKIP (size) in dependent repo: " + file);
+                    continue;
+                }
+                gitOps.execute("add", file);
+                anyStagedInDep = true;
+            }
+
+            if (!anyStagedInDep) {
+                log("No files staged in dependent repo (all skipped): " + depPath);
+                continue;
+            }
+
+            // Use the same commit message as the primary repo (reads commit.txt with UTF-8)
+            String commitMessage = getCommitMessage();
+
+            int commitExitCode = gitOps.execute("commit", "-m", commitMessage);
+            if (commitExitCode != 0) {
+                log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
+                continue;
+            }
+
+            // Push
+            if (pushToOrigin && !dryRun) {
+                String refspec = targetBranch + ":" + targetBranch;
+                int pushExitCode = gitOps.execute("push", "-u", "origin", refspec);
+                if (pushExitCode == 0) {
+                    log("Pushed dependent repo: " + depPath);
+                } else {
+                    throw new IOException("Git push failed for dependent repo: " + depPath);
+                }
+            }
+        }
+    }
+
+    /**
+     * Resolves the parent directory of the primary working directory.
+     * Dependent repos are cloned as siblings of the primary repo.
+     */
+    private String resolveParentDirectory() {
+        if (workingDirectory != null && !workingDirectory.isEmpty()) {
+            return new File(workingDirectory).getParent();
+        }
+        if (defaultWorkspacePath != null && !defaultWorkspacePath.isEmpty()) {
+            return defaultWorkspacePath;
+        }
+        return null;
     }
 
     /**
@@ -706,6 +896,34 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     public void setDefaultWorkspacePath(String defaultWorkspacePath) {
         this.defaultWorkspacePath = defaultWorkspacePath;
+    }
+
+    /**
+     * Returns the list of dependent repository URLs that should be
+     * checked out alongside the primary repo.
+     */
+    public List<String> getDependentRepos() {
+        return dependentRepos;
+    }
+
+    /**
+     * Sets the dependent repository URLs. Each repo is cloned as a
+     * sibling directory of the primary working directory and managed
+     * with the same branch and commit lifecycle.
+     *
+     * @param dependentRepos list of git clone URLs
+     */
+    public void setDependentRepos(List<String> dependentRepos) {
+        this.dependentRepos = dependentRepos;
+    }
+
+    /**
+     * Returns the resolved filesystem paths for dependent repos that
+     * were cloned during job preparation. Available after
+     * {@link #run()} has completed the preparation phase.
+     */
+    public List<String> getDependentRepoPaths() {
+        return new ArrayList<>(dependentRepoPaths);
     }
 
     /**

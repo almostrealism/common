@@ -37,7 +37,8 @@ import java.io.File;
 public class WorkspaceResolver {
 
     /** Default fallback directory for workspace checkouts. */
-    public static final String FALLBACK_WORKSPACE_DIR = "/tmp/flowtree-workspaces";
+    public static final String FALLBACK_WORKSPACE_DIR =
+        System.getProperty("java.io.tmpdir") + "/flowtree-workspaces";
 
     /**
      * Private constructor — this is a utility class and cannot be instantiated.
@@ -55,7 +56,7 @@ public class WorkspaceResolver {
      * <ol>
      *   <li>{@code configuredPath} if it is non-null and non-empty</li>
      *   <li>{@code /workspace/project} if that directory exists on disk</li>
-     *   <li>{@code /tmp/flowtree-workspaces} as a fallback</li>
+     *   <li>The system temp directory ({@code java.io.tmpdir}) as a fallback</li>
      * </ol>
      *
      * <p>In all cases, the repository name (derived from {@code repoUrl}
@@ -82,7 +83,7 @@ public class WorkspaceResolver {
             return "/workspace/project/" + repoName;
         }
 
-        // 3. Fall back to /tmp with a repo-derived name
+        // 3. Fall back to system temp dir with a repo-derived name
         return FALLBACK_WORKSPACE_DIR + "/" + repoName;
     }
 

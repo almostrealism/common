@@ -104,6 +104,8 @@ public class InstructionPromptBuilder {
 
     /** Relative path to a planning document the agent must read before starting. */
     private String planningDocument;
+    /** Filesystem paths to dependent repo checkouts made available to the agent. */
+    private List<String> dependentRepoPaths;
 
     /**
      * Description of a git tampering violation from a prior session.
@@ -286,6 +288,19 @@ public class InstructionPromptBuilder {
      */
     public InstructionPromptBuilder setPlanningDocument(String planningDocument) {
         this.planningDocument = planningDocument;
+        return this;
+    }
+
+    /**
+     * Sets the resolved filesystem paths for dependent repositories.
+     * When set, the prompt will include information about these repos
+     * so the agent knows they are available.
+     *
+     * @param dependentRepoPaths list of absolute paths to dependent repo checkouts
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setDependentRepoPaths(List<String> dependentRepoPaths) {
+        this.dependentRepoPaths = dependentRepoPaths;
         return this;
     }
 
@@ -505,6 +520,21 @@ public class InstructionPromptBuilder {
             sb.append("Target branch: ").append(targetBranch).append("\n");
         }
         sb.append("\n");
+
+        // Dependent repos context
+        if (dependentRepoPaths != null && !dependentRepoPaths.isEmpty()) {
+            sb.append("## Dependent Repositories\n");
+            sb.append("The following additional repositories have been checked out ");
+            sb.append("alongside the primary working directory. They are on the same ");
+            sb.append("branch (").append(targetBranch != null ? targetBranch : "default");
+            sb.append(") and any changes you make in them will be committed ");
+            sb.append("automatically when the job completes, and pushed when enabled by ");
+            sb.append("job configuration.\n\n");
+            for (String depPath : dependentRepoPaths) {
+                sb.append("- `").append(depPath).append("`\n");
+            }
+            sb.append("\n");
+        }
 
         // Branch awareness and anti-loop guidance
         if (targetBranch != null && !targetBranch.isEmpty()) {
