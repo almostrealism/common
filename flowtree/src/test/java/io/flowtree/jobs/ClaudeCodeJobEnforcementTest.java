@@ -70,7 +70,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	public void setEnforceMavenDependenciesRoundTrip() {
 		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
 		job.setEnforceMavenDependencies(true);
-		assertFalse(job.isEnforceMavenDependencies() == false);
+		assertTrue(job.isEnforceMavenDependencies());
 		job.setEnforceMavenDependencies(false);
 		assertFalse(job.isEnforceMavenDependencies());
 	}
@@ -154,7 +154,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 30000)
-	public void factorySetEnforceMavenDependenciesPropagatestoJob() {
+	public void factorySetEnforceMavenDependenciesPropagatesToJob() {
 		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
 		factory.setEnforceMavenDependencies(true);
 		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();

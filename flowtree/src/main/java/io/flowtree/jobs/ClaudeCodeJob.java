@@ -517,6 +517,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * @param rule the rule to add; must not be {@code null}
      */
     public void addEnforcementRule(EnforcementRule rule) {
+        if (rule == null) throw new IllegalArgumentException("rule must not be null");
         customEnforcementRules.add(rule);
     }
 
@@ -750,9 +751,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             // flag causes InstructionPromptBuilder to emit the escalating warning.
             return null;
         }
-
-        @Override
-        public int getMaxRetries() { return DEFAULT_MAX_RULE_RETRIES; }
     }
 
     /**
@@ -782,9 +780,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             return buildDeduplicationPrompt(capped,
                     newMethods.size() > MAX_DEDUP_METHODS, newMethods.size());
         }
-
-        @Override
-        public int getMaxRetries() { return DEFAULT_MAX_RULE_RETRIES; }
     }
 
     /**
@@ -829,9 +824,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             sb.append("Only <dependency> additions, removals, and modifications must be undone.");
             return sb.toString();
         }
-
-        @Override
-        public int getMaxRetries() { return DEFAULT_MAX_RULE_RETRIES; }
     }
 
     @Override
@@ -1049,18 +1041,43 @@ public class ClaudeCodeJob extends GitManagedJob {
             GitOperations.augmentPath(pb);
             Process p = pb.start();
             String diff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor();
+            int exitCode = p.waitFor();
 
+            if (exitCode != 0) {
+                warn("Maven dependency check: git diff exited with code " + exitCode
+                    + " — treating as violation (fail closed)");
+                return true;
+            }
+
+            // Track whether the current context is inside a <dependency> block so that
+            // modifications to child elements (e.g. <version>, <groupId>) are detected
+            // even when the <dependency> opening tag itself is not on a changed line.
+            boolean inDependencyBlock = false;
             for (String line : diff.split("\n")) {
-                if (line.startsWith("+++") || line.startsWith("---")) {
+                if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) {
                     continue;
                 }
-                if ((line.startsWith("+") || line.startsWith("-"))
-                        && line.contains("<dependency>")) {
+
+                String content = line.length() > 0 ? line.substring(1).trim() : "";
+                boolean opensBlock = content.contains("<dependency>") || content.contains("<dependency ");
+                boolean closesBlock = content.contains("</dependency>");
+
+                if (opensBlock) {
+                    inDependencyBlock = true;
+                }
+
+                if ((line.startsWith("+") || line.startsWith("-")) && (inDependencyBlock || opensBlock)) {
                     return true;
                 }
+
+                if (closesBlock) {
+                    inDependencyBlock = false;
+                }
             }
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
+            warn("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             warn("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
         }
         return false;

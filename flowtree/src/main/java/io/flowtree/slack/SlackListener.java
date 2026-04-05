@@ -1171,9 +1171,15 @@ public class SlackListener implements ConsoleFeatures {
                     String slackTs = jobEntry[1];
                     if (slackTs != null && !slackTs.isEmpty()) {
                         if (linkCount > 0) sb.append(", ");
-                        String tsForUrl = slackTs.replace(".", "");
-                        sb.append("<https://slack.com/archives/").append(channelId)
-                          .append("/p").append(tsForUrl).append("|job>");
+                        String permalink = notifier.getPermalink(channelId, slackTs);
+                        if (permalink != null) {
+                            sb.append("<").append(permalink).append("|job>");
+                        } else {
+                            // Fallback: construct URL from channel and ts (may not resolve in all workspaces)
+                            String tsForUrl = slackTs.replace(".", "");
+                            sb.append("<https://slack.com/archives/").append(channelId)
+                              .append("/p").append(tsForUrl).append("|job>");
+                        }
                         linkCount++;
                         if (linkCount >= 3) break;
                     }
@@ -1192,11 +1198,11 @@ public class SlackListener implements ConsoleFeatures {
      * Updates the global default fallback Slack channel at runtime and
      * optionally persists the change to the YAML config file.
      *
-     * <p>The channel argument may be a Slack channel ID (e.g., {@code C0123456789})
-     * or a channel name with or without the leading {@code #}
-     * (e.g., {@code #general} or {@code general}).</p>
+     * <p>The channel argument must be a Slack channel ID (e.g., {@code C0123456789}).
+     * Channel names are not accepted because {@code SlackNotifier} passes the value
+     * directly to the Slack API without name-to-ID resolution.</p>
      *
-     * @param args the channel name or ID to set as the default
+     * @param args the channel ID to set as the default
      * @param ctx  the responder for sending the ephemeral reply
      * @throws IOException if the response cannot be sent
      */
@@ -1205,13 +1211,29 @@ public class SlackListener implements ConsoleFeatures {
             String current = notifier.getDefaultChannelId();
             ctx.respond(":gear: Current default channel: "
                 + (current != null ? "`" + current + "`" : "(not set)") + "\n"
-                + "Usage: `/flowtree default-channel <channel-id-or-name>`");
+                + "Usage: `/flowtree default-channel <channel-id>` (e.g. `C0123456789`)\n"
+                + ":information_source: A channel ID is required — channel names are not resolved.");
             return;
         }
 
         String channel = args.trim();
+        // Strip leading # as a convenience but warn that an ID is expected
         if (channel.startsWith("#")) {
             channel = channel.substring(1);
+        }
+
+        // Slack channel IDs start with C (public), D (DM), G (private/MPIM), or W (workspace).
+        // If the value looks like a plain name, warn the caller so they don't accidentally
+        // misconfigure the fallback channel with a value that the API will reject.
+        boolean looksLikeId = channel.length() > 1
+                && (channel.charAt(0) == 'C' || channel.charAt(0) == 'D'
+                    || channel.charAt(0) == 'G' || channel.charAt(0) == 'W')
+                && channel.chars().allMatch(Character::isLetterOrDigit);
+        if (!looksLikeId) {
+            ctx.respond(":warning: `" + channel + "` does not look like a Slack channel ID. "
+                + "Channel IDs start with `C`, `D`, `G`, or `W` (e.g. `C0123456789`). "
+                + "Channel names are not resolved — please provide the ID.");
+            return;
         }
 
         notifier.setDefaultChannelId(channel);

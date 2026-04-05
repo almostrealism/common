@@ -19,6 +19,7 @@ package io.flowtree.slack;
 import com.slack.api.Slack;
 import com.slack.api.methods.MethodsClient;
 import com.slack.api.methods.SlackApiException;
+import com.slack.api.methods.response.chat.ChatGetPermalinkResponse;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
 import com.slack.api.methods.response.conversations.ConversationsCreateResponse;
 import com.slack.api.methods.response.conversations.ConversationsInviteResponse;
@@ -430,13 +431,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             }
         }
 
-        // Persist the Slack message ts so it can be used to construct message links
-        if (statsStore != null && event.getJobId() != null) {
-            String linkTs = jobThreadTs.get(event.getJobId());
-            if (linkTs != null) {
-                statsStore.updateJobSlackTs(event.getJobId(), linkTs);
-            }
-        }
     }
 
     @Override
@@ -452,6 +446,15 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         if (statsStore != null) {
             statsStore.recordJobStarted(event.getJobId(), workstreamId,
                 event.getDescription(), event.getTimestamp());
+
+            // Persist the Slack message ts now that the job_timing row exists.
+            // (Moved here from onJobSubmitted so the UPDATE finds the newly created row.)
+            if (event.getJobId() != null) {
+                String linkTs = jobThreadTs.get(event.getJobId());
+                if (linkTs != null) {
+                    statsStore.updateJobSlackTs(event.getJobId(), linkTs);
+                }
+            }
         }
 
         String message = formatStartedMessage(event, workstream);
@@ -536,6 +539,26 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             warn("Error posting message to " + effectiveChannel + ": " + e.getMessage());
             return postToFallbackChannel(effectiveChannel, text, null);
         }
+    }
+
+    /**
+     * Returns the Slack permalink for the given message, or {@code null} if unavailable.
+     *
+     * @param channelId the Slack channel ID
+     * @param messageTs the message timestamp (e.g., {@code "1234567890.123456"})
+     * @return a fully-qualified permalink URL, or {@code null} on failure
+     */
+    public String getPermalink(String channelId, String messageTs) {
+        if (client == null || channelId == null || messageTs == null) return null;
+        try {
+            ChatGetPermalinkResponse response = client.chatGetPermalink(req ->
+                    req.channel(channelId).messageTs(messageTs));
+            if (response.isOk()) return response.getPermalink();
+            warn("Failed to get permalink for message " + messageTs + ": " + response.getError());
+        } catch (IOException | SlackApiException e) {
+            warn("Error fetching permalink for message " + messageTs + ": " + e.getMessage());
+        }
+        return null;
     }
 
     /**
