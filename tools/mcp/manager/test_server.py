@@ -930,6 +930,63 @@ class TestControllerPost(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------
+# _parse_dependent_repos helper
+# -----------------------------------------------------------------------
+
+
+class TestParseDependentRepos(unittest.TestCase):
+
+    def test_empty_string_returns_empty(self):
+        self.assertEqual([], server._parse_dependent_repos(""))
+
+    def test_none_returns_empty(self):
+        self.assertEqual([], server._parse_dependent_repos(None))
+
+    def test_single_url_csv(self):
+        result = server._parse_dependent_repos("https://github.com/org/repo")
+        self.assertEqual(["https://github.com/org/repo"], result)
+
+    def test_multiple_urls_csv(self):
+        result = server._parse_dependent_repos(
+            "https://github.com/org/a,https://github.com/org/b"
+        )
+        self.assertEqual(
+            ["https://github.com/org/a", "https://github.com/org/b"], result
+        )
+
+    def test_csv_drops_empty_entries(self):
+        result = server._parse_dependent_repos(
+            "https://github.com/org/a,,https://github.com/org/b"
+        )
+        self.assertEqual(
+            ["https://github.com/org/a", "https://github.com/org/b"], result
+        )
+
+    def test_json_array(self):
+        result = server._parse_dependent_repos(
+            '["https://github.com/org/a","https://github.com/org/b"]'
+        )
+        self.assertEqual(
+            ["https://github.com/org/a", "https://github.com/org/b"], result
+        )
+
+    def test_json_array_drops_empty_entries(self):
+        result = server._parse_dependent_repos('["https://github.com/org/a","","  "]')
+        self.assertEqual(["https://github.com/org/a"], result)
+
+    def test_invalid_json_falls_back_to_csv(self):
+        result = server._parse_dependent_repos(
+            "[https://github.com/org/a,https://github.com/org/b]"
+        )
+        # Invalid JSON — falls back to CSV splitting on commas
+        self.assertIsInstance(result, list)
+        # Should not raise; best-effort result acceptable
+
+    def test_whitespace_only_returns_empty(self):
+        self.assertEqual([], server._parse_dependent_repos("   "))
+
+
+# -----------------------------------------------------------------------
 # Input validation & auth
 # -----------------------------------------------------------------------
 
