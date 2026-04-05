@@ -203,7 +203,11 @@ jobs:
           # These files are the enforcement infrastructure. Any modification
           # on a PR branch is treated as tampering and fails the build.
           PROTECTED_FILES=(
+            "utils/src/main/java/org/almostrealism/util/PolicyViolationDetector.java"
             "utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
+            "utils/src/main/java/org/almostrealism/util/PackedCollectionDetector.java"
+            "utils/src/main/java/org/almostrealism/util/ProducerPatternDetector.java"
+            "utils/src/main/java/org/almostrealism/util/NamingConventionDetector.java"
             "utils/src/main/java/org/almostrealism/util/DuplicateCodeDetector.java"
             "utils/src/main/java/org/almostrealism/util/TestTimeoutEnforcementScanner.java"
             "tools/src/test/java/org/almostrealism/util/test/CodePolicyEnforcementTest.java"
