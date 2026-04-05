@@ -125,4 +125,30 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 		assertTrue("Expected planning document path in output",
 			result.contains("docs/planning/feature-plan.md"));
 	}
+
+	@Test(timeout = 30000)
+	public void includesDependentReposSection() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setTargetBranch("feature/work")
+			.setDependentRepoPaths(Arrays.asList(
+				"/workspace/project/repo-a",
+				"/workspace/project/repo-b"))
+			.build();
+		assertTrue("Expected Dependent Repositories section",
+			result.contains("## Dependent Repositories"));
+		assertTrue("Expected first dep repo path in output",
+			result.contains("/workspace/project/repo-a"));
+		assertTrue("Expected second dep repo path in output",
+			result.contains("/workspace/project/repo-b"));
+	}
+
+	@Test(timeout = 30000)
+	public void excludesDependentReposSectionWhenUnset() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.build();
+		assertFalse("Expected no Dependent Repositories section when paths not set",
+			result.contains("## Dependent Repositories"));
+	}
 }

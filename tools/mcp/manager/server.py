@@ -862,6 +862,20 @@ def workstream_get_job(job_id: str) -> dict:
     return _controller_get(f"/api/jobs/{job_id}")
 
 
+def _parse_required_labels(required_labels: str) -> dict:
+    """Parse a comma-separated key:value string into a labels dict.
+
+    Only pairs with non-empty key and non-empty value are included.
+    Pairs missing a colon or with an empty key/value are silently ignored.
+    """
+    result = {}
+    for pair in required_labels.split(","):
+        parts = pair.strip().split(":", 1)
+        if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+            result[parts[0].strip()] = parts[1].strip()
+    return result
+
+
 @mcp.tool()
 def workstream_submit_task(
     prompt: str,
@@ -948,11 +962,7 @@ def workstream_submit_task(
     if started_after:
         payload["startedAfter"] = started_after
     if required_labels:
-        labels_dict = {}
-        for pair in required_labels.split(","):
-            parts = pair.strip().split(":", 1)
-            if len(parts) == 2 and parts[0].strip() and parts[1].strip():
-                labels_dict[parts[0].strip()] = parts[1].strip()
+        labels_dict = _parse_required_labels(required_labels)
         if labels_dict:
             payload["requiredLabels"] = labels_dict
     if deduplication_mode:
@@ -1029,12 +1039,7 @@ def workstream_register(
     if channel_name:
         payload["channelName"] = channel_name
     if required_labels:
-        labels_map = {}
-        for pair in required_labels.split(","):
-            pair = pair.strip()
-            if ":" in pair:
-                k, v = pair.split(":", 1)
-                labels_map[k.strip()] = v.strip()
+        labels_map = _parse_required_labels(required_labels)
         if labels_map:
             payload["requiredLabels"] = labels_map
 
@@ -1113,12 +1118,7 @@ def workstream_update_config(
     if channel_name:
         payload["channelName"] = channel_name
     if required_labels:
-        labels_map = {}
-        for pair in required_labels.split(","):
-            pair = pair.strip()
-            if ":" in pair:
-                k, v = pair.split(":", 1)
-                labels_map[k.strip()] = v.strip()
+        labels_map = _parse_required_labels(required_labels)
         if labels_map:
             payload["requiredLabels"] = labels_map
 

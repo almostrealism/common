@@ -472,18 +472,32 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                         "--verify", "origin/" + targetBranch) == 0;
 
                 if (exists) {
-                    gitOps.execute("checkout", targetBranch);
+                    int checkoutExit = gitOps.execute("checkout", targetBranch);
+                    if (checkoutExit != 0) {
+                        throw new IOException("git checkout " + targetBranch
+                            + " failed (exit " + checkoutExit + ") in " + depPath);
+                    }
                 } else {
                     String startPoint = "origin/" + baseBranch;
                     log("Creating branch " + targetBranch + " from "
                         + startPoint + " in " + depPath);
-                    gitOps.execute("checkout", "-b",
+                    int createExit = gitOps.execute("checkout", "-b",
                         targetBranch, "--no-track", startPoint);
+                    if (createExit != 0) {
+                        throw new IOException("git checkout -b " + targetBranch
+                            + " failed (exit " + createExit + ") in " + depPath);
+                    }
+                    // New branch — remote doesn't exist yet, skip pull
+                    continue;
                 }
             }
 
-            // Pull latest (fast-forward only, ignore failure for new branches)
-            gitOps.execute("pull", "--ff-only", "origin", targetBranch);
+            // Pull latest (fast-forward only); remote branch is known to exist here
+            int pullExit = gitOps.execute("pull", "--ff-only", "origin", targetBranch);
+            if (pullExit != 0) {
+                throw new IOException("git pull --ff-only origin " + targetBranch
+                    + " failed (exit " + pullExit + ") in " + depPath);
+            }
         }
     }
 
@@ -542,26 +556,8 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 continue;
             }
 
-            // Read commit message from primary working directory's commit.txt
+            // Use the same commit message as the primary repo (reads commit.txt with UTF-8)
             String commitMessage = getCommitMessage();
-            File commitFile = workingDirectory != null
-                    ? new File(workingDirectory, "commit.txt") : null;
-            if (commitFile != null && commitFile.exists()) {
-                try (BufferedReader commitReader = new BufferedReader(
-                        new FileReader(commitFile))) {
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = commitReader.readLine()) != null) {
-                        sb.append(line).append("\n");
-                    }
-                    String fileContent = sb.toString().trim();
-                    if (!fileContent.isEmpty()) {
-                        commitMessage = fileContent;
-                    }
-                } catch (IOException e) {
-                    log("Could not read commit.txt for dependent repo: " + e.getMessage());
-                }
-            }
 
             int commitExitCode = gitOps.execute("commit", "-m", commitMessage);
             if (commitExitCode != 0) {

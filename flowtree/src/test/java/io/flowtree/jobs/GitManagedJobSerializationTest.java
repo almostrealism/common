@@ -20,8 +20,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
 
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -125,5 +130,50 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 			encoded.contains("branch:="));
 		assertTrue("Expected tools key in encoded output",
 			encoded.contains("tools:="));
+	}
+
+	@Test(timeout = 30000)
+	public void factoryDependentReposRoundTrip() {
+		ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory("Prompt");
+		factory.setDependentRepos(Arrays.asList(
+			"https://github.com/org/repo-a",
+			"https://github.com/org/repo-b"));
+
+		String encoded = factory.encode();
+		assertTrue("Expected dependentRepos key in encoded output",
+			encoded.contains("dependentRepos:="));
+
+		// Parse the wire format to restore the factory
+		ClaudeCodeJob.Factory restored = new ClaudeCodeJob.Factory();
+		String[] parts = encoded.split("::");
+		for (int i = 1; i < parts.length; i++) {
+			int sep = parts[i].indexOf(":=");
+			if (sep > 0) {
+				restored.set(parts[i].substring(0, sep), parts[i].substring(sep + 2));
+			}
+		}
+
+		List<String> repos = restored.getDependentRepos();
+		assertNotNull("Expected non-null dependentRepos after decode", repos);
+		assertEquals(2, repos.size());
+		assertEquals("https://github.com/org/repo-a", repos.get(0));
+		assertEquals("https://github.com/org/repo-b", repos.get(1));
+	}
+
+	@Test(timeout = 30000)
+	public void factoryDependentReposAbsentWhenEmpty() {
+		ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory("Prompt");
+		factory.setDependentRepos(null);
+
+		String encoded = factory.encode();
+		assertFalse("Expected no dependentRepos key when null",
+			encoded.contains("dependentRepos:="));
+
+		ClaudeCodeJob.Factory factory2 = new ClaudeCodeJob.Factory("Prompt");
+		factory2.setDependentRepos(Collections.emptyList());
+
+		String encoded2 = factory2.encode();
+		assertFalse("Expected no dependentRepos key when empty list",
+			encoded2.contains("dependentRepos:="));
 	}
 }

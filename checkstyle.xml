@@ -912,7 +912,7 @@
              modifications are not permitted, and ErrorProne lacks a built-in check
              for this pattern. Checkstyle RegexpSinglelineJava is a better fit. -->
         <module name="RegexpSinglelineJava">
-            <property name="format" value="[^\.]\bjava\.(util|io|nio|lang|math|net|time)\.[A-Z]\w+[^;]"/>
+            <property name="format" value="^(?!\s*import\b)(?!\s*package\b).*\bjava\.(util|io|nio|lang|math|net|time)\.[A-Z]\w+[^;]"/>
             <property name="message" value="Use an import instead of a fully-qualified class reference."/>
             <property name="ignoreComments" value="true"/>
             <property name="severity" value="warning"/>

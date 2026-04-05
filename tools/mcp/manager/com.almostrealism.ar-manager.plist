@@ -57,10 +57,10 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/michael/Library/Logs/ar-manager.log</string>
+  <string>/Users/Shared/flowtree/ar-manager.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/michael/Library/Logs/ar-manager.err</string>
+  <string>/Users/Shared/flowtree/ar-manager.err</string>
 
   <key>ThrottleInterval</key>
   <integer>5</integer>

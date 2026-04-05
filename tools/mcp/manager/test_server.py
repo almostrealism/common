@@ -694,7 +694,8 @@ class TestMemoryRecall(unittest.TestCase):
     @patch.object(server, "_get_llm", return_value=None)
     @patch.object(server, "_get_memory_client")
     @patch.object(server, "_find_workstream")
-    def test_resolve_from_workstream(self, mock_find, mock_client_fn, _):
+    def test_resolve_from_workstream_repo_scope(self, mock_find, mock_client_fn, _):
+        """Default scope=repo resolves repo_url but does not filter by branch."""
         _grant_all_scopes()
         mock_find.return_value = {
             "repoUrl": "https://github.com/org/repo",
@@ -704,6 +705,24 @@ class TestMemoryRecall(unittest.TestCase):
         client.search.return_value = []
         mock_client_fn.return_value = client
         server.memory_recall(query="test", workstream_id="ws-test")
+        call_kwargs = client.search.call_args[1]
+        self.assertEqual(call_kwargs["repo_url"], "https://github.com/org/repo")
+        self.assertIsNone(call_kwargs["branch"])
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream")
+    def test_resolve_from_workstream_branch_scope(self, mock_find, mock_client_fn, _):
+        """scope=branch resolves both repo_url and branch from the workstream."""
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+        }
+        client = MagicMock()
+        client.search.return_value = []
+        mock_client_fn.return_value = client
+        server.memory_recall(query="test", workstream_id="ws-test", scope="branch")
         call_kwargs = client.search.call_args[1]
         self.assertEqual(call_kwargs["repo_url"], "https://github.com/org/repo")
         self.assertEqual(call_kwargs["branch"], "feature/x")
