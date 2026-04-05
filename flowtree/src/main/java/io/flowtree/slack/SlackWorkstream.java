@@ -118,6 +118,12 @@ public class SlackWorkstream {
     /** GitHub organization name; selects the org-specific token for GitHub API calls. */
     private String githubOrg;
 
+    /** Additional repository URLs to clone alongside the primary repo. */
+    private List<String> dependentRepos;
+
+    /** Default Node labels applied to jobs when no job-level labels are specified. */
+    private Map<String, String> requiredLabels;
+
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
 
@@ -401,6 +407,43 @@ public class SlackWorkstream {
      */
     public void setGithubOrg(String githubOrg) {
         this.githubOrg = githubOrg;
+    }
+
+    /**
+     * Returns the list of dependent repository URLs that should be
+     * checked out alongside the primary repo. Each dependent repo is
+     * cloned as a sibling directory and managed with the same branch
+     * and commit lifecycle as the primary repo.
+     */
+    public List<String> getDependentRepos() {
+        return dependentRepos;
+    }
+
+    /**
+     * Sets the dependent repository URLs.
+     *
+     * @param dependentRepos list of git clone URLs for dependent repos
+     */
+    public void setDependentRepos(List<String> dependentRepos) {
+        this.dependentRepos = dependentRepos;
+    }
+
+    /**
+     * Returns the Node labels that jobs submitted to this workstream must match by default.
+     * When a job submission does not specify {@code requiredLabels}, these labels are applied.
+     * Job-level labels always take precedence over workstream-level defaults.
+     */
+    public Map<String, String> getRequiredLabels() {
+        return requiredLabels;
+    }
+
+    /**
+     * Sets the default Node labels for jobs submitted to this workstream.
+     *
+     * @param requiredLabels map of label key-value pairs (e.g., {"platform": "macos"})
+     */
+    public void setRequiredLabels(Map<String, String> requiredLabels) {
+        this.requiredLabels = requiredLabels;
     }
 
     /**

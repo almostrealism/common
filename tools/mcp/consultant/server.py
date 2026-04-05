@@ -319,6 +319,11 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     relevant documentation. The Consultant highlights which memories are
     still accurate and flags any that may be outdated.
 
+    Results are scoped to the current repository on a best-effort basis.
+    When git context detection succeeds, memories from unrelated projects
+    are filtered out. If detection fails, results may include cross-project
+    memories.
+
     Args:
         query: What to search for.
         namespace: Memory namespace to search.
@@ -327,7 +332,21 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     Returns:
         Dictionary with summary, raw memories, and doc references.
     """
-    memories = memory.search(query=query, namespace=namespace, limit=limit)
+    # Auto-detect repo URL to scope results to the current repository
+    detected_repo_url = None
+    try:
+        _common_dir = os.path.join(os.path.dirname(__file__), "..", "common")
+        if _common_dir not in sys.path:
+            sys.path.insert(0, _common_dir)
+        from git_context import detect_git_context
+        detected_repo_url, _ = detect_git_context()
+    except (ValueError, ImportError):
+        pass  # Git detection is best-effort
+
+    memories = memory.search(
+        query=query, namespace=namespace, limit=limit,
+        repo_url=detected_repo_url,
+    )
 
     if not memories:
         return {
@@ -745,6 +764,7 @@ def branch_catchup(
     # memories that were stored without the repo_url/branch fields
     semantic_memories = memory.search(
         query=f"branch {branch} work progress", namespace=namespace, limit=5,
+        repo_url=repo_url,
     )
     # Deduplicate by ID
     seen_ids = {m["id"] for m in branch_memories}

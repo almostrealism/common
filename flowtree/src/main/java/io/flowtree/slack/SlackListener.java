@@ -377,7 +377,9 @@ public class SlackListener implements ConsoleFeatures {
      * @param threadTs   the existing thread timestamp (non-null if already in a thread)
      */
     private boolean submitJob(SlackWorkstream workstream, String prompt, String messageTs, String threadTs) {
-        return submitJob(workstream, prompt, messageTs, threadTs, Collections.emptyMap());
+        Map<String, String> labels = workstream.getRequiredLabels();
+        return submitJob(workstream, prompt, messageTs, threadTs,
+                labels != null ? labels : Collections.emptyMap());
     }
 
     /**
@@ -461,6 +463,11 @@ public class SlackListener implements ConsoleFeatures {
                 factory.setArManagerUrl(arManagerUrl);
                 factory.setArManagerToken(arToken);
             }
+        }
+
+        // Dependent repos
+        if (workstream.getDependentRepos() != null) {
+            factory.setDependentRepos(workstream.getDependentRepos());
         }
 
         // Planning document

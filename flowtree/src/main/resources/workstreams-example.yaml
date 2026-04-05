@@ -19,7 +19,7 @@
 # Default workspace path (optional).
 # When a workstream specifies repoUrl but no workingDirectory, the repo
 # is cloned into this path. If omitted, defaults to /workspace/project
-# (if it exists) or a temporary directory under /tmp.
+# (if it exists) or a temporary directory under the system temp path.
 #
 # defaultWorkspacePath: /workspace/project
 
@@ -98,6 +98,12 @@ workstreams:
     maxTurns: 50
     maxBudgetUsd: 10.0
     # githubOrg: "my-org"             # Routes GitHub API calls through the org's token
+    # dependentRepos:                  # Additional repos to clone alongside primary repo
+    #   - "https://github.com/your-org/shared-lib.git"
+    #   - "https://github.com/your-org/config-repo.git"
+    # requiredLabels:                  # Node labels all jobs in this workstream must match.
+    #   platform: "macos"              # Jobs run only on nodes labeled platform=macos.
+    #   gpu: "true"                    # Combine multiple labels as needed.
 
   # Project Beta — uses explicit workingDirectory (legacy approach).
   - channelId: "C9876543210"

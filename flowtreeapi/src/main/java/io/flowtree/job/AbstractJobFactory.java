@@ -206,6 +206,7 @@ public abstract class AbstractJobFactory implements JobFactory {
 	@Override
 	public String encode() {
 		return properties.entrySet().stream()
+				.filter(ent -> ent.getValue() != null)
 				.map(ent -> ENTRY_SEPARATOR + ent.getKey() + KEY_VALUE_SEPARATOR + ent.getValue())
 				.collect(Collectors.joining("", getClass().getName(), ""));
 	}

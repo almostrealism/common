@@ -111,6 +111,10 @@ public class WorkstreamConfig {
         private String planningDocument;
         /** GitHub organization name for org-based token selection. */
         private String githubOrg;
+        /** Additional repository URLs cloned alongside the primary repo. */
+        private List<String> dependentRepos;
+        /** Node labels that jobs submitted to this workstream must match by default. */
+        private Map<String, String> requiredLabels;
 
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
@@ -198,6 +202,24 @@ public class WorkstreamConfig {
         public void setGithubOrg(String githubOrg) { this.githubOrg = githubOrg; }
 
         /**
+         * Returns the list of dependent repository URLs that should be
+         * checked out alongside the primary repo. Each repo is cloned
+         * as a sibling directory and managed with the same branch/commit
+         * lifecycle as the primary repo.
+         */
+        public List<String> getDependentRepos() { return dependentRepos; }
+        /** Sets the dependent repository URLs. */
+        public void setDependentRepos(List<String> dependentRepos) { this.dependentRepos = dependentRepos; }
+
+        /**
+         * Returns the Node labels that jobs submitted to this workstream must match by default.
+         * When a job submission does not include {@code requiredLabels}, these are applied.
+         */
+        public Map<String, String> getRequiredLabels() { return requiredLabels; }
+        /** Sets the default Node label requirements for jobs in this workstream. */
+        public void setRequiredLabels(Map<String, String> requiredLabels) { this.requiredLabels = requiredLabels; }
+
+        /**
          * Converts this entry to a {@link SlackWorkstream} instance.
          *
          * <p>If a {@code workstreamId} is present, it is used as the persistent
@@ -226,6 +248,8 @@ public class WorkstreamConfig {
             ws.setEnv(env);
             ws.setPlanningDocument(planningDocument);
             ws.setGithubOrg(githubOrg);
+            ws.setDependentRepos(dependentRepos);
+            ws.setRequiredLabels(requiredLabels);
             return ws;
         }
     }
@@ -525,6 +549,8 @@ public class WorkstreamConfig {
         entry.setEnv(ws.getEnv());
         entry.setPlanningDocument(ws.getPlanningDocument());
         entry.setGithubOrg(ws.getGithubOrg());
+        entry.setDependentRepos(ws.getDependentRepos());
+        entry.setRequiredLabels(ws.getRequiredLabels());
         workstreams.add(entry);
     }
 
@@ -557,6 +583,8 @@ public class WorkstreamConfig {
                     entry.setEnv(ws.getEnv());
                     entry.setPlanningDocument(ws.getPlanningDocument());
                     entry.setGithubOrg(ws.getGithubOrg());
+                    entry.setDependentRepos(ws.getDependentRepos());
+                    entry.setRequiredLabels(ws.getRequiredLabels());
                     found = true;
                     break;
                 }

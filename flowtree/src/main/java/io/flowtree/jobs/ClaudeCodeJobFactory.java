@@ -535,6 +535,45 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns the dependent repository URLs for jobs created by this factory.
+     *
+     * @return list of git clone URLs, or null if none configured
+     */
+    public List<String> getDependentRepos() {
+        String encoded = get("dependentRepos");
+        if (encoded == null || encoded.isEmpty()) {
+            return null;
+        }
+        String decoded = GitManagedJob.base64Decode(encoded);
+        if (decoded == null || decoded.isEmpty()) {
+            return null;
+        }
+        List<String> repos = new ArrayList<>();
+        for (String repo : decoded.split(",")) {
+            String normalized = repo.trim();
+            if (!normalized.isEmpty()) {
+                repos.add(normalized);
+            }
+        }
+        return repos.isEmpty() ? null : repos;
+    }
+
+    /**
+     * Sets the dependent repository URLs for jobs created by this factory.
+     * Each URL is cloned as a sibling of the primary working directory and
+     * checked out to the same target branch as the primary repo.
+     *
+     * @param dependentRepos list of git clone URLs
+     */
+    public void setDependentRepos(List<String> dependentRepos) {
+        if (dependentRepos == null || dependentRepos.isEmpty()) {
+            set("dependentRepos", null);
+            return;
+        }
+        set("dependentRepos", GitManagedJob.base64Encode(String.join(",", dependentRepos)));
+    }
+
+    /**
      * Creates the next {@link ClaudeCodeJob} from the prompt list, applying
      * all configuration properties. Returns {@code null} when all prompts
      * have been dispatched.
@@ -609,6 +648,11 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         String pyReqs = getPythonRequirements();
         if (pyReqs != null) {
             job.setPythonRequirements(pyReqs);
+        }
+
+        List<String> depRepos = getDependentRepos();
+        if (depRepos != null && !depRepos.isEmpty()) {
+            job.setDependentRepos(depRepos);
         }
 
         for (Map.Entry<String, String> entry : getRequiredLabels().entrySet()) {

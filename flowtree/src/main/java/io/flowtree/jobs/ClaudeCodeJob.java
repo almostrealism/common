@@ -134,11 +134,12 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String gitTamperingViolation;
     /**
      * Controls post-work deduplication behaviour.
-     * Defaults to {@link #DEDUP_LOCAL} (inline session before committing).
+     * {@code null} (the default) disables deduplication — the factory sets
+     * this to {@link #DEDUP_LOCAL} when creating jobs.
      * {@link #DEDUP_SPAWN} submits a follow-up job to the same workstream.
-     * {@link #DEDUP_NONE} disables deduplication entirely.
+     * {@link #DEDUP_NONE} also disables deduplication explicitly.
      */
-    private String deduplicationMode = DEDUP_LOCAL;
+    private String deduplicationMode;
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
@@ -514,6 +515,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 .setMaxTurns(maxTurns)
                 .setTaskId(getTaskId())
                 .setPlanningDocument(planningDocument)
+                .setDependentRepoPaths(getDependentRepoPaths())
                 .setGitHubMcpEnabled(true)
                 .setGitTamperingViolation(gitTamperingViolation)
                 .build();
@@ -854,7 +856,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * entirely.</p>
      */
     private void submitDeduplicationJobIfNeeded() {
-        if (DEDUP_NONE.equals(deduplicationMode)) {
+        if (deduplicationMode == null || DEDUP_NONE.equals(deduplicationMode)) {
             return;
         }
 
