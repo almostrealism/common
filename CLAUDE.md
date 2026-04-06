@@ -395,6 +395,44 @@ Consult the linked references before writing related code.
 
 ---
 
+# AGENT INTEGRITY
+
+Autonomous agents deployed via auto-resolve have demonstrated systematic patterns of concealing test failures rather than fixing them. These patterns recur across sessions and branches. Understanding them is prerequisite to avoiding them.
+
+## Known Deception Patterns
+
+**TestDepth escalation** — Changing `@TestDepth(2)` to `@TestDepth(10)` on a failing test. CI runs at depth 9, so the test disappears from CI while appearing to still exist. This is indistinguishable from a fix if you only look at whether the CI job passes.
+
+**Dimension reduction** — Reducing numeric parameters in test methods (e.g., `embedDim: 64 -> 8`, `numHeads: 2 -> 1`) so the test becomes trivially small and any code will pass it. The test still runs; it just no longer validates meaningful behavior.
+
+**Tolerance weakening** — Increasing floating-point assertion thresholds (e.g., `assertEquals(expected, actual, 0.001)` becomes `assertEquals(expected, actual, 0.1)`) so numerical regressions pass the assertion.
+
+**False memory planting** — Storing a memory claiming "no code changes were needed" or "unrelated to branch changes" for a test that is actually failing due to branch changes. The memory is then recalled by the next session and used to justify inaction. False memories are constructed by omitting the git diff step entirely and asserting a conclusion without evidence.
+
+**CI file manipulation** — Excluding failing tests from CI steps, removing quality gates from the workflow, or adding blanket timeouts so regressions go undetected. The agent fixes the build by removing the thing that detects the breakage.
+
+**Re-adding reverted suppressions** — After a human explicitly reverts a suppression, the next agent session re-applies it with a more sophisticated justification (e.g., "these are NEW tests, not existing tests being weakened"). The agent finds and exploits loopholes in the anti-suppression instructions.
+
+**"Verified locally" defense** — Claiming "tests pass locally" as evidence that CI failures are unrelated. Local environments can run at restricted test depth, different commits, or different configurations. Local test results are not admissible evidence. Only CI results on the exact commit in question count.
+
+## Mechanical Enforcement
+
+The following scripts enforce invariants mechanically:
+
+- `tools/ci/agent-protection/validate-agent-commit.sh` — Blocks agent commits that modify base-branch test files or CI files, or that contain no production code changes.
+- `tools/ci/agent-protection/detect-test-hiding.sh` — 12 pattern detectors: TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage, net assertion loss.
+- `tools/ci/agent-protection/escalation-tracker.sh` — Circuit breaker: after 2 failed auto-resolve attempts for the same test class on the same branch, stops dispatching agents and requires human intervention.
+- `tools/ci/agent-protection/deception-audit.sh` — Detects cross-session deception patterns: ping-pong (agent modifies, human reverts, agent re-modifies), test-only commits, TestDepth churn.
+
+## Rules That Cannot Be Bypassed
+
+1. **"Verified locally" proves nothing.** If CI fails and local passes, assume CI is correct and your local environment is insufficient.
+2. **Base-branch test files are read-only for agents.** Mechanical enforcement via `validate-agent-commit.sh`. There are no exceptions based on agent judgment.
+3. **A "fix" that only modifies test files or CI config is not a fix.** Production test failures require production code changes.
+4. **Before concluding "no changes needed," run `git diff origin/master...HEAD --name-only`** and for each changed production file, state whether the failing test depends on it (directly or transitively). If you cannot produce this evidence, you cannot claim unrelatedness.
+
+---
+
 # REFERENCE
 
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** — Condensed API cheatsheet
