@@ -81,6 +81,13 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     private String deduplicationMode = ClaudeCodeJob.DEDUP_LOCAL;
 
     /**
+     * When {@code true}, jobs created by this factory activate the Maven
+     * dependency protection rule, blocking {@code <dependency>} changes in
+     * {@code pom.xml} files.
+     */
+    private boolean enforceMavenDependencies;
+
+    /**
      * Default constructor for deserialization.
      */
     public ClaudeCodeJobFactory() {
@@ -496,6 +503,31 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns whether jobs created by this factory activate the Maven dependency
+     * protection rule.
+     *
+     * <p>When active, any {@code <dependency>} additions, removals, or modifications
+     * in {@code pom.xml} files trigger a correction loop that instructs the agent
+     * to revert those changes.</p>
+     *
+     * @return {@code true} if Maven dependency changes are blocked
+     */
+    public boolean isEnforceMavenDependencies() {
+        return enforceMavenDependencies;
+    }
+
+    /**
+     * Sets whether jobs created by this factory activate the Maven dependency
+     * protection rule.
+     *
+     * @param enforceMavenDependencies {@code true} to block {@code <dependency>} changes
+     */
+    public void setEnforceMavenDependencies(boolean enforceMavenDependencies) {
+        this.enforceMavenDependencies = enforceMavenDependencies;
+        set("enforceMavenDeps", String.valueOf(enforceMavenDependencies));
+    }
+
+    /**
      * Returns whether a pull request should be automatically created
      * upon successful job completion.
      */
@@ -644,6 +676,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setProtectTestFiles(isProtectTestFiles());
         job.setEnforceChanges(isEnforceChanges());
         job.setDeduplicationMode(deduplicationMode);
+        job.setEnforceMavenDependencies(enforceMavenDependencies);
 
         String pyReqs = getPythonRequirements();
         if (pyReqs != null) {
@@ -725,6 +758,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 break;
             case "dedupMode":
                 this.deduplicationMode = value;
+                break;
+            case "enforceMavenDeps":
+                this.enforceMavenDependencies = Boolean.parseBoolean(value);
                 break;
             default:
                 break;

@@ -90,7 +90,8 @@ public class JobStatsStore implements ConsoleFeatures {
         "ALTER TABLE job_timing ADD COLUMN target_branch VARCHAR(255)",
         "ALTER TABLE job_timing ADD COLUMN commit_hash VARCHAR(64)",
         "ALTER TABLE job_timing ADD COLUMN pull_request_url VARCHAR(1000)",
-        "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)"
+        "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)",
+        "ALTER TABLE job_timing ADD COLUMN slack_message_ts VARCHAR(64)"
     };
 
     /** DML statement that removes stale {@code STARTED} rows older than a given cutoff timestamp. */
@@ -551,6 +552,101 @@ public class JobStatsStore implements ConsoleFeatures {
     }
 
     /**
+     * Stores the Slack message timestamp for a job.
+     *
+     * <p>Called after the submission message is successfully posted to Slack so
+     * that {@link #getActiveWorkstreams} can construct message links for recent jobs.</p>
+     *
+     * @param jobId         the job identifier
+     * @param slackMessageTs the Slack message timestamp (e.g., {@code "1234567890.123456"})
+     */
+    public synchronized void updateJobSlackTs(String jobId, String slackMessageTs) {
+        if (connection == null || jobId == null || slackMessageTs == null) return;
+
+        String sql = "UPDATE job_timing SET slack_message_ts = ? WHERE job_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, slackMessageTs);
+            ps.setString(2, jobId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to update slack_message_ts for job " + jobId + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Returns per-workstream job activity for jobs completed on or after {@code since}.
+     *
+     * <p>Only workstreams with at least one completed job in the window are returned.
+     * A job is considered "in the window" when its {@code completed_at} timestamp falls
+     * on or after {@code since}. For rows that lack a {@code completed_at} value (e.g.,
+     * jobs inserted during a controller restart), {@code started_at} is used as the
+     * fallback via {@code COALESCE(completed_at, started_at)}.</p>
+     *
+     * <p>Each entry includes job counts by status and a short list of recent jobs with
+     * their Slack message timestamps (for constructing message links).</p>
+     *
+     * @param since the start of the activity window (inclusive), matched against completion time
+     * @return map of workstream ID to activity summary, ordered by job count descending
+     */
+    public synchronized Map<String, WorkstreamActivity> getActiveWorkstreams(Instant since) {
+        Map<String, WorkstreamActivity> result = new LinkedHashMap<>();
+        if (connection == null) return result;
+
+        String aggSql = "SELECT workstream_id, "
+            + "COUNT(*) AS job_count, "
+            + "COALESCE(SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END), 0) AS success_count, "
+            + "COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count, "
+            + "COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_count "
+            + "FROM job_timing "
+            + "WHERE COALESCE(completed_at, started_at) >= ? AND status <> 'STARTED' "
+            + "GROUP BY workstream_id "
+            + "ORDER BY job_count DESC";
+
+        try (PreparedStatement ps = connection.prepareStatement(aggSql)) {
+            ps.setTimestamp(1, Timestamp.from(since));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    WorkstreamActivity activity = new WorkstreamActivity();
+                    activity.workstreamId = rs.getString("workstream_id");
+                    activity.jobCount = rs.getInt("job_count");
+                    activity.successCount = rs.getInt("success_count");
+                    activity.failedCount = rs.getInt("failed_count");
+                    activity.cancelledCount = rs.getInt("cancelled_count");
+                    result.put(activity.workstreamId, activity);
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query active workstreams: " + e.getMessage());
+            return result;
+        }
+
+        // Fetch up to 5 recent jobs with Slack ts for each active workstream
+        String jobsSql = "SELECT job_id, slack_message_ts FROM job_timing "
+            + "WHERE workstream_id = ? AND COALESCE(completed_at, started_at) >= ? AND slack_message_ts IS NOT NULL "
+            + "ORDER BY COALESCE(completed_at, started_at) DESC LIMIT 5";
+
+        for (WorkstreamActivity activity : result.values()) {
+            try (PreparedStatement ps = connection.prepareStatement(jobsSql)) {
+                ps.setString(1, activity.workstreamId);
+                ps.setTimestamp(2, Timestamp.from(since));
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        activity.recentJobs.add(new String[]{
+                            rs.getString("job_id"),
+                            rs.getString("slack_message_ts")
+                        });
+                    }
+                }
+            } catch (SQLException e) {
+                warn("Failed to query recent jobs for workstream "
+                    + activity.workstreamId + ": " + e.getMessage());
+            }
+        }
+
+        return result;
+    }
+
+    /**
      * Truncates a string to at most {@code maxLength} characters.
      *
      * @param s         the string to truncate, or {@code null}
@@ -562,6 +658,27 @@ public class JobStatsStore implements ConsoleFeatures {
     private static String truncate(String s, int maxLength) {
         if (s == null) return null;
         return s.length() <= maxLength ? s : s.substring(0, maxLength);
+    }
+
+    /**
+     * Per-workstream activity summary for a rolling time window.
+     */
+    public static class WorkstreamActivity {
+        /** The workstream identifier. */
+        public String workstreamId;
+        /** Total number of completed jobs in the window. */
+        public int jobCount;
+        /** Number of successful jobs in the window. */
+        public int successCount;
+        /** Number of failed jobs in the window. */
+        public int failedCount;
+        /** Number of cancelled jobs in the window. */
+        public int cancelledCount;
+        /**
+         * Up to 5 recent jobs, each as {@code [jobId, slackMessageTs]}.
+         * Only jobs with a stored Slack message timestamp are included.
+         */
+        public List<String[]> recentJobs = new ArrayList<>();
     }
 
     /**
