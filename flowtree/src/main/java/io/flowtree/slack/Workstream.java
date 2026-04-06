@@ -471,8 +471,7 @@ public class Workstream {
      * suitable for inclusion in the {@code GET /api/workstreams} list response.
      *
      * <p>All string fields are JSON-escaped. Optional fields are omitted when null or empty.
-     * Computed fields: {@code hasPlanningDocument}, {@code pipelineCapable},
-     * {@code agentCount}.</p>
+     * Computed fields: {@code hasPlanningDocument}, {@code pipelineCapable}.</p>
      *
      * @return a JSON object string (not an array)
      */
@@ -503,7 +502,6 @@ public class Workstream {
         boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();
         json.append(",\"hasPlanningDocument\":").append(planningDocument != null && !planningDocument.isEmpty());
         json.append(",\"pipelineCapable\":").append(pipelineCapable);
-        json.append(",\"agentCount\":").append(agents.size());
 
         if (dependentRepos != null && !dependentRepos.isEmpty()) {
             json.append(",\"dependentRepos\":[");
