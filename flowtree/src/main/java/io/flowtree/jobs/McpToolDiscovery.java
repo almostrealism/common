@@ -67,6 +67,13 @@ public class McpToolDiscovery {
         Pattern.compile("\\.tool\\(\\)\\(\\w+\\)");
 
     /**
+     * Matches a parameter declaration line inside a Python function signature,
+     * e.g. {@code     param_name: type = default,}. Group 1 is the parameter name.
+     */
+    private static final Pattern PARAM_LINE_PATTERN =
+        Pattern.compile("^\\s+(\\w+)\\s*:");
+
+    /**
      * Scans a Python MCP server source file for tool definitions and
      * returns their names.
      *
@@ -92,6 +99,35 @@ public class McpToolDiscovery {
                 tools = discoverDynamicRegistration(lines);
             }
             return tools;
+        } catch (IOException e) {
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Returns the parameter names declared in the function signature of a given
+     * {@code @mcp.tool()}-decorated function in a Python server source file.
+     *
+     * <p>Parses multi-line function signatures of the form:</p>
+     * <pre>
+     * &#64;mcp.tool()
+     * def tool_name(
+     *     param_one: str,
+     *     param_two: str = "",
+     * ) -&gt; dict:
+     * </pre>
+     *
+     * @param serverFile path to the Python server source file
+     * @param toolName   the tool function name to inspect
+     * @return list of parameter names in declaration order, empty if the tool
+     *         is not found or the file does not exist
+     */
+    public static List<String> discoverToolParameters(Path serverFile, String toolName) {
+        if (serverFile == null || !Files.exists(serverFile)) return new ArrayList<>();
+
+        try {
+            List<String> lines = Files.readAllLines(serverFile, StandardCharsets.UTF_8);
+            return discoverParametersForTool(lines, toolName);
         } catch (IOException e) {
             return new ArrayList<>();
         }
@@ -219,5 +255,41 @@ public class McpToolDiscovery {
         }
 
         return tools;
+    }
+
+    /**
+     * Parses the parameter names from the function signature of the named tool.
+     *
+     * <p>Assumes multi-line signatures where each parameter appears on its own
+     * line as {@code     param_name: type_hint [= default],}. Scanning stops when
+     * a line starting with {@code ) ->} or {@code ):} is reached.</p>
+     *
+     * @param lines    all lines of the server source file
+     * @param toolName the name of the function whose parameters to extract
+     * @return parameter names in source order, excluding {@code self}
+     */
+    private static List<String> discoverParametersForTool(List<String> lines, String toolName) {
+        Pattern funcDefStart = Pattern.compile("def\\s+" + Pattern.quote(toolName) + "\\s*\\(");
+        List<String> params = new ArrayList<>();
+
+        for (int i = 0; i < lines.size(); i++) {
+            if (!funcDefStart.matcher(lines.get(i)).find()) continue;
+
+            for (int j = i + 1; j < lines.size(); j++) {
+                String trimmed = lines.get(j).trim();
+                if (trimmed.startsWith(") ->") || trimmed.startsWith("):")) break;
+
+                Matcher m = PARAM_LINE_PATTERN.matcher(lines.get(j));
+                if (m.find()) {
+                    String param = m.group(1);
+                    if (!param.equals("self") && !param.equals("cls")) {
+                        params.add(param);
+                    }
+                }
+            }
+            break;
+        }
+
+        return params;
     }
 }

@@ -213,4 +213,71 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		List<String> tools = McpToolDiscovery.discoverToolNames(null);
 		assertTrue(tools.isEmpty());
 	}
+
+	@Test(timeout = 30000)
+	public void discoverToolParametersFromSignature() throws IOException {
+		Path tempFile = Files.createTempFile("mcp_params_", ".py");
+		try {
+			Files.writeString(tempFile, String.join("\n",
+				"from mcp.server.fastmcp import FastMCP",
+				"mcp = FastMCP('test-server')",
+				"",
+				"@mcp.tool()",
+				"def register_item(",
+				"    name: str,",
+				"    label: str = \"\",",
+				"    tags: str = \"\",",
+				") -> dict:",
+				"    pass"
+			), StandardCharsets.UTF_8);
+
+			List<String> params = McpToolDiscovery.discoverToolParameters(tempFile, "register_item");
+			assertEquals(3, params.size());
+			assertEquals("name", params.get(0));
+			assertEquals("label", params.get(1));
+			assertEquals("tags", params.get(2));
+		} finally {
+			Files.deleteIfExists(tempFile);
+		}
+	}
+
+	@Test(timeout = 30000)
+	public void discoverToolParametersMissingToolReturnsEmpty() throws IOException {
+		Path tempFile = Files.createTempFile("mcp_params_missing_", ".py");
+		try {
+			Files.writeString(tempFile, String.join("\n",
+				"from mcp.server.fastmcp import FastMCP",
+				"mcp = FastMCP('test-server')",
+				"",
+				"@mcp.tool()",
+				"def other_tool(x: str) -> dict:",
+				"    pass"
+			), StandardCharsets.UTF_8);
+
+			List<String> params = McpToolDiscovery.discoverToolParameters(tempFile, "nonexistent_tool");
+			assertTrue(params.isEmpty());
+		} finally {
+			Files.deleteIfExists(tempFile);
+		}
+	}
+
+	@Test(timeout = 30000)
+	public void managerRegisterAndUpdateConfigHaveRequiredLabelsAndDependentRepos() {
+		Path serverFile = Path.of("tools/mcp/manager/server.py");
+		if (!Files.exists(serverFile)) return;
+
+		List<String> registerParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+		assertTrue("workstream_register must declare required_labels parameter",
+			registerParams.contains("required_labels"));
+		assertTrue("workstream_register must declare dependent_repos parameter",
+			registerParams.contains("dependent_repos"));
+
+		List<String> updateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+		assertTrue("workstream_update_config must declare required_labels parameter",
+			updateParams.contains("required_labels"));
+		assertTrue("workstream_update_config must declare dependent_repos parameter",
+			updateParams.contains("dependent_repos"));
+	}
 }
