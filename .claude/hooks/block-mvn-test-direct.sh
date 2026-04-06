@@ -11,8 +11,10 @@ data = json.load(sys.stdin)
 print(data.get('tool_input', {}).get('command', ''))
 " 2>/dev/null || echo "")
 
-# Match `mvn test` as a lifecycle phase, but not when -DskipTests is present
-if echo "$COMMAND" | grep -qE 'mvn\b.*\btest\b' && ! echo "$COMMAND" | grep -qE '\-DskipTests|\-Dmaven\.test\.skip'; then
+# Match `mvn test` as a standalone lifecycle phase.
+# Excludes: -DskipTests, test-compile, test-jar (legitimate compile/package steps).
+if echo "$COMMAND" | grep -qE 'mvn\b.*\btest\b' && \
+   ! echo "$COMMAND" | grep -qE '\-DskipTests|\-Dmaven\.test\.skip|test-compile|test-jar'; then
     # Allow `mvn ... -Dtest=SomeClass` only if it also has -DskipTests (compile check)
     echo "BLOCKED: Direct 'mvn test' is not permitted for agents." >&2
     echo "" >&2

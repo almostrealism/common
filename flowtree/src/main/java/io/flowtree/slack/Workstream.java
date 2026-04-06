@@ -22,19 +22,21 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Configuration for a Slack workstream that maps a channel to agents and settings.
+ * Configuration for a workstream — a logical unit of work assigned to one or more agents.
  *
- * <p>A workstream represents a logical unit of work managed through Slack.
- * Each workstream is associated with a Slack channel where operators can issue
- * instructions and receive status updates.</p>
+ * <p>A workstream groups agents, a git repository, branch lifecycle settings, and optional
+ * routing constraints (node labels, dependent repos). It may optionally be connected to a
+ * Slack channel ({@code channelId}/{@code channelName}), but this is not required: workstreams
+ * can be managed entirely via the ar-manager MCP server or REST API without any Slack
+ * integration.</p>
  *
- * <p>The workstream ID can be used as a namespace for future MCP memory tool
- * integration, allowing both agents and operators to share context.</p>
+ * <p>The workstream ID can be used as a namespace for MCP memory tool integration,
+ * allowing both agents and operators to share context across sessions.</p>
  *
  * @author Michael Murray
  * @see FlowTreeController
  */
-public class SlackWorkstream {
+public class Workstream {
 
     /**
      * Connection details for a Flowtree agent.
@@ -133,7 +135,7 @@ public class SlackWorkstream {
     /**
      * Creates a new workstream with default settings.
      */
-    public SlackWorkstream() {
+    public Workstream() {
         this.workstreamId = UUID.randomUUID().toString();
         this.agents = new ArrayList<>();
         this.pushToOrigin = true;
@@ -154,7 +156,7 @@ public class SlackWorkstream {
      * @param channelId    the Slack channel ID (e.g., "C0123456789")
      * @param channelName  the human-readable channel name (e.g., "#project-agent")
      */
-    public SlackWorkstream(String workstreamId, String channelId, String channelName) {
+    public Workstream(String workstreamId, String channelId, String channelName) {
         this.workstreamId = workstreamId;
         this.channelId = channelId;
         this.channelName = channelName;
@@ -171,7 +173,7 @@ public class SlackWorkstream {
      * @param channelId   the Slack channel ID (e.g., "C0123456789")
      * @param channelName the human-readable channel name (e.g., "#project-agent")
      */
-    public SlackWorkstream(String channelId, String channelName) {
+    public Workstream(String channelId, String channelName) {
         this();
         this.channelId = channelId;
         this.channelName = channelName;
@@ -217,7 +219,7 @@ public class SlackWorkstream {
      * @param port the agent port
      * @return this workstream for method chaining
      */
-    public SlackWorkstream addAgent(String host, int port) {
+    public Workstream addAgent(String host, int port) {
         agents.add(new AgentEndpoint(host, port));
         return this;
     }
@@ -465,13 +467,88 @@ public class SlackWorkstream {
     }
 
     /**
-     * Returns a concise representation of this workstream for logging.
+     * Returns a JSON object representing this workstream's configuration and capabilities,
+     * suitable for inclusion in the {@code GET /api/workstreams} list response.
      *
-     * @return string in the form {@code SlackWorkstream{workstreamId='...', channelName='...', ...}}
+     * <p>All string fields are JSON-escaped. Optional fields are omitted when null or empty.
+     * Computed fields: {@code hasPlanningDocument}, {@code pipelineCapable},
+     * {@code agentCount}.</p>
+     *
+     * @return a JSON object string (not an array)
      */
+    public String toSummaryJson() {
+        StringBuilder json = new StringBuilder();
+        json.append("{");
+        json.append("\"workstreamId\":\"").append(escapeForJson(workstreamId)).append("\"");
+
+        if (channelName != null) {
+            json.append(",\"channelName\":\"").append(escapeForJson(channelName)).append("\"");
+        }
+        if (defaultBranch != null) {
+            json.append(",\"defaultBranch\":\"").append(escapeForJson(defaultBranch)).append("\"");
+        }
+        if (baseBranch != null) {
+            json.append(",\"baseBranch\":\"").append(escapeForJson(baseBranch)).append("\"");
+        }
+        if (repoUrl != null) {
+            json.append(",\"repoUrl\":\"").append(escapeForJson(repoUrl)).append("\"");
+        }
+        if (githubOrg != null) {
+            json.append(",\"githubOrg\":\"").append(escapeForJson(githubOrg)).append("\"");
+        }
+        if (planningDocument != null && !planningDocument.isEmpty()) {
+            json.append(",\"planningDocument\":\"").append(escapeForJson(planningDocument)).append("\"");
+        }
+
+        boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();
+        json.append(",\"hasPlanningDocument\":").append(planningDocument != null && !planningDocument.isEmpty());
+        json.append(",\"pipelineCapable\":").append(pipelineCapable);
+        json.append(",\"agentCount\":").append(agents.size());
+
+        if (dependentRepos != null && !dependentRepos.isEmpty()) {
+            json.append(",\"dependentRepos\":[");
+            boolean first = true;
+            for (String repo : dependentRepos) {
+                if (!first) json.append(",");
+                first = false;
+                json.append("\"").append(escapeForJson(repo)).append("\"");
+            }
+            json.append("]");
+        }
+
+        if (requiredLabels != null && !requiredLabels.isEmpty()) {
+            json.append(",\"requiredLabels\":{");
+            boolean first = true;
+            for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
+                if (!first) json.append(",");
+                first = false;
+                json.append("\"").append(escapeForJson(entry.getKey())).append("\":");
+                json.append("\"").append(escapeForJson(entry.getValue())).append("\"");
+            }
+            json.append("}");
+        }
+
+        json.append("}");
+        return json.toString();
+    }
+
+    /**
+     * Escapes a string for safe inclusion as a JSON string value.
+     *
+     * @param s the string to escape, or {@code null}
+     * @return the escaped string, never {@code null}
+     */
+    private static String escapeForJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
+    }
+
     @Override
     public String toString() {
-        return "SlackWorkstream{" +
+        return "Workstream{" +
                "workstreamId='" + workstreamId + '\'' +
                ", channelName='" + channelName + '\'' +
                ", agents=" + agents.size() +

@@ -748,6 +748,8 @@ def workstream_list() -> dict:
     - hasPlanningDocument: whether a plan doc is configured
     - pipelineCapable: whether Tier 2 pipeline tools will work
     - agentCount: number of connected coding agents
+    - dependentRepos: list of additional repo URLs cloned alongside the
+      primary repo (omitted if none configured)
 
     Use this to discover workstreams and determine which tools are
     available for each one.

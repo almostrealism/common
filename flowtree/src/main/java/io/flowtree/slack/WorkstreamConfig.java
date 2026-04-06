@@ -52,7 +52,7 @@ import java.util.UUID;
  * </pre>
  *
  * @author Michael Murray
- * @see SlackWorkstream
+ * @see Workstream
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WorkstreamConfig {
@@ -220,17 +220,17 @@ public class WorkstreamConfig {
         public void setRequiredLabels(Map<String, String> requiredLabels) { this.requiredLabels = requiredLabels; }
 
         /**
-         * Converts this entry to a {@link SlackWorkstream} instance.
+         * Converts this entry to a {@link Workstream} instance.
          *
          * <p>If a {@code workstreamId} is present, it is used as the persistent
          * identifier. Otherwise, a random UUID is generated.</p>
          */
-        public SlackWorkstream toWorkstream() {
-            SlackWorkstream ws;
+        public Workstream toWorkstream() {
+            Workstream ws;
             if (workstreamId != null && !workstreamId.isEmpty()) {
-                ws = new SlackWorkstream(workstreamId, channelId, channelName);
+                ws = new Workstream(workstreamId, channelId, channelName);
             } else {
-                ws = new SlackWorkstream(channelId, channelName);
+                ws = new Workstream(channelId, channelName);
             }
             for (AgentEntry agent : agents) {
                 ws.addAgent(agent.getHost(), agent.getPort());
@@ -494,12 +494,12 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Converts all entries to SlackWorkstream instances.
+     * Converts all entries to Workstream instances.
      *
      * @return list of workstreams
      */
-    public List<SlackWorkstream> toWorkstreams() {
-        List<SlackWorkstream> result = new ArrayList<>();
+    public List<Workstream> toWorkstreams() {
+        List<Workstream> result = new ArrayList<>();
         for (WorkstreamEntry entry : workstreams) {
             result.add(entry.toWorkstream());
         }
@@ -523,7 +523,7 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Adds a new workstream to the configuration from a {@link SlackWorkstream} instance.
+     * Adds a new workstream to the configuration from a {@link Workstream} instance.
      *
      * <p>This creates a new {@link WorkstreamEntry} from the workstream's current
      * state and appends it to the workstreams list. Used by {@code /flowtree setup}
@@ -531,7 +531,7 @@ public class WorkstreamConfig {
      *
      * @param ws the workstream to add
      */
-    public void addWorkstream(SlackWorkstream ws) {
+    public void addWorkstream(Workstream ws) {
         WorkstreamEntry entry = new WorkstreamEntry();
         entry.setWorkstreamId(ws.getWorkstreamId());
         entry.setChannelId(ws.getChannelId());
@@ -563,8 +563,8 @@ public class WorkstreamConfig {
      *
      * @param activeWorkstreams the current in-memory workstreams
      */
-    public void syncFromWorkstreams(Collection<SlackWorkstream> activeWorkstreams) {
-        for (SlackWorkstream ws : activeWorkstreams) {
+    public void syncFromWorkstreams(Collection<Workstream> activeWorkstreams) {
+        for (Workstream ws : activeWorkstreams) {
             boolean found = false;
             for (WorkstreamEntry entry : workstreams) {
                 if (ws.getChannelId().equals(entry.getChannelId())) {

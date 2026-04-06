@@ -56,7 +56,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
     @Test(timeout = 10000)
     public void testWorkstreamConfiguration() {
-        SlackWorkstream workstream = new SlackWorkstream("C0123456789", "#test-channel");
+        Workstream workstream = new Workstream("C0123456789", "#test-channel");
         workstream.addAgent("localhost", 7766);
         workstream.addAgent("localhost", 7767);
         workstream.setDefaultBranch("feature/test");
@@ -72,16 +72,16 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
     @Test(timeout = 10000)
     public void testAgentRoundRobin() {
-        SlackWorkstream workstream = new SlackWorkstream("C123", "#test");
+        Workstream workstream = new Workstream("C123", "#test");
         workstream.addAgent("host1", 7766);
         workstream.addAgent("host2", 7767);
         workstream.addAgent("host3", 7768);
 
         // Get agents in sequence
-        SlackWorkstream.AgentEndpoint a1 = workstream.getNextAgent();
-        SlackWorkstream.AgentEndpoint a2 = workstream.getNextAgent();
-        SlackWorkstream.AgentEndpoint a3 = workstream.getNextAgent();
-        SlackWorkstream.AgentEndpoint a4 = workstream.getNextAgent();
+        Workstream.AgentEndpoint a1 = workstream.getNextAgent();
+        Workstream.AgentEndpoint a2 = workstream.getNextAgent();
+        Workstream.AgentEndpoint a3 = workstream.getNextAgent();
+        Workstream.AgentEndpoint a4 = workstream.getNextAgent();
 
         assertEquals("host1", a1.getHost());
         assertEquals("host2", a2.getHost());
@@ -123,7 +123,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
             }
         });
 
-        SlackWorkstream workstream = new SlackWorkstream("C123", "#test");
+        Workstream workstream = new Workstream("C123", "#test");
         workstream.setDefaultBranch("feature/test");
         notifier.registerWorkstream(workstream);
 
@@ -286,11 +286,11 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("C9876543210", entry2.getChannelId());
         assertEquals("192.168.1.100", entry2.getAgents().get(0).getHost());
 
-        // Convert to SlackWorkstream objects
-        List<SlackWorkstream> workstreams = config.toWorkstreams();
+        // Convert to Workstream objects
+        List<Workstream> workstreams = config.toWorkstreams();
         assertEquals(2, workstreams.size());
 
-        SlackWorkstream ws1 = workstreams.get(0);
+        Workstream ws1 = workstreams.get(0);
         assertEquals("C0123456789", ws1.getChannelId());
         assertEquals("#project-alpha", ws1.getChannelName());
         assertEquals(2, ws1.getAgents().size());
@@ -385,7 +385,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
             receivedText.set(FlowTreeApiEndpoint.extractJsonField(json, "text"));
         });
 
-        SlackWorkstream workstream = new SlackWorkstream("C_TEST_123", "#test");
+        Workstream workstream = new Workstream("C_TEST_123", "#test");
         notifier.registerWorkstream(workstream);
 
         FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -438,7 +438,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testApiEndpointMissingText() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
-        SlackWorkstream workstream = new SlackWorkstream("C123", "#test");
+        Workstream workstream = new Workstream("C123", "#test");
         notifier.registerWorkstream(workstream);
 
         FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -472,7 +472,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testApiEndpointSubmitMissingPrompt() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
-        SlackWorkstream workstream = new SlackWorkstream("C_SUBMIT_1", "#submit-test");
+        Workstream workstream = new Workstream("C_SUBMIT_1", "#submit-test");
         notifier.registerWorkstream(workstream);
 
         FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -536,7 +536,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testApiEndpointSubmitNoServer() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
-        SlackWorkstream workstream = new SlackWorkstream("C_SUBMIT_2", "#submit-test");
+        Workstream workstream = new Workstream("C_SUBMIT_2", "#submit-test");
         notifier.registerWorkstream(workstream);
 
         FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -625,7 +625,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("feature/test"));
 
         // Verify workstream was registered
-        SlackWorkstream ws = listener.getWorkstream("C_SETUP_1");
+        Workstream ws = listener.getWorkstream("C_SETUP_1");
         assertNotNull(ws);
         assertEquals("/workspace/project", ws.getWorkingDirectory());
         assertEquals("feature/test", ws.getDefaultBranch());
@@ -640,7 +640,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackListener listener = new SlackListener(notifier);
 
         // Create initial workstream
-        SlackWorkstream ws = new SlackWorkstream("C_UPD_1", "#update-channel");
+        Workstream ws = new Workstream("C_UPD_1", "#update-channel");
         ws.setWorkingDirectory("/old/dir");
         ws.setDefaultBranch("old-branch");
         listener.registerWorkstream(ws);
@@ -683,7 +683,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_INFO_1", "#info-channel");
+        Workstream ws = new Workstream("C_INFO_1", "#info-channel");
         ws.setWorkingDirectory("/workspace/project");
         ws.setDefaultBranch("feature/info");
         ws.setMaxBudgetUsd(25.0);
@@ -724,7 +724,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_STATUS_1", "#status-channel");
+        Workstream ws = new Workstream("C_STATUS_1", "#status-channel");
         ws.setDefaultBranch("main");
         listener.registerWorkstream(ws);
 
@@ -743,7 +743,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_CFG_1", "#config-channel");
+        Workstream ws = new Workstream("C_CFG_1", "#config-channel");
         ws.setMaxBudgetUsd(15.0);
         ws.setMaxTurns(75);
         ws.setDefaultBranch("develop");
@@ -766,7 +766,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_CFG_2", "#config-channel");
+        Workstream ws = new Workstream("C_CFG_2", "#config-channel");
         ws.setMaxBudgetUsd(20.0);
         listener.registerWorkstream(ws);
 
@@ -782,7 +782,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_CFG_3", "#config-channel");
+        Workstream ws = new Workstream("C_CFG_3", "#config-channel");
         listener.registerWorkstream(ws);
 
         AtomicReference<String> response = new AtomicReference<>();
@@ -821,7 +821,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_CFG_4", "#config-channel");
+        Workstream ws = new Workstream("C_CFG_4", "#config-channel");
         listener.registerWorkstream(ws);
 
         AtomicReference<String> response = new AtomicReference<>();
@@ -834,7 +834,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_JOBS_1", "#jobs-channel");
+        Workstream ws = new Workstream("C_JOBS_1", "#jobs-channel");
         listener.registerWorkstream(ws);
 
         // No jobs initially
@@ -860,7 +860,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_CANCEL_1", "#cancel-channel");
+        Workstream ws = new Workstream("C_CANCEL_1", "#cancel-channel");
         listener.registerWorkstream(ws);
 
         AtomicReference<String> response = new AtomicReference<>();
@@ -888,7 +888,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         listener.setWorkstreamConfig(config, tempFile);
 
         // Register existing workstreams
-        for (SlackWorkstream ws : config.toWorkstreams()) {
+        for (Workstream ws : config.toWorkstreams()) {
             listener.registerWorkstream(ws);
         }
 
@@ -921,7 +921,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     public void testWorkstreamConfigAddWorkstream() {
         WorkstreamConfig config = new WorkstreamConfig();
 
-        SlackWorkstream ws = new SlackWorkstream("C_ADD_1", "#add-channel");
+        Workstream ws = new Workstream("C_ADD_1", "#add-channel");
         ws.setWorkingDirectory("/workspace/test");
         ws.setDefaultBranch("develop");
         ws.setMaxBudgetUsd(20.0);
@@ -950,11 +950,11 @@ public class SlackIntegrationTest extends TestSuiteBase {
             + "    maxBudgetUsd: 10.0\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        List<SlackWorkstream> wsList = config.toWorkstreams();
+        List<Workstream> wsList = config.toWorkstreams();
         assertEquals(1, wsList.size());
 
         // Modify the in-memory workstream
-        SlackWorkstream ws = wsList.get(0);
+        Workstream ws = wsList.get(0);
         ws.setDefaultBranch("develop");
         ws.setMaxBudgetUsd(25.0);
         ws.setWorkingDirectory("/new/path");
@@ -973,7 +973,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     public void testNotifierJobTracking() {
         SlackNotifier notifier = new SlackNotifier(null);
 
-        SlackWorkstream ws = new SlackWorkstream("C_TRACK_1", "#track-channel");
+        Workstream ws = new Workstream("C_TRACK_1", "#track-channel");
         notifier.registerWorkstream(ws);
 
         // No jobs initially
@@ -1004,13 +1004,13 @@ public class SlackIntegrationTest extends TestSuiteBase {
     public void testFindWorkstreamByBranch() {
         SlackNotifier notifier = new SlackNotifier(null);
 
-        SlackWorkstream ws1 = new SlackWorkstream("ws-rings", "C_RINGS", "#rings");
+        Workstream ws1 = new Workstream("ws-rings", "C_RINGS", "#rings");
         ws1.setDefaultBranch("feature/new-decoder");
 
-        SlackWorkstream ws2 = new SlackWorkstream("ws-common", "C_COMMON", "#common");
+        Workstream ws2 = new Workstream("ws-common", "C_COMMON", "#common");
         ws2.setDefaultBranch("feature/pipeline-agents");
 
-        SlackWorkstream ws3 = new SlackWorkstream("ws-no-branch", "C_NONE", "#no-branch");
+        Workstream ws3 = new Workstream("ws-no-branch", "C_NONE", "#no-branch");
         // defaultBranch is null
 
         notifier.registerWorkstream(ws1);
@@ -1038,7 +1038,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
 
         // Register a pipeline fallback workstream
-        SlackWorkstream pipelineWs = new SlackWorkstream("ws-pipeline", "C_PIPE", "#pipeline");
+        Workstream pipelineWs = new Workstream("ws-pipeline", "C_PIPE", "#pipeline");
         pipelineWs.setDefaultBranch(null);
         pipelineWs.setAllowedTools("Read,Glob,Grep");
         pipelineWs.setMaxBudgetUsd(5.0);
@@ -1048,7 +1048,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         notifier.registerWorkstream(pipelineWs);
 
         // Register a richer workstream that matches a specific branch
-        SlackWorkstream ringsWs = new SlackWorkstream("ws-rings", "C_RINGS", "#rings");
+        Workstream ringsWs = new Workstream("ws-rings", "C_RINGS", "#rings");
         ringsWs.setDefaultBranch("feature/new-decoder");
         ringsWs.setAllowedTools("Read,Edit,Write,Bash,Glob,Grep");
         ringsWs.setMaxBudgetUsd(25.0);
@@ -1365,7 +1365,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
             assertTrue(response.contains("\"channelName\":\"w-project-plan-20260223-test\""));
 
             // Verify the workstream was actually registered and is findable by branch
-            SlackWorkstream registered = notifier.findWorkstreamByBranch("project/plan-20260223-test");
+            Workstream registered = notifier.findWorkstreamByBranch("project/plan-20260223-test");
             assertNotNull("Workstream should be findable by branch", registered);
             assertEquals("master", registered.getBaseBranch());
             assertEquals("docs/plans/PLAN-20260223-test.md", registered.getPlanningDocument());
@@ -1416,7 +1416,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream workstream = new SlackWorkstream(null, "w-test");
+        Workstream workstream = new Workstream(null, "w-test");
         workstream.setDefaultBranch("project/test");
         notifier.registerWorkstream(workstream);
 
@@ -1501,7 +1501,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     public void testChannellessWorkstreamJobNotification() {
         SlackNotifier notifier = new SlackNotifier(null);
 
-        SlackWorkstream workstream = new SlackWorkstream(null, "w-test");
+        Workstream workstream = new Workstream(null, "w-test");
         workstream.setDefaultBranch("project/test");
         notifier.registerWorkstream(workstream);
 
@@ -1552,12 +1552,12 @@ public class SlackIntegrationTest extends TestSuiteBase {
         listener.setWorkstreamConfig(config, tempFile);
 
         // Register the existing workstream first
-        for (SlackWorkstream ws : config.toWorkstreams()) {
+        for (Workstream ws : config.toWorkstreams()) {
             listener.registerWorkstream(ws);
         }
 
         // Now register a new workstream via the API path
-        SlackWorkstream newWs = new SlackWorkstream(null, "w-new-project");
+        Workstream newWs = new Workstream(null, "w-new-project");
         newWs.setDefaultBranch("project/plan-test");
         newWs.setBaseBranch("master");
         newWs.setPlanningDocument("docs/plans/PLAN-test.md");
@@ -1565,7 +1565,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         listener.registerAndPersistWorkstream(newWs);
 
         // Verify it's findable in the notifier
-        SlackWorkstream found = notifier.findWorkstreamByBranch("project/plan-test");
+        Workstream found = notifier.findWorkstreamByBranch("project/plan-test");
         assertNotNull("New workstream should be registered", found);
         assertEquals("docs/plans/PLAN-test.md", found.getPlanningDocument());
 
