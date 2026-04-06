@@ -112,12 +112,13 @@ common/
 │   ├── spatial/                   #   ar-spatial: Spatial audio visualization
 │   └── compose/                   #   ar-compose: Audio scene orchestration, arrangement
 │
-├── flowtree/                      # FlowTree — Workflow Orchestration
-├── flowtreeapi/                   #   FlowTree API and protocol abstractions
-├── flowtree-python/               #   Python bindings for FlowTree
-├── graphpersist/                  #   Database persistence, NFS/SSH, graph storage
-│
-├── tools/                         # Standalone — Dev tools, MCP servers
+├── flowtree/                      # Standalone (above engine) — Workflow Orchestration
+├── flowtreeapi/                   #   Standalone (above engine) — FlowTree API abstractions
+├── flowtree-python/               #   Standalone (above engine) — Python bindings for FlowTree
+├── graphpersist/                  #   Standalone (above engine) — Database persistence, NFS/SSH
+│                                  #   NOTE: flowtree depends on engine layer (ar-utils, ar-utils-http).
+│                                  #   Nothing in base/compute/domain/engine/extern/studio depends on flowtree.
+├── tools/                         # Standalone (above engine) — Dev tools, MCP servers
 ├── docs/                          # Documentation portal, internals, tutorials
 └── scripts/                       # Build and code generation helpers
 ```
@@ -174,6 +175,108 @@ Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. 
 ## Rule 3: RECALL MEMORIES BEFORE STARTING WORK
 
 Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+
+
+---
+
+# STRUCTURAL INVESTIGATION RULES
+
+These rules exist because the single worst failure mode in this project is making
+statements about module structure, CI configuration, or dependencies based on
+incomplete evidence. Every rule below maps to a real, documented mistake.
+
+## Rule 4: READ .github/CLAUDE.md BEFORE TOUCHING CI
+
+`.github/CLAUDE.md` is the authoritative reference for the CI pipeline and module
+dependency graph. **Read it before opening `analysis.yaml`.**
+
+## Rule 5: VERIFY DEPENDENCY DIRECTION EXPLICITLY
+
+"A depends on B" and "B depends on A" are different statements. A grep that finds
+no match proves nothing about the other direction. Before making any claim about
+dependencies, check both:
+
+```bash
+# Does module A depend on ar-X?
+grep 'ar-X' A/pom.xml
+
+# Does anything depend on ar-A?
+grep -r 'ar-A' --include="pom.xml" .
+```
+
+Never conflate "layer modules don't depend on flowtree" with "flowtree doesn't
+depend on layer modules." Always state which direction you verified.
+
+## Rule 6: AUDIT ALL pom.xml FILES BEFORE ANY CI CHANGE
+
+Before touching `.github/workflows/analysis.yaml`, run:
+
+```bash
+for f in $(find . -maxdepth 3 -name "pom.xml" | grep -v target); do
+  module=$(dirname $f | sed 's|^\./||')
+  deps=$(grep -o '<artifactId>ar-[^<]*</artifactId>' $f | sed 's|<[^>]*>||g' | tr '\n' ',')
+  echo "$module: $deps"
+done
+```
+
+Read the output. Understand where each module involved in your change sits in the
+dependency graph. Do not proceed until you can state the graph from memory.
+
+## Rule 7: "NOT DOCUMENTED" FROM ar-CONSULTANT MEANS DIG DEEPER
+
+When ar-consultant returns "Not documented," that is not permission to guess. It
+means the information must be obtained from source files (pom.xml, source code).
+Read those files, form a conclusion, and **store it in memory immediately** before
+acting on it.
+
+## Rule 8: STATE EVIDENCE BEFORE CONCLUSIONS
+
+Never write "X depends on Y" without citing the file and evidence. Write:
+
+> `flowtree/pom.xml` contains `<artifactId>ar-utils-http</artifactId>`, therefore
+> flowtree depends on utils-http (engine layer).
+
+If you cannot cite the evidence, you do not have it.
+
+## Rule 9: "STUDY X" IS A FULL INVESTIGATION
+
+When instructed to study something, open every relevant file, read it completely,
+synthesize the findings in writing, store them in memory, and only then act. A
+single grep is not a study. Partial evidence is not a study.
+
+## Rule 10: analysis.needs MUST INCLUDE EVERY COVERAGE-GENERATING JOB
+
+Any CI job that uploads a `coverage-*` artifact must appear in `analysis`'s
+`needs` list. After modifying either the list of test jobs or `analysis.needs`,
+verify they are consistent. Missing a job means analysis runs before that
+job's coverage is available.
+
+## Rule 11: NEVER DRAW STRUCTURAL CONCLUSIONS FROM A SINGLE SEARCH
+
+One grep result (or non-result) is never sufficient to characterize module
+structure. "I grepped for `ar-flowtree` and found no matches in engine/" proves
+only that engine modules don't reference flowtree by that exact name. It says
+nothing about what flowtree references. Complete the full bidirectional
+investigation before drawing any conclusion.
+
+## Rule 12: STORE STRUCTURE DISCOVERIES BEFORE ACTING ON THEM
+
+As soon as you determine the dependency structure of any module or subsystem,
+call `mcp__ar-consultant__remember` with a complete structured description. Do
+this **before** making any code or CI changes based on that structure. If the
+session ends before you finish, the next session will have the correct starting
+point.
+
+## Rule 13: DISTINGUISH WHAT A MODULE IS FROM WHAT IT USES
+
+`flowtree` uses `ar-utils-http`. This makes flowtree a **consumer** of the
+engine layer. It does not make flowtree part of the engine layer, and it does
+not make engine modules consumers of flowtree. Always distinguish:
+- "X is part of layer L" (structural classification)
+- "X uses modules from layer L" (dependency relationship)
+- "Layer L uses X" (reverse dependency — verify separately)
+
+These are three distinct facts, each requiring independent verification.
 
 
 ---
@@ -296,5 +399,6 @@ Consult the linked references before writing related code.
 
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** — Condensed API cheatsheet
 - **[llms.txt](llms.txt)** — Documentation index
+- **[CI Pipeline Guide](.github/CLAUDE.md)** — Dependency graph, layer-gating logic, rules for modifying CI ← READ THIS BEFORE TOUCHING analysis.yaml
 - **[CI Pipeline](.github/workflows/analysis.yaml)** — Build and test workflow
 - **Module guidelines**: [ML](./engine/ml/claude.md), [Graph](./domain/graph/README.md), [Collect](./base/collect/README.md)

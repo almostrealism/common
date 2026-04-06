@@ -132,6 +132,21 @@ jobs:
           mvn test -pl flowtree \
            -DAR_TEST_PROFILE=pipeline
 
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-flowtree
+          path: coverage-data/
+          retention-days: 1
+          if-no-files-found: ignore
+
   # ─── Code Policy Enforcement ───────────────────────────────────────
   code-policy-check:
     needs: build
@@ -550,7 +565,7 @@ jobs:
         id: check
         continue-on-error: true
         run: |
-          mvn checkstyle:check -B 2>&1 | tee /tmp/checkstyle-output.txt
+          mvn checkstyle:check -B 2>&1 | tee ${RUNNER_TEMP}/checkstyle-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Summary
@@ -564,7 +579,7 @@ jobs:
             echo "**Checkstyle violations detected.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            grep -E '\[ERROR\]' /tmp/checkstyle-output.txt >> "$GITHUB_STEP_SUMMARY" || echo "(no ERROR lines captured)" >> "$GITHUB_STEP_SUMMARY"
+            grep -E '\[ERROR\]' ${RUNNER_TEMP}/checkstyle-output.txt >> "$GITHUB_STEP_SUMMARY" || echo "(no ERROR lines captured)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "Run \`mvn checkstyle:check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
@@ -946,7 +961,7 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
-    needs: [test-media]
+    needs: [build, test, test-media]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -978,6 +993,10 @@ jobs:
 
       - name: Merge Coverage Data
         run: |
+          # Ensure the directory exists even when no coverage artifacts were uploaded
+          # (e.g. when test jobs were skipped on this branch).
+          mkdir -p all-coverage
+
           # Find all jacoco.exec files and create a file list
           find all-coverage -name "jacoco.exec" > exec-files.txt
           echo "Found coverage files:"

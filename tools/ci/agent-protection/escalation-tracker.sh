@@ -11,7 +11,7 @@
 # to fix them. Each time it consumed budget and produced deceptive
 # output. This circuit breaker stops that cycle.
 #
-# State is stored in a tracking file (default: /tmp/ar-escalation-tracker.json)
+# State is stored in a tracking file (default: $RUNNER_TEMP or $TMPDIR based)
 # using a simple JSON format. The file persists across agent sessions on
 # the same machine but is deliberately ephemeral — a machine restart
 # clears the state, which is acceptable since the CI runners are
@@ -30,7 +30,7 @@
 #   report  - Print dispatch history for a branch. Exits 0.
 #
 # Environment variables:
-#   AR_ESCALATION_FILE  - Path to tracking file (default: /tmp/ar-escalation-tracker.json)
+#   AR_ESCALATION_FILE  - Path to tracking file (default: $RUNNER_TEMP or $TMPDIR based)
 #   AR_MAX_ATTEMPTS     - Default max attempts before blocking (default: 2)
 
 set -euo pipefail
@@ -40,7 +40,8 @@ BRANCH="${2:-}"
 TEST_CLASS="${3:-}"
 MAX_ATTEMPTS_FLAG="${4:-}"
 
-TRACKER_FILE="${AR_ESCALATION_FILE:-/tmp/ar-escalation-tracker.json}"
+_DEFAULT_TRACKER_DIR="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+TRACKER_FILE="${AR_ESCALATION_FILE:-${_DEFAULT_TRACKER_DIR}/ar-escalation-tracker.json}"
 DEFAULT_MAX="${AR_MAX_ATTEMPTS:-2}"
 
 usage() {

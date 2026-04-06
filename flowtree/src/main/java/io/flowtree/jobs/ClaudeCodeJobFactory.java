@@ -81,6 +81,13 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     private String deduplicationMode = ClaudeCodeJob.DEDUP_LOCAL;
 
     /**
+     * When {@code true}, jobs created by this factory activate the Maven
+     * dependency protection rule, blocking {@code <dependency>} changes in
+     * {@code pom.xml} files.
+     */
+    private boolean enforceMavenDependencies;
+
+    /**
      * Default constructor for deserialization.
      */
     public ClaudeCodeJobFactory() {
@@ -496,6 +503,31 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns whether jobs created by this factory activate the Maven dependency
+     * protection rule.
+     *
+     * <p>When active, any {@code <dependency>} additions, removals, or modifications
+     * in {@code pom.xml} files trigger a correction loop that instructs the agent
+     * to revert those changes.</p>
+     *
+     * @return {@code true} if Maven dependency changes are blocked
+     */
+    public boolean isEnforceMavenDependencies() {
+        return enforceMavenDependencies;
+    }
+
+    /**
+     * Sets whether jobs created by this factory activate the Maven dependency
+     * protection rule.
+     *
+     * @param enforceMavenDependencies {@code true} to block {@code <dependency>} changes
+     */
+    public void setEnforceMavenDependencies(boolean enforceMavenDependencies) {
+        this.enforceMavenDependencies = enforceMavenDependencies;
+        set("enforceMavenDeps", String.valueOf(enforceMavenDependencies));
+    }
+
+    /**
      * Returns whether a pull request should be automatically created
      * upon successful job completion.
      */
@@ -532,6 +564,45 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
      */
     public void setPythonRequirements(String requirements) {
         set("pyReqs", GitManagedJob.base64Encode(requirements));
+    }
+
+    /**
+     * Returns the dependent repository URLs for jobs created by this factory.
+     *
+     * @return list of git clone URLs, or null if none configured
+     */
+    public List<String> getDependentRepos() {
+        String encoded = get("dependentRepos");
+        if (encoded == null || encoded.isEmpty()) {
+            return null;
+        }
+        String decoded = GitManagedJob.base64Decode(encoded);
+        if (decoded == null || decoded.isEmpty()) {
+            return null;
+        }
+        List<String> repos = new ArrayList<>();
+        for (String repo : decoded.split(",")) {
+            String normalized = repo.trim();
+            if (!normalized.isEmpty()) {
+                repos.add(normalized);
+            }
+        }
+        return repos.isEmpty() ? null : repos;
+    }
+
+    /**
+     * Sets the dependent repository URLs for jobs created by this factory.
+     * Each URL is cloned as a sibling of the primary working directory and
+     * checked out to the same target branch as the primary repo.
+     *
+     * @param dependentRepos list of git clone URLs
+     */
+    public void setDependentRepos(List<String> dependentRepos) {
+        if (dependentRepos == null || dependentRepos.isEmpty()) {
+            set("dependentRepos", null);
+            return;
+        }
+        set("dependentRepos", GitManagedJob.base64Encode(String.join(",", dependentRepos)));
     }
 
     /**
@@ -605,10 +676,16 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setProtectTestFiles(isProtectTestFiles());
         job.setEnforceChanges(isEnforceChanges());
         job.setDeduplicationMode(deduplicationMode);
+        job.setEnforceMavenDependencies(enforceMavenDependencies);
 
         String pyReqs = getPythonRequirements();
         if (pyReqs != null) {
             job.setPythonRequirements(pyReqs);
+        }
+
+        List<String> depRepos = getDependentRepos();
+        if (depRepos != null && !depRepos.isEmpty()) {
+            job.setDependentRepos(depRepos);
         }
 
         for (Map.Entry<String, String> entry : getRequiredLabels().entrySet()) {
@@ -681,6 +758,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 break;
             case "dedupMode":
                 this.deduplicationMode = value;
+                break;
+            case "enforceMavenDeps":
+                this.enforceMavenDependencies = Boolean.parseBoolean(value);
                 break;
             default:
                 break;

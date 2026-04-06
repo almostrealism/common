@@ -10,5 +10,54 @@
     ],
     "deny": [],
     "ask": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-ci-file.sh",
+            "description": "Inject .github/CLAUDE.md context when reading analysis.yaml"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-pom-read.sh",
+            "description": "Inject bidirectional dependency check when reading any pom.xml"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-ci-file.sh",
+            "description": "Inject .github/CLAUDE.md context when editing analysis.yaml"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/validate-ci-edit.sh",
+            "description": "Validate analysis.needs includes all coverage-* uploaders before edit"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-ci-file.sh",
+            "description": "Inject .github/CLAUDE.md context when writing analysis.yaml"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/validate-ci-edit.sh",
+            "description": "Validate analysis.needs includes all coverage-* uploaders before write"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -567,6 +567,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String repoUrl = extractJsonField(body, "repoUrl");
         String planningDocument = extractJsonField(body, "planningDocument");
         String channelName = extractJsonField(body, "channelName");
+        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
+        List<String> dependentRepos = extractJsonArrayField(body, "dependentRepos");
 
         // Check for an existing workstream with the same branch and repo
         SlackWorkstream existing = notifier.findWorkstreamByBranchAndRepo(defaultBranch, repoUrl);
@@ -608,6 +610,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (planningDocument != null && !planningDocument.isEmpty()) {
             workstream.setPlanningDocument(planningDocument);
+        }
+
+        if (!requiredLabels.isEmpty()) {
+            workstream.setRequiredLabels(requiredLabels);
+        }
+
+        if (dependentRepos != null && !dependentRepos.isEmpty()) {
+            workstream.setDependentRepos(dependentRepos);
         }
 
         workstream.setPushToOrigin(true);
@@ -664,6 +674,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String baseBranch = extractJsonField(body, "baseBranch");
         String repoUrl = extractJsonField(body, "repoUrl");
         String planningDocument = extractJsonField(body, "planningDocument");
+        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
+        List<String> dependentRepos = extractJsonArrayField(body, "dependentRepos");
 
         if (channelId != null && !channelId.isEmpty()) {
             workstream.setChannelId(channelId);
@@ -682,6 +694,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
         if (planningDocument != null && !planningDocument.isEmpty()) {
             workstream.setPlanningDocument(planningDocument);
+        }
+        if (!requiredLabels.isEmpty()) {
+            workstream.setRequiredLabels(requiredLabels);
+        }
+        if (dependentRepos != null && !dependentRepos.isEmpty()) {
+            workstream.setDependentRepos(dependentRepos);
         }
 
         if (listener != null) {
@@ -916,6 +934,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setPlanningDocument(workstream.getPlanningDocument());
         }
 
+        // Dependent repos
+        if (workstream.getDependentRepos() != null && !workstream.getDependentRepos().isEmpty()) {
+            factory.setDependentRepos(workstream.getDependentRepos());
+        }
+
         // Test file protection
         if (protectTestFiles) {
             factory.setProtectTestFiles(true);
@@ -931,8 +954,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setDeduplicationMode(deduplicationMode);
         }
 
-        // Required labels for Node routing (e.g., {"platform": "macos"})
+        // Required labels for Node routing (e.g., {"platform": "macos"}).
+        // Job-level labels take precedence; fall back to workstream-level defaults when absent.
         Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
+        if (requiredLabels.isEmpty() && workstream.getRequiredLabels() != null
+                && !workstream.getRequiredLabels().isEmpty()) {
+            requiredLabels = workstream.getRequiredLabels();
+        }
         for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
             factory.setRequiredLabel(entry.getKey(), entry.getValue());
         }

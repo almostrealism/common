@@ -862,6 +862,40 @@ def workstream_get_job(job_id: str) -> dict:
     return _controller_get(f"/api/jobs/{job_id}")
 
 
+def _parse_required_labels(required_labels: str) -> dict:
+    """Parse a comma-separated key:value string into a labels dict.
+
+    Only pairs with non-empty key and non-empty value are included.
+    Pairs missing a colon or with an empty key/value are silently ignored.
+    """
+    result = {}
+    for pair in required_labels.split(","):
+        parts = pair.strip().split(":", 1)
+        if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+            result[parts[0].strip()] = parts[1].strip()
+    return result
+
+
+def _parse_dependent_repos(dependent_repos: str) -> list:
+    """Parse a comma-separated list of repo URLs into a Python list.
+
+    Also accepts a JSON array string (e.g. '["url1","url2"]').
+    Empty entries are dropped. Returns an empty list if the input is empty.
+    """
+    if not dependent_repos:
+        return []
+    stripped = dependent_repos.strip()
+    if stripped.startswith("["):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+            if isinstance(parsed, list):
+                return [str(r).strip() for r in parsed if str(r).strip()]
+        except ValueError:
+            pass
+    return [r.strip() for r in stripped.split(",") if r.strip()]
+
+
 @mcp.tool()
 def workstream_submit_task(
     prompt: str,
@@ -948,11 +982,7 @@ def workstream_submit_task(
     if started_after:
         payload["startedAfter"] = started_after
     if required_labels:
-        labels_dict = {}
-        for pair in required_labels.split(","):
-            parts = pair.strip().split(":", 1)
-            if len(parts) == 2 and parts[0].strip() and parts[1].strip():
-                labels_dict[parts[0].strip()] = parts[1].strip()
+        labels_dict = _parse_required_labels(required_labels)
         if labels_dict:
             payload["requiredLabels"] = labels_dict
     if deduplication_mode:
@@ -984,6 +1014,8 @@ def workstream_register(
     repo_url: str = "",
     planning_document: str = "",
     channel_name: str = "",
+    required_labels: str = "",
+    dependent_repos: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1000,6 +1032,15 @@ def workstream_register(
         repo_url: Git repository URL for automatic checkout.
         planning_document: Path to a planning document for broader context.
         channel_name: Slack channel name to create (optional).
+        required_labels: Comma-separated key:value pairs specifying Node labels
+            that all jobs in this workstream must match by default
+            (e.g., "platform:macos,gpu:true"). Job-level labels always override
+            these workstream-level defaults.
+        dependent_repos: Comma-separated list of git clone URLs for additional
+            repositories that agents should clone alongside the primary repo
+            (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
+            Also accepts a JSON array string. Dependent repos follow the same
+            branch lifecycle as the primary repo (create/checkout/pull/commit/push).
 
     Returns:
         Dictionary with workstreamId and channel info on success.
@@ -1023,6 +1064,14 @@ def workstream_register(
         payload["planningDocument"] = planning_document
     if channel_name:
         payload["channelName"] = channel_name
+    if required_labels:
+        labels_map = _parse_required_labels(required_labels)
+        if labels_map:
+            payload["requiredLabels"] = labels_map
+    if dependent_repos:
+        repos_list = _parse_dependent_repos(dependent_repos)
+        if repos_list:
+            payload["dependentRepos"] = repos_list
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -1054,6 +1103,8 @@ def workstream_update_config(
     repo_url: str = "",
     planning_document: str = "",
     channel_name: str = "",
+    required_labels: str = "",
+    dependent_repos: str = "",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -1068,6 +1119,15 @@ def workstream_update_config(
         repo_url: Git repository URL (enables pipeline tools).
         planning_document: Path to planning document.
         channel_name: New Slack channel name.
+        required_labels: Comma-separated key:value pairs specifying Node labels
+            that all jobs in this workstream must match by default
+            (e.g., "platform:macos,gpu:true"). Job-level labels always override
+            these workstream-level defaults.
+        dependent_repos: Comma-separated list of git clone URLs for additional
+            repositories that agents should clone alongside the primary repo
+            (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
+            Also accepts a JSON array string. Dependent repos follow the same
+            branch lifecycle as the primary repo (create/checkout/pull/commit/push).
 
     Returns:
         Dictionary confirming the update.
@@ -1093,6 +1153,14 @@ def workstream_update_config(
         payload["planningDocument"] = planning_document
     if channel_name:
         payload["channelName"] = channel_name
+    if required_labels:
+        labels_map = _parse_required_labels(required_labels)
+        if labels_map:
+            payload["requiredLabels"] = labels_map
+    if dependent_repos:
+        repos_list = _parse_dependent_repos(dependent_repos)
+        if repos_list:
+            payload["dependentRepos"] = repos_list
 
     if not payload:
         return {
@@ -1100,7 +1168,8 @@ def workstream_update_config(
             "error": "No fields to update. Provide at least one field.",
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
-                "repo_url, planning_document, or channel_name",
+                "repo_url, planning_document, channel_name, required_labels, "
+                "or dependent_repos",
             ],
         }
 
@@ -1586,13 +1655,21 @@ def _resolve_branch_context(
     workstream_id: str = "",
     repo_url: str = "",
     branch: str = "",
+    require_branch: bool = True,
 ) -> tuple[str, str, Optional[dict]]:
     """Resolve repo_url and branch from workstream_id if needed.
+
+    Args:
+        workstream_id: Workstream to look up repo/branch from.
+        repo_url: Explicit repository URL.
+        branch: Explicit branch name.
+        require_branch: If False, only repo_url is required (branch may
+            be empty).  Defaults to True for backward compatibility.
 
     Returns:
         (repo_url, branch, error_dict_or_None)
     """
-    if repo_url and branch:
+    if repo_url and (branch or not require_branch):
         return (repo_url, branch, None)
 
     if workstream_id:
@@ -1606,14 +1683,35 @@ def _resolve_branch_context(
         repo_url = repo_url or ws.get("repoUrl", "")
         branch = branch or ws.get("defaultBranch", "")
 
-    if not repo_url or not branch:
-        return ("", "", {
-            "ok": False,
-            "error": "Either (repo_url + branch) or workstream_id is required",
-            "next_steps": [
+    if not repo_url and not require_branch:
+        # Try to resolve repo from the token's workstream context
+        token_ws_id = _get_token_workstream_id()
+        if token_ws_id:
+            ws = _find_workstream(token_ws_id)
+            if ws:
+                repo_url = repo_url or ws.get("repoUrl", "")
+                branch = branch or ws.get("defaultBranch", "")
+
+    missing = []
+    if not repo_url:
+        missing.append("repo_url")
+    if require_branch and not branch:
+        missing.append("branch")
+    if missing:
+        if require_branch:
+            next_steps = [
                 "Provide repo_url and branch directly, or",
                 "Provide workstream_id to resolve them from the workstream config",
-            ],
+            ]
+        else:
+            next_steps = [
+                "Provide repo_url directly, or",
+                "Provide workstream_id to resolve the repo URL from the workstream config",
+            ]
+        return ("", "", {
+            "ok": False,
+            "error": f"Either ({' + '.join(missing)}) or workstream_id is required",
+            "next_steps": next_steps,
         })
 
     return (repo_url, branch, None)
@@ -1628,12 +1726,16 @@ def memory_recall(
     branch: str = "",
     workstream_id: str = "",
     include_messages: bool = False,
+    scope: str = "repo",
 ) -> dict:
     """Search agent memories with optional LLM synthesis.
 
     Retrieves semantically similar memories from the ar-memory server.
     If an LLM backend is available, provides a synthesized summary.
     Can resolve repo_url/branch from workstream_id if provided.
+
+    By default, results are scoped to the current repository to avoid
+    returning unrelated memories from other projects.
 
     Args:
         query: Natural language search query.
@@ -1644,18 +1746,26 @@ def memory_recall(
         workstream_id: Optional workstream to resolve repo/branch from.
         include_messages: If true, also search the "messages" namespace
             and merge results. Defaults to false.
+        scope: Search scope — ``repo`` (default) searches the current
+            repository across all branches; ``branch`` narrows to the
+            current branch within the repo; ``all`` searches all repos.
 
     Returns:
         Dictionary with memories and optional summary.
     """
     _require_scope("memory")
+    if scope not in ("repo", "branch", "all"):
+        return {
+            "ok": False,
+            "error": f"Invalid scope '{scope}'. Must be 'repo', 'branch', or 'all'.",
+        }
     err = _check_short_strings(
         query=query, namespace=namespace, repo_url=repo_url,
         branch=branch, workstream_id=workstream_id,
     )
     if err:
         return err
-    _audit("memory_recall", query=query, namespace=namespace)
+    _audit("memory_recall", query=query, namespace=namespace, scope=scope)
 
     client = _get_memory_client()
     if client is None:
@@ -1668,15 +1778,35 @@ def memory_recall(
             ],
         }
 
-    # Resolve branch context if filtering requested
+    # Resolve context based on scope
     effective_repo = repo_url
     effective_branch = branch
-    if workstream_id and (not repo_url or not branch):
-        effective_repo, effective_branch, err = _resolve_branch_context(
-            workstream_id=workstream_id, repo_url=repo_url, branch=branch,
-        )
-        if err:
-            return err
+
+    if scope == "all" and not repo_url and not workstream_id:
+        # Explicitly requested: search everything, no filtering
+        effective_repo = ""
+        effective_branch = ""
+    elif scope == "branch":
+        # Need both repo and branch — use the strict resolver
+        if workstream_id or not (repo_url and branch):
+            effective_repo, effective_branch, err = _resolve_branch_context(
+                workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+                require_branch=True,
+            )
+            if err:
+                return err
+    else:
+        # scope == "repo" (default) — need at least repo_url
+        if workstream_id or not repo_url:
+            effective_repo, effective_branch, err = _resolve_branch_context(
+                workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+                require_branch=False,
+            )
+            if err:
+                return err
+        # For repo scope, don't filter by branch unless explicitly provided
+        if scope == "repo" and not branch:
+            effective_branch = ""
 
     try:
         memories = client.search(

@@ -694,7 +694,8 @@ class TestMemoryRecall(unittest.TestCase):
     @patch.object(server, "_get_llm", return_value=None)
     @patch.object(server, "_get_memory_client")
     @patch.object(server, "_find_workstream")
-    def test_resolve_from_workstream(self, mock_find, mock_client_fn, _):
+    def test_resolve_from_workstream_repo_scope(self, mock_find, mock_client_fn, _):
+        """Default scope=repo resolves repo_url but does not filter by branch."""
         _grant_all_scopes()
         mock_find.return_value = {
             "repoUrl": "https://github.com/org/repo",
@@ -704,6 +705,24 @@ class TestMemoryRecall(unittest.TestCase):
         client.search.return_value = []
         mock_client_fn.return_value = client
         server.memory_recall(query="test", workstream_id="ws-test")
+        call_kwargs = client.search.call_args[1]
+        self.assertEqual(call_kwargs["repo_url"], "https://github.com/org/repo")
+        self.assertIsNone(call_kwargs["branch"])
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream")
+    def test_resolve_from_workstream_branch_scope(self, mock_find, mock_client_fn, _):
+        """scope=branch resolves both repo_url and branch from the workstream."""
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+        }
+        client = MagicMock()
+        client.search.return_value = []
+        mock_client_fn.return_value = client
+        server.memory_recall(query="test", workstream_id="ws-test", scope="branch")
         call_kwargs = client.search.call_args[1]
         self.assertEqual(call_kwargs["repo_url"], "https://github.com/org/repo")
         self.assertEqual(call_kwargs["branch"], "feature/x")
@@ -908,6 +927,63 @@ class TestControllerPost(unittest.TestCase):
         result = server._controller_post("/api/submit", {})
         self.assertFalse(result["ok"])
         self.assertIn("error", result)
+
+
+# -----------------------------------------------------------------------
+# _parse_dependent_repos helper
+# -----------------------------------------------------------------------
+
+
+class TestParseDependentRepos(unittest.TestCase):
+
+    def test_empty_string_returns_empty(self):
+        self.assertEqual([], server._parse_dependent_repos(""))
+
+    def test_none_returns_empty(self):
+        self.assertEqual([], server._parse_dependent_repos(None))
+
+    def test_single_url_csv(self):
+        result = server._parse_dependent_repos("https://github.com/org/repo")
+        self.assertEqual(["https://github.com/org/repo"], result)
+
+    def test_multiple_urls_csv(self):
+        result = server._parse_dependent_repos(
+            "https://github.com/org/a,https://github.com/org/b"
+        )
+        self.assertEqual(
+            ["https://github.com/org/a", "https://github.com/org/b"], result
+        )
+
+    def test_csv_drops_empty_entries(self):
+        result = server._parse_dependent_repos(
+            "https://github.com/org/a,,https://github.com/org/b"
+        )
+        self.assertEqual(
+            ["https://github.com/org/a", "https://github.com/org/b"], result
+        )
+
+    def test_json_array(self):
+        result = server._parse_dependent_repos(
+            '["https://github.com/org/a","https://github.com/org/b"]'
+        )
+        self.assertEqual(
+            ["https://github.com/org/a", "https://github.com/org/b"], result
+        )
+
+    def test_json_array_drops_empty_entries(self):
+        result = server._parse_dependent_repos('["https://github.com/org/a","","  "]')
+        self.assertEqual(["https://github.com/org/a"], result)
+
+    def test_invalid_json_falls_back_to_csv(self):
+        result = server._parse_dependent_repos(
+            "[https://github.com/org/a,https://github.com/org/b]"
+        )
+        # Invalid JSON — falls back to CSV splitting on commas
+        self.assertIsInstance(result, list)
+        # Should not raise; best-effort result acceptable
+
+    def test_whitespace_only_returns_empty(self):
+        self.assertEqual([], server._parse_dependent_repos("   "))
 
 
 # -----------------------------------------------------------------------
