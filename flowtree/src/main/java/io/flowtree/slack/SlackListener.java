@@ -1168,7 +1168,11 @@ public class SlackListener implements ConsoleFeatures {
             sb.append(" \u2014 branch: ").append(branch).append("\n");
             sb.append("  :hammer: ").append(activity.jobCount).append(" jobs");
             sb.append(" (:white_check_mark: ").append(activity.successCount);
-            sb.append("  :x: ").append(activity.failedCount).append(")\n");
+            sb.append("  :x: ").append(activity.failedCount);
+            if (activity.cancelledCount > 0) {
+                sb.append("  :no_entry_sign: ").append(activity.cancelledCount);
+            }
+            sb.append(")\n");
 
             if (!activity.recentJobs.isEmpty() && channelId != null) {
                 sb.append("  :link: Recent: ");

@@ -595,7 +595,8 @@ public class JobStatsStore implements ConsoleFeatures {
         String aggSql = "SELECT workstream_id, "
             + "COUNT(*) AS job_count, "
             + "COALESCE(SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END), 0) AS success_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count "
+            + "COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count, "
+            + "COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_count "
             + "FROM job_timing "
             + "WHERE COALESCE(completed_at, started_at) >= ? AND status <> 'STARTED' "
             + "GROUP BY workstream_id "
@@ -610,6 +611,7 @@ public class JobStatsStore implements ConsoleFeatures {
                     activity.jobCount = rs.getInt("job_count");
                     activity.successCount = rs.getInt("success_count");
                     activity.failedCount = rs.getInt("failed_count");
+                    activity.cancelledCount = rs.getInt("cancelled_count");
                     result.put(activity.workstreamId, activity);
                 }
             }
@@ -670,9 +672,11 @@ public class JobStatsStore implements ConsoleFeatures {
         public int successCount;
         /** Number of failed jobs in the window. */
         public int failedCount;
+        /** Number of cancelled jobs in the window. */
+        public int cancelledCount;
         /**
          * Up to 5 recent jobs, each as {@code [jobId, slackMessageTs]}.
-         * {@code slackMessageTs} may be null if not yet stored.
+         * Only jobs with a stored Slack message timestamp are included.
          */
         public List<String[]> recentJobs = new ArrayList<>();
     }
