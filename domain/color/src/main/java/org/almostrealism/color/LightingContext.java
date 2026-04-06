@@ -72,7 +72,9 @@ public class LightingContext implements Cloneable {
 	public void setLightDirection(Producer<PackedCollection> l) { this.lightDirection = l; }
 	
 	/**
-	 * @return  A {@link Vector} {@link Producer} representing the direction toward the light (this can be expected to be unit length).
+	 * Returns a {@link Producer} representing the direction toward the light (this can be expected to be unit length).
+	 *
+	 * @return a {@link Producer} for the light direction vector
 	 */
 	public Producer<PackedCollection> getLightDirection() { return this.lightDirection; }
 	
@@ -83,7 +85,7 @@ public class LightingContext implements Cloneable {
 	 */
 	public void setLight(Light l) { this.light = l; }
 	
-	/** @return  A Light object representing the light. */
+	/** Returns a Light object representing the light. */
 	public Light getLight() { return this.light; }
 	
 	/**
@@ -93,7 +95,7 @@ public class LightingContext implements Cloneable {
 	 */
 	public void setOtherLights(Iterable<Light> l) { this.otherLights = l; }
 	
-	/** @return  An array of Light objects representing the other lights in the scene. */
+	/** Returns an array of Light objects representing the other lights in the scene. */
 	public Iterable<Light> getOtherLights() { return this.otherLights; }
 	
 	/**

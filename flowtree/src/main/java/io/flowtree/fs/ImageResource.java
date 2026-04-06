@@ -177,6 +177,7 @@ public class ImageResource implements Resource {
 	 *
 	 * @return the permissions object
 	 */
+	@Override
 	public Permissions getPermissions() { return permissions; }
 
 	/**
@@ -190,6 +191,7 @@ public class ImageResource implements Resource {
 	 * @param io the paired input/output streams connected to the remote resource server
 	 * @throws IOException if an I/O error occurs during the transfer
 	 */
+	@Override
 	public void load(IOStreams io) throws IOException {
 		io.out.writeInt(this.x);
 		io.out.writeInt(this.y);
@@ -231,6 +233,7 @@ public class ImageResource implements Resource {
 	 * @param offset unused
 	 * @param len    unused
 	 */
+	@Override
 	public void load(byte[] data, long offset, int len) {
 		throw new NotImplementedException("load");
 	}
@@ -247,6 +250,7 @@ public class ImageResource implements Resource {
 	 *       currently commented out and not implemented).</li>
 	 * </ul>
 	 */
+	@Override
 	public void loadFromURI() {
 		try {
 			RenderedImage im = null;
@@ -276,6 +280,7 @@ public class ImageResource implements Resource {
 				Client c = Client.getCurrentClient();
 				if (c != null) g = c.getServer().getThreadGroup();
 				Thread dt = new Thread(g, "ImageResource SCP Loader") {
+					@Override
 					public void run() {
 						try {
 							scpd.download(fur, out);
@@ -353,25 +358,19 @@ public class ImageResource implements Resource {
 	 * @param io the paired input/output streams connected to the remote client
 	 * @throws IOException if an I/O error occurs during the transfer
 	 */
+	@Override
 	public void send(IOStreams io) throws IOException {
 		if (this.data == null) return;
 
-		int sx = this.x;
-		int sy = this.y;
-		int sw = this.w;
-		int sh = this.h;
-
-		int[] rgb = this.data;
-
-		sx = io.in.readInt();
-		sy = io.in.readInt();
-		sw = io.in.readInt();
-		sh = io.in.readInt();
+		int sx = io.in.readInt();
+		int sy = io.in.readInt();
+		int sw = io.in.readInt();
+		int sh = io.in.readInt();
 
 		if (sw == 0) sw = this.w;
 		if (sh == 0) sh = this.h;
 
-		rgb = this.clip(sx, sy, sw, sh);
+		int[] rgb = this.clip(sx, sy, sw, sh);
 
 		System.out.println("ImageResource: Sending " + rgb[0] + "x" + rgb[1] + " image...");
 
@@ -450,6 +449,7 @@ public class ImageResource implements Resource {
 	 *
 	 * @return the URI string
 	 */
+	@Override
 	public String getURI() { return this.uri; }
 
 	/**
@@ -457,6 +457,7 @@ public class ImageResource implements Resource {
 	 *
 	 * @param uri the new URI string
 	 */
+	@Override
 	public void setURI(String uri) { this.uri = uri; }
 
 	/**
@@ -465,6 +466,7 @@ public class ImageResource implements Resource {
 	 *
 	 * @return the {@code int[]} pixel data, or {@code null} if not loaded
 	 */
+	@Override
 	public Object getData() { return this.data; }
 
 	/**
@@ -473,6 +475,7 @@ public class ImageResource implements Resource {
 	 * @param file unused
 	 * @throws IOException never; this implementation is a no-op
 	 */
+	@Override
 	public void saveLocal(String file) throws IOException {
 	}
 
@@ -483,6 +486,7 @@ public class ImageResource implements Resource {
 	 * @param o the object to compare
 	 * @return {@code true} if equal
 	 */
+	@Override
 	public boolean equals(Object o) {
 		if (!(o instanceof ImageResource)) return false;
 
@@ -499,6 +503,7 @@ public class ImageResource implements Resource {
 	 *
 	 * @return hash code
 	 */
+	@Override
 	public int hashCode() { return this.uri.hashCode(); }
 
 	/**
@@ -508,6 +513,7 @@ public class ImageResource implements Resource {
 	 * @return never returns normally
 	 * @throws RuntimeException always
 	 */
+	@Override
 	public InputStream getInputStream() {
 		throw new RuntimeException("Not implemented");
 //		return null;

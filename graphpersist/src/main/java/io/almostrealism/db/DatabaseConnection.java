@@ -30,6 +30,7 @@ import java.sql.Statement;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -83,15 +84,13 @@ public class DatabaseConnection {
 	 * the output table using the connection's pre-compiled {@code storeOutput} statement.
 	 */
 	protected class DefaultOutputHandler implements OutputHandler {
-		/** The target output table name. */
-		private final String table;
 
 		/**
 		 * Constructs a handler that stores output in the specified table.
 		 *
 		 * @param table The name of the output table
 		 */
-		public DefaultOutputHandler(String table) { this.table = table; }
+		public DefaultOutputHandler(String table) { }
 
 		@Override
 		public void storeOutput(long time, int uid, JobOutput output) {
@@ -112,14 +111,14 @@ public class DatabaseConnection {
 	
 	/**
 	 * Default {@link QueryHandler} implementation that executes a {@link Query} against
-	 * the database and returns results as a {@link Hashtable}.
+	 * the database and returns results as a {@link Map}.
 	 *
 	 * <p>If the query has a {@link Query.ResultHandler} set, each row is delivered to it
 	 * instead of being accumulated in the hashtable.</p>
 	 */
 	protected class DefaultQueryHandler implements QueryHandler {
 		@Override
-		public Hashtable executeQuery(Query q) {
+		public Map executeQuery(Query q) {
 			if (DatabaseConnection.this.db == null) {
 				System.out.println("DBS: Not connected.");
 				return null;
@@ -137,7 +136,7 @@ public class DatabaseConnection {
 //				String v1 = q.getValue(1);
 				
 				s = DatabaseConnection.this.db.createStatement();
-				StringBuffer sql = new StringBuffer();
+				StringBuilder sql = new StringBuilder();
 				sql.append("SELECT ");
 				if (c0 != null) sql.append(c0);
 				if (c0 != null && c1 != null) sql.append(",");
@@ -163,8 +162,8 @@ public class DatabaseConnection {
 				if (DatabaseConnection.verbose)
 					System.out.println("DBS DefaultOutputHandler: Executed SQL -- " + sql);
 				
-				Hashtable h = new Hashtable();
-				
+				LinkedHashMap h = new LinkedHashMap();
+
 				int i = 0;
 				
 				Object key = null;
@@ -210,7 +209,7 @@ public class DatabaseConnection {
 				try {
 					if (r != null) r.close();
 					if (s != null) s.close();
-				} catch (Exception e) { e.printStackTrace(); }
+				} catch (Exception e) { System.err.println("DatabaseConnection: Error closing resources: " + e.getMessage()); }
 			}
 		}
 	}
@@ -295,12 +294,12 @@ public class DatabaseConnection {
 			
 			System.out.print("DBS: Preparing statements... ");
 			
-			StringBuffer buf = new StringBuffer();
+			StringBuilder buf = new StringBuilder();
 			buf.append("SELECT * FROM ");
 			buf.append(this.outputTable);
 			this.selectAll = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("INSERT INTO ");
 			buf.append(this.outputTable);
 			buf.append(" (");
@@ -314,7 +313,7 @@ public class DatabaseConnection {
 			buf.append(") VALUES (?, ?, ?, ?)");
 			this.binaryInsert = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("INSERT INTO ");
 			buf.append(this.outputTable);
 			buf.append(" (");
@@ -328,7 +327,7 @@ public class DatabaseConnection {
 			buf.append(") VALUES (?, ?, ?, ?)");
 			this.storeOutput = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("DELETE FROM ");
 			buf.append(this.outputTable);
 			buf.append(" WHERE ");
@@ -336,7 +335,7 @@ public class DatabaseConnection {
 			buf.append(" = ?");
 			this.deleteToa = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("DELETE FROM ");
 			buf.append(this.outputTable);
 			buf.append(" WHERE ");
@@ -346,7 +345,7 @@ public class DatabaseConnection {
 			buf.append(" = ?");
 			this.deleteIndex = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("DELETE FROM ");
 			buf.append(this.outputTable);
 			buf.append(" WHERE ");
@@ -354,7 +353,7 @@ public class DatabaseConnection {
 			buf.append(" = ?");
 			this.deleteUri = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("UPDATE ");
 			buf.append(this.outputTable);
 			buf.append(" SET ");
@@ -365,7 +364,7 @@ public class DatabaseConnection {
 			buf.append(" = ?");
 			this.updateDup = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("SELECT ");
 			buf.append(DatabaseConnection.uriColumn);
 			buf.append(",");
@@ -380,7 +379,7 @@ public class DatabaseConnection {
 			this.configJob = this.db.prepareStatement(buf.toString());
 			
 			try {
-				buf = new StringBuffer();
+				buf = new StringBuilder();
 				buf.append("SELECT * FROM ");
 				buf.append(this.userTable);
 				buf.append(" WHERE ");
@@ -514,8 +513,19 @@ public class DatabaseConnection {
 	// TODO  It is unclear what this is for
 	@Deprecated
 	public void storeOutput(Hashtable h) {
+		storeOutput((Map) h);
+	}
+
+	/**
+	 * Notifies all output handlers stored by this DatabaseConnection object to store
+	 * each entry in the specified map.
+	 *
+	 * @param h map of time-keyed output strings to store
+	 */
+	@Deprecated
+	public void storeOutput(Map h) {
 		Iterator itr = h.entrySet().iterator();
-		
+
 		while (itr.hasNext()) {
 			Map.Entry ent = (Map.Entry) itr.next();
 			this.storeOutput(Long.parseLong((String)ent.getKey()), -1, null,
@@ -653,17 +663,17 @@ public class DatabaseConnection {
 	}
 	
 	/**
-	 * Executes a query and returns the result in the form of a hashtable.
-	 * 
+	 * Executes a query and returns the result in the form of a map.
+	 *
 	 * @param q  A Query object defining what exactly is to be returned from the database.
-	 * @return  A Hashtable object storing key value pairs returned by the query.
+	 * @return  A map storing key value pairs returned by the query.
 	 */
-	public Hashtable executeQuery(Query q) {
+	public Map executeQuery(Query q) {
 		if (DatabaseConnection.verbose) {
 			System.out.println("DatabaseConnection: Executing " + q);
 		}
-		
-		Hashtable result = new Hashtable();
+
+		LinkedHashMap result = new LinkedHashMap();
 		queryHandlers.stream().map(h -> h.executeQuery(q)).forEach(result::putAll);
 		return result;
 	}
@@ -845,8 +855,10 @@ public class DatabaseConnection {
 	}
 	
 	/**
-	 * @return  The average number of JobOutput objects handled per minute since
-	 *          the last time this method was called.
+	 * Returns the average number of {@link JobOutput} objects handled per minute since
+	 * the last time this method was called.
+	 *
+	 * @return The average throughput in outputs per minute since the last call
 	 */
 	public double getThroughput() {
 		long time = System.currentTimeMillis();

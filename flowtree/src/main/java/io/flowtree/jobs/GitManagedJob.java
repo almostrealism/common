@@ -93,8 +93,6 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     /** File patterns that are always excluded from commits. */
     private static final Set<String> DEFAULT_EXCLUDED_PATTERNS = GitJobConfig.DEFAULT_EXCLUDED_PATTERNS;
 
-    /** Path patterns for test/CI files protected by {@link #protectTestFiles}. */
-    private static final Set<String> PROTECTED_PATH_PATTERNS = GitJobConfig.PROTECTED_PATH_PATTERNS;
 
     /**
      * System property key for a server-wide working directory override.
@@ -175,7 +173,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     private Set<String> additionalExcludedPatterns = new HashSet<>();
 
     /**
-     * When true, any file matched by {@link #PROTECTED_PATH_PATTERNS} that also
+     * When true, any file matched by {@link GitJobConfig#PROTECTED_PATH_PATTERNS} that also
      * exists on the base branch is blocked from being staged.
      */
     private boolean protectTestFiles = false;

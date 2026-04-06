@@ -70,9 +70,6 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     /** Optional planning document text to inject into the Claude Code system prompt. */
     private String planningDocument;
 
-    /** Whether jobs created by this factory must produce at least one staged file change. */
-    private boolean enforceChanges;
-
     /**
      * Deduplication mode applied to jobs created by this factory.
      * Defaults to {@link ClaudeCodeJob#DEDUP_LOCAL}.
@@ -476,7 +473,6 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
      * @param enforceChanges true to require code changes for completion
      */
     public void setEnforceChanges(boolean enforceChanges) {
-        this.enforceChanges = enforceChanges;
         set("enforceChanges", String.valueOf(enforceChanges));
     }
 
@@ -754,7 +750,6 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 this.planningDocument = GitManagedJob.base64Decode(value);
                 break;
             case "enforceChanges":
-                this.enforceChanges = Boolean.parseBoolean(value);
                 break;
             case "dedupMode":
                 this.deduplicationMode = value;

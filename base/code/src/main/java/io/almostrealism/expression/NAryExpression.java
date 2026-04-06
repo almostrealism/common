@@ -27,7 +27,7 @@ import java.util.stream.Stream;
  * An n-ary infix expression that joins two or more sub-expressions with the same operator.
  *
  * <p>Generates code of the form {@code a op b op c}. Subclasses specialise this for
- * specific operators such as {@code +}, {@code *}, and {@code &amp;}.</p>
+ * specific operators such as {@code +}, {@code *}, and {@code &}.</p>
  *
  * @param <T> the result type of the expression
  */
@@ -161,7 +161,7 @@ public class NAryExpression<T> extends Expression<T> {
 	 * @return the joined expression string
 	 */
 	private static String concat(String separator, Stream<String> values) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		values.map(s -> " " + separator + " " + s).forEach(buf::append);
 		return buf.toString().substring(separator.length() + 2);
 	}

@@ -295,14 +295,18 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	}
 	
 	/**
+	 * Sets whether the intersection methods will apply the transformations stored by this Triangle.
+	 *
 	 * @param use  If set to true, the intersection methods will apply the transformations stored by this
 	 *             Triangle object. Otherwise, transformation will not be used. Setting to false is useful
 	 *             if the Triangle vertices are absolute coordinates and/or if the Triangle is part of a Mesh
 	 *             and the Mesh will apply all needed transformation.
 	 */
 	public void setUseTransform(boolean use) { this.useT = use; }
-	
+
 	/**
+	 * Returns {@code true} if the intersection methods will apply the transformations stored by this Triangle.
+	 *
 	 * @return  True if the intersection methods will apply the transformations stored by this
 	 *          Triangle object, false otherwise.
 	 */
@@ -318,6 +322,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public void setInterpolateVertexColor(boolean vcolor) { this.intcolor = vcolor; }
 	
 	/**
+	 * Returns {@code true} if color will be interpolated across the triangle based on vertex colors.
+	 *
 	 * @return  True if color will be interpolated across the triangle based on vertex colors
 	 *          and then mixed with the color of the triangle. False if the color of the triangle
 	 *          will be used all across the surface.
@@ -332,6 +338,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public void setSmooth(boolean s) { this.smooth = s; }
 	
 	/**
+	 * Returns the smooth flag which indicates if normal vectors should be interpolated.
+	 *
 	 * @return  The smooth flag which indicates if normal vectors should be interpolated.
 	 */
 	public boolean getSmooth() { return this.smooth; }
@@ -518,6 +526,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	 *
 	 * @return a string in the form "Triangle: p1 p2 p3"
 	 */
+	@Override
 	public String toString() {
 		return "Triangle: " + this.p1 + " " + this.p2 + " " + this.p3;
 	}

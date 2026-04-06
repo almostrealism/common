@@ -16,7 +16,7 @@
 
 package org.almostrealism.time;
 
-import java.util.LinkedList;
+import java.util.ArrayDeque;
 import java.util.Queue;
 
 /**
@@ -199,7 +199,7 @@ public class TimingRegularizer {
 	 */
 	public TimingRegularizer(long standardDuration) {
 		this.standardDuration = standardDuration;
-		this.recentDurations = new LinkedList<>();
+		this.recentDurations = new ArrayDeque<>();
 	}
 
 	/**

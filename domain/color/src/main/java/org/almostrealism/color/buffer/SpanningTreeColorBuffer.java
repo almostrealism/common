@@ -40,6 +40,7 @@ public class SpanningTreeColorBuffer implements ColorBuffer {
 	 * @param front {@code true} for front surface, {@code false} for back (unused)
 	 * @param c     the color to add (unused)
 	 */
+	@Override
 	public void addColor(double u, double v, boolean front, RGB c) {
 		// TODO Auto-generated method stub
 	}
@@ -52,6 +53,7 @@ public class SpanningTreeColorBuffer implements ColorBuffer {
 	 * @param front {@code true} for front surface, {@code false} for back (unused)
 	 * @return {@code null}
 	 */
+	@Override
 	public RGB getColorAt(double u, double v, boolean front) {
 		// TODO Auto-generated method stub
 		return null;
@@ -60,13 +62,16 @@ public class SpanningTreeColorBuffer implements ColorBuffer {
 	/**
 	 * Not implemented; this method is a no-op.
 	 */
+	@Override
 	public void clear() {
 		// TODO Auto-generated method stub
 	}
 
 	/** {@inheritDoc} */
+	@Override
 	public double getScale() { return this.m; }
 
 	/** {@inheritDoc} */
+	@Override
 	public void setScale(double m) { this.m = m; }
 }

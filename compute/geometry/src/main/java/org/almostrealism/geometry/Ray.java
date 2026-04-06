@@ -125,6 +125,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 
 	/**
+	 * Returns the dot product of the origin of this ray with itself.
+	 *
 	 * @return  The dot product of the origin of this ray with itself.
 	 */
 	public Evaluable<PackedCollection> oDoto() {
@@ -133,6 +135,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 	
 	/**
+	 * Returns the dot product of the direction of this ray with itself.
+	 *
 	 * @return  The dot product of the direction of this ray with itself.
 	 */
 	public Evaluable<PackedCollection> dDotd() {
@@ -141,6 +145,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 	
 	/**
+	 * Returns the dot product of the origin of this ray with the direction of this ray.
+	 *
 	 * @return  The dot product of the origin of this ray with the direction of this ray.
 	 */
 	public Evaluable<PackedCollection> oDotd() {
@@ -149,6 +155,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 	
 	/**
+	 * Returns the origin of this Ray object as a Vector object.
+	 *
 	 * @return  The origin of this Ray object as a Vector object.
 	 */
 	public Vector getOrigin() {
@@ -157,6 +165,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 	
 	/**
+	 * Returns the direction of this Ray object as a Vector object.
+	 *
 	 * @return  The direction of this Ray object as a Vector object.
 	 */
 	public Vector getDirection() {
@@ -165,8 +175,9 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 	
 	/**
-	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
-	 *          as a {@link PackedCollection}.
+	 * Returns the point on the ray represented by this {@link Ray} at distance t from the origin.
+	 *
+	 * @return  The point as a {@link PackedCollection}.
 	 */
 	public CollectionProducer pointAt(Producer<PackedCollection> t) {
 		return pointAt(v(this), t);
@@ -193,6 +204,7 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 		return new Ray(coords);
 	}
 
+	@Override
 	public double[] toArray() { return getMem().toArray(getOffset(), 6); }
 
 	/**

@@ -298,7 +298,7 @@ public class DefaultPhotonField implements PhotonField {
 			this.sizeChart.addEntry(this.getSize());
 			
 			if (this.file != null) {
-				StringBuffer b = new StringBuffer();
+				StringBuilder b = new StringBuilder();
 				this.sizeChart.print(b);
 				
 				try (BufferedWriter out = new BufferedWriter(new FileWriter(this.file))) {

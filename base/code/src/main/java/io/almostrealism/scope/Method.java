@@ -261,7 +261,7 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	 * @return a comma-separated string of the rendered argument expressions
 	 */
 	protected static String toString(LanguageOperations lang, List<Expression<?>> arguments) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		for (int i = 0; i < arguments.size(); i++) {
 			Expression<?> v = arguments.get(i);

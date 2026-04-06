@@ -135,6 +135,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	@Override
 	public Producer<PackedCollection> get(int index) { return normal; }
 	
+	@Override
 	public int size() { return 1; }
 
 	@Override

@@ -105,6 +105,7 @@ public abstract class CellAdapter<T> implements Cell<T> {
 	 *
 	 * @return the receptor receiving this cell's output, or null if none set
 	 */
+	@Override
 	public Receptor<T> getReceptor() { return this.r; }
 
 	/**

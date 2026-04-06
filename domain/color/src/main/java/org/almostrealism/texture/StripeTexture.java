@@ -75,6 +75,7 @@ public class StripeTexture implements Texture {
 	 * @return  The color of the texture represented by this {@link StripeTexture}
 	 *          object at the specified point as an RGB object.
 	 */
+	@Override
 	public RGB operate(Vector t) {
 		PackedCollection result = this.getColorAt(new Object[0]).evaluate(t);
 		return result instanceof RGB ? (RGB) result : new RGB(result.toDouble(0), result.toDouble(1), result.toDouble(2));
@@ -134,5 +135,6 @@ public class StripeTexture implements Texture {
 	/**
 	 * @return "Stripe Texture".
 	 */
+	@Override
 	public String toString() { return "Stripe Texture"; }
 }

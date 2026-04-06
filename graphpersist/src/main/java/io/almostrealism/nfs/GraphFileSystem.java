@@ -36,9 +36,7 @@ import org.dcache.nfs.vfs.VirtualFileSystem;
 
 import javax.security.auth.Subject;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 
 /**
  * An NFS4 {@link VirtualFileSystem} implementation backed by a {@link Graph} of
@@ -162,8 +160,6 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 	@Override
 	public DirectoryStream list(Inode inode, byte[] b, long ll) throws IOException {
 		// TODO  Check permissions
-		List<DirectoryEntry> l = new ArrayList<>();
-
 		for (Resource r : search.search(path(inode) + "/*")) {
 			Stat s = new Stat();
 			s.setMode(getModeForPermissions(r.getPermissions()));
@@ -369,11 +365,9 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 	 * @return The Unix mode bits encoding the user, group, and other settings
 	 */
 	protected static int getModeForPermissions(Permissions p) {
-		int u = 0, g = 0, o = 0;
-
-		u = getModeForSetting(p.getUserSetting());
-		g = getModeForSetting(p.getGroupSetting());
-		o = getModeForSetting(p.getOthersSetting());
+		int u = getModeForSetting(p.getUserSetting());
+		int g = getModeForSetting(p.getGroupSetting());
+		int o = getModeForSetting(p.getOthersSetting());
 
 		return (u << 6) + (g << 3) + o;
 	}

@@ -165,7 +165,11 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 */
 	public void setVDT(double vdt) { this.vdt = vdt; }
 
-	/** @return  The total time in seconds since the start of the simulation. */
+	/**
+	 * Returns the total time in seconds since the start of the simulation.
+	 *
+	 * @return  The total time in seconds since the start of the simulation.
+	 */
 	public double getTime() { return this.totalTime; }
 
 	/**
@@ -201,11 +205,15 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	public boolean getSleepEachFrame() { return this.sleep; }
 
 	/**
+	 * Returns {@code true} if the simulation will render an image for each frame.
+	 *
 	 * @return  True if the simulation will render an image for each frame, false otherwise.
 	 */
 	public boolean getRenderEachFrame() { return render; }
 
 	/**
+	 * Sets whether the simulation should render an image for each frame.
+	 *
 	 * @param render  True if the simulation should render an image for each frame, false otherwise.
 	 */
 	public void setRenderEachFrame(boolean render) { this.render = render; }
@@ -241,11 +249,15 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	public String getOutputDirectory() { return this.dir; }
 
 	/**
+	 * Returns {@code true} if the simulation will output a properties file for each frame.
+	 *
 	 * @return  True if the simulation will output a properties file for each frame, false otherwise.
 	 */
 	public boolean getLogEachFrame() { return this.logState; }
 
 	/**
+	 * Sets whether the simulation should output a properties file for each frame.
+	 *
 	 * @param log  True if the simulation should output a properties file for each frame, false otherwise.
 	 */
 	public void setLogEachFrame(boolean log) { this.logState = log; }
@@ -280,7 +292,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 			try {
 				if (getSleepEachFrame() && i * this.dt % this.fdt == 0) Thread.sleep((int)(this.fdt * 1000));
 			} catch (InterruptedException ie) {
-				ie.printStackTrace();
+				System.err.println(ie.getMessage());
 			}
 
 			for (ShadableSurface s : this)
@@ -359,10 +371,8 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 			this.totalTime = this.totalTime + this.dt;
 
-			double microseconds = totalTime * 1000 * 1000;
-
 			// Move clock forward until it reaches the total time elapsed
-//			while (clock.getTime() < microseconds) {
+//			while (clock.getTime() < totalTime * 1000 * 1000) {
 //				clock.tick().run();
 //			}
 

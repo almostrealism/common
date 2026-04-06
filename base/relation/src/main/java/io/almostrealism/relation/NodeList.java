@@ -49,6 +49,7 @@ public interface NodeList<T extends Node> extends NodeGroup<T>, List<T> {
 	 *
 	 * @return a stream of nodes
 	 */
+	@Override
 	default Stream<T> children() {
 		return List.super.stream();
 	}

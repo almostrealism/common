@@ -202,6 +202,7 @@ public class Orbital implements Comparable<Orbital>, PhysicalConstants {
 	 * @param o the object to compare
 	 * @return true if the objects are equal orbitals
 	 */
+	@Override
 	public boolean equals(Object o) {
 		if (o instanceof Orbital == false) return false;
 		Orbital or = (Orbital) o;
@@ -213,6 +214,7 @@ public class Orbital implements Comparable<Orbital>, PhysicalConstants {
 	 *
 	 * @return the hash code
 	 */
+	@Override
 	public int hashCode() { return principal; }
 
 	/**

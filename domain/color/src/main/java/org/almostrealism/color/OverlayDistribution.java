@@ -64,6 +64,7 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 * @param end   the end of the range
 	 * @param p     the probability density for the range
 	 */
+	@Override
 	public void addRange(double start, double end, double p) {
 		if (this.children.length <= 0) return;
 		this.children[0].addRange(start, end, p);
@@ -74,6 +75,7 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 *
 	 * @return a 2D array of {@code [start, end, probability]} triples from the first child
 	 */
+	@Override
 	protected double[][] getRanges() {
 		if (this.children.length <= 0) return new double[0][3];
 		return this.children[0].getRanges();
@@ -85,6 +87,7 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 * @param limit the upper bound of integration
 	 * @return the total integrated probability across all children up to {@code limit}
 	 */
+	@Override
 	public double integrate(double limit) {
 		double v = 0.0;
 		
@@ -104,6 +107,7 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 * @param r a uniform random variate in [0, 1]
 	 * @return the sampled domain value
 	 */
+	@Override
 	public double getSample(double r) {
 		if (this.children.length <= 0) return 0.0;
 		if (this.children.length == 1) return this.children[0].getSample(r);
@@ -125,6 +129,7 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 *
 	 * @return the sum of {@link ProbabilityDistribution#getIntegrated()} across all children
 	 */
+	@Override
 	public RGB getIntegrated() {
 		RGB c = new RGB();
 		
@@ -141,6 +146,7 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 * @param x the domain value at which to evaluate the probability density
 	 * @return the sum of probability densities across all children at {@code x}
 	 */
+	@Override
 	public double getProbability(double x) {
 		double p = 0.0;
 		
@@ -157,6 +163,7 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 * @param end   the end of the range to test
 	 * @return {@code true} if at least one child contains the range
 	 */
+	@Override
 	public boolean contains(double start, double end) {
 		for (int i = 0; i < this.children.length; i++)
 			if (this.children[i].contains(start, end)) return true;
@@ -171,6 +178,7 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 * @param div  the delimiter used between columns in the file
 	 * @throws IOException if the file cannot be read
 	 */
+	@Override
 	public void loadFromFile(String file, String div) throws IOException {
 		this.children = new ProbabilityDistribution[1];
 		this.children[0] = new ProbabilityDistribution();

@@ -77,21 +77,9 @@ public class PackedCollectionDetector extends PolicyViolationDetector {
 			"AttentionFeatures.java" // Index collection setup for attention
 	);
 
-	/** Detects {@code setMem()} calls inside a {@code for} loop block (DOTALL). */
-	private static final Pattern SETMEM_IN_LOOP = Pattern.compile(
-			"for\\s*\\([^)]*\\)\\s*\\{[^}]*\\.setMem\\s*\\([^)]*\\)",
-			Pattern.DOTALL
-	);
-
 	/** Detects {@code setMem(index, expr.toDouble(index))} on a single line. */
 	private static final Pattern SETMEM_WITH_INDEX = Pattern.compile(
 			"\\.setMem\\s*\\(\\s*\\w+\\s*,.*\\.toDouble\\s*\\(\\s*\\w+\\s*\\)"
-	);
-
-	/** Detects a {@code for} loop that calls both {@code toDouble()} and {@code setMem} (DOTALL). */
-	private static final Pattern TODOUBLE_LOOP = Pattern.compile(
-			"for\\s*\\([^)]*\\)\\s*\\{[^}]*\\.toDouble\\s*\\([^)]*\\)[^}]*\\.setMem",
-			Pattern.DOTALL
 	);
 
 	/** Detects calls to {@code System.arraycopy}. */

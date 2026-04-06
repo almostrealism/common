@@ -95,6 +95,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 	 *
 	 * @return a supplier of a runnable that performs the setup operations
 	 */
+	@Override
 	default Supplier<Runnable> setup() {
 		return new OperationList();
 	}

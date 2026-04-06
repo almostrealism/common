@@ -110,6 +110,7 @@ public class ExplicitExpressionMatrix<T> extends ExpressionMatrix<T> {
 	 * <p>Follows the row-duplicate chain to find the canonical row, then returns the
 	 * stored expression at that row and the given column.</p>
 	 */
+	@Override
 	public Expression<T> valueAt(int i, int j) {
 		if (rowDuplicates.length <= i || rowDuplicates[i] == i) {
 			throw new UnsupportedOperationException();

@@ -282,7 +282,6 @@ public class BufferedOutputScheduler implements CellFeatures {
 			int diff = lastReadPosition - lastRead;
 			if (diff < 0) diff = diff + output.getBufferSize();
 
-			double avg = regularizer.getAverageDuration() / 10e9;
 			double tot = (System.currentTimeMillis() - groupStart) / 1000.0;
 			double dur = groupSize / (double) output.getSampleRate();
 

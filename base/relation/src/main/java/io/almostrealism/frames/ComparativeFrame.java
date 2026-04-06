@@ -64,5 +64,6 @@ public class ComparativeFrame {
 	 *
 	 * @return a string in the format "{@code b} is larger than {@code a}"
 	 */
+	@Override
 	public String toString() { return b + " is larger than " + a; }
 }

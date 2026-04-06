@@ -142,6 +142,7 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 	 * @param childProcessor a function to process children for analysis
 	 * @return the optimized process with children isolated or not based on analysis
 	 */
+	@Override
 	public <P extends Process<?, ?>, T> Process<P, T> optimize(ProcessContext ctx,
 															   Process<P, T> parent,
 															   Collection<P> children,
@@ -156,9 +157,7 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 		long tot = LongStream.of(counts).filter(c -> c > 0).sum();
 		long max = LongStream.of(counts).filter(c -> c > 0).max().orElse(0);
 
-		long memory[] = childProcessor.apply(children).mapToLong(Process::outputSize).filter(i -> i > 0).toArray();
 		long mem = Process.outputSize(parent);
-		long maxMem = LongStream.of(memory).max().orElse(0);
 
 		double currentScore = ParallelismSettings.score(cn, mem);
 		double altScore = ParallelismSettings

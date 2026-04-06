@@ -56,12 +56,6 @@ public class Vertex extends Vector {
 	/** Blue component of the vertex color (0.0-1.0). */
 	private double b;
 
-	/** U texture coordinate for this vertex. */
-	private double tu;
-
-	/** V texture coordinate for this vertex. */
-	private double tv;
-
 	/**
 	 * Constructs a new {@link Vertex} at the origin with a zero normal and black color.
 	 */

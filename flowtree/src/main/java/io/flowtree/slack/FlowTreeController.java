@@ -126,8 +126,6 @@ public class FlowTreeController implements ConsoleFeatures {
     /** Managed MCP server subprocesses started by the controller (legacy, currently unused). */
     private List<Process> mcpProcesses = new ArrayList<>();
 
-    /** Optional simulator callback used by tests to capture outgoing Slack messages. */
-    private BiConsumer<String, String> eventSimulator;
     /** True when tokens are absent and the controller runs without a live Slack connection. */
     private boolean simulationMode = false;
 
@@ -935,7 +933,6 @@ public class FlowTreeController implements ConsoleFeatures {
      * @param simulator callback receiving (channelId, message) for outgoing messages
      */
     public void setEventSimulator(BiConsumer<String, String> simulator) {
-        this.eventSimulator = simulator;
         notifier.setMessageCallback(json -> {
             String channel = extractJsonField(json, "channel");
             String text = extractJsonField(json, "text");

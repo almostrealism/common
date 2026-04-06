@@ -40,7 +40,7 @@ public class PriorityQueue {
 	 * <p>Items with lower priority values sort last in the set (i.e., are retrieved first
 	 * by {@link #next()}).</p>
 	 */
-	protected class StoredItem implements Comparable {
+	protected static class StoredItem implements Comparable<StoredItem> {
 		/** The stored object. */
 		Object o;
 
@@ -64,6 +64,7 @@ public class PriorityQueue {
 		 * @param o the object to compare
 		 * @return {@code true} if equal
 		 */
+		@Override
 		public boolean equals(Object o) {
 			if (o instanceof StoredItem == false) return false;
 			if (((StoredItem)o).o != this.o) return false;
@@ -76,6 +77,7 @@ public class PriorityQueue {
 		 *
 		 * @return the hash code
 		 */
+		@Override
 		public int hashCode() {
 			return (int) (p * c);
 		}
@@ -86,9 +88,9 @@ public class PriorityQueue {
 		 * @param o the object to compare to (must be a {@link StoredItem})
 		 * @return a negative integer, zero, or a positive integer
 		 */
-		public int compareTo(Object o) {
-			if (o instanceof StoredItem == false) return Integer.MIN_VALUE;
-			int x = (int) ((((StoredItem) o).p - this.p) * c);
+		@Override
+		public int compareTo(StoredItem o) {
+			int x = (int) ((o.p - this.p) * c);
 			return x;
 		}
 	}

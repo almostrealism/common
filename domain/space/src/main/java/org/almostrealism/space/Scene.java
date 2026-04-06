@@ -185,6 +185,7 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	 *
 	 * @return a clone of this scene
 	 */
+	@Override
 	public Object clone() {
 		Scene l = (Scene) super.clone();
 		l.setCamera(this.camera);

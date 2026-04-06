@@ -250,7 +250,7 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 			((AudioScenePopulation) getPopulation()).store(new FileOutputStream(file));
 			log("Wrote " + file);
 		} catch (IOException e) {
-			e.printStackTrace();
+			System.err.println("AudioPopulationOptimizer: " + e.getMessage());
 		}
 	}
 

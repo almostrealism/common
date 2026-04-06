@@ -19,6 +19,8 @@ package org.almostrealism.texture;
 import javax.swing.*;
 
 /**
+ * Utility class for loading {@link javax.swing.ImageIcon} resources from the classpath.
+ *
  * @author  Michael Murray
  */
 public class Icons {

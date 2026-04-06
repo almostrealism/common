@@ -214,7 +214,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 				} catch (IllegalStateException e) {
 					warn(e.getMessage());
 				} catch (Exception e) {
-					e.printStackTrace();
+					warn(e.getMessage());
 				}
 			}
 		}, getClass().getSimpleName() + " Deallocation Submit Thread");
@@ -225,7 +225,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 				try {
 					deallocateNow(getDeallocationQueue().take());
 				} catch (Exception e) {
-					e.printStackTrace();
+					warn(e.getMessage());
 				}
 			}
 		}, getClass().getSimpleName() + " Deallocation Process Thread");

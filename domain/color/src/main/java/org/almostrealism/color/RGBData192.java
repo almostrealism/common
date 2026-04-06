@@ -100,6 +100,7 @@ public class RGBData192 extends PackedCollection implements RGB.Data {
 	 * @param in the input stream from which to read the red, green, and blue values
 	 * @throws IOException if an I/O error occurs during reading
 	 */
+	@Override
 	public void read(ObjectInput in) throws IOException {
 		double rgb[] = new double[3];
 		rgb[0] = in.readDouble();
@@ -114,6 +115,7 @@ public class RGBData192 extends PackedCollection implements RGB.Data {
 	 * @param out the output stream to which red, green, and blue values are written
 	 * @throws IOException if an I/O error occurs during writing
 	 */
+	@Override
 	public void write(ObjectOutput out) throws IOException {
 		double rgb[] = toArray();
 		out.writeDouble(rgb[0]);
@@ -126,6 +128,7 @@ public class RGBData192 extends PackedCollection implements RGB.Data {
 	 *
 	 * @return the default {@link Heap} instance
 	 */
+	@Override
 	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
 	/**
@@ -133,6 +136,7 @@ public class RGBData192 extends PackedCollection implements RGB.Data {
 	 *
 	 * @return a double array of length 3 containing [red, green, blue]
 	 */
+	@Override
 	public double[] toArray() {
 		double d[] = new double[3];
 		getMem(0, d, 0, 3);

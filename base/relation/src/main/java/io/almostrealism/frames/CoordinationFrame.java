@@ -65,5 +65,6 @@ public class CoordinationFrame {
 	 *
 	 * @return a string in the format "{@code a} is the same as {@code b}"
 	 */
+	@Override
 	public String toString() { return a + " is the same as " + b; }
 }

@@ -49,8 +49,7 @@ import java.util.Map;
  * @see WaveDataProvider
  * @see FileWaveDataProvider
  */
-public abstract class WaveDataProviderAdapter implements WaveDataProvider,
-								Comparable<WaveDataProvider>, CodeFeatures {
+public abstract class WaveDataProviderAdapter implements WaveDataProvider, CodeFeatures {
 	/** Cache of loaded WaveData instances keyed by provider key, scoped to the current context. */
 	private static final Map<String, ContextSpecific<WaveData>> loaded;
 

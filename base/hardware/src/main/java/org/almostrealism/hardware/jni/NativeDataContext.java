@@ -321,6 +321,7 @@ public class NativeDataContext extends HardwareDataContext {
 	 * @return The value returned by {@code exec}
 	 * @throws RuntimeException if execution fails
 	 */
+	@Override
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
 		try {
 			return exec.call();

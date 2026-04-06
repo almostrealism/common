@@ -224,18 +224,18 @@ public class Polynomial extends AbstractSurface {
 	 * must also be specified.
 	 */
 	public double[] calculateZeros(double start, double end, double increment, double yValue, double zValue, int recursions) {
-		java.util.Vector zerosVector = new java.util.Vector();
-		
+		ArrayList<Double> zerosVector = new ArrayList<>();
+
 		for(int i = 0; (start + i * increment) < end; i++) {
 			if (this.evaluate((start + i * increment), yValue, zValue) * this.evaluate((start + (i + 1) * increment), yValue, zValue) < 0) {
-				zerosVector.addElement(new Double(this.calculateZero(start + (i + 0.5) * increment, yValue, zValue, recursions)));
+				zerosVector.add(this.calculateZero(start + (i + 0.5) * increment, yValue, zValue, recursions));
 			}
 		}
-		
+
 		double[] zeros = new double[zerosVector.size()];
-		
+
 		for(int i = 0; i < zeros.length; i++) {
-			zeros[i] = ((Double)zerosVector.elementAt(i)).doubleValue();
+			zeros[i] = zerosVector.get(i);
 		}
 		
 		return zeros;
@@ -380,8 +380,8 @@ public class Polynomial extends AbstractSurface {
 			py.simplify();
 			pz.simplify();
 
-			java.util.Vector pTopVector = new java.util.Vector();
-			java.util.Vector pBottomVector = new java.util.Vector();
+			ArrayList<Polynomial> pTopVector = new ArrayList<>();
+			ArrayList<Polynomial> pBottomVector = new ArrayList<>();
 
 			i:
 			for (int i = 0; i < getTerms().length; i++) {
@@ -432,18 +432,18 @@ public class Polynomial extends AbstractSurface {
 					bottom = bottom.multiply(newP);
 				}
 
-				pTopVector.addElement(top);
-				pBottomVector.addElement(bottom);
+				pTopVector.add(top);
+				pBottomVector.add(bottom);
 			}
 
 			Polynomial p = new Polynomial();
 
 			for (int i = 0; i < pTopVector.size(); i++) {
-				Polynomial newP = (Polynomial) pTopVector.elementAt(i);
+				Polynomial newP = pTopVector.get(i);
 
 				for (int j = 0; j < pBottomVector.size(); j++) {
 					if (j != i)
-						newP = newP.multiply((Polynomial) pBottomVector.elementAt(j));
+						newP = newP.multiply(pBottomVector.get(j));
 				}
 
 				p = p.add(newP);

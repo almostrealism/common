@@ -70,15 +70,31 @@ public class DefaultEvent extends AbstractEvent {
 		return tags != null && !tags.isEmpty();
 	}
 
-	/** @return  the wall-clock timestamp in milliseconds when this event was created */
+	/**
+	 * Returns the wall-clock timestamp in milliseconds when this event was created.
+	 *
+	 * @return  the creation timestamp in milliseconds
+	 */
 	public long getTime() { return time; }
 
-	/** @param time  the wall-clock timestamp in milliseconds */
+	/**
+	 * Sets the wall-clock timestamp in milliseconds when this event was created.
+	 *
+	 * @param time  the wall-clock timestamp in milliseconds
+	 */
 	public void setTime(long time) { this.time = time; }
 
-	/** @return  the duration of this event in milliseconds */
+	/**
+	 * Returns the duration of this event in milliseconds.
+	 *
+	 * @return  the event duration in milliseconds
+	 */
 	public long getDuration() { return duration; }
 
-	/** @param duration  the duration of this event in milliseconds */
+	/**
+	 * Sets the duration of this event in milliseconds.
+	 *
+	 * @param duration  the duration of this event in milliseconds
+	 */
 	public void setDuration(long duration) { this.duration = duration; }
 }

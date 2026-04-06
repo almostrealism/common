@@ -317,6 +317,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			return this.volume;
 		}
 		
+		@Override
 		public String toString() { return "StoredItem[" + this.absorber + "]"; }
 	}
 	
@@ -430,6 +431,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	 * @param a The absorber to remove
 	 * @return The size of the set after removal
 	 */
+	@Override
 	public int removeAbsorber(Absorber a) {
 		Iterator itr = this.iterator();
 		
@@ -625,16 +627,12 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			Vector nx = x.subtract(new Vector(closest.position.get().evaluate(), 0));
 			Vector y = nx.clone();
 			y.addTo(p.multiply(this.delay + this.e));
-			double d = this.getDistance(x.add(p.multiply(this.delay)), p, false);
-			
 			if (a instanceof Fast) {
 				double t = this.delay / PhysicalConstants.C;
 				((Fast) a).setAbsorbDelay(t);
 				((Fast) a).setOrigPosition(nx.toArray());
 			}
-			
-			Absorber b = null;
-			if (this.closest != null) b = this.closest.absorber;
+
 			this.closest = null;
 			
 			if (a.absorb(y, p, energy)) {
@@ -856,9 +854,12 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	public Iterator absorberIterator() {
 		Iterator itr = new Iterator() {
 			private final Iterator itr = AbsorberHashSet.super.iterator();
-			
+
+			@Override
 			public boolean hasNext() { return this.itr.hasNext(); }
+			@Override
 			public Object next() { return ((StoredItem)this.itr.next()).absorber; }
+			@Override
 			public void remove() { this.itr.remove(); }
 		};
 		
@@ -889,6 +890,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	 *
 	 * @return An iterator that visits each stored item in default order
 	 */
+	@Override
 	public Iterator iterator() { return this.iterator(false); }
 
 	/**
@@ -920,13 +922,18 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			
 			this.items = new Iterator() {
 				private final SetListener l = new SetListener() {
+					@Override
 					public void noteUpdate() { myNoteUpdate(); }
 				};
-				
+
 				private int index = 0;
 				private StoredItem[] data = AbsorberHashSet.this.toArray(new StoredItem[0]);
-				private final boolean b = AbsorberHashSet.this.addSetListener(l);
-				
+
+				{
+					AbsorberHashSet.this.addSetListener(l);
+				}
+
+				@Override
 				public boolean hasNext() {
 					if (this.index >= data.length) {
 						this.index = 0;
@@ -936,10 +943,12 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 						return true;
 					}
 				}
-				
+
+				@Override
 				public Object next() { return this.data[this.index++]; }
+				@Override
 				public void remove() { }
-				
+
 				public void myNoteUpdate() {
 					AbsorberHashSet.this.itemsNow = true;
 					this.data = AbsorberHashSet.this.toArray(new StoredItem[0]);
@@ -978,9 +987,12 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		
 		return new Iterator() {
 			private int index = 0;
-			
+
+			@Override
 			public boolean hasNext() { return index < itrs.length; }
+			@Override
 			public Object next() { return itrs[this.index++]; }
+			@Override
 			public void remove() { }
 		};
 	}
@@ -1011,8 +1023,10 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		this.max = Math.min(this.max, 2*this.bound);
 	}
 	
+	@Override
 	public double getBound() { return this.bound; }
 
+	@Override
 	public BoundingSolid calculateBoundingSolid() { throw new RuntimeException("getBoundingSolid not implemented"); }
 
 	/**
@@ -1023,6 +1037,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	 * @param d The direction vector
 	 * @return The distance to the nearest absorber, or a large value if none found
 	 */
+	@Override
 	public double getDistance(Vector p, Vector d) {
 		return this.getDistance(p, d, true, false);
 	}
@@ -1159,7 +1174,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				try {
 					point = new Ray(p.getIntersection().get(0).get().evaluate(), 0);
 				} catch (Exception ex) {
-					ex.printStackTrace();
+					System.err.println("AbsorberHashSet: " + ex.getMessage());
 				}
 
 				Vector po = point.getOrigin();

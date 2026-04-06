@@ -147,11 +147,11 @@ public class Chart extends ArrayList<String> {
 		
 		Date now = new Date();
 		
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		b.append("[");
 		b.append(format.format(now));
 		b.append("]:");
-		
+
 		for (int i = 0; i < this.div; i++) if (a > i * this.scale) b.append("#");
 		
 		if (a < this.scale || a > this.scale * this.div) b.append(" " + dformat.format(a));
@@ -195,7 +195,7 @@ public class Chart extends ArrayList<String> {
 	public void addMessage(String msg) {
 		Date now = new Date();
 		
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		b.append("[");
 		b.append(format.format(now));
 		b.append("]: ");
@@ -226,7 +226,7 @@ public class Chart extends ArrayList<String> {
 	 *
 	 * @param buf the buffer to append the chart output to
 	 */
-	public void print(StringBuffer buf) {
+	public void print(StringBuilder buf) {
 		buf.append("Range: (");
 		
 		if (this.minValue < this.maxValue) {
@@ -259,8 +259,9 @@ public class Chart extends ArrayList<String> {
 	 *
 	 * @return the complete chart output including header, range, and all entries
 	 */
+	@Override
 	public String toString() {
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		this.print(b);
 		return b.toString();
 	}

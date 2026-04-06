@@ -62,8 +62,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     /** Maximum number of completed jobs to retain per workstream. */
     private static final int MAX_JOB_HISTORY = 100;
 
-    /** Slack Bot User OAuth Token (xoxb-...) used to authenticate API calls. */
-    private final String botToken;
     /** Slack SDK methods client used to post messages and update threads. */
     private final MethodsClient client;
     /** Registry of configured workstreams, keyed by workstream ID. */
@@ -91,7 +89,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param botToken the Slack Bot User OAuth Token (xoxb-...)
      */
     public SlackNotifier(String botToken) {
-        this.botToken = botToken;
         this.workstreams = new HashMap<>();
         this.jobThreadTs = new HashMap<>();
         this.jobHistory = new HashMap<>();
@@ -457,7 +454,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             }
         }
 
-        String message = formatStartedMessage(event, workstream);
+        String message = formatStartedMessage(event);
 
         // Thread under the submission message if one exists
         String threadTs = jobThreadTs.get(event.getJobId());
@@ -482,7 +479,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             statsStore.recordJobCompleted(workstreamId, event);
         }
 
-        String message = formatCompletedMessage(event, workstream);
+        String message = formatCompletedMessage(event);
         String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
 
         if (threadTs != null) {
@@ -824,10 +821,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * actively running.
      *
      * @param event       the started event
-     * @param workstream  the workstream the job belongs to
      * @return            formatted Slack message string
      */
-    private String formatStartedMessage(JobCompletionEvent event, Workstream workstream) {
+    private String formatStartedMessage(JobCompletionEvent event) {
         StringBuilder sb = new StringBuilder();
         sb.append(":arrows_counterclockwise: *Starting work:* ");
         sb.append(truncate(event.getDescription(), 100));
@@ -841,10 +837,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * hash, cost, and error details as applicable.
      *
      * @param event       the completion event
-     * @param workstream  the workstream the job belongs to
      * @return            formatted Slack message string
      */
-    private String formatCompletedMessage(JobCompletionEvent event, Workstream workstream) {
+    private String formatCompletedMessage(JobCompletionEvent event) {
         StringBuilder sb = new StringBuilder();
 
         switch (event.getStatus()) {

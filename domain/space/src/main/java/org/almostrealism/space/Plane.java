@@ -209,6 +209,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	}
 
 	/** @see ParticleGroup#getParticleVertices() */
+	@Override
     public double[][] getParticleVertices() {
         if (this.type == Plane.XY) {
             return new double[][] {{10.0, 10.0, 0.0}, {10.0, -10.0, 0.0}, {-10.0, 10.0, 0.0}, {-10.0, -10.0, 0.0}};

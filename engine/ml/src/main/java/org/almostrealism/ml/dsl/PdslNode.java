@@ -448,7 +448,7 @@ public abstract class PdslNode {
 			this.blocks = blocks;
 		}
 
-		/** @return the list of sub-block expressions */
+		/** Returns the list of sub-block expressions to be concatenated. */
 		public List<Expression> getBlocks() { return blocks; }
 	}
 
@@ -478,10 +478,10 @@ public abstract class PdslNode {
 			this.right = right;
 		}
 
-		/** @return the left sub-block expression */
+		/** Returns the left sub-block expression. */
 		public Expression getLeft() { return left; }
 
-		/** @return the right sub-block expression */
+		/** Returns the right sub-block expression. */
 		public Expression getRight() { return right; }
 	}
 

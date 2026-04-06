@@ -426,7 +426,11 @@ public class WaveDetails implements CodeFeatures, Node {
 		return featureData;
 	}
 
-	/** @param featureData the autoencoder latent features */
+	/**
+	 * Sets the autoencoder latent features for this audio clip.
+	 *
+	 * @param featureData the autoencoder latent features
+	 */
 	public void setFeatureData(PackedCollection featureData) {
 		this.featureData = featureData;
 	}

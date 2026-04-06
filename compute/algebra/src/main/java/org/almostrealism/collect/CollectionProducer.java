@@ -336,7 +336,6 @@ public interface CollectionProducer extends
 	 * 
 	 * @param depths Padding depth for each dimension. depths[i] specifies the amount of
 	 *               zero-padding to add before and after the data in dimension i
-	 * @param <PackedCollection> The type of PackedCollection
 	 * @return A CollectionProducerComputation that produces the padded collection
 	 * 
 	 * @see org.almostrealism.collect.computations.PackedCollectionPad

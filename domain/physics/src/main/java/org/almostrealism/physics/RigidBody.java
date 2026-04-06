@@ -73,9 +73,6 @@ public interface RigidBody {
 		/** {@code true} once {@link #init} has been called; prevents double-initialization. */
 		private boolean inited = false;
 
-		/** Elapsed simulation time; {@code -1.0} before initialization. */
-		private double elapsed = -1.0;
-
 		/** Listeners notified each time {@link #update(double)} advances the state. */
 		protected ArrayList<Temporal> listeners;
 
@@ -131,9 +128,7 @@ public interface RigidBody {
 			if (this.inited) throw new RuntimeException("Rigid body state has already been initialized.");
 			
 			this.listeners = new ArrayList<>();
-			
-			this.elapsed = 0.0;
-			
+
 			this.e = e;
 			
 			this.mass = mass;
@@ -260,6 +255,7 @@ public interface RigidBody {
 		 *
 		 * @return a formatted string of the form {@code {position momentum velocity force}}
 		 */
+		@Override
 		public String toString() {
 			return "{" + this.x + " " + this.p + " " + this.v + " " + this.f + "}";
 		}

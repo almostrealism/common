@@ -69,6 +69,7 @@ public class PatternNoteNode implements NoteAudioNode {
 	}
 
 	/** Returns the name, defaulting to the choice name with " Note" appended. */
+	@Override
 	public String getName() {
 		if (name != null) return name;
 		if (choice == null) return null;

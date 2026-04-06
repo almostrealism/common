@@ -293,10 +293,8 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 	 * @return           the method name, {@code "<constructor>"}, or empty string
 	 */
 	protected String findEnclosingMethodName(List<String> lines, int lineIndex) {
-		int braceDepth = 0;
 		for (int i = lineIndex; i >= 0; i--) {
 			String line = lines.get(i);
-			braceDepth += countChar(line, '}') - countChar(line, '{');
 			if (line.matches(".*\\s+(\\w+)\\s*\\([^)]*\\)\\s*\\{?.*") ||
 					line.matches(".*\\s+(\\w+)\\s*\\([^)]*\\)\\s*throws.*")) {
 				String trimmed = line.trim();

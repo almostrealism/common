@@ -100,8 +100,6 @@ public class SlackListener implements ConsoleFeatures {
     private Server server;
     /** Callback invoked when a message arrives from an unrecognised channel, triggering a config reload. */
     private Runnable configReloader;
-    /** Round-robin counter for selecting agent endpoints (legacy, currently unused with inbound model). */
-    private int nextAgent = 0;
     /** Port the HTTP API endpoint is listening on; set after endpoint startup. */
     private int apiPort;
     /** HTTP base URL of the ar-manager service used for HMAC token generation. */
@@ -315,7 +313,7 @@ public class SlackListener implements ConsoleFeatures {
                 return true;
 
             case "cancel":
-                handleCancelCommand(workstream, args);
+                handleCancelCommand(workstream);
                 return true;
 
             case "task":
@@ -361,9 +359,8 @@ public class SlackListener implements ConsoleFeatures {
      * Currently posts a placeholder message; job cancellation is not yet implemented.
      *
      * @param workstream the workstream where the command was issued
-     * @param jobId      the job ID to cancel, or {@code null} for the current job
      */
-    private void handleCancelCommand(Workstream workstream, String jobId) {
+    private void handleCancelCommand(Workstream workstream) {
         // TODO: Implement job cancellation
         notifier.postMessage(workstream.getChannelId(),
             ":construction: Job cancellation not yet implemented");
@@ -558,7 +555,7 @@ public class SlackListener implements ConsoleFeatures {
                     handleSlashTaskCommand(channelId, args, responder);
                     break;
                 case "cancel":
-                    handleSlashCancelCommand(channelId, args, responder);
+                    handleSlashCancelCommand(channelId, responder);
                     break;
                 case "config":
                     handleSlashConfigCommand(channelId, args, responder);
@@ -798,11 +795,10 @@ public class SlackListener implements ConsoleFeatures {
      * so the whole team can see that a job was cancelled.</p>
      *
      * @param channelId the Slack channel ID where the command was invoked
-     * @param args      the optional job ID to cancel
      * @param ctx       the responder for sending the reply
      * @throws IOException if the response cannot be sent
      */
-    private void handleSlashCancelCommand(String channelId, String args, SlashCommandResponder ctx) throws IOException {
+    private void handleSlashCancelCommand(String channelId, SlashCommandResponder ctx) throws IOException {
         Workstream ws = channelToWorkstream.get(channelId);
         if (ws == null) {
             ctx.respond(":warning: No workstream configured for this channel.\n"

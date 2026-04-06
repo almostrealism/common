@@ -265,8 +265,6 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 			}
 		}
 
-		double id = 1.0 / size;
-
 		// Subtract the outer product from identity matrix
 		for (int i = 0; i < size; i++) {
 			for (int j = 0; j < size; j++) {

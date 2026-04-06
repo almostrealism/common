@@ -36,7 +36,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Stack;
+import java.util.ArrayDeque;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -223,8 +223,8 @@ import java.util.function.Supplier;
  *
  * <h2>Instruction Container Pattern</h2>
  *
- * <p>The {@link #createContainer} method implements the caching strategy for
- * {@link HardwareFeatures#instruct}:</p>
+ * <p>The {@code createContainer} method implements the caching strategy for
+ * {@code HardwareFeatures.instruct}:</p>
  *
  * <h3>Container Creation Flow</h3>
  * <pre>
@@ -425,7 +425,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	private Hardware hardware;
 
 	/** Thread-local stack of compute requirements for context selection. */
-	private ThreadLocal<Stack<List<ComputeRequirement>>> requirements;
+	private ThreadLocal<ArrayDeque<List<ComputeRequirement>>> requirements;
 
 	/** Frequency-based cache of scope instruction managers with auto-destroy on eviction. */
 	private FrequencyCache<String, ScopeInstructionsManager<ScopeSignatureExecutionKey>> instructionsCache;
@@ -438,7 +438,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 */
 	public DefaultComputer(Hardware hardware) {
 		this.hardware = hardware;
-		this.requirements = ThreadLocal.withInitial(Stack::new);
+		this.requirements = ThreadLocal.withInitial(ArrayDeque::new);
 		this.instructionsCache = new FrequencyCache<>(500, 0.4);
 		this.instructionsCache.setEvictionListener(
 				(key, mgr) -> mgr.destroy());

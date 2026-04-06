@@ -61,7 +61,7 @@ import java.util.function.Supplier;
  * <h2>Lifecycle</h2>
  * <p>AudioPassFilter implements {@link Lifecycle} for state management:</p>
  * <ul>
- *   <li>{@link #setup()} - Initialize filter state</li>
+ *   <li>{@link io.almostrealism.lifecycle.Setup#setup() setup()} - Initialize filter state</li>
  *   <li>{@link #tick()} - Advance one sample (update internal state)</li>
  *   <li>{@link #reset()} - Reset filter state to initial values</li>
  * </ul>

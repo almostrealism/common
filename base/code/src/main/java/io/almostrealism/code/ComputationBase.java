@@ -387,6 +387,7 @@ public abstract class ComputationBase<I, O, T>
 	 * @return the replacement computation with preserved compute requirements
 	 * @see ComputationBase#getComputeRequirements()
 	 */
+	@Override
 	public ComputationBase<I, O, T> generateReplacement(List<Process<?, ?>> inputs) {
 		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
 				super.generateReplacement(inputs);

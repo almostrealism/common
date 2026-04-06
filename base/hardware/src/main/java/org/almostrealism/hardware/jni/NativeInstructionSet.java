@@ -313,8 +313,6 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 	 * @throws NullPointerException if any element of args is null
 	 */
 	default void apply(RAM[] args, int[] offsets, int[] sizes, int globalId, long kernelSize) {
-		int bytes = getComputeContext().getDataContext().getPrecision().bytes();
-
 		for (int i = 0; i < args.length; i++) {
 			if (args[i] == null) {
 				throw new NullPointerException("Argument " + i + " is null");

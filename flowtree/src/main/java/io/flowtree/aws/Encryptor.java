@@ -106,14 +106,14 @@ public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsPro
                 bytes = FileUtils.readFileToByteArray(new File(
                         "private.key"));
             } catch (IOException e) {
-                e.printStackTrace();
+                System.err.println("Encryptor: Error reading private key: " + e);
             }
 
             KeyFactory kf = null;
             try {
                 kf = KeyFactory.getInstance("RSA");
             } catch (NoSuchAlgorithmException e) {
-                e.printStackTrace();
+                System.err.println("Encryptor: RSA algorithm unavailable: " + e);
             }
 
             PKCS8EncodedKeySpec ks = bytes == null ? null : new PKCS8EncodedKeySpec(bytes);
@@ -123,14 +123,14 @@ public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsPro
                 try {
                     pk = kf.generatePrivate(ks);
                 } catch (InvalidKeySpecException e) {
-                    e.printStackTrace();
+                    System.err.println("Encryptor: Invalid private key spec: " + e);
                 }
             }
 
             try {
                 bytes = FileUtils.readFileToByteArray(new File("public.key"));
             } catch (IOException e) {
-                e.printStackTrace();
+                System.err.println("Encryptor: Error reading public key: " + e);
             }
 
             PublicKey publicKey = null;
@@ -143,20 +143,20 @@ public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsPro
                 EncryptionMaterials encryptionMaterials = new EncryptionMaterials(
                         loadedKeyPair);
 
-                AmazonS3EncryptionClient encryptionClient = new AmazonS3EncryptionClient(
+                new AmazonS3EncryptionClient(
                         new ProfileCredentialsProvider(),
                         new StaticEncryptionMaterialsProvider(encryptionMaterials));
             } catch (InvalidKeySpecException e) {
-                e.printStackTrace();
+                System.err.println("Encryptor: Invalid public key spec: " + e);
             } catch (NoSuchAlgorithmException e) {
-                e.printStackTrace();
+                System.err.println("Encryptor: RSA algorithm unavailable: " + e);
             }
         } else {
             KeyPairGenerator keyGenerator = null;
             try {
                 keyGenerator = KeyPairGenerator.getInstance("RSA");
             } catch (NoSuchAlgorithmException e) {
-                e.printStackTrace();
+                System.err.println("Encryptor: RSA algorithm unavailable: " + e);
             }
 
             keyGenerator.initialize(1024, new SecureRandom());

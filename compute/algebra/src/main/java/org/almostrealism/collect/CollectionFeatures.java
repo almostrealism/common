@@ -332,6 +332,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: shape with dimensions [2, 3, 4], total size = 24
 	 * }</pre>
 	 */
+	@Override
 	default TraversalPolicy shape(int... dims) {
 		if (dims[0] == -1) {
 			if (dims.length == 1) {
@@ -363,6 +364,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: shape with dimensions [10000, 20000], total size = 200000000
 	 * }</pre>
 	 */
+	@Override
 	default TraversalPolicy shape(long... dims) {
 		if (dims[0] == -1) {
 			if (dims.length == 1) {
@@ -394,6 +396,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: position representing coordinates [1, 2, 3]
 	 * }</pre>
 	 */
+	@Override
 	default TraversalPolicy position(int... dims) { return new TraversalPolicy(true, dims); }
 
 	/**
@@ -424,6 +427,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: shape with dimensions [1, 3]
 	 * }</pre>
 	 */
+	@Override
 	default TraversalPolicy shape(Supplier s) {
 		if (s instanceof Shape) {
 			return ((Shape) s).getShape();
@@ -452,6 +456,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: shape with dimensions [2, 3]
 	 * }</pre>
 	 */
+	@Override
 	default TraversalPolicy shape(TraversableExpression t) {
 		if (t instanceof Shape) {
 			return ((Shape) t).getShape();
@@ -493,6 +498,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: 3 (same total elements, different shape)
 	 * }</pre>
 	 */
+	@Override
 	default int size(Supplier s) {
 		if (s == null) {
 			return -1;
@@ -520,6 +526,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: 24 (2 * 3 * 4 elements)
 	 * }</pre>
 	 */
+	@Override
 	default int size(Shape s) {
 		return s.getShape().getSize();
 	}
@@ -547,6 +554,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: shape [1, 1, 3, 4]
 	 * }</pre>
 	 */
+	@Override
 	default TraversalPolicy padDimensions(TraversalPolicy shape, int target) {
 		return padDimensions(shape, 1, target);
 	}
@@ -574,6 +582,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: [1, 1, 3, 4] (padded because it has >= 2 dimensions)
 	 * }</pre>
 	 */
+	@Override
 	default TraversalPolicy padDimensions(TraversalPolicy shape, int min, int target) {
 		return padDimensions(shape, min, target, false);
 	}
@@ -607,6 +616,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: [1, 100] (adds batch dimension at front)
 	 * }</pre>
 	 */
+	@Override
 	default TraversalPolicy padDimensions(TraversalPolicy shape, int min, int target, boolean post) {
 		if (shape.getDimensions() < min) {
 			return shape;
@@ -640,6 +650,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: PackedCollection with shape [1] containing [42.0]
 	 * }</pre>
 	 */
+	@Override
 	default PackedCollection pack(double... values) {
 		return PackedCollection.of(values);
 	}
@@ -665,6 +676,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: PackedCollection with shape [1] containing [42.0]
 	 * }</pre>
 	 */
+	@Override
 	default PackedCollection pack(List<Double> values) {
 		return pack(values.stream().mapToDouble(d -> d).toArray());
 	}
@@ -688,6 +700,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: PackedCollection with shape [1] containing [3.14] as double
 	 * }</pre>
 	 */
+	@Override
 	default PackedCollection pack(float... values) {
 		return PackedCollection.of(IntStream.range(0, values.length).mapToDouble(i -> values[i]).toArray());
 	}
@@ -712,6 +725,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a new {@link PackedCollection} with the specified shape and values
 	 * @throws IllegalArgumentException if values.length doesn't match shape's total size
 	 */
+	@Override
 	default PackedCollection pack(TraversalPolicy shape, double... values) {
 		if (values.length != shape.getTotalSize()) {
 			throw new IllegalArgumentException("Wrong number of values for shape");
@@ -736,6 +750,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a new {@link PackedCollection} with the specified shape and converted values
 	 * @throws IllegalArgumentException if values.length doesn't match shape's total size
 	 */
+	@Override
 	default PackedCollection pack(TraversalPolicy shape, float... values) {
 		if (values.length != shape.getTotalSize()) {
 			throw new IllegalArgumentException("Wrong number of values for shape");
@@ -765,6 +780,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: 1D PackedCollection with 5 zero elements
 	 * }</pre>
 	 */
+	@Override
 	default PackedCollection empty(TraversalPolicy shape) {
 		return new PackedCollection(shape);
 	}
@@ -806,6 +822,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see #c(PackedCollection)
 	 * @see #cp(PackedCollection)
 	 */
+	@Override
 	default <T> Producer<T> p(T value) {
 		if (value instanceof Producer) {
 			throw new IllegalArgumentException();
@@ -828,6 +845,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param func the function to apply to the supplied value
 	 * @return a provider that applies the function to the evaluable's result
 	 */
+	@Override
 	default <T, V> Provider<PackedCollection> p(Supplier<V> ev, Function<V, T> func) {
 		if (ev instanceof CollectionProvider) {
 			return new CollectionProvider(null) {
@@ -870,6 +888,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer with [3.14159..., 2.71828..., 1.41421...]
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer c(double... values) {
 		if (values.length == 1) {
 			return constant(values[0]);
@@ -902,6 +921,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Constant producer with shape [1] containing [42.0]
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer c(TraversalPolicy shape, double... values) {
 		if (values.length != shape.getTotalSize()) {
 			throw new IllegalArgumentException("Wrong number of values for shape");
@@ -935,6 +955,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // These can be used in {@link #add}, {@link #multiply}, etc.
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer constant(double value) {
 		return constant(shape(1), value);
 	}
@@ -970,6 +991,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: 2x2x2 tensor where all 8 elements equal pi
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer constant(TraversalPolicy shape, double value) {
 		if (shape.getTotalSizeLong() == 1) {
 			return new AtomicConstantComputation(value).reshape(shape);
@@ -987,6 +1009,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param ev the evaluable to wrap
 	 * @return a collection producer backed by the provided evaluable
 	 */
+	@Override
 	default CollectionProducer c(TraversalPolicy shape, Evaluable<PackedCollection> ev) {
 		return c(new CollectionProducerBase<PackedCollection, CollectionProducer>() {
 			@Override
@@ -1036,6 +1059,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see #p(Object)
 	 * @see #cp(PackedCollection)
 	 */
+	@Override
 	default CollectionProducer c(PackedCollection value) {
 		if (value.getShape().getTotalSizeLong() == 1) {
 			return new AtomicConstantComputation(value.toDouble());
@@ -1084,6 +1108,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see #c(PackedCollection)
 	 * @see #p(Object)
 	 */
+	@Override
 	default CollectionProducer cp(PackedCollection value) {
 		return c(p(value));
 	}
@@ -1111,6 +1136,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates 2x2x2 tensor of all zeros
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducerComputation zeros(TraversalPolicy shape) {
 		return new CollectionZerosComputation(shape);
 	}
@@ -1463,6 +1489,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * 
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function)
 	 */
+	@Override
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection> function) {
 		return new DynamicCollectionProducer(shape, function);
 	}
@@ -1481,6 +1508,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean)
 	 * @see org.almostrealism.hardware.DestinationEvaluable#evaluate(Object...) for execution mechanism details
 	 */
+	@Override
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection> function, boolean kernel) {
 		return new DynamicCollectionProducer(shape, function, kernel);
 	}
@@ -1498,6 +1526,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean, boolean)
 	 * @see org.almostrealism.hardware.DestinationEvaluable#evaluate(Object...) for execution mechanism details
 	 */
+	@Override
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection> function,
 										   boolean kernel, boolean fixedCount) {
 		return new DynamicCollectionProducer(shape, function, kernel, fixedCount);
@@ -1515,6 +1544,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * 
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean, boolean, Producer[])
 	 */
+	@Override
 	default DynamicCollectionProducer func(TraversalPolicy shape,
 										   Function<PackedCollection[], Function<Object[], PackedCollection>> function,
 										   Producer[] args) {
@@ -1534,6 +1564,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * 
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean, boolean, Producer, Producer...)
 	 */
+	@Override
 	default DynamicCollectionProducer func(TraversalPolicy shape,
 										   Function<PackedCollection[], Function<Object[], PackedCollection>> function,
 										   Producer<?> argument, Producer<?>... args) {
@@ -1553,6 +1584,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 *                  and produces the combined output
 	 * @return a {@link Producer} over the aligned and processed collection
 	 */
+	@Override
 	default <T, P extends Producer<PackedCollection>> Producer<PackedCollection> alignTraversalAxes(
 			List<Producer<PackedCollection>> producers, BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor) {
 		return TraversalPolicy
@@ -1578,6 +1610,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param producers the list of producers whose shapes are compared
 	 * @return the {@link TraversalPolicy} with the greatest total size
 	 */
+	@Override
 	default <PackedCollection> TraversalPolicy largestTotalSize(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).max(Comparator.comparing(TraversalPolicy::getTotalSizeLong)).get();
 	}
@@ -1590,6 +1623,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param producers the list of producers whose traversal counts are compared
 	 * @return the minimum count across all producer shapes
 	 */
+	@Override
 	default <PackedCollection> long lowestCount(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).min().getAsLong();
 	}
@@ -1602,6 +1636,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param producers the list of producers whose traversal counts are compared
 	 * @return the maximum count across all producer shapes
 	 */
+	@Override
 	default <PackedCollection> long highestCount(List<Producer<PackedCollection>> producers) {
 		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).max().getAsLong();
 	}
@@ -1630,6 +1665,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Different traversal pattern for the same data
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer traverse(int axis, Producer<PackedCollection> producer) {
 		if (producer instanceof ReshapeProducer) {
 			return ((ReshapeProducer) producer).traverse(axis);
@@ -1655,6 +1691,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer configured for element-wise operations
 	 * }</pre>
 	 */
+	@Override
 	default Producer<PackedCollection> each(Producer<PackedCollection> producer) {
 		return traverseEach(producer);
 	}
@@ -1680,6 +1717,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Would apply sqrt to each element: [1.0, 2.0, 3.0]
 	 * }</pre>
 	 */
+	@Override
 	default Producer traverseEach(Producer<PackedCollection> producer) {
 		return reshape(((Shape) producer).getShape().traverseEach(), producer);
 	}
@@ -1712,6 +1750,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: 1D vector [1, 2, 3, 4, 5, 6, 7, 8]
 	 * }</pre>
 	 */
+	@Override
 	default Producer reshape(TraversalPolicy shape, Producer producer) {
 		if (producer instanceof ReshapeProducer) {
 			return ((ReshapeProducer) producer).reshape(shape);
@@ -1769,6 +1808,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see PackedCollectionSubset
 	 * @see TraversalPolicy
 	 */
+	@Override
 	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, int... position) {
 		return new PackedCollectionSubset(shape, collection, position);
 	}
@@ -1807,6 +1847,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see PackedCollectionSubset
 	 * @see Expression
 	 */
+	@Override
 	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, Expression... position) {
 		return new PackedCollectionSubset(shape, collection, position);
 	}
@@ -1869,6 +1910,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see PackedCollectionSubset
 	 * @see Producer
 	 */
+	@Override
 	default CollectionProducerComputation subset(TraversalPolicy shape, Producer<?> collection, Producer<?> position) {
 		return new PackedCollectionSubset(shape, collection, position);
 	}
@@ -1907,6 +1949,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see PackedCollectionRepeat#shape(int, TraversalPolicy)
 	 * @see SingleConstantComputation#reshape(TraversalPolicy)
 	 */
+	@Override
 	default CollectionProducerComputation repeat(int repeat, Producer<?> collection) {
 		if (collection instanceof SingleConstantComputation) {
 			return ((SingleConstantComputation) collection)
@@ -1945,6 +1988,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see #repeat(int, Producer)
 	 * @see #traverse(int, Producer)
 	 */
+	@Override
 	default CollectionProducerComputation repeat(int axis, int repeat, Producer<PackedCollection> collection) {
 		return repeat(repeat, traverse(axis, collection));
 	}
@@ -1988,6 +2032,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see PackedCollectionEnumerate
 	 * @see #enumerate(int, int, int, io.almostrealism.relation.Producer)
 	 */
+	@Override
 	default CollectionProducerComputation enumerate(int axis, int len, Producer<?> collection) {
 		return enumerate(axis, len, len, collection);
 	}
@@ -2040,6 +2085,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see PackedCollectionEnumerate
 	 * @see #enumerate(int, int, io.almostrealism.relation.Producer)
 	 */
+	@Override
 	default CollectionProducerComputation enumerate(int axis, int len, int stride, Producer<?> collection) {
 		return enumerate(axis, len, stride, 1, collection);
 	}
@@ -2100,6 +2146,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see PackedCollectionEnumerate
 	 * @see #enumerate(int, int, int, io.almostrealism.relation.Producer)
 	 */
+	@Override
 	default CollectionProducerComputation enumerate(int axis, int len, int stride, int repeat, Producer<?> collection) {
 		CollectionProducerComputation result = null;
 
@@ -2142,6 +2189,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * 
 	 * @see PackedCollectionEnumerate
 	 */
+	@Override
 	default CollectionProducerComputation enumerate(TraversalPolicy shape,
 													Producer<?> collection) {
 		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate(shape, collection);
@@ -2178,6 +2226,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see PackedCollectionEnumerate
 	 */
 
+	@Override
 	default CollectionProducerComputation enumerate(TraversalPolicy shape,
 													TraversalPolicy stride,
 													Producer<?> collection) {
@@ -2237,6 +2286,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see io.almostrealism.collect.TraversalPolicy#permute(int...)
 	 * @see #zeros(io.almostrealism.collect.TraversalPolicy)
 	 */
+	@Override
 	default CollectionProducerComputation permute(Producer<?> collection, int... order) {
 		if (Algebraic.isZero(collection)) {
 			return zeros(shape(collection).permute(order).extentShape());
@@ -2257,6 +2307,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * 
 	 * @see #pad(Producer, int...)
 	 */
+	@Override
 	default CollectionProducerComputation pad(int[] axes, int depth, Producer<?> collection) {
 		TraversalPolicy shape = shape(collection);
 		if (shape.getOrder() != null) {
@@ -2291,6 +2342,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see PackedCollectionPad
 	 * @see #pad(TraversalPolicy, TraversalPolicy, Producer)
 	 */
+	@Override
 	default CollectionProducerComputation pad(Producer<?> collection, int... depths) {
 		TraversalPolicy shape = shape(collection);
 
@@ -2327,6 +2379,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * 
 	 * @see PackedCollectionPad
 	 */
+	@Override
 	default CollectionProducer pad(TraversalPolicy shape,
 																Producer<?> collection,
 																int... pos) {
@@ -2367,6 +2420,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see TraversalPolicy
 	 * @see Algebraic#isZero(Object) 
 	 */
+	@Override
 	default CollectionProducerComputation pad(TraversalPolicy shape,
 											  TraversalPolicy position,
 											  Producer<?> collection) {
@@ -2386,6 +2440,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a computation applying the mapper to each item
 	 * @deprecated Use {@link TraversableExpressionComputation} instead.
 	 */
+	@Override
 	default CollectionProducerComputation map(
 			Producer<?> collection,
 			Function<CollectionProducerComputation, CollectionProducer> mapper) {
@@ -2401,6 +2456,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a computation applying the mapper to each item
 	 * @deprecated Use {@link TraversableExpressionComputation} instead.
 	 */
+	@Override
 	default CollectionProducerComputation map(
 			TraversalPolicy itemShape, Producer<?> collection,
 			Function<CollectionProducerComputation, CollectionProducer> mapper) {
@@ -2415,6 +2471,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a scalar computation representing the reduced result
 	 * @deprecated Use {@link TraversableExpressionComputation} instead.
 	 */
+	@Override
 	default CollectionProducerComputation reduce(
 			Producer<?> collection,
 			Function<CollectionProducerComputation, CollectionProducer> mapper) {
@@ -2429,6 +2486,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param pad when true, prepends 1.0 and shifts results by one position
 	 * @return a producer yielding the cumulative product at each position
 	 */
+	@Override
 	default CollectionProducer cumulativeProduct(Producer<PackedCollection> input, boolean pad) {
 		return func(shape(input), inputs -> args -> {
 			PackedCollection in = inputs[0];
@@ -2457,6 +2515,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param dims the dimension lengths
 	 * @return a random collection producer
 	 */
+	@Override
 	default Random rand(int... dims) { return rand(shape(dims)); }
 
 	/**
@@ -2465,6 +2524,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param shape the output shape
 	 * @return a random collection producer
 	 */
+	@Override
 	default Random rand(TraversalPolicy shape) { return new Random(shape); }
 
 	/**
@@ -2474,6 +2534,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param source the Java random source to use for sampling
 	 * @return a random collection producer using the given source
 	 */
+	@Override
 	default Random rand(TraversalPolicy shape, java.util.Random source) {
 		return new Random(shape, false, source);
 	}
@@ -2484,6 +2545,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param dims the dimension lengths
 	 * @return a normally distributed random collection producer
 	 */
+	@Override
 	default Random randn(int... dims) { return randn(shape(dims)); }
 
 	/**
@@ -2492,6 +2554,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param shape the output shape
 	 * @return a normally distributed random collection producer
 	 */
+	@Override
 	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
 
 	/**
@@ -2501,6 +2564,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param source the Java random source to use for sampling, or null for the default source
 	 * @return a normally distributed random collection producer
 	 */
+	@Override
 	default Random randn(TraversalPolicy shape, java.util.Random source) {
 		if (source != null) {
 			return new Random(shape, true, source);
@@ -2517,6 +2581,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param std the standard deviation of the normal distribution
 	 * @return a normally distributed random collection producer
 	 */
+	@Override
 	default CollectionProducer randn(TraversalPolicy shape,
 									 double mean, double std) {
 		return randn(shape, mean, std, null);
@@ -2531,6 +2596,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param source the Java random source, or null to use the default
 	 * @return a normally distributed random collection producer
 	 */
+	@Override
 	default CollectionProducer randn(TraversalPolicy shape,
 									 double mean, double std,
 									 java.util.Random source) {
@@ -2634,6 +2700,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param arguments the input collection producers to align and process
 	 * @return a {@link CollectionProducer} wrapping the computed result
 	 */
+	@Override
 	default <P extends Producer<PackedCollection>> CollectionProducer compute(
 				BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor,
 				Function<List<String>, String> description,
@@ -2672,6 +2739,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param producers the input producers whose output shape is to be determined
 	 * @return the {@link TraversalPolicy} that describes the output shape of a combined operation
 	 */
+	@Override
 	default <PackedCollection> TraversalPolicy outputShape(Producer<PackedCollection>... producers) {
 		TraversalPolicy result = largestTotalSize(List.of(producers));
 
@@ -2694,6 +2762,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 *
 	 * @return a {@link CollectionProducerComputation} producing integers starting at 0
 	 */
+	@Override
 	default CollectionProducerComputation integers() {
 		return new ArithmeticSequenceComputation(0);
 	}
@@ -2707,6 +2776,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param to   the upper bound of the sequence (exclusive)
 	 * @return a {@link CollectionProducerComputation} producing integers in the given range
 	 */
+	@Override
 	default CollectionProducerComputation integers(int from, int to) {
 		int len = to - from;
 		TraversalPolicy shape = shape(len).traverseEach();
@@ -2724,6 +2794,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a {@link CollectionProducer} generating the linear sequence
 	 * @throws IllegalArgumentException if {@code steps} is less than 2
 	 */
+	@Override
 	default CollectionProducer linear(double start, double end, int steps) {
 		if (steps < 2) {
 			throw new IllegalArgumentException();
@@ -2757,6 +2828,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [2.0, 3.0, 4.0]
 	 * }</pre>
 	 */
+	@Override
 	default <A extends PackedCollection, B extends PackedCollection> CollectionProducer add(Producer<A> a, Producer<B> b) {
 		return add(List.of(a, b));
 	}
@@ -2793,6 +2865,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [6.0] (computed at construction time)
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer add(List<Producer<?>> operands) {
 		if (operands.stream().anyMatch(Objects::isNull)) {
 			throw new IllegalArgumentException();
@@ -2845,6 +2918,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [5.0, 15.0, 25.0]
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer subtract(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		return add(a, minus(b));
 	}
@@ -2874,6 +2948,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @see EpsilonConstantComputation
 	 * @see #equals(Producer, Producer, Producer, Producer)
 	 */
+	@Override
 	default CollectionProducerComputation subtractIgnoreZero(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
@@ -2918,6 +2993,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [2.0, 4.0, 6.0]
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer multiply(
 			Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		return multiply(a, b, null);
@@ -2961,6 +3037,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: constant(6.0) computed directly without full pipeline
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer multiply(
 			Producer<PackedCollection> a, Producer<PackedCollection> b,
 			Evaluable<PackedCollection> shortCircuit) {
@@ -3022,6 +3099,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [-1.0, -2.0, -3.0]
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer multiply(double scale, Producer<PackedCollection> a) {
 		if (scale == 0) {
 			// Mathematical optimization: 0 * anything = 0
@@ -3050,6 +3128,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param a     the evaluable collection whose elements are scaled
 	 * @return a {@link CollectionProducer} containing the scaled constant values
 	 */
+	@Override
 	default CollectionProducer multiply(TraversalPolicy shape, double scale, Evaluable<PackedCollection> a) {
 		return c(shape, a.evaluate().doubleStream().parallel().map(d -> d * scale).toArray());
 	}
@@ -3079,6 +3158,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [5.0, 10.0, 15.0]
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer divide(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		if (Algebraic.isZero(b)) {
 			throw new UnsupportedOperationException();
@@ -3124,6 +3204,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates 2x2 matrix [[-1,-2], [-3,-4]]
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer minus(Producer<PackedCollection> a) {
 		TraversalPolicy shape = shape(a);
 		int w = shape.length(0);
@@ -3165,6 +3246,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: sqrt(1+4+9) = sqrt(14) ~= 3.74
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer sqrt(Producer<PackedCollection> value) {
 		PackedCollection half = new PackedCollection(1);
 		half.setMem(0.5);
@@ -3200,6 +3282,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [2.0, 3.0, 4.0, 5.0]
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer pow(Producer<PackedCollection> base, Producer<PackedCollection> exp) {
 		if (Algebraic.isIdentity(1, base)) {
 			TraversalPolicy shape = shape(exp);
@@ -3232,6 +3315,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param value the producer supplying the exponent values
 	 * @return a {@link CollectionProducer} computing e raised to each element of {@code value}
 	 */
+	@Override
 	default CollectionProducer exp(Producer<PackedCollection> value) {
 		return new CollectionExponentialComputation(shape(value), false, value);
 	}
@@ -3245,6 +3329,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a {@link CollectionProducer} computing e raised to each element of {@code value},
 	 *         with zero inputs bypassed
 	 */
+	@Override
 	default CollectionProducer expIgnoreZero(Producer<PackedCollection> value) {
 		return new CollectionExponentialComputation(shape(value), true, value);
 	}
@@ -3255,6 +3340,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param value the producer supplying the values to take the logarithm of
 	 * @return a {@link CollectionProducer} computing the natural log of each element
 	 */
+	@Override
 	default CollectionProducer log(Producer<PackedCollection> value) {
 		return new CollectionLogarithmComputation(shape(value), value);
 	}
@@ -3266,6 +3352,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param value the producer supplying the values to square
 	 * @return a {@link CollectionProducer} computing the square of each element
 	 */
+	@Override
 	default CollectionProducer sq(Producer<PackedCollection> value) {
 		return multiply(value, value);
 	}
@@ -3276,6 +3363,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param value the producer supplying the values to floor
 	 * @return a {@link CollectionProducerComputationBase} computing the floor of each element
 	 */
+	@Override
 	default CollectionProducerComputationBase floor(Producer<PackedCollection> value) {
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation(
@@ -3293,6 +3381,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a {@link CollectionProducerComputationBase} producing the element-wise minimum of
 	 *         {@code a} and {@code b}
 	 */
+	@Override
 	default CollectionProducerComputationBase min(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		TraversalPolicy shape;
 
@@ -3317,6 +3406,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a {@link CollectionProducerComputationBase} producing the element-wise maximum of
 	 *         {@code a} and {@code b}
 	 */
+	@Override
 	default CollectionProducerComputationBase max(
 			Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		TraversalPolicy shape;
@@ -3340,6 +3430,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param a the collection producer to rectify
 	 * @return a {@link CollectionProducer} computing max(0, x) for each element of {@code a}
 	 */
+	@Override
 	default CollectionProducer rectify(Producer<PackedCollection> a) {
 		// TODO  Add short-circuit
 		return compute("rectify", shape -> args ->
@@ -3354,6 +3445,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param b the divisor collection producer
 	 * @return a {@link CollectionProducer} computing {@code a mod b} element-wise
 	 */
+	@Override
 	default CollectionProducer mod(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		// TODO  Add short-circuit
 		return compute("mod", shape -> args ->
@@ -3370,6 +3462,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param max the upper bound of the clamp range
 	 * @return a {@link CollectionProducerComputationBase} producing clamped element values
 	 */
+	@Override
 	default CollectionProducerComputationBase bound(Producer<PackedCollection> a, double min, double max) {
 		return min(max(a, c(min)), c(max));
 	}
@@ -3396,6 +3489,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [3.0, 4.0, 5.0] (absolute differences)
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer abs(Producer<PackedCollection> value) {
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation(
@@ -3412,6 +3506,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param vector the producer supplying the vector whose magnitude is computed
 	 * @return a {@link CollectionProducer} computing the Euclidean magnitude
 	 */
+	@Override
 	default CollectionProducer magnitude(Producer<PackedCollection> vector) {
 		if (shape(vector).getSize() == 1) {
 			return abs(vector);
@@ -3446,6 +3541,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [-1.0] (least negative = maximum)
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducerComputationBase max(Producer<PackedCollection> input) {
 		DynamicIndexProjectionProducerComputation projection =
 				new DynamicIndexProjectionProducerComputation("projectMax", shape(input).replace(shape(1)),
@@ -3473,6 +3569,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 *
 	 * @return A computation that produces the index of the maximum element
 	 */
+	@Override
 	default CollectionProducerComputationBase indexOfMax(Producer<PackedCollection> input) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
@@ -3512,6 +3609,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [0.0]
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer sum(Producer<PackedCollection> input) {
 		TraversalPolicy targetShape = shape(input).replace(shape(1));
 
@@ -3590,6 +3688,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * // Result: Producer that generates [0.0] ((-2+0+2)/3)
 	 * }</pre>
 	 */
+	@Override
 	default CollectionProducer mean(Producer<PackedCollection> input) {
 		return sum(input).divide(c(shape(input).getSize()));
 	}
@@ -3601,6 +3700,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param input the collection producer whose elements are mean-centered
 	 * @return a {@link CollectionProducer} containing the mean-centered values
 	 */
+	@Override
 	default CollectionProducer subtractMean(Producer<PackedCollection> input) {
 		CollectionProducer mean = mean(input);
 		return subtract(input, mean);
@@ -3613,6 +3713,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param input the collection producer to compute variance over
 	 * @return a {@link CollectionProducer} producing the scalar variance value
 	 */
+	@Override
 	default CollectionProducer variance(Producer<PackedCollection> input) {
 		return mean(sq(subtractMean(input)));
 	}
@@ -3624,6 +3725,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param input the collection producer supplying the input values
 	 * @return a {@link CollectionProducer} applying the sigmoid function to each element
 	 */
+	@Override
 	default CollectionProducer sigmoid(Producer<PackedCollection> input) {
 		return divide(c(1.0), minus(input).exp().add(c(1.0)));
 	}
@@ -3641,6 +3743,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * 
 	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
 	 */
+	@Override
 	default CollectionProducer equals(Producer<PackedCollection> a, Producer<PackedCollection> b,
 																   Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return compute((shape, args) ->
@@ -3662,6 +3765,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param falseValue the value to return otherwise
 	 * @return a {@link CollectionProducer} that generates the logical AND result
 	 */
+	@Override
 	default CollectionProducer and(
 			Producer<PackedCollection> a, Producer<PackedCollection> b,
 			Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
@@ -3681,6 +3785,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param b the second operand (non-zero = true)
 	 * @return a {@link CollectionProducer} that generates 1.0 where both operands are non-zero, 0.0 otherwise
 	 */
+	@Override
 	default CollectionProducer and(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		return and(a, b, c(1.0), c(0.0));
 	}
@@ -3695,6 +3800,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param target   the producer with respect to which the derivative is taken
 	 * @return a {@link CollectionProducer} representing the derivative
 	 */
+	@Override
 	default CollectionProducer delta(Producer<PackedCollection> producer, Producer<?> target) {
 		CollectionProducer result = MatrixFeatures.getInstance().attemptDelta(producer, target);
 		if (result != null) return result;
@@ -3714,6 +3820,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param gradient the upstream gradient producer (output gradient from the next layer)
 	 * @return a {@link CollectionProducer} containing the gradient with respect to {@code input}
 	 */
+	@Override
 	default CollectionProducer combineGradient(
 			CollectionProducer func,
 			Producer<PackedCollection> input, Producer<PackedCollection> gradient) {
@@ -3739,6 +3846,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param inSize   the number of input elements (repeat count for broadcast)
 	 * @return a {@link CollectionProducer} with the gradient broadcast and applied
 	 */
+	@Override
 	default CollectionProducer multiplyGradient(
 			CollectionProducer p, Producer<PackedCollection> gradient, int inSize) {
 		int outSize = shape(gradient).getTotalSize();
@@ -3757,6 +3865,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a {@link CollectionProducer} over the combined result, or {@code null}
 	 *         if no valid subdivision exists
 	 */
+	@Override
 	default CollectionProducer subdivide(
 			Producer<PackedCollection> input, Function<Producer<PackedCollection>, CollectionProducer> operation) {
 		TraversalPolicy shape = shape(input);
@@ -3787,6 +3896,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @return a {@link CollectionProducer} over the subdivided and recombined result,
 	 *         or {@code null} if the size is not divisible by {@code sliceSize}
 	 */
+	@Override
 	default CollectionProducer subdivide(
 			Producer<PackedCollection> input, Function<Producer<PackedCollection>, CollectionProducer> operation, int sliceSize) {
 		TraversalPolicy shape = shape(input);
@@ -3812,6 +3922,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param shortCircuit an evaluable invoked in place of the full computation when applicable
 	 * @return the same {@code producer} instance (with short-circuit attached if supported)
 	 */
+	@Override
 	default <P extends Producer<PackedCollection>> P withShortCircuit(P producer, Evaluable<PackedCollection> shortCircuit) {
 		if (producer instanceof CollectionProducerComputationBase) {
 			((CollectionProducerComputationBase) producer).setShortCircuit(shortCircuit);
@@ -3830,6 +3941,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 	 * @param shortCircuit an evaluable invoked in place of the full computation when applicable
 	 * @return the same {@code producer} instance (with short-circuit attached if supported)
 	 */
+	@Override
 	default CollectionProducer withShortCircuit(CollectionProducer producer, Evaluable<PackedCollection> shortCircuit) {
 		if (producer instanceof CollectionProducerComputationBase) {
 			((CollectionProducerComputationBase) producer).setShortCircuit(shortCircuit);

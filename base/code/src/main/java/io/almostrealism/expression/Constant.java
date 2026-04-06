@@ -66,6 +66,7 @@ public abstract class Constant<T> extends Expression<T> {
 	@Override
 	public String getExpression(LanguageOperations lang) { return null; }
 
+	@Override
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	/**
@@ -75,6 +76,7 @@ public abstract class Constant<T> extends Expression<T> {
 	 * @param children must be empty; any non-empty list throws {@link UnsupportedOperationException}
 	 * @return this constant expression
 	 */
+	@Override
 	public Constant<T> recreate(List<Expression<?>> children) {
 		if (children.size() > 0) {
 			throw new UnsupportedOperationException();

@@ -738,7 +738,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * flag already injects a "code changes are required" message via
      * {@link InstructionPromptBuilder}.</p>
      */
-    private class EnforceChangesRule implements EnforcementRule {
+    private static class EnforceChangesRule implements EnforcementRule {
         @Override
         public String getName() { return "enforce-changes"; }
 
@@ -793,7 +793,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * are flagged. Changes to other {@code pom.xml} content (plugin configuration,
      * properties, etc.) are not affected.</p>
      */
-    private class MavenDependencyProtectionRule implements EnforcementRule {
+    private static class MavenDependencyProtectionRule implements EnforcementRule {
         @Override
         public String getName() { return "no-maven-dependency-changes"; }
 

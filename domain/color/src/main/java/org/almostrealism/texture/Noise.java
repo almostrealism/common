@@ -97,6 +97,7 @@ public class Noise implements IntensityMap {
 	 * @param w the depth texture coordinate
 	 * @return the noise value at the given position
 	 */
+	@Override
 	public double getIntensity(double u, double v, double w) {
 		u = this.scaleU * u;
 		v = this.scaleV * v;

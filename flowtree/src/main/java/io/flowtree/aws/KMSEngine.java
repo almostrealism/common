@@ -32,7 +32,6 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
-import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
@@ -70,9 +69,6 @@ public class KMSEngine {
     /** The underlying AWS KMS client used for all cryptographic operations. */
     private final AWSKMSClient client;
 
-    /** The encryptor that supplies credentials, region, and key ARN. */
-    private final Encryptor c;
-
     /** The current plaintext string to be encrypted on the next {@link #next()} call. */
     private String str;
 
@@ -90,8 +86,6 @@ public class KMSEngine {
      */
     public KMSEngine(InputStream commands, Encryptor c) {
         super();
-
-        this.c = c;
 
         client = (AWSKMSClient) AWSKMSClient.builder().withRegion(c.getRegion())
                 .withCredentials(c)
@@ -138,11 +132,10 @@ public class KMSEngine {
     public ByteBuffer next() {
         Charset charset = StandardCharsets.UTF_8;
         CharsetEncoder encoder = charset.newEncoder();
-        CharsetDecoder decoder = charset.newDecoder();
         try {
             return encoder.encode(CharBuffer.wrap(str));
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("KMSEngine: Encoding error: " + e);
         }
 
         return null;
@@ -171,8 +164,8 @@ public class KMSEngine {
         KeyPair keypair = genKeyPair("RSA", 2048);
         // Save to file system
         saveKeyPair(keyDir, keypair);
-        // Loads from file system
-        KeyPair loaded = loadKeyPair(keyDir, "RSA");
+        // Loads from file system to verify the round-trip
+        loadKeyPair(keyDir, "RSA");
     }
 
     /**

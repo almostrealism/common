@@ -16,8 +16,8 @@
 
 package io.almostrealism.query;
 
-import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -37,7 +37,7 @@ import java.util.Map;
  */
 public abstract class SimpleUpdate<D, K, V> implements Update<D, K, V>, Iterable<Map.Entry> {
 	/** Map from SQL column names to entity field names. */
-	private final Hashtable map = new Hashtable<>();
+	private final LinkedHashMap map = new LinkedHashMap<>();
 
 	/** The SQL update string executed by this update. */
 	protected String query;
@@ -70,5 +70,6 @@ public abstract class SimpleUpdate<D, K, V> implements Update<D, K, V>, Iterable
 	 *
 	 * @return An iterator of {@link Map.Entry} items
 	 */
+	@Override
 	public Iterator<Map.Entry> iterator() { return map.entrySet().iterator(); }
 }

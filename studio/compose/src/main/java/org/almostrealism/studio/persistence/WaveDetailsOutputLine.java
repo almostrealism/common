@@ -130,6 +130,7 @@ public class WaveDetailsOutputLine implements OutputLine, CodeFeatures, ConsoleF
 	public int getBufferSize() { return bufferA.getMemLength(); }
 
 	/** Returns {@code true} if this output line is currently active. */
+	@Override
 	public boolean isActive() { return active; }
 
 	/**

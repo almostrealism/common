@@ -89,6 +89,8 @@ public class SphericalLight extends Sphere implements SurfaceLight {
 	public void setSampleCount(int samples) { this.samples = samples; }
 	
 	/**
+	 * Returns the number of samples to use for this SphericalLight object.
+	 *
 	 * @return  The number of samples to use for this SphericalLight object.
 	 */
 	public int getSampleCount() { return this.samples; }
@@ -143,10 +145,18 @@ public class SphericalLight extends Sphere implements SurfaceLight {
 		this.attc = c;
 	}
 	
-	/** @return  An array containing the attenuation coefficients used when light samples are created. */
+	/**
+	 * Returns an array containing the attenuation coefficients used when light samples are created.
+	 *
+	 * @return  An array containing the attenuation coefficients used when light samples are created.
+	 */
 	public double[] getAttenuationCoefficients() { return new double[] { this.atta, this.attb, this.attc }; }
-	
-	/** @see org.almostrealism.algebra.ParticleGroup#getParticleVertices() */
+
+	/**
+	 * Returns an empty vertex array as this spherical light has no particle representation.
+	 *
+	 * @see org.almostrealism.algebra.ParticleGroup#getParticleVertices()
+	 */
 	public double[][] getParticleVertices() { return new double[0][0]; }
 	
 	/** @return  "Spherical Light". */

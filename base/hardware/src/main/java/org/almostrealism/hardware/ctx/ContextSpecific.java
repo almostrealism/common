@@ -23,7 +23,8 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.lifecycle.SuppliedValue;
 
-import java.util.Stack;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -118,7 +119,7 @@ import java.util.function.Supplier;
  */
 public abstract class ContextSpecific<T> implements ContextListener, Destroyable, ConsoleFeatures {
 	/** Stack of context-specific values, one per nested context level. */
-	private Stack<SuppliedValue<T>> val;
+	private Deque<SuppliedValue<T>> val;
 
 	/** Supplier used to create new values when contexts start. */
 	private Supplier<T> supply;
@@ -142,7 +143,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	 * @param disposal Optional consumer to clean up values when contexts are destroyed (may be null)
 	 */
 	public ContextSpecific(Supplier<T> supply, Consumer<T> disposal) {
-		this.val = new Stack<>();
+		this.val = new ArrayDeque<>();
 		this.supply = supply;
 		this.disposal = disposal;
 	}

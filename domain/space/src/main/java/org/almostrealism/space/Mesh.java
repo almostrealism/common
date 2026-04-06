@@ -405,6 +405,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   	}
   	
   	/**
+  	 * Returns an array of {@link Mesh.Vertex} objects stored by this Mesh object.
+  	 *
   	 * @return  An array of Mesh.Vertex objects stored by this Mesh object.
   	 */
   	public Vertex[] getVectors() { return this.getVectors(this.source == null); }
@@ -549,7 +551,11 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 */
 	public VertexData getVertexData() { return vertexData; }
 	
-	/** @return  An array of Triangle objects stored by this {@link Mesh} object. */
+	/**
+	 * Returns an array of Triangle objects stored by this {@link Mesh} object.
+	 *
+	 * @return  An array of Triangle objects stored by this {@link Mesh} object.
+	 */
 	public Triangle[] getTriangles() {
 		Triangle[] t = new Triangle[this.triangles.size()];
 		for (int i = 0; i < t.length; i++) t[i] = getTriangle(i);
@@ -607,6 +613,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	}
   	
   	/**
+  	 * Returns the index of the specified Vector in this mesh's point list, or -1 if not found.
+  	 *
   	 * @param v  Vector to return index of.
   	 * @return  The integer index of the specified Vector object stored by this mesh,
   	 *          -1 if the it is not found.
@@ -619,6 +627,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   	}
   	
 	/**
+	 * Returns {@code null}: normal computation at a point is not implemented for meshes.
+	 *
 	 * @return  null.
 	 */
 	public Evaluable<Vector> getNormalAt(Vector point) { return null; }
@@ -632,26 +642,36 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	public void setSmooth(boolean smooth) { this.smooth = smooth; }
 	
 	/**
+	 * Returns {@code true} if this Mesh object will be smoothed when rendered.
+	 *
 	 * @return  True if this Mesh object will be smoothed when rendered, false otherwise.
 	 */
 	public boolean getSmooth() { return this.smooth; }
-	
+
 	/**
-	 * @param b  True if bace faces should be ignored, false if they should be included.
+	 * Sets whether back faces should be removed (ignored) during rendering.
+	 *
+	 * @param b  True if back faces should be ignored, false if they should be included.
 	 */
 	public void setRemoveBackFaces(boolean b) { this.removeBackFaces = b; }
-	
+
 	/**
+	 * Returns {@code true} if back faces will be ignored during rendering.
+	 *
 	 * @return  True if back faces will be ignored, false if they will be included.
 	 */
 	public boolean getRemoveBackFaces() { return this.removeBackFaces; }
-	
+
 	/**
+	 * Sets whether vertex color interpolation is enabled.
+	 *
 	 * @param c  If set to true, color will be interpolated based on vertex colors.
 	 */
 	public void setInterpolateColor(boolean c) { this.intcolor = c; }
-	
+
 	/**
+	 * Returns {@code true} if color will be interpolated based on vertex colors.
+	 *
 	 * @return  True if color will be interpolated based on vertex colors, false otherwise.
 	 */
 	public boolean getInterpolateColor() { return this.intcolor; }

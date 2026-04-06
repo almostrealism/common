@@ -22,7 +22,8 @@ package org.almostrealism.graph;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 
 /**
@@ -41,7 +42,7 @@ public abstract class KdTree<T> {
     private final KdTree<T>            parent;
 
     /** Stack of recently removed point coordinates (root only); used when {@link #sizeLimit} is set. */
-    private final LinkedList<double[]> locationStack;
+    private final Deque<double[]> locationStack;
 
     /** Maximum total number of points retained; oldest points are discarded when exceeded (root only). */
     private final Integer              sizeLimit;
@@ -96,7 +97,7 @@ public abstract class KdTree<T> {
         this.parent = null;
         this.sizeLimit = sizeLimit;
         if (sizeLimit != null) {
-            this.locationStack = new LinkedList<double[]>();
+            this.locationStack = new ArrayDeque<>();
         }
         else {
             this.locationStack = null;
@@ -106,7 +107,7 @@ public abstract class KdTree<T> {
     /**
      * Constructor for child nodes. Internal use only.
      */
-    private KdTree(KdTree<T> parent, boolean right) {
+    private KdTree(KdTree<T> parent, boolean ignored) {
         this.dimensions = parent.dimensions;
 
         // Init as leaf
@@ -473,7 +474,7 @@ public abstract class KdTree<T> {
     /**
      * Internal class for child nodes
      */
-    private class ChildNode extends KdTree<T> {
+    private static class ChildNode<T> extends KdTree<T> {
         /**
          * Creates a child node attached to the given parent.
          *
@@ -489,6 +490,7 @@ public abstract class KdTree<T> {
          *
          * <p>Distance measurements are always delegated to the root node.</p>
          */
+        @Override
         protected double pointDist(double[] p1, double[] p2) {
             throw new IllegalStateException();
         }
@@ -498,6 +500,7 @@ public abstract class KdTree<T> {
          *
          * <p>Distance measurements are always delegated to the root node.</p>
          */
+        @Override
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             throw new IllegalStateException();
         }
@@ -532,11 +535,13 @@ public abstract class KdTree<T> {
         }
 
         /** {@inheritDoc} */
+        @Override
         protected double getAxisWeightHint(int i) {
             return weights[i];
         }
 
         /** {@inheritDoc} */
+        @Override
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -551,6 +556,7 @@ public abstract class KdTree<T> {
         }
 
         /** {@inheritDoc} */
+        @Override
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 
@@ -587,6 +593,7 @@ public abstract class KdTree<T> {
         }
 
         /** {@inheritDoc} */
+        @Override
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -601,6 +608,7 @@ public abstract class KdTree<T> {
         }
 
         /** {@inheritDoc} */
+        @Override
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 
@@ -651,11 +659,13 @@ public abstract class KdTree<T> {
         }
 
         /** {@inheritDoc} */
+        @Override
         protected double getAxisWeightHint(int i) {
             return weights[i];
         }
 
         /** {@inheritDoc} */
+        @Override
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -670,6 +680,7 @@ public abstract class KdTree<T> {
         }
 
         /** {@inheritDoc} */
+        @Override
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 
@@ -706,6 +717,7 @@ public abstract class KdTree<T> {
         }
 
         /** {@inheritDoc} */
+        @Override
         protected double pointDist(double[] p1, double[] p2) {
             double d = 0;
 
@@ -720,6 +732,7 @@ public abstract class KdTree<T> {
         }
 
         /** {@inheritDoc} */
+        @Override
         protected double pointRegionDist(double[] point, double[] min, double[] max) {
             double d = 0;
 

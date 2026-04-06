@@ -329,8 +329,8 @@ import java.util.stream.Stream;
  *
  * <h3>Flag Precedence in {@code get()}</h3>
  * <ol>
- *   <li>If {@code enableAutomaticOptimization &amp;&amp; !isUniform()} → call {@code optimize().get()}</li>
- *   <li>If {@code isComputation() &amp;&amp; (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
+ *   <li>If {@code enableAutomaticOptimization && !isUniform()} → call {@code optimize().get()}</li>
+ *   <li>If {@code isComputation() && (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
  *   <li>Otherwise → sequential {@link Runner} execution</li>
  * </ol>
  *

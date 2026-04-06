@@ -65,8 +65,6 @@ import java.util.stream.Stream;
  *     new DynamicCollectionProducer<>(shape, inputFunction, false, true, input1, input2);
  * }</pre>
  * 
- * @param <T> The type of {@link PackedCollection} this producer generates, must extend {@code PackedCollection}
- * 
  * @see CollectionProducer
  * @see DynamicProducerForMemoryData  
  * @see PackedCollection

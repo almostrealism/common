@@ -68,5 +68,6 @@ class NodeProxyStoredObject {
 	 *
 	 * @return a debug string
 	 */
+	@Override
 	public String toString() { return "StoredObject: " + this.getId() + " " + this.getObject(); }
 }

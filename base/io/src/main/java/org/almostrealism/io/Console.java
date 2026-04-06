@@ -98,9 +98,9 @@ public class Console {
 	/** Formatter applied to timestamps prepended to each log line. */
 	private DateTimeFormatter format;
 	/** Accumulated log output, appended with each new log line. */
-	private StringBuffer data = new StringBuffer();
+	private StringBuilder data = new StringBuilder();
 	/** Buffer holding the most recently written line, used for in-place line updates. */
-	private StringBuffer lastLine;
+	private StringBuilder lastLine;
 	/** Whether the last line should be overwritten rather than appended on the next write. */
 	private boolean resetLastLine;
 
@@ -175,7 +175,7 @@ public class Console {
 	 */
 	public void println() {
 		if (resetLastLine) {
-			lastLine = new StringBuffer();
+			lastLine = new StringBuilder();
 		}
 		
 		append("\n");
@@ -203,7 +203,7 @@ public class Console {
 			try {
 				listener.accept(s);
 			} catch (Exception e) {
-				e.printStackTrace();
+				throw new RuntimeException("Console listener failed", e);
 			}
 		}
 	}
@@ -222,7 +222,7 @@ public class Console {
 		if (s == null) return s;
 
 		if (resetLastLine) {
-			lastLine = new StringBuffer();
+			lastLine = new StringBuilder();
 			s = pre() + s;
 			resetLastLine = false;
 		}

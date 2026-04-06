@@ -210,9 +210,11 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 	}
 
 	/** Returns the raw name of the underlying tree, or an empty string if unavailable. */
+	@Override
 	public String getOrigin() { return tree instanceof Named ? ((Named) tree).getName() : ""; }
 
 	/** Returns the list of active notes, recomputing providers if the tree has changed. */
+	@Override
 	@JsonIgnore
 	public List<NoteAudio> getNotes() {
 		if (!isUpdated()) computeProviders();
@@ -324,6 +326,7 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 	 * @param canonicalPath the canonical file path to check
 	 * @return {@code true} if the path is used
 	 */
+	@Override
 	public boolean checkResourceUsed(String canonicalPath) {
 		if (providers == null) computeProviders();
 
@@ -360,7 +363,7 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 	/**
 	 * Wraps a {@link NoteAudioProvider} with an active flag for filtering.
 	 */
-	protected class Provider implements Comparable<Provider> {
+	protected static class Provider implements Comparable<Provider> {
 		/** The underlying note audio provider. */
 		private final NoteAudioProvider provider;
 

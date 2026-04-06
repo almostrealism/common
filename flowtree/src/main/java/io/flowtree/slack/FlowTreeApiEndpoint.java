@@ -124,8 +124,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private final SlackNotifier notifier;
     /** Maps tool names to the local filesystem paths of their definition files. */
     private final Map<String, Path> toolFiles = new HashMap<>();
-    /** Persistent store for per-job timing and throughput statistics. */
-    private JobStatsStore statsStore;
     /** Maps GitHub organisation names to their API access tokens. */
     private Map<String, String> githubOrgTokens = new HashMap<>();
 
@@ -241,7 +239,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param statsStore the stats store, or null to disable stats queries
      */
     public void setStatsStore(JobStatsStore statsStore) {
-        this.statsStore = statsStore;
         this.statsQueryHandler = new StatsQueryHandler(statsStore);
     }
 

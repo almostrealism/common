@@ -97,6 +97,7 @@ class NodeProxyByteWrapper implements Externalizable {
 	 * @param out  The stream to write the encrypted data to.
 	 * @throws IOException  If an I/O error occurs while writing.
 	 */
+	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		try {
 			int div = 8 - (b.length % 8);
@@ -130,6 +131,7 @@ class NodeProxyByteWrapper implements Externalizable {
 	 * @param in  The stream to read the encrypted data from.
 	 * @throws IOException  If an I/O error occurs while reading.
 	 */
+	@Override
 	public void readExternal(ObjectInput in) throws IOException {
 		try {
 			if (this.b == null) this.b = new byte[in.readInt()];

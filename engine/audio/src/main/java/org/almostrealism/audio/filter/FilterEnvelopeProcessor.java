@@ -97,6 +97,7 @@ public class FilterEnvelopeProcessor implements EnvelopeProcessor, CellFeatures,
 	 *
 	 * @param duration envelope duration in seconds
 	 */
+	@Override
 	public void setDuration(double duration) {
 		this.duration.set(0, duration);
 	}
@@ -106,6 +107,7 @@ public class FilterEnvelopeProcessor implements EnvelopeProcessor, CellFeatures,
 	 *
 	 * @param attack attack time in seconds
 	 */
+	@Override
 	public void setAttack(double attack) {
 		this.attack.set(0, attack);
 	}
@@ -115,6 +117,7 @@ public class FilterEnvelopeProcessor implements EnvelopeProcessor, CellFeatures,
 	 *
 	 * @param decay decay time in seconds
 	 */
+	@Override
 	public void setDecay(double decay) {
 		this.decay.set(0, decay);
 	}
@@ -124,6 +127,7 @@ public class FilterEnvelopeProcessor implements EnvelopeProcessor, CellFeatures,
 	 *
 	 * @param sustain sustain level from 0.0 (silent) to 1.0 (full cutoff)
 	 */
+	@Override
 	public void setSustain(double sustain) {
 		this.sustain.set(0, sustain);
 	}
@@ -133,6 +137,7 @@ public class FilterEnvelopeProcessor implements EnvelopeProcessor, CellFeatures,
 	 *
 	 * @param release release time in seconds
 	 */
+	@Override
 	public void setRelease(double release) {
 		this.release.set(0, release);
 	}

@@ -532,6 +532,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 *
 	 * @return a new double array containing [x, y, z]
 	 */
+	@Override
 	public double[] toArray() {
 		return getMem().toArray(getOffset(), 3);
 	}
@@ -541,6 +542,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 *
 	 * @return a string in the format "[x, y, z]" with formatted numbers
 	 */
+	@Override
 	public String describe() {
 
 		String value = "[" +

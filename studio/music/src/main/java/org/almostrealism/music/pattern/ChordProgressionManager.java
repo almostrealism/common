@@ -312,7 +312,7 @@ public class ChordProgressionManager implements CodeFeatures {
 	/**
 	 * A time region with a fixed start, length, and scale.
 	 */
-	public class Region {
+	public static class Region {
 		/** The start position of this region in measures. */
 		private final double start;
 

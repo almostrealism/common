@@ -75,6 +75,7 @@ public class OnnxDiffusionModel implements DiffusionModel, OnnxFeatures {
 	 * @return the model prediction (noise or velocity) as a {@link org.almostrealism.collect.PackedCollection}
 	 * @throws RuntimeException if the ONNX session fails
 	 */
+	@Override
 	public PackedCollection forward(PackedCollection x, PackedCollection t,
 									   PackedCollection crossAttnCond,
 									   PackedCollection globalCond) {

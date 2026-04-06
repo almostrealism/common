@@ -66,10 +66,11 @@ public class SQLInsert<V> extends SimpleUpdate<ComboPooledDataSource, String[], 
 	 * @throws IllegalAccessException 
 	 * @throws NoSuchMethodException 
 	 */
+	@Override
 	public void execute(ComboPooledDataSource database, String[] keys, V value) throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 		String[] splitOnWhereClause = query.split("[w,W][h,H][e,E][r,R][e,E]");
-		
-		StringBuffer q = new StringBuffer();
+
+		StringBuilder q = new StringBuilder();
 		q.append(splitOnWhereClause[0]);
 		q.append("set ");
 		

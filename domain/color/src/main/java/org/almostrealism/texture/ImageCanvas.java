@@ -59,12 +59,6 @@ public class ImageCanvas extends JPanel {
   /** The 2D array of {@link RGB} pixels representing the current image state. */
   private RGB[][] image;
 
-  /** The current background or fill color used for cleared pixels. */
-  private RGB color;
-
-  /** The index of the next pixel position to be written during sequential pixel updates. */
-  private int next;
-  
   /** The integer code for an RGB list image encoding. */
   public static final int RGBListEncoding = 7;
   /** The integer code for a PIX image encoding. */
@@ -98,8 +92,7 @@ public class ImageCanvas extends JPanel {
 	 */
 	public ImageCanvas(int w, int h, double xScale, double yScale, double xOff, double yOff) {
 		this.image = new RGB[w][h];
-		this.color = new RGB(0.0, 0.0, 0.0);
-		
+
 		this.screenX = w;
 		this.screenY = h;
 		this.xScale = xScale;
@@ -136,14 +129,11 @@ public class ImageCanvas extends JPanel {
 	public void plot(double x, double y, RGB c) {
 		int sx = (int)(((x + this.xOff) * this.xScale) + (this.screenX / 2.0));
 		int sy = (int)(-((y + this.yOff) * this.yScale) + (this.screenY / 2.0));
-		
-		this.next++;
-		
+
 		if (sx >= 0 && sx < this.image.length && sy >= 0 && sy < this.image[sx].length) {
 			this.image[sx][sy] = c;
-			this.color = this.image[sx][sy];
 		}
-		
+
 		this.repaint();
 	}
 	
@@ -164,7 +154,9 @@ public class ImageCanvas extends JPanel {
 	public void setImageData(RGB[][] image) { this.image = image; }
 	
 	/**
-	 * @return  The image data stored by this ImageCanvas object.
+	 * Returns the image data stored by this {@link ImageCanvas} object.
+	 *
+	 * @return the 2D array of {@link RGB} pixels representing the current image state
 	 */
 	public RGB[][] getImageData() { return this.image; }
 	
@@ -189,7 +181,7 @@ public class ImageCanvas extends JPanel {
 			ImageCanvas.encodeImageFile(new Provider<>(this.image),
 							new File(file), ImageCanvas.JPEGEncoding);
 		} catch (Exception e) {
-			e.printStackTrace();
+			System.err.println(e.getMessage());
 		}
 	}
 	

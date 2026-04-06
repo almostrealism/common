@@ -60,6 +60,7 @@ public class SnellAbsorber implements Absorber, VectorFeatures {
 	 * @param Energy     the energy of the incoming photon
 	 * @return           {@code true} if the position is inside the volume and the photon was queued
 	 */
+	@Override
 	public boolean absorb(Vector Position, Vector Direction, double Energy) {
 		if (!this.volume.inside(v(Position))) return false;
 		

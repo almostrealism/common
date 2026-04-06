@@ -116,11 +116,6 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 	private double sampleDistance = 0.01;
 	/** The number of density samples taken along the surface normal for IOR estimation. */
 	private int sampleCount = 1;
-	/** Last-computed red, green, and blue attenuation factors (retained for debugging). */
-	private double lra, lga, lba;
-
-	/** Number of times a ray has entered and exited this material during the current shade call. */
-	private int entered, exited;
 
 	/**
 	 * Constructs a new {@link RefractionShader} with default settings.
@@ -139,6 +134,7 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 	 * @param normals The surface normals at the intersection point
 	 * @return A Producer that computes the refracted color
 	 */
+	@Override
 	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
 		Producer pr = (Producer<PackedCollection>) () -> (Evaluable<PackedCollection>) args -> {
 			p.addReflection();
@@ -482,10 +478,6 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 		this.ra = r;
 		this.ga = g;
 		this.ba = b;
-		
-		this.lra = Math.log(this.ra);
-		this.lga = Math.log(this.ga);
-		this.lba = Math.log(this.ba);
 	}
 	
 	/**
@@ -503,5 +495,6 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 	/**
 	 * Returns "Refraction Shader".
 	 */
+	@Override
 	public String toString() { return "Refraction Shader"; }
 }

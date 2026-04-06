@@ -44,8 +44,9 @@ import java.io.InputStreamReader;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.util.Arrays;
 import java.util.Collection;
-import java.util.Hashtable;
+import java.util.LinkedHashMap;
 import java.util.Iterator;
 import java.util.Properties;
 
@@ -155,7 +156,7 @@ class FlowTreeCliCommands {
 							FlowTreeCliServer.class.getClassLoader()
 									.getResource("node.conf")
 									.openStream()));
-			StringBuffer buf = new StringBuffer();
+			StringBuilder buf = new StringBuilder();
 
 			while (true) {
 				String st = bufIn.readLine();
@@ -198,33 +199,7 @@ class FlowTreeCliCommands {
 	 * @return a message describing the started render thread
 	 */
 	static String render(String c, String httpwww, int jobSize) {
-		String sceneName = "scene.xml";
-		String dim = "100x100";
-		String sdim = "1x1";
-		String pdim = "-1.0x-1.0";
-		String fl = "-1.0";
-		String cloc = "0.0,0.0,0.0";
-		String cdir = "0.0,0.0,0.0";
-		String pri = "1.0";
-
-		String[] s = FlowTreeCliServer.parseCommand(c);
-
-		if (s.length > 0) sceneName = s[0];
-		if (s.length > 1) dim = s[1];
-		if (s.length > 2) sdim = s[2];
-		if (s.length > 3) pdim = s[3];
-		if (s.length > 4) fl = s[4];
-		if (s.length > 5) cloc = s[5];
-		if (s.length > 6) cdir = s[6];
-		if (s.length > 7) pri = s[7];
-
 		long id = System.currentTimeMillis();
-
-		String[] args = {
-				httpwww + sceneName,
-				dim, sdim, pdim, fl, cloc, cdir,
-				String.valueOf(jobSize),
-				String.valueOf(id), pri};
 
 		// TODO  Load producer by reflection
 		return "Started render thread: " + id;
@@ -240,37 +215,13 @@ class FlowTreeCliCommands {
 	 * @param commands registered custom command map, forwarded to recursive calls
 	 * @return a message describing the started render thread, or help text
 	 */
-	static String plyRender(String c, PrintStream ps, int jobSize, Hashtable commands) {
-		String sceneName = "scene.xml";
-		String dim = "100x100";
-		String sdim = "1x1";
-		String pdim = "-1.0x-1.0";
-		String fl = "-1.0";
-		String cloc = "0.0,0.0,0.0";
-		String cdir = "0.0,0.0,0.0";
-		String pri = "1.0";
-
+	static String plyRender(String c, PrintStream ps, int jobSize, LinkedHashMap commands) {
 		String[] s = FlowTreeCliServer.parseCommand(c);
 
 		if (s.length <= 0)
 			return FlowTreeCliServer.runCommand("help plyrender", ps, commands);
-		else
-			sceneName = s[0];
-
-		if (s.length > 1) dim = s[1];
-		if (s.length > 2) sdim = s[2];
-		if (s.length > 3) pdim = s[3];
-		if (s.length > 4) fl = s[4];
-		if (s.length > 5) cloc = s[5];
-		if (s.length > 6) cdir = s[6];
-		if (s.length > 7) pri = s[7];
 
 		long id = System.currentTimeMillis();
-
-		String[] args = {sceneName,
-				dim, sdim, pdim, fl, cloc, cdir,
-				String.valueOf(jobSize),
-				String.valueOf(id), pri};
 
 		// TODO  Load Job Producer using reflection
 		return "Started render thread: " + id;
@@ -286,37 +237,13 @@ class FlowTreeCliCommands {
 	 * @param commands registered custom command map, forwarded to recursive calls
 	 * @return a message describing the started render thread, or help text
 	 */
-	static String gtsRender(String c, PrintStream ps, int jobSize, Hashtable commands) {
-		String sceneName = "scene.xml";
-		String dim = "100x100";
-		String sdim = "1x1";
-		String pdim = "-1.0x-1.0";
-		String fl = "-1.0";
-		String cloc = "0.0,0.0,0.0";
-		String cdir = "0.0,0.0,0.0";
-		String pri = "1.0";
-
+	static String gtsRender(String c, PrintStream ps, int jobSize, LinkedHashMap commands) {
 		String[] s = FlowTreeCliServer.parseCommand(c);
 
 		if (s.length <= 0)
 			return FlowTreeCliServer.runCommand("help gtsrender", ps, commands);
-		else
-			sceneName = s[0];
-
-		if (s.length > 1) dim = s[1];
-		if (s.length > 2) sdim = s[2];
-		if (s.length > 3) pdim = s[3];
-		if (s.length > 4) fl = s[4];
-		if (s.length > 5) cloc = s[5];
-		if (s.length > 6) cdir = s[6];
-		if (s.length > 7) pri = s[7];
 
 		long id = System.currentTimeMillis();
-
-		String[] args = {sceneName,
-				dim, sdim, pdim, fl, cloc, cdir,
-				String.valueOf(jobSize),
-				String.valueOf(id), pri};
 
 		// TODO  Load Job Producer using reflection
 		return "Started render thread: " + id;
@@ -459,7 +386,7 @@ class FlowTreeCliCommands {
 	 */
 	static String tasks() {
 		String[] s = Client.getCurrentClient().getServer().getNodeGroup().taskList();
-		StringBuffer r = new StringBuffer();
+		StringBuilder r = new StringBuilder();
 		for (int i = 0; i < s.length; i++) r.append(s[i] + "\n");
 		return r.toString();
 	}
@@ -754,7 +681,7 @@ class FlowTreeCliCommands {
 	 */
 	static String peers() {
 		String[] s = Client.getCurrentClient().getServer().getPeers();
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		for (int i = 0; i < s.length; i++) b.append(s[i] + "\n");
 		return b.toString();
 	}
@@ -930,6 +857,7 @@ class FlowTreeCliCommands {
 		final Object oo = o;
 
 		Thread t = new Thread() {
+			@Override
 			public void run() {
 				((ServerBehavior) oo).behave(Client.getCurrentClient().getServer(), ps);
 			}
@@ -968,7 +896,7 @@ class FlowTreeCliCommands {
 		} else if (o instanceof Object[]) {
 			Object[] ob = (Object[]) o;
 			for (int i = 0; i < ob.length; i++) ps.println(ob[i]);
-			return ob + " is an array of " + ob.length + " elements.";
+			return Arrays.toString(ob) + " is an array of " + ob.length + " elements.";
 		} else {
 			ps.println(o);
 			return "An instance of " + o.getClass().getName();
@@ -1137,7 +1065,7 @@ class FlowTreeCliCommands {
 		Server server = Client.getCurrentClient().getServer();
 		Message m = server.executeQuery(q, null, NodeProxy.queryTimeout);
 
-		Hashtable h = new Hashtable();
+		LinkedHashMap h = new LinkedHashMap();
 		Query.fromString(m.getData(), h);
 
 		ps.println("Network Query returned " + h.size() + " items.");

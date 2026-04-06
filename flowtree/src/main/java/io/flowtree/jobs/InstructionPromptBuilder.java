@@ -46,14 +46,6 @@ public class InstructionPromptBuilder {
     private String workstreamUrl;
 
     /**
-     * Whether the GitHub MCP server is enabled.
-     *
-     * @deprecated GitHub tools are now always available via ar-manager.
-     */
-    @Deprecated
-    private boolean gitHubMcpEnabled;
-
-    /**
      * When {@code true}, includes the test integrity policy section that
      * prevents the agent from modifying test files that exist on the base branch.
      */
@@ -143,7 +135,6 @@ public class InstructionPromptBuilder {
      * @deprecated GitHub tools are now always available via ar-manager.
      */
     public InstructionPromptBuilder setGitHubMcpEnabled(boolean gitHubMcpEnabled) {
-        this.gitHubMcpEnabled = gitHubMcpEnabled;
         return this;
     }
 

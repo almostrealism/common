@@ -23,7 +23,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
-import java.util.Hashtable;
+import java.util.LinkedHashMap;
 import java.util.TreeSet;
 
 /**
@@ -35,7 +35,7 @@ import java.util.TreeSet;
  */
 public class UnicodeResource extends ResourceAdapter<byte[]> {
 	/** Ordered map of byte offsets to the string chunks loaded at each offset. */
-	private final Hashtable<Long, String> data = new Hashtable<>();
+	private final LinkedHashMap<Long, String> data = new LinkedHashMap<>();
 
 	/**
 	 * Constructs an empty {@link UnicodeResource} with no data.
@@ -70,6 +70,7 @@ public class UnicodeResource extends ResourceAdapter<byte[]> {
 	}
 
 	/** {@inheritDoc} Stores the byte array decoded as a string at the given offset. */
+	@Override
 	public synchronized void load(byte[] data, long offset, int len) {
 		this.data.put(offset, new String(data, 0, len));
 	}
@@ -89,7 +90,7 @@ public class UnicodeResource extends ResourceAdapter<byte[]> {
 	 * @throws IOException If reading fails
 	 */
 	private void read(InputStream in) throws IOException {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		
 		try (BufferedReader r = new BufferedReader(new InputStreamReader(in))) {
 			String line;
@@ -109,7 +110,7 @@ public class UnicodeResource extends ResourceAdapter<byte[]> {
 		TreeSet<Long> l = new TreeSet<>();
 		l.addAll(data.keySet());
 
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		for (long k : l) {
 			buf.append(data.get(k));

@@ -66,7 +66,7 @@ public class BufferedOutputControl implements HttpAudioHandler, ConsoleFeatures 
 			try {
 				this.scheduler.resume();
 			} catch (Exception e) {
-				e.printStackTrace();
+				System.err.println("BufferedOutputControl: " + e.getMessage());
 			}
 		});
 	}

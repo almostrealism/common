@@ -34,10 +34,11 @@ import java.util.Properties;
 public class SQLSelect<V> extends SimpleQuery<ComboPooledDataSource, String[], V> {
 
 	/**
-	 * Construct a new SQLSelect. Used by the static method {@link #prepare(String, Properties)}.
+	 * Construct a new SQLSelect. Used by the static method {@link #prepare(String, Properties, Factory)}.
 	 *
 	 * @param query  The SQL query to execute.
 	 * @param columns  The mapping between columns in the database and field names.
+	 * @param factory  The factory for creating result entities.
 	 */
 	private SQLSelect(String query, Properties columns, Factory<V> factory) {
 		super(query, factory);
@@ -50,10 +51,12 @@ public class SQLSelect<V> extends SimpleQuery<ComboPooledDataSource, String[], V
 	 *
 	 * @param database
 	 * @param arguments
+	 * @param cascades
 	 * @return
-	 * @throws InvocationTargetException 
-	 * @throws IllegalAccessException 
+	 * @throws InvocationTargetException
+	 * @throws IllegalAccessException
 	 */
+	@Override
 	public Collection<V> execute(ComboPooledDataSource database, String[] arguments, Map<Class, List<CascadingQuery>> cascades) throws IllegalAccessException, InvocationTargetException {
 		List<V> data = new ArrayList<V>();
 		

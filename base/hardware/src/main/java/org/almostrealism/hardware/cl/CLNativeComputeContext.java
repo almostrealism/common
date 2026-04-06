@@ -115,7 +115,7 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 		target.setParallelism(KernelPreferences.getCpuParallelism());
 
 		long start = System.nanoTime();
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		try {
 			buf.append(new ScopeEncoder(pw ->

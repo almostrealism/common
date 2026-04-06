@@ -98,6 +98,7 @@ public class BlendingShader implements Shader<LightingContext>, RGBFeatures, Ray
 	/**
 	 * @see  Shader#shade(LightingContext, DiscreteField)
 	 */
+	@Override
 	public Producer<PackedCollection> shade(LightingContext p, DiscreteField normals) {
 		// TODO  Put evaluation into producer
 
@@ -125,6 +126,7 @@ public class BlendingShader implements Shader<LightingContext>, RGBFeatures, Ray
 		return GeneratedColorProducer.fromProducer(this, c);
 	}
 
-	/** @return  "Blending Shader". */
+	/** Returns "Blending Shader". */
+	@Override
 	public String toString() { return "Blending Shader"; }
 }

@@ -118,6 +118,7 @@ public class MetalOperatorMap implements InstructionSet {
 	 * @param argCount Number of buffer arguments expected by the kernel
 	 * @return Thread-local {@link MetalOperator} instance
 	 */
+	@Override
 	public MetalOperator get(String key, int argCount) {
 		Map<String, MetalOperator> ops = operators.get();
 

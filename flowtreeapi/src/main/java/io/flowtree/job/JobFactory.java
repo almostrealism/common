@@ -77,6 +77,8 @@ public interface JobFactory {
 	String getTaskId();
 	
     /**
+     * Returns the next job in the queue.
+     *
      * @return  Next job in the queue.
      */
     Job nextJob();

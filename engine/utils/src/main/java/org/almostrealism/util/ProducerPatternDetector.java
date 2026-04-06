@@ -116,9 +116,8 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 	@Override
 	public ProducerPatternDetector scanFile(Path file) {
 		try {
-			String content = Files.readString(file);
 			List<String> lines = Files.readAllLines(file);
-			checkProducerPatternViolations(file, content, lines);
+			checkProducerPatternViolations(file, lines);
 		} catch (IOException e) {
 			warn("Could not read file " + file, e);
 		}
@@ -134,10 +133,9 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 	 * autoregressive loop boundaries, data loading).</p>
 	 *
 	 * @param file     the file being checked
-	 * @param content  the full file content as a string
 	 * @param lines    the file content split into lines
 	 */
-	private void checkProducerPatternViolations(Path file, String content, List<String> lines) {
+	private void checkProducerPatternViolations(Path file, List<String> lines) {
 		String pathStr = file.toString();
 
 		// Only check files in computation source trees

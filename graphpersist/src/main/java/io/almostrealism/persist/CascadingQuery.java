@@ -37,7 +37,7 @@ public abstract class CascadingQuery<D extends SQLConnectionProvider, K, V exten
 				process(rs, key, cascades);
 			}
 		} catch (SQLException e) {
-			e.printStackTrace();
+			System.err.println("CascadingQuery: SQL error during execution: " + e.getMessage());
 		}
 		
 		return getReturnValue(key);

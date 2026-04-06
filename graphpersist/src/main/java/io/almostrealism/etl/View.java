@@ -88,7 +88,7 @@ public abstract class View<V> {
 	 * @return A SQL {@code DELETE} statement string
 	 */
 	protected String getDelete(Map<String, String> data) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		buf.append("delete from ");
 		buf.append(table);
 		buf.append(" where ");
@@ -141,7 +141,7 @@ public abstract class View<V> {
 	 * @return A SQL value list of the form {@code (v1,v2,...)}
 	 */
 	private String getValueList(String[] values) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		
 		buf.append("(");
 		

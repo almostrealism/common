@@ -68,17 +68,11 @@ public class AudioDiffusionGenerator implements ConsoleFeatures, CollectionFeatu
 	/** Audio sample rate used for encoding and decoding. */
 	private static final int SAMPLE_RATE = 44100;
 
-	/** The diffusion model that generates latent noise predictions. */
-	private final DiffusionModel diffusionModel;
-
 	/** The autoencoder used to decode latent tensors back into audio. */
 	private final AutoEncoder autoEncoder;
 
 	/** The diffusion sampler that drives the denoising loop. */
 	private final DiffusionSampler sampler;
-
-	/** The shape of the latent tensor produced and consumed by the diffusion model. */
-	private final TraversalPolicy latentShape;
 
 	/** When {@code true}, generation progress is logged at each step. */
 	private boolean verbose = true;
@@ -133,9 +127,7 @@ public class AudioDiffusionGenerator implements ConsoleFeatures, CollectionFeatu
 								   SamplingStrategy strategy,
 								   int numSteps,
 								   TraversalPolicy latentShape) {
-		this.diffusionModel = diffusionModel;
 		this.autoEncoder = autoEncoder;
-		this.latentShape = latentShape;
 
 		// Create sampler - IT OWNS THE LOOP
 		this.sampler = new DiffusionSampler(

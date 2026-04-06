@@ -43,9 +43,6 @@ public class SpectrumSimplification implements SimplificationSettings, ConsoleFe
 	/** The fraction of expressions approved for simplification, in the range {@code [0.0, 1.0]}. */
 	private final double scale;
 
-	/** Multiplier applied to node count in the linear congruential hash step. */
-	private final int s;
-
 	/** Multiplier applied to node count before taking the modulus. */
 	private final int j;
 
@@ -63,7 +60,6 @@ public class SpectrumSimplification implements SimplificationSettings, ConsoleFe
 	 */
 	public SpectrumSimplification(double scale) {
 		this.scale = scale;
-		this.s = 40;
 		this.j = 13;
 		this.k = 41;
 		this.m = (int) (scale * (k - 1));

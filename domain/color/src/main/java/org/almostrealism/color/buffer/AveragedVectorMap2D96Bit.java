@@ -199,8 +199,7 @@ public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D {
 		
 		int px = (int) (u * w);
 		int py = (int) (v * h);
-		int t = px + py * w;
-		
+
 		int[][] count = this.fcount;
 		if (!front) count = this.bcount;
 		
@@ -234,6 +233,7 @@ public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D {
 	 * @param front {@code true} to query the front surface, {@code false} for the back
 	 * @return a double array of length 3 containing the averaged vector components
 	 */
+	@Override
 	public double[] getVector(double u, double v, boolean front) {
 		if (this.vector != null) return this.vector;
 		
@@ -268,6 +268,7 @@ public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D {
 	 * @param front {@code true} to query the front sample count, {@code false} for the back
 	 * @return the sample count at the texel, or {@code 0} for out-of-range UV
 	 */
+	@Override
 	public int getSampleCount(double u, double v, boolean front) {
 		if (u >= 1.0 || v >= 1.0 || u < 0.0 || v < 0.0) {
 			System.out.println("AveragedVectorMap2D96Bit: Invalid UV " + u + ", " + v);

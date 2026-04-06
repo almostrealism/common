@@ -31,9 +31,6 @@ import io.almostrealism.expression.Mask;
  */
 public class WeightedSumDeltaExpression extends CollectionExpressionAdapter {
 
-	/** The output shape of the weighted sum being differentiated. */
-	private final TraversalPolicy resultShape;
-
 	/** The shape of the target operand with respect to which differentiation is performed. */
 	private final TraversalPolicy targetShape;
 
@@ -67,7 +64,6 @@ public class WeightedSumDeltaExpression extends CollectionExpressionAdapter {
 									  SubsetTraversalExpression operandMapping,
 									  TraversableExpression<Double> operand) {
 		super("weightedSumDelta", resultShape.append(targetShape));
-		this.resultShape = resultShape;
 		this.targetShape = targetShape;
 		this.targetMapping = targetMapping;
 		this.operandMapping = operandMapping;

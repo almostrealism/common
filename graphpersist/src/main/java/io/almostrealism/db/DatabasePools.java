@@ -33,7 +33,7 @@ public class DatabasePools {
 		try {
 			pool.setDriverClass("com.mysql.jdbc.Driver");
 		} catch (PropertyVetoException e) {
-			e.printStackTrace();
+			System.err.println("DatabasePools: Failed to set driver class: " + e.getMessage());
 		}
 
 		pool.setJdbcUrl(url);

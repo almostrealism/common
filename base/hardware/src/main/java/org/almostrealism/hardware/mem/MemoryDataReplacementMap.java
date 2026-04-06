@@ -97,7 +97,7 @@ public class MemoryDataReplacementMap implements Destroyable {
 	public boolean isEmpty() { return replacements.isEmpty(); }
 
 	/** Simple supplier that wraps a fixed {@link MemoryData} instance. */
-	private class MemoryDataSupplier implements Supplier<MemoryData> {
+	private static class MemoryDataSupplier implements Supplier<MemoryData> {
 		/** The memory data instance to supply. */
 		private MemoryData md;
 
@@ -122,7 +122,7 @@ public class MemoryDataReplacementMap implements Destroyable {
 	}
 
 	/** Supplier that evaluates a {@link Producer} and slices the result at a given offset. */
-	private class MemoryDataSource implements Supplier<MemoryData> {
+	private static class MemoryDataSource implements Supplier<MemoryData> {
 		/** Producer that yields the aggregate memory block. */
 		private Producer<MemoryData> md;
 		/** Offset within the aggregate block and total length of this slice. */

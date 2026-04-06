@@ -64,5 +64,6 @@ public class TemporalFrame {
 	 *
 	 * @return a string in the format "{@code a} is before {@code b}"
 	 */
+	@Override
 	public String toString() { return a + " is before " + b; }
 }

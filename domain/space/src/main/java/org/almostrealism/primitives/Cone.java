@@ -131,7 +131,6 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 				}
 
 				double t = Double.MAX_VALUE;
-				int i = 0;
 
 				Iterator itr = inter.iterator();
 				while (itr.hasNext()) {

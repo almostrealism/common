@@ -396,7 +396,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 
 					this.wav = WavFile.newWavFile(f, 2, frames, bits, sampleRate);
 				} catch (IOException e) {
-					e.printStackTrace();
+					warn(e.getMessage());
 					return;
 				}
 
@@ -408,14 +408,14 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 						wav.writeFrames(new double[][]
 								{{framesLeft[i]}, {framesRight[i]}}, 1);
 					} catch (IOException e) {
-						e.printStackTrace();
+						warn(e.getMessage());
 					}
 				}
 
 				try {
 					wav.close();
 				} catch (IOException e) {
-					e.printStackTrace();
+					warn(e.getMessage());
 					return;
 				}
 
@@ -441,7 +441,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 
 			return () -> {
 				PackedCollection o = d.evaluate();
-				StringBuffer buf = new StringBuffer();
+				StringBuilder buf = new StringBuilder();
 
 				int frames = getFrameCount();
 
@@ -453,7 +453,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 				try (PrintWriter out = new PrintWriter(new OutputStreamWriter(new FileOutputStream(file)))) {
 					out.println(buf);
 				} catch (FileNotFoundException e) {
-					e.printStackTrace();
+					warn(e.getMessage());
 				}
 			};
 		};

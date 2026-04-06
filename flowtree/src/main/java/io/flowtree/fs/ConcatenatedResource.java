@@ -62,6 +62,7 @@ public class ConcatenatedResource extends DistributedResource {
 		 * @param head the first bytes of the resource
 		 * @return {@code true} if this parser handles the resource
 		 */
+		@Override
 		public boolean doesHeaderMatch(byte[] head) {
 			String s = new String(head);
 			return s.startsWith(header);
@@ -73,6 +74,7 @@ public class ConcatenatedResource extends DistributedResource {
 		 *
 		 * @return {@code ConcatenatedResource.class}
 		 */
+		@Override
 		public Class getResourceClass() { return ConcatenatedResource.class; }
 	}
 
@@ -121,6 +123,7 @@ public class ConcatenatedResource extends DistributedResource {
 		 * @return the next byte (0–255), or {@code -1} at end-of-stream
 		 * @throws IOException if a child resource stream cannot be opened or read
 		 */
+		@Override
 		public int read() throws IOException {
 			if (this.index == 0 && this.current == null) this.next();
 
@@ -180,6 +183,7 @@ public class ConcatenatedResource extends DistributedResource {
 	 * @throws RuntimeException wrapping any {@link IOException} encountered
 	 *                          while reading the header
 	 */
+	@Override
 	public InputStream getInputStream() {
 		ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
 		BufferedReader buf = new BufferedReader(new InputStreamReader(super.getInputStream()));
@@ -204,6 +208,7 @@ public class ConcatenatedResource extends DistributedResource {
 	 * @throws RuntimeException wrapping any {@link IOException} encountered
 	 *                          while reading the header
 	 */
+	@Override
 	public long getTotalBytes() {
 		ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
 
