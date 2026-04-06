@@ -18,11 +18,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Map of path-relative-to-repo-root -> max allowed line count at time of exemption
 declare -A EXEMPT_FILES
-EXEMPT_FILES["compute/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java"]=3946
+EXEMPT_FILES["compute/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java"]=3738
 EXEMPT_FILES["base/code/src/main/java/io/almostrealism/expression/Expression.java"]=2094
-EXEMPT_FILES["engine/ml/src/main/java/org/almostrealism/ml/AttentionFeatures.java"]=2085
-EXEMPT_FILES["domain/graph/src/main/java/org/almostrealism/layers/LayerFeatures.java"]=2112
-EXEMPT_FILES["studio/compose/src/main/java/org/almostrealism/studio/AudioScene.java"]=1937
+EXEMPT_FILES["engine/ml/src/main/java/org/almostrealism/ml/AttentionFeatures.java"]=2084
+EXEMPT_FILES["domain/graph/src/main/java/org/almostrealism/layers/LayerFeatures.java"]=2006
 
 FAILED=0
 
