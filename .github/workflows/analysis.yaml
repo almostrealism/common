@@ -218,16 +218,16 @@ jobs:
           # These files are the enforcement infrastructure. Any modification
           # on a PR branch is treated as tampering and fails the build.
           PROTECTED_FILES=(
-            "utils/src/main/java/org/almostrealism/util/PolicyViolationDetector.java"
-            "utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
-            "utils/src/main/java/org/almostrealism/util/PackedCollectionDetector.java"
-            "utils/src/main/java/org/almostrealism/util/ProducerPatternDetector.java"
-            "utils/src/main/java/org/almostrealism/util/NamingConventionDetector.java"
-            "utils/src/main/java/org/almostrealism/util/DuplicateCodeDetector.java"
-            "utils/src/main/java/org/almostrealism/util/TestTimeoutEnforcementScanner.java"
+            "engine/utils/src/main/java/org/almostrealism/util/PolicyViolationDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/PackedCollectionDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/ProducerPatternDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/NamingConventionDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/DuplicateCodeDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/TestTimeoutEnforcementScanner.java"
             "tools/src/test/java/org/almostrealism/util/test/CodePolicyEnforcementTest.java"
-            "tools/ci/detect-test-hiding.sh"
-            "tools/ci/check-quality-gates.sh"
+            "tools/ci/agent-protection/detect-test-hiding.sh"
+            "tools/ci/agent-protection/check-quality-gates.sh"
           )
 
           TAMPERED=""

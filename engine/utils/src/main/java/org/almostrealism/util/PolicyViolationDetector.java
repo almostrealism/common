@@ -23,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -276,6 +277,21 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 	 * @param lineIndex  0-based index of the line to check
 	 * @return           the method name, or empty string if not found
 	 */
+	/** Java modifier keywords that appear before a constructor name but never before a return type. */
+	private static final Set<String> JAVA_MODIFIERS = Set.of(
+			"public", "protected", "private", "static", "final", "abstract",
+			"synchronized", "native", "strictfp", "default", "transient", "volatile");
+
+	/**
+	 * Walks backward from {@code lineIndex} to find the name of the enclosing method
+	 * or constructor. Returns {@code "<constructor>"} for constructor declarations,
+	 * the method name for regular methods, or an empty string if no enclosing method
+	 * is found.
+	 *
+	 * @param lines      all lines of the file
+	 * @param lineIndex  0-based index of the line to check
+	 * @return           the method name, {@code "<constructor>"}, or empty string
+	 */
 	protected String findEnclosingMethodName(List<String> lines, int lineIndex) {
 		int braceDepth = 0;
 		for (int i = lineIndex; i >= 0; i--) {
@@ -288,12 +304,20 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 				if (parenIdx > 0) {
 					int spaceIdx = trimmed.lastIndexOf(' ', parenIdx);
 					if (spaceIdx >= 0 && spaceIdx < parenIdx) {
-						return trimmed.substring(spaceIdx + 1, parenIdx);
+						String name = trimmed.substring(spaceIdx + 1, parenIdx);
+						// If the token immediately before the name is a modifier keyword
+						// (e.g. "public Foo()" has no return type), this is a constructor.
+						String before = trimmed.substring(0, spaceIdx).trim();
+						String precedingToken = before.isEmpty() ? ""
+								: before.contains(" ")
+										? before.substring(before.lastIndexOf(' ') + 1)
+										: before;
+						if (precedingToken.isEmpty() || JAVA_MODIFIERS.contains(precedingToken)) {
+							return "<constructor>";
+						}
+						return name;
 					}
 				}
-			}
-			if (line.matches(".*public\\s+\\w+\\s*\\([^)]*\\).*") && braceDepth <= 0) {
-				return "<constructor>";
 			}
 		}
 		return "";
