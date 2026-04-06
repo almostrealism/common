@@ -19,6 +19,7 @@ package org.almostrealism.studio.optimize;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.studio.AudioScene;
+import org.almostrealism.studio.AudioSceneLoader;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.arrange.EfxManager;
 import org.almostrealism.studio.arrange.MixdownManager;
@@ -383,7 +384,7 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		scene.setTuning(new DefaultKeyboardTuning());
 		scene.setLibraryRoot(new FileWaveDataProviderNode(new File(LIBRARY)));
 
-		AudioScene.Settings settings = AudioScene.Settings.defaultSettings(sourceCount,
+		AudioSceneLoader.Settings settings = AudioSceneLoader.Settings.defaultSettings(sourceCount,
 				AudioScene.DEFAULT_PATTERNS_PER_CHANNEL,
 				AudioScene.DEFAULT_ACTIVE_PATTERNS,
 				AudioScene.DEFAULT_LAYERS,
