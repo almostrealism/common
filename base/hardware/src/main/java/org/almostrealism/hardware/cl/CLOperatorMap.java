@@ -158,6 +158,7 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 	 * @param key  the kernel function name
 	 * @return the CLOperator for executing the kernel
 	 */
+	@Override
 	public CLOperator get(String key) {
 		return get(key, 2);
 	}
@@ -170,6 +171,7 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 	 * @param argCount  the number of arguments the kernel expects
 	 * @return the CLOperator for executing the kernel
 	 */
+	@Override
 	public CLOperator get(String key, int argCount) {
 		Map<String, CLOperator> ops = operators.get();
 
@@ -221,6 +223,7 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 	 * @see  CLProgram#destroy()
 	 * @see  CLOperator#destroy()
 	 */
+	@Override
 	public void destroy() {
 		if (prog != null) prog.destroy();
 

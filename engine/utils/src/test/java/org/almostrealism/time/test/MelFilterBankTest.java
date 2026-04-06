@@ -168,13 +168,11 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 		PackedCollection melEnergies = melBank.evaluate();
 
 		// Find the mel band with maximum energy
-		int maxBand = 0;
 		double maxEnergy = melEnergies.toDouble(0);
 		for (int i = 1; i < numMelBands; i++) {
 			double energy = melEnergies.toDouble(i);
 			if (energy > maxEnergy) {
 				maxEnergy = energy;
-				maxBand = i;
 			}
 		}
 

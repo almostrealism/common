@@ -382,7 +382,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			Genome g2 = sorted.isEmpty() ? null : itr.next();
 
 			w:
-			for (int i = 0; itr.hasNext(); i++) {
+			while (itr.hasNext()) {
 				g1 = g2;
 				g2 = itr.next();
 				if (genomes.size() >= maxChildren) break;
@@ -526,7 +526,8 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 				try {
 					executor.take().get();
 				} catch (InterruptedException e) {
-					e.printStackTrace();
+					Thread.currentThread().interrupt();
+					console().warn("Health evaluation interrupted: " + e.getMessage());
 				} catch (ExecutionException e) {
 					if (e.getCause() instanceof RuntimeException) {
 						throw (RuntimeException) e.getCause();

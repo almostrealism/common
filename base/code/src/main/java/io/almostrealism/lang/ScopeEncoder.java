@@ -53,13 +53,10 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	private final CodePrintWriter output;
 
 	/** The accumulated output buffer. */
-	private StringBuffer result;
+	private StringBuilder result;
 
 	/** Names of functions already written in a previous encoding pass, used to avoid duplicates. */
 	private final List<String> functionsWritten;
-
-	/** Current indentation depth (number of levels, not characters). */
-	private int indent = 0;
 
 	/**
 	 * Constructs a scope encoder with an empty function-written list.
@@ -99,7 +96,7 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 
 		functionsWritten.add(scope.getName());
 
-		this.result = new StringBuffer();
+		this.result = new StringBuilder();
 
 		scope.getAllRequiredScopes().stream()
 				.map(new ScopeEncoder(generator, Accessibility.INTERNAL, functionsWritten))
@@ -124,10 +121,10 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	}
 
 	@Override
-	public void moreIndent() { indent++; }
+	public void moreIndent() { }
 
 	@Override
-	public void lessIndent() { indent--; }
+	public void lessIndent() { }
 
 	@Override
 	public void print(String s) { append(s); }

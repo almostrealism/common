@@ -381,7 +381,7 @@ public class AudioLibraryDataWriter implements ConsoleFeatures {
 //								.map(Audio.WaveRecording::getKey)
 //								.toArray()) + ")");
 			} catch (IOException e) {
-				e.printStackTrace();
+				System.err.println("AudioLibraryDataWriter: " + e.getMessage());
 			}
 		});
 	}

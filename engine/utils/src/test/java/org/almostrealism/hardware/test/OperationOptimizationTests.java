@@ -90,7 +90,6 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		int dim = 64;
 		PackedCollection in = new PackedCollection(shape(dim));
 		PackedCollection matrix = new PackedCollection(shape(dim, dim));
-		PackedCollection out = new PackedCollection(shape(dim));
 
 		in.fill(pos -> Math.random());
 		matrix.fill(pos -> Math.random());

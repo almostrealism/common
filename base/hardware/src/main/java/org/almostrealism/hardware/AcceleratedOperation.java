@@ -595,7 +595,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 
 			// Run the operator
-			long start = System.nanoTime();
 			Semaphore nextSemaphore = operator.accept(input, null);
 
 			// Register kernel semaphore with the active heap stage so

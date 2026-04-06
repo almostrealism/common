@@ -165,14 +165,12 @@ public class PackedCollectionMap
 		CollectionVariable input = (CollectionVariable) arg;
 
 		TraversalPolicy sliceShape = inputShape.item();
-		TraversalPolicy traversalShape = new TraversalPolicy(true);
 		int traversalDimensions = inputShape.getDimensions() - sliceShape.getDimensions();
 		for (int i = 0; i < traversalDimensions; i++) {
 			sliceShape = sliceShape.prependDimension(1);
-			traversalShape = traversalShape.appendDimension(inputShape.length(i));
 		}
 
-		CollectionExpression expression = createCollectionExpression(input, sliceShape, traversalShape);
+		CollectionExpression expression = createCollectionExpression(input, sliceShape);
 		CollectionProducerComputationBase computation = new ItemComputation(sliceShape, args -> expression);
 
 		CollectionProducer mapped = mapper.apply(computation);
@@ -226,9 +224,6 @@ public class PackedCollectionMap
 		int inSize = inShape.getTotalSize();
 		int targetSize = targetShape.getTotalSize();
 
-		TraversalPolicy deltaShape = shape(inSize, targetSize);
-		TraversalPolicy overallShape = shape(outSize, targetSize);
-
 		Producer<?> stub = func(inShape, args -> null);
 
 		TraversableDeltaComputation deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
@@ -255,10 +250,9 @@ public class PackedCollectionMap
 	 *
 	 * @param input the collection variable to read values from
 	 * @param sliceShape the shape of each individual slice within the input
-	 * @param traversalShape the shape covering the traversal dimensions
 	 * @return a collection expression implementing sliced element access
 	 */
-	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape, TraversalPolicy traversalShape) {
+	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape) {
 		return DefaultCollectionExpression.create(sliceShape,
 				index -> {
 					// Determine which slice to extract

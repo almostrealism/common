@@ -147,6 +147,7 @@ public class Cases<T> extends Scope<T> {
 	 * @param mapper function to transform each argument
 	 * @return list of mapped arguments with duplicates removed
 	 */
+	@Override
 	protected <A> List<A> arguments(Function<Argument<?>, A> mapper) {
 		List<Argument<?>> args = new ArrayList<>();
 		args.addAll(extractArgumentDependencies(getConditions().stream()

@@ -67,6 +67,7 @@ public abstract class ResourceAdapter<T extends Object> implements Resource<T> {
 	 * @throws IOException If writing fails
 	 */
 	// TODO  This could be made faster by writing a range of bytes at a time
+	@Override
 	public synchronized void send(IOStreams io) throws IOException {
 		byte[] data = (byte[]) getData();
 		if (data == null) return;

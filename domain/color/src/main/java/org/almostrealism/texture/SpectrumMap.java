@@ -107,6 +107,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 * @param w the depth texture coordinate
 	 * @return the intensity at {@code (u, v, w)}
 	 */
+	@Override
 	public double getIntensity(double u, double v, double w) {
 		return this.map.getIntensity(u, v, w);
 	}
@@ -129,6 +130,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 * @param r the quantile value in [0, 1]
 	 * @return the spectral sample from the configured distribution
 	 */
+	@Override
 	public double getSample(double r) {
 		if (this.spectra != null) {
 			return this.spectra.getSample(r);
@@ -144,6 +146,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 * @param end   the end of the range
 	 * @param p     the probability density for the range
 	 */
+	@Override
 	public void addRange(double start, double end, double p) {
 		if (this.spectra != null) {
 			this.spectra.addRange(start, end, p);
@@ -157,6 +160,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 *
 	 * @return the ranges array, or throws if a separate distribution is set
 	 */
+	@Override
 	protected double[][] getRanges() {
 		if (this.spectra != null) {
 			throw new RuntimeException(new IllegalAccessException("getRanges is protected."));
@@ -171,6 +175,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 * @param index the index of the range to modify
 	 * @param p     the new probability density
 	 */
+	@Override
 	public void setRangeProbability(int index, double p) {
 		if (this.spectra != null) {
 			this.spectra.setRangeProbability(index, p);
@@ -185,6 +190,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 * @param limit the upper bound of integration
 	 * @return the integrated probability up to {@code limit}
 	 */
+	@Override
 	public double integrate(double limit) {
 		if (this.spectra != null) {
 			return this.spectra.integrate(limit);
@@ -198,6 +204,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 *
 	 * @return the integrated {@link RGB} color
 	 */
+	@Override
 	public RGB getIntegrated() {
 		if (this.spectra != null) {
 			return this.spectra.getIntegrated();
@@ -212,6 +219,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 * @param x the domain value at which to evaluate the probability density
 	 * @return the probability density at {@code x}
 	 */
+	@Override
 	public double getProbability(double x) {
 		if (this.spectra != null) {
 			return this.spectra.getProbability(x);
@@ -225,6 +233,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 *
 	 * @return the node count
 	 */
+	@Override
 	public int getNodeCount() {
 		if (this.spectra != null) {
 			return this.spectra.getNodeCount();
@@ -240,6 +249,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 * @param end   the end of the range to test
 	 * @return {@code true} if the range overlaps any existing range
 	 */
+	@Override
 	public boolean contains(double start, double end) {
 		if (this.spectra != null) {
 			return this.spectra.contains(start, end);
@@ -255,6 +265,7 @@ public class SpectrumMap extends ProbabilityDistribution implements IntensityMap
 	 * @param div  the column delimiter used in the file
 	 * @throws IOException if the file cannot be read
 	 */
+	@Override
 	public void loadFromFile(String file, String div) throws IOException {
 		if (this.spectra != null) {
 			this.spectra.loadFromFile(file, div);

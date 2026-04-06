@@ -32,15 +32,12 @@ import org.almostrealism.physics.SphericalAbsorber;
  */
 // TODO  Compute charge based on atomic number
 public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber {
-	/** The atom whose proton cloud this represents. */
-	private final Atom atom;
-
 	/**
 	 * Constructs a proton cloud for the given atom.
 	 *
 	 * @param a  the atom to represent
 	 */
-	public AtomicProtonCloud(Atom a) { this.atom = a; }
+	public AtomicProtonCloud(Atom a) { }
 
 	/**
 	 * Sets the potential map for this proton cloud.
@@ -48,6 +45,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @param m  the potential map to set
 	 */
+	@Override
 	public void setPotentialMap(PotentialMap m) {
 		// TODO Auto-generated method stub
 
@@ -59,6 +57,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @return {@code null}
 	 */
+	@Override
 	public PotentialMap getPotentialMap() {
 		// TODO Auto-generated method stub
 		return null;
@@ -70,6 +69,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @param r  the radius
 	 */
+	@Override
 	public void setRadius(double r) {
 		// TODO Auto-generated method stub
 
@@ -81,6 +81,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @return {@code 0}
 	 */
+	@Override
 	public double getRadius() {
 		// TODO Auto-generated method stub
 		return 0;
@@ -92,6 +93,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @return {@code null}
 	 */
+	@Override
 	public Producer<PackedCollection> getDisplacement() {
 		// TODO Auto-generated method stub
 		return null;
@@ -106,6 +108,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 * @param energy  the photon energy
 	 * @return        {@code false}
 	 */
+	@Override
 	public boolean absorb(Vector x, Vector p, double energy) {
 		// TODO Auto-generated method stub
 		return false;
@@ -117,6 +120,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @return {@code null}
 	 */
+	@Override
 	public Producer<PackedCollection> emit() {
 		// TODO Auto-generated method stub
 		return null;
@@ -128,6 +132,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @return {@code 0}
 	 */
+	@Override
 	public double getEmitEnergy() {
 		// TODO Auto-generated method stub
 		return 0;
@@ -139,6 +144,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @return {@code 0}
 	 */
+	@Override
 	public double getNextEmit() {
 		// TODO Auto-generated method stub
 		return 0;
@@ -150,6 +156,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @param c  the clock to set
 	 */
+	@Override
 	public void setClock(Clock c) {
 		// TODO Auto-generated method stub
 
@@ -161,6 +168,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @return {@code null}
 	 */
+	@Override
 	public Clock getClock() {
 		// TODO Auto-generated method stub
 		return null;
@@ -172,6 +180,7 @@ public class AtomicProtonCloud extends ProtonCloud implements SphericalAbsorber 
 	 *
 	 * @return {@code null}
 	 */
+	@Override
 	public Producer<PackedCollection> getEmitPosition() {
 		// TODO Auto-generated method stub
 		return null;

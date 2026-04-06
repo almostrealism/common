@@ -123,12 +123,11 @@ public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
 	public int GetAverageIndex(ArrayList Al){
 		//First, get the sum
 		double sum=0;
-		double avg=0;
 		for (int i = 0; i < Al.size(); i++){
 			sum += ((double[])Al.get(i))[1];
 		}
 		//Next, get the sum/2
-		avg = sum/2.0;
+		double avg = sum/2.0;
 		
 		//Now, keep on adding up the values until the running total is <= the average
 		int index = 0;
@@ -188,12 +187,12 @@ public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
 			return (double[][]) Value.toArray(new double[0][0]);
 		}
 		if (TempList.size() == 2){
-			Value.add(TempList.get(((int)Math.random()*20) % 2));
+			Value.add(TempList.get((int)(Math.random() * 2)));
 			return (double[][]) Value.toArray(new double[0][0]);
 		}
-		
+
 		if (TempList.size() == 3){
-			Value.add(TempList.get(((int)Math.random()*30) % 3));
+			Value.add(TempList.get((int)(Math.random() * 3)));
 			return (double[][]) Value.toArray(new double[0][0]);
 		}
 		

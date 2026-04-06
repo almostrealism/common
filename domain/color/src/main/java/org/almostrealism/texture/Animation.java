@@ -87,7 +87,7 @@ public abstract class Animation implements Layered<RealizableImage> {
 				try {
 					ImageCanvas.encodeImageFile(r.get(), new File(name), ImageCanvas.JPEGEncoding);
 				} catch (IOException e) {
-					e.printStackTrace();
+					System.err.println(e.getMessage());
 				}
 			}
 		});

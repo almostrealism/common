@@ -39,19 +39,11 @@ import java.util.List;
 
 public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
-	private static final int TEST_BATCH_SIZE = 1;
-	private static final int TEST_SEQ_LEN = 4;
-	private static final int TEST_DIM = 16;
-	private static final int TEST_HEADS = 2;
-	private static final int TEST_DIM_HEAD = TEST_DIM / TEST_HEADS;
-	private static final int TEST_INV_FREQ_SIZE = TEST_DIM_HEAD / 4;
-
 	@Test(timeout = 120000)
 	public void attentionKeys() {
 		int seqLength = 128;
 		int heads = 12;
 		int headSize = 64;
-		int dim = heads * headSize;
 
 		TraversalPolicy inputShape = shape(heads, headSize);
 		TraversalPolicy keyShape = shape(seqLength, heads, headSize);
@@ -656,8 +648,6 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		Model model = new Model(shape(batchSize, seqLen, dim));
 		SequentialBlock main = model.sequential();
 
-		List<PackedCollection> states = new ArrayList<>();
-
 		// Add feed-forward block
 		main.add(gatedLinearFeedForward(
 				shape(batchSize, seqLen, dim),
@@ -753,7 +743,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		PackedCollection w2Weight = referenceData.get("ff.w2_weight");
 		PackedCollection w2Bias = referenceData.get("ff.w2_bias");
 		PackedCollection w3Weight = referenceData.get("ff.w3_weight");
-		PackedCollection w3Bias = referenceData.get("ff.w3_bias");
+		referenceData.get("ff.w3_bias");
 
 		// Rotary embeddings
 		PackedCollection invFreq = referenceData.get("rope.inv_freq");

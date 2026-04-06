@@ -140,6 +140,7 @@ public class HybridScope<T> extends Scope<T> {
 	 *
 	 * <p>Delegates to the embedded {@link ExplicitScope#isInlineable()}.</p>
 	 */
+	@Override
 	public boolean isInlineable() { return explicit.isInlineable(); }
 
 	/**

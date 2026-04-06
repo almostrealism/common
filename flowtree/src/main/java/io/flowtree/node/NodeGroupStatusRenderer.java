@@ -193,7 +193,7 @@ class NodeGroupStatusRenderer {
 	String getStatus(String nl) {
 		if (Message.verbose) System.out.println("NodeGroup: Starting status check.");
 
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		Date now = new Date();
 

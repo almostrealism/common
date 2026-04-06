@@ -120,6 +120,7 @@ public class ChannelAudioNode implements NoteAudioNode {
 	}
 
 	/** Returns the child note audio nodes for this channel. */
+	@Override
 	public List<NoteAudioNode> getChildren() {
 		return children;
 	}

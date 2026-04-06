@@ -47,22 +47,29 @@ public abstract class ProtonCloud implements Absorber, PotentialMap {
 	private double charge = 1.0;
 	
 	/**
+	 * Sets the charge value for this ProtonCloud.
+	 *
 	 * @param c  The charge value to use for this ProtonCloud. (Usually measured
 	 *           in units such that -1.0 is the charge on an electron).
 	 */
 	public void setCharge(double c) { this.charge = c; }
-	
+
 	/**
+	 * Returns the charge value used by this ProtonCloud.
+	 *
 	 * @return c  The charge value used by this ProtonCloud. (Usually measured
 	 *            in units such that -1.0 is the charge on an electron).
 	 */
 	public double getCharge() { return this.charge; }
-	
+
 	/**
+	 * Returns the electrostatic potential at the specified point using Coulomb's law.
+	 *
 	 * @param p  {x, y, z} - A position in space relative to the internal coordinate
 	 *           system for this absorber.
 	 * @return  The potential at the specified point (usually measured in volts).
 	 */
+	@Override
 	public double getPotential(double[] p) {
 		return ProtonCloud.k * this.charge / VectorMath.length(p);
 	}

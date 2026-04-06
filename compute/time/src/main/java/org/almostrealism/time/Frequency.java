@@ -216,5 +216,6 @@ public class Frequency {
 	 *
 	 * @return A string like "440.0Hz"
 	 */
+	@Override
 	public String toString() { return asHertz() + "Hz"; }
 }

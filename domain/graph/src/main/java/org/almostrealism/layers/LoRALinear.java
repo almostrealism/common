@@ -114,11 +114,6 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	/** Fully constructed CellularLayer that backs the forward and backward cells for this LoRA layer. */
 	private final CellularLayer delegate;
 
-	/** The parameter update strategy applied to {@link #loraA} and {@link #loraB} during training. */
-	private ParameterUpdate<PackedCollection> parameterUpdate;
-
-	/** Optional compute requirements forwarded to the delegate layer. */
-	private List<ComputeRequirement> requirements;
 
 	/**
 	 * Creates a LoRA-wrapped linear layer.
@@ -329,7 +324,6 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 
 	@Override
 	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
-		this.parameterUpdate = update;
 		if (delegate instanceof Learning) {
 			((Learning) delegate).setParameterUpdate(update);
 		}
@@ -342,7 +336,6 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	 *                     to use the defaults
 	 */
 	public void setComputeRequirements(List<ComputeRequirement> requirements) {
-		this.requirements = requirements;
 		if (delegate instanceof DefaultCellularLayer) {
 			((DefaultCellularLayer) delegate).setComputeRequirements(requirements);
 		}

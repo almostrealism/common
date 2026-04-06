@@ -73,11 +73,15 @@ public class RigidBodyStateShader<T extends ShaderContext> implements Shader<T>,
 	}
 	
 	/**
+	 * Returns the integer type code for this RigidBodyStateShader object.
+	 *
 	 * @return  The integer type code for this RigidBodyStateShader object.
 	 */
 	public int getType() { return this.type; }
-	
+
 	/**
+	 * Returns the Shader object stored by this RigidBodyStateShader object.
+	 *
 	 * @return  The Shader object stored by this RigidBodyStateShader object.
 	 */
 	public Shader<T> getShader() { return this.shader; }

@@ -106,5 +106,6 @@ public class SubShell {
 	 *
 	 * @return a string in the format "SubShell[n]" where n is the principal quantum number
 	 */
+	@Override
 	public String toString() { return "SubShell[" + o.getPrincipal() + "]"; }
 }

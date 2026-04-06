@@ -91,7 +91,7 @@ import java.util.function.Consumer;
  * <pre>{@code
  * @Override
  * public InstructionSet deliver(Scope scope) {
- *     StringBuffer buf = new StringBuffer();
+ *     StringBuilder buf = new StringBuilder();
  *
  *     // Add FP64 pragma if needed
  *     if (enableFp64) buf.append("#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n");
@@ -320,7 +320,7 @@ public class CLComputeContext extends AbstractComputeContext {
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		long start = System.nanoTime();
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		try {
 			if (enableFp64) buf.append(fp64);

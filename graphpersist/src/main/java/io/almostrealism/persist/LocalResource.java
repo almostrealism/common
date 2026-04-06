@@ -75,9 +75,11 @@ public class LocalResource implements Resource {
 	}
 
 	/** {@inheritDoc} Returns the underlying {@link File} object. */
+	@Override
 	public Object getData() { return this.file; }
 
 	/** {@inheritDoc} Returns the pre-supplied stream if set, otherwise opens a new {@link java.io.FileInputStream}. */
+	@Override
 	public InputStream getInputStream() {
 		if (this.in != null) return in;
 		if (this.file == null) return null;
@@ -90,9 +92,11 @@ public class LocalResource implements Resource {
 	}
 
 	/** {@inheritDoc} Returns the absolute path of the underlying file. */
+	@Override
 	public String getURI() { return this.file.getAbsolutePath(); }
 
 	/** {@inheritDoc} */
+	@Override
 	public Permissions getPermissions() { return permissions; }
 
 	/**
@@ -101,6 +105,7 @@ public class LocalResource implements Resource {
 	 * @param io The IO streams; the input stream is retained for later reading
 	 * @throws IOException If an I/O error occurs
 	 */
+	@Override
 	public void load(IOStreams io) throws IOException {
 		this.in = io.in;
 	}
@@ -115,6 +120,7 @@ public class LocalResource implements Resource {
 	 *
 	 * @throws IOException If the URI cannot be resolved (not thrown currently)
 	 */
+	@Override
 	public void loadFromURI() throws IOException {
 		this.file = new File(this.uri);
 	}
@@ -125,6 +131,7 @@ public class LocalResource implements Resource {
 	 * @param file The destination file path
 	 * @throws IOException If reading or writing fails
 	 */
+	@Override
 	public void saveLocal(String file) throws IOException {
 		InputStream in = this.getInputStream();
 		
@@ -145,6 +152,7 @@ public class LocalResource implements Resource {
 	 * @param io The IO streams whose output stream receives the resource data
 	 * @throws IOException If reading or writing fails
 	 */
+	@Override
 	public void send(IOStreams io) throws IOException {
 		InputStream in = this.getInputStream();
 		
@@ -163,6 +171,7 @@ public class LocalResource implements Resource {
 	 *
 	 * @param uri The new file path URI
 	 */
+	@Override
 	public void setURI(String uri) {
 		this.uri = uri;
 		this.file = new File(this.uri);

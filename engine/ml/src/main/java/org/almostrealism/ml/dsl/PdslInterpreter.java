@@ -554,7 +554,7 @@ public class PdslInterpreter {
 
 		// Try user-defined layers
 		if (layerDefs.containsKey(name)) {
-			return callUserLayer(name, args, env);
+			return callUserLayer(name, args);
 		}
 
 		// Try calling as a method on a value passed as first arg (dot-call syntax)
@@ -970,11 +970,9 @@ public class PdslInterpreter {
 	 *
 	 * @param name          Name of the layer definition to call
 	 * @param evaluatedArgs Already-evaluated argument values
-	 * @param parentEnv     Parent environment (not mutated)
 	 * @return The result of the layer body (typically a {@link Block})
 	 */
-	private Object callUserLayer(String name, List<Object> evaluatedArgs,
-								 Environment parentEnv) {
+	private Object callUserLayer(String name, List<Object> evaluatedArgs) {
 		PdslNode.LayerDef def = layerDefs.get(name);
 		List<PdslNode.Parameter> params = def.getParameters();
 

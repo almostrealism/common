@@ -139,6 +139,7 @@ public class SpectralLineDiagram extends BlackBody {
 		if (this.display != null) return this.display;
 
 		this.display = new JPanel() {
+			@Override
 			public void paint(Graphics g) {
 				SpectralLineDiagram.this.drawImage(g);
 			}

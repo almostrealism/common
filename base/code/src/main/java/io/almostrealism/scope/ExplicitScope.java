@@ -40,7 +40,7 @@ import java.util.stream.Collectors;
 @Deprecated
 public class ExplicitScope<T> extends Scope<T> {
 	/** The raw code accumulated for this scope's body. */
-	private StringBuffer code;
+	private StringBuilder code;
 
 	/** An optional callback that writes the scope body to a {@link CodePrintWriter}. */
 	private Consumer<CodePrintWriter> writer;
@@ -78,7 +78,7 @@ public class ExplicitScope<T> extends Scope<T> {
 	 */
 	public ExplicitScope(String name, OperationMetadata metadata, String code) {
 		super(name, metadata);
-		this.code = new StringBuffer();
+		this.code = new StringBuilder();
 		if (code != null) this.code.append(code);
 	}
 

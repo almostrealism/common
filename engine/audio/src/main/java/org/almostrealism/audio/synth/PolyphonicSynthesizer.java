@@ -561,6 +561,7 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 	/**
 	 * Resets all voices to initial state.
 	 */
+	@Override
 	public void reset() {
 		allNotesOff();
 		for (AudioSynthesizer voice : voices) {

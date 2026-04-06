@@ -37,9 +37,6 @@ public class AutomationManager implements Setup, CellFeatures {
 	/** Number of gene loci per automation gene (phase and magnitude for each period tier). */
 	public static final int GENE_LENGTH = 6;
 
-	/** Source chromosome providing automation gene parameters. */
-	private final ProjectedChromosome chromosome;
-
 	/** Clock cell providing the current playback frame position. */
 	private final TimeCell clock;
 
@@ -68,7 +65,6 @@ public class AutomationManager implements Setup, CellFeatures {
 	 */
 	public AutomationManager(ProjectedChromosome chromosome, TimeCell clock,
 							 DoubleSupplier measureDuration, int sampleRate) {
-		this.chromosome = chromosome;
 		this.clock = clock;
 		this.measureDuration = measureDuration;
 		this.sampleRate = sampleRate;

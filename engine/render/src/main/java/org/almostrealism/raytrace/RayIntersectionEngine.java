@@ -59,8 +59,6 @@ public class RayIntersectionEngine implements Engine {
 	private Scene<? extends ShadableSurface> scene;
 	/** Shader parameters providing additional context for shading calculations. */
 	private ShaderContext sparams;
-	/** Fog parameters for atmospheric scattering effects. */
-	private FogParameters fparams;
 	
 	/**
 	 * Constructs a new {@link RayIntersectionEngine} for the given scene.
@@ -70,7 +68,6 @@ public class RayIntersectionEngine implements Engine {
 	 */
 	public RayIntersectionEngine(Scene<? extends ShadableSurface> s, FogParameters fparams) {
 		this.scene = s;
-		this.fparams = fparams;
 	}
 
 	/**

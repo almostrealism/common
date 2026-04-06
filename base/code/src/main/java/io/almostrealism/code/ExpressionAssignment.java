@@ -148,6 +148,7 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	 *
 	 * @return a mutable list of all variable dependencies
 	 */
+	@Override
 	public List<Variable<?, ?>> getDependencies() {
 		List<Variable<?, ?>> deps = new ArrayList<>();
 		if (destination != null) deps.addAll(destination.getDependencies());

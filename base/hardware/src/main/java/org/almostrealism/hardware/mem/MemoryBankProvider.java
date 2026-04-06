@@ -142,6 +142,7 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 	 * @param size Requested bank size
 	 * @return Existing or newly created {@link MemoryBank}
 	 */
+	@Override
 	public MemoryBank<T> apply(int size) {
 		if (lastSize == size && last != null && last.getMem() != null) {
 			return last;

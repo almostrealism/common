@@ -23,6 +23,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
+ * Models the valence-shell electrons of an atomic substance by sampling one or more
+ * constructed {@link Atom} instances and aggregating their valence electron groups.
+ *
  * @author  Michael Murray
  */
 public class Valence {

@@ -229,13 +229,11 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 
 		int totalFrames = (int) (durationSeconds * SAMPLE_RATE);
 
-		long startTime = System.nanoTime();
 		cells.setup().get().run();
 		Runnable tick = cells.tick().get();
 		for (int i = 0; i < totalFrames; i++) {
 			tick.run();
 		}
-		long totalTime = System.nanoTime() - startTime;
 
 		output.write().get().run();
 

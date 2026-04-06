@@ -111,7 +111,11 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 	/** Returns the focal length of this {@link PinholeCamera} as a double value. */
 	public double getFocalLength() { return this.focalLength; }
 	
-	/** @return  { Horizontal FOV, Vertical FOV }, measured in radians. */
+	/**
+	 * Returns the horizontal and vertical fields of view in radians.
+	 *
+	 * @return  { Horizontal FOV, Vertical FOV }, measured in radians.
+	 */
 	public double[] getFOV() {
 		return new double [] { getHorizontalFOV(), getVerticalFOV() };
 	}
@@ -188,6 +192,7 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 	 *
 	 * @return a descriptive string for this PinholeCamera
 	 */
+	@Override
 	public String toString() {
 		return "PinholeCamera - " +
 				getLocation() + " " +

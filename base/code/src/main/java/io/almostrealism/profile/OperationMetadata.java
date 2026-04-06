@@ -222,6 +222,7 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	public void setSignature(String signature) { this.signature = signature; }
 
 	/** Returns the child metadata list, or {@code null} if this is a leaf. */
+	@Override
 	public List<OperationMetadata> getChildren() { return children; }
 
 	/** Sets the child metadata list. */

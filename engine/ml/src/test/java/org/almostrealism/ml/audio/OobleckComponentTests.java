@@ -43,7 +43,6 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	private static final int BATCH_SIZE = 1;
 	private static final int CHANNELS_SMALL = 128;
-	private static final int CHANNELS_LARGE = 1024;
 
 	/**
 	 * Helper to time and report component performance.

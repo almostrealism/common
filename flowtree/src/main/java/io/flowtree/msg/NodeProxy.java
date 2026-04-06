@@ -278,18 +278,6 @@ public class NodeProxy implements Proxy, Runnable {
 	private boolean useQueue = true;
 
 	/**
-	 * Count of callers currently blocked inside {@link #waitForMessage}. Used
-	 * only for diagnostic logging inside {@link #storeMessage}.
-	 */
-	private int mwait;
-
-	/**
-	 * Count of callers currently blocked inside {@link #waitFor}. Used only for
-	 * diagnostic logging.
-	 */
-	private int owait;
-
-	/**
 	 * Number of consecutive reset attempts made since the last successful stream
 	 * read. When this reaches 3 the reader loop exits and the socket is closed.
 	 */
@@ -301,9 +289,6 @@ public class NodeProxy implements Proxy, Runnable {
 	 * verify the peer is still alive.
 	 */
 	private int nullCount;
-
-	/** Cumulative count of all messages received since this proxy was created. */
-	private int totalMsgIn;
 
 	/**
 	 * Count of messages received since the last call to {@link #getInputRate()}.
@@ -490,6 +475,8 @@ public class NodeProxy implements Proxy, Runnable {
 	}
 	
 	/**
+	 * Writes the given object to the output stream, optionally queuing it for deferred delivery.
+	 *
 	 * @see Proxy#writeObject(java.lang.Object, int)
 	 * @throws IllegalArgumentException  If the object is not an instance of Message or Query.
 	 * @throws IOException  If an IOException occurs while writing to the output stream.
@@ -749,29 +736,26 @@ public class NodeProxy implements Proxy, Runnable {
 	 * @return  Object received, null if wait times out.
 	 */
 	public Object waitFor(final int id, int timeout) {
-		this.owait++;
 		long start = System.currentTimeMillis();
-		
-		i: for (int i = 0; ; i++) {
+
+		i: for (;;) {
 			try {
 				Thread.sleep(NodeProxy.sleep);
 			} catch (InterruptedException ie) {
 				this.println(ie.toString());
 			}
-			
+
 			Object o = this.nextObject(id);
 			if (o != null) {
-				this.owait--;
 				this.println("waitFor: Returning " + o, true);
 				return o;
 			}
-			
+
 			if (System.currentTimeMillis() - start > timeout) break;
 		}
-		
-		this.owait--;
+
 		this.println("waitFor: timout.", true);
-		
+
 		return null;
 	}
 	
@@ -785,27 +769,24 @@ public class NodeProxy implements Proxy, Runnable {
 	 * @return  Object received, null if wait times out.
 	 */
 	public Object waitForMessage(final int type, final String data, long timeout) {
-		this.mwait++;
 		long start = System.currentTimeMillis();
-		
-		i: for (int i = 0; ; i++) {
+
+		i: for (;;) {
 			try {
 				Thread.sleep(NodeProxy.sleep);
 			} catch (InterruptedException ie) {
 				this.println(ie.toString());
 			}
-			
+
 			Object o = this.nextMessage(type, data);
 			if (o != null) {
-				this.mwait--;
 				this.println("waitForMessage: Returning " + o, true);
 				return o;
 			}
-			
+
 			if (System.currentTimeMillis() - start > timeout) break;
 		}
-		
-		this.mwait--;
+
 		this.println("waitForMessage: timeout.", true);
 		
 		return null;
@@ -911,6 +892,9 @@ public class NodeProxy implements Proxy, Runnable {
 	}
 	
 	/**
+	 * Returns the average number of messages received per minute since the last time
+	 * this method was called.
+	 *
 	 * @return  The average number of messages received per minute since
 	 *          the last time this method was called.
 	 */
@@ -1125,6 +1109,7 @@ public class NodeProxy implements Proxy, Runnable {
 			ThreadGroup g = null;
 			if (cl != null) g = cl.getServer().getThreadGroup();
 			this.pingThread = new Thread(g, new Runnable() {
+				@Override
 				public void run() {
 					NodeProxy.this.println("Starting routine ping...", true);
 					NodeProxy.this.pingStat = NodeProxy.this.ping(500, 5000, 20);
@@ -1294,7 +1279,6 @@ public class NodeProxy implements Proxy, Runnable {
 					if (ext instanceof Message) {
 						Message m = (Message) ext;
 						
-						this.totalMsgIn++;
 						this.currentMsgIn++;
 						this.nullCount = 0;
 						this.fireReceivedMessage(m, m.getReceiver());
@@ -1339,7 +1323,7 @@ public class NodeProxy implements Proxy, Runnable {
 			} catch (ClassNotFoundException cnf) {
 				this.println(cnf.toString());
 			} catch (Exception e) {
-				e.printStackTrace();
+				System.err.println("NodeProxy (" + this + "): Unexpected error in reader loop: " + e);
 			}
 		}
 		

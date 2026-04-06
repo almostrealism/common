@@ -84,5 +84,6 @@ public class OvertoneSeries implements RelativeFrequencySet {
 		};
 	}
 
+	@Override
 	public int count() { return subCount + superCount + inharmonicCount + 1; }
 }

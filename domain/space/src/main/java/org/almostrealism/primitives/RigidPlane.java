@@ -35,15 +35,6 @@ public class RigidPlane extends Plane implements RigidBody {
 	/** The current rigid-body simulation state (position, velocity, forces). */
 	private final State state;
 
-	/** Rotation matrix around the X axis derived from the current orientation. */
-	private TransformMatrix rotateXMatrix;
-
-	/** Rotation matrix around the Y axis derived from the current orientation. */
-	private TransformMatrix rotateYMatrix;
-
-	/** Rotation matrix around the Z axis derived from the current orientation. */
-	private TransformMatrix rotateZMatrix;
-
 	/** Constructs a default {@link RigidPlane} at the origin with zero velocity and unit mass. */
 	public RigidPlane() {
 		this(new Vector(0.0, 0.0, 0.0),
@@ -84,6 +75,7 @@ public class RigidPlane extends Plane implements RigidBody {
 	/**
 	 * @see  RigidBody#intersect(RigidBody)
 	 */
+	@Override
 	public Vector[] intersect(RigidBody b) {
 		if (b instanceof RigidSphere) {
 			State s = b.getState();
@@ -105,12 +97,14 @@ public class RigidPlane extends Plane implements RigidBody {
 	/**
 	 * @see  RigidBody#draw(Camera, Graphics, double, double, double)
 	 */
+	@Override
 	public void draw(Camera c, Graphics g, double ox, double oy, double scale) {
 	}
 	
 	/**
 	 * @see  RigidBody#updateModel()
 	 */
+	@Override
 	public void updateModel() {
 		// Vector rn = super.r.divide(super.r.length());
 		
@@ -122,5 +116,6 @@ public class RigidPlane extends Plane implements RigidBody {
 	}
 	
 	/** Returns the current rigid-body simulation state. */
+	@Override
 	public State getState() { return this.state; }
 }

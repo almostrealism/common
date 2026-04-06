@@ -195,7 +195,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				}
 
 				long onsetTicks = framesToTicks(context.frameForPosition(actualPosition), sampleRate);
-				long durationTicks = computeDurationTicks(element, relativePosition, context);
+				long durationTicks = computeDurationTicks(element, context);
 				int pitch = keys.isEmpty() ? 0 : resolvePitch(keys.get(0));
 				events.add(new MidiNoteEvent(pitch, onsetTicks, durationTicks, velocity, instrument));
 			} else if (this == CHORD) {
@@ -204,7 +204,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 					int keyIndex = Math.min((int) (p * keys.size()), keys.size() - 1);
 
 					long onsetTicks = framesToTicks(context.frameForPosition(actualPosition), sampleRate);
-					long durationTicks = computeDurationTicks(element, relativePosition, context);
+					long durationTicks = computeDurationTicks(element, context);
 					int pitch = resolvePitch(keys.get(keyIndex));
 					events.add(new MidiNoteEvent(pitch, onsetTicks, durationTicks, velocity, instrument));
 
@@ -216,7 +216,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 
 				int keyIndex = Math.min((int) (p * keys.size()), keys.size() - 1);
 				long onsetTicks = framesToTicks(context.frameForPosition(actualPosition), sampleRate);
-				long durationTicks = computeDurationTicks(element, relativePosition, context);
+				long durationTicks = computeDurationTicks(element, context);
 				int pitch = resolvePitch(keys.get(keyIndex));
 				events.add(new MidiNoteEvent(pitch, onsetTicks, durationTicks, velocity, instrument));
 			}
@@ -264,7 +264,6 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 	 * duration is used as a fallback.</p>
 	 */
 	private static long computeDurationTicks(PatternElement element,
-											  double relativePosition,
 											  AudioSceneContext context) {
 		double durationMeasures;
 

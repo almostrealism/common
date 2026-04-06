@@ -147,6 +147,7 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 	 *
 	 * @return the operation metadata
 	 */
+	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override

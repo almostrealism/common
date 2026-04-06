@@ -67,7 +67,7 @@ public class ScheduledJobNode extends Node {
 	public int addJob(Job j) {
 		if (j instanceof FixedRate) {
 			FixedRate r = (FixedRate) j;
-			ScheduledFuture f = exec.scheduleAtFixedRate(j, r.getInitialDelay(),
+			exec.scheduleAtFixedRate(j, r.getInitialDelay(),
 									(long) (1000.0 / r.getFrequency().asHertz()),
 									TimeUnit.MILLISECONDS);
 			// TODO  Do something with f

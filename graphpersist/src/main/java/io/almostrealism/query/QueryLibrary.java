@@ -166,6 +166,7 @@ public class QueryLibrary<D> {
 		 * @param o The object to compare to
 		 * @return {@code true} if both types match
 		 */
+		@Override
 		public boolean equals(Object o) {
 			if (!(o instanceof KeyValueTypes)) return false;
 			
@@ -180,6 +181,7 @@ public class QueryLibrary<D> {
 					((KeyValueTypes) o).valueType.equals(valueType);
 		}
 		
+		@Override
 		public int hashCode() { return valueType.hashCode(); }
 	}
 }

@@ -103,7 +103,7 @@ class NodeGroupMessageHandler {
 		} else if (type == Message.StringMessage) {
 			System.out.println("Message from " + p.toString() + ": " + m.getData());
 		} else if (type == Message.ConnectionRequest) {
-			handleConnectionRequest(m, p, remoteId);
+			handleConnectionRequest(p, remoteId);
 		} else if (type == Message.ConnectionConfirmation) {
 			handleConnectionConfirmation(m, p, remoteId);
 		} else if (type == Message.ServerStatus) {
@@ -135,11 +135,10 @@ class NodeGroupMessageHandler {
 	 * available node (falling back to the relay node), constructing a
 	 * {@link Connection}, and sending back a {@link Message#ConnectionConfirmation}.
 	 *
-	 * @param m        The incoming connection-request message.
 	 * @param p        The {@link NodeProxy} that delivered the message.
 	 * @param remoteId The sender's node ID, used when replying.
 	 */
-	private void handleConnectionRequest(Message m, NodeProxy p, int remoteId) {
+	private void handleConnectionRequest(NodeProxy p, int remoteId) {
 		try {
 			Node n = group.getLeastConnectedNode();
 			if (n == null) {
@@ -260,7 +259,7 @@ class NodeGroupMessageHandler {
 
 			NodeProxy[] svs = group.getServers();
 
-			StringBuffer b = new StringBuffer();
+			StringBuilder b = new StringBuilder();
 			b.append("peers:");
 			boolean f = false;
 			int j = 0;

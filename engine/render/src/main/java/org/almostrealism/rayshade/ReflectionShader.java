@@ -262,11 +262,15 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	public void setEnvironmentMap(Texture map) { this.eMap = map; }
 	
 	/**
+	 * Returns the reflectivity value used by this ReflectionShader object.
+	 *
 	 * @return  The reflectivity value used by this ReflectionShader object.
 	 */
 	public double getReflectivity() { return this.reflectivity; }
-	
+
 	/**
+	 * Returns the blur factor used by this ReflectionShader object.
+	 *
 	 * @return  The blur factor used by this ReflectionShader object.
 	 */
 	public double getBlur() { return this.blur; }
@@ -278,12 +282,15 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	public Producer<PackedCollection> getReflectiveColor() { return this.reflectiveColor; }
 	
 	/**
+	 * Returns the Texture object used as an environment map for this ReflectionShader object.
+	 *
 	 * @return  The Texture object used as an environment map for this ReflectionShader object.
 	 */
 	public Texture getEnvironmentMap() { return this.eMap; }
-	
+
 	/**
 	 * Returns "Reflection Shader".
 	 */
+	@Override
 	public String toString() { return "Reflection Shader"; }
 }

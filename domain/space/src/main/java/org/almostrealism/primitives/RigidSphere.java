@@ -48,15 +48,6 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	/** World-space vertex positions arranged on the sphere surface for particle rendering. */
 	private final double[][] vertices;
 
-	/** Rotation matrix around the X axis derived from the current orientation. */
-	private TransformMatrix rotateXMatrix;
-
-	/** Rotation matrix around the Y axis derived from the current orientation. */
-	private TransformMatrix rotateYMatrix;
-
-	/** Rotation matrix around the Z axis derived from the current orientation. */
-	private TransformMatrix rotateZMatrix;
-	
 	/**
 	 * Constructs a new Sphere object using (0.0, 0.0, 0.0) for all vector values
 	 * 1.0 for mass, 1.0 for the coefficient of restitution, and 4 for the radial sample.
@@ -114,6 +105,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	 * Updates the inertia tensor, rotation matrices, vertex positions, and
 	 * associated light location/size to reflect the current state.
 	 */
+	@Override
 	public void updateModel() {
 		double r = super.getSize();
 		double a = (2.0 / 5.0) * this.state.mass * r * r;
@@ -122,12 +114,6 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 														{0.0, a, 0.0, 0.0},
 														{0.0, 0.0, a, 0.0},
 														{0.0, 0.0, 0.0, 1.0}});
-		
-		Vector rn = this.state.r.divide(this.state.r.length());
-		
-		this.rotateXMatrix = TransformMatrix.createRotateXMatrix(Math.acos(rn.getX()));
-		this.rotateYMatrix = TransformMatrix.createRotateYMatrix(Math.acos(rn.getY()));
-		this.rotateZMatrix = TransformMatrix.createRotateZMatrix(Math.acos(rn.getZ()));
 		
 		super.setLocation(this.state.x);
 		
@@ -183,6 +169,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	 * @param b the other rigid body to test against
 	 * @return a two-element array {@code {contactPoint, normal}} if intersecting, or an empty array
 	 */
+	@Override
 	public Vector[] intersect(RigidBody b) {
 		double r = super.getSize();
 		
@@ -267,11 +254,14 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	}
 	
 	/**
+	 * Returns the {@link SphericalLight} object stored by this Sphere object.
+	 *
 	 * @return  The SphericalLight object stored by this Sphere object.
 	 */
 	public SphericalLight getLight() { return this.light; }
-	
+
 	/** @see SurfaceLight#getSamples(int) */
+	@Override
 	public Light[] getSamples(int samples) {
 		if (this.light == null)
 			return new Light[0];
@@ -280,6 +270,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	}
 	
 	/** @see SurfaceLight#getSamples() */
+	@Override
 	public Light[] getSamples() {
 		if (this.light == null)
 			return new Light[0];
@@ -288,8 +279,10 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	}
 	
 	/** @see org.almostrealism.color.Light#setIntensity(double) */
+	@Override
 	public void setIntensity(double intensity) { if (this.light != null) this.light.setIntensity(intensity); }
-	
+
 	/** @see org.almostrealism.color.Light#getIntensity() */
+	@Override
 	public double getIntensity() { return this.light == null ? 0.0 : this.light.getIntensity(); }
 }

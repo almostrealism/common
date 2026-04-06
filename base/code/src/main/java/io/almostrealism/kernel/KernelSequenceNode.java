@@ -44,14 +44,8 @@ import java.util.stream.Collectors;
  * entire expression for every combination.</p>
  */
 public class KernelSequenceNode implements Tree<KernelSequenceNode> {
-	/** The name of the non-kernel index variable that this node branches on, or {@code null} for leaves. */
-	private String index;
-
 	/** Child nodes, one per value of the index variable; {@code null} for leaf nodes. */
 	private KernelSequenceNode children[];
-
-	/** The sequence stored at this leaf node; {@code null} for internal nodes. */
-	private IndexSequence sequence;
 
 	/**
 	 * Creates an internal node that branches on the given index name.
@@ -60,7 +54,6 @@ public class KernelSequenceNode implements Tree<KernelSequenceNode> {
 	 * @param children one child per possible value of the index
 	 */
 	protected KernelSequenceNode(String index, KernelSequenceNode[] children) {
-		this.index = index;
 		this.children = children;
 	}
 
@@ -70,7 +63,6 @@ public class KernelSequenceNode implements Tree<KernelSequenceNode> {
 	 * @param sequence the kernel sequence for this leaf
 	 */
 	protected KernelSequenceNode(IndexSequence sequence) {
-		this.sequence = sequence;
 	}
 
 	/** {@inheritDoc} */

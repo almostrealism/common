@@ -72,7 +72,7 @@ import java.util.function.BiConsumer;
  * controller.loadConfig(new File("workstreams.yaml"));
  *
  * // Or configure programmatically
- * SlackWorkstream workstream = new SlackWorkstream("C0123456789", "#project-agent");
+ * Workstream workstream = new Workstream("C0123456789", "#project-agent");
  * workstream.addAgent("localhost", 7766);
  * workstream.setDefaultBranch("feature/work");
  * controller.registerWorkstream(workstream);
@@ -84,7 +84,7 @@ import java.util.function.BiConsumer;
  * @author Michael Murray
  * @see SlackListener
  * @see SlackNotifier
- * @see SlackWorkstream
+ * @see Workstream
  */
 public class FlowTreeController implements ConsoleFeatures {
 
@@ -126,8 +126,6 @@ public class FlowTreeController implements ConsoleFeatures {
     /** Managed MCP server subprocesses started by the controller (legacy, currently unused). */
     private List<Process> mcpProcesses = new ArrayList<>();
 
-    /** Optional simulator callback used by tests to capture outgoing Slack messages. */
-    private BiConsumer<String, String> eventSimulator;
     /** True when tokens are absent and the controller runs without a live Slack connection. */
     private boolean simulationMode = false;
 
@@ -217,7 +215,7 @@ public class FlowTreeController implements ConsoleFeatures {
             log("Generated workstream IDs and saved to " + configFile.getName());
         }
 
-        for (SlackWorkstream workstream : config.toWorkstreams()) {
+        for (Workstream workstream : config.toWorkstreams()) {
             registerWorkstream(workstream);
         }
         log("Loaded " + config.getWorkstreams().size() +
@@ -310,7 +308,7 @@ public class FlowTreeController implements ConsoleFeatures {
      */
     public void loadConfigFromYaml(String yaml) throws IOException {
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        for (SlackWorkstream workstream : config.toWorkstreams()) {
+        for (Workstream workstream : config.toWorkstreams()) {
             registerWorkstream(workstream);
         }
     }
@@ -339,7 +337,7 @@ public class FlowTreeController implements ConsoleFeatures {
                 listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
             }
 
-            for (SlackWorkstream workstream : config.toWorkstreams()) {
+            for (Workstream workstream : config.toWorkstreams()) {
                 registerWorkstream(workstream);
             }
             log("Reloaded " + config.getWorkstreams().size() +
@@ -354,7 +352,7 @@ public class FlowTreeController implements ConsoleFeatures {
      *
      * @param workstream the workstream configuration
      */
-    public void registerWorkstream(SlackWorkstream workstream) {
+    public void registerWorkstream(Workstream workstream) {
         listener.registerWorkstream(workstream);
         log("Registered workstream: " + workstream.getChannelName());
     }
@@ -859,7 +857,7 @@ public class FlowTreeController implements ConsoleFeatures {
             log("API endpoint: http://localhost:" + apiEndpoint.getListeningPort());
         }
         log("Registered workstreams: " + listener.getWorkstreams().size());
-        for (SlackWorkstream ws : listener.getWorkstreams().values()) {
+        for (Workstream ws : listener.getWorkstreams().values()) {
             log("  - " + ws.getChannelName() + " (" + ws.getChannelId() + ")");
             if (ws.getDefaultBranch() != null) {
                 log("    Branch: " + ws.getDefaultBranch());
@@ -935,7 +933,6 @@ public class FlowTreeController implements ConsoleFeatures {
      * @param simulator callback receiving (channelId, message) for outgoing messages
      */
     public void setEventSimulator(BiConsumer<String, String> simulator) {
-        this.eventSimulator = simulator;
         notifier.setMessageCallback(json -> {
             String channel = extractJsonField(json, "channel");
             String text = extractJsonField(json, "text");
@@ -1066,7 +1063,7 @@ public class FlowTreeController implements ConsoleFeatures {
             controller.loadConfig(new File(configFile));
         } else if (channelId != null && !channelId.isEmpty()) {
             // Single workstream from environment/args
-            SlackWorkstream workstream = new SlackWorkstream(
+            Workstream workstream = new Workstream(
                 channelId,
                 channelName != null ? channelName : channelId
             );

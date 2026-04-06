@@ -2,7 +2,6 @@ package org.almostrealism.generated;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -16,7 +15,7 @@ public class JavaFileGenerator {
 	public static final int count = 1000;
 
 	public static void main(String[] args) {
-		StringBuffer template = new StringBuffer();
+		StringBuilder template = new StringBuilder();
 
 		try (BufferedReader in = new BufferedReader(new InputStreamReader(new FileInputStream("src/main/resources/generated.javatemplate")))) {
 			String line = null;
@@ -26,7 +25,7 @@ public class JavaFileGenerator {
 				template.append("\n");
 			}
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new RuntimeException(e.getMessage(), e);
 		}
 
 		System.out.println("Loaded template");
@@ -40,14 +39,12 @@ public class JavaFileGenerator {
 	}
 
 	public static void save(String location, String output) {
-		File file;
-
 		try (BufferedWriter out = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(location)))) {
 			out.write(output);
 		} catch (FileNotFoundException e) {
-			e.printStackTrace();
+			throw new RuntimeException(e.getMessage(), e);
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new RuntimeException(e.getMessage(), e);
 		}
 	}
 }

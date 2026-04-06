@@ -330,7 +330,6 @@ public class Interpolate extends CollectionProducerComputationBase {
 
 		String res = getArgument(0).reference(kernel(context)).getSimpleExpression(getLanguage());
 		String start = "0";
-		String end = getArgument(1).length().getSimpleExpression(getLanguage());
 		Expression<Double> rate = getRate();
 
 		String bankl_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(left)).getSimpleExpression(getLanguage());

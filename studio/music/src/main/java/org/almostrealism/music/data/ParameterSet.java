@@ -16,8 +16,6 @@
 
 package org.almostrealism.music.data;
 
-import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.Gene;
 
@@ -97,9 +95,6 @@ public class ParameterSet {
 	 * @return a new instance with values from the gene
 	 */
 	public static ParameterSet fromGene(Gene<PackedCollection> gene) {
-		CollectionProducer one =
-				CollectionFeatures.getInstance().c(1.0);
-
 		ParameterSet params = new ParameterSet();
 		params.setX(gene.getResultant(0, null).evaluate().toDouble());
 		params.setY(gene.getResultant(1, null).evaluate().toDouble());

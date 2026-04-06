@@ -90,10 +90,11 @@ for i, m in enumerate(matches):
     end = matches[i+1].start() if i+1 < len(matches) else len(content)
     jobs[job_name] = content[start:end]
 
-# Find jobs that upload coverage-* artifacts
+# Find jobs that upload coverage-* artifacts (excluding coverage-report,
+# which is the merged output produced by analysis itself, not an input to it).
 coverage_uploaders = []
 for job_name, body in jobs.items():
-    if 'upload-artifact' in body and re.search(r'name:\s*coverage-', body):
+    if 'upload-artifact' in body and re.search(r'name:\s*coverage-(?!report)', body):
         coverage_uploaders.append(job_name)
 
 # Find the analysis job's needs

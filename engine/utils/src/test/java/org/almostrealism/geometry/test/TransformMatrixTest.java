@@ -761,7 +761,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		CollectionProducer vec4 = concat(shape(4), input, c(1.0));
 
 		// Constant row: [1, 0, 0, -2] (like first row of translation matrix)
-		CollectionProducer row = c(new PackedCollection(shape(4)));
+		c(new PackedCollection(shape(4)));
 		// Need to set the data
 		PackedCollection rowData = new PackedCollection(shape(4));
 		rowData.setMem(0, new double[]{1.0, 0.0, 0.0, -2.0});

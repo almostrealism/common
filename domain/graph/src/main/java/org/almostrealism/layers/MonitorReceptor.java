@@ -62,8 +62,6 @@ public class MonitorReceptor implements Receptor<PackedCollection>, ConsoleFeatu
 	/** An optional consumer that receives the evaluated output for custom inspection. */
 	private final Consumer<PackedCollection> op;
 
-	/** Optional reference collections stored alongside this monitor (currently unused in push). */
-	private final PackedCollection[] data;
 
 	/**
 	 * Creates a monitor with a custom consumer and no shape metadata.
@@ -111,7 +109,6 @@ public class MonitorReceptor implements Receptor<PackedCollection>, ConsoleFeatu
 		this.inputShape = inputShape;
 		this.outputShape = outputShape;
 		this.op = op;
-		this.data = data;
 	}
 
 	/**

@@ -45,7 +45,6 @@ public class TraversableExpressionComputationTest extends TestSuiteBase {
 	 * <p>The computation takes a 2D input collection and produces a 1D output where
 	 * each element is the sum of two adjacent elements from the input row.
 	 *
-	 * @param <T> The type of {@link PackedCollection} to process
 	 * @param a   The input producer providing the collection to process
 	 * @return A computation that sums pairs of elements
 	 */

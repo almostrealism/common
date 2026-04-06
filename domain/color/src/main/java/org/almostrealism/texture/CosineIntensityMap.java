@@ -101,6 +101,7 @@ public class CosineIntensityMap implements IntensityMap {
 	 * @param w the depth texture coordinate
 	 * @return the intensity in [0, 1]
 	 */
+	@Override
 	public double getIntensity(double u, double v, double w) {
 		double z = this.map.getIntensity(this.tau * u, this.tau * v, this.tau * w);
 		double t = 1 + Math.cos(Math.min(this.alpha * v + this.beta * z, 2.0 * Math.PI));

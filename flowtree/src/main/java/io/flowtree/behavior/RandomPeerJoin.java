@@ -53,6 +53,7 @@ public class RandomPeerJoin implements ServerBehavior {
 	 * @param s   the {@link Server} whose peer connections should be modified
 	 * @param out print stream for diagnostic and status messages
 	 */
+	@Override
 	public void behave(Server s, PrintStream out) {
 		try {
 			int i = Node.random.nextInt(s.getPeers().length);

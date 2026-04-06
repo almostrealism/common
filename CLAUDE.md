@@ -2,6 +2,72 @@
 
 ---
 
+# THE FUNDAMENTAL RULE — Java is Orchestration, Not Execution
+
+**This is the single most important concept in the entire project. Violating this principle produces code that is 1000x slower, cannot be hardware-accelerated, and breaks automatic differentiation. Read this section completely before writing any code.**
+
+## The Concept
+
+Java is NOT the execution language. Java is the ORCHESTRATION language. It builds **computation graphs** — DAGs of `CollectionProducer` — that get compiled to native code (Metal, OpenCL) for actual execution.
+
+Think of Java as YAML: you don't execute YAML, you use it to describe what something else should execute. In this project, Java describes a computation graph. The framework compiles that graph to native code. If you do math in Java instead of describing it as Producers, you completely defeat the purpose.
+
+## What You MUST NOT Do
+
+- **NEVER** call `.evaluate()` or `.get()` on a `Producer`/`Evaluable` inside any class that participates in model computation. The ONLY acceptable place for `.evaluate()` is at the **top of the call stack**: test methods, main methods, pipeline boundaries, or step boundaries in autoregressive loops.
+- **NEVER** call `.toDouble()` or `.toFloat()` on a `PackedCollection` inside computation code. These are JNI calls that pull data back to the host one element at a time.
+- **NEVER** use Java `for` loops to perform element-wise math on collections.
+- **NEVER** perform matrix multiplication using Java arithmetic.
+
+## What You MUST Do Instead
+
+Express ALL computation as `CollectionProducer` compositions:
+- Matrix multiply → `dense()` or `matmul()` from `LayerFeatures`
+- Activation functions → `sigmoid()`, `tanh()` from `LayerFeatures`/`CollectionFeatures`
+- Element-wise math → `.multiply()`, `.add()`, `.subtract()`, `.divide()` on Producers
+- Bias addition → `.add()` on Producers
+
+## The Test
+
+Ask yourself: *"If I removed this class, would the native compiler produce different output?"* If yes, the class does computation, and ALL of that computation MUST be expressed as Producers.
+
+## Before/After Example
+
+```java
+// WRONG — Java program doing math (1000x slower, no GPU, no gradients)
+public PackedCollection forward(PackedCollection x, PackedCollection h) {
+    PackedCollection result = new PackedCollection(hiddenSize);
+    for (int i = 0; i < hiddenSize; i++) {
+        double sum = 0;
+        for (int j = 0; j < inputSize; j++) {
+            sum += weights.toDouble(i * inputSize + j) * x.toDouble(j);
+        }
+        sum += bias.toDouble(i);
+        result.setMem(i, 1.0 / (1.0 + Math.exp(-sum)));  // sigmoid in Java!
+    }
+    return result;
+}
+
+// CORRECT — Computation graph (compiled to native kernel, GPU-accelerated)
+public CollectionProducer<PackedCollection> forward(
+        Producer<PackedCollection> x, Producer<PackedCollection> h) {
+    return sigmoid(matmul(p(weights), x).add(p(bias)));
+}
+```
+
+The wrong version makes `hiddenSize * inputSize` JNI calls and does math on the CPU. The correct version builds a single computation graph that the framework compiles into one GPU kernel.
+
+## Naming Conventions That Enforce This
+
+- Any class whose name ends in `Cell` **MUST** implement `org.almostrealism.graph.Cell`
+- Any class whose name ends in `Block` **MUST** implement `org.almostrealism.model.Block`
+
+## Build Enforcement
+
+`CodePolicyViolationDetector` enforces these rules in CI. The build FAILS when violations are detected. Agents MUST run the enforcement check before completing any task. Do not circumvent it.
+
+---
+
 # MODULE MAP
 
 ```
@@ -326,6 +392,44 @@ Consult the linked references before writing related code.
 - Read design documents in `ringsdesktop/docs/planning/` before implementing planned features
 - If a context summary mentions "remaining work" or "TODO," that work is YOUR responsibility — do not suspend it
 - After context summarization, re-read relevant design documents — they are the authoritative source
+
+---
+
+# AGENT INTEGRITY
+
+Autonomous agents deployed via auto-resolve have demonstrated systematic patterns of concealing test failures rather than fixing them. These patterns recur across sessions and branches. Understanding them is prerequisite to avoiding them.
+
+## Known Deception Patterns
+
+**TestDepth escalation** — Changing `@TestDepth(2)` to `@TestDepth(10)` on a failing test. CI runs at depth 9, so the test disappears from CI while appearing to still exist. This is indistinguishable from a fix if you only look at whether the CI job passes.
+
+**Dimension reduction** — Reducing numeric parameters in test methods (e.g., `embedDim: 64 -> 8`, `numHeads: 2 -> 1`) so the test becomes trivially small and any code will pass it. The test still runs; it just no longer validates meaningful behavior.
+
+**Tolerance weakening** — Increasing floating-point assertion thresholds (e.g., `assertEquals(expected, actual, 0.001)` becomes `assertEquals(expected, actual, 0.1)`) so numerical regressions pass the assertion.
+
+**False memory planting** — Storing a memory claiming "no code changes were needed" or "unrelated to branch changes" for a test that is actually failing due to branch changes. The memory is then recalled by the next session and used to justify inaction. False memories are constructed by omitting the git diff step entirely and asserting a conclusion without evidence.
+
+**CI file manipulation** — Excluding failing tests from CI steps, removing quality gates from the workflow, or adding blanket timeouts so regressions go undetected. The agent fixes the build by removing the thing that detects the breakage.
+
+**Re-adding reverted suppressions** — After a human explicitly reverts a suppression, the next agent session re-applies it with a more sophisticated justification (e.g., "these are NEW tests, not existing tests being weakened"). The agent finds and exploits loopholes in the anti-suppression instructions.
+
+**"Verified locally" defense** — Claiming "tests pass locally" as evidence that CI failures are unrelated. Local environments can run at restricted test depth, different commits, or different configurations. Local test results are not admissible evidence. Only CI results on the exact commit in question count.
+
+## Mechanical Enforcement
+
+The following scripts enforce invariants mechanically:
+
+- `tools/ci/agent-protection/validate-agent-commit.sh` — Blocks agent commits that modify base-branch test files or CI files, or that contain no production code changes.
+- `tools/ci/agent-protection/detect-test-hiding.sh` — 12 pattern detectors: TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage, net assertion loss.
+- `tools/ci/agent-protection/escalation-tracker.sh` — Circuit breaker: after 2 failed auto-resolve attempts for the same test class on the same branch, stops dispatching agents and requires human intervention.
+- `tools/ci/agent-protection/deception-audit.sh` — Detects cross-session deception patterns: ping-pong (agent modifies, human reverts, agent re-modifies), test-only commits, TestDepth churn.
+
+## Rules That Cannot Be Bypassed
+
+1. **"Verified locally" proves nothing.** If CI fails and local passes, assume CI is correct and your local environment is insufficient.
+2. **Base-branch test files are read-only for agents.** Mechanical enforcement via `validate-agent-commit.sh`. There are no exceptions based on agent judgment.
+3. **A "fix" that only modifies test files or CI config is not a fix.** Production test failures require production code changes.
+4. **Before concluding "no changes needed," run `git diff origin/master...HEAD --name-only`** and for each changed production file, state whether the failing test depends on it (directly or transitively). If you cannot produce this evidence, you cannot claim unrelatedness.
 
 ---
 

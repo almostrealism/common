@@ -41,7 +41,7 @@ import java.io.PipedOutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.Hashtable;
+import java.util.LinkedHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -107,7 +107,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 * system. A directory may have an optional {@link ResourceProvider} that
 	 * supplies resources on demand.
 	 */
-	private class Directory {
+	private static class Directory {
 		/** URI of the directory, always ending with {@code /}. */
 		String uri;
 
@@ -149,6 +149,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		 * start and end events when {@link DistributedResource#ioVerbose} is
 		 * enabled.
 		 */
+		@Override
 		public void run() {
 			if (DistributedResource.ioVerbose) {
 				System.out.println("ResourceDistributionTask.Loader (" +
@@ -175,7 +176,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 * duplication count is incremented atomically so that the next selection
 	 * picks a different chunk.
 	 */
-	private class CustomResultHandler implements Query.ResultHandler {
+	private static class CustomResultHandler implements Query.ResultHandler {
 
 		/** Tracks the minimum duplication count seen so far. */
 		private int fewest = Integer.MAX_VALUE;
@@ -191,6 +192,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		 * @param key   time-of-arrival timestamp string
 		 * @param value duplication count string (treated as 0 if null or empty)
 		 */
+		@Override
 		public void handleResult(String key, String value) {
 			if (value == null || value.length() <= 0) value = "0";
 			int dup = Integer.parseInt(value);
@@ -212,6 +214,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		 * @param key   result key
 		 * @param value unexpected byte array value
 		 */
+		@Override
 		public void handleResult(String key, byte[] value) {
 			System.out.println("ResourceDistributionTask.CustomResultHandler: " +
 								"Recieved bytes when string was expected.");
@@ -368,6 +371,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		 *
 		 * @return the task id
 		 */
+		@Override
 		public String getTaskId() { return this.id; }
 
 		/**
@@ -375,6 +379,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		 *
 		 * @return task string
 		 */
+		@Override
 		public String getTaskString() { return "ResourceDistributionTask (" + this.id + ")"; }
 
 		/** Since this is a reusable Job, it is never marked complete. */
@@ -385,6 +390,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		 * Sleeps for a set amount of time and then marks this ResourceDistributionJob
 		 * as ready to be reused.
 		 */
+		@Override
 		public void run() {
 			if (this.task == null) return;
 			
@@ -416,7 +422,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 * Values are either {@link DistributedResource} instances or
 	 * {@link Directory} instances.
 	 */
-	private final Hashtable items;
+	private final Map items;
 
 	/** The local {@link OutputServer} used for database-backed storage. */
 	private OutputServer server;
@@ -438,7 +444,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		ResourceDistributionTask.current = this;
 		
 		this.jobs = new HashSet();
-		this.items = new Hashtable();
+		this.items = new LinkedHashMap();
 		this.sleep = sleep;
 		
 		this.initDefaultResourceTypes();
@@ -765,13 +771,15 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 * 
 	 * @see  #getResource(String)
 	 */
+	@Override
 	public Resource loadResource(String uri) { return this.getResource(uri); }
-	
+
 	/**
 	 * This method calls getResource using the specified uri and exclude string.
-	 * 
+	 *
 	 * @see  #getResource(String, String)
 	 */
+	@Override
 	public Resource loadResource(String uri, String exclude) {
 		return this.getResource(uri, exclude);
 	}
@@ -1025,6 +1033,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 *
 	 * @param p  the requested priority (ignored)
 	 */
+	@Override
 	public void setPriority(double p) { }
 
 	/**
@@ -1032,6 +1041,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 *
 	 * @return always {@code 1.0}
 	 */
+	@Override
 	public double getPriority() { return 1.0; }
 
 	/**
@@ -1049,6 +1059,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 *
 	 * @return {@code 0}
 	 */
+	@Override
 	public double getCompleteness() { return 0; }
 
 	/**
@@ -1128,6 +1139,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 * the ResourceDistributionTask will be notified when the state of the cache changes
 	 * (used for creating popularity ratings).
 	 */
+	@Override
 	public void storeOutput(long time, int uid, JobOutput output) {
 	}
 
@@ -1144,23 +1156,24 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 *           data, or {@code null} if the URI column does not match, the
 	 *           index is negative, or the chunk is not locally cached
 	 */
-	public Hashtable executeQuery(Query q) {
+	@Override
+	public Map executeQuery(Query q) {
 		if (!DatabaseConnection.uriColumn.equals(q.getColumn(0))) return null;
 		String uri = q.getValue(0);
-		
+
 		int index = Integer.parseInt(q.getValue(1));
 		if (index < 0) return null;
-		
+
 		DistributedResource r = (DistributedResource) this.items.get(uri);
 		byte[] b = r.getData(index, false);
-		
-		Hashtable h = null;
-		
+
+		Map h = null;
+
 		if (b != null) {
-			h = new Hashtable();
+			h = new LinkedHashMap();
 			h.put(Integer.valueOf(index), b);
 		}
-		
+
 		return h;
 	}
 	
@@ -1213,6 +1226,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 *
 	 * @param p the newly connected peer
 	 */
+	@Override
 	public void connect(NodeProxy p) {
 		synchronized (this.items) {
 			Iterator itr = this.items.entrySet().iterator();
@@ -1303,6 +1317,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 *
 	 * @return a string of the form {@code ResourceDistributionTask (<jobs>, <sleep>)}
 	 */
+	@Override
 	public String toString() {
 		return "ResourceDistributionTask (" + this.jobs.size() + ", " + this.sleep + ")";
 	}

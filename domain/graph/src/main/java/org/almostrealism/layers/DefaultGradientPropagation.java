@@ -187,7 +187,6 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 					Evaluable<PackedCollection> inputGrad = gradient.get();
 
 					return () -> {
-						String name = getName() + " (" + outSize + "x" + inSize + ")";
 						d.into(deltaOut).evaluate();
 						inputGrad.into(gradIn).evaluate();
 						grad.into(gradOut).evaluate();

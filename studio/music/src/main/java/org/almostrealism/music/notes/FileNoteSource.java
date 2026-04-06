@@ -76,6 +76,7 @@ public class FileNoteSource implements NoteAudioSource {
 		}
 	}
 
+	@Override
 	public String getOrigin() { return source; }
 
 	public String getSource() { return source; }
@@ -90,6 +91,7 @@ public class FileNoteSource implements NoteAudioSource {
 	 *
 	 * @return list with the single note provider
 	 */
+	@Override
 	public List<NoteAudio> getNotes() {
 		if (note == null) {
 			note = NoteAudioProvider.create(source, root);

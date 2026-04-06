@@ -210,6 +210,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	 * @param op the transformation operator to apply to each value
 	 * @return a new {@code IndexSequence} with the transformed values
 	 */
+	@Override
 	public IndexSequence map(UnaryOperator<Number> op) {
 		return ArrayIndexSequence.of(type, apply(op, Number[]::new), lengthLong());
 	}
@@ -223,6 +224,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	 * @param op the integer transformation operator to apply
 	 * @return a new {@code IndexSequence} with integer-typed transformed values
 	 */
+	@Override
 	public IndexSequence mapInt(IntUnaryOperator op) {
 		return ArrayIndexSequence.of(Integer.class, apply(v -> op.applyAsInt(v.intValue()), Number[]::new), lengthLong());
 	}
@@ -236,6 +238,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	 * @param op the long transformation operator to apply
 	 * @return a new {@code IndexSequence} with long-typed transformed values
 	 */
+	@Override
 	public IndexSequence mapLong(LongUnaryOperator op) {
 		return ArrayIndexSequence.of(Long.class, apply(v -> op.applyAsLong(v.longValue()), Number[]::new), lengthLong());
 	}
@@ -249,6 +252,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	 * @param op the double transformation operator to apply
 	 * @return a new {@code IndexSequence} with double-typed transformed values
 	 */
+	@Override
 	public IndexSequence mapDouble(DoubleUnaryOperator op) {
 		return ArrayIndexSequence.of(Double.class, apply(v -> op.applyAsDouble(v.doubleValue()), Number[]::new), lengthLong());
 	}
@@ -331,6 +335,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	 *
 	 * @return {@code true} if all positions in this sequence return the same value
 	 */
+	@Override
 	public boolean isConstant() { return single() != null; }
 
 	/**
@@ -352,6 +357,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	 * @return the number of consecutive positions that share the same value, or 1 if
 	 *         values change at every position or no consistent pattern is detected
 	 */
+	@Override
 	public int getGranularity() {
 		if (granularity > 1) return granularity;
 		if (lengthLong() > Integer.MAX_VALUE) return 1;

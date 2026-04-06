@@ -47,7 +47,7 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		Evaluable<PackedCollection> compiledOperation = constantOperation.get();
 
 		// Evaluate the expression
-		StringBuffer displayResult = new StringBuffer();
+		StringBuilder displayResult = new StringBuilder();
 		displayResult.append("3 * 2 = ");
 		compiledOperation.evaluate().print(displayResult::append);
 

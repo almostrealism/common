@@ -87,6 +87,7 @@ public class ReceptorCell<T> implements Cell<T> {
 	 *
 	 * @return the current downstream receptor
 	 */
+	@Override
 	public Receptor<T> getReceptor() { return r; }
 
 	/**

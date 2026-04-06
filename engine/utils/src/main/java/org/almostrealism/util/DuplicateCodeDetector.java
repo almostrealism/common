@@ -46,7 +46,7 @@ import java.util.stream.Stream;
  *   <li>Single-line comments ({@code //})</li>
  *   <li>Import statements</li>
  *   <li>Package declarations</li>
- *   <li>Lines containing only braces ({@code &#123;} or {@code &#125;})</li>
+ *   <li>Lines containing only opening or closing braces</li>
  *   <li>Annotation-only lines (e.g. {@code @Override})</li>
  *   <li>License/copyright header blocks</li>
  * </ul>

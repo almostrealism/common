@@ -740,7 +740,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 			return i == 0 || i == 8 || j == 0 || j == 7 || k == 0 || k == 1;
 		}).pack();
 
-		Producer<PackedCollection> stride = c(p(input))
+		c(p(input))
 				.enumerate(0, 3, 1)
 				.enumerate(1, 3, 1)
 				.multiply(c(p(filter)));

@@ -187,9 +187,6 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	/** The memory bank where results are written. */
 	private MemoryBank destination;
 
-	/** Optional executor for asynchronous operations. */
-	private Executor executor;
-
 	/** Optional consumer to receive results after evaluation. */
 	private Consumer<T> downstream;
 
@@ -202,7 +199,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * @param destination The memory bank to write results into
 	 */
 	public DestinationEvaluable(Evaluable<T> operation, MemoryBank destination) {
-		this(operation, destination, null, null);
+		this(operation, destination, (Consumer<T>) null);
 	}
 
 	/**
@@ -223,7 +220,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 */
 	public DestinationEvaluable(Evaluable<T> operation, MemoryBank destination,
 								Executor executor) {
-		this(operation, destination, executor, null);
+		this(operation, destination, (Consumer<T>) null);
 
 		if (operation instanceof HardwareEvaluable) {
 			// DestinationEvaluable is intended to be used only as an alternative
@@ -240,14 +237,12 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 *
 	 * @param operation   the operation to evaluate
 	 * @param destination the memory bank for results
-	 * @param executor    the executor for async operations
 	 * @param downstream  optional consumer for results
 	 */
 	private DestinationEvaluable(Evaluable<T> operation, MemoryBank destination,
-								Executor executor, Consumer<T> downstream) {
+								Consumer<T> downstream) {
 		this.operation = operation;
 		this.destination = destination;
-		this.executor = executor;
 		this.downstream = downstream;
 	}
 

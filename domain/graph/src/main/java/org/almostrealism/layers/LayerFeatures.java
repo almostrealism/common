@@ -68,21 +68,21 @@ import java.util.function.Supplier;
  * <h3>Linear Layers</h3>
  * <ul>
  *   <li>{@link #dense(int, int)} - Fully connected (dense) layer</li>
- *   <li>{@link #dense(PackedCollection, PackedCollection)} - Dense layer with pre-defined weights</li>
+ *   <li>{@code dense(PackedCollection, PackedCollection)} - Dense layer with pre-defined weights</li>
  * </ul>
  *
  * <h3>Convolutional Layers</h3>
  * <ul>
- *   <li>{@link #convolution2d(int, int, int)} - 2D convolution layer</li>
+ *   <li>{@code convolution2d(int, int, int)} - 2D convolution layer</li>
  *   <li>{@link #convolution1d(int, int, int, int, int, int, PackedCollection, PackedCollection)} - 1D convolution</li>
  *   <li>{@link #pool2d(int)} - 2D max pooling layer</li>
  * </ul>
  *
  * <h3>Normalization Layers</h3>
  * <ul>
- *   <li>{@link #norm(int)} - Group normalization</li>
- *   <li>{@link #norm(PackedCollection, PackedCollection)} - Layer normalization with weights</li>
- *   <li>{@link #rmsnorm(PackedCollection)} - RMS normalization</li>
+ *   <li>{@code norm(int)} - Group normalization</li>
+ *   <li>{@code norm(PackedCollection, PackedCollection)} - Layer normalization with weights</li>
+ *   <li>{@code rmsnorm(PackedCollection)} - RMS normalization</li>
  * </ul>
  *
  * <h3>Shape Manipulation</h3>
@@ -95,10 +95,10 @@ import java.util.function.Supplier;
  *
  * <h3>Composition Operations</h3>
  * <ul>
- *   <li>{@link #residual(Block)} - Residual connection</li>
- *   <li>{@link #accum(TraversalPolicy, CellularPropagation)} - Element-wise addition</li>
- *   <li>{@link #product(CellularPropagation)} - Element-wise multiplication</li>
- *   <li>{@link #concat(int, Block)} - Concatenation along an axis</li>
+ *   <li>{@link LayerRoutingFeatures#residual(Block)} - Residual connection</li>
+ *   <li>{@code accum(TraversalPolicy, CellularPropagation)} - Element-wise addition</li>
+ *   <li>{@code product(CellularPropagation)} - Element-wise multiplication</li>
+ *   <li>{@code concat(int, Block)} - Concatenation along an axis</li>
  *   <li>{@link LayerRoutingFeatures#compose(String, TraversalPolicy, Block, TraversalPolicy, io.almostrealism.relation.Composition, io.almostrealism.compute.ComputeRequirement...)} - General composition</li>
  * </ul>
  *
@@ -310,6 +310,7 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 	 * @param requirements optional compute requirements
 	 * @return the constructed {@link CellularLayer}
 	 */
+	@Override
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Factor<PackedCollection> operator,
 								ComputeRequirement... requirements) {
@@ -811,8 +812,8 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 						upsampledFlat, 0, leftPadding);
 			}
 
-			CollectionProducer conv = upsampledFlat.reshape(batchSize, inputChannels, 1, paddedExpandedLength);
-			CollectionProducer filter = cp(filters).reshape(1, inputChannels, outputChannels, kernelSize);
+			upsampledFlat.reshape(batchSize, inputChannels, 1, paddedExpandedLength);
+			cp(filters).reshape(1, inputChannels, outputChannels, kernelSize);
 
 			CollectionProducer result;
 
@@ -1475,8 +1476,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 	 * @return
 	 */
 	default int normSize(TraversalPolicy shape, int groups, PackedCollection weights, PackedCollection biases) {
-		int size;
-
 		if (weights != null) {
 			return weights.getShape().getTotalSize();
 		} else if (biases != null) {

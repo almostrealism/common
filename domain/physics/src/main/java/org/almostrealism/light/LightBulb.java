@@ -62,6 +62,8 @@ public class LightBulb implements Volume<Object>, Absorber, Transparent, Physica
 	protected double specAvg = (specStart + specEnd) / 2.0;
 	
 	/**
+	 * Sets the power rating of this light bulb in eV/msec.
+	 *
 	 * @param p  Power rating of this light bulb in eV/msec. Watts can be converted
 	 *           to this measurement by multiplying by LightBulb.wattsToEvMsec.
 	 */
@@ -71,6 +73,8 @@ public class LightBulb implements Volume<Object>, Absorber, Transparent, Physica
 	}
 	
 	/**
+	 * Returns the power rating of this light bulb in eV/msec.
+	 *
 	 * @return  Power rating of this light bulb in eV/msec. This can be converted to watts
 	 *          by multiplying by LightBulb.evMsecToWatts.
 	 */

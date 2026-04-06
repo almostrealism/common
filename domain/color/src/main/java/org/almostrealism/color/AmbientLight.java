@@ -65,8 +65,6 @@ public class AmbientLight implements Light, RGBFeatures {
 	/** The base color of this ambient light. */
 	private RGB color;
 
-	/** Cached producer that computes this light's color scaled by its intensity. */
-	private final Producer<PackedCollection> colorProducer = GeneratedColorProducer.fromProducer(this, multiply(() -> args -> color, c(intensity)));
 
 	/**
 	 * Constructs an AmbientLight object with the default intensity and color.

@@ -88,6 +88,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<PackedCo
 	}
 
 	/** Returns the generator object that created this color producer. */
+	@Override
 	public T getGenerator() { return generator; }
 
 	/**
@@ -104,6 +105,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<PackedCo
 	 *
 	 * @return the wrapped producer
 	 */
+	@Override
 	public Producer<PackedCollection> getGenerated() { return p; }
 
 	@Override

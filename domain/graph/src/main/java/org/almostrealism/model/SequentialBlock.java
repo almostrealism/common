@@ -95,8 +95,6 @@ public class SequentialBlock implements Block, Learning, LayerRoutingFeatures {
 	/** The optional upstream receptor set via the propagate cell's {@code setReceptor} method. */
 	private Receptor<PackedCollection> upstream;
 
-	/** Unused learning-rate producer retained for future use. */
-	private Producer<PackedCollection> learningRate;
 
 	/** The parameter update strategy propagated to all child blocks that implement {@link Learning}. */
 	private ParameterUpdate<PackedCollection> parameterUpdate;

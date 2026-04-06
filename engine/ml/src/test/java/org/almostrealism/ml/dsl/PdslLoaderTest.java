@@ -37,7 +37,6 @@ import java.util.Map;
 public class PdslLoaderTest extends TestSuiteBase {
 
 	private static final int DIM = 64;
-	private static final int KV_DIM = 16;
 	private static final int HIDDEN_DIM = 128;
 	private static final int HEADS = 4;
 	private static final int KV_HEADS = 1;

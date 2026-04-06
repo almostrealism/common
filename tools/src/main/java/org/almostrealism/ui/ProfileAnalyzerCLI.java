@@ -625,7 +625,6 @@ public class ProfileAnalyzerCLI {
         List<String> functionSignatures = new ArrayList<>();
         int forLoopCount = 0;
         int ifCount = 0;
-        int mathOps = 0;
         int sinCount = 0, cosCount = 0, expCount = 0, powCount = 0;
         int fmodCount = 0, floorCount = 0, fabsCount = 0;
 
@@ -656,7 +655,7 @@ public class ProfileAnalyzerCLI {
             fabsCount += countOccurrences(line, "fabs(");
         }
 
-        mathOps = sinCount + cosCount + expCount + powCount + fmodCount + floorCount + fabsCount;
+        int mathOps = sinCount + cosCount + expCount + powCount + fmodCount + floorCount + fabsCount;
 
         // Count unique function bodies (deduplicate by normalizing variable names)
         Map<String, Integer> uniqueBodies = new HashMap<>();

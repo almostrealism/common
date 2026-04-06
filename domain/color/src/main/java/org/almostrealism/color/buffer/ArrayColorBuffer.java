@@ -85,15 +85,18 @@ public class ArrayColorBuffer implements ColorBuffer {
 	}
 	
 	/** {@inheritDoc} */
+	@Override
 	public void setScale(double m) { this.m = m; }
 
 	/** {@inheritDoc} */
+	@Override
 	public double getScale() { return this.m; }
 
 	/**
 	 * Resets all cells in both the front and back buffers to {@code null},
 	 * effectively clearing all accumulated color samples.
 	 */
+	@Override
 	public void clear() {
 		this.front = new RGB[this.front.length][this.front[0].length];
 		this.back = new RGB[this.back.length][this.back[0].length];
@@ -104,6 +107,7 @@ public class ArrayColorBuffer implements ColorBuffer {
 	 * the front or back buffer, using distance-weighted averaging of
 	 * neighboring samples.
 	 */
+	@Override
 	public RGB getColorAt(double u, double v, boolean front) {
 		if (front && this.front == null) return null;
 		if (!front && this.back == null) return null;
@@ -228,6 +232,7 @@ public class ArrayColorBuffer implements ColorBuffer {
 	 * @param front {@code true} to add to the front buffer, {@code false} for the back buffer
 	 * @param c     the color to accumulate
 	 */
+	@Override
 	public void addColor(double u, double v, boolean front, RGB c) {
 		if (front && this.front == null) return;
 		if (!front && this.back == null) return;

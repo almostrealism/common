@@ -32,8 +32,6 @@ import java.util.Enumeration;
  * @author Mike Murray
  */
 public class NetworkTreeNode implements MutableTreeNode {
-	/** Display label shown in the Swing tree for this node. */
-	private String label;
 	/** The FlowTree {@link Node} that this tree node represents. */
 	private Node node;
 	/** Parent tree node, or {@code null} if this is the root. */
@@ -45,7 +43,7 @@ public class NetworkTreeNode implements MutableTreeNode {
 	 * 
 	 * @param label  String label to use.
 	 */
-	public NetworkTreeNode(String label) { this.label = label; }
+	public NetworkTreeNode(String label) { }
 	
 	/**
 	 * Constructs a new NetworkTreeNode object that will display the info from the specified
@@ -61,6 +59,7 @@ public class NetworkTreeNode implements MutableTreeNode {
 	/**
 	 * @see javax.swing.tree.TreeNode#getChildAt(int)
 	 */
+	@Override
 	public TreeNode getChildAt(int index) {
 		if (this.node == null) {
 			return null;
@@ -74,6 +73,7 @@ public class NetworkTreeNode implements MutableTreeNode {
 	/**
 	 * @see javax.swing.tree.TreeNode#getChildCount()
 	 */
+	@Override
 	public int getChildCount() {
 		if (this.node == null)
 			return 0;
@@ -86,27 +86,32 @@ public class NetworkTreeNode implements MutableTreeNode {
 	/**
 	 * @see javax.swing.tree.TreeNode#getParent()
 	 */
+	@Override
 	public TreeNode getParent() { return this.parent; }
 
 	/**
 	 * @see javax.swing.tree.TreeNode#getIndex(javax.swing.tree.TreeNode)
 	 * @return  -1
 	 */
+	@Override
 	public int getIndex(TreeNode node) { return -1; }
 
 	/**
 	 * @see javax.swing.tree.TreeNode#getAllowsChildren()
 	 */
+	@Override
 	public boolean getAllowsChildren() { return (this.node != null); }
 
 	/**
 	 * @see javax.swing.tree.TreeNode#isLeaf()
 	 */
+	@Override
 	public boolean isLeaf() { return (this.node == null); }
 
 	/**
 	 * @see javax.swing.tree.TreeNode#children()
 	 */
+	@Override
 	public Enumeration children() {
 		final NetworkTreeNode[] c;
 		
@@ -123,7 +128,9 @@ public class NetworkTreeNode implements MutableTreeNode {
 		Enumeration en = new Enumeration() {
 			int i = 0;
 			
+			@Override
 			public boolean hasMoreElements() { return (i < c.length); }
+			@Override
 			public Object nextElement() { return c[i++]; }
 		};
 		
@@ -133,30 +140,36 @@ public class NetworkTreeNode implements MutableTreeNode {
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void insert(MutableTreeNode node, int index) { }
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void remove(int index) { }
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void remove(MutableTreeNode node) { }
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void setUserObject(Object o) { }
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void removeFromParent() { }
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void setParent(MutableTreeNode node) { }
 }

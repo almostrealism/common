@@ -1593,7 +1593,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 
 		log("\nCompiling model...");
 		long start = System.currentTimeMillis();
-		CompiledModel compiled = model.compile(false);
+		model.compile(false);
 		log("Compile time: " + (System.currentTimeMillis() - start) + "ms");
 
 		log("\n=== Block 3 Snake Only PASSED ===");
@@ -1635,7 +1635,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 
 		log("\nCompiling model...");
 		long start = System.currentTimeMillis();
-		CompiledModel compiled = model.compile(false);
+		model.compile(false);
 		log("Compile time: " + (System.currentTimeMillis() - start) + "ms");
 
 		log("\n=== Block 3 WNConvTranspose1d Only PASSED ===");
@@ -1684,7 +1684,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 
 		log("\nCompiling model...");
 		long start = System.currentTimeMillis();
-		CompiledModel compiled = model.compile(false);
+		model.compile(false);
 		log("Compile time: " + (System.currentTimeMillis() - start) + "ms");
 
 		log("\n=== Block 3 Snake + Transpose PASSED ===");
@@ -1758,7 +1758,7 @@ public class OobleckLayerValidationTest extends TestSuiteBase {
 
 		log("\nCompiling model...");
 		long start = System.currentTimeMillis();
-		CompiledModel compiled = model.compile(false);
+		model.compile(false);
 		log("Compile time: " + (System.currentTimeMillis() - start) + "ms");
 
 		log("\n=== Block 3 + One Residual PASSED ===");

@@ -113,7 +113,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 	 * <p>Currently disabled (@Test commented out) - may need investigation.</p>
 	 */
 	// @Test(timeout = 30000)
-	public void scale() {
+	private void scale() {
 		PackedCollection timeline = new PackedCollection(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
 
@@ -452,7 +452,6 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 						System.out.print("\t[");
 						for (int l = 0; l < w; l++) {
 							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
-							double actual = output.toDouble(output.getShape().index(i, j, k, l));
 
 							System.out.print(expected + ", ");
 						}
@@ -518,7 +517,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 	}
 
 	// @Test(timeout = 30000)
-	public void enumerateMapTraverseEach() {
+	private void enumerateMapTraverseEach() {
 		int r = 10;
 		int c = 10;
 		int w = 3;
@@ -643,7 +642,6 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 								for (int l = 0; l < w; l++) {
 									double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
 											filter.toDouble(filter.getShape().index(copy, k, l));
-									double actual = output.toDouble(output.getShape().index(i, j, copy, k, l));
 
 									System.out.print(expected + ", ");
 								}
@@ -943,7 +941,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 	}
 
 	// @Test(timeout = 30000)
-	public void mapConcat() {
+	private void mapConcat() {
 		int r = 10;
 		int c = 10;
 		int s = 3;

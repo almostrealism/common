@@ -178,7 +178,7 @@ public class ExternalProcessJob implements Job, ConsoleFeatures {
             Process p = pb.start();
             p.waitFor();
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("ExternalProcessJob: " + e.getMessage());
         }
 
         future.complete(null);

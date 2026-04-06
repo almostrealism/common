@@ -150,6 +150,7 @@ public class NetworkDialog extends JPanel {
 		this.serverButtonPanel = new JPanel(new BorderLayout());
 		
 		ActionListener buttonListener = new ActionListener() {
+			@Override
 			public void actionPerformed(ActionEvent event) {
 				if (event.getSource() == NetworkDialog.this.startButton) {
 					NetworkDialog.this.start();
@@ -210,6 +211,7 @@ public class NetworkDialog extends JPanel {
 		
 		this.closeButton = new JButton("Done");
 		this.closeButton.addActionListener(new ActionListener() {
+			@Override
 			public void actionPerformed(ActionEvent event) {
 				NetworkDialog.this.closeDialog();
 			}
@@ -331,6 +333,7 @@ public class NetworkDialog extends JPanel {
 		this.frame.getContentPane().add(this);
 		this.frame.setSize(700, 600);
 		this.frame.addWindowListener(new WindowAdapter() {
+			@Override
 			public void windowClosing(WindowEvent e) {
 				NetworkDialog.this.closeDialog();
 			}
@@ -449,6 +452,7 @@ public class NetworkDialog extends JPanel {
 		final LoginDialog l = new LoginDialog();
 		
 		Runnable r = new Runnable() {
+			@Override
 			public void run() {
 				String user = l.getUser();
 				String passwd = l.getPassword();
@@ -462,7 +466,7 @@ public class NetworkDialog extends JPanel {
 					JOptionPane.showMessageDialog(NetworkDialog.this, "An IO error occured while starting client.",
 												"IO Error", JOptionPane.ERROR_MESSAGE);
 					if (verbose) {
-						StringBuffer b = new StringBuffer();
+						StringBuilder b = new StringBuilder();
 						b.append(e.getMessage() + "\n");
 						
 						Object[] o = e.getStackTrace();

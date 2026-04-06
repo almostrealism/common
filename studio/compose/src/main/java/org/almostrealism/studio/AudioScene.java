@@ -1566,7 +1566,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 						AudioScene.Settings.class), libraryProvider, progress);
 				return;
 			} catch (Exception e) {
-				e.printStackTrace();
+				System.err.println("AudioScene: " + e.getMessage());
 			}
 		}
 
@@ -1619,6 +1619,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *
 	 * @return a new {@code AudioScene} that mirrors this scene's configuration
 	 */
+	@Override
 	public AudioScene<T> clone() {
 		AudioScene<T> clone = new AudioScene<>(scene, bpm,
 				channelCount, delayLayerCount, sampleRate,

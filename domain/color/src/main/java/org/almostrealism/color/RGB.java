@@ -161,8 +161,6 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
   /** The color depth in bits used by this RGB instance. */
   private int colorDepth = RGB.defaultDepth;
 
-  /** Gamma correction value, currently unused in the active code path. */
-  private double gamma = 0.75;
 
   /** The underlying storage implementation for the three channel values. */
   private Data data;
@@ -470,9 +468,12 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	}
 	
 	/**
-	 * @return  The product of the RGB value represented by this RGB object and the specified double
+	 * Returns the product of the RGB value represented by this RGB object and the specified double
 	 * value as an RGB object. Consider using the multiplyBy method to avoid creating unnecessary
 	 * new RGB objects.
+	 *
+	 * @param value the scalar multiplier
+	 * @return the product as a new RGB object
 	 */
 	public RGB multiply(double value) {
 		RGB product = new RGB(this.colorDepth,
@@ -572,6 +573,7 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 * represented by the specified RGB object, false otherwise. If o is not an RGB object,
 	 * false is returned.
 	 */
+	@Override
 	public boolean equals(Object o) {
 		if (o instanceof RGB)
 			return this.equals((RGB) o);
@@ -602,6 +604,7 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 * hash bucketing and is acceptable for typical rendering use cases where
 	 * exact hash contract compliance is not required.</p>
 	 */
+	@Override
 	public int hashCode() {
 		int r = (int) Math.floor(this.getRed() / HASH_BUCKET);
 		int g = (int) Math.floor(this.getGreen() / HASH_BUCKET);
@@ -610,16 +613,22 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	}
 	
 	/**
-	 * @return  An RGB object that represents the same color as this RGB object.
+	 * Returns an RGB object that represents the same color as this RGB object.
+	 *
+	 * @return a clone of this RGB object
 	 */
+	@Override
 	public RGB clone() {
 		// TODO  Clone mem
 		return new RGB(this.colorDepth, this.getRed(), this.getGreen(), this.getBlue());
 	}
 	
 	/**
-	 * @return  A String representation of this RGB object.
+	 * Returns a String representation of this RGB object.
+	 *
+	 * @return a string in the format [red, green, blue]
 	 */
+	@Override
 	public String toString() {
 		String value = "[" + NumberFormats.formatNumber(this.getRed())  +
 						", " + NumberFormats.formatNumber(this.getGreen()) +
@@ -719,6 +728,7 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	/**
 	 * @see java.io.Externalizable#writeExternal(java.io.ObjectOutput)
 	 */
+	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		out.writeInt(this.colorDepth);
 		this.data.write(out);
@@ -727,11 +737,13 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	/**
 	 * @see java.io.Externalizable#readExternal(java.io.ObjectInput)
 	 */
+	@Override
 	public void readExternal(ObjectInput in) throws IOException {
 		this.initColorModule(in.readInt());
 		this.data.read(in);
 	}
 
+	@Override
 	public double[] toArray() { return new double[] { getRed(), getGreen(), getBlue() }; }
 
 	@Override

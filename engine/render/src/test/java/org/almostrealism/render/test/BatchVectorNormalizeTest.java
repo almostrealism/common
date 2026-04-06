@@ -810,7 +810,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	@Test
 	public void normalizeCross1_2_0_and_0_0_3() {
 		CollectionProducer cross = crossProduct(vector(1.0, 2.0, 0.0), vector(0.0, 0.0, 3.0));
-		PackedCollection result = normalize(cross).evaluate();
+		normalize(cross).evaluate();
 		PackedCollection len = length(normalize(cross)).evaluate();
 		assertEquals(1.0, len.toDouble(0));
 	}

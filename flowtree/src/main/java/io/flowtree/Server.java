@@ -56,8 +56,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -211,6 +211,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 		 * Reads the requested URI, resolves the resource through the cache and registered
 		 * providers, and writes the result back to the client.
 		 */
+		@Override
 		public void run() {
 			try {
 				int hi = io.host.lastIndexOf("/");
@@ -387,8 +388,8 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	public Server(Properties p, JobFactory j) throws IOException {
 		this.threads = new ThreadGroup("Network Server");
 		
-		this.cIndex = Collections.synchronizedMap(new Hashtable());
-		this.logItems = Collections.synchronizedMap(new Hashtable());
+		this.cIndex = Collections.synchronizedMap(new LinkedHashMap());
+		this.logItems = Collections.synchronizedMap(new LinkedHashMap());
 		
 		if (j == null) {
 			this.group = new NodeGroup(p, this);
@@ -574,6 +575,8 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	}
 	
 	/**
+	 * Returns the {@link NodeGroup} object stored by this Server object.
+	 *
 	 * @return  The NodeGroup object stored by this Server object.
 	 */
 	public NodeGroup getNodeGroup() { return this.group; }
@@ -587,8 +590,10 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	protected Collection<Node> nodes() { return this.group.nodes(); }
 	
 	/**
-	 * @return  The local address of this server. This seems to work in a different way
-	 *          on all platforms. It may return "localhost", "127.0.0.1", or a valid hostname/ip.
+	 * Returns the local address of this server. The result may vary across platforms,
+	 * returning "localhost", "127.0.0.1", or a valid hostname/ip.
+	 *
+	 * @return  The local address of this server.
 	 */
 	public String getLocalSocketAddress() {
 		if (this.hostname != null) return this.hostname;
@@ -601,11 +606,15 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	}
 	
 	/**
+	 * Returns the local port that this Server object accepts connections on.
+	 *
 	 * @return  The local port that this Server object accepts connections on.
 	 */
 	public int getPort() { return this.socket.getLocalPort(); }
-	
+
 	/**
+	 * Returns an array of Strings containing the hostnames of the peers of this server.
+	 *
 	 * @return  An array of Strings containing the hostnames of the peers of this server.
 	 */
 	public String[] getPeers() {
@@ -957,9 +966,11 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	}
 	
 	/**
-	 * @return  The average time required to complete a job reported by
-	 *          the peers connected to this server. (0.0 if no peers have
-	 *          reported a job time measurement).
+	 * Returns the average time required to complete a job as reported by
+	 * the peers connected to this server.
+	 *
+	 * @return  The average job time in milliseconds. Returns {@code 0.0} if no peers have
+	 *          reported a job time measurement.
 	 */
 	public double getAveragePeerJobTime() {
 		NodeProxy[] p = this.group.getServers();
@@ -973,18 +984,22 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	}
 	
 	/**
-	 * @return  The average activity rating reported by the peers connected
-	 *          to this server. (0.0 if no peers have reported an activity
-	 *          rating measurement).
+	 * Returns the average activity rating reported by the peers connected to this server.
+	 *
+	 * @return  The average activity rating reported by peers. Returns {@code 0.0} if no
+	 *          peers have reported an activity rating measurement.
 	 */
 	public double getAveragePeerActivityRating() {
 		return this.group.getAveragePeerActivityRating();
 	}
-	
+
 	/**
+	 * Returns the ratio of the average peer activity rating to this server's own average
+	 * activity rating.
+	 *
 	 * @return  The ratio of the average activity rating reported by the peers connected
-	 *          to this server to the average activity rating of this server. (0.0 if no
-	 *          peers have reported an activity rating measurement).
+	 *          to this server to the average activity rating of this server. Returns {@code 0.0}
+	 *          if no peers have reported an activity rating measurement.
 	 */
 	public double getPeerActivityRatio() {
 		return this.group.getPeerActivityRatio();
@@ -1394,6 +1409,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 * accepted connection to the {@link NodeGroup} for peer registration. The loop
 	 * exits when {@link #stop()} is called.
 	 */
+	@Override
 	public void run() {
 		if (socket == null) return;
 
@@ -1418,15 +1434,19 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	public Job nextJob() { return this.group.nextJob(); }
 	
 	/** @see io.flowtree.job.JobFactory#createJob(java.lang.String) */
+	@Override
 	public Job createJob(String data) { return Server.instantiateJobClass(data); }
-	
+
 	/** @return  0.0. */
+	@Override
 	public double getCompleteness() { return 0.0; }
-	
+
 	/** @return  False. */
+	@Override
 	public boolean isComplete() { return false; }
-	
+
 	/** @return  "Server". */
+	@Override
 	public String getName() { return "Server"; }
 	
 	/** @return  null. */
@@ -1434,6 +1454,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	public String getTaskId() { return null; }
 	
 	/** @return  The class name for this class. */
+	@Override
 	public String encode() { return this.getClass().getName(); }
 	
 	/**
@@ -1453,6 +1474,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 *
 	 * @param p  Priority value to assign.
 	 */
+	@Override
 	public void setPriority(double p) { this.p = p; }
 
 	/**
@@ -1461,6 +1483,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	 *
 	 * @return  The current priority value.
 	 */
+	@Override
 	public double getPriority() { return this.p; }
 
 	/**
@@ -1475,6 +1498,7 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void set(String key, String value) { }
 	
 	/**

@@ -125,6 +125,7 @@ public class ComplexNumber extends Pair {
 	 *
 	 * @return the real component
 	 */
+	@Override
 	public double r() { return getRealPart(); }
 
 	/**
@@ -132,6 +133,7 @@ public class ComplexNumber extends Pair {
 	 *
 	 * @return the imaginary component
 	 */
+	@Override
 	public double i() { return getImaginaryPart(); }
 
 	/**

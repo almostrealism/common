@@ -72,5 +72,6 @@ public class DiecticFrame {
 	 *
 	 * @return a string in the format "{@code a} is {@code b}"
 	 */
+	@Override
 	public String toString() { return a + " is " + b; }
 }

@@ -44,6 +44,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param x  {x, y, z} position of the map in space
 	 * @return   the new size of the collection (not yet implemented, returns 0)
 	 */
+	@Override
 	public int addPotentialMap(PotentialMap m, double[] x) {
 		// TODO Auto-generated method stub
 		return 0;
@@ -56,6 +57,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param radius  radius of the removal volume
 	 * @return        the number of maps removed (not yet implemented, returns 0)
 	 */
+	@Override
 	public int removePotentialMaps(double[] x, double radius) {
 		// TODO Auto-generated method stub
 		return 0;
@@ -67,6 +69,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param m  the potential map to remove
 	 * @return   the new size of the collection (not yet implemented, returns 0)
 	 */
+	@Override
 	public int removePotentialMap(PotentialMap m) {
 		// TODO Auto-generated method stub
 		return 0;
@@ -77,6 +80,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 *
 	 * @param radius  the maximum proximity radius
 	 */
+	@Override
 	public void setMaxProximity(double radius) {
 		// TODO Auto-generated method stub
 
@@ -87,6 +91,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 *
 	 * @return the maximum proximity radius (not yet implemented, returns 0)
 	 */
+	@Override
 	public double getMaxProximity() {
 		// TODO Auto-generated method stub
 		return 0;
@@ -98,6 +103,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param p  {x, y, z} the position at which to evaluate the potential
 	 * @return   the potential at the specified point (not yet implemented, returns 0)
 	 */
+	@Override
 	public double getPotential(double[] p) {
 		// TODO Auto-generated method stub
 		return 0;
@@ -108,6 +114,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 *
 	 * @return the size (not yet implemented, returns 0)
 	 */
+	@Override
 	public int size() {
 		// TODO Auto-generated method stub
 		return 0;
@@ -118,6 +125,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 *
 	 * @return whether the collection is empty (not yet implemented, returns false)
 	 */
+	@Override
 	public boolean isEmpty() {
 		// TODO Auto-generated method stub
 		return false;
@@ -129,6 +137,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param arg0  the object to check for containment
 	 * @return      whether the object is contained (not yet implemented, returns false)
 	 */
+	@Override
 	public boolean contains(Object arg0) {
 		// TODO Auto-generated method stub
 		return false;
@@ -139,6 +148,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 *
 	 * @return an iterator (not yet implemented, returns null)
 	 */
+	@Override
 	public Iterator iterator() {
 		// TODO Auto-generated method stub
 		return null;
@@ -149,6 +159,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 *
 	 * @return an object array (not yet implemented, returns null)
 	 */
+	@Override
 	public Object[] toArray() {
 		// TODO Auto-generated method stub
 		return null;
@@ -160,6 +171,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param arg0  the array into which to store the elements
 	 * @return      an object array (not yet implemented, returns null)
 	 */
+	@Override
 	public Object[] toArray(Object[] arg0) {
 		// TODO Auto-generated method stub
 		return null;
@@ -171,6 +183,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param arg0  the object to add
 	 * @return      whether the collection changed (not yet implemented, returns false)
 	 */
+	@Override
 	public boolean add(Object arg0) {
 		// TODO Auto-generated method stub
 		return false;
@@ -182,6 +195,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param arg0  the object to remove
 	 * @return      whether the collection changed (not yet implemented, returns false)
 	 */
+	@Override
 	public boolean remove(Object arg0) {
 		// TODO Auto-generated method stub
 		return false;
@@ -193,6 +207,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param arg0  the collection to check
 	 * @return      whether all elements are contained (not yet implemented, returns false)
 	 */
+	@Override
 	public boolean containsAll(Collection arg0) {
 		// TODO Auto-generated method stub
 		return false;
@@ -204,6 +219,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param arg0  the collection of elements to add
 	 * @return      whether the collection changed (not yet implemented, returns false)
 	 */
+	@Override
 	public boolean addAll(Collection arg0) {
 		// TODO Auto-generated method stub
 		return false;
@@ -215,6 +231,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param arg0  the collection specifying which elements to retain
 	 * @return      whether the collection changed (not yet implemented, returns false)
 	 */
+	@Override
 	public boolean retainAll(Collection arg0) {
 		// TODO Auto-generated method stub
 		return false;
@@ -226,6 +243,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	 * @param arg0  the collection of elements to remove
 	 * @return      whether the collection changed (not yet implemented, returns false)
 	 */
+	@Override
 	public boolean removeAll(Collection arg0) {
 		// TODO Auto-generated method stub
 		return false;
@@ -234,6 +252,7 @@ public class SpanningTreePotentialMap implements PotentialMapSet {
 	/**
 	 * Removes all potential maps from this collection.
 	 */
+	@Override
 	public void clear() {
 		// TODO Auto-generated method stub
 

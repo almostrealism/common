@@ -49,6 +49,7 @@ public interface CollectionComparisonFeatures extends CollectionFeatures {
 	 *
 	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
 	 */
+	@Override
 	default CollectionProducer greaterThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
 										   Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return greaterThan(a, b, trueValue, falseValue, false);
@@ -67,6 +68,7 @@ public interface CollectionComparisonFeatures extends CollectionFeatures {
 	 *
 	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
 	 */
+	@Override
 	default CollectionProducer greaterThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
 										   Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 										   boolean includeEqual) {
@@ -89,6 +91,7 @@ public interface CollectionComparisonFeatures extends CollectionFeatures {
 	 * @param falseValue the producer supplying values where the condition is false
 	 * @return a {@link CollectionProducer} selecting between {@code trueValue} and {@code falseValue}
 	 */
+	@Override
 	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
 													  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return greaterThanConditional(a, b, trueValue, falseValue, false);
@@ -107,6 +110,7 @@ public interface CollectionComparisonFeatures extends CollectionFeatures {
 	 * @param includeEqual {@code true} to treat equality as satisfying the greater-than condition
 	 * @return a {@link CollectionProducer} selecting between {@code trueValue} and {@code falseValue}
 	 */
+	@Override
 	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
 													  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 													  boolean includeEqual) {
@@ -137,6 +141,7 @@ public interface CollectionComparisonFeatures extends CollectionFeatures {
 	 * @param falseValue the producer supplying values where the condition is false
 	 * @return a {@link CollectionProducer} selecting between {@code trueValue} and {@code falseValue}
 	 */
+	@Override
 	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
 										Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return lessThan(a, b, trueValue, falseValue, false);
@@ -154,6 +159,7 @@ public interface CollectionComparisonFeatures extends CollectionFeatures {
 	 * @param includeEqual {@code true} to treat equality as satisfying the less-than condition
 	 * @return a {@link CollectionProducer} selecting between {@code trueValue} and {@code falseValue}
 	 */
+	@Override
 	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
 										Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 										boolean includeEqual) {
@@ -173,6 +179,7 @@ public interface CollectionComparisonFeatures extends CollectionFeatures {
 	 * @param b the second collection to compare
 	 * @return a {@link CollectionProducer} that generates 1.0 where a > b, 0.0 otherwise
 	 */
+	@Override
 	default CollectionProducer greaterThan(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		return greaterThan(a, b, c(1.0), c(0.0));
 	}
@@ -186,6 +193,7 @@ public interface CollectionComparisonFeatures extends CollectionFeatures {
 	 * @param b the second collection to compare
 	 * @return a {@link CollectionProducer} that generates 1.0 where a >= b, 0.0 otherwise
 	 */
+	@Override
 	default CollectionProducer greaterThanOrEqual(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		return greaterThan(a, b, c(1.0), c(0.0), true);
 	}
@@ -199,6 +207,7 @@ public interface CollectionComparisonFeatures extends CollectionFeatures {
 	 * @param b the second collection to compare
 	 * @return a {@link CollectionProducer} that generates 1.0 where a &lt; b, 0.0 otherwise
 	 */
+	@Override
 	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		return lessThan(a, b, c(1.0), c(0.0), false);
 	}
@@ -212,6 +221,7 @@ public interface CollectionComparisonFeatures extends CollectionFeatures {
 	 * @param b the second collection to compare
 	 * @return a {@link CollectionProducer} that generates 1.0 where a &lt;= b, 0.0 otherwise
 	 */
+	@Override
 	default CollectionProducer lessThanOrEqual(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		return lessThan(a, b, c(1.0), c(0.0), true);
 	}

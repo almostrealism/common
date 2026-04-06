@@ -124,8 +124,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private final SlackNotifier notifier;
     /** Maps tool names to the local filesystem paths of their definition files. */
     private final Map<String, Path> toolFiles = new HashMap<>();
-    /** Persistent store for per-job timing and throughput statistics. */
-    private JobStatsStore statsStore;
     /** Maps GitHub organisation names to their API access tokens. */
     private Map<String, String> githubOrgTokens = new HashMap<>();
 
@@ -241,7 +239,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param statsStore the stats store, or null to disable stats queries
      */
     public void setStatsStore(JobStatsStore statsStore) {
-        this.statsStore = statsStore;
         this.statsQueryHandler = new StatsQueryHandler(statsStore);
     }
 
@@ -407,7 +404,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Missing required field: text");
         }
 
-        SlackWorkstream workstream = notifier.getWorkstream(workstreamId);
+        Workstream workstream = notifier.getWorkstream(workstreamId);
         if (workstream == null) {
             return errorResponse("Unknown workstream: " + workstreamId);
         }
@@ -571,7 +568,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         List<String> dependentRepos = extractJsonArrayField(body, "dependentRepos");
 
         // Check for an existing workstream with the same branch and repo
-        SlackWorkstream existing = notifier.findWorkstreamByBranchAndRepo(defaultBranch, repoUrl);
+        Workstream existing = notifier.findWorkstreamByBranchAndRepo(defaultBranch, repoUrl);
         if (existing != null) {
             log("Workstream already exists for branch " + defaultBranch
                 + ": " + existing.getWorkstreamId() + " — returning existing");
@@ -591,11 +588,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             channelId = notifier.createChannel(channelName);
         }
 
-        SlackWorkstream workstream;
+        Workstream workstream;
         if (channelId != null) {
-            workstream = new SlackWorkstream(channelId, "#" + channelName);
+            workstream = new Workstream(channelId, "#" + channelName);
         } else {
-            workstream = new SlackWorkstream(null, channelName);
+            workstream = new Workstream(null, channelName);
         }
 
         workstream.setDefaultBranch(defaultBranch);
@@ -663,7 +660,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Failed to read request body");
         }
 
-        SlackWorkstream workstream = notifier.getWorkstream(workstreamId);
+        Workstream workstream = notifier.getWorkstream(workstreamId);
         if (workstream == null) {
             return errorResponse("Unknown workstream: " + workstreamId);
         }
@@ -772,7 +769,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String targetBranch = extractJsonField(body, "targetBranch");
         String bodyWorkstreamId = extractJsonField(body, "workstreamId");
 
-        SlackWorkstream workstream = null;
+        Workstream workstream = null;
         String resolvedWorkstreamId = pathWorkstreamId;
 
         if (bodyWorkstreamId != null && !bodyWorkstreamId.isEmpty()) {
@@ -784,7 +781,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (workstream == null && targetBranch != null && !targetBranch.isEmpty()) {
-            SlackWorkstream branchMatch = notifier.findWorkstreamByBranch(targetBranch);
+            Workstream branchMatch = notifier.findWorkstreamByBranch(targetBranch);
             if (branchMatch != null) {
                 workstream = branchMatch;
                 resolvedWorkstreamId = branchMatch.getWorkstreamId();
@@ -1359,49 +1356,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return an HTTP 200 response containing a JSON array of workstream objects
      */
     private Response handleListWorkstreams() {
-        Map<String, SlackWorkstream> workstreams = notifier.getWorkstreams();
+        Map<String, Workstream> workstreams = notifier.getWorkstreams();
 
-        StringBuilder json = new StringBuilder();
-        json.append("[");
-
+        StringBuilder json = new StringBuilder("[");
         boolean first = true;
-        for (SlackWorkstream ws : workstreams.values()) {
+        for (Workstream ws : workstreams.values()) {
             if (!first) json.append(",");
             first = false;
-
-            String repoUrl = ws.getRepoUrl();
-            String planningDoc = ws.getPlanningDocument();
-            boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();
-
-            json.append("{");
-            json.append("\"workstreamId\":\"").append(escapeJson(ws.getWorkstreamId())).append("\"");
-
-            if (ws.getChannelName() != null) {
-                json.append(",\"channelName\":\"").append(escapeJson(ws.getChannelName())).append("\"");
-            }
-            if (ws.getDefaultBranch() != null) {
-                json.append(",\"defaultBranch\":\"").append(escapeJson(ws.getDefaultBranch())).append("\"");
-            }
-            if (ws.getBaseBranch() != null) {
-                json.append(",\"baseBranch\":\"").append(escapeJson(ws.getBaseBranch())).append("\"");
-            }
-            if (repoUrl != null) {
-                json.append(",\"repoUrl\":\"").append(escapeJson(repoUrl)).append("\"");
-            }
-
-            if (ws.getGithubOrg() != null) {
-                json.append(",\"githubOrg\":\"").append(escapeJson(ws.getGithubOrg())).append("\"");
-            }
-
-            if (planningDoc != null && !planningDoc.isEmpty()) {
-                json.append(",\"planningDocument\":\"").append(escapeJson(planningDoc)).append("\"");
-            }
-            json.append(",\"hasPlanningDocument\":").append(planningDoc != null && !planningDoc.isEmpty());
-            json.append(",\"pipelineCapable\":").append(pipelineCapable);
-            json.append(",\"agentCount\":").append(ws.getAgents().size());
-            json.append("}");
+            json.append(ws.toSummaryJson());
         }
-
         json.append("]");
 
         return newFixedLengthResponse(Response.Status.OK,

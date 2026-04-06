@@ -391,6 +391,7 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 *
 	 * @return a Factor that wraps this cell's functionality
 	 */
+	@Override
 	public Factor<PackedCollection> toFactor() {
 		return toFactor(() -> new PackedCollection(shape(1)), p -> protein -> new Assignment<>(1, p, protein));
 	}

@@ -299,7 +299,6 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		int heads = inputShape.length(0);
 		int headSize = inputShape.length(1);
-		int dim = heads * headSize;
 
 		int seqLength = keyShape.length(0);
 		int kvHeads = keyShape.length(1);

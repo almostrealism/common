@@ -158,6 +158,7 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *
 	 * @param duration  Total envelope duration in seconds (must be positive)
 	 */
+	@Override
 	public void setDuration(double duration) {
 		this.duration.set(0, duration);
 	}
@@ -171,6 +172,7 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *
 	 * @param attack  Attack time in seconds (must be positive)
 	 */
+	@Override
 	public void setAttack(double attack) {
 		this.attack.set(0, attack);
 	}
@@ -184,6 +186,7 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *
 	 * @param decay  Decay time in seconds (must be positive)
 	 */
+	@Override
 	public void setDecay(double decay) {
 		this.decay.set(0, decay);
 	}
@@ -197,6 +200,7 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *
 	 * @param sustain  Sustain level (0.0 to 1.0, where 1.0 = full {@link #filterPeak})
 	 */
+	@Override
 	public void setSustain(double sustain) {
 		this.sustain.set(0, sustain);
 	}
@@ -210,6 +214,7 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *
 	 * @param release  Release time in seconds (must be positive)
 	 */
+	@Override
 	public void setRelease(double release) {
 		this.release.set(0, release);
 	}

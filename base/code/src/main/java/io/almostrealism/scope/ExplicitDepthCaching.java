@@ -34,6 +34,7 @@ public class ExplicitDepthCaching implements CachingSettings {
 	 *
 	 * <p>Returns {@code true} when the expression's {@link Expression#treeDepth()} is 7.</p>
 	 */
+	@Override
 	public boolean isExpressionCacheTarget(Expression<?> e) {
 		int depth = e.treeDepth();
 //		return depth == 7 || depth == 11;

@@ -17,8 +17,8 @@ package org.almostrealism.space;
 
 import org.almostrealism.geometry.BasicGeometry;
 
+import java.util.ArrayDeque;
 import java.util.EmptyStackException;
-import java.util.Stack;
 
 /**
  * {@link GeometryStack} extends {@link BasicGeometry} to allow for convenient
@@ -29,14 +29,14 @@ import java.util.Stack;
  */
 public class GeometryStack extends BasicGeometry {
 	/** Stack of accumulated geometry transformations; {@code this} is always at the bottom. */
-	private final Stack<BasicGeometry> stack;
+	private final ArrayDeque<BasicGeometry> stack;
 
 	/** Constructs a new {@link GeometryStack} with {@code this} as the base entry. */
 	public GeometryStack() {
-		stack = new Stack<>();
-		stack.push(this);
+		stack = new ArrayDeque<>();
+		stack.addFirst(this);
 	}
-	
+
 	/**
 	 * Removes the most recently pushed {@link BasicGeometry} and subtracts its
 	 * transform contribution from the accumulated state.
@@ -44,10 +44,10 @@ public class GeometryStack extends BasicGeometry {
 	 * @throws java.util.EmptyStackException if only the base entry remains
 	 */
 	public void pop() {
-		if (stack.peek() == this)
+		if (stack.peekFirst() == this)
 			throw new EmptyStackException();
-		
-		BasicGeometry g = stack.pop();
+
+		BasicGeometry g = stack.removeFirst();
 		
 		this.location = location.subtract(g.location);
 		this.size = size / g.size;
@@ -68,7 +68,7 @@ public class GeometryStack extends BasicGeometry {
 	 * @param g the geometry whose transform should be accumulated
 	 */
 	public void push(BasicGeometry g) {
-		this.stack.push(g);
+		this.stack.addFirst(g);
 		
 		this.location = location.add(g.location);
 		this.size = size * g.size;

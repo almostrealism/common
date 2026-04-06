@@ -49,10 +49,8 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		int batchSize = 1;
 		int inputChannels = 1;
 		int outputChannels = 1;
-		int seqLength = 5;
 		int kernelSize = 3;
 		int stride = 1;
-		int paddedLength = seqLength; // no padding
 		int outLength = 3;
 
 		// Input: [1, 2, 3, 4, 5] with shape (1, 1, 1, 5)

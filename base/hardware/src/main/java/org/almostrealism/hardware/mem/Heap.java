@@ -25,7 +25,8 @@ import org.almostrealism.io.Console;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Stack;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -244,7 +245,7 @@ public class Heap {
 	 * non-empty, the top of this stack is the active stage (returned by
 	 * {@link #getStage()}). When null or empty, the {@link #root} is the active stage.</p>
 	 */
-	private Stack<HeapStage> stages;
+	private Deque<HeapStage> stages;
 
 	/**
 	 * Creates a heap with the specified root size and a default stage size of {@code size / 4}.
@@ -454,7 +455,7 @@ public class Heap {
 	 */
 	protected void push() {
 		if (stages == null) {
-			stages = new Stack<>();
+			stages = new ArrayDeque<>();
 		}
 
 		stages.push(new HeapStage(stageSize));
@@ -849,7 +850,7 @@ public class Heap {
 	 * @see Heap#addCompiled(OperationAdapter)
 	 * @see Heap#addCreatedMemory(MemoryData)
 	 */
-	private class HeapDependencies implements Destroyable {
+	private static class HeapDependencies implements Destroyable {
 		/**
 		 * Operations registered via {@link Heap#addOperation(Supplier)}.
 		 *

@@ -372,7 +372,7 @@ public class LibraryDestination implements ConsoleFeatures {
 		try {
 			clean(getTemporaryPath());
 		} catch (Exception e) {
-			e.printStackTrace();
+			System.err.println("LibraryDestination: " + e.getMessage());
 		}
 	}
 

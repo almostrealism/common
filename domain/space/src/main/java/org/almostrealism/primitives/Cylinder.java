@@ -73,6 +73,8 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 	}
 	
 	/**
+	 * Returns {@code true} if the ray intersects this cylinder.
+	 *
 	 * @return  True if the ray represented by the specified Ray object intersects the cylinder
 	 *          represented by this Cylinder object.
 	 */
@@ -113,10 +115,8 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 				double discriminant = (b * b) - (g) * (c - 1);
 				double discriminantSqrt = Math.sqrt(discriminant) / g;
 
-				double t0 = 0.0, t1 = 0.0;
-
-				t0 = (-b / g) + discriminantSqrt;
-				t1 = (-b / g) - discriminantSqrt;
+				double t0 = (-b / g) + discriminantSqrt;
+				double t1 = (-b / g) - discriminantSqrt;
 
 				double l0 = new Vector(ray.pointAt(c(t0)).get().evaluate(args), 0).getY();
 				double l1 = new Vector(ray.pointAt(c(t1)).get().evaluate(args), 0).getY();

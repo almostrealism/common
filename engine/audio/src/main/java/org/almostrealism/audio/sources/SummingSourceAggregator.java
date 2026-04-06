@@ -44,6 +44,7 @@ public class SummingSourceAggregator implements SourceAggregator, CellFeatures {
 												   Producer<PackedCollection> frequency,
 												   Producer<PackedCollection>... sources) {
 		return new DynamicCollectionProducer(shape(buffer.getFrames()), null) {
+			@Override
 			public Evaluable<PackedCollection> get() {
 				List<Evaluable<PackedCollection>> layerAudio =
 						Stream.of(sources).map(Producer::get).toList();

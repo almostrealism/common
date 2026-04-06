@@ -42,6 +42,10 @@ import java.util.List;
  *   <li>CPU loops with setMem() that defeat GPU parallelism</li>
  *   <li>toDouble()/toArray() patterns that force GPU-CPU round trips</li>
  *   <li>System.arraycopy near PackedCollection usage</li>
+ *   <li>.evaluate() calls inside computation code (engine/ml/, studio/)</li>
+ *   <li>.toDouble() calls inside computation code</li>
+ *   <li>Classes named *Cell that don't implement org.almostrealism.graph.Cell</li>
+ *   <li>Classes named *Block that don't implement org.almostrealism.model.Block</li>
  * </ul>
  *
  * <h2>How to Fix Violations</h2>
@@ -327,6 +331,115 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 					detector.hasViolations());
 
 			log("Detector correctly allowed Features interface with only default methods.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector catches classes ending in "Cell" that don't implement Cell.
+	 */
+	@Test
+	public void testDetectorCatchesCellNamingViolation() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-cell");
+		Path testFile = tempDir.resolve("BadCell.java");
+
+		String violatingCode = """
+				package test;
+				public class BadCell {
+				    public void doSomething() {
+				        System.out.println("I am not a real Cell");
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean foundCellViolation = detector.getViolations().stream()
+					.anyMatch(v -> v.getRule().equals("CELL_NAMING_VIOLATION"));
+			Assert.assertTrue("Should detect Cell naming violation",
+					foundCellViolation);
+
+			log("Detector correctly identified Cell naming violation.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector allows Cell classes that properly implement Cell.
+	 */
+	@Test
+	public void testDetectorAllowsProperCellImplementation() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-cell-clean");
+		Path testFile = tempDir.resolve("GoodCell.java");
+
+		String cleanCode = """
+				package test;
+				import org.almostrealism.graph.CellAdapter;
+				public class GoodCell extends CellAdapter {
+				    public void doSomething() {
+				        System.out.println("I implement Cell via CellAdapter");
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, cleanCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean foundCellViolation = detector.getViolations().stream()
+					.anyMatch(v -> v.getRule().equals("CELL_NAMING_VIOLATION"));
+			Assert.assertFalse("Should not flag Cell class extending CellAdapter",
+					foundCellViolation);
+
+			log("Detector correctly allowed proper Cell implementation.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector catches classes ending in "Block" that don't implement Block.
+	 */
+	@Test
+	public void testDetectorCatchesBlockNamingViolation() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-block");
+		Path testFile = tempDir.resolve("BadBlock.java");
+
+		String violatingCode = """
+				package test;
+				public class BadBlock {
+				    public void doSomething() {
+				        System.out.println("I am not a real Block");
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean foundBlockViolation = detector.getViolations().stream()
+					.anyMatch(v -> v.getRule().equals("BLOCK_NAMING_VIOLATION"));
+			Assert.assertTrue("Should detect Block naming violation",
+					foundBlockViolation);
+
+			log("Detector correctly identified Block naming violation.");
 
 		} finally {
 			Files.deleteIfExists(testFile);

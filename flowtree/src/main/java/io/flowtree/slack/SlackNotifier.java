@@ -62,12 +62,10 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     /** Maximum number of completed jobs to retain per workstream. */
     private static final int MAX_JOB_HISTORY = 100;
 
-    /** Slack Bot User OAuth Token (xoxb-...) used to authenticate API calls. */
-    private final String botToken;
     /** Slack SDK methods client used to post messages and update threads. */
     private final MethodsClient client;
     /** Registry of configured workstreams, keyed by workstream ID. */
-    private final Map<String, SlackWorkstream> workstreams;
+    private final Map<String, Workstream> workstreams;
     /** Maps job ID to the Slack thread timestamp of its notification thread. */
     private final Map<String, String> jobThreadTs;
     /** Stores the last {@link #MAX_JOB_HISTORY} completion events per workstream, keyed by workstream ID then job ID. */
@@ -91,7 +89,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param botToken the Slack Bot User OAuth Token (xoxb-...)
      */
     public SlackNotifier(String botToken) {
-        this.botToken = botToken;
         this.workstreams = new HashMap<>();
         this.jobThreadTs = new HashMap<>();
         this.jobHistory = new HashMap<>();
@@ -111,7 +108,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      *
      * @param workstream the workstream configuration
      */
-    public void registerWorkstream(SlackWorkstream workstream) {
+    public void registerWorkstream(Workstream workstream) {
         workstreams.put(workstream.getWorkstreamId(), workstream);
     }
 
@@ -121,7 +118,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param workstreamId the workstream identifier
      * @return the workstream, or null if not registered
      */
-    public SlackWorkstream getWorkstream(String workstreamId) {
+    public Workstream getWorkstream(String workstreamId) {
         return workstreams.get(workstreamId);
     }
 
@@ -130,7 +127,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      *
      * @return an unmodifiable view of the workstream map
      */
-    public Map<String, SlackWorkstream> getWorkstreams() {
+    public Map<String, Workstream> getWorkstreams() {
         return Collections.unmodifiableMap(workstreams);
     }
 
@@ -338,12 +335,12 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param branch the branch name to match (e.g., "feature/new-decoder")
      * @return the matching workstream, or null if no match is found
      */
-    public SlackWorkstream findWorkstreamByBranch(String branch) {
+    public Workstream findWorkstreamByBranch(String branch) {
         if (branch == null || branch.isEmpty()) {
             return null;
         }
 
-        for (SlackWorkstream ws : workstreams.values()) {
+        for (Workstream ws : workstreams.values()) {
             if (branch.equals(ws.getDefaultBranch())) {
                 return ws;
             }
@@ -361,7 +358,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param repoUrl the repository URL to match (may be null)
      * @return the matching workstream, or null if no match is found
      */
-    public SlackWorkstream findWorkstreamByBranchAndRepo(String branch, String repoUrl) {
+    public Workstream findWorkstreamByBranchAndRepo(String branch, String repoUrl) {
         if (branch == null || branch.isEmpty()) {
             return null;
         }
@@ -370,7 +367,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             return findWorkstreamByBranch(branch);
         }
 
-        for (SlackWorkstream ws : workstreams.values()) {
+        for (Workstream ws : workstreams.values()) {
             if (branch.equals(ws.getDefaultBranch())
                     && repoUrl.equals(ws.getRepoUrl())) {
                 return ws;
@@ -404,7 +401,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      *                      this message timestamp (creating a thread)
      */
     public void onJobSubmitted(String workstreamId, JobCompletionEvent event, String replyTo) {
-        SlackWorkstream workstream = workstreams.get(workstreamId);
+        Workstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
             warn("Unknown workstream: " + workstreamId);
             return;
@@ -435,7 +432,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
     @Override
     public void onJobStarted(String workstreamId, JobCompletionEvent event) {
-        SlackWorkstream workstream = workstreams.get(workstreamId);
+        Workstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
             warn("Unknown workstream: " + workstreamId);
             return;
@@ -457,7 +454,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             }
         }
 
-        String message = formatStartedMessage(event, workstream);
+        String message = formatStartedMessage(event);
 
         // Thread under the submission message if one exists
         String threadTs = jobThreadTs.get(event.getJobId());
@@ -470,7 +467,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
     @Override
     public void onJobCompleted(String workstreamId, JobCompletionEvent event) {
-        SlackWorkstream workstream = workstreams.get(workstreamId);
+        Workstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
             warn("Unknown workstream: " + workstreamId);
             return;
@@ -482,7 +479,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             statsStore.recordJobCompleted(workstreamId, event);
         }
 
-        String message = formatCompletedMessage(event, workstream);
+        String message = formatCompletedMessage(event);
         String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
 
         if (threadTs != null) {
@@ -778,7 +775,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * the job completion. This is a no-op if no {@link org.almostrealism.io.AlertDeliveryProvider}
      * is registered (e.g., no {@code signalwire.properties} file).
      */
-    private void fireCompletionAlert(JobCompletionEvent event, SlackWorkstream workstream) {
+    private void fireCompletionAlert(JobCompletionEvent event, Workstream workstream) {
         StringBuilder sb = new StringBuilder();
         sb.append("Job ").append(event.getStatus().name().toLowerCase());
         if (workstream.getChannelName() != null) {
@@ -802,7 +799,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param workstream  the workstream the job belongs to
      * @return            formatted Slack message string
      */
-    private String formatSubmittedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
+    private String formatSubmittedMessage(JobCompletionEvent event, Workstream workstream) {
         StringBuilder sb = new StringBuilder();
         sb.append(":outbox_tray: *Job submitted:* ");
         sb.append(truncate(event.getDescription(), 100));
@@ -824,10 +821,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * actively running.
      *
      * @param event       the started event
-     * @param workstream  the workstream the job belongs to
      * @return            formatted Slack message string
      */
-    private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
+    private String formatStartedMessage(JobCompletionEvent event) {
         StringBuilder sb = new StringBuilder();
         sb.append(":arrows_counterclockwise: *Starting work:* ");
         sb.append(truncate(event.getDescription(), 100));
@@ -841,10 +837,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * hash, cost, and error details as applicable.
      *
      * @param event       the completion event
-     * @param workstream  the workstream the job belongs to
      * @return            formatted Slack message string
      */
-    private String formatCompletedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
+    private String formatCompletedMessage(JobCompletionEvent event) {
         StringBuilder sb = new StringBuilder();
 
         switch (event.getStatus()) {

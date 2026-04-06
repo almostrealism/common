@@ -50,7 +50,7 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 	 * {@code end}, {@code third}) into the coordinate and color lists of the enclosing
 	 * {@link TriangularMeshColorBuffer}. Subtrees cover sub-triangles after refinement.</p>
 	 */
-	protected abstract class Node {
+	protected static abstract class Node {
 		/** Index of the first (start) vertex of this triangle in the coordinate list. */
 		int start;
 
@@ -158,7 +158,6 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 //			this.g((cb[1] - ca[1]) / shortmax);
 //			this.b((cb[2] - ca[2]) / shortmax);
 			
-			TriangularMeshColorBuffer.this.size++;
 		}
 		
 		/**
@@ -168,6 +167,7 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 		 * @param index the index into the coordinate and color lists for the new vertex
 		 * @param uv    the UV coordinates of the new vertex in fixed-point short units
 		 */
+		@Override
 		public void add(int index, short[] uv) {
 			Node[] ns = this.get(uv);
 			ByteNode n = (ByteNode) ns[1];
@@ -213,6 +213,7 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 		 * @param uv the UV coordinates to locate, in fixed-point short units
 		 * @return an array of two nodes: the deepest ancestor reached and the leaf node, or {@code null} for the leaf
 		 */
+		@Override
 		public Node[] get(short[] uv) {
 			this.wasLeft = v * (uv[0] - pa[0]) / u > uv[1];
 			
@@ -235,6 +236,7 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 		 * @param n  the most recently visited ancestor node
 		 * @return an array of two nodes: the updated ancestor and the leaf node
 		 */
+		@Override
 		public Node[] get(short[] uv, Node n) {
 			if (this.u == 0)
 				this.wasLeft = pa[0] > uv[0];
@@ -259,6 +261,7 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 		 * @param uv the UV position at which to interpolate, in fixed-point short units
 		 * @return the interpolated color as a {@code short[3]} in fixed-point short units per channel
 		 */
+		@Override
 		public short[] interpolate(Node n, short[] uv) {
 			return this.interpolate((ByteNode) n, uv);
 		}
@@ -289,10 +292,15 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 //		void g(double g) { this.g = (byte) (g * bytemax); }
 //		void b(double b) { this.b = (byte) (b * bytemax); }
 		
+		@Override
 		double u() { return this.u / shortmax; }
+		@Override
 		double v() { return this.v / shortmax; }
+		@Override
 		double r() { return (cb[0] - ca[0]) / (shortmax * bytemax); }
+		@Override
 		double g() { return (cb[1] - ca[1]) / (shortmax * bytemax); }
+		@Override
 		double b() { return (cb[2] - ca[2]) / (shortmax * bytemax); }
 	}
 	
@@ -308,8 +316,6 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 	/** Root node of the back-surface binary tree. */
 	private Node back;
 
-	/** The number of nodes currently in the tree (excluding the initial corner nodes). */
-	private int size;
 
 	/** The angular resolution used to determine when adjacent samples are close enough to merge. */
 	private final int resolution = 128;
@@ -335,6 +341,7 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 	 * @param front {@code true} to insert into the front tree, {@code false} for the back tree
 	 * @param c     the color to store at the new vertex
 	 */
+	@Override
 	public void addColor(double u, double v, boolean front, RGB c) {
 		short[] uv = {(short) (u * shortmax), (short) (v * shortmax)};
 		short[] rgb = {(short) (c.getRed() * shortmax),
@@ -358,6 +365,7 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 	 * @param front {@code true} to query the front tree, {@code false} for the back tree
 	 * @return the interpolated {@link RGB} at the given UV position
 	 */
+	@Override
 	public RGB getColorAt(double u, double v, boolean front) {
 		short[] uv = {(short) (u * shortmax), (short) (v * shortmax)};
 		Node[] n;
@@ -375,6 +383,7 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 	 * Resets the buffer to its initial state, clearing all stored vertices and reinitialising
 	 * the four UV-domain corner vertices and the front and back root nodes.
 	 */
+	@Override
 	public void clear() {
 		this.coords.clear();
 		this.colors.clear();
@@ -390,8 +399,6 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 		this.coords.add(four);
 		for (int i = 0; i < 4; i++) this.colors.add(new short[] {0, 0, 0});
 		
-		this.size = 0;
-		
 		this.front = new ByteNode(3, 1, 0);
 		this.back = new ByteNode(3, 1, 0);
 	}
@@ -401,6 +408,7 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 	 *
 	 * @return {@code 1.0}
 	 */
+	@Override
 	public double getScale() { return 1.0; }
 
 	/**
@@ -408,5 +416,6 @@ public class TriangularMeshColorBuffer implements ColorBuffer {
 	 *
 	 * @param m the scale value (ignored)
 	 */
+	@Override
 	public void setScale(double m) { }
 }

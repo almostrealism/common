@@ -41,6 +41,7 @@ public class PotentialMapHashSet extends HashSet implements PotentialMapSet {
 	 * @param x  {x, y, z} position of the map in space
 	 * @return   the new size of the set (not yet implemented, returns 0)
 	 */
+	@Override
 	public int addPotentialMap(PotentialMap m, double[] x) {
 		// TODO Auto-generated method stub
 		return 0;
@@ -53,6 +54,7 @@ public class PotentialMapHashSet extends HashSet implements PotentialMapSet {
 	 * @param radius  radius of the removal volume
 	 * @return        the number of maps removed (not yet implemented, returns 0)
 	 */
+	@Override
 	public int removePotentialMaps(double[] x, double radius) {
 		// TODO Auto-generated method stub
 		return 0;
@@ -64,6 +66,7 @@ public class PotentialMapHashSet extends HashSet implements PotentialMapSet {
 	 * @param m  the potential map to remove
 	 * @return   the new size of the set (not yet implemented, returns 0)
 	 */
+	@Override
 	public int removePotentialMap(PotentialMap m) {
 		// TODO Auto-generated method stub
 		return 0;
@@ -74,6 +77,7 @@ public class PotentialMapHashSet extends HashSet implements PotentialMapSet {
 	 *
 	 * @param radius  the maximum proximity radius
 	 */
+	@Override
 	public void setMaxProximity(double radius) {
 		// TODO Auto-generated method stub
 
@@ -84,6 +88,7 @@ public class PotentialMapHashSet extends HashSet implements PotentialMapSet {
 	 *
 	 * @return the maximum proximity radius (not yet implemented, returns 0)
 	 */
+	@Override
 	public double getMaxProximity() {
 		// TODO Auto-generated method stub
 		return 0;
@@ -96,6 +101,7 @@ public class PotentialMapHashSet extends HashSet implements PotentialMapSet {
 	 * @param p  {x, y, z} the position at which to evaluate the potential
 	 * @return   the total potential at the specified point (not yet implemented, returns 0)
 	 */
+	@Override
 	public double getPotential(double[] p) {
 		// TODO Auto-generated method stub
 		return 0;

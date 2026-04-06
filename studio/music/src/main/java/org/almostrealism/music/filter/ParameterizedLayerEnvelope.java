@@ -66,18 +66,14 @@ public class ParameterizedLayerEnvelope implements ParameterizedEnvelope {
 		/** The parameter set controlling envelope values. */
 		private final ParameterSet params;
 
-		/** The signal path voicing. */
-		private final ChannelInfo.Voicing voicing;
-
 		/**
 		 * Creates a Filter with the given parameters and voicing.
 		 *
 		 * @param params the parameter set
-		 * @param voicing the signal path voicing
+		 * @param voicing the signal path voicing (reserved for future use)
 		 */
 		public Filter(ParameterSet params, ChannelInfo.Voicing voicing) {
 			this.params = params;
-			this.voicing = voicing;
 		}
 
 		/** Returns the computed attack duration from the parent layers. */

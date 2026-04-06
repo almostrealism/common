@@ -369,6 +369,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		 *
 		 * @return a producer backed by the current input
 		 */
+		@Override
 		public DynamicCollectionProducer get() {
 			return new DynamicCollectionProducer(shape, args -> input);
 		}

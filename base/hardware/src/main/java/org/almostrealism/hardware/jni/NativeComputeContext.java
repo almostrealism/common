@@ -161,7 +161,7 @@ public class NativeComputeContext extends AbstractComputeContext<NativeDataConte
 		}
 
 		long start = System.nanoTime();
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		try {
 			buf.append(new ScopeEncoder(pw ->

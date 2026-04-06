@@ -27,9 +27,6 @@ import org.almostrealism.algebra.VectorMath;
  * @author Michael Murray
  */
 public class Elipse {
-	/** The center of the computed ellipse in 3D space. */
-	private static double[] center;
-
 	/** The major semi-axis vector of the computed ellipse. */
 	private static double[] major;
 
@@ -40,7 +37,7 @@ public class Elipse {
 	 * Computes the ellipse formed by the intersection of a cone (defined by apex
 	 * {@code p}, axis {@code n}, and half-angle {@code theta}) with the plane
 	 * perpendicular to the vector from apex to point {@code x}.
-	 * Stores the resulting ellipse center, major, and minor axes in static fields.
+	 * Stores the resulting ellipse major and minor axes in static fields.
 	 *
 	 * @param x     the point on the geometry surface (cone base reference)
 	 * @param p     the apex of the cone
@@ -61,7 +58,6 @@ public class Elipse {
 		double c1 = lls / Math.sin(0.5 * Math.PI - theta + cnnl);
 		double c2 = lls / Math.sin(0.5 * Math.PI - theta - cnnl);
 		
-		Elipse.center = VectorMath.addMultiple(VectorMath.clone(p), m, c1 - c2);
 		Elipse.major = VectorMath.multiply(m, 0.5 * (c1 + c2));
 		
 		double[] nm = new Vector(n).crossProduct(new Vector(Elipse.major)).toArray();

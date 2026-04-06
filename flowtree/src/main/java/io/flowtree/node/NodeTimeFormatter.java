@@ -41,7 +41,7 @@ class NodeTimeFormatter {
 		double sec = Math.floor(msec % 60000);
 		sec = sec / 1000.0;
 
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 
 		if (min > 0) {
 			b.append(min);

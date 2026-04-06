@@ -79,6 +79,7 @@ public class CLMemory extends RAM {
 	 *
 	 * @return the size in bytes
 	 */
+	@Override
 	public long getSize() {
 		return size;
 	}

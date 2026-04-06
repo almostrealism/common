@@ -141,7 +141,7 @@ public class AudioServer implements HttpHandler, CodeFeatures {
 
 			handler.handle(exchange);
 		} catch (Exception e) {
-			e.printStackTrace();
+			System.err.println("AudioServer: " + e.getMessage());
 		}
 	}
 

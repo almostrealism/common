@@ -41,9 +41,6 @@ package org.almostrealism.chem;
  */
 public class Material {
 
-	/** The atomic substance that comprises this material. */
-	private final Atomic s;
-
 	/**
 	 * Creates a new material from the specified atomic substance.
 	 *
@@ -53,6 +50,5 @@ public class Material {
 	 * @param s the atomic substance that makes up this material
 	 */
 	public Material(Atomic s) {
-		this.s = s;
 	}
 }

@@ -186,7 +186,7 @@ public class ConditionalAudioScoring extends ConditionalAudioSystem {
 		List<Map<Integer, PackedCollection>> allAttentions = new ArrayList<>();
 
 		for (double t : timesteps) {
-			PackedCollection output = getDiffusionModel().forward(
+			getDiffusionModel().forward(
 					audioLatent, pack(t),
 					conditionerOutputs.getCrossAttentionInput(),
 					conditionerOutputs.getGlobalCond());

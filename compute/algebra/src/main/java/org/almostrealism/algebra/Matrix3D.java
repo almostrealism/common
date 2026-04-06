@@ -134,6 +134,7 @@ public class Matrix3D {
 	 *
 	 * @return a multi-line string showing all matrix values
 	 */
+	@Override
 	public String toString() { return this.toString(false); }
 
 	/**
@@ -143,7 +144,7 @@ public class Matrix3D {
 	 * @return a multi-line string showing all matrix values
 	 */
 	public String toString(boolean noNeg) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		
 		for (int i = 0; i < this.x; i++) {
 			for (int j = 0; j < this.y; j++) {

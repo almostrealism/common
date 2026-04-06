@@ -245,7 +245,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 	}
 
 	// @Test(timeout = 30000)
-	public void subsetAssignment() {
+	private void subsetAssignment() {
 		PackedCollection originalInput = new PackedCollection(shape(10, 20));
 		originalInput.fill(pos -> Math.random());
 

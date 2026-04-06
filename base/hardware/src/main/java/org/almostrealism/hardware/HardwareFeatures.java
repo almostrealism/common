@@ -60,7 +60,7 @@ import java.util.stream.IntStream;
  * <h2>Core Capabilities</h2>
  *
  * <h3>Instruction Caching and Reuse</h3>
- * <p>The {@link #instruct(String, Function, Producer[])} method enables caching of compiled
+ * <p>The {@code instruct(String, Function, Producer[])} method enables caching of compiled
  * operations. When the same operation is invoked multiple times, the framework can reuse
  * previously compiled kernels, significantly reducing overhead:</p>
  * <pre>{@code
@@ -83,7 +83,7 @@ import java.util.stream.IntStream;
  * </ul>
  *
  * <h3>Producer Delegation</h3>
- * <p>The {@link #delegate(Producer, Producer)} method creates delegated producers that can
+ * <p>The {@code delegate(Producer, Producer)} method creates delegated producers that can
  * be substituted at execution time. This enables optimization techniques like:
  * <ul>
  *   <li><strong>Constant Propagation:</strong> Replacing computed values with constants</li>
@@ -198,7 +198,7 @@ import java.util.stream.IntStream;
  * <h2>Performance Considerations</h2>
  *
  * <ul>
- *   <li><strong>Instruction Caching:</strong> Use {@link #instruct} for operations that repeat
+ *   <li><strong>Instruction Caching:</strong> Use {@code instruct} for operations that repeat
  *       with different data - saves kernel compilation time</li>
  *   <li><strong>Loop Optimization:</strong> {@link #loop} is much more efficient than Java
  *       loops when the computation can be kernelized</li>

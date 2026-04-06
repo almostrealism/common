@@ -88,13 +88,18 @@ public class RectangularLight extends Plane implements SurfaceLight {
 	public void setSampleCount(int samples) { this.samples = samples; }
 	
 	/**
+	 * Returns the number of samples to use for this RectangularLight object.
+	 *
 	 * @return  The number of samples to use for this RectangularLight object.
 	 */
 	public int getSampleCount() { return this.samples; }
-	
+
 	/**
+	 * Returns an array of {@link org.almostrealism.color.PointLight} samples distributed across this rectangular area.
+	 *
 	 * @see SurfaceLight#getSamples(int)
 	 */
+	@Override
 	public Light[] getSamples(int total) {
 		Light[] l = new Light[total];
 		
@@ -139,10 +144,18 @@ public class RectangularLight extends Plane implements SurfaceLight {
 	/** Sets the height of the rectangular area of this {@link RectangularLight}. */
 	public void setHeight(double height) { this.height = height; }
 	
-	/** @return  The width of the rectangular area of this {@link RectangularLight}. */
+	/**
+	 * Returns the width of the rectangular area of this {@link RectangularLight}.
+	 *
+	 * @return  The width of the rectangular area of this {@link RectangularLight}.
+	 */
 	public double getWidth() { return this.width; }
-	
-	/** @return  The width of the rectangular area of this {@link RectangularLight}. */
+
+	/**
+	 * Returns the height of the rectangular area of this {@link RectangularLight}.
+	 *
+	 * @return  The height of the rectangular area of this {@link RectangularLight}.
+	 */
 	public double getHeight() { return this.height; }
 	
 	/** @see org.almostrealism.color.Light#setIntensity(double) */
@@ -153,6 +166,11 @@ public class RectangularLight extends Plane implements SurfaceLight {
 	@Override
 	public double getIntensity() { return this.intensity; }
 	
-	/** @return  "Rectangular Light". */
+	/**
+	 * Returns a string representation of this light.
+	 *
+	 * @return  "Rectangular Light".
+	 */
+	@Override
 	public String toString() { return "Rectangular Light"; }
 }

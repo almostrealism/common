@@ -64,6 +64,7 @@ public class Exp extends Expression<Double> {
 	}
 
 	/** {@inheritDoc} Evaluates to {@code e^children[0]}. */
+	@Override
 	public Number evaluate(Number... children) {
 		return Math.exp(children[0].doubleValue());
 	}

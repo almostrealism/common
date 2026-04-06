@@ -104,6 +104,7 @@ public class SequenceFunctionEvaluator<I, O> extends MatrixFunctionEvaluator<I, 
 	 * <p>Returns {@code true} if the result cache has not been populated (value-level
 	 * mapping was not used) or if the input matrix has distinct rows.</p>
 	 */
+	@Override
 	public boolean isMultiRow() { return resultCache == null || multiRow; }
 
 	/**
