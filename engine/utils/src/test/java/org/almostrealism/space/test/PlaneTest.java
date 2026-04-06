@@ -36,7 +36,7 @@ public class PlaneTest extends TestSuiteBase {
 	}
 
 	// TODO @Test(timeout = 10000)
-	public void intersectionTest1() {
+	private void intersectionTest1() {
 		ShadableIntersection intersection = test1();
 		double distance = intersection.getDistance().evaluate().toDouble();
 		System.out.println("distance = " + distance);
@@ -46,7 +46,7 @@ public class PlaneTest extends TestSuiteBase {
 	}
 
 	// TODO  @Test(timeout = 10000)
-	public void intersectionTest1Compact() {
+	private void intersectionTest1Compact() {
 		ShadableIntersection intersection = test1();
 
 		Producer<PackedCollection> p = intersection.getDistance();
@@ -71,9 +71,7 @@ public class PlaneTest extends TestSuiteBase {
 	}
 
 	// TODO @Test(timeout = 10000)
-	public void transformTest() {
-		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 0.0, 1.0),
-				new Vector(0.0, 0.5, -1.0)));
+	private void transformTest() {
 		ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0);
 
 		Plane p = new Plane(Plane.XZ);

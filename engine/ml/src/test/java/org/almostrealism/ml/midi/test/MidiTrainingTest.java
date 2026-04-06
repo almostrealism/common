@@ -604,7 +604,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 				dataset.getSequenceCount() > 0);
 
 		int pairCount = 0;
-		for (ValueTarget<PackedCollection> pair : dataset) {
+		for (ValueTarget<PackedCollection> ignored : dataset) {
 			pairCount++;
 		}
 		Assert.assertTrue("Should produce training pairs", pairCount > 0);

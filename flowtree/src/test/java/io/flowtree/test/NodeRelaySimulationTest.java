@@ -27,11 +27,11 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -1723,7 +1723,7 @@ public class NodeRelaySimulationTest extends TestSuiteBase {
     static class TrackingJobFactory implements JobFactory {
 
         private final String taskId;
-        private final LinkedList<TrackingJob> pending;
+        private final ArrayDeque<TrackingJob> pending;
         private final CompletableFuture<Void> future = new CompletableFuture<>();
 
         /**
@@ -1734,7 +1734,7 @@ public class NodeRelaySimulationTest extends TestSuiteBase {
          */
         TrackingJobFactory(String taskId, List<TrackingJob> jobs) {
             this.taskId = taskId;
-            this.pending = new LinkedList<TrackingJob>(jobs);
+            this.pending = new ArrayDeque<TrackingJob>(jobs);
         }
 
         @Override

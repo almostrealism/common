@@ -86,7 +86,7 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		a.kernelSeries();
 
 		Expression b = kernel().multiply(8).divide(144).multiply(144);
-		Expression c = a.add(b).divide(18).multiply(9).imod(9);
+		a.add(b).divide(18).multiply(9).imod(9);
 
 		Expression p = kernel().multiply(8)
 				.imod(144)
@@ -265,7 +265,7 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		series = kernel().add(0).kernelSeries();
 		Assert.assertEquals(1, series.getScale().getAsInt());
 
-		series = kernel().divide(1).multiply(8).add(0).kernelSeries();
+		kernel().divide(1).multiply(8).add(0).kernelSeries();
 	}
 
 	@Test(timeout = 30000)

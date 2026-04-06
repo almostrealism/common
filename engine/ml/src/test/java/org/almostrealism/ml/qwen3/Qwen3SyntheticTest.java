@@ -173,7 +173,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
 
 		try {
-			Qwen3 model = new Qwen3(config, stateDict, tokenizer);
+			new Qwen3(config, stateDict, tokenizer);
 			System.out.println("[OK] Model created");
 
 			// The model should compile when we try to run it

@@ -381,7 +381,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 
 		// Verify dataset is well-formed despite the pipeline gap
 		int pairCount = 0;
-		for (ValueTarget<PackedCollection> pair : dataset) {
+		for (ValueTarget<PackedCollection> ignored : dataset) {
 			pairCount++;
 		}
 		Assert.assertTrue("Dataset should produce pairs", pairCount > 0);

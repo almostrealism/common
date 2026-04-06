@@ -118,7 +118,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 			log("Model created successfully");
 
 			long start = System.currentTimeMillis();
-			CompiledModel compiled = model.compile(false);  // inference only
+			model.compile(false);  // inference only
 			long compileTime = System.currentTimeMillis() - start;
 			log("Compile time: " + compileTime + "ms");
 			log("WARNING: Expected exception but model compiled!");

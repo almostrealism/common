@@ -56,7 +56,8 @@ public class MixerTests extends TestSuiteBase implements CellFeatures, AudioTest
 			Thread.sleep(4000);
 			Assert.assertTrue(output.doubleStream().map(Math::abs).sum() > 0.0);
 		} catch (InterruptedException e) {
-			e.printStackTrace();
+			Thread.currentThread().interrupt();
+			System.err.println("MixerTests: " + e.getMessage());
 		}
 	}
 }

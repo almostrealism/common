@@ -99,7 +99,6 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		log("\n=== Direct Model Forward Pass Test ===\n");
 
 		int[] generatedTokens = new int[5];
-		int allMatch = 0;
 
 		for (int step = 0; step < 5; step++) {
 			int inputToken = inputSequence[step];
@@ -149,7 +148,6 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 				// Check if top prediction matches
 				if (top5[0] == pytorchTop5[0]) {
 					log("\n[MATCH] Top prediction matches PyTorch!");
-					allMatch++;
 				} else {
 					log("\n[MISMATCH] Top prediction differs from PyTorch");
 					log("  Java logit for PyTorch top token " + pytorchTop5[0] + ": " + logits[pytorchTop5[0]]);
