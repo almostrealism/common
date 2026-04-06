@@ -19,6 +19,7 @@ package org.almostrealism.studio.pattern.test;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.almostrealism.studio.AudioScene;
+import org.almostrealism.studio.AudioSceneLoader;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
@@ -127,9 +128,9 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 		double measureDuration = bpm.l(beats);
 		double measureFrames = measureDuration * OutputLine.sampleRate;
 
-		AudioScene.Settings settings = new ObjectMapper().readValue(
+		AudioSceneLoader.Settings settings = new ObjectMapper().readValue(
 				new File(SystemUtils.getLocalDestination("scene-settings.json")),
-				AudioScene.Settings.class);
+				AudioSceneLoader.Settings.class);
 
 		FileWaveDataProviderNode library = new FileWaveDataProviderNode(new File(LIBRARY));
 
