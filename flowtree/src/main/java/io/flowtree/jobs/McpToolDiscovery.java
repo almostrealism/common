@@ -87,21 +87,16 @@ public class McpToolDiscovery {
      * @return list of tool names, empty if file does not exist or has no tools
      */
     public static List<String> discoverToolNames(Path serverFile) {
-        if (serverFile == null || !Files.exists(serverFile)) return new ArrayList<>();
-
-        try {
-            List<String> lines = Files.readAllLines(serverFile, StandardCharsets.UTF_8);
-            List<String> tools = discoverDecoratorTools(lines);
-            if (tools.isEmpty()) {
-                tools = discoverListToolsEntries(lines);
-            }
-            if (tools.isEmpty()) {
-                tools = discoverDynamicRegistration(lines);
-            }
-            return tools;
-        } catch (IOException e) {
-            return new ArrayList<>();
+        List<String> lines = readLines(serverFile);
+        if (lines.isEmpty()) return new ArrayList<>();
+        List<String> tools = discoverDecoratorTools(lines);
+        if (tools.isEmpty()) {
+            tools = discoverListToolsEntries(lines);
         }
+        if (tools.isEmpty()) {
+            tools = discoverDynamicRegistration(lines);
+        }
+        return tools;
     }
 
     /**
@@ -123,11 +118,22 @@ public class McpToolDiscovery {
      *         is not found or the file does not exist
      */
     public static List<String> discoverToolParameters(Path serverFile, String toolName) {
-        if (serverFile == null || !Files.exists(serverFile)) return new ArrayList<>();
+        List<String> lines = readLines(serverFile);
+        if (lines.isEmpty()) return new ArrayList<>();
+        return discoverParametersForTool(lines, toolName);
+    }
 
+    /**
+     * Reads all UTF-8 lines from the given Python server source file.
+     *
+     * @param serverFile path to the file; may be {@code null}
+     * @return list of lines, empty if the file is {@code null}, does not exist,
+     *         or cannot be read
+     */
+    private static List<String> readLines(Path serverFile) {
+        if (serverFile == null || !Files.exists(serverFile)) return new ArrayList<>();
         try {
-            List<String> lines = Files.readAllLines(serverFile, StandardCharsets.UTF_8);
-            return discoverParametersForTool(lines, toolName);
+            return Files.readAllLines(serverFile, StandardCharsets.UTF_8);
         } catch (IOException e) {
             return new ArrayList<>();
         }

@@ -447,9 +447,10 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
-     * Prepares branch state for all dependent repos: fetch, checkout
-     * the target branch (creating it from the base branch if needed),
-     * and pull latest changes.
+     * Prepares branch state for all dependent repos: stash dirty files, fetch,
+     * checkout the target branch (creating it from the base branch if needed),
+     * and pull latest changes. Mirrors the lifecycle of
+     * {@link GitRepositorySetup#prepare()} for the primary repo.
      */
     private void prepareDependentReposBranches() throws IOException, InterruptedException {
         for (String depPath : dependentRepoPaths) {
@@ -457,19 +458,30 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
             GitOperations gitOps = new GitOperations(depPath, taskId);
 
-            // Fetch latest
-            gitOps.execute("fetch", "origin");
+            // 1. Stash any uncommitted changes so they do not block branch switches.
+            String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
+            if (!statusOutput.trim().isEmpty()) {
+                String stashMsg = "flowtree: dependent repo cleanup before " + taskId;
+                log("Stashing uncommitted changes in dependent repo: " + depPath);
+                gitOps.execute("stash", "push", "--include-untracked", "-m", stashMsg);
+            }
 
-            // Check out target branch or create it
+            // 2. Fetch latest from origin.
+            if (gitOps.execute("fetch", "origin") != 0) {
+                warn("git fetch origin failed in dependent repo: " + depPath);
+            }
+
+            // 3. Check out target branch or create it from the base branch.
             String currentBranch = gitOps.executeWithOutput(
                 "rev-parse", "--abbrev-ref", "HEAD").trim();
-            if (!targetBranch.equals(currentBranch)) {
-                boolean exists = gitOps.execute("rev-parse",
-                    "--verify", targetBranch) == 0
-                    || gitOps.execute("rev-parse",
-                        "--verify", "origin/" + targetBranch) == 0;
+            boolean remoteExists = gitOps.execute("show-ref", "--verify", "--quiet",
+                "refs/remotes/origin/" + targetBranch) == 0;
 
-                if (exists) {
+            if (!targetBranch.equals(currentBranch)) {
+                boolean localExists = gitOps.execute("rev-parse",
+                    "--verify", targetBranch) == 0;
+
+                if (localExists || remoteExists) {
                     int checkoutExit = gitOps.execute("checkout", targetBranch);
                     if (checkoutExit != 0) {
                         throw new IOException("git checkout " + targetBranch
@@ -485,16 +497,23 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                         throw new IOException("git checkout -b " + targetBranch
                             + " failed (exit " + createExit + ") in " + depPath);
                     }
-                    // New branch — remote doesn't exist yet, skip pull
+                    // New branch — remote does not exist yet, skip pull
                     continue;
                 }
             }
 
-            // Pull latest (fast-forward only); remote branch is known to exist here
-            int pullExit = gitOps.execute("pull", "--ff-only", "origin", targetBranch);
-            if (pullExit != 0) {
-                throw new IOException("git pull --ff-only origin " + targetBranch
-                    + " failed (exit " + pullExit + ") in " + depPath);
+            // 4. Sync with remote if remote branch exists; fall back to hard reset.
+            if (remoteExists) {
+                int pullExit = gitOps.execute("pull", "--ff-only", "origin", targetBranch);
+                if (pullExit != 0) {
+                    log("Fast-forward pull failed; resetting to origin/" + targetBranch
+                        + " in " + depPath);
+                    int resetExit = gitOps.execute("reset", "--hard", "origin/" + targetBranch);
+                    if (resetExit != 0) {
+                        throw new IOException("Failed to sync with origin/" + targetBranch
+                            + " in " + depPath);
+                    }
+                }
             }
         }
     }

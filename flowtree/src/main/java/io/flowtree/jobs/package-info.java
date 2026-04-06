@@ -62,8 +62,8 @@
  *       Claude Code agent invocations.</dd>
  *
  *   <dt>{@link io.flowtree.jobs.McpToolDiscovery}</dt>
- *   <dd>Scans Python MCP server source files to discover tool names using
- *       three common registration patterns.</dd>
+ *   <dd>Scans Python MCP server source files to discover tool names and
+ *       parameter signatures using three common registration patterns.</dd>
  *
  *   <dt>{@link io.flowtree.jobs.ManagedToolsDownloader}</dt>
  *   <dd>Downloads pushed MCP tool server files from the controller and
