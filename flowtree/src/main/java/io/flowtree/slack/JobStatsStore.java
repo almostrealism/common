@@ -574,13 +574,18 @@ public class JobStatsStore implements ConsoleFeatures {
     }
 
     /**
-     * Returns per-workstream job activity for jobs started on or after {@code since}.
+     * Returns per-workstream job activity for jobs completed on or after {@code since}.
      *
      * <p>Only workstreams with at least one completed job in the window are returned.
-     * Each entry includes job counts by status and a short list of recent jobs with
+     * A job is considered "in the window" when its {@code completed_at} timestamp falls
+     * on or after {@code since}. For rows that lack a {@code completed_at} value (e.g.,
+     * jobs inserted during a controller restart), {@code started_at} is used as the
+     * fallback via {@code COALESCE(completed_at, started_at)}.</p>
+     *
+     * <p>Each entry includes job counts by status and a short list of recent jobs with
      * their Slack message timestamps (for constructing message links).</p>
      *
-     * @param since the start of the activity window (inclusive)
+     * @param since the start of the activity window (inclusive), matched against completion time
      * @return map of workstream ID to activity summary, ordered by job count descending
      */
     public synchronized Map<String, WorkstreamActivity> getActiveWorkstreams(Instant since) {
@@ -592,7 +597,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "COALESCE(SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END), 0) AS success_count, "
             + "COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count "
             + "FROM job_timing "
-            + "WHERE started_at >= ? AND status <> 'STARTED' "
+            + "WHERE COALESCE(completed_at, started_at) >= ? AND status <> 'STARTED' "
             + "GROUP BY workstream_id "
             + "ORDER BY job_count DESC";
 
@@ -615,8 +620,8 @@ public class JobStatsStore implements ConsoleFeatures {
 
         // Fetch up to 5 recent jobs with Slack ts for each active workstream
         String jobsSql = "SELECT job_id, slack_message_ts FROM job_timing "
-            + "WHERE workstream_id = ? AND started_at >= ? AND slack_message_ts IS NOT NULL "
-            + "ORDER BY started_at DESC LIMIT 5";
+            + "WHERE workstream_id = ? AND COALESCE(completed_at, started_at) >= ? AND slack_message_ts IS NOT NULL "
+            + "ORDER BY COALESCE(completed_at, started_at) DESC LIMIT 5";
 
         for (WorkstreamActivity activity : result.values()) {
             try (PreparedStatement ps = connection.prepareStatement(jobsSql)) {

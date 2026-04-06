@@ -661,8 +661,10 @@ public class ClaudeCodeJob extends GitManagedJob {
                 } else {
                     // Re-run with the existing prompt; the job's built-in instruction
                     // context (e.g., enforceChanges) already provides correction guidance.
-                    // Track the attempt count so InstructionPromptBuilder can escalate.
-                    if (enforceChanges) {
+                    // Only escalate enforcementAttempt for the enforce-changes rule so
+                    // that unrelated custom rules returning null do not inflate the counter
+                    // and trigger spurious enforcement escalation messaging.
+                    if ("enforce-changes".equals(rule.getName())) {
                         enforcementAttempt++;
                         log("Enforcement attempt: " + (enforcementAttempt + 1));
                     }
@@ -1033,9 +1035,11 @@ public class ClaudeCodeJob extends GitManagedJob {
         String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
 
         try {
+            // Use a large unified context so that opening <dependency> tags always
+            // appear in the hunk even when the changed line is deep inside a long block.
             ProcessBuilder pb = new ProcessBuilder(
                     GitOperations.resolveGitCommand(),
-                    "diff", "origin/" + baseBranch, "--", "**/pom.xml", "pom.xml");
+                    "diff", "--unified=50", "origin/" + baseBranch, "--", "**/pom.xml", "pom.xml");
             if (workDir != null) pb.directory(new File(workDir));
             pb.redirectErrorStream(true);
             GitOperations.augmentPath(pb);

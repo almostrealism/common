@@ -1120,7 +1120,7 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Handles {@code /flowtree active} (alias: {@code /flowtree workstreams}).
-     * Lists all workstreams that had completed jobs in the last 7 days, with
+     * Lists all workstreams that completed jobs in the last 7 days, with
      * job counts and links to the most recent Slack messages for each workstream.
      *
      * @param ctx the responder for sending the ephemeral reply
@@ -1150,6 +1150,12 @@ public class SlackListener implements ConsoleFeatures {
         StringBuilder sb = new StringBuilder();
         sb.append(":globe_with_meridians: *Active Workstreams \u2014 Last 7 Days*\n\n");
 
+        // Cap total Slack API permalink calls across all workstreams to avoid rate limiting.
+        // The first MAX_PERMALINK_API_CALLS links use the API; the rest fall back to
+        // constructed archive URLs (which resolve in standard Slack workspaces).
+        final int MAX_PERMALINK_API_CALLS = 9;
+        int totalPermalinkApiCalls = 0;
+
         for (JobStatsStore.WorkstreamActivity activity : active.values()) {
             SlackWorkstream ws = wsById.get(activity.workstreamId);
             String label = ws != null ? ws.getChannelName() : activity.workstreamId;
@@ -1171,11 +1177,15 @@ public class SlackListener implements ConsoleFeatures {
                     String slackTs = jobEntry[1];
                     if (slackTs != null && !slackTs.isEmpty()) {
                         if (linkCount > 0) sb.append(", ");
-                        String permalink = notifier.getPermalink(channelId, slackTs);
+                        String permalink = null;
+                        if (totalPermalinkApiCalls < MAX_PERMALINK_API_CALLS) {
+                            permalink = notifier.getPermalink(channelId, slackTs);
+                            totalPermalinkApiCalls++;
+                        }
                         if (permalink != null) {
                             sb.append("<").append(permalink).append("|job>");
                         } else {
-                            // Fallback: construct URL from channel and ts (may not resolve in all workspaces)
+                            // Fallback: construct URL from channel and ts (resolves in standard workspaces)
                             String tsForUrl = slackTs.replace(".", "");
                             sb.append("<https://slack.com/archives/").append(channelId)
                               .append("/p").append(tsForUrl).append("|job>");
