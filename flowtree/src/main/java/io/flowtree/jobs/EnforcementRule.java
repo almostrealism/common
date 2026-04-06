@@ -26,8 +26,11 @@ package io.flowtree.jobs;
  * {@link ClaudeCodeJob}. Each rule is independent: a correction session
  * for one rule does not prevent other rules from being checked or retried.</p>
  *
- * <p>Implementations should be stateless — all inspection is performed
- * through the {@link ClaudeCodeJob} argument passed to each method.</p>
+ * <p>Implementations are generally stateless — all inspection is performed
+ * through the {@link ClaudeCodeJob} argument passed to each method.
+ * Implementations that need to track audit outcomes across retries may
+ * override {@link #onCorrectionAttempted(ClaudeCodeJob)} to maintain
+ * per-instance state.</p>
  *
  * <p>To add a new rule, implement this interface and add it via
  * {@link ClaudeCodeJob#addEnforcementRule(EnforcementRule)}. Built-in rules
@@ -77,6 +80,24 @@ public interface EnforcementRule {
      * @return the correction prompt, or {@code null} to reuse the existing job prompt
      */
     String buildCorrectionPrompt(ClaudeCodeJob job);
+
+    /**
+     * Called by the enforcement framework after each correction attempt completes,
+     * whether or not the attempt produced any file changes.
+     *
+     * <p>Implementations may override this method to update internal state based
+     * on the outcome of the correction session. For example, a deduplication rule
+     * can use this to detect when the agent confirmed no duplicates (i.e., the
+     * session produced no file changes), and mark the rule as resolved so that
+     * {@link #isViolated(ClaudeCodeJob)} returns {@code false} on the next check.</p>
+     *
+     * <p>The default implementation is a no-op.</p>
+     *
+     * @param job the job after the correction session completed
+     */
+    default void onCorrectionAttempted(ClaudeCodeJob job) {
+        // no-op by default
+    }
 
     /**
      * Returns the maximum number of correction attempts before the rule gives up.

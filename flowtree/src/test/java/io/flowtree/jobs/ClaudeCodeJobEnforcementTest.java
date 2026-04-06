@@ -19,6 +19,8 @@ package io.flowtree.jobs;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -182,6 +184,41 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 		factory.set("enforceMavenDeps", "true");
 		assertTrue(factory.isEnforceMavenDependencies());
+	}
+
+	// ── onCorrectionAttempted callback ──────────────────────────────────────
+
+	@Test(timeout = 30000)
+	public void onCorrectionAttemptedDefaultIsNoOp() {
+		EnforcementRule rule = new EnforcementRule() {
+			@Override
+			public String getName() { return "test"; }
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) { return false; }
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+		};
+		// Default implementation must not throw and must have no visible side-effects.
+		rule.onCorrectionAttempted(new ClaudeCodeJob("t1", "do something"));
+	}
+
+	@Test(timeout = 30000)
+	public void onCorrectionAttemptedCanBeOverridden() {
+		AtomicInteger callCount = new AtomicInteger();
+		EnforcementRule rule = new EnforcementRule() {
+			@Override
+			public String getName() { return "counting-rule"; }
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) { return false; }
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+			@Override
+			public void onCorrectionAttempted(ClaudeCodeJob job) { callCount.incrementAndGet(); }
+		};
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		rule.onCorrectionAttempted(job);
+		rule.onCorrectionAttempted(job);
+		assertEquals(2, callCount.get());
 	}
 
 	// ── Backward compatibility ───────────────────────────────────────────────
