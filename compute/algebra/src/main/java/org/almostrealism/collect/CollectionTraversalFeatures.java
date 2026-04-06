@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
  * @see TraversalPolicy
  * @see CollectionFeatures
  */
-public interface CollectionTraversalFeatures extends ShapeFeatures {
+public interface CollectionTraversalFeatures extends TraversalPolicyFeatures {
 	/** When true, repeat operations are permitted even for producers with variable (non-fixed) counts. */
 	boolean enableVariableRepeat = false;
 
