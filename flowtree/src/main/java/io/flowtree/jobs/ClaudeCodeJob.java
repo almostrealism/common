@@ -762,30 +762,42 @@ public class ClaudeCodeJob extends GitManagedJob {
      * existing functionality. Active when {@link #getDeduplicationMode()} is
      * {@link #DEDUP_LOCAL}.
      *
-     * <p>This rule is stateful: after a correction session that produces no file
-     * changes, it records that the audit confirmed no duplicates and stops
-     * triggering further sessions. This prevents an infinite loop on feature
-     * branches that always have new (but unique) methods relative to the base.</p>
+     * <p>This rule uses method-set comparison to determine when to stop looping.
+     * Before each correction session, {@link #isViolated(ClaudeCodeJob)} records
+     * the current set of new method names. After the session completes,
+     * {@link #onCorrectionAttempted(ClaudeCodeJob)} compares the post-session
+     * set with the recorded pre-session set. If the sets are identical, the agent
+     * had one opportunity and removed nothing — the rule marks itself as resolved
+     * so the loop exits on the next {@link #isViolated} check. If the set changed
+     * (methods were removed), another pass is made to check for remaining
+     * duplicates. This approach is deterministic and does not rely on heuristics
+     * about file changes or agent output.</p>
      */
     private class DeduplicationRule implements EnforcementRule {
 
         /**
-         * Set to {@code true} once a correction session completes with no file
-         * changes, indicating the agent confirmed that none of the new methods
-         * are duplicates.  After this, {@link #isViolated} returns {@code false}
-         * regardless of how many new methods remain on the branch.
+         * The set of new method names recorded by the most recent {@link #isViolated}
+         * call. Used by {@link #onCorrectionAttempted} to compare against the
+         * post-session set and determine whether the agent removed any methods.
          */
-        private boolean auditConfirmedNoDuplicates = false;
+        private Set<String> methodSetBeforeSession = null;
+
+        /**
+         * Set to {@code true} by {@link #onCorrectionAttempted} when a correction
+         * session completes without changing the method set, indicating the agent
+         * found no duplicates to remove. Once resolved, {@link #isViolated} returns
+         * {@code false} immediately so the loop exits.
+         */
+        private boolean resolved = false;
 
         @Override
         public String getName() { return "deduplication"; }
 
         @Override
         public boolean isViolated(ClaudeCodeJob job) {
-            if (auditConfirmedNoDuplicates) {
-                return false;
-            }
+            if (resolved) return false;
             List<String> newMethods = job.extractNewMethodNames();
+            methodSetBeforeSession = new LinkedHashSet<>(newMethods);
             if (!newMethods.isEmpty()) {
                 log("Deduplication scan: found " + newMethods.size() + " new method(s)");
             }
@@ -793,15 +805,30 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
 
         /**
-         * After each correction session, check whether the agent made any changes.
-         * If it did not commit and left no uncommitted changes, the audit confirmed
-         * that the remaining new methods are not duplicates — mark the rule resolved.
+         * Compares the post-session method set against the pre-session snapshot
+         * recorded by {@link #isViolated}. If the sets are equal, the agent
+         * removed nothing during the correction session and the rule marks itself
+         * resolved so the loop exits on the next {@link #isViolated} check.
+         *
+         * <p><b>Performance note:</b> this method calls
+         * {@link ClaudeCodeJob#extractNewMethodNames()}, which spawns
+         * {@code git diff} and {@code git ls-files} processes. Combined with the
+         * calls already made in {@link #isViolated} and
+         * {@link #buildCorrectionPrompt}, each correction attempt currently
+         * performs three separate scans. A future improvement would be to cache
+         * the pre-session result from {@code isViolated} in a {@code List<String>}
+         * field and reuse it in {@code buildCorrectionPrompt}, reducing each
+         * attempt to one pre-session scan and one post-session scan.</p>
          */
         @Override
         public void onCorrectionAttempted(ClaudeCodeJob job) {
-            if (!job.hasUncommittedChanges() && !job.hasAgentCommitted()) {
-                log("Deduplication audit confirmed no duplicates — marking rule resolved");
-                auditConfirmedNoDuplicates = true;
+            if (methodSetBeforeSession == null) return;
+            Set<String> currentMethodSet = new LinkedHashSet<>(job.extractNewMethodNames());
+            if (currentMethodSet.equals(methodSetBeforeSession)) {
+                // The correction session ran but the method set is unchanged.
+                // The agent had one shot and removed nothing — mark as resolved.
+                log("Deduplication: method set unchanged after correction session; stopping deduplication loop");
+                resolved = true;
             }
         }
 
@@ -1290,6 +1317,14 @@ public class ClaudeCodeJob extends GitManagedJob {
      *   <li>Untracked {@code .java} files reported by {@code git ls-files --others}
      *       — every method declaration in these entirely new files is included.</li>
      * </ol>
+     *
+     * <p><b>Performance note:</b> each call spawns at least two child processes
+     * ({@code git diff} and {@code git ls-files}). {@link DeduplicationRule}
+     * currently calls this method up to three times per correction attempt (once
+     * in {@code isViolated}, once in {@code buildCorrectionPrompt}, once in
+     * {@code onCorrectionAttempted}). A future improvement would cache the
+     * pre-session result in {@code DeduplicationRule} and reuse it in
+     * {@code buildCorrectionPrompt} to reduce that to two calls per attempt.</p>
      *
      * @return deduplicated list of new method names, order-preserving
      */

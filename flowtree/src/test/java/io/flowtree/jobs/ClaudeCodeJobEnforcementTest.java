@@ -19,7 +19,12 @@ package io.flowtree.jobs;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -219,6 +224,139 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		rule.onCorrectionAttempted(job);
 		rule.onCorrectionAttempted(job);
 		assertEquals(2, callCount.get());
+	}
+
+	// ── DeduplicationRule method-set exit condition ─────────────────────────
+
+	/**
+	 * Simulates the DeduplicationRule method-set comparison exit condition using
+	 * a custom rule that tracks a synthetic method list. After a correction session
+	 * that removes no methods, {@link EnforcementRule#onCorrectionAttempted} marks
+	 * the rule as resolved and the next {@link EnforcementRule#isViolated} call must
+	 * return {@code false} so the loop exits.
+	 *
+	 * <p>The simulation includes an extra pre-correction {@code isViolated()} call to
+	 * model the {@code runEnforcementRules()} calling pattern: once for the outer
+	 * {@code if} check and once for the {@code while} condition before the first
+	 * correction attempt. Both pre-correction calls must return {@code true}.</p>
+	 */
+	@Test(timeout = 30000)
+	public void methodSetComparisonExitsLoopWhenUnchanged() {
+		// Simulate a rule whose "new methods" list does not change across calls.
+		// This mimics a deduplication audit where the agent found no duplicates.
+		AtomicInteger callCount = new AtomicInteger();
+		Set<String> methodSet = new LinkedHashSet<>();
+		methodSet.add("myMethod");
+
+		AtomicReference<Set<String>> lastSeen = new AtomicReference<>();
+		AtomicReference<Boolean> resolved = new AtomicReference<>(false);
+
+		EnforcementRule rule = new EnforcementRule() {
+			@Override
+			public String getName() { return "method-set-test"; }
+
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) {
+				if (resolved.get()) return false;
+				Set<String> current = new LinkedHashSet<>(methodSet);
+				lastSeen.set(current);
+				callCount.incrementAndGet();
+				return !current.isEmpty();
+			}
+
+			@Override
+			public void onCorrectionAttempted(ClaudeCodeJob job) {
+				Set<String> current = new LinkedHashSet<>(methodSet);
+				if (lastSeen.get() != null && current.equals(lastSeen.get())) {
+					resolved.set(true);
+				}
+			}
+
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+		};
+
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+
+		// Simulate runEnforcementRules():
+		// 1. outer if (rule.isViolated(job)) — violation detected, record the set.
+		assertTrue(rule.isViolated(job));
+		// 2. while (rule.isViolated(job) && ...) — no correction has run yet, must
+		//    still return true so the loop body is entered.
+		assertTrue(rule.isViolated(job));
+		// 3. Correction session runs (agent found no duplicates, nothing removed).
+		rule.onCorrectionAttempted(job);
+		// 4. while condition re-checked: method set unchanged after correction — exit.
+		assertFalse(rule.isViolated(job));
+		// Both pre-correction isViolated calls should have incremented the counter.
+		assertEquals(2, callCount.get());
+	}
+
+	/**
+	 * Simulates a deduplication pass that removes one method, then finds no more.
+	 * The loop should continue after the first correction (set changed), then exit
+	 * after the second correction (set unchanged).
+	 *
+	 * <p>The simulation mirrors the {@code runEnforcementRules()} calling pattern:
+	 * two {@code isViolated()} calls precede the first correction attempt (outer
+	 * {@code if} + first {@code while} condition), and the comparison that triggers
+	 * loop exit is performed in {@link EnforcementRule#onCorrectionAttempted}.</p>
+	 */
+	@Test(timeout = 30000)
+	public void methodSetComparisonContinuesLoopWhenMethodsRemoved() {
+		// Simulate a deduplication pass that removes one method, then finds no more.
+		List<String> methodList = new ArrayList<>();
+		methodList.add("methodA");
+		methodList.add("methodB");
+
+		AtomicReference<Set<String>> lastSeen = new AtomicReference<>();
+		AtomicReference<Boolean> resolved = new AtomicReference<>(false);
+		AtomicInteger violationCount = new AtomicInteger();
+
+		EnforcementRule rule = new EnforcementRule() {
+			@Override
+			public String getName() { return "method-set-removal-test"; }
+
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) {
+				if (resolved.get()) return false;
+				Set<String> current = new LinkedHashSet<>(methodList);
+				lastSeen.set(current);
+				boolean violated = !current.isEmpty();
+				if (violated) violationCount.incrementAndGet();
+				return violated;
+			}
+
+			@Override
+			public void onCorrectionAttempted(ClaudeCodeJob job) {
+				Set<String> current = new LinkedHashSet<>(methodList);
+				if (lastSeen.get() != null && current.equals(lastSeen.get())) {
+					resolved.set(true);
+				}
+			}
+
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+		};
+
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+
+		// Simulate runEnforcementRules():
+		// 1. outer if: both methods present.
+		assertTrue(rule.isViolated(job));
+		// 2. while condition 1st iteration: no correction yet, must still return true.
+		assertTrue(rule.isViolated(job));
+		// First correction: agent removes one method.
+		methodList.remove("methodB");
+		rule.onCorrectionAttempted(job);
+		// 3. while condition 2nd iteration: set changed — loop should continue.
+		assertTrue(rule.isViolated(job));
+		// Second correction: agent finds no more duplicates (nothing removed).
+		rule.onCorrectionAttempted(job);
+		// 4. while condition 3rd iteration: set unchanged after second correction — exit.
+		assertFalse(rule.isViolated(job));
+		// Three isViolated calls returned true (outer if + two while iterations).
+		assertEquals(3, violationCount.get());
 	}
 
 	// ── Backward compatibility ───────────────────────────────────────────────
