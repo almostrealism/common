@@ -64,13 +64,6 @@
         <property name="checks" value="FileLength"/>
         <property name="files" value="LayerFeatures\.java"/>
     </module>
-    <!-- AudioScene.java grew past 1800 lines when Javadoc was added;
-         tracked by scripts/check-exempt-file-lengths.sh -->
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="AudioScene\.java"/>
-    </module>
-
     <!-- Console.java is the logging system itself — it must write to System.out/err
          directly to deliver output.  The DirectSystemOut rule is suppressed for it. -->
     <module name="SuppressionSingleFilter">
