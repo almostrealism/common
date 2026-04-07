@@ -804,6 +804,22 @@ public class ClaudeCodeJob extends GitManagedJob {
             return !newMethods.isEmpty();
         }
 
+        /**
+         * Compares the post-session method set against the pre-session snapshot
+         * recorded by {@link #isViolated}. If the sets are equal, the agent
+         * removed nothing during the correction session and the rule marks itself
+         * resolved so the loop exits on the next {@link #isViolated} check.
+         *
+         * <p><b>Performance note:</b> this method calls
+         * {@link ClaudeCodeJob#extractNewMethodNames()}, which spawns
+         * {@code git diff} and {@code git ls-files} processes. Combined with the
+         * calls already made in {@link #isViolated} and
+         * {@link #buildCorrectionPrompt}, each correction attempt currently
+         * performs three separate scans. A future improvement would be to cache
+         * the pre-session result from {@code isViolated} in a {@code List<String>}
+         * field and reuse it in {@code buildCorrectionPrompt}, reducing each
+         * attempt to one pre-session scan and one post-session scan.</p>
+         */
         @Override
         public void onCorrectionAttempted(ClaudeCodeJob job) {
             if (methodSetBeforeSession == null) return;
@@ -811,7 +827,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             if (currentMethodSet.equals(methodSetBeforeSession)) {
                 // The correction session ran but the method set is unchanged.
                 // The agent had one shot and removed nothing — mark as resolved.
-                log("Deduplication: method set unchanged after correction session — no duplicates to remove");
+                log("Deduplication: method set unchanged after correction session; stopping deduplication loop");
                 resolved = true;
             }
         }
@@ -1301,6 +1317,14 @@ public class ClaudeCodeJob extends GitManagedJob {
      *   <li>Untracked {@code .java} files reported by {@code git ls-files --others}
      *       — every method declaration in these entirely new files is included.</li>
      * </ol>
+     *
+     * <p><b>Performance note:</b> each call spawns at least two child processes
+     * ({@code git diff} and {@code git ls-files}). {@link DeduplicationRule}
+     * currently calls this method up to three times per correction attempt (once
+     * in {@code isViolated}, once in {@code buildCorrectionPrompt}, once in
+     * {@code onCorrectionAttempted}). A future improvement would cache the
+     * pre-session result in {@code DeduplicationRule} and reuse it in
+     * {@code buildCorrectionPrompt} to reduce that to two calls per attempt.</p>
      *
      * @return deduplicated list of new method names, order-preserving
      */
