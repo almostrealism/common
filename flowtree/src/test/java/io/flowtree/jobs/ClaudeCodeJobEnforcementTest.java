@@ -19,6 +19,10 @@ package io.flowtree.jobs;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
@@ -219,6 +223,97 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		rule.onCorrectionAttempted(job);
 		rule.onCorrectionAttempted(job);
 		assertEquals(2, callCount.get());
+	}
+
+	// ── DeduplicationRule method-set exit condition ─────────────────────────
+
+	/**
+	 * Simulates the DeduplicationRule method-set comparison exit condition using
+	 * a custom rule that tracks a synthetic method list. After a correction session
+	 * that removes no methods (same set returned on re-check), the rule must
+	 * report no violation so the loop exits.
+	 */
+	@Test(timeout = 30000)
+	public void methodSetComparisonExitsLoopWhenUnchanged() {
+		// Simulate a rule whose "new methods" list does not change across calls.
+		// This mimics a deduplication audit where the agent found no duplicates.
+		AtomicInteger callCount = new AtomicInteger();
+		Set<String> methodSet = new LinkedHashSet<>();
+		methodSet.add("myMethod");
+
+		// Track the last-seen method set to replicate the comparison logic.
+		Set<String>[] lastSeen = new Set[]{null};
+
+		EnforcementRule rule = new EnforcementRule() {
+			@Override
+			public String getName() { return "method-set-test"; }
+
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) {
+				Set<String> current = new LinkedHashSet<>(methodSet);
+				if (lastSeen[0] != null && current.equals(lastSeen[0])) {
+					return false;
+				}
+				lastSeen[0] = current;
+				callCount.incrementAndGet();
+				return !current.isEmpty();
+			}
+
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+		};
+
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+
+		// First call: method set is recorded and violation is reported.
+		assertTrue(rule.isViolated(job));
+		// Second call with same method set: agent changed nothing — exit condition met.
+		assertFalse(rule.isViolated(job));
+		// Call count should be 1 (only the initial recording increments it).
+		assertEquals(1, callCount.get());
+	}
+
+	@Test(timeout = 30000)
+	public void methodSetComparisonContinuesLoopWhenMethodsRemoved() {
+		// Simulate a deduplication pass that removes one method, then finds no more.
+		List<String> methodList = new ArrayList<>();
+		methodList.add("methodA");
+		methodList.add("methodB");
+
+		Set<String>[] lastSeen = new Set[]{null};
+		AtomicInteger violationCount = new AtomicInteger();
+
+		EnforcementRule rule = new EnforcementRule() {
+			@Override
+			public String getName() { return "method-set-removal-test"; }
+
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) {
+				Set<String> current = new LinkedHashSet<>(methodList);
+				if (lastSeen[0] != null && current.equals(lastSeen[0])) {
+					return false;
+				}
+				lastSeen[0] = current;
+				boolean violated = !current.isEmpty();
+				if (violated) violationCount.incrementAndGet();
+				return violated;
+			}
+
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+		};
+
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+
+		// First check: both methods present.
+		assertTrue(rule.isViolated(job));
+		// Simulate agent removing one method.
+		methodList.remove("methodB");
+		// Second check: method set changed — loop should continue.
+		assertTrue(rule.isViolated(job));
+		// Third check: method set unchanged — loop should exit.
+		assertFalse(rule.isViolated(job));
+		assertEquals(2, violationCount.get());
 	}
 
 	// ── Backward compatibility ───────────────────────────────────────────────

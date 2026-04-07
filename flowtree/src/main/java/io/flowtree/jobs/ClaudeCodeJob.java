@@ -762,47 +762,45 @@ public class ClaudeCodeJob extends GitManagedJob {
      * existing functionality. Active when {@link #getDeduplicationMode()} is
      * {@link #DEDUP_LOCAL}.
      *
-     * <p>This rule is stateful: after a correction session that produces no file
-     * changes, it records that the audit confirmed no duplicates and stops
-     * triggering further sessions. This prevents an infinite loop on feature
-     * branches that always have new (but unique) methods relative to the base.</p>
+     * <p>This rule uses method-set comparison to determine when to stop looping.
+     * Before each correction session, the set of new method names is recorded.
+     * After the session, the set is re-extracted. If the sets are identical, the
+     * agent had one opportunity and removed nothing — the loop exits immediately.
+     * If the set changed (methods were removed), another pass is made to check for
+     * remaining duplicates. This approach is deterministic and does not rely on
+     * heuristics about file changes or agent output.</p>
      */
     private class DeduplicationRule implements EnforcementRule {
 
         /**
-         * Set to {@code true} once a correction session completes with no file
-         * changes, indicating the agent confirmed that none of the new methods
-         * are duplicates.  After this, {@link #isViolated} returns {@code false}
-         * regardless of how many new methods remain on the branch.
+         * The set of new method names observed at the start of the most recent
+         * {@link #isViolated} check. Used to detect whether a correction session
+         * successfully removed any methods: if the set is unchanged after a session,
+         * the agent produced no removals and the loop exits.
          */
-        private boolean auditConfirmedNoDuplicates = false;
+        private Set<String> methodSetBeforeSession = null;
 
         @Override
         public String getName() { return "deduplication"; }
 
         @Override
         public boolean isViolated(ClaudeCodeJob job) {
-            if (auditConfirmedNoDuplicates) {
+            List<String> newMethods = job.extractNewMethodNames();
+            Set<String> currentMethodSet = new LinkedHashSet<>(newMethods);
+
+            if (methodSetBeforeSession != null && currentMethodSet.equals(methodSetBeforeSession)) {
+                // The correction session ran but the method set is unchanged.
+                // The agent had one shot and removed nothing — exit the loop.
+                log("Deduplication: method set unchanged after correction session — no duplicates to remove");
                 return false;
             }
-            List<String> newMethods = job.extractNewMethodNames();
+
+            methodSetBeforeSession = currentMethodSet;
+
             if (!newMethods.isEmpty()) {
                 log("Deduplication scan: found " + newMethods.size() + " new method(s)");
             }
             return !newMethods.isEmpty();
-        }
-
-        /**
-         * After each correction session, check whether the agent made any changes.
-         * If it did not commit and left no uncommitted changes, the audit confirmed
-         * that the remaining new methods are not duplicates — mark the rule resolved.
-         */
-        @Override
-        public void onCorrectionAttempted(ClaudeCodeJob job) {
-            if (!job.hasUncommittedChanges() && !job.hasAgentCommitted()) {
-                log("Deduplication audit confirmed no duplicates — marking rule resolved");
-                auditConfirmedNoDuplicates = true;
-            }
         }
 
         @Override
