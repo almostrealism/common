@@ -67,6 +67,21 @@ public class McpToolDiscovery {
         Pattern.compile("\\.tool\\(\\)\\(\\w+\\)");
 
     /**
+     * Matches a parameter declaration line inside a Python function signature,
+     * e.g. {@code     param_name: type = default,}. Group 1 is the parameter name.
+     */
+    private static final Pattern PARAM_LINE_PATTERN =
+        Pattern.compile("^\\s+(\\w+)\\s*:");
+
+    /**
+     * Matches a parameter name at the start of a trimmed parameter segment from a
+     * single-line function signature, e.g. {@code query: str} or
+     * {@code namespace: str = "default"}. Group 1 is the parameter name.
+     */
+    private static final Pattern INLINE_PARAM_PATTERN =
+        Pattern.compile("^(\\w+)");
+
+    /**
      * Scans a Python MCP server source file for tool definitions and
      * returns their names.
      *
@@ -80,18 +95,57 @@ public class McpToolDiscovery {
      * @return list of tool names, empty if file does not exist or has no tools
      */
     public static List<String> discoverToolNames(Path serverFile) {
-        if (serverFile == null || !Files.exists(serverFile)) return new ArrayList<>();
+        List<String> lines = readLines(serverFile);
+        if (lines.isEmpty()) return new ArrayList<>();
+        List<String> tools = discoverDecoratorTools(lines);
+        if (tools.isEmpty()) {
+            tools = discoverListToolsEntries(lines);
+        }
+        if (tools.isEmpty()) {
+            tools = discoverDynamicRegistration(lines);
+        }
+        return tools;
+    }
 
+    /**
+     * Returns the parameter names declared in the function signature of a given
+     * {@code @mcp.tool()}-decorated function in a Python server source file.
+     *
+     * <p>Handles both single-line signatures such as:</p>
+     * <pre>
+     * def tool_name(param_one: str, param_two: str = "default") -&gt; dict:
+     * </pre>
+     * <p>and multi-line signatures of the form:</p>
+     * <pre>
+     * &#64;mcp.tool()
+     * def tool_name(
+     *     param_one: str,
+     *     param_two: str = "",
+     * ) -&gt; dict:
+     * </pre>
+     *
+     * @param serverFile path to the Python server source file
+     * @param toolName   the tool function name to inspect
+     * @return list of parameter names in declaration order, empty if the tool
+     *         is not found or the file does not exist
+     */
+    public static List<String> discoverToolParameters(Path serverFile, String toolName) {
+        List<String> lines = readLines(serverFile);
+        if (lines.isEmpty()) return new ArrayList<>();
+        return discoverParametersForTool(lines, toolName);
+    }
+
+    /**
+     * Reads all UTF-8 lines from the given Python server source file.
+     *
+     * @param serverFile path to the file; may be {@code null}
+     * @return list of lines, empty if the file is {@code null}, does not exist,
+     *         or cannot be read
+     */
+    private static List<String> readLines(Path serverFile) {
+        if (serverFile == null || !Files.exists(serverFile)) return new ArrayList<>();
         try {
-            List<String> lines = Files.readAllLines(serverFile, StandardCharsets.UTF_8);
-            List<String> tools = discoverDecoratorTools(lines);
-            if (tools.isEmpty()) {
-                tools = discoverListToolsEntries(lines);
-            }
-            if (tools.isEmpty()) {
-                tools = discoverDynamicRegistration(lines);
-            }
-            return tools;
+            return Files.readAllLines(serverFile, StandardCharsets.UTF_8);
         } catch (IOException e) {
             return new ArrayList<>();
         }
@@ -219,5 +273,62 @@ public class McpToolDiscovery {
         }
 
         return tools;
+    }
+
+    /**
+     * Parses the parameter names from the function signature of the named tool.
+     *
+     * <p>Assumes multi-line signatures where each parameter appears on its own
+     * line as {@code     param_name: type_hint [= default],}. Scanning stops when
+     * a line starting with {@code ) ->} or {@code ):} is reached.</p>
+     *
+     * @param lines    all lines of the server source file
+     * @param toolName the name of the function whose parameters to extract
+     * @return parameter names in source order, excluding {@code self}
+     */
+    private static List<String> discoverParametersForTool(List<String> lines, String toolName) {
+        Pattern funcDefStart = Pattern.compile("def\\s+" + Pattern.quote(toolName) + "\\s*\\(");
+        List<String> params = new ArrayList<>();
+
+        for (int i = 0; i < lines.size(); i++) {
+            String defLine = lines.get(i);
+            if (!funcDefStart.matcher(defLine).find()) continue;
+
+            // Check whether the closing paren is on the same line as the def.
+            int openParen = defLine.indexOf('(');
+            int closeParen = defLine.lastIndexOf(')');
+            if (openParen >= 0 && closeParen > openParen) {
+                // Single-line signature: parse params between ( and ).
+                String paramSection = defLine.substring(openParen + 1, closeParen);
+                for (String segment : paramSection.split(",")) {
+                    String trimmed = segment.trim();
+                    if (trimmed.isEmpty()) continue;
+                    Matcher m = INLINE_PARAM_PATTERN.matcher(trimmed);
+                    if (m.find()) {
+                        String param = m.group(1);
+                        if (!param.equals("self") && !param.equals("cls")) {
+                            params.add(param);
+                        }
+                    }
+                }
+            } else {
+                // Multi-line signature: each parameter is on its own indented line.
+                for (int j = i + 1; j < lines.size(); j++) {
+                    String trimmed = lines.get(j).trim();
+                    if (trimmed.startsWith(") ->") || trimmed.startsWith("):")) break;
+
+                    Matcher m = PARAM_LINE_PATTERN.matcher(lines.get(j));
+                    if (m.find()) {
+                        String param = m.group(1);
+                        if (!param.equals("self") && !param.equals("cls")) {
+                            params.add(param);
+                        }
+                    }
+                }
+            }
+            break;
+        }
+
+        return params;
     }
 }

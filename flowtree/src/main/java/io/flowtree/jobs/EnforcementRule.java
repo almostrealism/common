@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import io.almostrealism.uml.Named;
+
 /**
  * Defines a rule that is evaluated after an agent completes its primary work.
  * When a violation is detected, a correction session is run using the rule's
@@ -26,8 +28,16 @@ package io.flowtree.jobs;
  * {@link ClaudeCodeJob}. Each rule is independent: a correction session
  * for one rule does not prevent other rules from being checked or retried.</p>
  *
- * <p>Implementations should be stateless — all inspection is performed
- * through the {@link ClaudeCodeJob} argument passed to each method.</p>
+ * <p>The name returned by {@link #getName()} (inherited from
+ * {@link io.almostrealism.uml.Named}) is used in log messages to identify
+ * the rule (e.g., {@code "enforce-changes"}, {@code "deduplication"},
+ * {@code "no-maven-dependency-changes"}).</p>
+ *
+ * <p>Implementations are generally stateless — all inspection is performed
+ * through the {@link ClaudeCodeJob} argument passed to each method.
+ * Implementations that need to track audit outcomes across retries may
+ * override {@link #onCorrectionAttempted(ClaudeCodeJob)} to maintain
+ * per-instance state.</p>
  *
  * <p>To add a new rule, implement this interface and add it via
  * {@link ClaudeCodeJob#addEnforcementRule(EnforcementRule)}. Built-in rules
@@ -38,15 +48,7 @@ package io.flowtree.jobs;
  * @see ClaudeCodeJob
  * @see ClaudeCodeJob#DEFAULT_MAX_RULE_RETRIES
  */
-public interface EnforcementRule {
-
-    /**
-     * Returns a short name for this rule, used in log messages.
-     *
-     * @return the rule name (e.g., {@code "enforce-changes"},
-     *         {@code "no-maven-dependency-changes"})
-     */
-    String getName();
+public interface EnforcementRule extends Named {
 
     /**
      * Returns {@code true} if this rule is currently violated by the agent's work.
@@ -77,6 +79,24 @@ public interface EnforcementRule {
      * @return the correction prompt, or {@code null} to reuse the existing job prompt
      */
     String buildCorrectionPrompt(ClaudeCodeJob job);
+
+    /**
+     * Called by the enforcement framework after each correction attempt completes,
+     * whether or not the attempt produced any file changes.
+     *
+     * <p>Implementations may override this method to update internal state based
+     * on the outcome of the correction session. For example, a deduplication rule
+     * can use this to detect when the agent confirmed no duplicates (i.e., the
+     * session produced no file changes), and mark the rule as resolved so that
+     * {@link #isViolated(ClaudeCodeJob)} returns {@code false} on the next check.</p>
+     *
+     * <p>The default implementation is a no-op.</p>
+     *
+     * @param job the job after the correction session completed
+     */
+    default void onCorrectionAttempted(ClaudeCodeJob job) {
+        // no-op by default
+    }
 
     /**
      * Returns the maximum number of correction attempts before the rule gives up.

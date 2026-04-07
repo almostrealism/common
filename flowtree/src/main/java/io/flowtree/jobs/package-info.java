@@ -57,13 +57,25 @@
  *   <dd>Immutable result of a staging evaluation: staged files and skipped
  *       files with reasons.</dd>
  *
+ *   <dt>{@link io.flowtree.jobs.ClaudeCodeJob}</dt>
+ *   <dd>Runs a Claude Code agent session inside a git-managed workspace,
+ *       with optional enforcement rules (enforce-changes, deduplication,
+ *       Maven dependency protection) that trigger correction sessions when
+ *       violated. Extend or configure via {@link io.flowtree.jobs.ClaudeCodeJobFactory}.</dd>
+ *
+ *   <dt>{@link io.flowtree.jobs.EnforcementRule}</dt>
+ *   <dd>Interface for post-session checks evaluated by {@link io.flowtree.jobs.ClaudeCodeJob}.
+ *       Implement this to add custom rules; built-in rules (enforce-changes,
+ *       deduplication, Maven dependency protection) are activated by flags on
+ *       the job or factory.</dd>
+ *
  *   <dt>{@link io.flowtree.jobs.McpConfigBuilder}</dt>
  *   <dd>Builds the MCP configuration JSON and allowed-tools string for
  *       Claude Code agent invocations.</dd>
  *
  *   <dt>{@link io.flowtree.jobs.McpToolDiscovery}</dt>
- *   <dd>Scans Python MCP server source files to discover tool names using
- *       three common registration patterns.</dd>
+ *   <dd>Scans Python MCP server source files to discover tool names and
+ *       parameter signatures using three common registration patterns.</dd>
  *
  *   <dt>{@link io.flowtree.jobs.ManagedToolsDownloader}</dt>
  *   <dd>Downloads pushed MCP tool server files from the controller and

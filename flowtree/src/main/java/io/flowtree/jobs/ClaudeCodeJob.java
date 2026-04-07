@@ -670,6 +670,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                     }
                     executeSingleRun();
                 }
+                rule.onCorrectionAttempted(this);
                 if (hasAgentCommitted()) {
                     break;
                 }
@@ -760,18 +761,48 @@ public class ClaudeCodeJob extends GitManagedJob {
      * branch and runs a deduplication session to remove any that duplicate
      * existing functionality. Active when {@link #getDeduplicationMode()} is
      * {@link #DEDUP_LOCAL}.
+     *
+     * <p>This rule is stateful: after a correction session that produces no file
+     * changes, it records that the audit confirmed no duplicates and stops
+     * triggering further sessions. This prevents an infinite loop on feature
+     * branches that always have new (but unique) methods relative to the base.</p>
      */
     private class DeduplicationRule implements EnforcementRule {
+
+        /**
+         * Set to {@code true} once a correction session completes with no file
+         * changes, indicating the agent confirmed that none of the new methods
+         * are duplicates.  After this, {@link #isViolated} returns {@code false}
+         * regardless of how many new methods remain on the branch.
+         */
+        private boolean auditConfirmedNoDuplicates = false;
+
         @Override
         public String getName() { return "deduplication"; }
 
         @Override
         public boolean isViolated(ClaudeCodeJob job) {
+            if (auditConfirmedNoDuplicates) {
+                return false;
+            }
             List<String> newMethods = job.extractNewMethodNames();
             if (!newMethods.isEmpty()) {
                 log("Deduplication scan: found " + newMethods.size() + " new method(s)");
             }
             return !newMethods.isEmpty();
+        }
+
+        /**
+         * After each correction session, check whether the agent made any changes.
+         * If it did not commit and left no uncommitted changes, the audit confirmed
+         * that the remaining new methods are not duplicates — mark the rule resolved.
+         */
+        @Override
+        public void onCorrectionAttempted(ClaudeCodeJob job) {
+            if (!job.hasUncommittedChanges() && !job.hasAgentCommitted()) {
+                log("Deduplication audit confirmed no duplicates — marking rule resolved");
+                auditConfirmedNoDuplicates = true;
+            }
         }
 
         @Override
