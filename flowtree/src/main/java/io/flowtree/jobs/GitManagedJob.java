@@ -1599,6 +1599,9 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         if (workstreamUrl != null) {
             sb.append("::workstreamUrl:=").append(base64Encode(workstreamUrl));
         }
+        if (dependentRepos != null && !dependentRepos.isEmpty()) {
+            sb.append("::depRepos:=").append(base64Encode(String.join(",", dependentRepos)));
+        }
         for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
             sb.append("::req.").append(entry.getKey()).append(":=").append(entry.getValue());
         }
@@ -1664,6 +1667,17 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 break;
             case "dryRun":
                 this.dryRun = Boolean.parseBoolean(value);
+                break;
+            case "depRepos":
+                String decodedRepos = base64Decode(value);
+                List<String> repoList = new ArrayList<>();
+                for (String r : decodedRepos.split(",")) {
+                    String trimmed = r.trim();
+                    if (!trimmed.isEmpty()) {
+                        repoList.add(trimmed);
+                    }
+                }
+                this.dependentRepos = repoList;
                 break;
             default:
                 if (key.startsWith("req.")) {
