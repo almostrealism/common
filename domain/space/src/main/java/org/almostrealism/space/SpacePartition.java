@@ -94,9 +94,6 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 		/** Maximum recursion depth before surfaces are stored at the current node. */
 		private final int maxDepth = 4;
 
-		/** Maximum offset magnitude tried during adaptive partitioning. */
-		private final double maxOffset = 0.2;
-
 		/** The axis-aligned plane type used for splitting (XY, XZ, or YZ). */
 		private final int plane;
 
@@ -112,14 +109,8 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 		/** Indices into the parent's surface list for surfaces stored at this node. */
 		private int[] surfaces;
 
-		/** Cached array of surface objects for this node (built lazily). */
-		private ShadableSurface[] scache;
-
 		/** Depth of this node in the BSP tree. */
 		private final int depth;
-
-		/** Signed orientation value used during partitioning. */
-		private double orient;
 		
 		/**
 		 * Constructs a root node splitting on the given plane type at offset 0 with depth 0.
@@ -156,9 +147,6 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			this.offset = offset;
 			this.depth = depth;
 		}
-
-		/** Sets the orientation sign used during adaptive partitioning. */
-		public void setOrientation(double orient) { this.orient = orient; }
 
 		/** Returns the left child node, or {@code null} if not yet created. */
 		public Node getLeft() { return this.left; }
@@ -247,8 +235,6 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 				newSurfaces[newSurfaces.length - 1] = s;
 				this.surfaces = newSurfaces;
 			}
-			
-			this.scache = new ShadableSurface[this.surfaces.length];
 		}
 		
 		/**
@@ -389,11 +375,11 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 
 		/**
 		 * Returns the closest ray-surface intersection in this subtree, or {@code null} if none.
+		 * Currently unimplemented.
 		 *
-		 * @param r the ray to test
 		 * @return a {@link ShadableIntersection} or {@code null} (currently unimplemented)
 		 */
-		public ShadableIntersection intersectAt(Producer r) {
+		public ShadableIntersection intersectAt() {
 			return null; // TODO
 			/*
 			List<ShadableIntersection> l = new ArrayList<ShadableIntersection>();
@@ -525,6 +511,6 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 		boolean ut = t != null;
 		Producer<Ray> r = ray;
 		if (ut) r = (Producer) t.getInverse().transform(r);
-		return this.root.intersectAt(r);
+		return this.root.intersectAt();
 	}
 }

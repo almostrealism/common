@@ -21,7 +21,7 @@ import org.almostrealism.algebra.Tensor;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Hashtable;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -80,7 +80,7 @@ public class Electrons {
 	private Tensor<Double> absorptionEnergies;
 
 	/** Maps each valid excitation configuration to its required absorption energy (in eV). */
-	private Hashtable<ExcitationConfiguration, Double> configurationMap;
+	private LinkedHashMap<ExcitationConfiguration, Double> configurationMap;
 
 	/** Precomputed lists of excitation configurations reachable from each ground-state slot. */
 	private List<ExcitationConfiguration> configurations[];
@@ -114,7 +114,7 @@ public class Electrons {
 		this.e = e;
 
 		this.absorptionEnergies = new Tensor<>();
-		this.configurationMap = new Hashtable<>();
+		this.configurationMap = new LinkedHashMap<>();
 		refreshAbsorptionEnergies();
 
 		// TODO  If any pair of absorption energy categories
@@ -136,10 +136,10 @@ public class Electrons {
 	public void setAbsorptionEnergies(Tensor<Double> absorptionEnergies) { this.absorptionEnergies = absorptionEnergies; }
 
 	/** Returns the map of configurations to energies. @return the configuration map */
-	public Hashtable<ExcitationConfiguration, Double> getConfigurationMap() { return configurationMap; }
+	public LinkedHashMap<ExcitationConfiguration, Double> getConfigurationMap() { return configurationMap; }
 
 	/** Sets the configuration map. @param configurationMap the map to set */
-	public void setConfigurationMap(Hashtable<ExcitationConfiguration, Double> configurationMap) { this.configurationMap = configurationMap; }
+	public void setConfigurationMap(LinkedHashMap<ExcitationConfiguration, Double> configurationMap) { this.configurationMap = configurationMap; }
 
 	/** Returns the array of configuration lists indexed by energy level. @return the configurations */
 	public List<ExcitationConfiguration>[] getConfigurations() { return configurations; }
@@ -384,6 +384,7 @@ public class Electrons {
 		 * @return {@code true} if valid, {@code false} if two electrons of the same spin
 		 *         occupy the same orbital
 		 */
+		@Override
 		public boolean isValid() {
 			// TODO  If two electrons of the same spin occupy the same orbital
 			//       in this configuration, return false
@@ -395,6 +396,7 @@ public class Electrons {
 		 *
 		 * @return string showing the excitation levels
 		 */
+		@Override
 		public String toString() {
 			return "ExcitationConfiguration" + Arrays.toString(cursor);
 		}

@@ -96,7 +96,7 @@
 						<arg>target/headers</arg>
 						<arg>-XDcompilePolicy=simple</arg>
 						<arg>-XDshould-stop.ifError=FLOW</arg>
-						<arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:UnnecessarilyFullyQualified:ERROR -XepExcludedPaths:.*/target/generated(-test)?-sources/.*</arg>
+						<arg>-Xplugin:ErrorProne -Xep:UnnecessarilyFullyQualified:ERROR -Xep:MissingOverride:ERROR -Xep:MissingSummary:ERROR -Xep:UnusedVariable:ERROR -Xep:JdkObsolete:ERROR -Xep:CatchAndPrintStackTrace:ERROR -Xep:ClassCanBeStatic:ERROR -Xep:InvalidLink:ERROR -Xep:InvalidParam:ERROR -Xep:EscapedEntity:ERROR -XepExcludedPaths:.*/target/generated(-test)?-sources/.*</arg>
 						<arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
 						<arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED</arg>
 						<arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED</arg>

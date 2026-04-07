@@ -62,11 +62,15 @@ public class AssetInfo {
 	}
 
 	/**
+	 * Returns the asset file name.
+	 *
 	 * @return The asset file name
 	 */
 	public String getName() { return name; }
 
 	/**
+	 * Sets the asset file name.
+	 *
 	 * @param name The asset file name
 	 */
 	public void setName(String name) {
@@ -74,11 +78,15 @@ public class AssetInfo {
 	}
 
 	/**
+	 * Returns the download URL, or null if not available for download.
+	 *
 	 * @return The download URL, or null if not available for download
 	 */
 	public String getUrl() { return url; }
 
 	/**
+	 * Sets the download URL for this asset.
+	 *
 	 * @param url The download URL
 	 */
 	public void setUrl(String url) {
@@ -86,11 +94,15 @@ public class AssetInfo {
 	}
 
 	/**
+	 * Returns the file size in bytes.
+	 *
 	 * @return The file size in bytes
 	 */
 	public long getSize() { return size; }
 
 	/**
+	 * Sets the expected file size.
+	 *
 	 * @param size The file size in bytes
 	 */
 	public void setSize(long size) {
@@ -98,11 +110,15 @@ public class AssetInfo {
 	}
 
 	/**
+	 * Returns the MD5 checksum for verification, or null if not available.
+	 *
 	 * @return The MD5 checksum for verification, or null if not available
 	 */
 	public String getMd5() { return md5; }
 
 	/**
+	 * Sets the MD5 checksum for file verification.
+	 *
 	 * @param md5 The MD5 checksum string
 	 */
 	public void setMd5(String md5) {

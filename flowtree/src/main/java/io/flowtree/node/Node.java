@@ -510,6 +510,8 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns true if the thread that manages the activity of this node is alive.
+	 *
 	 * @return  True if the thread that manages the activity of this node is alive.
 	 */
 	public boolean isAlive() { return this.nodeThread.isAlive(); }
@@ -614,26 +616,37 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns the name of this node.
+	 *
 	 * @return Returns the name of this node.
 	 */
 	public String getName() { return name; }
-	
+
 	/**
+	 * Sets the name of this node.
+	 *
 	 * @param name The new name for this node.
 	 */
 	public void setName(String name) { this.name = name; }
-	
+
 	/**
+	 * Returns the unique ID number of this Node object.
+	 *
 	 * @return  The unique ID number of this Node object.
 	 */
 	public int getId() { return this.id; }
-	
+
 	/**
+	 * Returns the {@link NodeGroup} object that is the parent for this Node object.
+	 *
 	 * @return  The NodeGroup object that is the parent for this Node object.
 	 */
 	public NodeGroup getParent() { return this.parent; }
-	
+
 	/**
+	 * Returns an array of {@link Connection} objects that correspond to the peers
+	 * stored by this Node object.
+	 *
 	 * @return  An array of Connection objects that correspond to the peers
 	 *          stored by this Node object.
 	 */
@@ -688,6 +701,8 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns the maximum number of peers that this Node object will maintain connections for.
+	 *
 	 * @return  The maximum number of peers that this Node object will maintain connections for.
 	 */
 	public int getMaxPeers() { return this.maxPeers; }
@@ -709,6 +724,8 @@ public class Node implements Runnable, ThreadFactory {
 	public int getMinJobs() { return this.minJobs; }
 	
 	/**
+	 * Returns the maximum number of jobs that this Node object will keep in the queue.
+	 *
 	 * @return  The maximum number of jobs that this Node object will keep in the queue.
 	 */
 	public int getMaxJobs() { return this.maxJobs; }
@@ -793,8 +810,10 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
-	 * @param mfj  The maximum number of failed jobs to store. These jobs will be
-	 *             reintialized and run again during periods of inactivity.
+	 * Sets the maximum number of failed jobs to store.
+	 * These jobs will be reinitialized and run again during periods of inactivity.
+	 *
+	 * @param mfj  The maximum number of failed jobs to store.
 	 */
 	public void setMaxFailedJobs(int mfj) {
 		this.maxFailedJobs = mfj;
@@ -804,18 +823,24 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Sets whether peers to relay should be chosen using weighted probability.
+	 *
 	 * @param w  True if peers to relay should be chosen using weighted probability.
 	 */
 	public void setWeightPeers(boolean w) { this.weightPeers = w; }
-	
+
 	/**
+	 * Returns the connectivity rating as [peers] / [max peers].
+	 *
 	 * @return  [peers] / [max peers].
 	 */
 	public double getConnectivityRating() {
 		return ((double)this.peers.size()) / ((double)this.maxPeers);
 	}
-	
+
 	/**
+	 * Returns the activity rating as {@code 1.0 + ([jobs in queue] - [min jobs]) / [max jobs]}.
+	 *
 	 * @return  1.0 + ([jobs in queue] - [min jobs]) / [max jobs].
 	 */
 	public double getActivityRating() {
@@ -823,26 +848,36 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns the number of jobs that have been completed by this node.
+	 *
 	 * @return  The number of jobs that have been completed by this node.
 	 */
 	public int getCompletedJobCount() { return this.totalJobs; }
-	
+
 	/**
+	 * Returns the time that this node has spent working in milliseconds.
+	 *
 	 * @return  The time that this node has spent working in msecs.
 	 */
 	public double getTimeWorked() { return this.totalWorkTime; }
-	
+
 	/**
+	 * Returns the time that this node has spent communicating in milliseconds.
+	 *
 	 * @return  The time that this node has spent communicating in msecs.
 	 */
 	public double getTimeCommunicated() { return this.totalComTime; }
-	
+
 	/**
+	 * Returns the {@link RSSFeed} object stored by this node for logging.
+	 *
 	 * @return  The RSSFeed object stored by this node for logging.
 	 */
 	public RSSFeed getLog() { return this.log; }
 
 	/**
+	 * Returns a named thread for parallelizing work by {@link Job}s of this {@link Node}.
+	 *
 	 * @return  A named thread for parallelizing work by {@link Job}s of this {@link Node}.
 	 */
 	@Override
@@ -851,6 +886,8 @@ public class Node implements Runnable, ThreadFactory {
 	}
 
 	/**
+	 * Returns true if this node is currently working on a job.
+	 *
 	 * @return  True if this node is currently working on a job, false otherwise.
 	 */
 	public boolean isWorking() {
@@ -918,6 +955,9 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns the next job in the queue stored by this Node, or a failed job if
+	 * the queue is empty and failed jobs are available.
+	 *
 	 * @return  Next job in the queue stored by this Node. If this node maintains
 	 *          a list of failed jobs and there are no jobs left in the queue, the
 	 *          last failed job will be instantiated (using Server.instantiateJobClass)
@@ -986,6 +1026,10 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns a {@link Connection} object randomly selected from the peer connections
+	 * maintained by this node. If peer weighting is enabled, the selection favours
+	 * the least busy peer based on the activity rating reported by the remote node group.
+	 *
 	 * @return  A Connection object randomly selected from the peer connections
 	 *          maintained by this node. The selection will be weighted based on
 	 *          the activity rating reported by the remote node group for each
@@ -1076,6 +1120,9 @@ public class Node implements Runnable, ThreadFactory {
 	public void setConnectProbability(double p) { this.connect = p; }
 	
 	/**
+	 * Returns a value between 0.0 and 1.0 corresponding to the probability that a connection
+	 * is requested during each iteration.
+	 *
 	 * @return  A value between 0.0 and 1.0 corresponding to the probability that a connection is requested
 	 *          during each iteration.
 	 */
@@ -1090,12 +1137,17 @@ public class Node implements Runnable, ThreadFactory {
 	public void setRelayProbability(double p) { this.relay = p; }
 	
 	/**
+	 * Returns a value between 0.0 and 1.0 corresponding to the probability that a job is
+	 * relayed during each iteration.
+	 *
 	 * @return  A value between 0.0 and 1.0 corresponding to the probability that a job is relayed
 	 *          during each iteration.
 	 */
 	public double getRelayProbability() { return this.relay; }
 	
 	/**
+	 * Returns the {@link JobFactory} object stored by the parent of this node.
+	 *
 	 * @return  The JobFactory object stored by the parent of this node.
 	 */
 	public JobFactory getJobFactory() { return this.parent.getJobFactory(); }
@@ -1114,8 +1166,8 @@ public class Node implements Runnable, ThreadFactory {
 		System.out.println(s);
 		
 		if (this.log != null) {
-			StringBuffer b = new StringBuffer();
-			
+			StringBuilder b = new StringBuilder();
+
 			b.append(RSSFeed.startHtml);
 			b.append("<h1>");
 			b.append(this);
@@ -1194,7 +1246,7 @@ public class Node implements Runnable, ThreadFactory {
 	 * @return the HTML status string
 	 */
 	public String getStatus(String nl) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		
 		buf.append("<h3>" + this + "</h3>");
 		
@@ -1390,6 +1442,7 @@ public class Node implements Runnable, ThreadFactory {
 	 * </ol>
 	 * The loop exits when {@link #stop()} has been called.
 	 */
+	@Override
 	public void run() {
 		while (!this.stop) {
 			this.iteration(this);
@@ -1490,8 +1543,11 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns a String containing the number of peer connections and jobs queued by this network node.
+	 *
 	 * @return  A String containing the number of peer connections and jobs queued by this network node.
 	 */
+	@Override
 	public String toString() {
 		return "Network Node " + this.id + " -- " +
 				this.peers.size() + "(" + this.maxPeers + ")" + " peers  " +

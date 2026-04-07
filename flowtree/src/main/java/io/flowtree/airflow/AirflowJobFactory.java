@@ -64,9 +64,6 @@ public class AirflowJobFactory extends AbstractHandler implements JobFactory, Co
 	/** Task identifier associated with this factory. */
 	private String taskId;
 
-	/** Sequence counter used internally. */
-	private int i;
-
 	/** Queue of pending jobs waiting to be dispatched via {@link #nextJob()}. */
 	private final List jobs;
 

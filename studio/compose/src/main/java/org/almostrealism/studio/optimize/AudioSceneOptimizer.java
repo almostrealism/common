@@ -19,6 +19,7 @@ package org.almostrealism.studio.optimize;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.studio.AudioScene;
+import org.almostrealism.studio.AudioSceneLoader;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.arrange.EfxManager;
 import org.almostrealism.studio.arrange.MixdownManager;
@@ -49,7 +50,6 @@ import org.almostrealism.heredity.GenomeBreeder;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.optimize.PopulationOptimizer;
@@ -102,9 +102,6 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 
 	/** Root directory path of the audio sample library, configurable via {@code AR_RINGS_LIBRARY}. */
 	public static String LIBRARY = SystemUtils.getProperty("AR_RINGS_LIBRARY", "Library");
-
-	/** Console logger scoped to {@code AudioSceneOptimizer}. */
-	private static final ConsoleFeatures console = Console.root().features(AudioSceneOptimizer.class);
 
 	/** The active audio scene population managed by this optimizer. */
 	private AudioScenePopulation population;
@@ -387,7 +384,7 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		scene.setTuning(new DefaultKeyboardTuning());
 		scene.setLibraryRoot(new FileWaveDataProviderNode(new File(LIBRARY)));
 
-		AudioScene.Settings settings = AudioScene.Settings.defaultSettings(sourceCount,
+		AudioSceneLoader.Settings settings = AudioSceneLoader.Settings.defaultSettings(sourceCount,
 				AudioScene.DEFAULT_PATTERNS_PER_CHANNEL,
 				AudioScene.DEFAULT_ACTIVE_PATTERNS,
 				AudioScene.DEFAULT_LAYERS,

@@ -45,8 +45,6 @@ import static org.junit.Assert.*;
  */
 public class AudioGeneratorRefactoringTest extends TestSuiteBase {
 
-	private static final double TOLERANCE = 1e-6;
-
 	/**
 	 * Tests that both generators produce the same latent output from the sampler.
 	 * This validates that the refactoring didn't change the diffusion behavior.

@@ -109,8 +109,6 @@ public class NodeGroupTaskRemovalTest extends TestSuiteBase {
 	static class CompletableJobFactory implements JobFactory {
 		private final String id;
 		private final AtomicBoolean complete = new AtomicBoolean(false);
-		private int jobCount = 0;
-
 		CompletableJobFactory(String id) {
 			this.id = id;
 		}

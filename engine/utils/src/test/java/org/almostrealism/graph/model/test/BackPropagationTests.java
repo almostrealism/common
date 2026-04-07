@@ -166,7 +166,7 @@ public class BackPropagationTests extends TestSuiteBase {
 	}
 
 	// @Test(timeout = 120000)
-	public void convBackwards() {
+	private void convBackwards() {
 		int convSize = 3;
 		int w = 10;
 		int h = 10;
@@ -246,9 +246,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
 		List<Block> branches = block.split(shape(1, 2));
-		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
 		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
-		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+		branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
 
 		block.add(compose("replace", b, (x, y) ->
 				repeat(3, y).reshape(3, 2)));
@@ -288,9 +288,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
 		List<Block> branches = block.split(shape(1, 2));
-		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
 		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
-		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+		branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
 
 		block.add(compose("add", b, (x, y) -> add(x, y)));
 
@@ -335,9 +335,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
 		List<Block> branches = block.split(shape(1, 2), 0);
-		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
 		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
-		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+		branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
 
 		block.add(compose("add", b, (x, y) -> add(x, y)));
 

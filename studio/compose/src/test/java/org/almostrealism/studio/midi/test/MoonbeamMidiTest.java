@@ -350,10 +350,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 */
 	@Test
 	public void testGruCellComputation() {
-		int inputSize = 2;
-		int hiddenSize = 2;
-
-		// W_ih = [W_ir; W_iz; W_in], shape (3*hiddenSize, inputSize) = (6, 2)
+		// W_ih = [W_ir; W_iz; W_in], shape (3*2, 2) = (6, 2)
 		PackedCollection weightIh = new PackedCollection(new TraversalPolicy(6, 2));
 		// Set W_ir (rows 0-1) to identity
 		weightIh.setMem(0, 1.0); weightIh.setMem(1, 0.0);
@@ -383,9 +380,6 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		// W_ir@x + b_ir = [1,0;0,1]@[1,2] + [0,0] = [1, 2]
 		// W_hr@h + b_hr = [0,0;0,0]@[0.5,-0.5] + [0,0] = [0, 0]
 		// r = sigmoid([1, 2] + [0, 0]) = sigmoid([1, 2])
-		double r0 = 1.0 / (1.0 + Math.exp(-1.0));
-		double r1 = 1.0 / (1.0 + Math.exp(-2.0));
-
 		// W_iz@x + b_iz = [0,0;0,0]@[1,2] + [0,0] = [0, 0]
 		// W_hz@h + b_hz = [0,0;0,0]@[0.5,-0.5] + [0,0] = [0, 0]
 		// z = sigmoid([0, 0]) = [0.5, 0.5]
@@ -410,8 +404,6 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 */
 	@Test
 	public void testGruCellWithBias() {
-		int size = 1;
-
 		PackedCollection weightIh = new PackedCollection(new TraversalPolicy(3, 1));
 		PackedCollection weightHh = new PackedCollection(new TraversalPolicy(3, 1));
 

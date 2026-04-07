@@ -1,6 +1,5 @@
 package org.almostrealism.chem;
 
-import org.almostrealism.electrostatic.ProtonCloud;
 
 /**
  * A material representation for an {@link Alloy} that combines an {@link ElectronCloud}
@@ -16,20 +15,12 @@ public class AlloyMaterial extends Material {
 	/** Default number of atom samples used when constructing the {@link ElectronCloud}. */
 	public static final int defaultSamples = 10;
 
-	/** The electron cloud model for this alloy material. */
-	private final ElectronCloud electrons; // TODO  Replace with ElectronDensityAbsorber
-
-	/** The proton cloud model for this alloy material (not yet implemented). */
-	private ProtonCloud protons;  // TODO
-
 	/**
-	 * Constructs an alloy material from the given alloy, initializing the electron cloud
-	 * with the default number of atom samples.
+	 * Constructs an alloy material from the given alloy.
 	 *
 	 * @param m  the alloy whose material is represented
 	 */
 	public AlloyMaterial(Alloy m) {
 		super(m);
-		this.electrons = new ElectronCloud(m, defaultSamples);
 	}
 }

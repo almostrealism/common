@@ -157,6 +157,7 @@ public class Shell {
 	 *
 	 * @return a string in the format "Shell[n]" where n is the energy level
 	 */
+	@Override
 	public String toString() { return "Shell[" + getEnergyLevel() + "]"; }
 
 	/**

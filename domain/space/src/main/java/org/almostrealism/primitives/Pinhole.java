@@ -42,6 +42,8 @@ public class Pinhole extends Plane implements Absorber, Fast {
 	private Clock clock;
 	
 	/**
+	 * Sets the radius of the pinhole.
+	 *
 	 * @param r  The radius of the pinhole (usually measured in micrometers).
 	 */
 	public void setRadius(double r) { this.radius = r; }
@@ -61,6 +63,7 @@ public class Pinhole extends Plane implements Absorber, Fast {
 	 * @param energy the energy of the photon
 	 * @return {@code true} if the photon is absorbed, {@code false} if it passes through
 	 */
+	@Override
 	public boolean absorb(Vector x, Vector p, double energy) {
 		double d = Math.abs(x.dotProduct(new Vector(this.normal.get().evaluate(), 0)));
 		if (d > this.thick) return false;

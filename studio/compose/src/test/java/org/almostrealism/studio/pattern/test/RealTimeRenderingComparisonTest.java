@@ -211,11 +211,8 @@ public class RealTimeRenderingComparisonTest extends AudioSceneTestBase {
 	public void frequencySweep() {
 		// Create a simple sweep by summing multiple timed sine waves
 		// Each starts at a different time with a different frequency
-		final int numSteps = 16;
-		final double stepDuration = DURATION_SECONDS / numSteps;
 		final double startFreq = 220.0;
 		final double endFreq = 880.0;
-		final double freqStep = (endFreq - startFreq) / numSteps;
 
 		PackedCollection output = new PackedCollection(TOTAL_FRAMES);
 

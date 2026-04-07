@@ -126,7 +126,7 @@ public class Exponent extends Expression<Double> {
 	 * is expensive (e.g. contains transcendental functions like {@code sin}),
 	 * the expansion is suppressed to avoid duplicating the expensive computation.</p>
 	 *
-	 * <p>The {@code pow(x, -1.0) &rarr; 1.0 / x} case is always applied since
+	 * <p>The {@code pow(x, -1.0) -> 1.0 / x} case is always applied since
 	 * it does not duplicate the base expression.</p>
 	 *
 	 * @param base     the base expression

@@ -186,7 +186,6 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 
 		Assert.assertEquals("Should produce 7 output tokens",
 				GRUDecoder.TOKENS_PER_NOTE, tokens.length);
-		int[] vocabOffsets = GRUDecoder.computeVocabOffsets(config);
 		for (int i = 0; i < tokens.length; i++) {
 			Assert.assertTrue("Token " + i + " >= 0", tokens[i] >= 0);
 			Assert.assertTrue("Token " + i + " < decodeVocabSize",

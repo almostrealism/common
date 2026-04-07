@@ -10,5 +10,121 @@
     ],
     "deny": [],
     "ask": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-git-commit.sh",
+            "description": "Block git commit — agents stage only, humans commit"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-mvn-test-direct.sh",
+            "description": "Block direct mvn test — must use mcp__ar-test-runner__start_test_run"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-ci-file.sh",
+            "description": "Inject .github/CLAUDE.md context when reading analysis.yaml"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-pom-read.sh",
+            "description": "Inject bidirectional dependency check when reading any pom.xml"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-pom-write.sh",
+            "description": "Block pom.xml edits — dependency graph is externally controlled"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/enforce-consultant-first.sh",
+            "description": "Warn if ar-consultant not called before editing computation-layer Java"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-ci-file.sh",
+            "description": "Inject .github/CLAUDE.md context when editing analysis.yaml"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/validate-ci-edit.sh",
+            "description": "Validate analysis.needs includes all coverage-* uploaders before edit"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-pom-write.sh",
+            "description": "Block pom.xml writes — dependency graph is externally controlled"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/enforce-consultant-first.sh",
+            "description": "Warn if ar-consultant not called before writing computation-layer Java"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-ci-file.sh",
+            "description": "Inject .github/CLAUDE.md context when writing analysis.yaml"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/validate-ci-edit.sh",
+            "description": "Validate analysis.needs includes all coverage-* uploaders before write"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/scan-producer-violations.sh",
+            "description": "Scan written Java for Producer pattern violations (.evaluate, .toDouble, setMem loops)"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/scan-producer-violations.sh",
+            "description": "Scan edited Java for Producer pattern violations"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__ar-consultant__consult",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/track-consultant-call.sh",
+            "description": "Record timestamp of consultant call for enforce-consultant-first.sh"
+          }
+        ]
+      }
+    ]
   }
 }

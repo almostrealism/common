@@ -40,20 +40,12 @@ public class SendTaskDialog extends JPanel {
 	/** {@code true} when the dialog frame is currently visible. */
 	private boolean open;
 
-	/** The FlowTree server to which the rendering task will be sent. */
-	private final Server server;
-
-	/** Index of the peer server in the peer list to receive the task. */
-	private final int index;
-
 	/** Panel containing the render-option input fields. */
 	private final JPanel renderPanel;
 
 	/** Panel containing the submit and cancel buttons. */
 	private final JPanel buttonPanel;
 
-	/** Text fields for the target host and port (currently unused). */
-	private JTextField hostField, portField;
 
 	/** Drop-down for selecting the rendering job tile size. */
 	private final JComboBox jobSizeField;
@@ -95,9 +87,6 @@ public class SendTaskDialog extends JPanel {
 		super(new BorderLayout());
 
 		this.open = false;
-
-		this.server = server;
-		this.index = index;
 
 		this.widthField = new JFormattedTextField(NumberFormats.integerFormat);
 		this.heightField = new JFormattedTextField(NumberFormats.integerFormat);
@@ -147,19 +136,6 @@ public class SendTaskDialog extends JPanel {
 	 * only the wait window is displayed and then hidden.
 	 */
 	public void submit() {
-		final int jobSize = Integer.parseInt(SendTaskDialog.jobSizeOptions[this.jobSizeField.getSelectedIndex()]);
-
-		final int width = ((Number) this.widthField.getValue()).intValue();
-		final int height = ((Number) this.heightField.getValue()).intValue();
-		final int ssWidth = ((Number) this.ssWidthField.getValue()).intValue();
-		final int ssHeight = ((Number) this.ssHeightField.getValue()).intValue();
-
-		final String uri = JOptionPane.showInputDialog(this, "Enter scene URI:",
-				"Scene URI",
-				JOptionPane.PLAIN_MESSAGE);
-
-		long id = System.currentTimeMillis();
-
 		// TODO  Load job factory by reflection
 		/*
 		RayTracingJobFactory f = new RayTracingJobFactory(uri, width, height,
@@ -212,6 +188,8 @@ public class SendTaskDialog extends JPanel {
 	}
 
 	/**
+	 * Makes this dialog visible if it is not already open.
+	 *
 	 * @see org.almostrealism.swing.Dialog#showDialog()
 	 */
 	public void showDialog() {
@@ -222,6 +200,8 @@ public class SendTaskDialog extends JPanel {
 	}
 
 	/**
+	 * Hides this dialog if it is currently open.
+	 *
 	 * @see org.almostrealism.swing.Dialog#closeDialog()
 	 */
 	public void closeDialog() {

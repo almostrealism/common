@@ -23,6 +23,7 @@ import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -162,12 +163,17 @@ public class Query implements Externalizable {
 	public ResultHandler getResultHandler() { return this.handler; }
 	
 	/**
-	 * @return  The name of the table for this query.
+	 * Returns the name of the table for this query.
+	 *
+	 * @return The table name
 	 */
 	public String getTable() { return this.table; }
-	
+
 	/**
-	 * @return  The name of the column for this query.
+	 * Returns the name of the column at the specified index for this query.
+	 *
+	 * @param i Column index: 0 for the key column, any other value for the value column
+	 * @return The column name at the given index
 	 */
 	public String getColumn(int i) {
 		if (i == 0) {
@@ -217,7 +223,9 @@ public class Query implements Externalizable {
 	}
 	
 	/**
-	 * @return  The SQL condition for this query.
+	 * Returns the SQL condition for this query.
+	 *
+	 * @return The SQL WHERE condition string
 	 */
 	public String getCondition() { return this.con; }
 	
@@ -339,16 +347,16 @@ public class Query implements Externalizable {
 	}
 	
 	/**
-	 * Serializes a {@link Hashtable} of query results to a {@link #sep}-delimited string
+	 * Serializes a map of query results to a {@link #sep}-delimited string
 	 * of alternating key-value pairs.
 	 *
-	 * @param h The hashtable to serialize
-	 * @return A delimited string encoding the entries, or an empty string if the table is empty
+	 * @param h the map to serialize
+	 * @return A delimited string encoding the entries, or an empty string if the map is empty
 	 */
-	public static String toString(Hashtable h) {
+	public static String toString(Map h) {
 		if (h.size() <= 0) return "";
 		
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		Iterator itr = h.entrySet().iterator();
 		
 		Map.Entry ent = (Map.Entry) itr.next();
@@ -356,7 +364,7 @@ public class Query implements Externalizable {
 		b.append(Query.sep);
 		b.append(convertToString(ent.getValue()));
 		
-		for (int i = 1; itr.hasNext(); i += 2) {
+		while (itr.hasNext()) {
 			ent = (Map.Entry) itr.next();
 			b.append(Query.sep);
 			b.append(convertToString(ent.getKey()));
@@ -384,25 +392,25 @@ public class Query implements Externalizable {
 
 	/**
 	 * Deserializes a {@link #sep}-delimited string of alternating key-value pairs into
-	 * a new {@link Hashtable}.
+	 * a new {@link LinkedHashMap}.
 	 *
 	 * @param data The delimited string to parse
 	 * @return A hashtable containing the parsed key-value pairs
 	 */
-	public static Hashtable<String, String> fromString(String data) {
-		Hashtable<String, String> h = new Hashtable<>();
+	public static LinkedHashMap<String, String> fromString(String data) {
+		LinkedHashMap<String, String> h = new LinkedHashMap<>();
 		fromString(data, h);
 		return h;
 	}
-	
+
 	/**
 	 * Deserializes a {@link #sep}-delimited string of alternating key-value pairs into
-	 * the supplied {@link Hashtable}.
+	 * the supplied map.
 	 *
 	 * @param data The delimited string to parse
-	 * @param h    The hashtable to populate with the parsed key-value pairs
+	 * @param h    The map to populate with the parsed key-value pairs
 	 */
-	public static void fromString(String data, Hashtable<String, String> h) {
+	public static void fromString(String data, Map<String, String> h) {
 		int index = data.indexOf(Query.sep);
 		String s = data;
 		

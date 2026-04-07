@@ -56,29 +56,47 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	/** Producer that evaluates to the outward surface-normal vector. */
 	protected Producer<PackedCollection> normal;
 	
-	/** @param t  The thickness of the plane (usually measured in micrometers). */
-	public void setThickness(double t) { this.thick = t; }
-	
-	/** @return  The thickness of the plane (usually measured in micrometers). */
-	public double getThickness() { return this.thick; }
-	
-	/** @param w  The width of the plane (usually measured in micrometers). */
-	public void setWidth(double w) { this.w = w; }
-	
-	/** Returns the width of the plane (usually measured in micrometers). */
-	public double getWidth() { return this.w; }
-	
 	/**
+	 * Sets the thickness of the absorption slab.
+	 *
+	 * @param t  The thickness of the plane (usually measured in micrometers).
+	 */
+	public void setThickness(double t) { this.thick = t; }
+
+	/**
+	 * Returns the thickness of the absorption slab.
+	 *
+	 * @return  The thickness of the plane (usually measured in micrometers).
+	 */
+	public double getThickness() { return this.thick; }
+
+	/**
+	 * Sets the width of the active region.
+	 *
+	 * @param w  The width of the plane (usually measured in micrometers).
+	 */
+	public void setWidth(double w) { this.w = w; }
+
+	/**
+	 * Returns the width of the active region (usually measured in micrometers).
+	 */
+	public double getWidth() { return this.w; }
+
+	/**
+	 * Sets the height of the active region.
+	 *
 	 * @param h  The height of the plane (usually measured in micrometers).
 	 */
 	public void setHeight(double h) { this.h = h; }
-	
+
 	/**
-	 * Returns the height of the plane (usually measured in micrometers).
+	 * Returns the height of the active region (usually measured in micrometers).
 	 */
 	public double getHeight() { return this.h; }
 
 	/**
+	 * Sets the outward surface-normal vector for this plane.
+	 *
 	 * @param p  {x, y, z} - The vector normal to the absorption plane.
 	 */
 	public void setSurfaceNormal(Producer<PackedCollection> p) {
@@ -86,17 +104,23 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	}
 
 	/**
+	 * Returns the outward surface-normal vector for this plane.
+	 *
 	 * @return  {x, y, z} - The vector normal to the plane.
 	 */
 	public Producer<PackedCollection> getSurfaceNormal() { return this.normal; }
-	
+
 	/**
+	 * Sets the orientation vector pointing upward across the surface.
+	 *
 	 * @param p  {x, y, z} - The vector pointing upwards across the surface of this
 	 *           absorption plane. This vector must be orthagonal to the surface normal.
 	 */
 	public void setOrientation(double[] p) { this.up = p; this.across = null; }
-	
+
 	/**
+	 * Returns the orientation vector pointing upward across the surface.
+	 *
 	 * @return  {x, y, z} - The vector pointing upwards across the surface of this
 	 *           absorption plane.
 	 */

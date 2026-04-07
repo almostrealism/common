@@ -77,6 +77,8 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	private JPanel display;
 	
 	/**
+	 * Sets the pixel size of the absorption plane.
+	 *
 	 * @param p  The pixel size of the absorption plane (usually measured in micrometers).
 	 */
 	public void setPixelSize(double p) {
@@ -86,6 +88,8 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	}
 	
 	/**
+	 * Returns the pixel size of the absorption plane (usually measured in micrometers).
+	 *
 	 * @return  The pixel size of the absorption plane (usually measured in micrometers).
 	 */
 	public double getPixelSize() { return this.pixel; }
@@ -119,9 +123,12 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	public double getHeight() { return this.h; }
 
 	/**
+	 * Sets the orientation vector pointing upward across the surface.
+	 *
 	 * @param p  {x, y, z} - The vector pointing upwards across the surface of this
 	 *           absorption plane. This vector must be orthagonal to the surface normal.
 	 */
+	@Override
 	public void setOrientation(double[] p) { this.up = p; this.across = null; }
 
 	/** No-op: absorption delay is not used by this absorber. */
@@ -135,7 +142,6 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	@Override
 	public boolean absorb(Vector x, Vector p, double energy) {
 		double d = Math.abs(x.dotProduct(new Vector(normal.get().evaluate(), 0)));
-		double r = 1.0;
 //		if (AbsorptionPlane.verbose > 0.0) r = Math.random();
 //
 //		if (r < AbsorptionPlane.verbose)
@@ -311,6 +317,7 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 		if (this.display != null) return this.display;
 		
 		this.display = new JPanel() {
+			@Override
 			public void paint(Graphics g) {
 				AbsorptionPlane.this.drawImage(g);
 			}

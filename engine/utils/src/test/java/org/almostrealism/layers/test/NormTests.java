@@ -159,7 +159,6 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		int v = 28 * 28;
 
 		PackedCollection weights = new PackedCollection(c * v).randnFill();
-		PackedCollection biases = new PackedCollection(c * v).randnFill();
 		normComputationDelta(c, v, 4, weights, null);
 	}
 

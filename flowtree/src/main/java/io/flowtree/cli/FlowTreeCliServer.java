@@ -46,7 +46,7 @@ import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.Hashtable;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Properties;
 
@@ -100,29 +100,8 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	/** Classpath resource name for the default server configuration file. */
 	private static final String internalConfig = "node.conf";
 
-	/**
-	 * Fully-qualified class name of the PLY scene loader, used when rendering
-	 * PLY geometry through the {@code ::plyrender} command.
-	 */
-	private static final String plySceneLoaderClass = "com.almostrealism.raytracer.loaders.PlySceneLoader";
-
-	/**
-	 * Fully-qualified class name of the GTS scene loader, used when rendering
-	 * GTS geometry through the {@code ::gtsrender} command.
-	 */
-	private static final String gtsSceneLoaderClass = "com.almostrealism.raytracer.loaders.GtsSceneLoader";
-
 	/** Default TCP port on which the terminal server listens. */
 	private static final int defaultPort = 6767;
-
-	/** HTML color tag applied to directory entries by the {@code ::ls color} command. */
-	private static final String dirColor = "<font color=\"red\">";
-
-	/** HTML color tag applied to resource entries by the {@code ::ls color} command. */
-	private static final String resColor = "<font color=\"blue\">";
-
-	/** HTML closing tag to terminate a colored entry in {@code ::ls} output. */
-	private static final String endColor = "</font>";
 
 	/** Base URL of the HTTP www root used by scene-rendering commands. */
 	private String httpwww;
@@ -146,7 +125,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	private PrintStream ps;
 
 	/** Registry of custom {@link Command} implementations keyed by command name. */
-	private final Hashtable commands;
+	private final LinkedHashMap commands;
 
 	/** Swing dialog for configuring and monitoring network topology, shown in GUI mode. */
 	private NetworkDialog dialog;
@@ -342,7 +321,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		this.httpwww = httpwww;
 		this.jobSize = jobSize;
 		
-		this.commands = new Hashtable();
+		this.commands = new LinkedHashMap();
 		
 		this.socket = new ServerSocket(port);
 		
@@ -458,8 +437,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 						Thread.sleep(60000);
 
 						Client c1 = Client.getCurrentClient();
-						Server s = c1.getServer();
-						NodeGroup g = s.getNodeGroup();
+						c1.getServer();
 
 //						TODO  Separate UI elsewhere
 //						if (FlowTreeCliServer.this.activityGraph != null) {
@@ -477,7 +455,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 						}
 					} catch (InterruptedException ignored) {
 					} catch (InvocationTargetException ite) {
-						ite.printStackTrace();
+						System.err.println("FlowTreeCliServer: Invocation error during status update: " + ite);
 					}
 				}
 			});
@@ -694,7 +672,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	
 	/** Parses and dispatches a CLI command, writing output to the given print stream. */
 	// TODO  Add more help for commands and config file parameters.
-	public static String runCommand(String c, final PrintStream ps, Hashtable commands) {
+	public static String runCommand(String c, final PrintStream ps, LinkedHashMap commands) {
 		String inc = c;
 		int in = c.indexOf(" ");
 		if (in > 0) inc = c.substring(0, in);
@@ -852,6 +830,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 * @param p the newly connected {@link NodeProxy}
 	 * @see NodeProxy.EventListener#connect(NodeProxy)
 	 */
+	@Override
 	public void connect(NodeProxy p) { this.button.setIcon(this.activeIcon); }
 
 	/**
@@ -862,6 +841,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 * @return {@code 0}
 	 * @see NodeProxy.EventListener#disconnect(NodeProxy)
 	 */
+	@Override
 	public int disconnect(NodeProxy p) {
 		if (Client.getCurrentClient().getServer().getNodeGroup().getServers().length == 0)
 			this.button.setIcon(this.inactiveIcon);
@@ -879,6 +859,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 * @return {@code false}
 	 * @see NodeProxy.EventListener#recievedMessage(Message, int)
 	 */
+	@Override
 	public boolean recievedMessage(Message m, int reciever) { return false; }
 
 	/**
@@ -888,6 +869,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 *
 	 * @see Node.ActivityListener#startedWorking()
 	 */
+	@Override
 	public void startedWorking() {
 		if (this.button == null) return;
 		if (Client.getCurrentClient() == null) return;
@@ -906,6 +888,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 *
 	 * @see Node.ActivityListener#stoppedWorking()
 	 */
+	@Override
 	public void stoppedWorking() {
 		if (Client.getCurrentClient().getServer().getNodeGroup().isWorking()) return;
 		this.button.setIcon(this.sleepIcon);
@@ -918,6 +901,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 *
 	 * @see Node.ActivityListener#becameIsolated()
 	 */
+	@Override
 	public void becameIsolated() {
 //			TODO  Separate UI elsewhere
 //		if (this.display != null) {
@@ -933,5 +917,6 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 *
 	 * @param n the node whose iteration just completed
 	 */
+	@Override
 	public void iteration(Node n) { }
 }

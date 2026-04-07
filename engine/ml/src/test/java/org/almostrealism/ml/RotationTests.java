@@ -414,7 +414,6 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		Producer<PackedCollection> pos = c(p, 0, 0);
 
-		CollectionProducer q = c(p(in)).traverse(2);
 		CollectionProducer r = subset(shape(1, headSize, 2),
 				c(p(weights)), pos);
 		// r = c(p(r.get().evaluate()));

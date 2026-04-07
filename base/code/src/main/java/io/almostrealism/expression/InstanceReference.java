@@ -150,6 +150,7 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	}
 
 	/** {@inheritDoc} Recreates the reference using the same variable but new position children. */
+	@Override
 	public InstanceReference<T, V> recreate(List<Expression<?>> children) {
 		if (children.isEmpty()) {
 			return new InstanceReference<>(var);

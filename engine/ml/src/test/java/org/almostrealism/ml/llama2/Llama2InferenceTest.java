@@ -108,7 +108,7 @@ public class Llama2InferenceTest extends TestSuiteBase implements ConsoleFeature
 		log("Generated text: " + fullOutput);
 		log("Duration: " + duration + "ms");
 
-		assertValidEnglishOutput(fullOutput, steps);
+		assertValidEnglishOutput(fullOutput);
 	}
 
 	/**
@@ -138,7 +138,7 @@ public class Llama2InferenceTest extends TestSuiteBase implements ConsoleFeature
 		log("Generated text: " + fullOutput);
 		log("Duration: " + duration + "ms");
 
-		assertValidEnglishOutput(fullOutput, steps);
+		assertValidEnglishOutput(fullOutput);
 	}
 
 	/**
@@ -163,9 +163,8 @@ public class Llama2InferenceTest extends TestSuiteBase implements ConsoleFeature
 	 * Asserts that the generated text looks like valid English.
 	 *
 	 * @param output the full generated text (including BOS marker)
-	 * @param steps  the number of generation steps requested
 	 */
-	private void assertValidEnglishOutput(String output, int steps) {
+	private void assertValidEnglishOutput(String output) {
 		Assert.assertNotNull("Output should not be null", output);
 		Assert.assertTrue("Output should not be empty", output.length() > 0);
 

@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Queue;
-import java.util.Stack;
+import java.util.Deque;
 
 /**
  * Graph centrality algorithms that work with any {@link IndexedGraph}.
@@ -203,7 +203,7 @@ public interface CentralityFeatures extends CollectionFeatures {
 		double[] betweenness = new double[n];
 
 		for (int s = 0; s < n; s++) {
-			Stack<Integer> stack = new Stack<>();
+			Deque<Integer> stack = new ArrayDeque<>();
 			List<List<Integer>> predecessors = new ArrayList<>(n);
 			for (int i = 0; i < n; i++) {
 				predecessors.add(new ArrayList<>());
@@ -221,7 +221,7 @@ public interface CentralityFeatures extends CollectionFeatures {
 
 			while (!queue.isEmpty()) {
 				int v = queue.poll();
-				stack.push(v);
+				stack.addFirst(v);
 
 				for (int w : graph.neighborIndices(v)) {
 					if (dist[w] < 0) {
@@ -237,7 +237,7 @@ public interface CentralityFeatures extends CollectionFeatures {
 
 			double[] delta = new double[n];
 			while (!stack.isEmpty()) {
-				int w = stack.pop();
+				int w = stack.removeFirst();
 				for (int v : predecessors.get(w)) {
 					delta[v] += (sigma[v] / sigma[w]) * (1 + delta[w]);
 				}

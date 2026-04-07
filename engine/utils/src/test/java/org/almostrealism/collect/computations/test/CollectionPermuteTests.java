@@ -46,9 +46,6 @@ public class CollectionPermuteTests extends TestSuiteBase {
 
 		for (int i = 0; i < 2; i++) {
 			for (int j = 0; j < 4; j++) {
-				int originalIndex = input.getShape().index(i, j);
-				int permutedIndex = input.getShape().permute(1, 0).index(i, j);
-
 				assertEquals(input.valueAt(i, j), out.valueAt(j, i));
 			}
 		}

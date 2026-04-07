@@ -297,6 +297,7 @@ public class MetalDataContext extends HardwareDataContext {
 	 * @throws UnsupportedOperationException if PROFILING or C requirements are specified
 	 * @throws RuntimeException if execution fails
 	 */
+	@Override
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
 		ComputeContext current = computeContext.get();
 		ComputeContext next = createContext(expectations);

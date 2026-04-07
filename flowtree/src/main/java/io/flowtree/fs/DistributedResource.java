@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -294,6 +293,7 @@ public class DistributedResource implements Resource {
 	 *
 	 * @return the {@code byte[][]} chunk array, or {@code null} if not loaded
 	 */
+	@Override
 	public Object getData() { return this.data; }
 
 	/**
@@ -349,6 +349,7 @@ public class DistributedResource implements Resource {
 		
 		r: if (fromRes) {
 			Thread t = new Thread () {
+				@Override
 				public void run() {
 					try {
 						DistributedResource.this.loadFromResourceServer();
@@ -447,6 +448,7 @@ public class DistributedResource implements Resource {
 	 * @param offset unused
 	 * @param len    unused
 	 */
+	@Override
 	public synchronized void load(byte[] data, long offset, int len) {
 		throw new NotImplementedException("load");
 	}
@@ -608,8 +610,8 @@ public class DistributedResource implements Resource {
 							DatabaseConnection.toaColumn,
 							DatabaseConnection.uriColumn + " = '" +
 							this.uri + "'");
-		Hashtable h = s.getDatabaseConnection().executeQuery(q);
-		Hashtable th = s.getDatabaseConnection().executeQuery(tq);
+		Map h = s.getDatabaseConnection().executeQuery(q);
+		Map th = s.getDatabaseConnection().executeQuery(tq);
 		this.data = new byte[h.size()][this.chunkSize];
 		this.toa = new long[this.data.length];
 		this.loaded = new boolean[this.data.length];
@@ -662,7 +664,7 @@ public class DistributedResource implements Resource {
 							DatabaseConnection.indexColumn +
 							" = " + index);
 		q.setValue(0, this.uri);
-		Hashtable h = s.getDatabaseConnection().executeQuery(q);
+		Map h = s.getDatabaseConnection().executeQuery(q);
 		if (h == null) return null;
 		
 		byte[] b = (byte[]) h.get(this.uri);
@@ -831,6 +833,7 @@ public class DistributedResource implements Resource {
 				return -1;
 			}
 			
+			@Override
 			public String toString() {
 				return "InputStream for " + DistributedResource.this;
 			}
@@ -853,6 +856,7 @@ public class DistributedResource implements Resource {
 	 *
 	 * @param uri the new URI string
 	 */
+	@Override
 	public void setURI(String uri) { this.uri = uri; }
 
 	/**
@@ -861,6 +865,7 @@ public class DistributedResource implements Resource {
 	 *
 	 * @return the resource URI string
 	 */
+	@Override
 	public String getURI() { return this.uri; }
 
 	/**
@@ -873,6 +878,7 @@ public class DistributedResource implements Resource {
 	 * @param io the I/O streams for communication with the remote peer
 	 * @throws IOException if a network error occurs during the transfer
 	 */
+	@Override
 	public synchronized void load(IOStreams io) throws IOException {
 		this.clearCache();
 		
@@ -952,6 +958,7 @@ public class DistributedResource implements Resource {
 	 * @param io the I/O streams for communication with the remote peer
 	 * @throws IOException if a network error occurs during the transfer
 	 */
+	@Override
 	public synchronized void send(IOStreams io) throws IOException {
 		if (this.data == null) this.getData(0, true);
 		
@@ -995,14 +1002,9 @@ public class DistributedResource implements Resource {
 	 * referenced by the rest of the distributed file system.
 	 */
 	public void cache() {
-		String origUri = this.uri;
-
 		if (this.uri.startsWith("http://")) {
 			this.uri = "/http/" + this.uri.substring(7);
-		} else if (this.uri.startsWith("/http/")) {
-			origUri = "http://" + this.uri.substring(6);
 		} else if (this.uri.startsWith("file:/")) {
-			origUri = this.uri;
 			this.uri = "/files/" + this.uri.substring(this.uri.lastIndexOf("/") + 1);
 		}
 

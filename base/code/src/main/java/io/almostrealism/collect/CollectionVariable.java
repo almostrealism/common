@@ -104,6 +104,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 *
 	 * @return the shape policy for this collection variable
 	 */
+	@Override
 	public TraversalPolicy getShape() { return shape; }
 
 	/**

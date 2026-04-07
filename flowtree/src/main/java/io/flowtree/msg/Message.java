@@ -304,34 +304,50 @@ public class Message implements Externalizable {
 	public void setLocalNode(Node node) { if (this.local) this.node = node; }
 	
 	/**
+	 * Returns the integer id of the node that is the sender of this message.
+	 *
 	 * @return  The integer id of the node that is the sender of this message.
 	 */
 	public int getSender() { return this.sender; }
-	
+
 	/**
 	 * Sets the integer id of the node that is the reciever of this message.
-	 * 
+	 *
 	 * @param id  Integer id to use.
 	 */
 	public void setReceiver(int id) { this.receiver = id; }
-	
+
 	/**
+	 * Returns the integer id of the node that is the receiver of this message.
+	 *
 	 * @return  The integer id of the node that is the reciever of this message.
 	 */
 	public int getReceiver() { return this.receiver; }
-	
-	/** @return  The integer type code for this message. */
-	public int getType() { return this.type; }
-	
-	/** @return  The data stored by this message. */
-	public String getData() { return this.data; }
-	
+
 	/**
+	 * Returns the integer type code for this message.
+	 *
+	 * @return  The integer type code for this message.
+	 */
+	public int getType() { return this.type; }
+
+	/**
+	 * Returns the data stored by this message.
+	 *
+	 * @return  The data stored by this message.
+	 */
+	public String getData() { return this.data; }
+
+	/**
+	 * Returns whether this message was produced by a local node.
+	 *
 	 * @return  True if this message was produced by a local node, false if it was sent by a remote node.
 	 */
 	public boolean isLocalMessage() { return this.local; }
-	
+
 	/**
+	 * Returns the {@link NodeProxy} object stored by this Message object.
+	 *
 	 * @return  The NodeProxy object stored by this Message object.
 	 */
 	public NodeProxy getNodeProxy() { return this.proxy; }
@@ -409,6 +425,7 @@ public class Message implements Externalizable {
 	/**
 	 * @see java.io.Externalizable#writeExternal(java.io.ObjectOutput)
 	 */
+	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		if (Message.verbose) System.out.println("Write " + this);
 		
@@ -421,6 +438,7 @@ public class Message implements Externalizable {
 	/**
 	 * @see java.io.Externalizable#readExternal(java.io.ObjectInput)
 	 */
+	@Override
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		this.sender = in.readInt();
 		this.receiver = in.readInt();
@@ -497,6 +515,7 @@ public class Message implements Externalizable {
 	 *
 	 * @return  A concise string representation of this message.
 	 */
+	@Override
 	public String toString() {
 		String t = null;
 		

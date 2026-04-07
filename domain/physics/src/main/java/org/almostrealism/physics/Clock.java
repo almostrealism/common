@@ -68,28 +68,38 @@ public class Clock implements Temporal {
 	public boolean removePhotonField(PhotonField f) { return this.fields.remove(f); }
 	
 	/**
+	 * Returns the Set used by this clock to store PhotonField objects.
+	 *
 	 * @return  The Set used by this clock to store PhotonField objects.
 	 */
 	public Set<PhotonField> getPhotonFields() { return this.fields; }
 
 	public void setPhotonFields(Set<PhotonField> f) { this.fields = f; }
-	
+
 	/**
+	 * Sets the time for this clock (usually in microseconds).
+	 *
 	 * @param time  The time for this clock (usually in microseconds).
 	 */
 	public void setTime(double time) { this.ticks = (long) (time / this.interval); }
-	
+
 	/**
+	 * Returns the time for this clock (usually in microseconds).
+	 *
 	 * @return  The time for this clock (usually in microseconds).
 	 */
 	public double getTime() { return this.ticks * this.interval; }
-	
+
 	/**
+	 * Sets the interval for one tick of this clock (usually in microseconds).
+	 *
 	 * @param tick  The interval for one tick of this clock (usually in microseconds).
 	 */
 	public void setTickInterval(double tick) { this.interval = tick; }
-	
+
 	/**
+	 * Returns the interval for one tick of this clock (usually in microseconds).
+	 *
 	 * @return  The interval for one tick of this clock (usually in microseconds).
 	 */
 	public double getTickInterval() { return this.interval; }
@@ -104,7 +114,7 @@ public class Clock implements Temporal {
 	}
 	
 	/**
-	 * @return  The distance traveled by a photon in one tick of this clock,
+	 * Returns the distance traveled by a photon in one tick of this clock,
 	 *          usually measured in micrometers. (The same scale of the tick interval
 	 *          time is adopted because the speed of light is a ratio of meters and
 	 *          seconds. IE, when the tick interval is measured in microseconds,
@@ -117,7 +127,7 @@ public class Clock implements Temporal {
 	public double getTickDistance() { return this.interval * PhysicalConstants.C; }
 	
 	/**
-	 * @return  The number of ticks since the start of this clock. This number is usually
+	 * Returns the number of ticks since the start of this clock. This number is usually
 	 *          not as useful as the actual time of the clock (see getTime). Be careful
 	 *          when make assumptions about what a "tick" is. It is not a good idea to
 	 *          write code (or XML source) that depends on something without a physical

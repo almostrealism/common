@@ -82,8 +82,6 @@ public class JythonJob implements Job {
 
 	@Override
 	public void run() {
-		int index = 0;
-
 		try (PythonInterpreter pyInterp = new PythonInterpreter()) {
 			pyInterp.exec(getJython());
 		}

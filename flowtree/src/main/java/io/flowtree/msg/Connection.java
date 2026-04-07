@@ -98,16 +98,23 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	public void start() { this.proxy.addEventListener(this); }
 	
 	/**
+	 * Returns the integer node id of the remote node that this Connection object communicates with.
+	 *
 	 * @return  The integer node id of the remote node that this Connection object communicates with.
 	 */
 	public int getRemoteNodeId() { return this.id; }
-	
+
 	/**
+	 * Returns the {@link NodeProxy} object stored by this Connection object.
+	 *
 	 * @return  The NodeProxy object stored by this Connection object.
 	 */
 	public NodeProxy getNodeProxy() { return this.proxy; }
-	
+
 	/**
+	 * Returns the activity rating of the node group of the remote node,
+	 * as reported to the {@link NodeProxy} by the remote node group.
+	 *
 	 * @return  The activity rating of the node group of the remote node.
 	 *          This value is reported to the NodeProxy by the remote node group.
 	 */
@@ -173,6 +180,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	 * thread. This method is retained to satisfy the {@link Runnable} contract but
 	 * performs no work.</p>
 	 */
+	@Override
 	public void run() {
 //		loop: while (true) {
 //			try {
@@ -226,6 +234,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	 * @param p  The newly connected {@link NodeProxy}.
 	 * @see NodeProxy.EventListener#connect(NodeProxy)
 	 */
+	@Override
 	public void connect(NodeProxy p) {
 		System.out.println(this + ": Connected to " + p);
 		this.proxy = p;
@@ -242,6 +251,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	 *           {@code 0} to indicate the disconnect was handled.
 	 * @see NodeProxy.EventListener#disconnect(NodeProxy)
 	 */
+	@Override
 	public int disconnect(NodeProxy p) {
 		System.out.println(this + ": Disconnected from " + p);
 		p.removeEventListener(this);
@@ -274,6 +284,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	 *          or if a processing error occurred.
 	 * @see NodeProxy.EventListener#recievedMessage(Message, int)
 	 */
+	@Override
 	public boolean recievedMessage(Message m, int reciever) {
 		if (reciever != this.node.getId()) return false;
 		if (m.getSender() != this.id) return false;
@@ -350,6 +361,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	 *
 	 * @return  A string of the form {@code "Connection from <localNode> to remote node <id> (<proxy>)"}.
 	 */
+	@Override
 	public String toString() { return this.toString(false); }
 
 	/**

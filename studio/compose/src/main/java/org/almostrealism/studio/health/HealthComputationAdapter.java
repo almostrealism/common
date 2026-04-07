@@ -146,6 +146,7 @@ public abstract class HealthComputationAdapter implements AudioHealthComputation
 	public List<WaveOutput> getStems() { return stems; }
 
 	/** {@inheritDoc} */
+	@Override
 	public MultiChannelAudioOutput getOutput() { return output; }
 
 	/**

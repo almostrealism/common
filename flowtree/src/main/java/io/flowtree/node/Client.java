@@ -81,15 +81,14 @@ public class Client {
 			System.exit(2);
 		}
 		
-		String user, passwd;
-		
 //		if (args.length >= 3) {
 //			user = args[1];
 //			passwd = args[2];
 //		} else {
 			final LoginDialog l = new LoginDialog();
-			
+
 			Runnable r = new Runnable() {
+				@Override
 				public void run() {
 					String user = l.getUser();
 					String passwd = l.getPassword();
@@ -127,7 +126,7 @@ public class Client {
 		this.setStatusLabel(status);
 
 		try {
-			OutputServer s = new OutputServer(p, server);
+			new OutputServer(p, server);
 			System.out.println("DB Server created");
 		} catch (IOException ioe) {
 			System.out.println("IO error starting DBS: " + ioe.getMessage());
@@ -285,8 +284,10 @@ public class Client {
 	public static void setCurrentClient(Client client) { Client.client = client; }
 	
 	/**
-	 * @return  The {@link Client} started by the {@link Client#main(String[])} method,
-	 *          or otherwise assigned using {@link #setCurrentClient(Client)}.
+	 * Returns the {@link Client} started by the {@link Client#main(String[])} method,
+	 * or otherwise assigned using {@link #setCurrentClient(Client)}.
+	 *
+	 * @return the current client instance
 	 */
 	public static Client getCurrentClient() { return Client.client; }
 }

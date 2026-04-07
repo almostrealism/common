@@ -46,7 +46,7 @@ public class ProbabilityDistribution implements Nameable {
 	 * probability density {@code p}. Child nodes to the left cover lower
 	 * values and to the right cover higher values.
 	 */
-	private class Node {
+	private static class Node {
 		/** The lower bound of the probability interval represented by this node. */
 		double start;
 
@@ -461,6 +461,7 @@ public class ProbabilityDistribution implements Nameable {
 	 *
 	 * @param s the new name
 	 */
+	@Override
 	public void setName(String s) { this.name = s; }
 
 	/** {@inheritDoc} */

@@ -242,8 +242,6 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		boolean batchedVectors2D = isVectorPath && vShape.getDimensions() == 2 && vShape.length(0) > 1;
 		boolean batchedVectors3D = isVectorPath && onlyColumns && vShape.getDimensions() == 3 && vShape.length(0) > 1;
 		boolean singleVector2D = vShape.getDimensions() == 2 && vShape.length(0) == 1 && vShape.length(1) == mShape.length(1);
-		boolean batchedVectors = batchedVectors2D || batchedVectors3D;
-
 		TraversalPolicy vectorShape;
 		if (batchedVectors2D) {
 			// Batch of column vectors: (batch, n) -> (batch, n, 1)

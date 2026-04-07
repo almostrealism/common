@@ -136,7 +136,7 @@ public class Llama2 implements AttentionFeatures {
 			ByteBuffer bb = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
 			bb.order(ByteOrder.LITTLE_ENDIAN);
 
-			int maxTokenLength = bb.getInt();
+			bb.getInt(); // skip max token length
 			for (int i = 0; i < config.vocabSize; i++) {
 				vocabScores[i] = bb.getFloat();
 				int len = bb.getInt();

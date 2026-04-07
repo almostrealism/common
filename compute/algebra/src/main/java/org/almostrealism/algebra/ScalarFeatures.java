@@ -53,7 +53,7 @@ public interface ScalarFeatures extends CollectionFeatures {
 
 	/**
 	 * Creates a {@link CollectionProducer} for a constant scalar value.
-	 * Alias for {@link #c(double)}.
+	 * Alias for {@link #c(double...)}.
 	 *
 	 * @param value  the scalar value
 	 * @return a producer for the constant scalar

@@ -196,7 +196,6 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		SequentialBlock model = new SequentialBlock(shape(batchSize, inputChannels, seqLength));
 		model.add(conv);
 
-		PackedCollection actualOutput = new PackedCollection(shape(batchSize, outputChannels, expectedOutLength));
 		model.getForward().setReceptor(out -> () -> () -> {
 			PackedCollection result = out.get().evaluate();
 			// Just verify it runs and produces output of expected shape
@@ -240,7 +239,6 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		SequentialBlock model = new SequentialBlock(shape(batchSize, inputChannels, seqLength));
 		model.add(conv);
 
-		PackedCollection actualOutput = new PackedCollection(shape(batchSize, outputChannels, expectedOutLength));
 		model.getForward().setReceptor(out -> () -> () -> {
 			PackedCollection result = out.get().evaluate();
 			assertEquals(batchSize * outputChannels * expectedOutLength, result.getShape().getTotalSize());

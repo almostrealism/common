@@ -246,6 +246,7 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 	 *
 	 * @return WaveData, or null if no provider is set
 	 */
+	@Override
 	public WaveData getWaveData() {
 		return provider == null ? null : provider.get();
 	}

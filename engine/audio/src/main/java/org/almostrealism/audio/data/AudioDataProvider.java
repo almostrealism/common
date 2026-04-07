@@ -42,5 +42,6 @@ public interface AudioDataProvider extends DataResource, Setup {
 	 */
 	int getSampleRate();
 
+	@Override
 	default Supplier<Runnable> setup() { return new OperationList(); }
 }

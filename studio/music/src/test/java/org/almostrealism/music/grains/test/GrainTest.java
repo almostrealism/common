@@ -56,14 +56,6 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 		grain.setDuration(0.015);
 		grain.setRate(2.0);
 
-		TraversalPolicy grainShape = new TraversalPolicy(3);
-		Producer in = v(shape(1), 0);
-		Producer<PackedCollection> g = v(shape(3).traverseEach(), 1);
-
-		CollectionProducer start = c(g, 0);
-		CollectionProducer duration = c(g, 1);
-		CollectionProducer rate = c(g, 2);
-
 		int frames = WaveOutput.defaultTimelineFrames;
 
 //		Producer<Scalar> pos = start.add(mod(multiply(rate, in), duration))

@@ -129,6 +129,8 @@ public class Asset {
 	}
 
 	/**
+	 * Returns the asset group identifier.
+	 *
 	 * @return The asset group identifier
 	 */
 	public String getGroup() { return group; }
@@ -143,6 +145,8 @@ public class Asset {
 	}
 
 	/**
+	 * Returns the asset file name.
+	 *
 	 * @return The asset file name
 	 */
 	public String getName() { return name; }
@@ -157,6 +161,8 @@ public class Asset {
 	}
 
 	/**
+	 * Returns the download URL, or null if no URL is configured.
+	 *
 	 * @return The download URL, or null if no URL is configured
 	 */
 	public String getUrl() { return url; }
@@ -171,6 +177,8 @@ public class Asset {
 	}
 
 	/**
+	 * Returns the MD5 checksum for verification, or null if verification is not required.
+	 *
 	 * @return The MD5 checksum for verification, or null if verification is not required
 	 */
 	public String getMd5() { return md5; }
@@ -185,6 +193,8 @@ public class Asset {
 	}
 
 	/**
+	 * Returns the file size in bytes.
+	 *
 	 * @return The file size in bytes
 	 */
 	public long getSize() { return size; }

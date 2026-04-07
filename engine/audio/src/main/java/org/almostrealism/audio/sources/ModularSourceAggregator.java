@@ -37,9 +37,6 @@ import java.util.stream.IntStream;
  * @see VolumeRescalingSourceAggregator
  */
 public class ModularSourceAggregator implements SourceAggregator, CodeFeatures {
-	/** Running counter used to assign a unique index to each instance for diagnostic purposes. */
-	private static long count = 0;
-
 	/** Declared types for each input slot; determines how each source is routed. */
 	private final InputType[] inputs;
 
@@ -52,9 +49,6 @@ public class ModularSourceAggregator implements SourceAggregator, CodeFeatures {
 	/** Aggregator that applies volume scaling using VOLUME_ENVELOPE-type inputs. */
 	private final VolumeRescalingSourceAggregator volumeAdjust;
 
-	/** Unique index assigned at construction time, used for diagnostic logging. */
-	private final long index;
-
 	/**
 	 * Creates a ModularSourceAggregator with the specified input type declarations.
 	 *
@@ -65,7 +59,6 @@ public class ModularSourceAggregator implements SourceAggregator, CodeFeatures {
 		this.sum = new SummingSourceAggregator();
 		this.eqAdjust = new FrequencyRescalingSourceAggregator();
 		this.volumeAdjust = new VolumeRescalingSourceAggregator();
-		this.index = count++;
 	}
 
 	@Override

@@ -76,7 +76,7 @@ public class TriangleIntersectAt extends LessThanCollection {
 	private static TriangleIntersectAt create(Producer<PackedCollection> t,
 											  Producer<Ray> r) {
 		return create(TriangleFeatures.getInstance().abc(t), TriangleFeatures.getInstance().def(t), TriangleFeatures.getInstance().jkl(t),
-				TriangleFeatures.getInstance().normal(t), RayFeatures.getInstance().origin(r), RayFeatures.getInstance().direction(r));
+				RayFeatures.getInstance().origin(r), RayFeatures.getInstance().direction(r));
 	}
 
 	/**
@@ -85,14 +85,13 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 * @param abc       first edge vector of the triangle
 	 * @param def       second edge vector of the triangle
 	 * @param jkl       third vertex of the triangle
-	 * @param normal    the triangle's surface normal
 	 * @param origin    the ray origin
 	 * @param direction the ray direction
 	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
 	 */
 	private static TriangleIntersectAt create(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
-											  CollectionProducer normal, CollectionProducer origin, CollectionProducer direction) {
-		return create(abc, def, jkl, normal, origin, direction, s(jkl, origin));
+											  CollectionProducer origin, CollectionProducer direction) {
+		return create(abc, def, direction, s(jkl, origin));
 	}
 
 	/**
@@ -100,47 +99,34 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 *
 	 * @param abc       first edge vector
 	 * @param def       second edge vector
-	 * @param jkl       third vertex
-	 * @param normal    surface normal
-	 * @param origin    ray origin
 	 * @param direction ray direction
 	 * @param s         the pre-computed {@code s = jkl - origin} vector
 	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
 	 */
-	private static TriangleIntersectAt create(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
-											  CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
-											  Producer<PackedCollection> s) {
-		return create(abc, def, jkl, normal, origin, direction, f(abc, h(def, direction)), q(abc, s), s);
+	private static TriangleIntersectAt create(CollectionProducer abc, CollectionProducer def,
+											  CollectionProducer direction, Producer<PackedCollection> s) {
+		return create(def, direction, f(abc, h(def, direction)), q(abc, s), s);
 	}
 
 	/**
 	 * Creates an intersection test with pre-computed intermediate scalars {@code f} and {@code q}.
 	 *
-	 * @param abc       first edge vector
 	 * @param def       second edge vector
-	 * @param jkl       third vertex
-	 * @param normal    surface normal
-	 * @param origin    ray origin
 	 * @param direction ray direction
 	 * @param f         the determinant proxy {@code f = dot(abc, h)}
 	 * @param q         the cross-product helper {@code q = cross(abc, s)}
 	 * @param s         the vector {@code s = jkl - origin}
 	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
 	 */
-	private static TriangleIntersectAt create(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
-											  CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
+	private static TriangleIntersectAt create(CollectionProducer def, CollectionProducer direction,
 											  CollectionProducer f, CollectionProducer q, Producer<PackedCollection> s) {
-		return createv(abc, def, jkl, normal, origin, direction, f, q, s, v(direction, f.pow(-1.0), q));
+		return createv(def, direction, f, q, s, v(direction, f.pow(-1.0), q));
 	}
 
 	/**
 	 * Creates an intersection test with the pre-computed barycentric coordinate {@code v}.
 	 *
-	 * @param abc       first edge vector
-	 * @param def       second edge vector
-	 * @param jkl       third vertex
-	 * @param normal    surface normal
-	 * @param origin    ray origin
+	 * @param def       the edge vector used for determinant computation
 	 * @param direction ray direction
 	 * @param f         the determinant proxy
 	 * @param q         the cross-product helper
@@ -148,32 +134,24 @@ public class TriangleIntersectAt extends LessThanCollection {
 	 * @param v         the barycentric coordinate {@code v}
 	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
 	 */
-	private static TriangleIntersectAt createv(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
-											   CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
+	private static TriangleIntersectAt createv(CollectionProducer def, CollectionProducer direction,
 											   CollectionProducer f, CollectionProducer q, Producer<PackedCollection> s,
 											   Producer<PackedCollection> v) {
-		return createu(abc, def, jkl, normal, origin, direction, f, q, s, u(s, h(def, direction), f.pow(-1.0)), v);
+		return createu(def, f, q, u(s, h(def, direction), f.pow(-1.0)), v);
 	}
 
 	/**
 	 * Creates an intersection test with pre-computed barycentric coordinates {@code u} and {@code v}.
 	 *
-	 * @param abc       first edge vector
 	 * @param def       second edge vector
-	 * @param jkl       third vertex
-	 * @param normal    surface normal
-	 * @param origin    ray origin
-	 * @param direction ray direction
 	 * @param f         the determinant proxy
 	 * @param q         the cross-product helper
-	 * @param s         the vector {@code s = jkl - origin}
 	 * @param u         the barycentric coordinate {@code u}
 	 * @param v         the barycentric coordinate {@code v}
 	 * @return a {@code TriangleIntersectAt} that computes the intersection parameter
 	 */
-	private static TriangleIntersectAt createu(CollectionProducer abc, CollectionProducer def, CollectionProducer jkl,
-											   CollectionProducer normal, CollectionProducer origin, CollectionProducer direction,
-											   CollectionProducer f, CollectionProducer q, Producer<PackedCollection> s,
+	private static TriangleIntersectAt createu(CollectionProducer def, CollectionProducer f,
+											   CollectionProducer q,
 											   Producer<PackedCollection> u, Producer<PackedCollection> v) {
 		return createt(f, u, v, t(def, f.pow(-1.0), q));
 	}

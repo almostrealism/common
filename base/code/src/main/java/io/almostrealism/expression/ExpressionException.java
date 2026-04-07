@@ -21,11 +21,6 @@ package io.almostrealism.expression;
  * carrying additional context about the expression depth and node count at the time of failure.
  */
 public class ExpressionException extends RuntimeException {
-	/** The depth within the expression tree at which the exception occurred. */
-	private int depth;
-
-	/** The total number of expression nodes in the tree at the time of the exception. */
-	private long nodeCount;
 
 	/**
 	 * Constructs an expression exception with a message and context information.
@@ -36,7 +31,5 @@ public class ExpressionException extends RuntimeException {
 	 */
 	public ExpressionException(String message, int depth, long nodeCount) {
 		super(message);
-		this.depth = depth;
-		this.nodeCount = nodeCount;
 	}
 }

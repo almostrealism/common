@@ -84,6 +84,8 @@ public class VolumeAbsorber implements Absorber, Nameable, VectorFeatures {
 	public void setVolume(Volume v) { this.volume = v; }
 	
 	/**
+	 * Returns the Volume instance used by this VolumeAbsorber.
+	 *
 	 * @return  The Volume instance used by this VolumeAbsorber.
 	 */
 	public Volume getVolume() { return this.volume; }

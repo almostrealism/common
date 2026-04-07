@@ -153,8 +153,8 @@ public class MetricComputation<T> extends OperationComputationAdapter<T> impleme
 	private String message;
 	/** Number of invocations between each logged output. */
 	private int logFrequency;
-	/** Element position within the measured memory to log; total memory length of the measurement. */
-	private int pos, memLength;
+	/** Element position within the measured memory to log. */
+	private int pos;
 
 	/**
 	 * Creates a metric computation that logs the element at {@code pos} of the measured producer.
@@ -170,7 +170,6 @@ public class MetricComputation<T> extends OperationComputationAdapter<T> impleme
 		this.message = message;
 		this.logFrequency = logFrequency;
 		this.pos = pos;
-		this.memLength = memLength;
 	}
 
 	@Override

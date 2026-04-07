@@ -96,8 +96,10 @@ public class StaticReference<T> extends Expression<T> {
 		return Collections.emptySet();
 	}
 
+	@Override
 	public String getExpression(LanguageOperations lang) { return expression; }
 
+	@Override
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override

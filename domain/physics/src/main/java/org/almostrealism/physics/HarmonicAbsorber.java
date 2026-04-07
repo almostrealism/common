@@ -99,6 +99,7 @@ public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
 	 * @param energy  energy of the photon in electron volts
 	 * @return        {@code true} if the photon was absorbed, {@code false} otherwise
 	 */
+	@Override
 	public boolean absorb(Vector x, Vector p, double energy) {
 		if (x.length() > this.radius) return false;
 		
@@ -154,8 +155,10 @@ public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
 	}
 	
 	/** @param c  the simulation clock to use */
+	@Override
 	public void setClock(Clock c) { this.clock = c; }
 
 	/** @return  the simulation clock used by this absorber */
+	@Override
 	public Clock getClock() { return this.clock; }
 }

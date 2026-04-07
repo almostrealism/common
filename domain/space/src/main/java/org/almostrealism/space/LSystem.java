@@ -27,7 +27,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Hashtable;
 import java.util.List;
-import java.util.Stack;
+import java.util.ArrayDeque;
 
 /**
  * An L-System (Lindenmayer System) that generates fractal 3D surface arrangements
@@ -186,7 +186,7 @@ public class LSystem implements CodeFeatures {
 		double dl = d.length();
 		AbstractSurface base = this.factory.next(null);
 		Vector p = base.getLocation();
-		Stack pstack = new Stack(), dstack = new Stack();
+		ArrayDeque pstack = new ArrayDeque(), dstack = new ArrayDeque();
 		
 		i: for (int i = 0; i < data.length; i++) {
 			if (data[i].equals(LSystem.STEP)) {
@@ -252,12 +252,12 @@ public class LSystem implements CodeFeatures {
 				
 				continue i;
 			} else if (data[i].equals(LSystem.PUSH)) {
-				pstack.push(p.clone());
-				dstack.push(d.clone());
+				pstack.addFirst(p.clone());
+				dstack.addFirst(d.clone());
 				continue i;
 			} else if (data[i].equals(LSystem.POP)) {
-				p = (Vector) pstack.pop();
-				d = (Vector) dstack.pop();
+				p = (Vector) pstack.removeFirst();
+				d = (Vector) dstack.removeFirst();
 				continue i;
 			} else {
 				System.out.println("Encountered non-terminal: " + data[i]);
@@ -281,7 +281,7 @@ public class LSystem implements CodeFeatures {
 	 * @return a compact string with one character per symbol
 	 */
 	public static String print(Object[] data) {
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		
 		for (int i = 0; i < data.length; i++) {
 			if (data[i].equals(LSystem.STEP)) {

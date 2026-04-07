@@ -152,7 +152,6 @@ public class MoonbeamWeightVerificationTest extends TestSuiteBase implements Con
 	public void testWeightStatistics() throws IOException {
 		Assume.assumeTrue("Weights directory not found", new File(WEIGHTS_DIR).isDirectory());
 
-		MoonbeamConfig config = MoonbeamConfig.checkpoint309M();
 		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
 
 		// Check a few key weights have non-trivial values

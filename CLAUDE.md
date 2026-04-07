@@ -2,6 +2,72 @@
 
 ---
 
+# THE FUNDAMENTAL RULE — Java is Orchestration, Not Execution
+
+**This is the single most important concept in the entire project. Violating this principle produces code that is 1000x slower, cannot be hardware-accelerated, and breaks automatic differentiation. Read this section completely before writing any code.**
+
+## The Concept
+
+Java is NOT the execution language. Java is the ORCHESTRATION language. It builds **computation graphs** — DAGs of `CollectionProducer` — that get compiled to native code (Metal, OpenCL) for actual execution.
+
+Think of Java as YAML: you don't execute YAML, you use it to describe what something else should execute. In this project, Java describes a computation graph. The framework compiles that graph to native code. If you do math in Java instead of describing it as Producers, you completely defeat the purpose.
+
+## What You MUST NOT Do
+
+- **NEVER** call `.evaluate()` or `.get()` on a `Producer`/`Evaluable` inside any class that participates in model computation. The ONLY acceptable place for `.evaluate()` is at the **top of the call stack**: test methods, main methods, pipeline boundaries, or step boundaries in autoregressive loops.
+- **NEVER** call `.toDouble()` or `.toFloat()` on a `PackedCollection` inside computation code. These are JNI calls that pull data back to the host one element at a time.
+- **NEVER** use Java `for` loops to perform element-wise math on collections.
+- **NEVER** perform matrix multiplication using Java arithmetic.
+
+## What You MUST Do Instead
+
+Express ALL computation as `CollectionProducer` compositions:
+- Matrix multiply → `dense()` or `matmul()` from `LayerFeatures`
+- Activation functions → `sigmoid()`, `tanh()` from `LayerFeatures`/`CollectionFeatures`
+- Element-wise math → `.multiply()`, `.add()`, `.subtract()`, `.divide()` on Producers
+- Bias addition → `.add()` on Producers
+
+## The Test
+
+Ask yourself: *"If I removed this class, would the native compiler produce different output?"* If yes, the class does computation, and ALL of that computation MUST be expressed as Producers.
+
+## Before/After Example
+
+```java
+// WRONG — Java program doing math (1000x slower, no GPU, no gradients)
+public PackedCollection forward(PackedCollection x, PackedCollection h) {
+    PackedCollection result = new PackedCollection(hiddenSize);
+    for (int i = 0; i < hiddenSize; i++) {
+        double sum = 0;
+        for (int j = 0; j < inputSize; j++) {
+            sum += weights.toDouble(i * inputSize + j) * x.toDouble(j);
+        }
+        sum += bias.toDouble(i);
+        result.setMem(i, 1.0 / (1.0 + Math.exp(-sum)));  // sigmoid in Java!
+    }
+    return result;
+}
+
+// CORRECT — Computation graph (compiled to native kernel, GPU-accelerated)
+public CollectionProducer<PackedCollection> forward(
+        Producer<PackedCollection> x, Producer<PackedCollection> h) {
+    return sigmoid(matmul(p(weights), x).add(p(bias)));
+}
+```
+
+The wrong version makes `hiddenSize * inputSize` JNI calls and does math on the CPU. The correct version builds a single computation graph that the framework compiles into one GPU kernel.
+
+## Naming Conventions That Enforce This
+
+- Any class whose name ends in `Cell` **MUST** implement `org.almostrealism.graph.Cell`
+- Any class whose name ends in `Block` **MUST** implement `org.almostrealism.model.Block`
+
+## Build Enforcement
+
+`CodePolicyViolationDetector` enforces these rules in CI. The build FAILS when violations are detected. Agents MUST run the enforcement check before completing any task. Do not circumvent it.
+
+---
+
 # MODULE MAP
 
 ```
@@ -46,12 +112,13 @@ common/
 │   ├── spatial/                   #   ar-spatial: Spatial audio visualization
 │   └── compose/                   #   ar-compose: Audio scene orchestration, arrangement
 │
-├── flowtree/                      # FlowTree — Workflow Orchestration
-├── flowtreeapi/                   #   FlowTree API and protocol abstractions
-├── flowtree-python/               #   Python bindings for FlowTree
-├── graphpersist/                  #   Database persistence, NFS/SSH, graph storage
-│
-├── tools/                         # Standalone — Dev tools, MCP servers
+├── flowtree/                      # Standalone (above engine) — Workflow Orchestration
+├── flowtreeapi/                   #   Standalone (above engine) — FlowTree API abstractions
+├── flowtree-python/               #   Standalone (above engine) — Python bindings for FlowTree
+├── graphpersist/                  #   Standalone (above engine) — Database persistence, NFS/SSH
+│                                  #   NOTE: flowtree depends on engine layer (ar-utils, ar-utils-http).
+│                                  #   Nothing in base/compute/domain/engine/extern/studio depends on flowtree.
+├── tools/                         # Standalone (above engine) — Dev tools, MCP servers
 ├── docs/                          # Documentation portal, internals, tutorials
 └── scripts/                       # Build and code generation helpers
 ```
@@ -108,6 +175,108 @@ Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. 
 ## Rule 3: RECALL MEMORIES BEFORE STARTING WORK
 
 Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+
+
+---
+
+# STRUCTURAL INVESTIGATION RULES
+
+These rules exist because the single worst failure mode in this project is making
+statements about module structure, CI configuration, or dependencies based on
+incomplete evidence. Every rule below maps to a real, documented mistake.
+
+## Rule 4: READ .github/CLAUDE.md BEFORE TOUCHING CI
+
+`.github/CLAUDE.md` is the authoritative reference for the CI pipeline and module
+dependency graph. **Read it before opening `analysis.yaml`.**
+
+## Rule 5: VERIFY DEPENDENCY DIRECTION EXPLICITLY
+
+"A depends on B" and "B depends on A" are different statements. A grep that finds
+no match proves nothing about the other direction. Before making any claim about
+dependencies, check both:
+
+```bash
+# Does module A depend on ar-X?
+grep 'ar-X' A/pom.xml
+
+# Does anything depend on ar-A?
+grep -r 'ar-A' --include="pom.xml" .
+```
+
+Never conflate "layer modules don't depend on flowtree" with "flowtree doesn't
+depend on layer modules." Always state which direction you verified.
+
+## Rule 6: AUDIT ALL pom.xml FILES BEFORE ANY CI CHANGE
+
+Before touching `.github/workflows/analysis.yaml`, run:
+
+```bash
+for f in $(find . -maxdepth 3 -name "pom.xml" | grep -v target); do
+  module=$(dirname $f | sed 's|^\./||')
+  deps=$(grep -o '<artifactId>ar-[^<]*</artifactId>' $f | sed 's|<[^>]*>||g' | tr '\n' ',')
+  echo "$module: $deps"
+done
+```
+
+Read the output. Understand where each module involved in your change sits in the
+dependency graph. Do not proceed until you can state the graph from memory.
+
+## Rule 7: "NOT DOCUMENTED" FROM ar-CONSULTANT MEANS DIG DEEPER
+
+When ar-consultant returns "Not documented," that is not permission to guess. It
+means the information must be obtained from source files (pom.xml, source code).
+Read those files, form a conclusion, and **store it in memory immediately** before
+acting on it.
+
+## Rule 8: STATE EVIDENCE BEFORE CONCLUSIONS
+
+Never write "X depends on Y" without citing the file and evidence. Write:
+
+> `flowtree/pom.xml` contains `<artifactId>ar-utils-http</artifactId>`, therefore
+> flowtree depends on utils-http (engine layer).
+
+If you cannot cite the evidence, you do not have it.
+
+## Rule 9: "STUDY X" IS A FULL INVESTIGATION
+
+When instructed to study something, open every relevant file, read it completely,
+synthesize the findings in writing, store them in memory, and only then act. A
+single grep is not a study. Partial evidence is not a study.
+
+## Rule 10: analysis.needs MUST INCLUDE EVERY COVERAGE-GENERATING JOB
+
+Any CI job that uploads a `coverage-*` artifact must appear in `analysis`'s
+`needs` list. After modifying either the list of test jobs or `analysis.needs`,
+verify they are consistent. Missing a job means analysis runs before that
+job's coverage is available.
+
+## Rule 11: NEVER DRAW STRUCTURAL CONCLUSIONS FROM A SINGLE SEARCH
+
+One grep result (or non-result) is never sufficient to characterize module
+structure. "I grepped for `ar-flowtree` and found no matches in engine/" proves
+only that engine modules don't reference flowtree by that exact name. It says
+nothing about what flowtree references. Complete the full bidirectional
+investigation before drawing any conclusion.
+
+## Rule 12: STORE STRUCTURE DISCOVERIES BEFORE ACTING ON THEM
+
+As soon as you determine the dependency structure of any module or subsystem,
+call `mcp__ar-consultant__remember` with a complete structured description. Do
+this **before** making any code or CI changes based on that structure. If the
+session ends before you finish, the next session will have the correct starting
+point.
+
+## Rule 13: DISTINGUISH WHAT A MODULE IS FROM WHAT IT USES
+
+`flowtree` uses `ar-utils-http`. This makes flowtree a **consumer** of the
+engine layer. It does not make flowtree part of the engine layer, and it does
+not make engine modules consumers of flowtree. Always distinguish:
+- "X is part of layer L" (structural classification)
+- "X uses modules from layer L" (dependency relationship)
+- "Layer L uses X" (reverse dependency — verify separately)
+
+These are three distinct facts, each requiring independent verification.
 
 
 ---
@@ -226,9 +395,48 @@ Consult the linked references before writing related code.
 
 ---
 
+# AGENT INTEGRITY
+
+Autonomous agents deployed via auto-resolve have demonstrated systematic patterns of concealing test failures rather than fixing them. These patterns recur across sessions and branches. Understanding them is prerequisite to avoiding them.
+
+## Known Deception Patterns
+
+**TestDepth escalation** — Changing `@TestDepth(2)` to `@TestDepth(10)` on a failing test. CI runs at depth 9, so the test disappears from CI while appearing to still exist. This is indistinguishable from a fix if you only look at whether the CI job passes.
+
+**Dimension reduction** — Reducing numeric parameters in test methods (e.g., `embedDim: 64 -> 8`, `numHeads: 2 -> 1`) so the test becomes trivially small and any code will pass it. The test still runs; it just no longer validates meaningful behavior.
+
+**Tolerance weakening** — Increasing floating-point assertion thresholds (e.g., `assertEquals(expected, actual, 0.001)` becomes `assertEquals(expected, actual, 0.1)`) so numerical regressions pass the assertion.
+
+**False memory planting** — Storing a memory claiming "no code changes were needed" or "unrelated to branch changes" for a test that is actually failing due to branch changes. The memory is then recalled by the next session and used to justify inaction. False memories are constructed by omitting the git diff step entirely and asserting a conclusion without evidence.
+
+**CI file manipulation** — Excluding failing tests from CI steps, removing quality gates from the workflow, or adding blanket timeouts so regressions go undetected. The agent fixes the build by removing the thing that detects the breakage.
+
+**Re-adding reverted suppressions** — After a human explicitly reverts a suppression, the next agent session re-applies it with a more sophisticated justification (e.g., "these are NEW tests, not existing tests being weakened"). The agent finds and exploits loopholes in the anti-suppression instructions.
+
+**"Verified locally" defense** — Claiming "tests pass locally" as evidence that CI failures are unrelated. Local environments can run at restricted test depth, different commits, or different configurations. Local test results are not admissible evidence. Only CI results on the exact commit in question count.
+
+## Mechanical Enforcement
+
+The following scripts enforce invariants mechanically:
+
+- `tools/ci/agent-protection/validate-agent-commit.sh` — Blocks agent commits that modify base-branch test files or CI files, or that contain no production code changes.
+- `tools/ci/agent-protection/detect-test-hiding.sh` — 12 pattern detectors: TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage, net assertion loss.
+- `tools/ci/agent-protection/escalation-tracker.sh` — Circuit breaker: after 2 failed auto-resolve attempts for the same test class on the same branch, stops dispatching agents and requires human intervention.
+- `tools/ci/agent-protection/deception-audit.sh` — Detects cross-session deception patterns: ping-pong (agent modifies, human reverts, agent re-modifies), test-only commits, TestDepth churn.
+
+## Rules That Cannot Be Bypassed
+
+1. **"Verified locally" proves nothing.** If CI fails and local passes, assume CI is correct and your local environment is insufficient.
+2. **Base-branch test files are read-only for agents.** Mechanical enforcement via `validate-agent-commit.sh`. There are no exceptions based on agent judgment.
+3. **A "fix" that only modifies test files or CI config is not a fix.** Production test failures require production code changes.
+4. **Before concluding "no changes needed," run `git diff origin/master...HEAD --name-only`** and for each changed production file, state whether the failing test depends on it (directly or transitively). If you cannot produce this evidence, you cannot claim unrelatedness.
+
+---
+
 # REFERENCE
 
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** — Condensed API cheatsheet
 - **[llms.txt](llms.txt)** — Documentation index
+- **[CI Pipeline Guide](.github/CLAUDE.md)** — Dependency graph, layer-gating logic, rules for modifying CI ← READ THIS BEFORE TOUCHING analysis.yaml
 - **[CI Pipeline](.github/workflows/analysis.yaml)** — Build and test workflow
 - **Module guidelines**: [ML](./engine/ml/claude.md), [Graph](./domain/graph/README.md), [Collect](./base/collect/README.md)

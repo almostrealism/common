@@ -466,6 +466,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	}
 
 	/** Returns the name of this data context. */
+	@Override
 	public String getName() { return name; }
 
 	/**
@@ -620,6 +621,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * @return the result of the callable execution
 	 * @throws RuntimeException if the callable throws an exception
 	 */
+	@Override
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
 		List<ComputeContext<MemoryData>> current = computeContexts.get();
 		List<ComputeContext<MemoryData>> next = List.of(createContext(expectations));

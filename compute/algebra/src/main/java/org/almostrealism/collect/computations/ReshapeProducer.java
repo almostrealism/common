@@ -328,6 +328,7 @@ public class ReshapeProducer
 		return producer.isConstant();
 	}
 
+	@Override
 	public boolean isProvider() { return producer.isProvider(); }
 
 	/**
@@ -566,6 +567,7 @@ public class ReshapeProducer
 	 * CollectionProducer columnTraversal = matrix.traverse(1);
 	 * }</pre>
 	 */
+	@Override
 	public CollectionProducer traverse(int axis) {
 		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
 			if (producer instanceof CollectionProducerComputation) {

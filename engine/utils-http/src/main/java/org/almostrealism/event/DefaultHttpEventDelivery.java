@@ -44,6 +44,7 @@ public class DefaultHttpEventDelivery<T extends AbstractEvent> implements EventD
 	 * @param event the event to deliver; if {@code null}, no request is made
 	 * @return {@code false} if {@code event} is {@code null}; {@code true} otherwise
 	 */
+	@Override
 	public boolean deliver(T event) {
 		if (event == null) {
 			return false;

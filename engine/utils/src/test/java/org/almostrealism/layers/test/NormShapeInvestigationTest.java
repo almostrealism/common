@@ -145,7 +145,6 @@ public class NormShapeInvestigationTest extends TestSuiteBase {
 
 		int batch = 1;
 		int features = 6;
-		int groups = 1;
 
 		TraversalPolicy inputShape = shape(batch, features);
 		log("Original input shape: " + inputShape);

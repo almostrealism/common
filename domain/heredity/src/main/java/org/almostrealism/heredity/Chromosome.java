@@ -131,7 +131,7 @@ public interface Chromosome<T> extends Plural<Gene<T>>, IntFunction<Gene<T>> {
 	 * @return a string representing the combined signatures of all genes
 	 */
 	default String signature() {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		IntStream.range(0, length()).mapToObj(this::valueAt).map(Gene::signature).forEach(buf::append);
 		return buf.toString();
 	}

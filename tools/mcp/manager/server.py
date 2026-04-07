@@ -747,7 +747,8 @@ def workstream_list() -> dict:
     - repoUrl: the git repository URL
     - hasPlanningDocument: whether a plan doc is configured
     - pipelineCapable: whether Tier 2 pipeline tools will work
-    - agentCount: number of connected coding agents
+    - dependentRepos: list of additional repo URLs cloned alongside the
+      primary repo (omitted if none configured)
 
     Use this to discover workstreams and determine which tools are
     available for each one.
@@ -780,17 +781,18 @@ def workstream_list() -> dict:
 
 @mcp.tool()
 def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
-    """Get job statistics for a workstream (this week and last week).
+    """Get job statistics and recent jobs for a workstream.
 
-    Shows job counts, total time, cost, and turns for the specified
-    workstream. Use this to monitor agent productivity and spending.
+    Shows job counts, total time, cost, and turns for this week and last week,
+    plus the 3 most recent job events so you can see what the workstream has
+    been doing without a separate workstream_list_jobs call.
 
     Args:
         workstream_id: The workstream identifier (from workstream_list).
         period: Reporting period (default: "weekly").
 
     Returns:
-        Dictionary with thisWeek and lastWeek stats.
+        Dictionary with thisWeek and lastWeek stats, plus recent_jobs list.
     """
     _require_scope("read")
     err = _check_short_strings(workstream_id=workstream_id, period=period)
@@ -800,9 +802,18 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
     params = urlencode({"workstream": workstream_id, "period": period})
     result = _controller_get(f"/api/stats?{params}")
     result["workstream_id"] = workstream_id
+
+    # Fetch recent jobs the same way memory_branch_context does
+    try:
+        jobs_result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?limit=3")
+        if isinstance(jobs_result, list) and jobs_result:
+            result["recent_jobs"] = jobs_result
+    except Exception:
+        pass  # Non-critical: proceed without job history
+
     result.setdefault("next_steps", [
         "Use workstream_submit_task to submit a new coding task",
-        "Use workstream_list to see all workstreams",
+        "Use workstream_list_jobs to see the full job history",
     ])
     return result
 
@@ -874,6 +885,26 @@ def _parse_required_labels(required_labels: str) -> dict:
         if len(parts) == 2 and parts[0].strip() and parts[1].strip():
             result[parts[0].strip()] = parts[1].strip()
     return result
+
+
+def _parse_dependent_repos(dependent_repos: str) -> list:
+    """Parse a comma-separated list of repo URLs into a Python list.
+
+    Also accepts a JSON array string (e.g. '["url1","url2"]').
+    Empty entries are dropped. Returns an empty list if the input is empty.
+    """
+    if not dependent_repos:
+        return []
+    stripped = dependent_repos.strip()
+    if stripped.startswith("["):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+            if isinstance(parsed, list):
+                return [str(r).strip() for r in parsed if str(r).strip()]
+        except ValueError:
+            pass
+    return [r.strip() for r in stripped.split(",") if r.strip()]
 
 
 @mcp.tool()
@@ -976,12 +1007,12 @@ def workstream_submit_task(
         result["next_steps"] = [
             f"Use workstream_get_status with workstream_id='{ws_id}' to check progress",
             "The agent will push commits to the configured branch",
-            "Use workstream_list to see agent count and branch info",
+            "Use workstream_list to see all workstreams and branch info",
         ]
     else:
         result.setdefault("next_steps", [
             "Use workstream_list to find available workstreams and their IDs",
-            "Ensure at least one agent is connected (check agentCount in workstream_list)",
+            "Ensure at least one agent is connected (check controller_health)",
         ])
 
     return result
@@ -995,6 +1026,7 @@ def workstream_register(
     planning_document: str = "",
     channel_name: str = "",
     required_labels: str = "",
+    dependent_repos: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1015,6 +1047,11 @@ def workstream_register(
             that all jobs in this workstream must match by default
             (e.g., "platform:macos,gpu:true"). Job-level labels always override
             these workstream-level defaults.
+        dependent_repos: Comma-separated list of git clone URLs for additional
+            repositories that agents should clone alongside the primary repo
+            (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
+            Also accepts a JSON array string. Dependent repos follow the same
+            branch lifecycle as the primary repo (create/checkout/pull/commit/push).
 
     Returns:
         Dictionary with workstreamId and channel info on success.
@@ -1042,6 +1079,10 @@ def workstream_register(
         labels_map = _parse_required_labels(required_labels)
         if labels_map:
             payload["requiredLabels"] = labels_map
+    if dependent_repos:
+        repos_list = _parse_dependent_repos(dependent_repos)
+        if repos_list:
+            payload["dependentRepos"] = repos_list
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -1074,6 +1115,7 @@ def workstream_update_config(
     planning_document: str = "",
     channel_name: str = "",
     required_labels: str = "",
+    dependent_repos: str = "",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -1092,6 +1134,11 @@ def workstream_update_config(
             that all jobs in this workstream must match by default
             (e.g., "platform:macos,gpu:true"). Job-level labels always override
             these workstream-level defaults.
+        dependent_repos: Comma-separated list of git clone URLs for additional
+            repositories that agents should clone alongside the primary repo
+            (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
+            Also accepts a JSON array string. Dependent repos follow the same
+            branch lifecycle as the primary repo (create/checkout/pull/commit/push).
 
     Returns:
         Dictionary confirming the update.
@@ -1121,6 +1168,10 @@ def workstream_update_config(
         labels_map = _parse_required_labels(required_labels)
         if labels_map:
             payload["requiredLabels"] = labels_map
+    if dependent_repos:
+        repos_list = _parse_dependent_repos(dependent_repos)
+        if repos_list:
+            payload["dependentRepos"] = repos_list
 
     if not payload:
         return {
@@ -1128,7 +1179,8 @@ def workstream_update_config(
             "error": "No fields to update. Provide at least one field.",
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
-                "repo_url, planning_document, channel_name, or required_labels",
+                "repo_url, planning_document, channel_name, required_labels, "
+                "or dependent_repos",
             ],
         }
 

@@ -189,7 +189,7 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 				System.out.println("Processing: " + audioFile.getFileName());
 				try {
 					List<PackedCollection> fileLatents = encodeAudioFile(
-							audioFile, compiledEncoder, segmentSamples, sampleRate);
+							audioFile, compiledEncoder, segmentSamples);
 					latents.addAll(fileLatents);
 					System.out.println("  Encoded " + fileLatents.size() + " segments");
 				} catch (Exception e) {
@@ -213,14 +213,12 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 	 * @param audioFile      path to the WAV file to encode
 	 * @param encoder        the compiled encoder model
 	 * @param segmentSamples number of audio samples per segment
-	 * @param sampleRate     the audio sample rate
 	 * @return the list of encoded latent tensors, one per segment
 	 * @throws IOException if the audio file cannot be read
 	 */
 	private static List<PackedCollection> encodeAudioFile(Path audioFile,
 														  CompiledModel encoder,
-														  int segmentSamples,
-														  int sampleRate) throws IOException {
+														  int segmentSamples) throws IOException {
 		List<PackedCollection> latents = new ArrayList<>();
 
 		// Load audio

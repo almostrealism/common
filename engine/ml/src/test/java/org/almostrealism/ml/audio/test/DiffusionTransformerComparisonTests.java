@@ -442,7 +442,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 				new StateDictionary(weightsDir));
 
 		// Run forward pass to populate the captured state
-		PackedCollection output = transformer.forward(input, timestep, crossAttnCond, globalCond);
+		transformer.forward(input, timestep, crossAttnCond, globalCond);
 
 		// Get the captured intermediate state
 		PackedCollection actualCapturedState = transformer.getPreTransformerState();
@@ -546,7 +546,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 				new StateDictionary(weightsDir));
 
 		// Run forward pass to populate the captured states
-		PackedCollection output = transformer.forward(input, timestep, crossAttnCond, globalCond);
+		transformer.forward(input, timestep, crossAttnCond, globalCond);
 
 		// Get the captured post-transformer state
 		PackedCollection actualPostTransformerOutput = transformer.getPostTransformerState();

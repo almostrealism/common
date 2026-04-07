@@ -50,8 +50,6 @@ public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatur
 	}
 
 	protected AudioSceneOptimizer optimizer() {
-		int sources = 2;
-		int delayLayers = 2;
 		int cycles = 1;
 
 		int params = 8;
@@ -89,8 +87,6 @@ public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatur
 	@TestProperties(knownIssue = true)
 	@TestDepth(1)
 	public void healthTest() throws IOException {
-		AudioScene<?> scene = scene();
-
 		AtomicInteger index = new AtomicInteger();
 
 		int params = 8;

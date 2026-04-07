@@ -151,7 +151,7 @@ public class SpatialDataHub {
 			try {
 				l.selected(info);
 			} catch (Exception e) {
-				e.printStackTrace();
+				System.err.println("SpatialDataHub: " + e.getMessage());
 			}
 		});
 	}

@@ -670,7 +670,6 @@ public class ModelOptimizer implements CodeFeatures {
 	public double accuracy(BiPredicate<PackedCollection, PackedCollection> validator) {
 		Dataset<?> data = dataset.get();
 
-		double totalLoss = 0.0;
 		int success = 0;
 		int count = 0;
 
@@ -680,7 +679,6 @@ public class ModelOptimizer implements CodeFeatures {
 			PackedCollection valid = target.getExpectedOutput();
 			PackedCollection out = model.forward(input);
 			double ls = loss.apply(out, valid);
-			totalLoss += ls;
 			count++;
 
 			if (validator.test(target.getExpectedOutput(), out))

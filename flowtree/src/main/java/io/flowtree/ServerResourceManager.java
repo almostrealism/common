@@ -34,8 +34,8 @@ import java.io.IOException;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -80,7 +80,7 @@ class ServerResourceManager {
         this.server = server;
         this.maxCache = maxCache;
         this.logCache = logCache;
-        this.cache = Collections.synchronizedMap(new Hashtable<>());
+        this.cache = Collections.synchronizedMap(new LinkedHashMap<>());
         this.loading = Collections.synchronizedList(new ArrayList<>());
     }
 

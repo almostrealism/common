@@ -60,6 +60,7 @@ public class Turbulence implements IntensityMap {
 	 * @param w the depth texture coordinate
 	 * @return the turbulence intensity at {@code (u, v, w)}
 	 */
+	@Override
 	public double getIntensity(double u, double v, double w) {
 		double n = 0.0;
 		

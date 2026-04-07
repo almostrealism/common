@@ -33,6 +33,7 @@ import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Hashtable;
+import java.util.Map;
 import java.util.Properties;
 import java.util.function.Consumer;
 
@@ -98,10 +99,10 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 			
 			System.out.println("\nDB Server started");
 		} catch (Exception e) {
-			e.printStackTrace();
+			System.err.println("OutputServer: Error starting server: " + e);
 		}
 	}
-	
+
 	/**
 	 * Constructs an uninitialised {@link OutputServer}. Callers must invoke
 	 * {@link #init(java.util.Properties, io.flowtree.Server)} before use.
@@ -282,6 +283,15 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 	public void storeOutput(Hashtable h) { this.db.storeOutput(h); }
 
 	/**
+	 * Passes the given result map to all registered output handlers.
+	 *
+	 * @param h result map to pass to output handlers
+	 * @deprecated Use {@link #accept(org.almostrealism.io.JobOutput)} instead.
+	 */
+	@Deprecated
+	public void storeOutput(Map h) { this.db.storeOutput(h); }
+
+	/**
 	 * Removes the specified {@link OutputHandler} from the underlying database
 	 * connection.
 	 *
@@ -377,7 +387,7 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 //				Object o = in.readObject();
 				
 				if (o instanceof Query) {
-					Hashtable h = this.db.executeQuery((Query)o);
+					Map h = this.db.executeQuery((Query)o);
 					
 					out.writeObject(h);
 					out.flush();

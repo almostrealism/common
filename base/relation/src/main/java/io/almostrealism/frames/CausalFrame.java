@@ -65,5 +65,6 @@ public class CausalFrame {
 	 *
 	 * @return a string in the format "{@code b} is because of {@code a}"
 	 */
+	@Override
 	public String toString() { return b + " is because of " + a; }
 }

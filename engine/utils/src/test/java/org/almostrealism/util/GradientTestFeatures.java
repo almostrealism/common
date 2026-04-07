@@ -95,8 +95,7 @@ public interface GradientTestFeatures extends CodeFeatures {
 
 		PackedCollection xHatGroup = cp(xGroup).subtract(c(muG)).divide(c(stdG)).evaluate();
 
-		PackedCollection dLdBeta = gradient;
-		PackedCollection dLdGamma = cp(gradient).multiply(cp(xHatGroup)).evaluate();
+		cp(gradient).multiply(cp(xHatGroup)).evaluate();
 
 		PackedCollection dLdHatXGroup;
 

@@ -212,6 +212,7 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 	 * @return the loaded WaveData, or null if the file is marked corrupt
 	 * @throws RuntimeException wrapping any IOException encountered during loading
 	 */
+	@Override
 	protected WaveData load() {
 		if (corruptFiles.contains(getResourcePath())) return null;
 

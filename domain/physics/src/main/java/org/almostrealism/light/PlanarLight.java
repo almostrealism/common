@@ -67,52 +67,65 @@ public class PlanarLight extends LightBulb implements SurfaceLight, Locatable, V
 	private Vector location;
 	
 	/**
+	 * Sets the width of the planar light (usually measured in micrometers).
+	 *
 	 * @param w  The width of the planar light (usually measured in micrometers).
 	 */
 	public void setWidth(double w) { this.w = w; }
-	
+
 	/**
 	 * Returns the width of the planar light (usually measured in micrometers).
 	 */
 	public double getWidth() { return this.w; }
-	
+
 	/**
+	 * Sets the height of the planar light (usually measured in micrometers).
+	 *
 	 * @param h  The height of the planar light (usually measured in micrometers).
 	 */
 	public void setHeight(double h) { this.h = h; }
-	
+
 	/**
 	 * Returns the height of the planar light (usually measured in micrometers).
 	 */
 	public double getHeight() { return this.h; }
-	
+
 	/**
+	 * Sets the vector normal to the absorption plane.
+	 *
 	 * @param p  {x, y, z} - The vector normal to the absorption plane.
 	 */
 	public void setSurfaceNormal(Vector p) { this.normal = p;	this.across = null; }
-	
+
 	/**
+	 * Returns the vector normal to the absorption plane.
+	 *
 	 * @return  {x, y, z} - The vector normal to the absorption plane.
 	 */
 	public Vector getSurfaceNormal() { return this.normal; }
-	
+
 	/**
+	 * Sets the vector pointing upwards across the surface of this absorption plane.
+	 *
 	 * @param p  {x, y, z} - The vector pointing upwards across the surface of this
 	 *           absorption plane. This vector must be orthagonal to the surface normal.
 	 */
 	public void setOrientation(Vector p) { this.up = p; this.across = null; }
-	
+
 	/**
+	 * Returns the vector pointing upwards across the surface of this absorption plane.
+	 *
 	 * @return  {x, y, z} - The vector pointing upwards across the surface of this
 	 *           absorption plane.
 	 */
 	public Vector getOrientation() { return this.up; }
-	
+
 	/**
+	 * Sets whether light emission direction is distributed over a hemisphere or is normal only.
+	 *
 	 * @param t  true sets the direction of light to be in a uniform semisphere
 	 * 			 normal to the plane. false sets the direction to be normal to
 	 *           the plane.
-	 *           
 	 */
 	public void setLightPropagation(boolean t) { this.lightProp = t; }
 	

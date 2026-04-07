@@ -46,6 +46,7 @@ public class Cosine extends Expression<Double> {
 	public int getComputeCost() { return 25; }
 
 	/** {@inheritDoc} Returns {@code cos(input)}. */
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		return "cos(" + getChildren().get(0).getExpression(lang) + ")";
 	}

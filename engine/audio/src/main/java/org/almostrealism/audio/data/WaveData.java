@@ -478,13 +478,13 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 				try {
 					wav.writeFrames(new double[][]{{l}, {r}}, 1);
 				} catch (IOException e) {
-					e.printStackTrace();
+					Console.root().warn(e.getMessage());
 				}
 			}
 
 			return true;
 		} catch (IOException e) {
-			e.printStackTrace();
+			Console.root().warn(e.getMessage());
 			return false;
 		}
 	}

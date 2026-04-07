@@ -64,5 +64,6 @@ public class SpatialFrame {
 	 *
 	 * @return a string in the format "{@code a} is closer than {@code b}"
 	 */
+	@Override
 	public String toString() { return a + " is closer than " + b; }
 }

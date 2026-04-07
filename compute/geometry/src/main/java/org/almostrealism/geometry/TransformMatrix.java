@@ -330,10 +330,12 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	}
 
 	/**
-	 * @return  The inverse of the matrix represented by this TransformMatrix object as a
-	 *          TransformMatrix object. If this method, or the calulateInverse() method,
-	 *          has been called after the last matrix modification this method will return
-	 *          a stored inverse.
+	 * Returns the inverse of the matrix represented by this TransformMatrix object.
+	 * If this method, or the calulateInverse() method,
+	 * has been called after the last matrix modification this method will return
+	 * a stored inverse.
+	 *
+	 * @return the inverse as a TransformMatrix object
 	 */
 	public TransformMatrix getInverse() {
 		if (!this.inverted)
@@ -432,6 +434,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 *
 	 * @return a 16-element array containing the matrix data
 	 */
+	@Override
 	public double[] toArray() {
 		double[] m = new double[16];
 		getMem(0, m, 0, 16);
@@ -439,8 +442,11 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	}
 
 	/**
-	 * @return  A String representation of the data stored by this TransformMatrix object.
+	 * Returns a string representation of the data stored by this TransformMatrix object.
+	 *
+	 * @return a multi-line string with each row of the matrix on its own line
 	 */
+	@Override
 	public String toString() {
 		double[][] m = getMatrix();
 

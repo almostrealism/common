@@ -156,6 +156,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return the prompt string, or null if not set
      */
+    @Override
     public String getPrompt() {
         return prompt;
     }
@@ -165,6 +166,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return the session ID, or null if not set
      */
+    @Override
     public String getSessionId() {
         return sessionId;
     }
@@ -174,6 +176,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return the exit code (0 typically indicates success)
      */
+    @Override
     public int getExitCode() {
         return exitCode;
     }
@@ -183,6 +186,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return duration in milliseconds
      */
+    @Override
     public long getDurationMs() {
         return durationMs;
     }
@@ -192,6 +196,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return API duration in milliseconds
      */
+    @Override
     public long getDurationApiMs() {
         return durationApiMs;
     }
@@ -201,6 +206,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return cost in USD
      */
+    @Override
     public double getCostUsd() {
         return costUsd;
     }
@@ -210,6 +216,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return the turn count
      */
+    @Override
     public int getNumTurns() {
         return numTurns;
     }
@@ -220,6 +227,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return the subtype string, or null if not set
      */
+    @Override
     public String getSubtype() {
         return subtype;
     }
@@ -229,6 +237,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return true if the session was flagged as an error
      */
+    @Override
     public boolean isSessionError() {
         return sessionIsError;
     }
@@ -238,6 +247,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return the denial count
      */
+    @Override
     public int getPermissionDenials() {
         return permissionDenials;
     }
@@ -249,6 +259,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *
      * @return list of denied tool names, or empty list if none
      */
+    @Override
     public List<String> getDeniedToolNames() {
         return deniedToolNames != null ? deniedToolNames : Collections.emptyList();
     }

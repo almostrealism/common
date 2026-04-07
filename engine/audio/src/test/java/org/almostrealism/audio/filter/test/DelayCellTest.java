@@ -347,7 +347,7 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 			try {
 				Thread.sleep(40);
 			} catch (InterruptedException e) {
-				e.printStackTrace();
+				Thread.currentThread().interrupt();
 			}
 
 			abort.run();

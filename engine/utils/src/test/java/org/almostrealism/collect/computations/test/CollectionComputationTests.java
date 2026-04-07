@@ -447,7 +447,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 	}
 
 	// @Test(timeout = 30000)
-	public void dynamicMax() {
+	private void dynamicMax() {
 		PackedCollection value = new PackedCollection(shape(2, 3, 2))
 				.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
 				.traverse(2);

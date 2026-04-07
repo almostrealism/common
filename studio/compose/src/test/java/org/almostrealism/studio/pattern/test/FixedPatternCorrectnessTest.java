@@ -51,9 +51,6 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	/** Sample rate for all tests. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
-	/** Duration of each synthetic note in seconds. */
-	private static final double NOTE_DURATION_SEC = 0.1;
-
 	/** Frequency of the synthetic sine wave (A4 = 440Hz). */
 	private static final double TONE_FREQUENCY = 440.0;
 

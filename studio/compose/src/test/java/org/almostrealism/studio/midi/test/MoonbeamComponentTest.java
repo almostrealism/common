@@ -185,7 +185,6 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 		if (skipHighMemTests) return;
 		long start = System.currentTimeMillis();
 
-		int decoderHidden = REAL_CONFIG.decoderHiddenSize; // 1536
 		Random rng = new Random(42);
 
 		long allocStart = System.currentTimeMillis();

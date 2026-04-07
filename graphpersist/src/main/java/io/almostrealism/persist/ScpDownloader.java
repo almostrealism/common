@@ -26,8 +26,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.Hashtable;
-import java.util.Map;
+import java.util.LinkedHashMap;
 
 /**
  * Downloads files from a remote host via SCP using JSch, with connection retry and a
@@ -41,7 +40,7 @@ public class ScpDownloader implements UserInfo {
 	/** Maximum number of cached downloader instances. */
 	private static final int maxCache = 5;
 	/** Cache of live {@link ScpDownloader} instances keyed by "host|user|password". */
-	private static Map cache;
+	private static LinkedHashMap cache;
 
 	/** The JSch SSH library instance used to create sessions. */
 	private final JSch sch;
@@ -149,16 +148,6 @@ public class ScpDownloader implements UserInfo {
 			} catch (InterruptedException ie) { return; }
 		}
 		
-		String orig = file;
-		
-		String dir = "~/";
-		int index = file.lastIndexOf("/");
-		
-		if (index > 0) {
-			dir = file.substring(0, index + 1);
-			file = file.substring(index + 1);
-		}
-		
 		ScpDownloader.this.streamOpen = true;
 		
 		i: for (int i = 0; i < ScpDownloader.this.retry; i++) {
@@ -168,7 +157,7 @@ public class ScpDownloader implements UserInfo {
 			
 			try {
 //				TODO  This class is missing
-//				ScpFromMessage scp = new ScpFromMessage(this.session, orig, fout, true);
+//				ScpFromMessage scp = new ScpFromMessage(this.session, file, fout, true);
 //				scp.execute();
 				
 				done = true;
@@ -203,12 +192,10 @@ public class ScpDownloader implements UserInfo {
 	 */
 	public String download(String file) throws IOException {
 		String orig = file;
-		
-		String dir = "~/";
+
 		int index = file.lastIndexOf("/");
-		
+
 		if (index > 0) {
-			dir = file.substring(0, index + 1);
 			file = file.substring(index + 1);
 		}
 		
@@ -242,7 +229,7 @@ public class ScpDownloader implements UserInfo {
 	 * @throws IOException If a new connection cannot be established
 	 */
 	public static synchronized ScpDownloader getDownloader(String host, String user, String passwd) throws IOException {
-		if (ScpDownloader.cache == null) ScpDownloader.cache = new Hashtable();
+		if (ScpDownloader.cache == null) ScpDownloader.cache = new LinkedHashMap();
 		
 		String s = host + "|" + user + "|" + passwd;
 		
@@ -282,7 +269,7 @@ public class ScpDownloader implements UserInfo {
 		if (b == -1) return b;
 		
 		if (b == 1 || b == 2) {
-			StringBuffer sb = new StringBuffer();
+			StringBuilder sb = new StringBuilder();
 			
 			int c;
 			
@@ -299,30 +286,36 @@ public class ScpDownloader implements UserInfo {
 	}
 	
 	/** {@inheritDoc} Always returns {@code null}; passphrases are not used. */
+	@Override
 	public String getPassphrase() { return null; }
 
 	/** {@inheritDoc} Returns the SSH password provided at construction time. */
+	@Override
 	public String getPassword() { return this.passwd; }
 
 	/** {@inheritDoc} */
+	@Override
 	public boolean promptPassword(String message) {
 		System.out.println("ScpDownloader: " + message);
 		return (this.passwd != null);
 	}
-	
+
 	/** {@inheritDoc} Always returns {@code true}. */
+	@Override
 	public boolean promptPassphrase(String message) {
 		System.out.println("ScpDownloader: " + message);
 		return true;
 	}
-	
+
 	/** {@inheritDoc} Always returns {@code true}. */
+	@Override
 	public boolean promptYesNo(String message) {
 		System.out.println("ScpDownloader: " + message);
 		return true;
 	}
-	
+
 	/** {@inheritDoc} Logs the message to standard output. */
+	@Override
 	public void showMessage(String message) { System.out.println("ScpDownloader: " + message); }
 
 	/**

@@ -22,7 +22,7 @@ import io.flowtree.msg.Message;
 import io.flowtree.msg.NodeProxy;
 
 import java.io.IOException;
-import java.util.Hashtable;
+import java.util.Map;
 
 /**
  * Executes distributed database queries on behalf of a {@link Server} instance.
@@ -87,13 +87,13 @@ class ServerQueryExecutor {
     Message executeQuery(Query q, NodeProxy p, long timeout) throws IOException {
         OutputServer dbs = OutputServer.getCurrentServer();
 
-        StringBuffer result = new StringBuffer();
+        StringBuilder result = new StringBuilder();
 
         if (dbs != null) {
             if (Message.verbose)
                 server.log("Executing " + q);
 
-            Hashtable h = dbs.getDatabaseConnection().executeQuery(q);
+            Map h = dbs.getDatabaseConnection().executeQuery(q);
 
             if (Message.verbose)
                 server.log("Received " + h.size() + " elements from query.");

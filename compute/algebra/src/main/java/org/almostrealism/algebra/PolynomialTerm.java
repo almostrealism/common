@@ -226,6 +226,7 @@ public class PolynomialTerm {
 	 *
 	 * @return the string form of this term, e.g. {@code "2.0 * X ^ 3 * Y ^ 1"}
 	 */
+	@Override
 	public String toString() {
 		String value = String.valueOf(this.coefficient);
 

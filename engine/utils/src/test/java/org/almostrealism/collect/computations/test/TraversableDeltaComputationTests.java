@@ -1184,7 +1184,6 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 	public void multiplyAdd2() {
 		int dim = 4;
 
-		PackedCollection v = new PackedCollection(shape(dim)).randFill();
 		PackedCollection f = new PackedCollection(shape(dim)).randFill();
 		PackedCollection g = new PackedCollection(shape(dim)).randFill();
 
@@ -1635,8 +1634,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 						.traverse()
 						.reduce(v -> v.sum());
 
-		PackedCollection result = c.delta(p(filters)).evaluate();
-		// print(50, 8, result);
+		c.delta(p(filters)).evaluate();
 		// TODO  assertions
 	}
 

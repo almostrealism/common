@@ -84,11 +84,6 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 	 */
 	public static final int MAX_RAY_STEPS = 30;
 
-	/** The distance estimator used to determine proximity to implicit surfaces during ray marching. */
-	private DistanceEstimator estimator;
-	/** The set of shaders applied at intersection points found by ray marching. */
-	private ShaderSet shaders;
-
 	/**
 	 * Constructs a {@link DistanceEstimationLightingEngine} for the given ray, surface, and lighting.
 	 *
@@ -147,8 +142,6 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 				null,
 				surface, otherSurfaces, light, otherLights, p);
 
-		this.estimator = estimator;
-		this.shaders = shaders;
 	}
 
 	/**
@@ -195,7 +188,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 			try {
 				return String.valueOf(get(0));
 			} catch (Exception e) {
-				e.printStackTrace();
+				System.err.println("DistanceEstimationLightingEngine: " + e.getMessage());
 			}
 
 			return "null";
@@ -211,7 +204,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 
 				return color;
 			} catch (Exception e) {
-				e.printStackTrace();
+				System.err.println("DistanceEstimationLightingEngine: " + e.getMessage());
 				return null;
 			}
 		}

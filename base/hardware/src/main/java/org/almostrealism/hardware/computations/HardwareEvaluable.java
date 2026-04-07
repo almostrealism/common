@@ -180,8 +180,6 @@ public class HardwareEvaluable<T> implements
 	/** Optional post-processor applied to the output destination before kernel dispatch. */
 	private UnaryOperator<MemoryBank<?>> destinationProcessor;
 
-	/** Optional executor for async dispatch of the underlying evaluable. */
-	private Executor executor;
 	/** Optional consumer called with the result of each evaluation. */
 	private Consumer<T> downstream;
 
@@ -216,7 +214,6 @@ public class HardwareEvaluable<T> implements
 		this.shortCircuit = shortCircuit;
 		this.isKernel = kernel;
 		this.kernel = new DefaultContextSpecific<>(() -> ev.get(), Destroyable::destroy);
-		this.executor = executor;
 	}
 
 	/**

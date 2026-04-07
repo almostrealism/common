@@ -48,7 +48,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Stack;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.function.Function;
 
 public class UNetTest extends TestSuiteBase implements AttentionFeatures, DiffusionFeatures, RGBFeatures {
@@ -158,6 +159,7 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 	}
 
 
+	@Override
 	public Function<TraversalPolicy, CellularLayer> weightedSum(
 			Block v, int heads, int dimHead, int size) {
 		if (v.getOutputShape().getDimensions() != 4 ||
@@ -315,7 +317,7 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 		SequentialBlock main = unet.sequential();
 		Block residual = main.branch();
 
-		Stack<Block> featureMaps = new Stack<>();
+		Deque<Block> featureMaps = new ArrayDeque<>();
 
 		for (int i = 0; i < dims.length - 1; i++) {
 			boolean isLast = i >= dims.length - 2;

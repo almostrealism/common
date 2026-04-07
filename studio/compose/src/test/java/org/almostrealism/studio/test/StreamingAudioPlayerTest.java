@@ -154,7 +154,7 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		config.setDirectMode(); // Initialize mode
 
 		// Capture initial delegate state
-		OutputLine initialDelegate = delegatedLine.getDelegate();
+		delegatedLine.getDelegate();
 
 		// Simulate DAW connection while in Direct mode
 		SharedMemoryAudioLine dawLine = createMockSharedMemoryLine();

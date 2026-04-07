@@ -25,8 +25,9 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.PrintWriter;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
-import java.util.Stack;
 
 /**
  * An abstract base implementation of {@link CodePrintWriter} that provides common
@@ -119,7 +120,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	 * Stack tracking the names of currently open scopes.
 	 * Used to maintain proper nesting and for scope-aware operations.
 	 */
-	private final Stack<String> scopeName;
+	private final Deque<String> scopeName;
 
 	/**
 	 * Constructs a new CodePrintWriterAdapter with the specified output writer
@@ -132,7 +133,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	public CodePrintWriterAdapter(PrintWriter p, LanguageOperations language) {
 		this.p = p;
 		this.language = language;
-		this.scopeName = new Stack<>();
+		this.scopeName = new ArrayDeque<>();
 	}
 
 	/**
@@ -283,7 +284,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	 */
 	@Override
 	public void beginScope(String name, OperationMetadata metadata, Accessibility access, List<ArrayVariable<?>> arguments, List<Variable<?, ?>> parameters) {
-		scopeName.push(name);
+		scopeName.addFirst(name);
 
 		StringBuilder buf = new StringBuilder();
 
@@ -319,7 +320,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	 */
 	@Override
 	public void endScope() {
-		scopeName.pop();
+		scopeName.removeFirst();
 		p.println();
 		if (scopeClose != null) p.println(scopeClose);
 	}

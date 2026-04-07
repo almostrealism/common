@@ -327,6 +327,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 		this.monitor = new Thread(new Runnable() {
 			/** {@inheritDoc} */
+			@Override
 			public void run() {
 				while (true) {
 					try {
@@ -352,6 +353,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * Starts the thread that manages the activity of this NodeGroup and the threads
 	 * for the child nodes stored by this NodeGroup.
 	 */
+	@Override
 	public Node start() {
 		this.stop = false;
 		this.thread.start();
@@ -491,6 +493,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	}
 	
 	/**
+	 * Returns the set of Node objects stored by this NodeGroup object.
+	 *
 	 * @return  The set of Node objects stored by this NodeGroup object.
 	 */
 	public Node[] getNodes() { return this.nodes.toArray(new Node[0]); }
@@ -542,11 +546,15 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	}
 	
 	/**
+	 * Returns the Node object stored by this NodeGroup object with the lowest connectivity rating.
+	 *
 	 * @return  The Node object stored by this NodeGroup object with the lowest connectivity rating.
 	 */
 	public Node getLeastConnectedNode() { return this.metrics.getLeastConnectedNode(); }
 
 	/**
+	 * Returns the {@link Node} with the lowest activity rating.
+	 *
 	 * @return  The {@link Node} with the lowest activity rating.
 	 */
 	public Node getLeastActiveNode() { return this.metrics.getLeastActiveNode(); }
@@ -962,6 +970,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param label  JLabel component to display status messages.
 	 */
+	@Override
 	public void setStatusLabel(JLabel label) {
 		super.setStatusLabel(label);
 
@@ -977,6 +986,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param acs  Activity-sleep coefficient to apply to all child nodes.
 	 */
+	@Override
 	public void setActivitySleepC(double acs) {
 		if (this.nodes == null) return;
 		this.nodeConfig.setActivitySleepC(acs);
@@ -989,6 +999,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param pacs  Peer-activity-sleep coefficient to apply to all child nodes.
 	 */
+	@Override
 	public void setPeerActivitySleepC(double pacs) {
 		if (this.nodes == null) return;
 		this.nodeConfig.setPeerActivitySleepC(pacs);
@@ -1001,6 +1012,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param parp  Parental relay probability in the range [0.0, 1.0].
 	 */
+	@Override
 	public void setParentalRelayP(double parp) {
 		if (this.nodes == null) return;
 		this.nodeConfig.setParentalRelayP(parp);
@@ -1011,6 +1023,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param prc  Peer relay coefficient to apply to all child nodes.
 	 */
+	@Override
 	public void setPeerRelayC(double prc) {
 		if (this.nodes == null) return;
 		this.nodeConfig.setPeerRelayC(prc);
@@ -1023,6 +1036,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param mjp  Minimum job-execution probability in the range [0.0, 1.0].
 	 */
+	@Override
 	public void setMinimumJobP(double mjp) {
 		if (this.nodes == null) return;
 		this.nodeConfig.setMinimumJobP(mjp);
@@ -1034,6 +1048,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param mfj  Maximum number of failed jobs to retain per child node.
 	 */
+	@Override
 	public void setMaxFailedJobs(int mfj) {
 		if (this.nodes == null) return;
 		this.nodeConfig.setMaxFailedJobs(mfj);
@@ -1045,6 +1060,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param r  Relay probability in the range [0.0, 1.0].
 	 */
+	@Override
 	public void setRelayProbability(double r) {
 		if (this.nodes == null) return;
 		this.nodeConfig.setRelayProbability(r);
@@ -1055,6 +1071,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param w  True if peers to relay should be chosen using weighted probability.
 	 */
+	@Override
 	public void setWeightPeers(boolean w) {
 		if (this.nodes == null) return;
 		this.nodeConfig.setWeightPeers(w);
@@ -1153,13 +1170,19 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	}
 
 	/**
+	 * Returns the number of jobs completed by all the children of this node.
+	 *
 	 * @return  The number of jobs completed by all the children of this node.
 	 */
+	@Override
 	public int getCompletedJobCount() { return this.metrics.getCompletedJobCount(); }
 
 	/**
+	 * Returns the total time the nodes in this node group have worked, measured in milliseconds.
+	 *
 	 * @return  The total time the nodes in this node group have worked, measured in msecs.
 	 */
+	@Override
 	public double getTimeWorked() { return this.metrics.getTimeWorked(); }
 
 	/**
@@ -1169,20 +1192,27 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @return  Total communication time in milliseconds across all child nodes.
 	 */
+	@Override
 	public double getTimeCommunicated() { return this.metrics.getTimeCommunicated(); }
 
 	/**
+	 * Returns the average time for a node in this node group to complete a job.
+	 *
 	 * @return  The average time for a node in this node group to complete a job.
 	 *          (-1.0 if no jobs have been completed).
 	 */
 	public double getAverageJobTime() { return this.metrics.getAverageJobTime(); }
 
 	/**
+	 * Returns the average connectivity rating for the nodes in this node group.
+	 *
 	 * @return  The average connectivity rating for the nodes in this node group.
 	 */
 	public double getAverageConnectivityRating() { return this.metrics.getAverageConnectivityRating(); }
 
 	/**
+	 * Returns the average activity rating for this node group.
+	 *
 	 * @return  The value of this.getAverageActivityRating.
 	 */
 	@Override
@@ -1201,6 +1231,9 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	}
 
 	/**
+	 * Returns the ratio of the average activity rating reported by known servers to
+	 * the average node's activity rating.
+	 *
 	 * @return  The ratio of the average activity rating reported by known servers to
 	 *          the average node's activity rating.
 	 */
@@ -1209,15 +1242,18 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	}
 
 	/**
+	 * Returns the average activity rating reported by the servers connected to this node group.
+	 *
 	 * @return  The average activity rating reported by the servers connected
-	 *          to this node group. (0.0 if no peers have reported an activity
-	 *          rating measurement).
+	 *          to this node group. Returns {@code 0.0} if no peers have reported an activity
+	 *          rating measurement.
 	 */
 	public double getAveragePeerActivityRating() { return NodeGroupMetrics.getAveragePeerActivityRating(this.getServers()); }
 	
 	/**
 	 * Prints the status of this network node group to standard out.
 	 */
+	@Override
 	public void printStatus() { this.statusRenderer.printStatus(System.out); }
 
 	/**
@@ -1225,6 +1261,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param out  PrintStream to use.
 	 */
+	@Override
 	public void printStatus(PrintStream out) { this.statusRenderer.printStatus(out); }
 
 	/**
@@ -1234,6 +1271,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @param nl  Newline token to use between sections (typically {@code "<br>\n"}).
 	 * @return    The rendered HTML status string.
 	 */
+	@Override
 	public String getStatus(String nl) { return this.statusRenderer.getStatus(nl); }
 
 	/**
@@ -1281,6 +1319,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *       and removing completed factories.</li>
 	 * </ol>
 	 */
+	@Override
 	public void run() {
 		while (!this.stop) {
 			this.iteration(this);
@@ -1410,6 +1449,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	/**
 	 * @see NodeProxy.EventListener#connect(NodeProxy)
 	 */
+	@Override
 	public void connect(NodeProxy pr) {
 		if (this.connecting.contains(pr)) return;
 		this.addServer(pr);
@@ -1419,6 +1459,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @see NodeProxy.EventListener#disconnect(NodeProxy)
 	 * @return  The number of connections dropped.
 	 */
+	@Override
 	public int disconnect(NodeProxy p) { return this.removeServer(p); }
 	
 	/**
@@ -1431,6 +1472,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *                  method to handle the message.
 	 * @return {@code true} if the message was handled; {@code false} otherwise.
 	 */
+	@Override
 	public boolean recievedMessage(Message m, int receiver) {
 		return this.messageHandler.recievedMessage(m, receiver);
 	}
@@ -1442,8 +1484,9 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @return  A descriptive string such as
 	 *          {@code "Network Node Group: 2 children and 1 server connection."}.
 	 */
+	@Override
 	public String toString() {
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		b.append("Network Node Group: ");
 		int nodes = this.nodes != null ? this.nodes.size() : 0;
 		if (nodes > 0) {
@@ -1477,6 +1520,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param n  The node (always {@code this} group) whose sleep time is updated.
 	 */
+	@Override
 	public void iteration(Node n) {
 		n.setSleep((int) (n.getActivityRating() * n.getSleep()));
 		

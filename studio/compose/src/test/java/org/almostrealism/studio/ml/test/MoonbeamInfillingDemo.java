@@ -193,7 +193,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatu
 		log("Region infill generated " + fillTokens.size() + " tokens");
 
 		List<MidiNoteEvent> result = assembleInfilledEvents(
-				tokens, baselineEvents, fillTokens, tokenizer, maskStart, maskEnd);
+				baselineEvents, fillTokens, tokenizer, maskStart, maskEnd);
 
 		File outputFile = new File(outputDir, filename);
 		fileWriter.write(result, outputFile);
@@ -260,7 +260,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatu
 		log("Dense region infill generated " + fillTokens.size() + " tokens");
 
 		List<MidiNoteEvent> result = assembleInfilledEvents(
-				tokens, baselineEvents, fillTokens, tokenizer, maskStart, maskEnd);
+				baselineEvents, fillTokens, tokenizer, maskStart, maskEnd);
 
 		File outputFile = new File(outputDir, filename);
 		fileWriter.write(result, outputFile);
@@ -341,7 +341,6 @@ public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatu
 		for (MidiCompoundToken token : tokens) {
 			if (token.isSpecial()) continue;
 
-			long absoluteOnset = eventIdx < events.size() ? events.get(eventIdx).getOnset() : 0;
 			int instrument = eventIdx < events.size() ? events.get(eventIdx).getInstrument() : -1;
 			eventIdx++;
 
@@ -365,7 +364,6 @@ public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatu
 	 * baseline and adding the infill-generated events.
 	 */
 	private List<MidiNoteEvent> assembleInfilledEvents(
-			List<MidiCompoundToken> originalTokens,
 			List<MidiNoteEvent> originalEvents,
 			List<MidiCompoundToken> fillTokens,
 			MidiTokenizer tokenizer,

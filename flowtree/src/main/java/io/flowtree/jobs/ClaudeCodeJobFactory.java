@@ -70,15 +70,19 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     /** Optional planning document text to inject into the Claude Code system prompt. */
     private String planningDocument;
 
-    /** Whether jobs created by this factory must produce at least one staged file change. */
-    private boolean enforceChanges;
-
     /**
      * Deduplication mode applied to jobs created by this factory.
      * Defaults to {@link ClaudeCodeJob#DEDUP_LOCAL}.
      * See {@link ClaudeCodeJob#DEDUP_NONE} to disable.
      */
     private String deduplicationMode = ClaudeCodeJob.DEDUP_LOCAL;
+
+    /**
+     * When {@code true}, jobs created by this factory activate the Maven
+     * dependency protection rule, blocking {@code <dependency>} changes in
+     * {@code pom.xml} files.
+     */
+    private boolean enforceMavenDependencies;
 
     /**
      * Default constructor for deserialization.
@@ -469,7 +473,6 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
      * @param enforceChanges true to require code changes for completion
      */
     public void setEnforceChanges(boolean enforceChanges) {
-        this.enforceChanges = enforceChanges;
         set("enforceChanges", String.valueOf(enforceChanges));
     }
 
@@ -493,6 +496,31 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     public void setDeduplicationMode(String deduplicationMode) {
         this.deduplicationMode = deduplicationMode;
         set("dedupMode", deduplicationMode);
+    }
+
+    /**
+     * Returns whether jobs created by this factory activate the Maven dependency
+     * protection rule.
+     *
+     * <p>When active, any {@code <dependency>} additions, removals, or modifications
+     * in {@code pom.xml} files trigger a correction loop that instructs the agent
+     * to revert those changes.</p>
+     *
+     * @return {@code true} if Maven dependency changes are blocked
+     */
+    public boolean isEnforceMavenDependencies() {
+        return enforceMavenDependencies;
+    }
+
+    /**
+     * Sets whether jobs created by this factory activate the Maven dependency
+     * protection rule.
+     *
+     * @param enforceMavenDependencies {@code true} to block {@code <dependency>} changes
+     */
+    public void setEnforceMavenDependencies(boolean enforceMavenDependencies) {
+        this.enforceMavenDependencies = enforceMavenDependencies;
+        set("enforceMavenDeps", String.valueOf(enforceMavenDependencies));
     }
 
     /**
@@ -644,6 +672,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setProtectTestFiles(isProtectTestFiles());
         job.setEnforceChanges(isEnforceChanges());
         job.setDeduplicationMode(deduplicationMode);
+        job.setEnforceMavenDependencies(enforceMavenDependencies);
 
         String pyReqs = getPythonRequirements();
         if (pyReqs != null) {
@@ -721,10 +750,12 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 this.planningDocument = GitManagedJob.base64Decode(value);
                 break;
             case "enforceChanges":
-                this.enforceChanges = Boolean.parseBoolean(value);
                 break;
             case "dedupMode":
                 this.deduplicationMode = value;
+                break;
+            case "enforceMavenDeps":
+                this.enforceMavenDependencies = Boolean.parseBoolean(value);
                 break;
             default:
                 break;

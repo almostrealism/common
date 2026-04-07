@@ -31,10 +31,18 @@ public class VolumetricDensityAbsorber implements Absorber {
 	/** The volume defining the region in which photon absorption and refraction is simulated. */
 	private Volume volume;
 	
-	/** @param v  The Volume for this {@link VolumetricDensityAbsorber}. */
+	/**
+	 * Sets the Volume for this {@link VolumetricDensityAbsorber}.
+	 *
+	 * @param v  The Volume for this {@link VolumetricDensityAbsorber}.
+	 */
 	public void setVolume(Volume v) { this.volume = v; }
-	
-	/** @return  The Volume used by this {@link VolumetricDensityAbsorber}. */
+
+	/**
+	 * Returns the Volume used by this {@link VolumetricDensityAbsorber}.
+	 *
+	 * @return  The Volume used by this {@link VolumetricDensityAbsorber}.
+	 */
 	public Volume getVolume() { return this.volume; }
 
 	@Override

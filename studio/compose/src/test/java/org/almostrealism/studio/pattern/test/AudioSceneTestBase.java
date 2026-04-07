@@ -17,6 +17,7 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.studio.AudioScene;
+import org.almostrealism.studio.AudioSceneLoader;
 import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.data.WaveData;
@@ -114,7 +115,7 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 		addChoices(scene, samplesDir);
 
-		AudioScene.Settings settings = AudioScene.Settings.defaultSettings(
+		AudioSceneLoader.Settings settings = AudioSceneLoader.Settings.defaultSettings(
 				sourceCount,
 				AudioScene.DEFAULT_PATTERNS_PER_CHANNEL,
 				AudioScene.DEFAULT_ACTIVE_PATTERNS,

@@ -318,7 +318,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	}
 
 	public boolean isKernel() { return kernel; }
+	@Override
 	public boolean isFixedCount() { return fixedCount; }
+	@Override
 	public long getCountLong() { return count; }
 
 	public ProcessArgumentEvaluator getEvaluator() { return evaluator; }
@@ -450,6 +452,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 *
 	 * @return the fully configured process details ready for execution
 	 */
+	@Override
 	public AcceleratedProcessDetails construct() {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 

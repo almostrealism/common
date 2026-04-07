@@ -70,6 +70,7 @@ public class TieredSimplificationSettings implements SimplificationSettings {
 	 *   <li>Deeper: very large node count or depth-pref4 match</li>
 	 * </ul>
 	 */
+	@Override
 	public boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
 		// if (expression.getType() == Boolean.class) return true;
 
@@ -98,6 +99,7 @@ public class TieredSimplificationSettings implements SimplificationSettings {
 	 *
 	 * @return {@code "Tiered"}
 	 */
+	@Override
 	public String shortDesc() {
 		return "Tiered";
 	}

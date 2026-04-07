@@ -311,6 +311,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 *
 	 * @return the compute requirements, or null if none specified
 	 */
+	@Override
 	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
 
 	/**

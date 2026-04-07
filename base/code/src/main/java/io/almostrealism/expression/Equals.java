@@ -65,6 +65,7 @@ public class Equals extends Comparison {
 	}
 
 	/** {@inheritDoc} Returns {@code left == right}. */
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		return getChildren().get(0).getWrappedExpression(lang) + " == " + getChildren().get(1).getWrappedExpression(lang);
 	}

@@ -201,8 +201,10 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 	public double getProjectionHeight() { return projectionDimensions.getY(); }
 	
 	/**
-	 * @return  A {@link TransformMatrix} object that can be used to convert coordinates in the
-	 *          coordinate system described by this {@link Camera} to the standard x, y, z coordinates.
+	 * Returns a {@link TransformMatrix} that converts coordinates in the
+	 * coordinate system described by this {@link Camera} to the standard x, y, z coordinates.
+	 *
+	 * @return  A {@link TransformMatrix} for coordinate conversion.
 	 */
 	public TransformMatrix getRotationMatrix() {
 	    double[][] matrix = {{this.u.getX(), this.u.getY(), this.u.getZ()},

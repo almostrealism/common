@@ -314,13 +314,11 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 
 		// Forward pass compilation (compileForTraining includes forward)
 		runtime.gc();
-		long heapBefore = runtime.totalMemory() - runtime.freeMemory();
 		long startFwd = System.nanoTime();
 		CompiledModel compiled = model.compileForTraining();
 		long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
 
 		runtime.gc();
-		long heapAfterCompile = runtime.totalMemory() - runtime.freeMemory();
 
 		// First training step (triggers backward pass compilation)
 		TraversalPolicy latentShape = new TraversalPolicy(1, ioChannels, latentLen);
@@ -345,7 +343,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		optimizer.setLogConsumer(this::log);
 
 		long startBwd = System.nanoTime();
-		TrainingResult result = optimizer.optimize(1);
+		optimizer.optimize(1);
 		long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
 
 		// Second training step (no recompilation, measures pure runtime)

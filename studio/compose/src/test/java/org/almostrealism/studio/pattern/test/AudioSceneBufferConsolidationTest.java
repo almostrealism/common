@@ -78,7 +78,7 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		if (scene == null) return;
 
 		WaveOutput output = new WaveOutput(() -> new File("results/consolidation-test.wav"), 24, true);
-		TemporalCellular runner = scene.runnerRealTime(
+		scene.runnerRealTime(
 				new MultiChannelAudioOutput(output), BUFFER_SIZE);
 
 		// Verify consolidated render buffer exists

@@ -80,12 +80,10 @@ public class InterpolatedAudioSynthesisModel implements AudioSynthesisModel, Cel
 	public Producer<PackedCollection> getLevels(double frequencyRatio,
 												   Producer<PackedCollection> time) {
 		int left = 0;
-		int right = 0;
 
 		for (int i = 0; i < frequencyRatios.length; i++) {
 			if (frequencyRatio > frequencyRatios[i]) {
 				left = i;
-				right = i + 1;
 			}
 		}
 

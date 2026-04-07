@@ -68,6 +68,7 @@ public class LoginDialog extends JPanel {
 		this.cancelButton = new JButton("Cancel");
 
 		this.okButton.addActionListener(new ActionListener() {
+			@Override
 			public void actionPerformed(ActionEvent e) {
 				LoginDialog.this.user = LoginDialog.this.userField.getText();
 				LoginDialog.this.passwd = LoginDialog.this.passwdField.getText();
@@ -100,6 +101,7 @@ public class LoginDialog extends JPanel {
 	 */
 	public void showDialog(final Runnable r) {
 		this.okButton.addActionListener(new ActionListener() {
+			@Override
 			public void actionPerformed(ActionEvent event) {
 				LoginDialog.this.frame.setVisible(false);
 				r.run();

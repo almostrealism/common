@@ -278,9 +278,10 @@ public class ImageTexture implements Texture {
   	
 	/**
 	 * @see org.almostrealism.texture.Texture#operate(Vector)
-	 * 
+	 *
 	 * @throws NullPointerException  If pixel data is not loaded.
 	 */
+	@Override
 	public RGB operate(Vector t) {
 		Vector point = new Vector(t.getX(), t.getY(), t.getZ());
 

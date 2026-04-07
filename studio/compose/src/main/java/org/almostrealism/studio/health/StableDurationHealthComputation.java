@@ -135,6 +135,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	public void setMaxDuration(long sec) { this.max = (int) (sec * OutputLine.sampleRate); }
 
 	/** {@inheritDoc} */
+	@Override
 	public void setTarget(TemporalCellular target) {
 		if (getTarget() == null) {
 			super.setTarget(target);
@@ -156,7 +157,8 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 			try {
 				Thread.sleep(timeoutInterval + 100);
 			} catch (InterruptedException e) {
-				e.printStackTrace();
+				Thread.currentThread().interrupt();
+				System.err.println("StableDurationHealthComputation: " + e.getMessage());
 			}
 		}
 
@@ -169,7 +171,8 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 				try {
 					Thread.sleep(timeoutInterval);
 				} catch (InterruptedException e) {
-					e.printStackTrace();
+					Thread.currentThread().interrupt();
+					System.err.println("StableDurationHealthComputation: " + e.getMessage());
 					endTimeoutTrigger = true;
 				}
 
@@ -264,7 +267,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 						((OperationProfileNode) profile).save(name);
 						log("Saved profile to " + name);
 					} catch (IOException e) {
-						e.printStackTrace();
+						System.err.println("StableDurationHealthComputation: " + e.getMessage());
 					}
 				}
 
@@ -385,7 +388,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	 * Collects audio amplitude samples and provides statistics about when the
 	 * average amplitude is first reached.
 	 */
-	private class AverageAmplitude implements Consumer<PackedCollection> {
+	private static class AverageAmplitude implements Consumer<PackedCollection> {
 		/** The collected amplitude samples. */
 		private final List<PackedCollection> values = new ArrayList<>();
 

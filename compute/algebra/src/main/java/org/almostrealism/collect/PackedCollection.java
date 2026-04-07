@@ -361,6 +361,7 @@ public class PackedCollection extends MemoryDataAdapter
 		return shape.getInputSize();
 	}
 
+	@Override
 	public TraversalPolicy getShape() { return shape; }
 
 	@Override
@@ -390,6 +391,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 *
 	 * @return a stream of all double values in this collection
 	 */
+	@Override
 	public DoubleStream doubleStream() {
 		return doubleStream(0, getShape().getTotalSize());
 	}
@@ -402,6 +404,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 * @param length the number of elements to stream
 	 * @return a stream of double values in the specified range
 	 */
+	@Override
 	public DoubleStream doubleStream(int offset, int length) {
 		if (getDelegateOrdering() == null && getShape().isRegular()) {
 			return DoubleStream.of(toArray(offset, length));
@@ -909,6 +912,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 *
 	 * @return a new collection with the same shape and values
 	 */
+	@Override
 	public PackedCollection clone() {
 		PackedCollection clone = new PackedCollection(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());

@@ -183,6 +183,8 @@ public class ShaderContext extends LightingContext {
 	public ContinuousField getIntersection() { return intersection; }
 	
 	/**
+	 * Sets the surface currently being shaded.
+	 *
 	 * @param surface  The new Surface object.
 	 */
 	public void setSurface(Curve<PackedCollection> surface) { this.surface = surface; }
@@ -211,7 +213,9 @@ public class ShaderContext extends LightingContext {
 	}
 	
 	/**
-	 * @return  An array of other {@link Curve}s in the scene.
+	 * Returns an array of other {@link Curve}s in the scene.
+	 *
+	 * @return an array of other surfaces
 	 */
 	public Curve<PackedCollection>[] getOtherSurfaces() { return this.otherSurfaces; }
 
@@ -228,14 +232,16 @@ public class ShaderContext extends LightingContext {
 	}
 	
 	/**
-	 * @return  The number of reflections (or other types of direction change) undergone.
+	 * Returns the number of reflections (or other types of direction change) undergone.
+	 *
+	 * @return the reflection count
 	 */
 	public int getReflectionCount() { return this.refCount; }
-	
-	/** @return  The number of surface enterances undergone. */
+
+	/** Returns the number of surface entrances undergone. */
 	public int getEnteranceCount() { return this.enter; }
-	
-	/** @return  The number of surface exits undergone. */
+
+	/** Returns the number of surface exits undergone. */
 	public int getExitCount() { return this.exit; }
 	
 	/** Adds one to the reflection count stored by this {@link ShaderContext}s object. */

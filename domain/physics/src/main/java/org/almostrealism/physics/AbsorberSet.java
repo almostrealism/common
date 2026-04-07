@@ -70,16 +70,23 @@ public interface AbsorberSet<T> extends Absorber, Set<T> {
 	Iterator absorberIterator();
 	
 	/**
+	 * Sets the potential map to use for each absorber in the set.
+	 *
 	 * @param m  The potential map to use for each absorber in the set.
 	 */
 	void setPotentialMap(PotentialMap m);
-	
+
 	/**
+	 * Returns the potential map used for each absorber in the set.
+	 *
 	 * @return  The potential map used for each absorber in the set.
 	 */
 	PotentialMap getPotentialMap();
-	
+
 	/**
+	 * Returns the farthest distance from the origin of this absorber to a point where
+	 * the absorber has nearly zero likelihood to absorb a photon.
+	 *
 	 * @return  The farthest distance from the origin of a this absorber to a point where
 	 *          the absorber has nearly zero likelyhood to absorb a photon. This means
 	 *          that photons at a distance greater than this radius from the origin
@@ -103,6 +110,8 @@ public interface AbsorberSet<T> extends Absorber, Set<T> {
 	double getDistance(Vector p, Vector d);
 	
 	/**
+	 * Sets the maximum proximity radius for absorbers in this set.
+	 *
 	 * @param radius  The farthest distance from the origin of a given absorber in the set
 	 *                to a point where the absorber has nearly zero likelyhood to absorb a photon.
 	 *                This means that photons at a distance greater than this radius from the origin
@@ -111,8 +120,10 @@ public interface AbsorberSet<T> extends Absorber, Set<T> {
 	 *                all cases.
 	 */
 	void setMaxProximity(double radius);
-	
+
 	/**
+	 * Returns the maximum proximity radius for absorbers in this set.
+	 *
 	 * @return  The farthest distance from the origin of a given absorber in the set
 	 *          to a point where the absorber has nearly zero likelyhood to absorb a photon.
 	 *          This means that photons at a distance greater than this radius from the origin

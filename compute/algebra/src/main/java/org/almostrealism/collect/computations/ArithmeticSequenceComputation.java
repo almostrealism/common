@@ -269,6 +269,7 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	 *
 	 * @return An {@link Evaluable} that computes the arithmetic sequence directly
 	 */
+	@Override
 	public Evaluable<PackedCollection> get() {
 		return args -> {
 			warn("Direct evaluation of arithmetic sequence");

@@ -59,6 +59,7 @@ public class MetalMemory extends RAM {
 	 *
 	 * @return True if buffer exists and has not been released
 	 */
+	@Override
 	public boolean isActive() {
 		return mem != null && !mem.isReleased();
 	}

@@ -216,7 +216,6 @@ public class Qwen3 implements AttentionFeatures {
 			throw new IllegalArgumentException("Cannot find QK-Norm weights");
 		}
 		int headCount = qNorm.getShape().length(0);
-		int headSize = qNorm.getShape().length(1);
 
 		// Get KV head count
 		PackedCollection kNorm = stateDict.get("model.layers.0.self_attn.k_norm.weight");
@@ -338,7 +337,6 @@ public class Qwen3 implements AttentionFeatures {
 		this.position = new PackedCollection(1);
 
 		int dim = config.dim;
-		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 
 		// Get token embeddings and output weights
 		PackedCollection tokenEmbeddings = stateDict.get("model.embed_tokens.weight");
@@ -445,7 +443,6 @@ public class Qwen3 implements AttentionFeatures {
 
 		long start = 0;
 		int next;
-		int token = Qwen3Tokenizer.BOS_TOKEN;
 
 		model.setCurrentStep(0);  // Reset step counter for new generation
 		model.setCurrentToken(Qwen3Tokenizer.BOS_TOKEN);
@@ -463,7 +460,6 @@ public class Qwen3 implements AttentionFeatures {
 			// Decode token
 			String tokenStr = tokenizer.decode(new int[]{next});
 			output.accept(tokenStr);
-			token = next;
 
 			// Check for EOS
 			if (next == Qwen3Tokenizer.EOS_TOKEN) {

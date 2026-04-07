@@ -17,7 +17,6 @@
 package org.almostrealism.primitives;
 
 import io.almostrealism.code.Operator;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.ClosestIntersection;
@@ -27,7 +26,6 @@ import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.space.AbstractSurface;
 
 import java.util.Arrays;
-import java.util.function.Supplier;
 
 // TODO  Add bounding solid to make intersection calculations faster.
 
@@ -56,9 +54,6 @@ public class CSG extends AbstractSurface {
   /** The second (secondary) operand surface. */
   private final AbstractSurface sb;
 
-  /** Whether the secondary surface normals are currently inverted for difference computation. */
-  private final boolean inverted;
-
   	/**
   	 * Constructs a new CSG object using the specified Surface objects.
   	 * 
@@ -74,8 +69,6 @@ public class CSG extends AbstractSurface {
 		this.sb = b;
 		
 		this.type = type;
-		
-		this.inverted = false;
 	}
 	
     /** @return  null. */
@@ -91,8 +84,6 @@ public class CSG extends AbstractSurface {
         Producer<Ray> r = ray;
         if (m != null) r = (Producer) m.getInverse().transform(r);
 
-        final Supplier<Evaluable<? extends Ray>> fr = r;
-        
         if (this.type == CSG.UNION) {
             return new ClosestIntersection(r, Arrays.asList(this.sa, this.sb));
         } else if (this.type == CSG.DIFFERENCE) {

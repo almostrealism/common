@@ -132,6 +132,21 @@ jobs:
           mvn test -pl flowtree \
            -DAR_TEST_PROFILE=pipeline
 
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-flowtree
+          path: coverage-data/
+          retention-days: 1
+          if-no-files-found: ignore
+
   # ─── Code Policy Enforcement ───────────────────────────────────────
   code-policy-check:
     needs: build
@@ -203,12 +218,16 @@ jobs:
           # These files are the enforcement infrastructure. Any modification
           # on a PR branch is treated as tampering and fails the build.
           PROTECTED_FILES=(
-            "utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
-            "utils/src/main/java/org/almostrealism/util/DuplicateCodeDetector.java"
-            "utils/src/main/java/org/almostrealism/util/TestTimeoutEnforcementScanner.java"
+            "engine/utils/src/main/java/org/almostrealism/util/PolicyViolationDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/PackedCollectionDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/ProducerPatternDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/NamingConventionDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/DuplicateCodeDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/TestTimeoutEnforcementScanner.java"
             "tools/src/test/java/org/almostrealism/util/test/CodePolicyEnforcementTest.java"
-            "tools/ci/detect-test-hiding.sh"
-            "tools/ci/check-quality-gates.sh"
+            "tools/ci/agent-protection/detect-test-hiding.sh"
+            "tools/ci/agent-protection/check-quality-gates.sh"
           )
 
           TAMPERED=""
@@ -942,7 +961,7 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
-    needs: [test-media]
+    needs: [build, test, test-media]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -974,6 +993,10 @@ jobs:
 
       - name: Merge Coverage Data
         run: |
+          # Ensure the directory exists even when no coverage artifacts were uploaded
+          # (e.g. when test jobs were skipped on this branch).
+          mkdir -p all-coverage
+
           # Find all jacoco.exec files and create a file list
           find all-coverage -name "jacoco.exec" > exec-files.txt
           echo "Found coverage files:"

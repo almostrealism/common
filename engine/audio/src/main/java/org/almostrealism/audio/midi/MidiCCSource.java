@@ -197,6 +197,7 @@ public class MidiCCSource implements ModulationSource, CodeFeatures {
 	/**
 	 * Returns true if in bipolar mode.
 	 */
+	@Override
 	public boolean isBipolar() {
 		return bipolar;
 	}

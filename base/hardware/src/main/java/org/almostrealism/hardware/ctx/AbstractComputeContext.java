@@ -173,6 +173,7 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 *
 	 * @return The data context for memory operations
 	 */
+	@Override
 	public T getDataContext() { return dc; }
 
 	/**
