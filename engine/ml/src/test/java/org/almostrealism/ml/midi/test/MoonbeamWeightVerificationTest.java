@@ -194,14 +194,14 @@ public class MoonbeamWeightVerificationTest extends TestSuiteBase implements Con
 	}
 
 	/** Assert a weight key exists and has the expected total element count. */
-	private void assertShape(StateDictionary stateDict, String key, int expectedSize) {
+	static void assertShape(StateDictionary stateDict, String key, int expectedSize) {
 		PackedCollection weight = stateDict.get(key);
 		Assert.assertNotNull("Missing weight key: " + key, weight);
 		Assert.assertEquals("Wrong size for " + key, expectedSize, weight.getMemLength());
 	}
 
 	/** Assert a weight key exists. */
-	private void assertPresent(StateDictionary stateDict, String key) {
+	static void assertPresent(StateDictionary stateDict, String key) {
 		Assert.assertNotNull("Missing weight key: " + key, stateDict.get(key));
 	}
 }

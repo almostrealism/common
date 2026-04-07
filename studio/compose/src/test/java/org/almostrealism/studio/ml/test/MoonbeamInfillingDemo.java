@@ -16,11 +16,11 @@
 
 package org.almostrealism.studio.ml.test;
 
-import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
+import org.almostrealism.studio.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
-import org.almostrealism.ml.midi.MidiFileReader;
-import org.almostrealism.ml.midi.MidiNoteEvent;
-import org.almostrealism.ml.midi.MidiTokenizer;
+import org.almostrealism.music.midi.MidiFileReader;
+import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.studio.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
 import org.almostrealism.io.ConsoleFeatures;
@@ -99,7 +99,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatu
 
 		MoonbeamConfig config = MoonbeamConfig.checkpoint309M();
 		MoonbeamMidi model = new MoonbeamMidi(WEIGHTS_DIR, config);
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 		autoregressive.setTemperature(0.8);
 		autoregressive.setTopP(0.95);
 		autoregressive.setSeed(42);
@@ -184,7 +184,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatu
 		List<MidiCompoundToken> masked = maskTimeRegion(tokens, baselineEvents,
 				maskStart, maskEnd);
 
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 		autoregressive.setTemperature(0.8);
 		autoregressive.setTopP(0.95);
 		autoregressive.setSeed(42);
@@ -211,7 +211,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatu
 									  File outputDir, String filename) throws Exception {
 		List<MidiCompoundToken> masked = maskInstrument(tokens, baselineEvents, 1);
 
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 		autoregressive.setTemperature(0.8);
 		autoregressive.setTopP(0.95);
 		autoregressive.setSeed(123);
@@ -251,7 +251,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatu
 		List<MidiCompoundToken> masked = maskTimeRegion(tokens, baselineEvents,
 				maskStart, maskEnd);
 
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 		autoregressive.setTemperature(0.9);
 		autoregressive.setTopP(0.95);
 		autoregressive.setSeed(999);

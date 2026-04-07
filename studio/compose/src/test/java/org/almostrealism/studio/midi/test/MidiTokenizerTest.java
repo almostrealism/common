@@ -14,11 +14,11 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi.test;
+package org.almostrealism.studio.midi.test;
 
 import org.almostrealism.ml.midi.MidiCompoundToken;
-import org.almostrealism.ml.midi.MidiNoteEvent;
-import org.almostrealism.ml.midi.MidiTokenizer;
+import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.studio.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;

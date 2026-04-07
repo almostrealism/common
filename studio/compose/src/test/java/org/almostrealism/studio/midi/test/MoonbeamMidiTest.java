@@ -14,18 +14,18 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.midi.test;
+package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.GRUDecoder;
-import org.almostrealism.ml.midi.MoonbeamMidiGenerator;
+import org.almostrealism.studio.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
-import org.almostrealism.ml.midi.MidiFileReader;
-import org.almostrealism.ml.midi.MidiNoteEvent;
-import org.almostrealism.ml.midi.MidiTokenizer;
+import org.almostrealism.music.midi.MidiFileReader;
+import org.almostrealism.music.midi.MidiNoteEvent;
+import org.almostrealism.studio.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
 import org.almostrealism.util.TestDepth;
@@ -85,7 +85,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos()
@@ -107,7 +107,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos(),
@@ -137,7 +137,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos()
@@ -208,7 +208,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		// Do NOT call setPrompt -- exercise the no-prompt path
 		MidiCompoundToken generated = autoregressive.next();
@@ -235,7 +235,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
 				MidiCompoundToken.sos(),
@@ -263,7 +263,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		GRUDecoder decoder = createSyntheticDecoder(config);
 
 		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
-		MoonbeamMidiGenerator autoregressive = model.createAutoregressiveModel();
+		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		autoregressive.setTemperature(0.7);
 		Assert.assertEquals(0.7, autoregressive.getTemperature(), 1e-10);

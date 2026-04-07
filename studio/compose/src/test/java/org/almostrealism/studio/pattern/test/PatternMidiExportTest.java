@@ -21,8 +21,8 @@ import org.almostrealism.audio.tone.Scale;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.midi.MidiCompoundToken;
-import org.almostrealism.ml.midi.MidiFileReader;
-import org.almostrealism.ml.midi.MidiTokenizer;
+import org.almostrealism.music.midi.MidiFileReader;
+import org.almostrealism.studio.midi.MidiTokenizer;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.music.pattern.NoteDurationStrategy;
@@ -287,26 +287,20 @@ public class PatternMidiExportTest extends TestSuiteBase {
 
 		assertEquals("Expected 7 notes (one per repeat)", 7, events.size());
 
-		List<org.almostrealism.ml.midi.MidiNoteEvent> mlEvents = events.stream()
-				.map(e -> new org.almostrealism.ml.midi.MidiNoteEvent(
-						e.getPitch(), e.getOnset(), e.getDuration(),
-						e.getVelocity(), e.getInstrument()))
-				.toList();
-
 		File tempFile = File.createTempFile("pattern-midi-test", ".mid");
 		tempFile.deleteOnExit();
 
 		MidiFileReader reader = new MidiFileReader();
-		reader.write(mlEvents, tempFile);
+		reader.write(events, tempFile);
 
-		List<org.almostrealism.ml.midi.MidiNoteEvent> readBack = reader.read(tempFile);
+		List<MidiNoteEvent> readBack = reader.read(tempFile);
 
 		assertEquals("Round-trip should preserve note count",
-				mlEvents.size(), readBack.size());
+				events.size(), readBack.size());
 
-		for (int i = 0; i < mlEvents.size(); i++) {
-			org.almostrealism.ml.midi.MidiNoteEvent original = mlEvents.get(i);
-			org.almostrealism.ml.midi.MidiNoteEvent roundTripped = readBack.get(i);
+		for (int i = 0; i < events.size(); i++) {
+			MidiNoteEvent original = events.get(i);
+			MidiNoteEvent roundTripped = readBack.get(i);
 
 			assertEquals("Pitch should match for note " + i,
 					original.getPitch(), roundTripped.getPitch());
@@ -336,28 +330,22 @@ public class PatternMidiExportTest extends TestSuiteBase {
 
 		List<MidiNoteEvent> events = element.toMidiEvents(context, true, 0.0, 0);
 
-		List<org.almostrealism.ml.midi.MidiNoteEvent> mlEvents = events.stream()
-				.map(e -> new org.almostrealism.ml.midi.MidiNoteEvent(
-						e.getPitch(), e.getOnset(), e.getDuration(),
-						e.getVelocity(), e.getInstrument()))
-				.toList();
-
 		MidiTokenizer tokenizer = new MidiTokenizer();
-		List<MidiCompoundToken> tokens = tokenizer.tokenize(mlEvents);
+		List<MidiCompoundToken> tokens = tokenizer.tokenize(events);
 
 		assertNotNull("Tokens should not be null", tokens);
 		assertTrue("Should have SOS + events + EOS",
-				tokens.size() >= mlEvents.size() + 2);
+				tokens.size() >= events.size() + 2);
 
-		List<org.almostrealism.ml.midi.MidiNoteEvent> detokenized = tokenizer.detokenize(tokens);
+		List<MidiNoteEvent> detokenized = tokenizer.detokenize(tokens);
 		assertEquals("Detokenized count should match",
-				mlEvents.size(), detokenized.size());
+				events.size(), detokenized.size());
 
-		Set<Integer> originalPitches = mlEvents.stream()
-				.map(org.almostrealism.ml.midi.MidiNoteEvent::getPitch)
+		Set<Integer> originalPitches = events.stream()
+				.map(MidiNoteEvent::getPitch)
 				.collect(Collectors.toSet());
 		Set<Integer> roundTrippedPitches = detokenized.stream()
-				.map(org.almostrealism.ml.midi.MidiNoteEvent::getPitch)
+				.map(MidiNoteEvent::getPitch)
 				.collect(Collectors.toSet());
 		Assert.assertEquals("Pitches should survive tokenization round-trip",
 				originalPitches, roundTrippedPitches);
