@@ -74,6 +74,14 @@ public class McpToolDiscovery {
         Pattern.compile("^\\s+(\\w+)\\s*:");
 
     /**
+     * Matches a parameter name at the start of a trimmed parameter segment from a
+     * single-line function signature, e.g. {@code query: str} or
+     * {@code namespace: str = "default"}. Group 1 is the parameter name.
+     */
+    private static final Pattern INLINE_PARAM_PATTERN =
+        Pattern.compile("^(\\w+)");
+
+    /**
      * Scans a Python MCP server source file for tool definitions and
      * returns their names.
      *
@@ -103,7 +111,11 @@ public class McpToolDiscovery {
      * Returns the parameter names declared in the function signature of a given
      * {@code @mcp.tool()}-decorated function in a Python server source file.
      *
-     * <p>Parses multi-line function signatures of the form:</p>
+     * <p>Handles both single-line signatures such as:</p>
+     * <pre>
+     * def tool_name(param_one: str, param_two: str = "default") -&gt; dict:
+     * </pre>
+     * <p>and multi-line signatures of the form:</p>
      * <pre>
      * &#64;mcp.tool()
      * def tool_name(
@@ -279,17 +291,38 @@ public class McpToolDiscovery {
         List<String> params = new ArrayList<>();
 
         for (int i = 0; i < lines.size(); i++) {
-            if (!funcDefStart.matcher(lines.get(i)).find()) continue;
+            String defLine = lines.get(i);
+            if (!funcDefStart.matcher(defLine).find()) continue;
 
-            for (int j = i + 1; j < lines.size(); j++) {
-                String trimmed = lines.get(j).trim();
-                if (trimmed.startsWith(") ->") || trimmed.startsWith("):")) break;
+            // Check whether the closing paren is on the same line as the def.
+            int openParen = defLine.indexOf('(');
+            int closeParen = defLine.lastIndexOf(')');
+            if (openParen >= 0 && closeParen > openParen) {
+                // Single-line signature: parse params between ( and ).
+                String paramSection = defLine.substring(openParen + 1, closeParen);
+                for (String segment : paramSection.split(",")) {
+                    String trimmed = segment.trim();
+                    if (trimmed.isEmpty()) continue;
+                    Matcher m = INLINE_PARAM_PATTERN.matcher(trimmed);
+                    if (m.find()) {
+                        String param = m.group(1);
+                        if (!param.equals("self") && !param.equals("cls")) {
+                            params.add(param);
+                        }
+                    }
+                }
+            } else {
+                // Multi-line signature: each parameter is on its own indented line.
+                for (int j = i + 1; j < lines.size(); j++) {
+                    String trimmed = lines.get(j).trim();
+                    if (trimmed.startsWith(") ->") || trimmed.startsWith("):")) break;
 
-                Matcher m = PARAM_LINE_PATTERN.matcher(lines.get(j));
-                if (m.find()) {
-                    String param = m.group(1);
-                    if (!param.equals("self") && !param.equals("cls")) {
-                        params.add(param);
+                    Matcher m = PARAM_LINE_PATTERN.matcher(lines.get(j));
+                    if (m.find()) {
+                        String param = m.group(1);
+                        if (!param.equals("self") && !param.equals("cls")) {
+                            params.add(param);
+                        }
                     }
                 }
             }

@@ -463,7 +463,10 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             if (!statusOutput.trim().isEmpty()) {
                 String stashMsg = "flowtree: dependent repo cleanup before " + taskId;
                 log("Stashing uncommitted changes in dependent repo: " + depPath);
-                gitOps.execute("stash", "push", "--include-untracked", "-m", stashMsg);
+                int stashExit = gitOps.execute("stash", "push", "--include-untracked", "-m", stashMsg);
+                if (stashExit != 0) {
+                    throw new IOException("git stash push failed (exit " + stashExit + ") in " + depPath);
+                }
             }
 
             // 2. Fetch latest from origin.
@@ -478,8 +481,8 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 "refs/remotes/origin/" + targetBranch) == 0;
 
             if (!targetBranch.equals(currentBranch)) {
-                boolean localExists = gitOps.execute("rev-parse",
-                    "--verify", targetBranch) == 0;
+                boolean localExists = gitOps.execute("show-ref", "--verify", "--quiet",
+                    "refs/heads/" + targetBranch) == 0;
 
                 if (localExists || remoteExists) {
                     int checkoutExit = gitOps.execute("checkout", targetBranch);

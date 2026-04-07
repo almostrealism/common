@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import io.almostrealism.uml.Named;
+
 /**
  * Defines a rule that is evaluated after an agent completes its primary work.
  * When a violation is detected, a correction session is run using the rule's
@@ -25,6 +27,11 @@ package io.flowtree.jobs;
  * <p>Rules are evaluated in order by the enforcement framework in
  * {@link ClaudeCodeJob}. Each rule is independent: a correction session
  * for one rule does not prevent other rules from being checked or retried.</p>
+ *
+ * <p>The name returned by {@link #getName()} (inherited from
+ * {@link io.almostrealism.uml.Named}) is used in log messages to identify
+ * the rule (e.g., {@code "enforce-changes"}, {@code "deduplication"},
+ * {@code "no-maven-dependency-changes"}).</p>
  *
  * <p>Implementations are generally stateless — all inspection is performed
  * through the {@link ClaudeCodeJob} argument passed to each method.
@@ -41,15 +48,7 @@ package io.flowtree.jobs;
  * @see ClaudeCodeJob
  * @see ClaudeCodeJob#DEFAULT_MAX_RULE_RETRIES
  */
-public interface EnforcementRule {
-
-    /**
-     * Returns a short name for this rule, used in log messages.
-     *
-     * @return the rule name (e.g., {@code "enforce-changes"},
-     *         {@code "no-maven-dependency-changes"})
-     */
-    String getName();
+public interface EnforcementRule extends Named {
 
     /**
      * Returns {@code true} if this rule is currently violated by the agent's work.
