@@ -763,44 +763,57 @@ public class ClaudeCodeJob extends GitManagedJob {
      * {@link #DEDUP_LOCAL}.
      *
      * <p>This rule uses method-set comparison to determine when to stop looping.
-     * Before each correction session, the set of new method names is recorded.
-     * After the session, the set is re-extracted. If the sets are identical, the
-     * agent had one opportunity and removed nothing — the loop exits immediately.
-     * If the set changed (methods were removed), another pass is made to check for
-     * remaining duplicates. This approach is deterministic and does not rely on
-     * heuristics about file changes or agent output.</p>
+     * Before each correction session, {@link #isViolated(ClaudeCodeJob)} records
+     * the current set of new method names. After the session completes,
+     * {@link #onCorrectionAttempted(ClaudeCodeJob)} compares the post-session
+     * set with the recorded pre-session set. If the sets are identical, the agent
+     * had one opportunity and removed nothing — the rule marks itself as resolved
+     * so the loop exits on the next {@link #isViolated} check. If the set changed
+     * (methods were removed), another pass is made to check for remaining
+     * duplicates. This approach is deterministic and does not rely on heuristics
+     * about file changes or agent output.</p>
      */
     private class DeduplicationRule implements EnforcementRule {
 
         /**
-         * The set of new method names observed at the start of the most recent
-         * {@link #isViolated} check. Used to detect whether a correction session
-         * successfully removed any methods: if the set is unchanged after a session,
-         * the agent produced no removals and the loop exits.
+         * The set of new method names recorded by the most recent {@link #isViolated}
+         * call. Used by {@link #onCorrectionAttempted} to compare against the
+         * post-session set and determine whether the agent removed any methods.
          */
         private Set<String> methodSetBeforeSession = null;
+
+        /**
+         * Set to {@code true} by {@link #onCorrectionAttempted} when a correction
+         * session completes without changing the method set, indicating the agent
+         * found no duplicates to remove. Once resolved, {@link #isViolated} returns
+         * {@code false} immediately so the loop exits.
+         */
+        private boolean resolved = false;
 
         @Override
         public String getName() { return "deduplication"; }
 
         @Override
         public boolean isViolated(ClaudeCodeJob job) {
+            if (resolved) return false;
             List<String> newMethods = job.extractNewMethodNames();
-            Set<String> currentMethodSet = new LinkedHashSet<>(newMethods);
-
-            if (methodSetBeforeSession != null && currentMethodSet.equals(methodSetBeforeSession)) {
-                // The correction session ran but the method set is unchanged.
-                // The agent had one shot and removed nothing — exit the loop.
-                log("Deduplication: method set unchanged after correction session — no duplicates to remove");
-                return false;
-            }
-
-            methodSetBeforeSession = currentMethodSet;
-
+            methodSetBeforeSession = new LinkedHashSet<>(newMethods);
             if (!newMethods.isEmpty()) {
                 log("Deduplication scan: found " + newMethods.size() + " new method(s)");
             }
             return !newMethods.isEmpty();
+        }
+
+        @Override
+        public void onCorrectionAttempted(ClaudeCodeJob job) {
+            if (methodSetBeforeSession == null) return;
+            Set<String> currentMethodSet = new LinkedHashSet<>(job.extractNewMethodNames());
+            if (currentMethodSet.equals(methodSetBeforeSession)) {
+                // The correction session ran but the method set is unchanged.
+                // The agent had one shot and removed nothing — mark as resolved.
+                log("Deduplication: method set unchanged after correction session — no duplicates to remove");
+                resolved = true;
+            }
         }
 
         @Override
