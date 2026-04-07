@@ -49,8 +49,27 @@ import java.util.List;
  */
 public class SkyTntIntegrationTest extends TestSuiteBase {
 
-	/** Expected path to the real model weights. */
-	private static final String WEIGHTS_DIR = "/Users/Shared/models/skytnt-weights-protobuf";
+	/**
+	 * Expected path to the real model weights.
+	 *
+	 * <p>In the CI environment, models are mounted under {@code /models}. On macOS
+	 * developer machines the conventional path is under {@code /Users/Shared/models}.
+	 * The path is selected at runtime based on the operating system.</p>
+	 */
+	private static final String WEIGHTS_DIR = resolveWeightsDir();
+
+	/**
+	 * Returns the model weights directory appropriate for the current OS.
+	 *
+	 * <p>On Linux (CI), weights are mounted at {@code /models/skytnt-weights-protobuf}.
+	 * On macOS (local development), the conventional path {@code /Users/Shared/models/skytnt-weights-protobuf}
+	 * is used.</p>
+	 */
+	private static String resolveWeightsDir() {
+		boolean isLinux = System.getProperty("os.name", "").toLowerCase().contains("linux");
+		return isLinux ? "/models/skytnt-weights-protobuf"
+				: "/Users/Shared/models/skytnt-weights-protobuf";
+	}
 
 	/** Maximum events to generate in each test (keeps runtime bounded). */
 	private static final int MAX_NEW_EVENTS = 20;
@@ -67,8 +86,8 @@ public class SkyTntIntegrationTest extends TestSuiteBase {
 		SkyTntMidi model = new SkyTntMidi(WEIGHTS_DIR);
 
 		// BOS prompt
-		int[][] prompt = buildBosPrompt(model.getConfig().maxTokenSeq,
-				model.getConfig().bosId);
+		int[][] prompt = new int[1][model.getConfig().maxTokenSeq];
+		prompt[0][0] = model.getConfig().bosId;
 
 		int[][] output = model.generate(prompt, MAX_NEW_EVENTS,
 				SkyTntMidi.DEFAULT_TEMPERATURE,
@@ -100,7 +119,6 @@ public class SkyTntIntegrationTest extends TestSuiteBase {
 				new File(WEIGHTS_DIR).isDirectory());
 
 		SkyTntMidi model = new SkyTntMidi(WEIGHTS_DIR);
-		SkyTntTokenizerV2 tokenizer = model.getTokenizer();
 
 		// Build a minimal prompt: BOS + one C4 note
 		List<MidiNoteEvent> promptEvents = new ArrayList<>();
@@ -126,14 +144,4 @@ public class SkyTntIntegrationTest extends TestSuiteBase {
 		}
 	}
 
-	// -----------------------------------------------------------------------
-	//  Helpers
-	// -----------------------------------------------------------------------
-
-	/** Create a single-row BOS prompt array. */
-	private static int[][] buildBosPrompt(int maxTokenSeq, int bosId) {
-		int[][] prompt = new int[1][maxTokenSeq];
-		prompt[0][0] = bosId;
-		return prompt;
-	}
 }

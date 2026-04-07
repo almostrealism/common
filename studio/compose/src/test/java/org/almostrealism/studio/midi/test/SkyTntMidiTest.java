@@ -108,7 +108,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 		PackedCollection tokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, tokenHeadSize, SEQ_LEN);
 
-		PackedCollection lmHeadWeight = stateDict.get("lm_head");
+		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
 
 		// Build net model (no lm head)
 		CompiledModel netModel = SkyTntMidi.buildTransformerModel(
@@ -187,7 +187,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 		PackedCollection tokenPos = new PackedCollection(1);
 		PackedCollection tokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, tokenHeadSize, SEQ_LEN);
-		PackedCollection lmHeadWeight = stateDict.get("lm_head");
+		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
 
 		CompiledModel netTokenModel = SkyTntMidi.buildTransformerModel(
 				"net_token", stateDict, blockProgram, lmHeadProgram,
@@ -240,7 +240,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 
 		PackedCollection netEmbed = new PackedCollection(new TraversalPolicy(VOCAB, DIM));
 		PackedCollection tokenEmbed = new PackedCollection(new TraversalPolicy(VOCAB, DIM));
-		PackedCollection lmHeadWeight = stateDict.get("lm_head");
+		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
 
 		CompiledModel netModel = SkyTntMidi.buildTransformerModel(
 				"net", stateDict, blockProgram, lmHeadProgram,
@@ -297,22 +297,22 @@ public class SkyTntMidiTest extends TestSuiteBase {
 	static StateDictionary createSyntheticWeights(SkyTntConfig config, Random rng) {
 		Map<String, PackedCollection> weights = new HashMap<>();
 
-		// LM head (shared)
-		weights.put("lm_head", rand(rng, config.vocabSize, config.hiddenSize));
+		// LM head (shared) — uses HuggingFace key name to match extractor output
+		weights.put("lm_head.weight", rand(rng, config.vocabSize, config.hiddenSize));
 
-		// Embedding tables
-		weights.put("net_embeddings", rand(rng, config.vocabSize, config.hiddenSize));
-		weights.put("net_token_embeddings", rand(rng, config.vocabSize, config.hiddenSize));
+		// Embedding tables — uses HuggingFace key names to match extractor output
+		weights.put("net.embed_tokens.weight", rand(rng, config.vocabSize, config.hiddenSize));
+		weights.put("net_token.embed_tokens.weight", rand(rng, config.vocabSize, config.hiddenSize));
 
 		// net layers
 		addLayerWeights(weights, "net", config.netLayers, config.hiddenSize,
 				config.netIntermediateSize, rng);
-		weights.put("net_norm", rand(rng, config.hiddenSize));
+		weights.put("net.norm.weight", rand(rng, config.hiddenSize));
 
 		// net_token layers
 		addLayerWeights(weights, "net_token", config.netTokenLayers, config.hiddenSize,
 				config.netTokenIntermediateSize, rng);
-		weights.put("net_token_norm", rand(rng, config.hiddenSize));
+		weights.put("net_token.norm.weight", rand(rng, config.hiddenSize));
 
 		return new StateDictionary(weights);
 	}
@@ -322,7 +322,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 										String prefix, int numLayers,
 										int hiddenSize, int ffnSize, Random rng) {
 		for (int i = 0; i < numLayers; i++) {
-			String key = prefix + "_layer_" + String.format("%02d", i);
+			String key = prefix + ".layers." + i;
 			weights.put(key + ".input_layernorm.weight", rand(rng, hiddenSize));
 			weights.put(key + ".post_attention_layernorm.weight", rand(rng, hiddenSize));
 			weights.put(key + ".self_attn.q_proj.weight", rand(rng, hiddenSize, hiddenSize));

@@ -142,8 +142,8 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * Load a SkyTntMidi model from a weights directory.
 	 *
 	 * <p>The weights directory must contain protobuf files exported by
-	 * {@code extract_skytnt_weights.py}.  Keys follow the naming convention:
-	 * {@code net_layer_00.input_layernorm.weight}, etc.</p>
+	 * {@code extract_skytnt_weights.py}.  Keys follow the HuggingFace naming convention:
+	 * {@code net.layers.0.input_layernorm.weight}, etc.</p>
 	 *
 	 * @param weightsDirectory directory containing exported weight files
 	 * @throws IOException if weight files cannot be read
@@ -168,8 +168,8 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 
 		StateDictionary stateDict = new StateDictionary(weightsDirectory);
 
-		this.netEmbedTokens = stateDict.get("net_embeddings");
-		this.netTokenEmbedTokens = stateDict.get("net_token_embeddings");
+		this.netEmbedTokens = stateDict.get("net.embed_tokens.weight");
+		this.netTokenEmbedTokens = stateDict.get("net_token.embed_tokens.weight");
 
 		this.netPosition = new PackedCollection(1);
 		this.netTokenPosition = new PackedCollection(1);
@@ -183,7 +183,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		PackedCollection netTokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, config.netTokenHeadSize, config.maxEventSeqLen);
 
-		PackedCollection lmHeadWeight = stateDict.get("lm_head");
+		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
 
 		log("Building net model (" + config.netLayers + " layers, hiddenSize=" +
 				config.hiddenSize + ", heads=" + config.netHeads + ")");
@@ -409,7 +409,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		Model model = new Model(inputShape);
 
 		for (int i = 0; i < numLayers; i++) {
-			String layerKey = prefix + "_layer_" + String.format("%02d", i);
+			String layerKey = prefix + ".layers." + i;
 
 			Map<String, Object> args = new HashMap<>();
 			args.put("heads", numHeads);
@@ -430,7 +430,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			model.add(block);
 		}
 
-		PackedCollection normWeight = stateDict.get(prefix + "_norm");
+		PackedCollection normWeight = stateDict.get(prefix + ".norm.weight");
 
 		if (withLmHead) {
 			Map<String, Object> headArgs = new HashMap<>();

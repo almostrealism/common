@@ -236,7 +236,7 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
             int time2 = timing[1];
             prevTime1 = prevTime1 + time1Delta;
 
-            encodeEvent(event, time1Delta, time2, row);
+            encodeEvent(event, time1Delta, time2, ticksPerBeat, row);
         }
 
         // Last row: EOS
@@ -346,9 +346,11 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
     /**
      * Fills {@code row} with the token IDs for the given event using the
      * pre-computed time1 delta and time2 fine position.
+     *
+     * @param ticksPerBeat MIDI PPQ resolution used to quantize note duration to 1/16th-beat units
      */
     private static void encodeEvent(MidiNoteEvent event, int time1Delta, int time2,
-                                     int[] row) {
+                                     int ticksPerBeat, int[] row) {
         switch (event.getEventType()) {
             case NOTE:
                 row[0] = EVENT_NOTE;
@@ -358,7 +360,8 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
                 row[4] = CHANNEL_OFFSET + MidiTokenizer.clamp(event.getChannel(), 0, 15);
                 row[5] = PITCH_OFFSET + MidiTokenizer.clamp(event.getPitch(), 0, 127);
                 row[6] = VELOCITY_OFFSET + MidiTokenizer.clamp(event.getVelocity(), 0, 127);
-                row[7] = DURATION_OFFSET + clampDuration(event.getDurationTicks());
+                row[7] = DURATION_OFFSET + MidiTokenizer.clamp(
+                        (int) Math.round(16.0 * event.getDurationTicks() / ticksPerBeat), 1, 2047);
                 break;
 
             case PATCH_CHANGE:
@@ -436,7 +439,7 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         long tick = reconstructTick(time1Abs, time2, ticksPerBeat);
 
         if (eventToken == EVENT_NOTE) {
-            return decodeNote(row, tick);
+            return decodeNote(row, tick, ticksPerBeat);
         } else if (eventToken == EVENT_PATCH_CHANGE) {
             return decodePatchChange(row, tick);
         } else if (eventToken == EVENT_CONTROL_CHANGE) {
@@ -451,8 +454,12 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         return null;
     }
 
-    /** Decodes a NOTE row, or returns {@code null} on invalid token range. */
-    private static MidiNoteEvent decodeNote(int[] row, long tick) {
+    /**
+     * Decodes a NOTE row, or returns {@code null} on invalid token range.
+     *
+     * @param ticksPerBeat MIDI PPQ resolution used to convert 1/16th-beat duration units to ticks
+     */
+    private static MidiNoteEvent decodeNote(int[] row, long tick, int ticksPerBeat) {
         if (row[3] < TRACK_OFFSET || row[3] >= TRACK_OFFSET + 128) return null;
         if (row[4] < CHANNEL_OFFSET || row[4] >= CHANNEL_OFFSET + 16) return null;
         if (row[5] < PITCH_OFFSET || row[5] >= PITCH_OFFSET + 128) return null;
@@ -464,7 +471,8 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         int pitch = row[5] - PITCH_OFFSET;
         int velocity = row[6] - VELOCITY_OFFSET;
         int durationUnits = row[7] - DURATION_OFFSET;
-        return MidiNoteEvent.note(tick, track, channel, pitch, velocity, durationUnits);
+        long durationTicks = Math.round(durationUnits * ticksPerBeat / 16.0);
+        return MidiNoteEvent.note(tick, track, channel, pitch, velocity, durationTicks);
     }
 
     /** Decodes a PATCH_CHANGE row, or returns {@code null} on invalid token range. */
@@ -615,16 +623,4 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
         return arr;
     }
 
-    // -----------------------------------------------------------------------
-    // Value helpers
-    // -----------------------------------------------------------------------
-
-    /**
-     * Clamps a note duration (in ticks or 1/16th-beat units) to the valid
-     * duration token range [1, 2047], defaulting to 1 if the input is zero.
-     */
-    private static int clampDuration(long duration) {
-        int d = (int) Math.max(1, Math.min(2047, duration));
-        return d;
-    }
 }

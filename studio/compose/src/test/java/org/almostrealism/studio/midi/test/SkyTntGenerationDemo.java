@@ -45,7 +45,7 @@ import java.util.Random;
  * End-to-end MIDI generation demo for the SkyTNT midi-model.
  *
  * <p>This demo generates two MIDI files and writes them to
- * {@code ~/skytnt-midi-samples/}:</p>
+ * {@code results/skytnt-midi-samples/} in the module directory:</p>
  * <ol>
  *   <li>{@code unconditional-001.mid} — generated from BOS with no prompt</li>
  *   <li>{@code prompted-Cmaj-001.mid} — generated from a C major chord prompt</li>
@@ -73,8 +73,8 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
     /** Maximum events to generate per file. */
     private static final int MAX_NEW_EVENTS = 100;
 
-    /** Output directory for the generated .mid files. */
-    private static final String OUTPUT_DIR = System.getProperty("user.home") + "/skytnt-midi-samples";
+    /** Output directory for the generated .mid files (relative to module directory). */
+    private static final String OUTPUT_DIR = "results/skytnt-midi-samples";
 
     // -----------------------------------------------------------------------
     //  Synthetic config constants (used when real weights are absent)
@@ -214,7 +214,7 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
                 config.ropeTheta, netHeadSize, SEQ_LEN);
         PackedCollection tokenFreqCis = RotationFeatures.computeRopeFreqs(
                 config.ropeTheta, tokenHeadSize, SEQ_LEN);
-        PackedCollection lmHeadWeight = stateDict.get("lm_head");
+        PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
 
         CompiledModel netModel = SkyTntMidi.buildTransformerModel(
                 "net", stateDict, blockProgram, lmHeadProgram,

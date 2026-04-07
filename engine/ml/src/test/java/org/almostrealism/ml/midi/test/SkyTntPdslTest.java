@@ -36,7 +36,7 @@ import java.util.Map;
  * <p>All tests use synthetic (random) weights — no real model checkpoint is
  * required.  Tests are CI-safe and complete in seconds.</p>
  *
- * @see org.almostrealism.ml.midi.SkyTntMidi
+ * @see org.almostrealism.studio.midi.SkyTntMidi
  */
 public class SkyTntPdslTest extends TestSuiteBase {
 
