@@ -17,7 +17,7 @@
 /**
  * MIDI I/O and generation tooling for the studio composition layer.
  *
- * <p>This package provides file reading and writing ({@link org.almostrealism.studio.midi.MidiFileReader}),
+ * <p>This package provides file reading and writing ({@link org.almostrealism.music.midi.MidiFileReader}),
  * tokenization ({@link org.almostrealism.studio.midi.MidiTokenizer}),
  * dataset support ({@link org.almostrealism.studio.midi.MidiDataset}),
  * and autoregressive generation via

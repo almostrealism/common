@@ -21,7 +21,7 @@ import org.almostrealism.audio.tone.Scale;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.midi.MidiCompoundToken;
-import org.almostrealism.studio.midi.MidiFileReader;
+import org.almostrealism.music.midi.MidiFileReader;
 import org.almostrealism.studio.midi.MidiTokenizer;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.midi.MidiNoteEvent;

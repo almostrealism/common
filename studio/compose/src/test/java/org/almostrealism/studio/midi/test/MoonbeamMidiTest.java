@@ -23,7 +23,7 @@ import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.studio.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
-import org.almostrealism.studio.midi.MidiFileReader;
+import org.almostrealism.music.midi.MidiFileReader;
 import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.studio.midi.MidiTokenizer;
 import org.almostrealism.ml.midi.MoonbeamConfig;

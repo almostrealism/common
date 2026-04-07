@@ -25,7 +25,7 @@ import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.dsl.PdslNode;
-import org.almostrealism.studio.midi.MidiFileReader;
+import org.almostrealism.music.midi.MidiFileReader;
 import org.almostrealism.studio.midi.SkyTntConfig;
 import org.almostrealism.studio.midi.SkyTntMidi;
 import org.almostrealism.music.midi.MidiNoteEvent;

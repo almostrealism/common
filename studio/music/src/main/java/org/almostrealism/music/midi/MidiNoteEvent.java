@@ -46,7 +46,7 @@ package org.almostrealism.music.midi;
  *
  * @see org.almostrealism.studio.midi.MidiTokenizer
  * @see org.almostrealism.studio.midi.SkyTntTokenizerV2
- * @see org.almostrealism.studio.midi.MidiFileReader
+ * @see org.almostrealism.music.midi.MidiFileReader
  */
 public class MidiNoteEvent implements Comparable<MidiNoteEvent> {
 
@@ -343,7 +343,7 @@ public class MidiNoteEvent implements Comparable<MidiNoteEvent> {
      *
      * <p>Returns {@link #DRUM_INSTRUMENT} (128) when {@link #getChannel()} equals
      * {@link #DRUM_CHANNEL} (9), otherwise returns {@link #getPatch()}. This
-     * matches the convention used by {@link org.almostrealism.studio.midi.MidiTokenizer} and {@link org.almostrealism.studio.midi.MidiFileReader}.</p>
+     * matches the convention used by {@link org.almostrealism.studio.midi.MidiTokenizer} and {@link org.almostrealism.music.midi.MidiFileReader}.</p>
      */
     public int getInstrument() {
         return channel == DRUM_CHANNEL ? DRUM_INSTRUMENT : patch;

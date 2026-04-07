@@ -14,9 +14,9 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.studio.midi.test;
+package org.almostrealism.music.midi.test;
 
-import org.almostrealism.studio.midi.MidiFileReader;
+import org.almostrealism.music.midi.MidiFileReader;
 import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
