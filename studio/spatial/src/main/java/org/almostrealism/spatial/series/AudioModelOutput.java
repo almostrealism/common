@@ -51,6 +51,9 @@ public class AudioModelOutput extends SimpleTimeseries<AudioModelOutput> {
 	/** The embedding vector used for generation. */
 	private List<Double> embed;
 
+	/** The timestamp (epoch milliseconds) when this output was created. */
+	private long createdAt;
+
 	/**
 	 * Creates an empty audio model output.
 	 */
@@ -169,6 +172,22 @@ public class AudioModelOutput extends SimpleTimeseries<AudioModelOutput> {
 	 */
 	public void setEmbed(List<Double> embed) {
 		this.embed = embed;
+	}
+
+	/**
+	 * Returns the timestamp when this output was created.
+	 *
+	 * @return the creation time in epoch milliseconds, or 0 if not set
+	 */
+	public long getCreatedAt() { return createdAt; }
+
+	/**
+	 * Sets the timestamp when this output was created.
+	 *
+	 * @param createdAt the creation time in epoch milliseconds
+	 */
+	public void setCreatedAt(long createdAt) {
+		this.createdAt = createdAt;
 	}
 
 	/**

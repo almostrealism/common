@@ -19,6 +19,8 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WavFile;
 import org.almostrealism.audio.CellFeatures;
 
+import org.almostrealism.audio.data.DynamicWaveDataProvider;
+import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.AudioLine;
 import org.almostrealism.audio.line.AudioLineInputRecord;
@@ -347,9 +349,11 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		if (source == null) {
 			clear(player);
 			return;
-		} else if (source.getSampleRate() != sampleRate) {
-			warn("Sample rate " + source.getSampleRate() + " != " + sampleRate);
-			return;
+		}
+
+		if (source.getSampleRate() != sampleRate) {
+			source = new DynamicWaveDataProvider(
+					"resample", source).get(sampleRate);
 		}
 
 		int frames = resetPlayer(player, source.getFrameCount());
@@ -372,24 +376,16 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 			return;
 		}
 
-		try (WavFile in = WavFile.openWavFile(new File(file))) {
-			long inRate = in.getSampleRate();
+		WaveData data = new FileWaveDataProvider(file).get(sampleRate);
+		if (data == null) {
+			warn("Could not load " + file + " to player");
+			return;
+		}
 
-			if (inRate != sampleRate) {
-				warn("Sample rate " + inRate + " != " + sampleRate);
-				return;
-			}
+		int frames = resetPlayer(player, data.getFrameCount());
 
-			double[][] result = new double[in.getNumChannels()][(int) in.getFramesRemaining()];
-			in.readFrames(result, (int) in.getFramesRemaining());
-
-			int frames = resetPlayer(player, result[0].length);
-
-			for (int c = 0; c < getData(player).getChannelCount(); c++) {
-				getData(player).getChannelData(c).setMem(result[c], 0, frames);
-			}
-		} catch (IOException e) {
-			warn("Could not load " + file + " to player", e);
+		for (int c = 0; c < data.getChannelCount(); c++) {
+			getData(player).getChannelData(c).setMem(data.getChannelData(c), 0, frames);
 		}
 	}
 

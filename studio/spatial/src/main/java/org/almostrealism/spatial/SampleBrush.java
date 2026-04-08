@@ -63,9 +63,18 @@ public class SampleBrush implements SpatialBrush {
 	/** The frequency sample rate of the source data in Hz. */
 	private double sourceFreqSampleRate;
 
+	/**
+	 * The spatial context used to convert between spatial X coordinates and
+	 * seconds. Required for correct stroke handling.
+	 */
+	private TemporalSpatialContext context;
+
 	// Stroke state
-	/** The position at which the current stroke began. */
+	/** The position at which the current stroke began (in spatial coordinates). */
 	private Vector strokeStartPosition;
+
+	/** The canvas time in seconds at which the current stroke began. */
+	private double strokeStartSeconds;
 
 	/** The index of the last frequency frame painted during the current stroke. */
 	private int lastPaintedFrame;
@@ -128,48 +137,60 @@ public class SampleBrush implements SpatialBrush {
 		return sourceWave;
 	}
 
+	/**
+	 * Sets the spatial context used by this brush to convert between spatial
+	 * X coordinates and seconds. This is required for correct stroke handling.
+	 *
+	 * @param context the temporal spatial context
+	 */
+	public void setContext(TemporalSpatialContext context) {
+		this.context = context;
+	}
+
 	@Override
 	public void reset() {
 		strokeStartPosition = null;
-		lastPaintedFrame = 0;
+		strokeStartSeconds = 0;
+		lastPaintedFrame = -1;
 	}
 
 	@Override
 	public List<SpatialValue<?>> stroke(Vector center, double pressure, double duration) {
-		if (!hasValidSource()) {
+		if (!hasValidSource() || context == null) {
 			return Collections.emptyList();
 		}
+
+		double currentSeconds = context.seconds(center);
 
 		// First stroke establishes start position
 		if (strokeStartPosition == null) {
 			strokeStartPosition = center;
-			lastPaintedFrame = 0;
+			strokeStartSeconds = currentSeconds;
+			lastPaintedFrame = -1;
 		}
 
-		// Calculate source frame range based on drag distance
-		// X coordinate represents time in seconds (via TemporalSpatialContext)
-		double dragDistance = center.getX() - strokeStartPosition.getX();
-		if (dragDistance < 0) {
+		// Calculate elapsed canvas time since stroke start
+		double elapsedSeconds = currentSeconds - strokeStartSeconds;
+		if (elapsedSeconds < 0) {
 			return Collections.emptyList();
 		}
 
-		// Convert drag distance (seconds) to source frames
-		int targetFrame = (int) (dragDistance * sourceFreqSampleRate);
+		// Map elapsed canvas time directly to source frames (1:1 time mapping)
+		int targetFrame = (int) (elapsedSeconds * sourceFreqSampleRate);
 		targetFrame = Math.min(targetFrame, sourceFreqFrameCount - 1);
 
-		// Only paint new frames
-		if (targetFrame <= lastPaintedFrame && lastPaintedFrame > 0) {
+		if (targetFrame <= lastPaintedFrame) {
 			return Collections.emptyList();
 		}
 
-		// Generate SpatialValues for frames [lastPaintedFrame, targetFrame]
+		// Generate SpatialValues for frames (lastPaintedFrame, targetFrame]
 		List<SpatialValue<?>> values = new ArrayList<>();
-		int startFrame = lastPaintedFrame > 0 ? lastPaintedFrame + 1 : 0;
+		int startFrame = lastPaintedFrame + 1;
 
 		for (int frame = startFrame; frame <= targetFrame; frame++) {
-			double frameTime = frame / sourceFreqSampleRate;
-			double targetX = strokeStartPosition.getX() + frameTime;
-			addFrameValues(values, frame, targetX);
+			double frameSeconds = frame / sourceFreqSampleRate;
+			double canvasSeconds = strokeStartSeconds + frameSeconds;
+			addFrameValues(values, frame, canvasSeconds);
 		}
 
 		lastPaintedFrame = targetFrame;
@@ -177,37 +198,33 @@ public class SampleBrush implements SpatialBrush {
 	}
 
 	/**
-	 * Adds SpatialValues for all bins in a single source frame.
+	 * Adds SpatialValues for all bins in a single source frame at the
+	 * given canvas time.
 	 *
-	 * @param values     the list to add values to
-	 * @param sourceFrame the frame index in the source
-	 * @param targetX    the X coordinate (time) on the canvas
+	 * @param values        the list to add values to
+	 * @param sourceFrame   the frame index in the source
+	 * @param canvasSeconds the canvas time in seconds where this frame should land
 	 */
-	private void addFrameValues(List<SpatialValue<?>> values, int sourceFrame, double targetX) {
+	private void addFrameValues(List<SpatialValue<?>> values, int sourceFrame, double canvasSeconds) {
 		int offset = sourceFrame * sourceFreqBinCount;
+		double timeUnits = context.getSecondsToTime().applyAsDouble(canvasSeconds);
 
 		for (int bin = 0; bin < sourceFreqBinCount; bin++) {
 			double magnitude = sourceFreqData.toDouble(offset + bin);
 
-			// Skip values below threshold
 			if (magnitude < FrequencyTimeseries.frequencyThreshold) {
 				continue;
 			}
 
-			// Convert bin to normalized frequency (0-1)
 			double normalizedFreq = (double) bin / sourceFreqBinCount;
+			Vector pos = context.position(timeUnits, 0, 0, normalizedFreq);
 
 			// Scale magnitude for SpatialValue (matching FrequencyTimeseries.loadElements)
 			double scaledMag = (magnitude - FrequencyTimeseries.frequencyThreshold)
 					* FrequencyTimeseries.frequencyScale;
 			double logMag = Math.log(scaledMag + 1);
 
-			values.add(new SpatialValue<>(
-					new Vector(targetX, normalizedFreq, 0),
-					logMag,
-					0.5,  // neutral temperature
-					true
-			));
+			values.add(new SpatialValue<>(pos, logMag, 0.5, true));
 		}
 	}
 

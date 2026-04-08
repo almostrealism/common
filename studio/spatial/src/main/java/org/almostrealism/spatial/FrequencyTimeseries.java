@@ -143,14 +143,17 @@ public abstract class FrequencyTimeseries implements SpatialTimeseries, ConsoleF
 	protected void loadElements(TemporalSpatialContext context) {
 		if (elements != null) return;
 
-		elements = new ArrayList<>();
+		// Build into a local list and publish at the end so a concurrent
+		// resetElements() (e.g. from applyValues on another thread) cannot
+		// null out the list mid-build and cause an NPE in add().
+		List<SpatialValue> local = new ArrayList<>();
 
 		l: for (int layer = 0; layer < getLayerCount(); layer++) {
 			int index = getIndex(layer);
 			List<PackedCollection> features = getSeries(layer);
 
 			if (features == null) {
-				elements.add(new SpatialValue<>(context.position(0, index, layer, 0.0), 0.0));
+				local.add(new SpatialValue<>(context.position(0, index, layer, 0.0), 0.0));
 				continue l;
 			}
 
@@ -163,7 +166,7 @@ public abstract class FrequencyTimeseries implements SpatialTimeseries, ConsoleF
 			double frequencyTimeScale = getFrequencyTimeScale(layer);
 
 			for (int attempt = 1; attempt < 5; attempt++) {
-				elements.clear();
+				local.clear();
 
 				for (double id = 0; id < len; id += skip) {
 					int i = (int) id;
@@ -193,7 +196,7 @@ public abstract class FrequencyTimeseries implements SpatialTimeseries, ConsoleF
 							Vector position = context.position(
 									context.getSecondsToTime().applyAsDouble(time),
 									index, layer, freq);
-							elements.add(new SpatialValue<>(
+							local.add(new SpatialValue<>(
 									position, Math.log(value + 1), 1.0 - freq, true));
 
 							aggregates[(int) (4 * freq)] += value;
@@ -207,19 +210,22 @@ public abstract class FrequencyTimeseries implements SpatialTimeseries, ConsoleF
 							Vector position = context.position(
 									context.getSecondsToTime().applyAsDouble(time),
 									index, layer, freq, false);
-							elements.add(new SpatialValue<>(
+							local.add(new SpatialValue<>(
 									position, Math.log(aggregates[j] + 1), 1.0 - freq, true, true));
 						}
 					}
 				}
 
-				if (elements.size() > 4 * len) {
+				if (local.size() > 4 * len) {
+					elements = local;
 					return;
 				}
 
 				// Otherwise, try again
 			}
 		}
+
+		elements = local;
 	}
 
 	/**
@@ -264,11 +270,12 @@ public abstract class FrequencyTimeseries implements SpatialTimeseries, ConsoleF
 		}
 
 		loadElements(context);
-		if (elements != null) {
-			elements.forEach(e -> e.setReferent(this));
+		List<SpatialValue> snapshot = elements;
+		if (snapshot != null) {
+			snapshot.forEach(e -> e.setReferent(this));
 		}
 
-		return elements;
+		return snapshot;
 	}
 
 	/**
