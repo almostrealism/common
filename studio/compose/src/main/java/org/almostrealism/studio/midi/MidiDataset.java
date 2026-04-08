@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.almostrealism.music.midi.MidiFileReader;
 import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MoonbeamConfig;

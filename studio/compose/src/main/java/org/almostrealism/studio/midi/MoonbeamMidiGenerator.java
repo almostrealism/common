@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Random;
 import javax.sound.midi.InvalidMidiDataException;
 
+import org.almostrealism.music.midi.MidiFileReader;
 import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MoonbeamMidi;
