@@ -1,5 +1,12 @@
 # AudioScene Rendering Pipeline Redesign
 
+> **Status (April 2026):** The plan is active. Key context: `AudioSceneLoader` has been
+> extracted from `AudioScene` on master; alternate sample rates are now supported in
+> `BufferedAudioPlayer`; the `getCells()` path already separates LEFT/RIGHT stereo channels.
+> Per-channel kernel splitting (Phase 1) has not yet been implemented.
+
+---
+
 ## Motivation
 
 A week of incremental optimization on the `feature/audio-loop-performance` branch
@@ -73,6 +80,49 @@ CellList.tick() → getAllTemporals() → ordered list of Temporal.tick() calls
 The push-based receptor pattern means data flows through chains of intermediate
 buffers. Each link in the chain owns its own `cachedValue` and `outValue` memory,
 even when the transformation is trivial (pass-through, identity).
+
+### What Has Changed Since This Plan Was Written
+
+**`AudioSceneLoader` extracted (master, April 2026):**
+Loading, saving, JSON serialization, and the `Settings` data class were extracted
+from `AudioScene` into a separate `AudioSceneLoader` utility class (~309 lines added,
+265 lines removed from `AudioScene`). `AudioScene` now focuses exclusively on the
+rendering pipeline. Loading a scene from files is now:
+```java
+AudioScene<?> scene = AudioSceneLoader.load(settingsFile, patternsFile, libraryRoot, bpm, sampleRate);
+```
+
+**Alternate sample rates supported (branch, April 2026):**
+`BufferedAudioPlayer` now accepts a `sampleRate` parameter. `AudioScene` has always
+carried `sampleRate` as a constructor argument; this change makes the real-time
+playback path honor it consistently. Important context for redesign: sample-rate
+changes do not require recompilation of the cell graph.
+
+**Stereo channel separation already in `getCells()`:**
+The current `getCells()` already calls `getPatternCells()` twice — once for
+`StereoChannel.LEFT` and once for `StereoChannel.RIGHT` — and combines them via
+`cells(left, right)`. This is a structural hint toward per-channel splitting but still
+produces one combined `CellList` and one monolithic kernel.
+
+**Render buffer consolidation already implemented:**
+`consolidateRenderBuffers(channelCount, bufferSize)` allocates a single contiguous
+backing buffer sized `channelCount × 4 × bufferSize` (MAIN + WET voicing × 2 stereo).
+Each `PatternAudioBuffer` gets a delegate (range) into this buffer. The Loop scope's
+argument deduplication collapses all render buffer arguments into a single kernel
+argument. This is already in production.
+
+**Offline Loop optimization (LLVM -O0):**
+For offline rendering, `getCells()` sets `MathOptLevel.NONE` via
+`LlvmCommandProvider` before the tick loop. This avoids super-linear LLVM -O3
+compile times on aarch64 (which were prohibitive with ~140 kernel arguments). The
+real-time path still uses the default optimization level.
+
+**Package reorganization:**
+The `music` and `compose` submodules under `studio/` were reorganized. Key classes
+are now in more semantically appropriate packages:
+- `org.almostrealism.studio.*` — `AudioScene`, `AudioSceneLoader`, `Mixer`
+- `org.almostrealism.studio.arrange.*` — `MixdownManager`, `EfxManager`, `AutomationManager`
+- `org.almostrealism.music.pattern.*` — `PatternSystemManager`, `PatternAudioBuffer`
 
 ### Why Per-Channel Splitting Is Hard Today
 
@@ -163,6 +213,10 @@ AudioScene.tick() → OperationList:
 
 **Difficulty:** Medium — requires changes to AudioScene.getCells() to build per-channel
 CellLists, and to CellList.tick() to support channel-scoped Loop wrapping.
+
+**Relationship to current code:** `getPatternCells()` already produces per-stereo-channel
+lists. The next step is to further split into per-mix-channel lists and give each its
+own Loop.
 
 ### Option B: Flat Buffer Pipeline (No Cell Graph)
 
@@ -277,7 +331,8 @@ Start with per-channel kernel splitting. This is the most tractable change that
 delivers the biggest architectural improvement:
 
 1. **Modify AudioScene.getCells()** to build one CellList per channel instead of
-   one monolithic CellList
+   one monolithic CellList. The existing `getPatternCells()` LEFT/RIGHT split is
+   a natural starting point — extend it to split per mix channel as well.
 2. **Each channel CellList** wraps its own Loop(4096) independently
 3. **Add an aggregation phase** that mixes per-channel outputs to stereo
 4. **Skip silent channels** — if prepareBatch() detects no active notes, skip
@@ -318,7 +373,7 @@ Independently optimize the Java-side overhead:
 
 Before implementing, we need to answer:
 
-### Q1: Channel Independence
+### Q1: Channel Independence *(open)*
 
 Are all 6 channels truly independent within the inner loop? Or do any cross-channel
 effects exist (send/return buses, sidechain compression, stereo linking)?
@@ -326,7 +381,7 @@ effects exist (send/return buses, sidechain compression, stereo linking)?
 **How to verify:** Trace the cell graph connections in AudioScene.getCells(). Check
 whether any cell's receptor points to a cell in a different channel.
 
-### Q2: Kernel Dispatch Overhead
+### Q2: Kernel Dispatch Overhead *(open)*
 
 What is the GPU dispatch overhead for 6-12 small kernels vs 1 large kernel?
 The earlier profiling showed collectionProduct/collectionZeros dispatch overhead
@@ -336,30 +391,40 @@ was 600-700% worse for trivial operations. But per-channel kernels are not trivi
 **How to verify:** Benchmark: compile the current kernel split into 6 independent
 functions called sequentially, measure total time vs monolithic.
 
-### Q3: Memory Consolidation Scope
+### Q3: Memory Consolidation Scope *(partially answered)*
 
-Can we consolidate memory per-channel instead of globally? What happens to the
-argument count when we have 6 separate kernels each with their own consolidation?
+Can we consolidate memory per-channel instead of globally?
 
-**How to verify:** Count the PackedCollection arguments per channel in the current
-graph. Check if per-channel consolidation reduces total argument count.
+**Current state:** `consolidateRenderBuffers()` already consolidates into a single
+backing buffer sized `channelCount × 4 × bufferSize`. The Loop's argument
+deduplication collapses all delegate arguments to a single kernel argument. Per-channel
+splitting will need to decide whether each channel kernel gets its own slice of this
+buffer or an independent allocation.
 
-### Q4: CellList Fluent API Compatibility
+### Q4: CellList Fluent API Compatibility *(answered)*
 
-Can AudioScene.getCells() return multiple CellLists (one per channel) without
-breaking the fluent API chain? Or does the chain assume a single CellList?
+Can AudioScene.getCells() return multiple CellLists without breaking callers?
 
-**How to verify:** Read AudioScene.getCells() and trace how its return value
-is consumed by the caller.
+**Current state:** `getCells()` returns `Cells` (not `CellList`), takes a
+`MultiChannelAudioOutput` and a `List<Integer> channels`. The return value is consumed
+by callers as a `Cells`. Multiple CellLists can be composed before returning — the
+existing `cells(left, right)` call already does this. Per-channel splitting can return
+a `Cells` wrapping multiple independently-compiled sub-lists.
 
-### Q5: Feedback Loops Across Channels
+### Q5: Feedback Loops Across Channels *(open)*
 
 Do delay lines or other feedback effects read from buffers written by other
 channels? If so, per-channel splitting requires explicit synchronization points.
 
-**How to verify:** Trace delay line buffer references in the cell graph.
+**How to verify:** Trace delay line buffer references in the cell graph. Check
+`MixdownManager.createEfx()` for cross-channel transmission routing.
 
-### Q6: prepareBatch() Redundancy
+Note: `MixdownManager` has a `transmission` chromosome for cross-channel delay
+feedback. If this routes audio between channels, splitting those channels into
+independent kernels requires the inter-channel communication to happen between
+kernel dispatches, not within a single kernel.
+
+### Q6: prepareBatch() Redundancy *(open)*
 
 How much work does prepareBatch() repeat across ticks? If patterns don't change
 between ticks, is the pattern resolution cached or recomputed?
@@ -388,6 +453,7 @@ resolved pattern elements.
 | File | Role | Expected Changes |
 |------|------|-----------------|
 | `compose/.../AudioScene.java` | Pipeline orchestrator | Major — per-channel CellList construction |
+| `compose/.../AudioSceneLoader.java` | JSON loading/saving | None — already extracted from AudioScene |
 | `audio/.../CellList.java` | Cell container + tick ordering | Medium — channel grouping support |
 | `graph/.../CachedStateCell.java` | Double-buffering state | Medium — copy elimination analysis |
 | `graph/.../SummationCell.java` | Multi-source accumulation | Minor — aggregation kernel source |
