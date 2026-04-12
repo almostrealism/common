@@ -1,6 +1,6 @@
 # Almost Realism Framework
 
-> Hardware-accelerated computation framework for Java with support for CPU, GPU (OpenCL), and Metal backends. Provides PackedCollection for memory-efficient multi-dimensional data, Producer/Evaluable pattern for deferred execution, and modules for machine learning, ray tracing, and scientific computing.
+> Hardware-accelerated computation framework for Java with support for CPU, GPU (OpenCL), and Metal backends. Provides PackedCollection for memory-efficient multi-dimensional data, Producer/Evaluable pattern for deferred execution, and modules for machine learning, ray tracing, audio synthesis, and scientific computing.
 
 ## Quick Start
 
@@ -8,130 +8,144 @@
 - [Quick Reference](docs/QUICK_REFERENCE.md): Condensed API reference card
 - [Documentation Index](docs/index.html): Full documentation portal
 
-## Environment Setup (REQUIRED)
+## Environment Setup
 
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-```
+`AR_HARDWARE_LIBS` is auto-detected — do not set it manually.
 
 ## Core Modules
 
-### Foundation & Infrastructure
-- [uml](uml/README.md): Core annotations (@Function, @ModelEntity), lifecycle interfaces, metadata patterns | [Details](docs/modules/uml.html)
-- [io](io/README.md): Console logging, metrics, alerts, file output utilities | [Details](docs/modules/io.html)
-- [relation](relation/README.md): Producer/Evaluable abstraction, deferred execution foundation | [Details](docs/modules/relation.html)
+### base/ — Foundation
+- [meta](base/meta/README.md): Foundational interfaces — Named, Signature, Destroyable, Lifecycle, Setup, Multiple, Plural | [Details](docs/modules/meta.html)
+- [io](base/io/README.md): Console logging, metrics, alerts, file output utilities | [Details](docs/modules/io.html)
+- [relation](base/relation/README.md): Producer/Evaluable/Process model — relational computation, deferred execution, process optimization | [Details](docs/modules/relation.html)
+- [code](base/code/README.md): Expression trees, Scope management, code generation, kernel indexing | [Details](docs/modules/code.html)
+- [collect](base/collect/README.md): Collection module (currently a dependency waypoint — collection types live in code and algebra)
+- [hardware](base/hardware/README.md): Hardware acceleration backends (JNI, OpenCL, Metal), memory management | [Details](docs/modules/hardware.html)
 
-### Data & Computation
-- [code](code/README.md): Expression trees, Scope management, code generation infrastructure | [Details](docs/modules/code.html)
-- [collect](collect/README.md): PackedCollection - memory-efficient multi-dimensional arrays, TraversalPolicy
-- [hardware](hardware/README.md): Hardware acceleration backends (JNI, OpenCL, Metal) | [Details](docs/modules/hardware.html)
+### compute/ — Mathematical Domains
+- [algebra](compute/algebra/README.md): Vector, Matrix, Scalar, Pair types; PackedCollection; CollectionProducer with 40+ operations | [Details](docs/modules/algebra.html)
+- [geometry](compute/geometry/README.md): Ray, TransformMatrix, intersection testing, camera systems | [Details](docs/modules/geometry.html)
+- [time](compute/time/README.md): Temporal operations, FFT/IFFT, FIR filtering, signal processing | [Details](docs/modules/time.html)
+- [stats](compute/stats/README.md): Probability distributions, statistical sampling | [Details](docs/modules/stats.html)
 
-### Mathematics
-- [algebra](algebra/README.md): Vector, Matrix, Scalar, Pair types with 40+ CollectionProducer operations | [Details](docs/modules/algebra.html)
-- [geometry](geometry/README.md): Ray, TransformMatrix, intersection testing, camera systems | [Details](docs/modules/geometry.html)
-- [time](time/README.md): Temporal operations, FFT/IFFT, FIR filtering, CursorPair | [Details](docs/modules/time.html)
-- [stats](stats/README.md): Probability distributions, statistical sampling
+### domain/ — Domain Models
+- [graph](domain/graph/README.md): Cell-Receptor-Transmitter pattern, neural network layers, backpropagation | [Details](docs/modules/graph.html)
+- [color](domain/color/README.md): RGB/RGBA, lighting, shaders, textures | [Details](docs/modules/color.html)
+- [physics](domain/physics/README.md): Rigid body dynamics, absorbers, photon fields, physical constants | [Details](docs/modules/physics.html)
+- [space](domain/space/README.md): Scene management, meshes, spatial acceleration | [Details](docs/modules/space.html)
+- [heredity](domain/heredity/README.md): Genetic algorithms, Gene/Chromosome/Genome hierarchy | [Details](docs/modules/heredity.html)
+- [chemistry](domain/chemistry/README.md): Periodic table (Element enum), atomic structure, molecular modeling | [Details](docs/modules/chemistry.html)
 
-### Domain Modules
-- [graph](graph/README.md): Cell-Receptor-Transmitter pattern, neural network layers, Model/Block composition | [Details](docs/modules/graph.html)
-- [color](color/README.md): RGB/RGBA, lighting, shaders, textures | [Details](docs/modules/color.html)
-- [physics](physics/README.md): Quantum mechanics, photon fields, atomic structure | [Details](docs/modules/physics.html)
-- [space](space/README.md): Scene management, meshes, spatial acceleration | [Details](docs/modules/space.html)
-- [heredity](heredity/README.md): Genetic algorithms, Gene/Chromosome/Genome hierarchy | [Details](docs/modules/heredity.html)
-- [chemistry](chemistry/README.md): Periodic table, elements, molecular structures | [Details](docs/modules/chemistry.html)
+### engine/ — Applications & Training
+- [ml](engine/ml/README.md): Transformer models (Qwen3), StateDictionary, attention, diffusion | [Details](docs/modules/ml.html)
+- [optimize](engine/optimize/README.md): ModelOptimizer, loss functions, Adam, evolutionary algorithms | [Details](docs/modules/optimize.html)
+- [render](engine/render/README.md): Ray tracing engine, lighting, image output | [Details](docs/modules/render.html)
+- [audio](engine/audio/README.md): Audio synthesis, signal processing, filters, MIDI | [Details](docs/modules/audio.html)
+- [utils](engine/utils/README.md): Testing framework (TestSuiteBase), code policy enforcement | [Details](docs/modules/utils.html)
+- [utils-http](engine/utils-http/README.md): HTTP authentication, event delivery
 
-### Application Layer
-- [ml](ml/README.md): Transformer models (Qwen3), StateDictionary, attention mechanisms | [Details](docs/modules/ml.html)
-- [optimize](optimize/README.md): Loss functions, Adam optimizer, PopulationOptimizer | [Details](docs/modules/optimize.html)
-- [render](render/README.md): Ray tracing engine, RenderParameters, lighting | [Details](docs/modules/render.html)
-- [utils](utils/README.md): Testing framework, TestFeatures, model validation | [Details](docs/modules/utils.html)
+### extern/ — External Integrations
+- [ml-djl](extern/ml-djl/README.md): DJL SentencePiece tokenization
+- [ml-onnx](extern/ml-onnx/README.md): ONNX Runtime inference
+- [ml-script](extern/ml-script/README.md): Groovy scripting for model definition
 
-### Utilities
-- [tools](tools/README.md): JavaFX/Swing UI for operation profiling
-- [llvm](llvm/README.md): LLVM/C interoperability for native code
-- [Profiling Guide](docs/internals/profiling.md): Operation profiling infrastructure and timing analysis
+### studio/ — Multimedia Composition
+- [music](studio/music/README.md): Pattern-based music composition, notes, arrangements | [Details](docs/modules/music.html)
+- [compose](studio/compose/README.md): Audio scene orchestration, generative audio, ML integration | [Details](docs/modules/compose.html)
+- [spatial](studio/spatial/README.md): Spatial audio visualization | [Details](docs/modules/music.html)
 
-## Tutorials
+### Standalone
+- [tools](tools/README.md): MCP servers, profiling UI
+- [flowtree](flowtree/README.md): Workflow orchestration
 
-- [Tutorial 1](docs/tutorials/tutorial1.html): Introduction to the framework
-- [Tutorial 2](docs/tutorials/tutorial2.html): Working with PackedCollection
-- [Tutorial 3](docs/tutorials/tutorial3.html): Producer/Evaluable pattern
-- [Tutorial 4](docs/tutorials/tutorial4.html): Hardware acceleration
-- [Tutorial 5](docs/tutorials/tutorial5.html): Building computation graphs
-- [Tutorial 6](docs/tutorials/tutorial6.html): Neural network layers
-- [Tutorial 7](docs/tutorials/tutorial7.html): Advanced topics
+## Internals Documentation
 
-## API Documentation
+### Core Concepts
+- [Producer/Evaluable Pattern](docs/internals/producer-evaluable-pattern.md): The foundational two-phase execution model — describe computation with Producer, execute with Evaluable
+- [Features Pattern](docs/internals/features-pattern.md): The mixin interface pattern (CollectionFeatures, RGBFeatures, etc.) that provides composable capabilities without inheritance
+- [Shape and Traversal](docs/internals/shape-and-traversal.md): TraversalPolicy, Shape, Traversable — how multi-dimensional structure is imposed on flat memory
+- [PackedCollection Examples](docs/internals/packed-collection-examples.md): Creating, operating on, and managing PackedCollection — the fundamental data type
+- [CollectionProducer Operations](docs/internals/collection-producer-operations.md): The fluent API for composing hardware-accelerated operations (add, multiply, reshape, reduce, etc.)
+- [StateDictionary](docs/internals/state-dictionary.md): Model weight management — loading, saving, key naming conventions, HuggingFace compatibility
 
-- [JavaDoc](docs/apidocs/index.html): Complete API reference
+### Compilation Pipeline
+- [End-to-End Computation](docs/internals/end-to-end-computation.md): How cp(a).multiply(cp(b)).evaluate() flows from expression to hardware execution
+- [Computation Graph to Process Tree](docs/internals/computation-graph-to-process-tree.md): How Producers become Process trees
+- [Process Optimization Pipeline](docs/internals/process-optimization-pipeline.md): CascadingOptimizationStrategy, parallelism scoring
+- [Backend Compilation and Dispatch](docs/internals/backend-compilation-and-dispatch.md): ComputationScopeCompiler, ExecutionKey caching, native code generation
+
+### Expression and Kernel System
+- [Expression Evaluation](docs/internals/expression-evaluation.md): Expression tree evaluation and simplification
+- [Dynamic Indexing](docs/internals/dynamic-indexing.md): Runtime index computation in kernels
+- [Kernel Count Propagation](docs/internals/kernel-count-propagation.md): How parallelism counts flow through process trees
+- [Assignment Optimization](docs/internals/assignment-optimization.md): Element-wise assignment short-circuits
+- [OperationList Optimization Flags](docs/internals/operationlist-optimization-flags.md): Batch operation optimization
+
+### Audio and CellList
+- [CellList Architecture](docs/internals/celllist-architecture.md): Cell-based audio graph design
+- [CellList Fluent API](docs/internals/celllist-fluent-api.md): Chaining audio processing operations
+- [CellList Realtime Streaming](docs/internals/celllist-realtime-streaming.md): Low-latency audio output
+- [CellList Tick Ordering](docs/internals/celllist-tick-ordering.md): Execution ordering in cell graphs
+
+### ML and Training
+- [ML Inference Pipeline](docs/internals/ml-inference-pipeline.md): From loaded weights to generated tokens
+- [Training Loop Examples](docs/internals/training-loop-examples.md): ModelOptimizer patterns
+- [Sampling Loop Examples](docs/internals/sampling-loop-examples.md): DiffusionSampler patterns
+
+### Testing and Profiling
+- [Test Examples](docs/internals/test-examples.md): TestSuiteBase, @TestDepth usage
+- [Profiling](docs/internals/profiling.md): Operation profiling infrastructure
+- [Profiling Examples](docs/internals/profiling-examples.md): Timing analysis patterns
 
 ## Key Patterns
 
-### ⚠️ Process Optimization (CRITICAL)
+### Process Optimization (CRITICAL)
 
-**MUST call optimize() before get()** when using OperationList with computations that require isolation:
+**MUST call optimize() before get()** when using OperationList:
 
 ```java
-// CORRECT: Call optimize() before get()
 OperationList op = model.getForward().push(input);
-op = (OperationList) op.optimize();  // Required for isolation!
+op = (OperationList) op.optimize();
 Runnable compiled = op.get();
 compiled.run();
-
-// INCORRECT: May cause timeouts!
-OperationList op = model.getForward().push(input);
-Runnable compiled = op.get();  // Missing optimize() call!
 ```
-
-Key classes:
-- `Process.optimize()` - Entry point for optimization
-- `isIsolationTarget()` - Return true if computation requires isolation
-- `IsolatedProcess` - The ONLY proper way to break expression embedding
-- **NEVER** return null from `getValueAt()` to force isolation
-
-See [relation/README.md](relation/README.md) for details.
 
 ### Producer/Evaluable (Deferred Execution)
 ```java
-Producer<PackedCollection<?>> computation = a.add(b).multiply(c);
-Evaluable<PackedCollection<?>> compiled = computation.get();
-PackedCollection<?> result = compiled.evaluate();
+CollectionProducer computation = cp(a).add(cp(b)).multiply(cp(c));
+Evaluable<PackedCollection> compiled = computation.get();
+PackedCollection result = compiled.evaluate();
 ```
 
 ### PackedCollection (Multi-dimensional Data)
 ```java
-PackedCollection<?> tensor = new PackedCollection<>(shape(batch, channels, height, width));
-tensor.traverse(1, (pos, value) -> process(value));
+PackedCollection tensor = new PackedCollection(shape(batch, channels, height, width));
 ```
 
-### Cell-Receptor-Transmitter (Computation Graphs)
+### Features Pattern (Composable Capabilities)
 ```java
-Cell<PackedCollection<?>> cell = new CellularLayer();
-cell.setReceptor(input -> processInput(input));
-Receptor<PackedCollection<?>> output = cell.getTransmitter();
+public class MyProcessor implements CollectionFeatures {
+    public PackedCollection process(PackedCollection input) {
+        return cp(input).multiply(c(2.0)).add(c(1.0)).evaluate();
+    }
+}
 ```
-
-## Common Operations
-
-| Operation | Code |
-|-----------|------|
-| Create vector | `new PackedCollection<>(shape(3))` |
-| Element-wise add | `a.add(b)` |
-| Matrix multiply | `a.matmul(b)` |
-| Reshape | `collection.reshape(newShape)` |
-| GPU execution | `ComputeRequirement.GPU` |
-| Compile | `producer.get()` |
-| Execute | `evaluable.evaluate()` |
 
 ## Module Dependencies
 
 ```
-uml (foundation)
- └── io, relation
-      └── code
-           └── collect
-                └── hardware
-                     └── algebra, time, stats
-                          └── geometry, graph, color, physics
-                               └── space, ml, render, optimize
+meta (foundation)
+ +-- io, relation
+      +-- code
+           +-- collect
+                +-- hardware
+                     +-- algebra, stats
+                          +-- geometry
+                               +-- time, color
+                                    +-- heredity, physics
+                                         +-- graph, chemistry
+                                              +-- space
+                                                   +-- optimize
+                                                        +-- utils
+                                                             +-- render, ml, audio, utils-http
 ```

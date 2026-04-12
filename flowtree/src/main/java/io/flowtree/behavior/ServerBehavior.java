@@ -29,6 +29,26 @@ import io.flowtree.Server;
 
 import java.io.PrintStream;
 
+/**
+ * Strategy interface for pluggable server-level behaviors that can be applied
+ * to a running {@link Server} instance.
+ *
+ * <p>Implementations encapsulate a single action to be performed against a
+ * server — for example, probing the peer topology or re-balancing connections.
+ * Behaviors are invoked interactively from the FlowTree CLI via the
+ * {@code ::behave} and {@code ::sbehave} commands in
+ * {@link io.flowtree.cli.FlowTreeCliServer}.
+ *
+ * @author  Mike Murray
+ */
 public interface ServerBehavior {
+
+	/**
+	 * Performs this behavior against the given server, writing any diagnostic
+	 * output to the supplied print stream.
+	 *
+	 * @param s   the {@link Server} on which to act
+	 * @param out print stream for diagnostic and status output
+	 */
 	void behave(Server s, PrintStream out);
 }

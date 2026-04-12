@@ -29,8 +29,8 @@ import java.util.List;
  * calling {@link #build()}.</p>
  *
  * <p>Sections are conditionally included based on the builder's
- * configuration: Slack instructions appear only when a workstream URL is
- * configured, GitHub instructions only when the GitHub MCP is enabled,
+ * configuration: messaging and tool instructions appear when ar-manager
+ * is available (indicated by workstream URL being set),
  * commit instructions depend on whether a target branch is set, and
  * budget/turn/task/workstream context is included when available.</p>
  *
@@ -39,21 +39,71 @@ import java.util.List;
  */
 public class InstructionPromptBuilder {
 
+    /** The user's request text, wrapped between BEGIN/END markers in the output. */
     private String prompt;
+
+    /** Workstream URL; controls whether messaging sections are included. */
     private String workstreamUrl;
-    private boolean gitHubMcpEnabled;
+
+    /**
+     * When {@code true}, includes the test integrity policy section that
+     * prevents the agent from modifying test files that exist on the base branch.
+     */
     private boolean protectTestFiles;
+
+    /**
+     * When {@code true}, replaces the permissive "Non-Code Requests" and
+     * "Justifying No Code Changes" sections with a strict warning that code
+     * changes are required.
+     */
     private boolean enforceChanges;
+
+    /**
+     * Number of prior failed attempts. When greater than zero, a prominent
+     * retry warning is prepended above all other content.
+     */
     private int enforcementAttempt;
+
+    /** Base branch name used in merge conflict and test protection instructions. */
     private String baseBranch;
+
+    /**
+     * Target branch name; when set, enables git commit, branch awareness, and
+     * memory tool usage instructions.
+     */
     private String targetBranch;
+
+    /** Absolute path to the working directory shown to the agent. */
     private String workingDirectory;
+
+    /**
+     * Whether a merge attempt against the base branch produced unresolved
+     * conflicts that the agent must resolve.
+     */
     private boolean hasMergeConflicts;
+
+    /** List of file paths with merge conflicts (used when {@code hasMergeConflicts} is true). */
     private List<String> mergeConflictFiles;
+
+    /** Maximum cost budget in USD (0 or negative to omit the budget instruction). */
     private double maxBudgetUsd;
+
+    /** Maximum number of turns (0 or negative to omit the turns instruction). */
     private int maxTurns;
+
+    /** Task identifier included in the prompt footer for traceability. */
     private String taskId;
+
+    /** Relative path to a planning document the agent must read before starting. */
     private String planningDocument;
+    /** Filesystem paths to dependent repo checkouts made available to the agent. */
+    private List<String> dependentRepoPaths;
+
+    /**
+     * Description of a git tampering violation from a prior session.
+     * When set, a stern warning is prepended above all content.
+     */
+    private String gitTamperingViolation;
 
     /**
      * Sets the user's request prompt.
@@ -67,7 +117,7 @@ public class InstructionPromptBuilder {
     }
 
     /**
-     * Sets the workstream URL for Slack communication sections.
+     * Sets the workstream URL for messaging communication sections.
      *
      * @param workstreamUrl the controller URL for the workstream
      * @return this builder for chaining
@@ -82,9 +132,9 @@ public class InstructionPromptBuilder {
      *
      * @param gitHubMcpEnabled true if GitHub MCP tools are available
      * @return this builder for chaining
+     * @deprecated GitHub tools are now always available via ar-manager.
      */
     public InstructionPromptBuilder setGitHubMcpEnabled(boolean gitHubMcpEnabled) {
-        this.gitHubMcpEnabled = gitHubMcpEnabled;
         return this;
     }
 
@@ -233,13 +283,43 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Sets the resolved filesystem paths for dependent repositories.
+     * When set, the prompt will include information about these repos
+     * so the agent knows they are available.
+     *
+     * @param dependentRepoPaths list of absolute paths to dependent repo checkouts
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setDependentRepoPaths(List<String> dependentRepoPaths) {
+        this.dependentRepoPaths = dependentRepoPaths;
+        return this;
+    }
+
+    /**
+     * Sets a git tampering violation description from a previous session.
+     *
+     * <p>When set, the prompt will include a prominent warning explaining
+     * that the previous session was terminated because the agent tampered
+     * with the git repository, and that repeating this behavior will result
+     * in all changes being destroyed and the agent being terminated.</p>
+     *
+     * @param violation the description of the tampering that was detected,
+     *                  or null if no tampering occurred
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setGitTamperingViolation(String violation) {
+        this.gitTamperingViolation = violation;
+        return this;
+    }
+
+    /**
      * Builds the full instruction prompt by assembling all configured
      * sections into a single string.
      *
      * <p>The sections are assembled in the following order:</p>
      * <ol>
      *   <li>Opening paragraph (autonomous agent context)</li>
-     *   <li>Slack Communication (when workstream URL is set)</li>
+     *   <li>Communication (when workstream URL is set)</li>
      *   <li>Permission Denials (when workstream URL is set)</li>
      *   <li>Non-Code Requests (when workstream URL is set)</li>
      *   <li>Justifying No Code Changes (when workstream URL is set)</li>
@@ -261,24 +341,45 @@ public class InstructionPromptBuilder {
     public String build() {
         StringBuilder sb = new StringBuilder();
 
+        // Git tampering violation warning -- highest priority, prepended above
+        // everything else.  This is used when the previous session was killed
+        // because the agent tampered with git (made commits, switched branches,
+        // etc.).
+        if (gitTamperingViolation != null && !gitTamperingViolation.isEmpty()) {
+            sb.append("## !! SESSION RESTARTED -- GIT TAMPERING VIOLATION !!\n\n");
+            sb.append("Your previous session was TERMINATED and ALL your changes were ");
+            sb.append("DESTROYED because you violated the rules against tampering with ");
+            sb.append("the git repository.\n\n");
+            sb.append("**What you did:** ").append(gitTamperingViolation).append("\n\n");
+            sb.append("**The rules:**\n");
+            sb.append("- You MUST NOT run `git commit`, `git checkout`, `git switch`, ");
+            sb.append("`git branch`, `git merge`, `git rebase`, `git reset`, `git stash`, ");
+            sb.append("or any other command that modifies git state.\n");
+            sb.append("- You MUST NOT change branches. Stay on the branch you were given.\n");
+            sb.append("- You MUST NOT create commits. The harness commits your work.\n");
+            sb.append("- Your ONLY job is to edit files. Git management is handled for you.\n\n");
+            sb.append("**Consequences:** This is your LAST chance. If you tamper with git ");
+            sb.append("again, ALL your changes will be destroyed and this session will be ");
+            sb.append("terminated with no further retries. Your work will be lost entirely.\n\n");
+            sb.append("---\n\n");
+        }
+
         // Enforcement retry warning -- prepended above everything else so the
         // agent sees it immediately.  This is used when the job has been
         // restarted because a previous attempt produced no code changes.
         if (enforcementAttempt > 0) {
             sb.append("## !! SESSION RESTARTED -- ATTEMPT ").append(enforcementAttempt + 1).append(" !!\n\n");
-            sb.append("You have refused to investigate and fix the test failures ");
-            sb.append(enforcementAttempt).append(" time");
+            sb.append("This job was submitted because CI was failing on this branch. ");
+            sb.append("Your previous ").append(enforcementAttempt).append(" session");
             if (enforcementAttempt > 1) sb.append("s");
-            sb.append(". If you claim that you do not have to reproduce the test failure, ");
-            sb.append("this session will restart. Your only option to exit this loop is ");
-            sb.append("to investigate and fix the failure or to run the failing CI command ");
-            sb.append("(not an individual test, not some alternative you invent that you ");
-            sb.append("think is similar enough to the CI command to count -- the exact ");
-            sb.append("CI command) and show that it actually succeeds. Because you have ");
-            sb.append("done neither of these things, your session has been restarted.\n\n");
-            sb.append("Previous sessions ended without producing any code changes. This ");
-            sb.append("is NOT acceptable. The tests fail on this branch and pass on master. ");
-            sb.append("You MUST fix the production code.\n\n");
+            sb.append(" ended without producing any code changes.\n\n");
+            sb.append("You MUST investigate the current CI status and produce code changes. ");
+            sb.append("Run the failing CI command (via the MCP test runner, using the exact ");
+            sb.append("CI command — not an individual test, not an alternative you invented) ");
+            sb.append("to determine what is failing. Then fix the production code. ");
+            sb.append("Leave the changes uncommitted — the harness commits them.\n\n");
+            sb.append("Simply stating that you do not see a problem, or that tests seem to ");
+            sb.append("pass in your view, is not acceptable. Produce code changes.\n\n");
             sb.append("---\n\n");
         }
 
@@ -286,10 +387,10 @@ public class InstructionPromptBuilder {
         sb.append("There is no TTY and no interactive session --do not attempt to wait ");
         sb.append("for user input or interactive chat responses.\n\n");
 
-        // Slack instructions -only when a workstream URL is configured
+        // Messaging instructions - only when a workstream URL is configured
         if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
-            sb.append("## Slack Communication\n");
-            sb.append("You MUST use the Slack MCP tool (slack_send_message) to provide status ");
+            sb.append("## Communication\n");
+            sb.append("You MUST use the messages MCP tool (send_message) to provide status ");
             sb.append("updates to the user throughout your work. Specifically:\n");
             sb.append("- Send an update when you begin working on the task\n");
             sb.append("- Send updates when you reach significant milestones or make key decisions\n");
@@ -299,7 +400,7 @@ public class InstructionPromptBuilder {
 
             sb.append("## Permission Denials\n");
             sb.append("If any tool call is denied due to a permission issue, you MUST immediately ");
-            sb.append("send a Slack message describing:\n");
+            sb.append("send a message describing:\n");
             sb.append("- Which tool was denied (exact tool name)\n");
             sb.append("- What you were trying to do with it\n");
             sb.append("- The error message, if any\n");
@@ -309,38 +410,39 @@ public class InstructionPromptBuilder {
             if (enforceChanges) {
                 // When changes are enforced, replace the permissive sections with
                 // a strict message that removes the "no changes needed" escape hatch.
-                sb.append("## Code Changes Are REQUIRED\n");
-                sb.append("This task requires you to produce code changes. You are fixing test ");
-                sb.append("failures that your branch introduced. Exiting without code changes ");
-                sb.append("is NOT acceptable and will cause this session to be restarted. ");
-                sb.append("If you believe the tests already pass, you MUST prove it by running ");
-                sb.append("the full CI command (using the MCP test runner, not individual test ");
-                sb.append("methods) and showing that the entire module test suite passes.\n\n");
+                sb.append("## Code Changes Are Required\n");
+                sb.append("This task was submitted because CI was failing on this branch. ");
+                sb.append("You MUST produce code changes. Run the failing CI command ");
+                sb.append("(via the MCP test runner — the exact CI command, not an individual ");
+                sb.append("test or an alternative you invented) to determine what is failing, ");
+                sb.append("then fix the production code. Leave the changes uncommitted — the ");
+                sb.append("harness commits them. Do NOT commit yourself.\n\n");
+                sb.append("Exiting without code changes will cause this session to be restarted.\n\n");
             } else {
                 sb.append("## Non-Code Requests\n");
                 sb.append("If the user's request does not require code changes (e.g., a question about ");
                 sb.append("the codebase, a request to run a command, check status, or perform an action) ");
-                sb.append("it is perfectly fine to answer via Slack and exit without modifying any files. ");
+                sb.append("it is perfectly fine to answer via messaging and exit without modifying any files. ");
                 sb.append("Not every task requires code changes.\n\n");
 
                 sb.append("## Justifying No Code Changes\n");
                 sb.append("If you finish your work without making any changes to files in the git repository, ");
-                sb.append("you MUST send a Slack message explaining why no code changes were needed. ");
+                sb.append("you MUST send a message explaining why no code changes were needed. ");
                 sb.append("This justification should clearly explain either:\n");
                 sb.append("- Why the user's request was fulfilled without code changes ");
                 sb.append("(e.g., it was an informational question, a status check, or a run command)\n");
                 sb.append("- Why you were unable to make the requested changes ");
                 sb.append("(e.g., a blocker, missing context, or ambiguity that needs clarification)\n");
                 sb.append("This requirement does NOT apply if you have already fully addressed the user's ");
-                sb.append("request through earlier Slack messages (e.g., answering a question, reporting ");
+                sb.append("request through earlier messages (e.g., answering a question, reporting ");
                 sb.append("results). In that case, the earlier messages serve as sufficient justification.\n\n");
             }
         }
 
-        // GitHub instructions -only when ar-github is in the MCP config
-        if (gitHubMcpEnabled) {
-            sb.append("You can read and respond to GitHub PR review comments using the GitHub MCP tools ");
-            sb.append("(github_pr_find, github_pr_review_comments, github_pr_conversation, github_pr_reply). ");
+        // GitHub and memory tools — available via ar-manager
+        if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
+            sb.append("You can read and respond to GitHub PR review comments using ");
+            sb.append("github_pr_find, github_pr_review_comments, github_pr_conversation, and github_pr_reply. ");
             sb.append("Use these to check for code review feedback and address it.\n\n");
         }
 
@@ -367,24 +469,26 @@ public class InstructionPromptBuilder {
         // Merge conflict instructions -- when the base branch has diverged
         if (hasMergeConflicts) {
             sb.append("## Merge Conflicts\n");
-            sb.append("IMPORTANT: The base branch (origin/").append(baseBranch);
-            sb.append(") has diverged from your working branch (").append(targetBranch);
-            sb.append(") and a merge attempt produced conflicts. ");
-            sb.append("The merge was aborted so your working directory is clean, ");
-            sb.append("but you MUST resolve these conflicts as part of your work.\n\n");
-            sb.append("To resolve:\n");
-            sb.append("1. Run `git merge origin/").append(baseBranch).append("`\n");
-            sb.append("2. Resolve the conflicts in the following files:\n");
+            sb.append("IMPORTANT: A merge from origin/").append(baseBranch);
+            sb.append(" into your branch (").append(targetBranch);
+            sb.append(") is ALREADY IN PROGRESS. Do NOT run `git merge` — the merge ");
+            sb.append("has already been started and is waiting for conflict resolution.\n\n");
+            sb.append("The following files have conflict markers that you MUST resolve:\n");
             if (mergeConflictFiles != null) {
                 for (String file : mergeConflictFiles) {
                     sb.append("   - `").append(file).append("`\n");
                 }
             }
-            sb.append("3. After resolving all conflicts, stage the resolved files with `git add`\n");
-            sb.append("4. Complete the merge with `git commit --no-edit`\n");
-            sb.append("5. Then proceed with the user's requested work\n\n");
-            sb.append("Do NOT skip conflict resolution. The merge must be completed before ");
-            sb.append("any other changes are made.\n\n");
+            sb.append("\nTo resolve:\n");
+            sb.append("1. Open each conflicted file and remove the conflict markers ");
+            sb.append("(`<<<<<<<`, `=======`, `>>>>>>>`) by choosing the correct content.\n");
+            sb.append("2. Stage each resolved file with `git add <file>`.\n");
+            sb.append("3. Do NOT run `git commit` — the harness will create the merge ");
+            sb.append("commit automatically after you finish.\n");
+            sb.append("4. Then proceed with the user's requested work.\n\n");
+            sb.append("Do NOT skip conflict resolution. Do NOT run `git merge --abort`. ");
+            sb.append("Do NOT run `git commit`. The merge must be completed by resolving ");
+            sb.append("all conflict markers and staging the files.\n\n");
         }
 
         // Remote branch context -- user instructions always refer to remote branches
@@ -408,6 +512,21 @@ public class InstructionPromptBuilder {
         }
         sb.append("\n");
 
+        // Dependent repos context
+        if (dependentRepoPaths != null && !dependentRepoPaths.isEmpty()) {
+            sb.append("## Dependent Repositories\n");
+            sb.append("The following additional repositories have been checked out ");
+            sb.append("alongside the primary working directory. They are on the same ");
+            sb.append("branch (").append(targetBranch != null ? targetBranch : "default");
+            sb.append(") and any changes you make in them will be committed ");
+            sb.append("automatically when the job completes, and pushed when enabled by ");
+            sb.append("job configuration.\n\n");
+            for (String depPath : dependentRepoPaths) {
+                sb.append("- `").append(depPath).append("`\n");
+            }
+            sb.append("\n");
+        }
+
         // Branch awareness and anti-loop guidance
         if (targetBranch != null && !targetBranch.isEmpty()) {
             sb.append("## Branch Awareness and Continuity\n");
@@ -417,22 +536,21 @@ public class InstructionPromptBuilder {
             sb.append("treat them as intentional progress, not as problems to undo.\n\n");
 
             sb.append("### Catching Up on Prior Work\n");
-            sb.append("Before making any changes, you MUST use the `branch_catchup` tool ");
+            sb.append("Before making any changes, you MUST use the memory_branch_context tool ");
             sb.append("to understand what has already been done on this branch:\n");
             sb.append("```\n");
-            sb.append("mcp__ar-consultant__branch_catchup repo_url:\"<from git remote ");
-            sb.append("get-url origin>\" branch:\"").append(targetBranch).append("\"\n");
+            sb.append("memory_branch_context branch:\"").append(targetBranch).append("\"\n");
             sb.append("```\n");
             sb.append("This will show you memories from prior agent sessions and the ");
-            sb.append("commit timeline, synthesized into a briefing.\n\n");
+            sb.append("commit timeline.\n\n");
 
             sb.append("### Recording Your Work\n");
             sb.append("When you make decisions, discover issues, or complete tasks, ");
             sb.append("store memories with the branch context so future sessions can ");
             sb.append("pick up where you left off:\n");
             sb.append("```\n");
-            sb.append("mcp__ar-consultant__remember content:\"<what you learned>\" ");
-            sb.append("repo_url:\"<repo url>\" branch:\"").append(targetBranch);
+            sb.append("memory_store content:\"<what you learned>\" ");
+            sb.append("branch:\"").append(targetBranch);
             sb.append("\" tags:[\"progress\"]\n");
             sb.append("```\n\n");
 
@@ -447,7 +565,7 @@ public class InstructionPromptBuilder {
             sb.append("This is NEVER the right approach. If CI fails after your changes:\n");
             sb.append("- **DO NOT** simply revert the changes. That undoes prior agent work.\n");
             sb.append("- **DO** investigate the actual failure and fix it properly.\n");
-            sb.append("- **DO** check `branch_catchup` to see if this same pattern ");
+            sb.append("- **DO** check `memory_branch_context` to see if this same pattern ");
             sb.append("has already occurred in prior sessions.\n");
             sb.append("- **DO** store a memory describing the CI failure and your ");
             sb.append("analysis so the next session doesn't repeat the same mistake.\n");
@@ -490,7 +608,7 @@ public class InstructionPromptBuilder {
             sb.append("Do NOT revert or undo work from prior sessions that supports the planning ");
             sb.append("document's goals, even if the current sub-task doesn't directly relate to it. ");
             sb.append("If the sub-task conflicts with the planning document, note the conflict in ");
-            sb.append("a Slack message and proceed with the sub-task unless the conflict is severe.\n\n");
+            sb.append("a message and proceed with the sub-task unless the conflict is severe.\n\n");
         }
 
         sb.append("--- BEGIN USER REQUEST ---\n");

@@ -23,24 +23,54 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
-import java.util.Hashtable;
+import java.util.LinkedHashMap;
 import java.util.TreeSet;
 
+/**
+ * A {@link ResourceAdapter} that holds text content as a map of byte-offset to string chunk,
+ * allowing segments received at different offsets to be assembled in order.
+ *
+ * <p>Data is assembled in offset order by {@link #getData()}, which concatenates all chunks
+ * and returns the result as a UTF-8 byte array.</p>
+ */
 public class UnicodeResource extends ResourceAdapter<byte[]> {
-	private final Hashtable<Long, String> data = new Hashtable<>();
-	
+	/** Ordered map of byte offsets to the string chunks loaded at each offset. */
+	private final LinkedHashMap<Long, String> data = new LinkedHashMap<>();
+
+	/**
+	 * Constructs an empty {@link UnicodeResource} with no data.
+	 */
 	public UnicodeResource() { }
-	
+
+	/**
+	 * Constructs a {@link UnicodeResource} pre-loaded with the given string at offset 0.
+	 *
+	 * @param data The initial text content
+	 */
 	public UnicodeResource(String data) { this.data.put(0L, data); }
 
+	/**
+	 * Constructs a {@link UnicodeResource} by reading all text from the given file.
+	 *
+	 * @param f The file to read
+	 * @throws IOException If reading the file fails
+	 */
 	public UnicodeResource(File f) throws IOException {
 		this(new FileInputStream(f));
 	}
 
+	/**
+	 * Constructs a {@link UnicodeResource} by reading all text from the given input stream.
+	 *
+	 * @param in The input stream to read from
+	 * @throws IOException If reading the stream fails
+	 */
 	public UnicodeResource(InputStream in) throws IOException {
 		read(in);
 	}
 
+	/** {@inheritDoc} Stores the byte array decoded as a string at the given offset. */
+	@Override
 	public synchronized void load(byte[] data, long offset, int len) {
 		this.data.put(offset, new String(data, 0, len));
 	}
@@ -53,8 +83,14 @@ public class UnicodeResource extends ResourceAdapter<byte[]> {
 		read(new URL(getURI()).openStream());
 	}
 	
+	/**
+	 * Reads all text from the given input stream, storing it as a single chunk at offset 0.
+	 *
+	 * @param in The input stream to read from
+	 * @throws IOException If reading fails
+	 */
 	private void read(InputStream in) throws IOException {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		
 		try (BufferedReader r = new BufferedReader(new InputStreamReader(in))) {
 			String line;
@@ -74,7 +110,7 @@ public class UnicodeResource extends ResourceAdapter<byte[]> {
 		TreeSet<Long> l = new TreeSet<>();
 		l.addAll(data.keySet());
 
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		for (long k : l) {
 			buf.append(data.get(k));

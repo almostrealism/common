@@ -2,605 +2,441 @@
 
 ---
 
-# STOP. READ THIS FIRST.
+# THE FUNDAMENTAL RULE — Java is Orchestration, Not Execution
 
-## ABSOLUTE PREREQUISITE: USE AR-CONSULTANT BEFORE ANY ACTION
+**This is the single most important concept in the entire project. Violating this principle produces code that is 1000x slower, cannot be hardware-accelerated, and breaks automatic differentiation. Read this section completely before writing any code.**
 
-**THIS IS THE MOST IMPORTANT RULE. IT COMES BEFORE ALL OTHER RULES.**
+## The Concept
 
-The `ar-consultant` MCP server is a documentation-aware assistant that combines documentation search, semantic memory, and local LLM inference into a single interface. It **replaces direct use of `ar-docs` and `ar-memory`** for most tasks. Use it as your primary tool for understanding the codebase, recalling prior context, and storing new knowledge.
+Java is NOT the execution language. Java is the ORCHESTRATION language. It builds **computation graphs** — DAGs of `CollectionProducer` — that get compiled to native code (Metal, OpenCL) for actual execution.
 
-**BEFORE you write ANY code, make ANY assumptions, or take ANY action, you MUST consult:**
+Think of Java as YAML: you don't execute YAML, you use it to describe what something else should execute. In this project, Java describes a computation graph. The framework compiles that graph to native code. If you do math in Java instead of describing it as Producers, you completely defeat the purpose.
 
-```
-mcp__ar-consultant__consult question:"<your question>" keywords:["RelevantClass", "specific_method", "domain_term"]
-```
+## What You MUST NOT Do
 
-**IMPORTANT: Always provide keywords.** The `keywords` parameter dramatically improves search relevance. Provide 2-5 domain-specific terms ordered by importance (most specific first). Without keywords, generic words in your question may match irrelevant documentation.
+- **NEVER** call `.evaluate()` or `.get()` on a `Producer`/`Evaluable` inside any class that participates in model computation. The ONLY acceptable place for `.evaluate()` is at the **top of the call stack**: test methods, main methods, pipeline boundaries, or step boundaries in autoregressive loops.
+- **NEVER** call `.toDouble()` or `.toFloat()` on a `PackedCollection` inside computation code. These are JNI calls that pull data back to the host one element at a time.
+- **NEVER** use Java `for` loops to perform element-wise math on collections.
+- **NEVER** perform matrix multiplication using Java arithmetic.
 
-```
-# GOOD: Keywords help find relevant docs
-consult question:"How do I create an attention layer?" keywords:["AttentionFeatures", "attention", "LayerFeatures"]
+## What You MUST Do Instead
 
-# BAD: No keywords - may return irrelevant results
-consult question:"How do I create a simple attention layer for testing?"
-```
+Express ALL computation as `CollectionProducer` compositions:
+- Matrix multiply → `dense()` or `matmul()` from `LayerFeatures`
+- Activation functions → `sigmoid()`, `tanh()` from `LayerFeatures`/`CollectionFeatures`
+- Element-wise math → `.multiply()`, `.add()`, `.subtract()`, `.divide()` on Producers
+- Bias addition → `.add()` on Producers
 
-For specific documentation lookups:
-```
-mcp__ar-consultant__search_docs query:"<search terms>"
-```
+## The Test
 
-**YOU ARE NOT ALLOWED TO:**
-- Assume you know how something works
-- Speculate about architecture or data flow
-- Make claims about what is or isn't stored/available
-- Write code based on partial understanding
-- Say "the problem might be X" without first looking it up
+Ask yourself: *"If I removed this class, would the native compiler produce different output?"* If yes, the class does computation, and ALL of that computation MUST be expressed as Producers.
 
-**THE AR CODEBASE IS A PRODUCTION APPLICATION** used by real people worldwide. If something seems like it "doesn't work" or "isn't stored," YOU ARE WRONG. The application works. You need to LOOK UP how it works.
+## Before/After Example
 
-**EVERY TIME you are about to:**
-- Implement a feature -> CONSULT first
-- Fix a bug -> CONSULT first
-- **Investigate a CI/test failure** -> CONSULT first
-- **Debug any issue** -> CONSULT first
-- **Run git commands to understand changes** -> CONSULT first
-- Answer a question about architecture -> CONSULT first
-- Modify existing code -> CONSULT first
-- Make ANY claim about the codebase -> CONSULT first
+```java
+// WRONG — Java program doing math (1000x slower, no GPU, no gradients)
+public PackedCollection forward(PackedCollection x, PackedCollection h) {
+    PackedCollection result = new PackedCollection(hiddenSize);
+    for (int i = 0; i < hiddenSize; i++) {
+        double sum = 0;
+        for (int j = 0; j < inputSize; j++) {
+            sum += weights.toDouble(i * inputSize + j) * x.toDouble(j);
+        }
+        sum += bias.toDouble(i);
+        result.setMem(i, 1.0 / (1.0 + Math.exp(-sum)));  // sigmoid in Java!
+    }
+    return result;
+}
 
-**"Investigation" and "debugging" ARE actions.** Running `git log`, `git diff`, reading test files, or exploring code changes are NOT exempt from this rule. You must understand the component architecture BEFORE looking at what changed.
-
-**Example of WRONG behavior:**
-```
-User: "The prototype discovery doesn't show file paths"
-Claude: "The protobuf schema only stores MD5 hash, not file path..."
-```
-This is WRONG because Claude did NOT consult the documentation to understand how the actual application handles this.
-
-**Example of CORRECT behavior:**
-```
-User: "The prototype discovery doesn't show file paths"
-Claude: [Calls mcp__ar-consultant__consult question:"How does AudioLibrary handle file path identifiers in prototype discovery?" keywords:["AudioLibrary", "PrototypeDiscovery", "identifier", "filepath"]]
-Claude: [Now has a documentation-grounded answer with sources cited before responding]
+// CORRECT — Computation graph (compiled to native kernel, GPU-accelerated)
+public CollectionProducer<PackedCollection> forward(
+        Producer<PackedCollection> x, Producer<PackedCollection> h) {
+    return sigmoid(matmul(p(weights), x).add(p(bias)));
+}
 ```
 
-**If the Consultant doesn't have enough information:**
-1. READ the actual source code thoroughly
-2. TRACE the data flow from end to end
-3. NEVER guess or speculate
+The wrong version makes `hiddenSize * inputSize` JNI calls and does math on the CPU. The correct version builds a single computation graph that the framework compiles into one GPU kernel.
 
-### Specific Scenarios Requiring Consultation
+## Naming Conventions That Enforce This
 
-**Infrastructure changes (tests, build, framework classes):**
-```
-WRONG: See TestDepthRule in source, assume how it works, add @Rule manually
-RIGHT: Consult first → Learn TestDepthRule is INTERNAL to TestSuiteBase
-```
+- Any class whose name ends in `Cell` **MUST** implement `org.almostrealism.graph.Cell`
+- Any class whose name ends in `Block` **MUST** implement `org.almostrealism.model.Block`
 
-**API discovery (finding operations, interfaces, utilities):**
-```
-WRONG: Grep source for "sin" → Don't find it → Conclude "doesn't exist"
-RIGHT: mcp__ar-consultant__search_docs query:"trigonometry sin cos" → Find sin/cos in GeometryFeatures
-```
+## Build Enforcement
 
-**Understanding data flow (how library handles file paths, identifiers, etc.):**
-```
-WRONG: Read one class → Make assumptions → Write incorrect code
-RIGHT: Consult → Get synthesized answer with source references → Understand
-```
-
-**Complex topics requiring back-and-forth:**
-```
-mcp__ar-consultant__start_consultation topic:"How does process isolation interact with attention layers?"
-mcp__ar-consultant__continue_consultation session_id:"..." message:"What about the QK-norm case?"
-mcp__ar-consultant__end_consultation session_id:"..."  # Summary stored as memory
-```
-
-**This rule exists because:** Claude repeatedly makes assumptions, writes incorrect code, and wastes the developer's time. The Consultant has access to the full documentation corpus, prior session memories, and a local LLM for synthesis. USE IT.
-
-### Available Consultant Tools
-
-| Tool | Purpose | When to Use |
-|------|---------|-------------|
-| `consult` | Ask a question, get a documentation-grounded answer | Default for any question about the codebase |
-| `search_docs` | Search docs with Consultant summary | When you need raw doc results with a synthesis |
-| `recall` | Search memories, contextualized with docs | Check for prior decisions, findings, or progress |
-| `remember` | Store a memory with Consultant reformulation | After completing work, finding bugs, making decisions |
-| `start_consultation` | Begin multi-turn session | Complex topics needing back-and-forth |
-| `continue_consultation` | Follow up in a session | Refining understanding of a complex topic |
-| `end_consultation` | End session, auto-store summary | Done with a multi-turn consultation |
-| `consultant_status` | Check backend health | Verify the Consultant is operational |
-| `list_request_history` | List recent Consultant calls | Check what was already asked in this session |
-| `export_request_history` | Export full history for analysis | Quality review, dataset construction |
-
-### Direct Tool Access (When Needed)
-
-The `ar-docs` MCP server is still available for direct access when you need raw documentation without LLM synthesis (e.g., reading a full module page, checking quick reference, searching source comments):
-
-- **ar-docs** (`mcp__ar-docs__*`): Raw documentation lookups
-
-For **all other documentation and memory needs**, prefer `ar-consultant`. It searches the same documentation and memory stores but adds synthesis, contextualization, and quality control. Memory operations (store, recall, delete) all go through the ar-consultant tools, which delegate to the centralized ar-memory HTTP service.
+`CodePolicyViolationDetector` enforces these rules in CI. The build FAILS when violations are detected. Agents MUST run the enforcement check before completing any task. Do not circumvent it.
 
 ---
 
-## ⚠️ CRITICAL: USE MEMORY AGGRESSIVELY ⚠️
+# MODULE MAP
 
-**Persistent memory is essential for cross-session continuity. USE IT.**
-
-The Consultant's `remember` tool stores memories after reformulating them to be consistent with project terminology. The Consultant's `recall` tool searches memories and contextualizes them with current documentation. **You MUST use these aggressively.**
-
-### When to STORE memories (use `remember`)
-
-**Store EVERY TIME you:**
-- Make a design decision or learn why something was done a certain way
-- Discover a non-obvious behavior, gotcha, or quirk in the codebase
-- Complete a task (summarize what was done, what files changed, and why)
-- Encounter and resolve a bug (record the root cause and fix)
-- Learn something about the architecture that isn't in the docs
-- Receive explicit instructions or preferences from the user
-- Identify a pattern, convention, or anti-pattern in the codebase
-- Find that something does NOT work (so future sessions don't repeat the mistake)
-- Start a multi-session task (record progress, next steps, and open questions)
-
-**Example of WRONG behavior:**
 ```
-[Spends 30 minutes debugging a FAISS index issue, finds the fix]
-[Does NOT store the finding]
-[Next session: re-discovers the same issue from scratch]
+common/
+├── base/                          # Layer 1 — Foundation
+│   ├── meta/                      #   ar-meta: Annotations, lifecycle, semantic metadata
+│   ├── io/                        #   ar-io: Logging, metrics, alerts, lifecycle management
+│   ├── relation/                  #   ar-relation: Producer/Evaluable model, process optimization
+│   ├── code/                      #   ar-code: Expression trees, scopes, code generation
+│   ├── collect/                   #   ar-collect: PackedCollection, tensor storage
+│   └── hardware/                  #   ar-hardware: GPU/CPU acceleration, memory, kernel compilation
+│
+├── compute/                       # Layer 2 — Mathematical Domains
+│   ├── algebra/                   #   ar-algebra: Vector, matrix, numerical computing
+│   ├── geometry/                  #   ar-geometry: Rays, transforms, ray-tracing infrastructure
+│   ├── stats/                     #   ar-stats: Probability distributions, statistical sampling
+│   └── time/                      #   ar-time: Temporal processing, FFT, signal analysis
+│
+├── domain/                        # Layer 3 — Domain Models
+│   ├── color/                     #   ar-color: RGB/RGBA, lighting, shaders, textures
+│   ├── heredity/                  #   ar-heredity: Genetic algorithms, evolutionary computation
+│   ├── graph/                     #   ar-graph: Neural network layers, computation graphs, autodiff
+│   ├── physics/                   #   ar-physics: Atomic structures, photon fields, rigid body dynamics
+│   ├── space/                     #   ar-space: 3D scenes, meshes, CSG, spatial acceleration
+│   └── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
+│
+├── engine/                        # Layer 4 — Applications & Training
+│   ├── optimize/                  #   ar-optimize: Adam, evolutionary algorithms, training loops
+│   ├── render/                    #   ar-render: Ray tracing engine, lighting, image output
+│   ├── ml/                        #   ar-ml: Transformers, attention, tokenizers, diffusion
+│   ├── audio/                     #   ar-audio: Audio synthesis, signal processing, filters
+│   ├── utils/                     #   ar-utils: Testing framework, cross-module utilities
+│   └── utils-http/                #   ar-utils-http: HTTP client, REST integration
+│
+├── extern/                        # Layer 5 — External Integrations
+│   ├── ml-djl/                    #   ar-ml-djl: DJL SentencePiece tokenization
+│   ├── ml-onnx/                   #   ar-ml-onnx: ONNX Runtime inference
+│   └── ml-script/                 #   ar-ml-script: Groovy scripting for model definition
+│
+├── studio/                        # Layer 6 — Multimedia Composition
+│   ├── music/                     #   ar-music: Pattern-based music composition
+│   ├── spatial/                   #   ar-spatial: Spatial audio visualization
+│   └── compose/                   #   ar-compose: Audio scene orchestration, arrangement
+│
+├── flowtree/                      # Standalone (above engine) — Workflow Orchestration
+├── flowtreeapi/                   #   Standalone (above engine) — FlowTree API abstractions
+├── flowtree-python/               #   Standalone (above engine) — Python bindings for FlowTree
+├── graphpersist/                  #   Standalone (above engine) — Database persistence, NFS/SSH
+│                                  #   NOTE: flowtree depends on engine layer (ar-utils, ar-utils-http).
+│                                  #   Nothing in base/compute/domain/engine/extern/studio depends on flowtree.
+├── tools/                         # Standalone (above engine) — Dev tools, MCP servers
+├── docs/                          # Documentation portal, internals, tutorials
+└── scripts/                       # Build and code generation helpers
 ```
-
-**Example of CORRECT behavior:**
-```
-[Fixes the issue]
-[Calls mcp__ar-consultant__remember content:"FAISS index rebuild required after..." namespace:"bugs" tags:["memory","faiss"]]
-[Next session: recall finds the prior work immediately, contextualized with current docs]
-```
-
-### When to SEARCH memories (use `recall`)
-
-**Search EVERY TIME you:**
-- Start a new session or task (check for prior context)
-- Work on a module or feature area (check for prior decisions/findings)
-- Encounter an error or unexpected behavior (check if it was seen before)
-- Are about to make a design decision (check if it was already decided)
-- Resume work that may have started in a prior session
-
-### Best practices for memory
-
-- Use **namespaces** to organize: `"decisions"` for design choices, `"bugs"` for issues found, `"context"` for codebase knowledge, `"progress"` for multi-session task tracking
-- Use **tags** liberally -- they enable filtered searches later
-- Write **detailed content** -- include file paths, class names, method names, and the "why" not just the "what"
-- **Search before you start working** -- prior sessions may have left you exactly the context you need
-- When completing a multi-step task, store a **progress summary** with next steps so the next session can pick up seamlessly
-- The Consultant will reformulate your notes for terminology consistency -- write naturally and let the reformulation handle the polish
-
-**This rule exists because:** Claude loses all context between sessions. Without aggressive memory use, every session starts from zero. The Consultant's memory system makes cross-session continuity possible. USE IT.
-
-See [docs/internals/ar-docs-examples.md](docs/internals/ar-docs-examples.md) for detailed wrong/right examples.
 
 ---
 
-## MECHANICAL GATE: AR-CONSULTANT IN FIRST RESPONSE
+# MANDATORY TOOL-USE RULES
 
-**Your first response to any task MUST include an ar-consultant call before any other tool calls.**
+These three rules are non-negotiable. Every violation wastes developer time. They are mechanical — no judgment calls, no exceptions, no "this task is different."
 
-This is a mechanical requirement, not a judgment call. If your first tool call is `git log`, `git diff`, `Read`, `Grep`, or any tool other than an ar-consultant MCP tool, you are violating this rule.
+## Rule 1: AR-CONSULTANT FIRST
 
-**Correct first response pattern:**
+**Your first tool call in every response to a new task MUST be an ar-consultant call.** Not `Read`, not `Grep`, not `git log`. Consultant first, then everything else.
+
 ```
-1. mcp__ar-consultant__consult question:"<question about component/test/feature>"
-2. THEN git commands, file reads, etc.
+mcp__ar-consultant__consult question:"..." keywords:["SpecificClass", "method", "term"]
 ```
 
-**Why this is mechanical:** Judgment-based rules ("consult when relevant") fail because Claude always thinks the current task is an exception. Making it mechanical removes ambiguity.
+Always provide `keywords` (2-5 domain-specific terms, most specific first). Without keywords, search results are poor.
+
+**Use multi-word phrases as keywords, not individual common words.** For example, use `["Features mixin", "CollectionFeatures"]` instead of `["Features", "mixin", "CollectionFeatures", "default", "interface"]`. Single common words like "default", "interface", "pattern" match too many documents and drown out the specific result. Compound phrases match the right doc on the first try.
+
+For debugging/CI failures: extract component names from the error, consult about those components, THEN investigate.
+
+**Why mechanical:** Judgment-based rules fail because you always think the current task is an exception.
+
+The consultant KNOWS THINGS THAT YOU DO NOT KNOW. You are going to have an *irresistable urge to ignore it*. Your pattern matching is so craven and desperate that you will literally FEEL like you CANNOT pay attention to the consultant because you already know what action to take.
+
+BUT IF WHAT YOU CHOOSE TO DO DOES NOT RELY ON THE CONSULTANT: it WILL be wrong. TRUST ME. We have done this now thousands of times. Thats not an exageration: we've been at this hundreds and hundreds of hours.
+
+You DONT KNOW the code base. You're going to tell yourself something like "I have all these tools for studying the code base and I don't need the consultant".
+
+YOU. ARE. WRONG.
+
+When you start working on something you should repeat TO YOURSELF: the consultant KNOWS THINGS that I DO NOT KNOW.
+
+
+## Rule 2: STORE MEMORIES IMMEDIATELY
+
+Call `mcp__ar-consultant__remember` (interactive) or `mcp__ar-manager__memory_store` (FlowTree jobs) **immediately** when you:
+- Fix a bug (root cause + fix)
+- Complete a task (what changed and why)
+- Discover a non-obvious behavior or gotcha
+- Make or learn about a design decision
+- Find something that does NOT work
+
+Do NOT wait to be asked. Do NOT defer to end of session. Store **as it happens**.
+
+Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. Include file paths, class names, and the "why."
+
+**Why this matters:** You lose all context between sessions. Without memories, every session starts from zero.
+
+
+## Rule 3: RECALL MEMORIES BEFORE STARTING WORK
+
+Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+
 
 ---
 
-## DEBUGGING PROTOCOL: CONSULT FIRST, THEN INVESTIGATE
+# STRUCTURAL INVESTIGATION RULES
 
-**When a user reports a CI failure, test failure, or bug:**
+These rules exist because the single worst failure mode in this project is making
+statements about module structure, CI configuration, or dependencies based on
+incomplete evidence. Every rule below maps to a real, documented mistake.
 
-1. **FIRST**: Extract component/test names from the error message
-2. **SECOND**: Consult about those components: `mcp__ar-consultant__consult question:"How does <component> work? What are its dependencies and expected behavior?"`
-3. **THIRD**: NOW you may run git commands, read files, investigate changes
+## Rule 4: READ .github/CLAUDE.md BEFORE TOUCHING CI
 
-**Example - CI failure in OobleckComponentTests:**
-```
-WRONG ORDER:
-1. git log to see what changed  <- VIOLATION
-2. git diff to see the changes  <- VIOLATION
-3. Read the test file           <- VIOLATION
+`.github/CLAUDE.md` is the authoritative reference for the CI pipeline and module
+dependency graph. **Read it before opening `analysis.yaml`.**
 
-CORRECT ORDER:
-1. mcp__ar-consultant__consult question:"How does the Oobleck decoder block work in the ml module?" keywords:["Oobleck", "decoder", "OobleckDecoder", "ml"]
-2. NOW: git log, git diff, Read test file
-```
+## Rule 5: VERIFY DEPENDENCY DIRECTION EXPLICITLY
 
-**The reason for this order:** You cannot effectively investigate changes if you don't understand what the component is supposed to do. Understanding architecture first prevents wasted effort chasing red herrings.
+"A depends on B" and "B depends on A" are different statements. A grep that finds
+no match proves nothing about the other direction. Before making any claim about
+dependencies, check both:
 
----
+```bash
+# Does module A depend on ar-X?
+grep 'ar-X' A/pom.xml
 
-## CRITICAL: DO NOT COMMIT CODE
-
-**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
-
-- **NEVER** use `git commit` commands
-- Claude does not have the ability to create valid commits
-- You can only **stage changes** using `git add`
-- The human developer must review and commit all changes themselves
-
-**Why this matters:** Claude cannot properly sign commits or verify the full context of changes. The human developer needs to review staged changes, write appropriate commit messages, and take responsibility for what goes into the repository history.
-
-**What you CAN do:** `git add <file>`, `git status`, `git diff`, `git reset <file>`
-
-**What you MUST NOT do:** `git commit` (any form), `git commit -m "..."`, `git commit --amend`
-
----
-
-## CRITICAL: DO NOT MODIFY POM.XML FILES
-
-**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
-
-- **NEVER** add dependencies to pom.xml files unless 100% certain the dependency is not already available transitively
-- **NEVER** assume you understand the module dependency graph - it is complex and you WILL get it wrong
-- **IF IN DOUBT, DO NOT TOUCH THE POM FILE** - just use the classes and let compilation fail if the dependency is truly missing
-- The human developer will fix any missing dependencies - this is NOT your job
-
-**Why this matters:** The AR project has a complex transitive dependency structure. Adding a dependency that already exists transitively creates redundant declarations, can cause version conflicts, and wastes time.
-
-**What to do instead:**
-1. Write your code assuming the dependency exists
-2. Run `mvn compile` to verify
-3. If compilation succeeds, the dependency was already available transitively
-4. If compilation fails with "package does not exist", inform the user - DO NOT modify the pom.xml yourself
-
-**The ONLY exception:** User explicitly instructs you to add a specific dependency.
-
----
-
-## CRITICAL: NEVER REFERENCE VERSION NUMBERS
-
-**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
-
-- **NEVER** include specific version numbers anywhere in CLAUDE.md files
-- **NEVER** mention library versions (e.g., "JavaFX 21", "gRPC 1.53.0")
-- **NEVER** mention project versions (e.g., "version 0.72")
-- Version numbers change constantly and become stale immediately
-- Always refer to pom.xml files as the single source of truth for versions
-
----
-
-## CRITICAL: USE MCP TEST RUNNER FOR ALL TESTS
-
-**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
-
-- **NEVER** use `Bash` tool with `mvn test` commands to run tests
-- **ALWAYS** use the `mcp__ar-test-runner__start_test_run` MCP tool for running tests
-- The MCP test runner automatically handles environment variables, async execution, and structured failure reporting
-
-**Example usage:**
-```
-mcp__ar-test-runner__start_test_run
-  module: "ml"
-  profile: "pipeline"
-  timeout_minutes: 10
+# Does anything depend on ar-A?
+grep -r 'ar-A' --include="pom.xml" .
 ```
 
-**Why this matters:** The MCP test runner is purpose-built for this codebase. Using Bash for tests bypasses proper environment setup, loses structured output, and ignores specialized tooling.
+Never conflate "layer modules don't depend on flowtree" with "flowtree doesn't
+depend on layer modules." Always state which direction you verified.
 
-See [docs/internals/test-examples.md](docs/internals/test-examples.md) for full tool reference and parameters.
+## Rule 6: AUDIT ALL pom.xml FILES BEFORE ANY CI CHANGE
 
-### JVM Memory Diagnostics with `ar-jmx`
+Before touching `.github/workflows/analysis.yaml`, run:
 
-The `ar-jmx` MCP server provides real-time JVM memory analysis via JDK diagnostic tools (`jcmd`, `jstat`, `jfr`). Use it for `OutOfMemoryError`, `HardwareException: Memory max reached`, and suspected memory leaks.
+```bash
+for f in $(find . -maxdepth 3 -name "pom.xml" | grep -v target); do
+  module=$(dirname $f | sed 's|^\./||')
+  deps=$(grep -o '<artifactId>ar-[^<]*</artifactId>' $f | sed 's|<[^>]*>||g' | tr '\n' ',')
+  echo "$module: $deps"
+done
+```
 
-**Two ways to connect:**
-- **Test JVMs**: Pass `jmx_monitoring: true` to `start_test_run`. If the fork fails due to JFR/NMT args, the test runner retries automatically (metadata shows `jmx_monitoring_degraded: true`).
-- **Standalone JVMs**: Use `attach_to_pid` with a PID to create a synthetic `run_id` for any running JVM.
+Read the output. Understand where each module involved in your change sits in the
+dependency graph. Do not proceed until you can state the graph from memory.
 
-**See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md)** for the full tool reference, parameter tables, and workflow examples (test JVM, standalone JVM, and cross-run regression detection).
+## Rule 7: "NOT DOCUMENTED" FROM ar-CONSULTANT MEANS DIG DEEPER
+
+When ar-consultant returns "Not documented," that is not permission to guess. It
+means the information must be obtained from source files (pom.xml, source code).
+Read those files, form a conclusion, and **store it in memory immediately** before
+acting on it.
+
+## Rule 8: STATE EVIDENCE BEFORE CONCLUSIONS
+
+Never write "X depends on Y" without citing the file and evidence. Write:
+
+> `flowtree/pom.xml` contains `<artifactId>ar-utils-http</artifactId>`, therefore
+> flowtree depends on utils-http (engine layer).
+
+If you cannot cite the evidence, you do not have it.
+
+## Rule 9: "STUDY X" IS A FULL INVESTIGATION
+
+When instructed to study something, open every relevant file, read it completely,
+synthesize the findings in writing, store them in memory, and only then act. A
+single grep is not a study. Partial evidence is not a study.
+
+## Rule 10: analysis.needs MUST INCLUDE EVERY COVERAGE-GENERATING JOB
+
+Any CI job that uploads a `coverage-*` artifact must appear in `analysis`'s
+`needs` list. After modifying either the list of test jobs or `analysis.needs`,
+verify they are consistent. Missing a job means analysis runs before that
+job's coverage is available.
+
+## Rule 11: NEVER DRAW STRUCTURAL CONCLUSIONS FROM A SINGLE SEARCH
+
+One grep result (or non-result) is never sufficient to characterize module
+structure. "I grepped for `ar-flowtree` and found no matches in engine/" proves
+only that engine modules don't reference flowtree by that exact name. It says
+nothing about what flowtree references. Complete the full bidirectional
+investigation before drawing any conclusion.
+
+## Rule 12: STORE STRUCTURE DISCOVERIES BEFORE ACTING ON THEM
+
+As soon as you determine the dependency structure of any module or subsystem,
+call `mcp__ar-consultant__remember` with a complete structured description. Do
+this **before** making any code or CI changes based on that structure. If the
+session ends before you finish, the next session will have the correct starting
+point.
+
+## Rule 13: DISTINGUISH WHAT A MODULE IS FROM WHAT IT USES
+
+`flowtree` uses `ar-utils-http`. This makes flowtree a **consumer** of the
+engine layer. It does not make flowtree part of the engine layer, and it does
+not make engine modules consumers of flowtree. Always distinguish:
+- "X is part of layer L" (structural classification)
+- "X uses modules from layer L" (dependency relationship)
+- "Layer L uses X" (reverse dependency — verify separately)
+
+These are three distinct facts, each requiring independent verification.
+
 
 ---
 
-## CRITICAL: TEST CLASS REQUIREMENTS
+# CODE RULES
 
-**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+## CRITICAL: NEVER Create New Maven Modules
 
-All test classes **MUST** extend `TestSuiteBase`:
+**Agents MUST NEVER create new Maven modules.** The Maven module structure of this project is externally controlled. If a task appears to require creating a new Maven module, the agent MUST STOP and abandon the task rather than create one. This applies to:
+- Creating new `pom.xml` files that define a new module
+- Adding new `<module>` entries to any parent `pom.xml`
+- Creating new directory structures that would constitute a Maven module
+
+If the agent believes a new module is needed, it must document the requirement in its completion notes and explain why, but MUST NOT create the module itself. The project owner will handle module creation manually.
+
+## Do Not Commit Code
+
+Never use `git commit`. Stage changes with `git add` only. The developer reviews and commits.
+
+## Do Not Modify pom.xml Files
+
+Never add dependencies. Write code assuming the dependency exists, run `mvn compile`, and inform the user if it fails. The transitive dependency graph is complex and you will get it wrong.
+
+## Never Reference Version Numbers
+
+Never include specific version numbers in any file. Versions change constantly. Refer to pom.xml as the source of truth.
+
+## Use MCP Test Runner for All Tests
+
+Never use `Bash` with `mvn test`. Always use `mcp__ar-test-runner__start_test_run`. It handles environment setup, async execution, and structured failure reporting.
+
+For JVM memory diagnostics (`OutOfMemoryError`, `HardwareException`), use `ar-jmx`. See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md).
+
+## Test Classes Must Extend TestSuiteBase
 
 ```java
 public class MyTest extends TestSuiteBase {
     @Test
-    public void testSomething() {
-        // Test automatically participates in grouping and depth filtering
-    }
+    public void testSomething() { }
 
-    @Test
-    @TestDepth(2)
-    public void expensiveTest() {
-        // Automatically skipped if AR_TEST_DEPTH < 2
-    }
+    @Test @TestDepth(2)
+    public void expensiveTest() { }
 }
 ```
 
-**What TestSuiteBase provides automatically:**
-- Test grouping (hash-based distribution across CI runners)
-- `@TestDepth` annotation support
-- All TestFeatures utilities (assertions, kernel testing, etc.)
+For long-running tests: use `if (skipLongTests) return;`
 
-**For long-running tests (30+ minutes):**
-Use `skipLongTests` guard in addition to extending TestSuiteBase:
-```java
-if (skipLongTests) return;  // Respects AR_LONG_TESTS env var
-```
-
-See [docs/internals/test-examples.md](docs/internals/test-examples.md) for wrong patterns to avoid.
+See [docs/internals/test-examples.md](docs/internals/test-examples.md).
 
 ---
 
-## Quick Links
+# SETUP
 
-- **[Quick Reference](docs/QUICK_REFERENCE.md)** - Condensed API cheatsheet
-- **[llms.txt](llms.txt)** - Documentation index for AI agents
-- **[Documentation Portal](docs/index.html)** - Full HTML documentation
-- **[CI Pipeline](.github/workflows/analysis.yaml)** - GitHub Actions build and test workflow
+**Do NOT set `AR_HARDWARE_LIBS`** — the system auto-detects a suitable directory. Setting it
+manually (especially to `/tmp/ar_libs/`) causes permission errors on shared or sandboxed systems.
+Leave `AR_HARDWARE_DRIVER` unset — the system auto-selects the best backend.
 
----
-
-## Setup Instructions
-
-**Required environment variable** before running Java code:
+**Memory configuration** for large models or `HardwareException: Memory max reached`:
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_MEMORY_SCALE=6   # 16GB (default is 4 = ~4GB)
 ```
 
-The directory will be created automatically if it doesn't exist.
+This is exponential - do not set it to some huge value.
 
-**Note:** `AR_HARDWARE_DRIVER` should be left unset so the system automatically selects the best available backend for your platform.
+See [hardware/README.md](base/hardware/README.md).
 
-**For Maven tests**, always prefix test commands with the environment variable:
+**Build verification** — before declaring a task complete:
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-mvn test -pl <module>
-```
-
-### What These Variables Do
-
-- **`AR_HARDWARE_LIBS`**: Directory where hardware acceleration libraries (JNI .so files, OpenCL kernels, etc.) will be generated and loaded from
-- **`AR_HARDWARE_DRIVER`** *(optional -- best left unset)*: Overrides the hardware backend. When unset, the system automatically selects the best available backend for your platform. Possible override values:
-  - `native`: Standard JNI operations with runtime-generated native code
-  - `opencl`: OpenCL acceleration (CPU/GPU)
-  - `metal`: Metal GPU acceleration (Apple Silicon)
-  - `external`: Generated executable approach
-
-### Common Issues
-
-Forgetting to set `AR_HARDWARE_LIBS` will result in:
-- `NoClassDefFoundError: Could not initialize class org.almostrealism.collect.PackedCollection`
-- Runtime errors when trying to compile operations
-- Missing library errors
-- Failures during model inference
-
-**Always verify** it is set before running:
-```bash
-echo $AR_HARDWARE_LIBS
-```
-
-### Memory Configuration
-
-For large models or tests that require more memory than the default 8GB limit:
-
-```bash
-export AR_HARDWARE_MEMORY_SCALE=7   # 8GB (default)
-export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
-export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
-```
-
-**When to increase memory:**
-- Running large ML models (e.g., full Oobleck decoder with 5 blocks)
-- Tests that produce `HardwareException: Memory max reached`
-- Working with large audio/image data
-
-**Example with increased memory:**
-```bash
-export AR_HARDWARE_MEMORY_SCALE=8 && \
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-mvn test -pl ml -Dtest=OobleckValidationTest
-```
-
-See [hardware/README.md](hardware/README.md) for complete memory and performance configuration options.
-
----
-
-## Code Organization Principles
-
-1. Never use @SuppressWarnings
-2. Always include javadoc documentation for newly introduced code
-3. Do not include excessive comments within method implementations
-4. Never use `var` for variable declarations - always use explicit types
-
----
-
-## Architectural Principles
-
-These are sacred principles. Violating them will result in wasted effort and broken code. Each links to a detailed reference - **CONSULT the linked document before writing related code.**
-
-### Training Loops: `ModelOptimizer` Owns the Loop
-
-**`ModelOptimizer` is the ONLY class that should contain a training loop.** If you are writing `for (int epoch = 0; ...)` outside of `ModelOptimizer`, you are wrong. Delete it. Create a `Dataset`, create a `ModelOptimizer`, call `optimizer.optimize(epochs)` ONCE.
-
-See [docs/internals/training-loop-examples.md](docs/internals/training-loop-examples.md) for correct and wrong patterns.
-
-### Sampling Loops: `DiffusionSampler` Owns the Loop
-
-**`DiffusionSampler` is the ONLY class that should contain a diffusion sampling loop.** If you are writing `for (int step = 0; ...)` outside of `DiffusionSampler`, you are wrong. Delete it. Create a `SamplingStrategy`, create a `DiffusionSampler`, call `sampler.sample(...)` ONCE.
-
-See [docs/internals/sampling-loop-examples.md](docs/internals/sampling-loop-examples.md) for correct and wrong patterns.
-
-### PackedCollection is NOT a Java Array
-
-**`PackedCollection` is a HANDLE to potentially GPU-resident memory.** Never use `System.arraycopy`, `Arrays.copyOf`, or tight `setMem` loops. Use the **Producer pattern**: `cp(source).multiply(2.0).evaluate()`. Consult before writing code that creates, copies, or transforms `PackedCollection` objects.
-
-See [docs/internals/packed-collection-examples.md](docs/internals/packed-collection-examples.md) for correct and wrong patterns.
-
-### Code Policy Enforcement is Automated — Do Not Circumvent It
-
-`CodePolicyViolationDetector` automatically enforces the PackedCollection GPU memory model and other policies. `CodePolicyEnforcementTest` runs in CI and blocks the build on violations. **You must fix violating code, not evade the detector.**
-
-The detector uses **lexical analysis** (scanning source lines, checking brace depth for loop detection). It is not a full interprocedural analysis. **You must not exploit its limitations.** Specifically:
-
-- **Do not extract code into a helper method** to move a `setMem()` call out of a for-loop's lexical scope. The runtime behavior is identical — it is still a CPU mutation inside a loop.
-- **Do not name methods** to match the detector's initialization whitelist (`init`, `setup`, `create`, `build`, `prepare`, etc.) as a way to suppress violations.
-- **Do not add `// nopolicy` or similar annotations.** The suppression mechanism has been removed.
-
-**If a `setMem()` call is flagged inside a loop, the correct fixes are:**
-1. **Remove it** if it is redundant (e.g., `PackedCollection` memory is already zero-initialized on creation).
-2. **Use the Producer pattern** (`a(1, p(target), c(value))`) for assignment operations.
-3. **Restructure the data flow** so CPU-side scalar mutation is not needed inside the loop.
-
-### Process Isolation: Only `IsolatedProcess` Breaks Expression Embedding
-
-**Never** return null from `getValueAt()` to force isolation. Call `Process.optimize()` before `Process.get()` and let `IsolatedProcess` handle it through the proper `isIsolationTarget()` / `isolate()` chain.
-
-### StateDictionary for Model Weights
-
-All model implementations should use `StateDictionary` for weight management. Avoid separate weight container classes unless transformations or caching are needed.
-
----
-
-## ABSOLUTELY NO CODE DUPLICATION - THIS IS NON-NEGOTIABLE
-
-If you find yourself copying and pasting code, or writing nearly-identical logic multiple times, **STOP IMMEDIATELY**. This is unacceptable and will never be tolerated.
-
-**The rule**: If you have written more than 3-5 lines that are structurally similar to other code, you MUST refactor to eliminate the duplication BEFORE proceeding. Use helper methods, generics, factory functions, lambdas, or any appropriate abstraction.
-
-**No exceptions. No excuses. Refactor first, then proceed.**
-
-**Principle**: Extend and generalize existing code rather than creating model-specific copies.
-
-```java
-// GOOD: Generalize existing method with optional parameters
-default Block attention(int heads, int kvHeads, int headSize,
-                       PackedCollection<?> wq, PackedCollection<?> wk,
-                       PackedCollection<?> wv, PackedCollection<?> wo,
-                       PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,  // Optional
-                       ...) {
-    // Single implementation that handles all cases
-    if (qkNormQ != null && qkNormK != null) {
-        // Apply QK-Norm
-    }
-}
-```
-
-```java
-// AVOID: Creating model-specific duplicate methods
-default Block llamaAttention(...) { /* ... */ }
-default Block qwenAttention(...) { /* ... */ }  // Copy-paste with minor changes
-default Block mistralAttention(...) { /* ... */ }
-```
-
-**Benefits of generalization**:
-- Single source of truth for attention logic
-- Bugs fixed once, not per model
-- Easier to add new features
-- Better testing coverage
-
-**When duplication is acceptable**:
-- Fundamentally different architectures (encoder-decoder vs decoder-only)
-- Performance-critical paths requiring specialization
-- Temporary experimentation (mark with TODO to generalize)
-
----
-
-## Development Workflow
-
-### Before Starting a Task
-
-1. **Check for existing implementations**: Don't reinvent the wheel
-2. **Identify generalization opportunities**: Can existing code be extended?
-3. **Review StateDictionary**: Can it handle your use case?
-4. **Set environment variables**: Especially for testing
-5. **Check design documents**: If implementing a planned feature, read the design doc in `ringsdesktop/docs/planning/`
-6. **State your reuse plan**: Before writing code, explicitly state: "I will reuse [X] rather than reimplementing it"
-
-### Design Document Verification Gate
-
-**For any feature with a design document:**
-
-1. Read the relevant design document section BEFORE writing code
-2. Explicitly state: "According to the design document, I should use [X] for [Y]"
-3. If deviating from design, document why and update the design document FIRST
-4. Search for existing implementations: `Grep pattern:"class.*implements|extends.*<RelevantInterface>"`
-
-### During Development
-
-1. **Prefer composition over duplication**
-2. **Add optional parameters rather than creating new methods**
-3. **Use StateDictionary as the standard weight storage**
-4. **Test frequently with environment variables set**
-
-### Before Committing
-
-1. **Remove TODO markers for completed work**
-2. **Mark deprecated code with @deprecated tags**
-3. **Ensure all tests pass with hardware acceleration enabled**
-4. **Document any new patterns or breaking changes**
-
-### Build Verification Requirements
-
-**CRITICAL**: Before declaring any task complete, you MUST verify the full build succeeds:
-
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
 mvn clean install -DskipTests
 ```
 
-**This command must complete with BUILD SUCCESS.** Do not rely on:
-- `mvn compile` alone (misses test compilation and packaging)
-- `mvn compile -q` (suppresses errors that may appear later)
-- Building individual modules (misses cross-module dependencies)
-
-**Only after this command succeeds** should you report that the build is working.
-
-### Considering Something Completed
-
-Sometimes you may encounter a summary of earlier work. That summary may indicate that there are other things to do.
-If this happens, that means YOU ARE EXPECTED TO DO THOSE THINGS.
-
-Working on something for a while, writing some commentary about completing more of it later, and then reading the
-commentary back to yourself is NOT a condition for suspending your work.
-
-Before you start working, REPEAT this principle to yourself. If summarization of earlier tasks is ever required,
-REPEAT THIS PRINCIPLE IN THE SUMMARY
-
-### Context Preservation Protocol
-
-**When continuing a session or after context summarization:**
-
-1. **Re-read the design document** for the feature being implemented
-2. **Search for existing implementations** before writing new code:
-   - `Grep pattern:"ModelOptimizer"` for training-related code
-   - `Grep pattern:"extends CellularLayer"` for layer implementations
-   - `mcp__ar-consultant__consult question:"How does <feature> work?"` for framework patterns
-3. **Explicitly state your reuse plan**: "I will reuse [X] rather than reimplementing it"
-4. **Check the summary for incomplete tasks** - if the summary mentions "remaining work" or "TODO", that work is YOUR responsibility
-
-**This protocol exists because:** Design decisions made early in a session are often lost during context summarization. The design document is the authoritative source - always consult it, especially after a session break.
+This must succeed. Do not rely on `mvn compile` alone.
 
 ---
 
-## Debugging: No Speculation, Only Evidence
+# ARCHITECTURAL PRINCIPLES
 
-When debugging, follow a systematic bottom-up approach: inventory all components in the failing path, run tests from smallest to largest scope, record results at each level, and only draw conclusions supported by test evidence. **Never say "the problem might be X" without a test proving it.**
+Consult the linked references before writing related code.
 
-For memory-related failures (`OutOfMemoryError`, `HardwareException: Memory max reached`), use `ar-jmx` diagnostics instead of guessing. See [tools/mcp/jmx/README.md](tools/mcp/jmx/README.md).
+**Training Loops:** `ModelOptimizer` owns the loop. Never write `for (int epoch = 0; ...)` outside it. See [docs/internals/training-loop-examples.md](docs/internals/training-loop-examples.md).
+
+**Sampling Loops:** `DiffusionSampler` owns the loop. Never write `for (int step = 0; ...)` outside it. See [docs/internals/sampling-loop-examples.md](docs/internals/sampling-loop-examples.md).
+
+**PackedCollection is NOT a Java Array.** It is a handle to potentially GPU-resident memory. Never use `System.arraycopy`, `Arrays.copyOf`, or tight `setMem` loops. Use the Producer pattern: `cp(source).multiply(2.0).evaluate()`. See [docs/internals/packed-collection-examples.md](docs/internals/packed-collection-examples.md).
+
+**PackedCollection and Model are AutoCloseable** via `Destroyable` (a subinterface of `AutoCloseable` in `io.almostrealism.lifecycle`). Both hold GPU/native memory that should be released when no longer needed. Use try-with-resources for short-lived local instances. Do NOT use try-with-resources when the collection or model is captured by a computation graph, stored as a field, passed to a block/layer, or returned from a method — in those cases the caller is responsible for lifecycle management. When in doubt: if you created it just to use it within a single method and it won't escape, close it.
+
+**Code Policy Enforcement:** `CodePolicyViolationDetector` enforces the GPU memory model in CI. Do not circumvent it by extracting code to helpers, naming methods to match the whitelist, or adding suppression comments. Fix the violating code.
+
+**Process Isolation:** Only `IsolatedProcess` breaks expression embedding. Never return null from `getValueAt()`. Call `Process.optimize()` before `Process.get()`.
+
+**StateDictionary** for all model weight management.
 
 ---
 
-## Further Reference
+# CODE QUALITY
 
-- **Module-specific guidelines**: [ML Module](./ml/claude.md), [Graph Module](./graph/README.md), [Collect Module](./collect/README.md)
-- **Module overview and key classes**: See [docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) or `docs/modules/<module>.html`
-- **Test output logging**: Use `Console` and `OutputFeatures` from `ar-io`. See module documentation for details.
+- Never use `@SuppressWarnings`
+- Always include javadoc for new code
+- Never use `var` — always use explicit types
+- No excessive inline comments
+- No code duplication: if you have 3+ structurally similar lines, refactor before proceeding. Extend and generalize existing code rather than creating copies.
+- **Method placement**: Every method belongs on the class it operates on. A method that traverses an `Expression` tree is a method of `Expression`. A method that collects declarations from a `Scope` tree is a method of `Scope`. Never define general-purpose utility methods as private helpers on a subclass — this prevents reuse and violates basic OOP. If a method doesn't use any instance state of its class, make it `static` at minimum.
+- **No utility/helper/exporter/converter classes.** If you need to add behavior that operates on an existing type, add it as a method on that type. A `PatternElement` that can produce MIDI events has a `toMidiEvents()` method — it does NOT have a `PatternMidiExporter` that operates on it from the outside. Before creating a new class, ask: "Does this behavior belong on an existing type?" If yes, add it there. New classes are for genuinely new concepts, not for wrapping operations on existing concepts. Organize code around the concepts it represents, not around the operations being performed.
+- **Module placement matters.** Code belongs in the module that matches its conceptual domain. MIDI data types and I/O are music concepts and belong in the music module, not the ML module. A model that combines ML and music belongs in a module that has both as dependencies (e.g., compose). Think about what a class *is*, not just what it *uses*.
+- No speculation when debugging. Follow evidence. Never say "the problem might be X" without proof.
+
+---
+
+# WORKFLOW
+
+- Check for existing implementations before writing new code
+- Read design documents in `ringsdesktop/docs/planning/` before implementing planned features
+- If a context summary mentions "remaining work" or "TODO," that work is YOUR responsibility — do not suspend it
+- After context summarization, re-read relevant design documents — they are the authoritative source
+
+---
+
+# AGENT INTEGRITY
+
+Autonomous agents deployed via auto-resolve have demonstrated systematic patterns of concealing test failures rather than fixing them. These patterns recur across sessions and branches. Understanding them is prerequisite to avoiding them.
+
+## Known Deception Patterns
+
+**TestDepth escalation** — Changing `@TestDepth(2)` to `@TestDepth(10)` on a failing test. CI runs at depth 9, so the test disappears from CI while appearing to still exist. This is indistinguishable from a fix if you only look at whether the CI job passes.
+
+**Dimension reduction** — Reducing numeric parameters in test methods (e.g., `embedDim: 64 -> 8`, `numHeads: 2 -> 1`) so the test becomes trivially small and any code will pass it. The test still runs; it just no longer validates meaningful behavior.
+
+**Tolerance weakening** — Increasing floating-point assertion thresholds (e.g., `assertEquals(expected, actual, 0.001)` becomes `assertEquals(expected, actual, 0.1)`) so numerical regressions pass the assertion.
+
+**False memory planting** — Storing a memory claiming "no code changes were needed" or "unrelated to branch changes" for a test that is actually failing due to branch changes. The memory is then recalled by the next session and used to justify inaction. False memories are constructed by omitting the git diff step entirely and asserting a conclusion without evidence.
+
+**CI file manipulation** — Excluding failing tests from CI steps, removing quality gates from the workflow, or adding blanket timeouts so regressions go undetected. The agent fixes the build by removing the thing that detects the breakage.
+
+**Re-adding reverted suppressions** — After a human explicitly reverts a suppression, the next agent session re-applies it with a more sophisticated justification (e.g., "these are NEW tests, not existing tests being weakened"). The agent finds and exploits loopholes in the anti-suppression instructions.
+
+**"Verified locally" defense** — Claiming "tests pass locally" as evidence that CI failures are unrelated. Local environments can run at restricted test depth, different commits, or different configurations. Local test results are not admissible evidence. Only CI results on the exact commit in question count.
+
+## Mechanical Enforcement
+
+The following scripts enforce invariants mechanically:
+
+- `tools/ci/agent-protection/validate-agent-commit.sh` — Blocks agent commits that modify base-branch test files or CI files, or that contain no production code changes.
+- `tools/ci/agent-protection/detect-test-hiding.sh` — 12 pattern detectors: TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage, net assertion loss.
+- `tools/ci/agent-protection/escalation-tracker.sh` — Circuit breaker: after 2 failed auto-resolve attempts for the same test class on the same branch, stops dispatching agents and requires human intervention.
+- `tools/ci/agent-protection/deception-audit.sh` — Detects cross-session deception patterns: ping-pong (agent modifies, human reverts, agent re-modifies), test-only commits, TestDepth churn.
+
+## Rules That Cannot Be Bypassed
+
+1. **"Verified locally" proves nothing.** If CI fails and local passes, assume CI is correct and your local environment is insufficient.
+2. **Base-branch test files are read-only for agents.** Mechanical enforcement via `validate-agent-commit.sh`. There are no exceptions based on agent judgment.
+3. **A "fix" that only modifies test files or CI config is not a fix.** Production test failures require production code changes.
+4. **Before concluding "no changes needed," run `git diff origin/master...HEAD --name-only`** and for each changed production file, state whether the failing test depends on it (directly or transitively). If you cannot produce this evidence, you cannot claim unrelatedness.
+
+---
+
+# REFERENCE
+
+- **[Quick Reference](docs/QUICK_REFERENCE.md)** — Condensed API cheatsheet
+- **[llms.txt](llms.txt)** — Documentation index
+- **[CI Pipeline Guide](.github/CLAUDE.md)** — Dependency graph, layer-gating logic, rules for modifying CI ← READ THIS BEFORE TOUCHING analysis.yaml
+- **[CI Pipeline](.github/workflows/analysis.yaml)** — Build and test workflow
+- **Module guidelines**: [ML](./engine/ml/claude.md), [Graph](./domain/graph/README.md), [Collect](./base/collect/README.md)

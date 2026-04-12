@@ -162,7 +162,8 @@ class MemoryHTTPClient:
             "namespace": namespace,
             "limit": limit,
         }
-        return self._post("/api/memory/branch", payload)
+        result = self._post("/api/memory/branch", payload)
+        return result.get("results", result) if isinstance(result, dict) else result
 
     def delete(self, entry_id: str, namespace: str = "default") -> dict:
         """Delete a memory entry by ID.
@@ -200,7 +201,8 @@ class MemoryHTTPClient:
         params: dict = {"namespace": namespace, "limit": limit, "offset": offset}
         if tag:
             params["tag"] = tag
-        return self._get(f"/api/memory/list?{urlencode(params)}")
+        result = self._get(f"/api/memory/list?{urlencode(params)}")
+        return result.get("entries", result) if isinstance(result, dict) else result
 
     def health(self) -> dict:
         """Health check for the ar-memory server.

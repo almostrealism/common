@@ -1,0 +1,88 @@
+/*
+ * Copyright 2023 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.nio;
+
+import org.almostrealism.io.SystemUtils;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.file.Files;
+
+/**
+ * JNI bridge for native I/O operations including shared memory mapping and buffer pointer extraction.
+ *
+ * <p>Loads the platform-specific native library ({@code libNIO.dylib} on macOS, {@code libNIO.so} on Linux)
+ * from the classpath and exposes low-level memory-mapped I/O operations for use by
+ * {@link NativeBufferMemoryProvider}.</p>
+ */
+public class NIO {
+	static {
+		String lib = SystemUtils.isMacOS() ? "libNIO.dylib" : "libNIO.so";
+
+		System.getProperty("java.io.tmpdir");
+		InputStream is = NIO.class.getClassLoader().getResourceAsStream(lib);
+
+		File tempDir = new File(System.getProperty("java.io.tmpdir"));
+		tempDir.mkdir();
+
+		File tempLibFile = new File(tempDir, lib);
+		try {
+			if (tempLibFile.exists()) Files.delete(tempLibFile.toPath());
+			Files.copy(is, tempLibFile.toPath());
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+
+		System.load(tempLibFile.getAbsolutePath());
+	}
+
+	/**
+	 * Returns the native memory address of the given direct buffer.
+	 *
+	 * @param b Direct {@link Buffer} instance
+	 * @return Native pointer address for the buffer's backing memory
+	 */
+	public static native long pointerForBuffer(Buffer b);
+
+	/**
+	 * Maps a named shared memory region into a direct {@link ByteBuffer}.
+	 *
+	 * @param filePath Path name for the shared memory region
+	 * @param length   Size in bytes to map
+	 * @return Direct {@link ByteBuffer} backed by the shared memory region
+	 */
+	public static native ByteBuffer mapSharedMemory(String filePath, int length);
+
+	/**
+	 * Flushes changes in a shared memory buffer back to the underlying region.
+	 *
+	 * @param buffer Shared memory buffer to sync
+	 * @param length Number of bytes to sync
+	 */
+	public static native void syncSharedMemory(ByteBuffer buffer, int length);
+
+	/**
+	 * Unmaps a shared memory region previously mapped via {@link #mapSharedMemory}.
+	 *
+	 * @param buffer Shared memory buffer to unmap
+	 * @param length Number of bytes to unmap
+	 */
+	public static native void unmapSharedMemory(ByteBuffer buffer, int length);
+}

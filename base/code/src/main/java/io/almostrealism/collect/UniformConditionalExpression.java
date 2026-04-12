@@ -1,0 +1,47 @@
+/*
+ * Copyright 2024 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package io.almostrealism.collect;
+
+import io.almostrealism.expression.Expression;
+
+import java.util.function.Function;
+
+/**
+ * Abstract base class for uniform collection expressions whose operation produces a conditional
+ * output at each index.
+ *
+ * <p>Extends {@link UniformCollectionExpression} to mark expressions whose per-element
+ * operation internally contains a conditional (e.g., {@link ConditionalFilterExpression}).
+ * Subclasses may override {@link #delta} to propagate the conditional through automatic
+ * differentiation.</p>
+ */
+public abstract class UniformConditionalExpression extends UniformCollectionExpression {
+	/**
+	 * Creates a uniform conditional expression with the given name, shape, conditional operation,
+	 * and operands.
+	 *
+	 * @param name      a descriptive name for this expression
+	 * @param shape     the output shape
+	 * @param operation the conditional element-wise operation applied at each index
+	 * @param operands  the input operand expressions
+	 */
+	public UniformConditionalExpression(String name, TraversalPolicy shape,
+										Function<Expression[], Expression<?>> operation,
+										TraversableExpression... operands) {
+		super(name, shape, operation, operands);
+	}
+}

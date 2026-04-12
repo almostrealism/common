@@ -1,0 +1,366 @@
+/*
+ * Copyright 2024 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.collect;
+
+import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Parent;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
+import org.almostrealism.collect.computations.ReshapeProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataAdapter;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
+import org.almostrealism.io.SystemUtils;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+/**
+ * Interface for computations that produce {@link PackedCollection} results with hardware acceleration.
+ *
+ * <p>
+ * {@link CollectionProducerComputation} combines {@link ProducerComputation} and
+ * {@link CollectionProducerParallelProcess} to provide the complete infrastructure for
+ * hardware-accelerated collection operations. This interface is the foundation for all
+ * computations that:
+ * <ul>
+ *   <li>Produce {@link PackedCollection} results</li>
+ *   <li>Can be compiled to native code or GPU kernels</li>
+ *   <li>Support automatic differentiation</li>
+ *   <li>Enable parallel execution</li>
+ * </ul>
+ *
+ * <h2>Key Capabilities</h2>
+ * <ul>
+ *   <li><b>Hardware Acceleration:</b> Automatic compilation to optimized kernels via {@link #get()}</li>
+ *   <li><b>Shape Management:</b> Flexible shape handling with {@link #postProcessOutput} and {@link #shapeForLength}</li>
+ *   <li><b>Process Isolation:</b> {@link IsolatedProcess} for independent execution contexts</li>
+ *   <li><b>Delta Computation:</b> Automatic differentiation support via {@link #applyDeltaStrategy}</li>
+ *   <li><b>Result Postprocessing:</b> Shape adjustment and wrapping via {@link #postProcessOutput}</li>
+ * </ul>
+ *
+ * <h2>Lifecycle</h2>
+ * <pre>{@code
+ * // 1. Create computation
+ * CollectionProducerComputation<PackedCollection> comp = ...;
+ *
+ * // 2. Get evaluable (compiles to hardware)
+ * Evaluable<PackedCollection> ev = comp.get();
+ *
+ * // 3. Execute
+ * PackedCollection result = ev.evaluate();
+ * }</pre>
+ *
+ * <h2>Configuration Flags</h2>
+ * <ul>
+ *   <li><b>isolationLogging:</b> Enables logging when processes are isolated (default: false,
+ *       controlled by AR_ISOLATION_LOGGING env var)</li>
+ *   <li><b>enableShapeTrim:</b> Avoids prepending dimensions in {@link #postProcessOutput}
+ *       when enabled (default: false)</li>
+ * </ul>
+ *
+ * @author  Michael Murray
+ * @see CollectionProducerParallelProcess
+ * @see ProducerComputation
+ * @see PackedCollection
+ * @see DefaultCollectionEvaluable
+ */
+public interface CollectionProducerComputation extends
+		 ProducerComputation<PackedCollection>, CollectionProducerParallelProcess {
+	/** When true, logs additional information about computation isolation for debugging. */
+	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
+
+	/**
+	 * When enabled, the {@link TraversalPolicy} of results from {@link #postProcessOutput(MemoryData, int)}
+	 * will avoid prepending dimensions to the {@link TraversalPolicy} from {@link #getShape()}.
+	 */
+	// TODO  This doesn't seem to be implemented properly
+	boolean enableShapeTrim = false;
+
+	@Override
+	default <V extends PackedCollection> CollectionProducer applyDeltaStrategy(CollectionProducer producer,
+																			   Producer<?> target) {
+		Collection<Producer<?>> terms;
+
+		if (producer instanceof Parent) {
+			terms = ((Parent<?>) producer).getChildren().stream()
+					.map(t -> (Producer<?>) t)
+					.collect(Collectors.toList());
+		} else {
+			return CollectionProducerParallelProcess.super.applyDeltaStrategy(producer, target);
+		}
+
+		return deltaStrategyProcessor(producer.getDeltaStrategy(),
+				producerFactory(this), shape(producer), target).apply(terms);
+	}
+
+	@Override
+	default CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+		throw new UnsupportedOperationException(getClass().getName());
+	}
+
+	@Override
+	default Stream<? extends Process> processChildren(Collection<? extends Process> children) {
+		return children.stream()
+				.filter(f -> !(f instanceof MemoryDataDestinationProducer));
+	}
+
+	/**
+	 * Creates the destination {@link PackedCollection} for storing the result of this computation.
+	 * Subclasses should override this to provide an appropriately shaped destination.
+	 *
+	 * @param len the number of elements in the destination
+	 * @return a new PackedCollection to hold the computation output
+	 * @throws UnsupportedOperationException if not overridden by the implementation
+	 */
+	default PackedCollection createDestination(int len) {
+		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * Wraps the raw output memory data into a properly shaped {@link PackedCollection}.
+	 * Prepends dimensions to match the expected output shape if necessary, and
+	 * validates that the total size is compatible.
+	 *
+	 * @param output the raw output memory data from computation
+	 * @param offset the element offset into the output data
+	 * @return a PackedCollection view of the output with the correct shape
+	 * @throws IllegalArgumentException if the output size is not compatible with the expected shape
+	 */
+	default PackedCollection postProcessOutput(MemoryData output, int offset) {
+		TraversalPolicy shape = getShape();
+
+		s: if (output instanceof Shape) {
+			TraversalPolicy outputShape = ((Shape) output).getShape();
+
+			while (shape.getDimensions() < outputShape.getDimensions()) {
+				int dim = outputShape.getDimensions() - shape.getDimensions();
+
+				if (enableShapeTrim && shape.getDimensions() == outputShape.getDimensions() - 1 && dim == 1) {
+					break s;
+				} else {
+					shape = shape.prependDimension(outputShape.length(dim - 1));
+				}
+			}
+
+			if (shape.getTotalSize() != outputShape.getTotalSize()) {
+				throw new IllegalArgumentException("Output is not compatible with expected shape");
+			}
+
+			if (offset == 0 && shape.equals(((Shape) output).getShape())) {
+				return (PackedCollection) output;
+			}
+		}
+
+		return new PackedCollection(shape, shape.getTraversalAxis(), output, offset);
+	}
+
+	/**
+	 * Creates an {@link Evaluable} instance for this collection producer computation.
+	 * This method instantiates a {@link DefaultCollectionEvaluable} configured with
+	 * the computation's context, shape, and processing functions, providing a ready-to-use
+	 * evaluable for executing the computation with hardware acceleration.
+	 * 
+	 * <p>The method performs the following steps:</p>
+	 * <ol>
+	 *   <li>Obtains a compute context from the local hardware for this computation</li>
+	 *   <li>Creates a new {@link DefaultCollectionEvaluable} with:
+	 *       <ul>
+	 *         <li>The obtained compute context</li>
+	 *         <li>This computation's shape via {@link #getShape()}</li>
+	 *         <li>This computation instance itself</li>
+	 *         <li>Method references to {@link #createDestination(int)} and {@link #postProcessOutput(MemoryData, int)}</li>
+	 *       </ul>
+	 *   </li>
+	 *   <li>Compiles the evaluable for execution</li>
+	 *   <li>Returns the compiled evaluable</li>
+	 * </ol>
+	 * 
+	 * <p>This is the standard factory method for creating evaluable instances in the
+	 * AlmostRealism collection computation framework. The resulting evaluable can be
+	 * used multiple times to evaluate the computation with different inputs.</p>
+	 * 
+	 * @return a compiled {@link Evaluable} instance ready for computation execution
+	 * 
+	 * @throws RuntimeException if hardware context cannot be obtained or compilation fails
+	 * 
+	 * @see DefaultCollectionEvaluable
+	 * @see Hardware#getLocalHardware()
+	 * @see AcceleratedComputationEvaluable#compile()
+	 */
+	@Override
+	default Evaluable<PackedCollection> get() {
+		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
+		AcceleratedComputationEvaluable<PackedCollection> ev = new DefaultCollectionEvaluable<>(
+				ctx, getShape(), this,
+				this::createDestination, this::postProcessOutput);
+		ev.load();
+		return ev;
+	}
+
+	@Override
+	default CollectionProducer traverse(int axis) {
+		return new ReshapeProducer(axis, this);
+	}
+
+	@Override
+	default CollectionProducer reshape(TraversalPolicy shape) {
+		return new ReshapeProducer(shape, this);
+	}
+
+	/**
+	 * Evaluates this computation and converts the result to a typed data adapter
+	 * using the provided factory function.
+	 *
+	 * @param <T>     the type of the resulting data adapter
+	 * @param factory a function that creates a data adapter from the output shape
+	 * @return the evaluated and converted result
+	 */
+	default <T extends MemoryDataAdapter> T collect(Function<TraversalPolicy, T> factory) {
+		PackedCollection c = get().evaluate();
+		T data = factory.apply(c.getShape());
+		data.setDelegate(c, 0);
+		return data;
+	}
+
+	/**
+	 * Creates a factory function that generates a new {@link CollectionProducer} from a list of
+	 * input producers, using the structure of an existing computation as the template.
+	 * If only one non-null input is present, that input is returned directly.
+	 *
+	 * @param <T>      the collection type of the computation
+	 * @param original the computation to use as a template for generating the new producer
+	 * @return a function that takes a list of producers and returns a new CollectionProducer
+	 */
+	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer>
+				producerFactory(CollectionProducerComputation original) {
+		return args -> {
+			List<Producer<?>> terms = new ArrayList<>();
+			args.stream().skip(1).forEach(terms::add);
+
+			if (terms.isEmpty()) {
+				throw new IllegalArgumentException();
+			} else if (terms.size() == 1) {
+				return (CollectionProducer) terms.get(0);
+			} else {
+				return original.generate((List) args.stream()
+						.map(t -> (Process) t).collect(Collectors.toList()));
+			}
+		};
+	}
+
+	/**
+	 * Returns true if the given producer may be isolated into an independent process.
+	 * Isolation is permitted only when the process supports it and the total collection
+	 * size does not exceed the maximum memory reservation limit.
+	 *
+	 * @param op the collection producer to test
+	 * @return true if isolation is permitted
+	 */
+	static <T extends PackedCollection> boolean isIsolationPermitted(CollectionProducer op) {
+		return Process.isolationPermitted(op) &&
+				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
+	}
+
+	/**
+	 * Determines the appropriate {@link TraversalPolicy} for a given kernel length.
+	 * This will be the shape of the computation result.
+	 * This method handles the complex logic of adjusting shapes based on whether
+	 * the computation has a fixed count and the relationship between the kernel
+	 * length and the expected output count.
+	 *
+	 * <p>The shape calculation follows these rules:</p>
+	 * <ul>
+	 *   <li>For fixed-count computations, returns the original shape</li>
+	 *   <li>When kernel length equals target count, returns the original shape</li>
+	 *   <li>Otherwise, prepends a dimension to accommodate the length difference</li>
+	 * </ul>
+	 *
+	 * @param len The length of the kernel execution context
+	 * @return The appropriate traversal policy for the given length
+	 * @see #isFixedCount()
+	 * @see TraversalPolicy#prependDimension(int)
+	 */
+	static TraversalPolicy shapeForLength(TraversalPolicy computationShape,
+										  int computationCount,
+										  boolean fixedCount, int len) {
+		TraversalPolicy shape;
+
+		if (fixedCount) {
+			shape = computationShape;
+		} else {
+			int count = len / computationCount;
+
+			// When kernel length is less than, or identical to the output count, an
+			// assumption is made that the intended shape is the original shape.
+			// This is a bit of a hack, but it's by far the simplest solution
+			// available
+			if (count == 0 || len == computationCount) {
+				// It is not necessary to prepend a (usually) unnecessary dimension
+				shape = computationShape;
+			} else {
+				shape = computationShape.prependDimension(count);
+			}
+		}
+
+		return shape;
+	}
+
+	/**
+	 * A delegating wrapper that marks a {@link CollectionProducer} as isolated,
+	 * causing it to be evaluated as an independent process rather than inlined
+	 * into a parent computation graph.
+	 */
+	class IsolatedProcess extends DelegatedCollectionProducer {
+
+		/**
+		 * Creates an isolated process wrapping the specified producer.
+		 *
+		 * @param op the collection producer to isolate
+		 * @throws IllegalArgumentException if the producer's total size exceeds the maximum reservation
+		 */
+		public IsolatedProcess(CollectionProducer op) {
+			super(op);
+
+			if (isolationLogging)
+				Computation.console.features(this)
+						.log("Isolating " + OperationInfo.nameWithId(op) + " " + op.getShape().toStringDetail());
+
+			if (op.getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
+				throw new IllegalArgumentException("Cannot isolate a process with a total size greater than " +
+						MemoryProvider.MAX_RESERVATION);
+			}
+		}
+
+		@Override
+		public boolean isConstant() { return op.isConstant(); }
+	}
+}

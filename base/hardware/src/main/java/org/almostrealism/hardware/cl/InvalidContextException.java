@@ -1,0 +1,41 @@
+/*
+ * Copyright 2021 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.almostrealism.hardware.cl;
+
+import org.almostrealism.hardware.HardwareException;
+import org.jocl.CLException;
+
+/**
+ * Exception thrown when OpenCL operations are invoked with an invalid or released context.
+ *
+ * <p>Indicates CL_INVALID_CONTEXT error from OpenCL runtime, typically caused by
+ * using destroyed contexts or mixing contexts incorrectly.</p>
+ *
+ * @see CLExceptionProcessor
+ * @see HardwareException
+ */
+public class InvalidContextException extends HardwareException {
+	/**
+	 * Creates an invalid context exception with the given message and OpenCL cause.
+	 *
+	 * @param message Description of the invalid context condition
+	 * @param cause   The underlying {@link CLException}
+	 */
+	public InvalidContextException(String message, CLException cause) {
+		super(message, cause);
+	}
+}

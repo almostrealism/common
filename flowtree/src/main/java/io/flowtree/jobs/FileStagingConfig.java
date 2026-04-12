@@ -49,12 +49,26 @@ public final class FileStagingConfig {
     /** Default maximum file size (1 MB). */
     public static final long DEFAULT_MAX_FILE_SIZE = 1024 * 1024;
 
+    /** Maximum file size threshold in bytes; files larger than this are skipped. */
     private final long maxFileSizeBytes;
+
+    /** Glob patterns that unconditionally exclude a file from staging. */
     private final Set<String> excludedPatterns;
+
+    /** Glob patterns identifying protected test and CI files. */
     private final Set<String> protectedPathPatterns;
+
+    /** Whether test file protection is active. */
     private final boolean protectTestFiles;
+
+    /** Base branch used for test file existence checks. */
     private final String baseBranch;
 
+    /**
+     * Private constructor — use {@link #builder()} to create instances.
+     *
+     * @param builder the populated builder
+     */
     private FileStagingConfig(Builder builder) {
         this.maxFileSizeBytes = builder.maxFileSizeBytes;
         this.excludedPatterns = Collections.unmodifiableSet(new HashSet<>(builder.excludedPatterns));
@@ -120,6 +134,12 @@ public final class FileStagingConfig {
         return baseBranch;
     }
 
+    /**
+     * Returns a concise string representation of this configuration showing
+     * pattern counts rather than the full pattern sets.
+     *
+     * @return a summary string
+     */
     @Override
     public String toString() {
         return "FileStagingConfig{" +
@@ -138,12 +158,25 @@ public final class FileStagingConfig {
      * before producing an immutable configuration via {@link #build()}.</p>
      */
     public static final class Builder {
+
+        /** @see FileStagingConfig#maxFileSizeBytes */
         private long maxFileSizeBytes = DEFAULT_MAX_FILE_SIZE;
+
+        /** @see FileStagingConfig#excludedPatterns */
         private Set<String> excludedPatterns = new HashSet<>();
+
+        /** @see FileStagingConfig#protectedPathPatterns */
         private Set<String> protectedPathPatterns = new HashSet<>();
+
+        /** @see FileStagingConfig#protectTestFiles */
         private boolean protectTestFiles = false;
+
+        /** @see FileStagingConfig#baseBranch */
         private String baseBranch = "master";
 
+        /**
+         * Private constructor — use {@link FileStagingConfig#builder()} to obtain instances.
+         */
         private Builder() { }
 
         /**

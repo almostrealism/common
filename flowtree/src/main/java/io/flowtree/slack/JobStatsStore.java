@@ -16,6 +16,7 @@
 
 package io.flowtree.slack;
 
+import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.sql.Connection;
@@ -28,7 +29,10 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -44,6 +48,7 @@ import java.util.Map;
  */
 public class JobStatsStore implements ConsoleFeatures {
 
+    /** DDL statement that creates the {@code job_timing} table if it does not yet exist. */
     private static final String CREATE_TABLE = ""
         + "CREATE TABLE IF NOT EXISTS job_timing ("
         + "    job_id         VARCHAR(255) PRIMARY KEY,"
@@ -61,9 +66,14 @@ public class JobStatsStore implements ConsoleFeatures {
         + "    description    VARCHAR(1000),"
         + "    subtype        VARCHAR(64),"
         + "    session_error  BOOLEAN,"
-        + "    permission_denials INTEGER"
+        + "    permission_denials INTEGER,"
+        + "    target_branch  VARCHAR(255),"
+        + "    commit_hash    VARCHAR(64),"
+        + "    pull_request_url VARCHAR(1000),"
+        + "    error_message  VARCHAR(2000)"
         + ")";
 
+    /** DDL statement that creates an index on {@code (workstream_id, started_at)} for efficient queries. */
     private static final String CREATE_INDEX =
         "CREATE INDEX IF NOT EXISTS idx_timing_ws_started ON job_timing (workstream_id, started_at)";
 
@@ -76,13 +86,21 @@ public class JobStatsStore implements ConsoleFeatures {
     private static final String[] SCHEMA_MIGRATIONS = {
         "ALTER TABLE job_timing ADD COLUMN subtype VARCHAR(64)",
         "ALTER TABLE job_timing ADD COLUMN session_error BOOLEAN",
-        "ALTER TABLE job_timing ADD COLUMN permission_denials INTEGER"
+        "ALTER TABLE job_timing ADD COLUMN permission_denials INTEGER",
+        "ALTER TABLE job_timing ADD COLUMN target_branch VARCHAR(255)",
+        "ALTER TABLE job_timing ADD COLUMN commit_hash VARCHAR(64)",
+        "ALTER TABLE job_timing ADD COLUMN pull_request_url VARCHAR(1000)",
+        "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)",
+        "ALTER TABLE job_timing ADD COLUMN slack_message_ts VARCHAR(64)"
     };
 
+    /** DML statement that removes stale {@code STARTED} rows older than a given cutoff timestamp. */
     private static final String CLEAN_ORPHANS =
         "DELETE FROM job_timing WHERE status = 'STARTED' AND started_at < ?";
 
+    /** Filesystem path to the HSQLDB database file (without extension). */
     private final String dbPath;
+    /** Active JDBC connection to the backing HSQLDB database. */
     private Connection connection;
 
     /**
@@ -201,6 +219,10 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param subtype           session stop reason (e.g. "success", "error_max_turns")
      * @param sessionError      whether the session ended with an error
      * @param permissionDenials number of permission denials during the session
+     * @param targetBranch      the git branch targeted by the job, or null
+     * @param commitHash        the commit hash produced by the job, or null
+     * @param pullRequestUrl    the PR URL if one was created, or null
+     * @param errorMessage      the error message if the job failed, or null
      */
     public synchronized void recordJobCompleted(String jobId, String workstreamId,
                                                  String status,
@@ -209,7 +231,9 @@ public class JobStatsStore implements ConsoleFeatures {
                                                  int numTurns, String sessionId,
                                                  int exitCode, String subtype,
                                                  boolean sessionError,
-                                                 int permissionDenials) {
+                                                 int permissionDenials,
+                                                 String targetBranch, String commitHash,
+                                                 String pullRequestUrl, String errorMessage) {
         if (connection == null) return;
 
         // Compute wall_clock_ms in Java to avoid HSQLDB DATEDIFF compatibility issues
@@ -234,7 +258,8 @@ public class JobStatsStore implements ConsoleFeatures {
             + "wall_clock_ms = ?, "
             + "duration_ms = ?, duration_api_ms = ?, cost_usd = ?, "
             + "num_turns = ?, session_id = ?, exit_code = ?, "
-            + "subtype = ?, session_error = ?, permission_denials = ? "
+            + "subtype = ?, session_error = ?, permission_denials = ?, "
+            + "target_branch = ?, commit_hash = ?, pull_request_url = ?, error_message = ? "
             + "WHERE job_id = ?";
 
         try (PreparedStatement ps = connection.prepareStatement(updateSql)) {
@@ -250,7 +275,11 @@ public class JobStatsStore implements ConsoleFeatures {
             ps.setString(10, subtype);
             ps.setBoolean(11, sessionError);
             ps.setInt(12, permissionDenials);
-            ps.setString(13, jobId);
+            ps.setString(13, targetBranch);
+            ps.setString(14, commitHash);
+            ps.setString(15, pullRequestUrl);
+            ps.setString(16, truncate(errorMessage, 2000));
+            ps.setString(17, jobId);
 
             int updated = ps.executeUpdate();
             if (updated > 0) return;
@@ -264,8 +293,9 @@ public class JobStatsStore implements ConsoleFeatures {
         String insertSql = "INSERT INTO job_timing (job_id, workstream_id, status, "
             + "started_at, completed_at, wall_clock_ms, duration_ms, duration_api_ms, "
             + "cost_usd, num_turns, session_id, exit_code, "
-            + "subtype, session_error, permission_denials) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "subtype, session_error, permission_denials, "
+            + "target_branch, commit_hash, pull_request_url, error_message) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
             ps.setString(1, jobId);
@@ -283,10 +313,122 @@ public class JobStatsStore implements ConsoleFeatures {
             ps.setString(13, subtype);
             ps.setBoolean(14, sessionError);
             ps.setInt(15, permissionDenials);
+            ps.setString(16, targetBranch);
+            ps.setString(17, commitHash);
+            ps.setString(18, pullRequestUrl);
+            ps.setString(19, truncate(errorMessage, 2000));
             ps.executeUpdate();
         } catch (SQLException e) {
             warn("Failed to insert job completed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Convenience overload that records job completion from a {@link JobCompletionEvent}.
+     *
+     * @param workstreamId the workstream this job belongs to
+     * @param event        the completion event
+     */
+    public synchronized void recordJobCompleted(String workstreamId, JobCompletionEvent event) {
+        recordJobCompleted(
+            event.getJobId(), workstreamId, event.getStatus().name(),
+            event.getTimestamp(), event.getDurationMs(), event.getDurationApiMs(),
+            event.getCostUsd(), event.getNumTurns(), event.getSessionId(),
+            event.getExitCode(), event.getSubtype(), event.isSessionError(),
+            event.getPermissionDenials(),
+            event.getTargetBranch(), event.getCommitHash(),
+            event.getPullRequestUrl(), event.getErrorMessage());
+    }
+
+    /**
+     * Returns the most recent job events for a workstream, newest first.
+     *
+     * @param workstreamId the workstream identifier
+     * @param limit        maximum number of events to return
+     * @return list of events, or empty list if none found or store unavailable
+     */
+    public synchronized List<JobCompletionEvent> getRecentJobs(String workstreamId, int limit) {
+        if (connection == null) return Collections.emptyList();
+
+        String sql = "SELECT * FROM job_timing WHERE workstream_id = ? "
+            + "ORDER BY COALESCE(completed_at, started_at) DESC LIMIT ?";
+
+        List<JobCompletionEvent> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, workstreamId);
+            ps.setInt(2, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(rowToEvent(rs));
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query recent jobs: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Returns the most recent event for a specific job, or {@code null} if not found.
+     *
+     * @param jobId the job identifier
+     * @return the event, or null if the job is unknown or the store is unavailable
+     */
+    public synchronized JobCompletionEvent getJob(String jobId) {
+        if (connection == null) return null;
+
+        String sql = "SELECT * FROM job_timing WHERE job_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rowToEvent(rs);
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query job: " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Constructs a {@link JobCompletionEvent} from the current row of a ResultSet.
+     * Returns a best-effort reconstruction; Claude-specific fields default to zero/null.
+     */
+    private JobCompletionEvent rowToEvent(ResultSet rs) throws SQLException {
+        String jobId = rs.getString("job_id");
+        String statusStr = rs.getString("status");
+        String description = rs.getString("description");
+        String targetBranch = rs.getString("target_branch");
+        String commitHash = rs.getString("commit_hash");
+        String pullRequestUrl = rs.getString("pull_request_url");
+        String errorMessage = rs.getString("error_message");
+
+        JobCompletionEvent.Status status;
+        try {
+            status = JobCompletionEvent.Status.valueOf(statusStr);
+        } catch (IllegalArgumentException e) {
+            status = JobCompletionEvent.Status.STARTED;
+        }
+
+        JobCompletionEvent event;
+        if (status == JobCompletionEvent.Status.FAILED) {
+            event = JobCompletionEvent.failed(jobId, description, errorMessage, null);
+        } else if (status == JobCompletionEvent.Status.SUCCESS) {
+            event = JobCompletionEvent.success(jobId, description);
+        } else {
+            event = new JobCompletionEvent(jobId, status, description);
+        }
+
+        if (targetBranch != null || commitHash != null) {
+            event.withGitInfo(targetBranch, commitHash,
+                Collections.emptyList(), Collections.emptyList(), commitHash != null);
+        }
+        if (pullRequestUrl != null) {
+            event.withPullRequestUrl(pullRequestUrl);
+        }
+
+        return event;
     }
 
     /**
@@ -409,9 +551,134 @@ public class JobStatsStore implements ConsoleFeatures {
         return result;
     }
 
+    /**
+     * Stores the Slack message timestamp for a job.
+     *
+     * <p>Called after the submission message is successfully posted to Slack so
+     * that {@link #getActiveWorkstreams} can construct message links for recent jobs.</p>
+     *
+     * @param jobId         the job identifier
+     * @param slackMessageTs the Slack message timestamp (e.g., {@code "1234567890.123456"})
+     */
+    public synchronized void updateJobSlackTs(String jobId, String slackMessageTs) {
+        if (connection == null || jobId == null || slackMessageTs == null) return;
+
+        String sql = "UPDATE job_timing SET slack_message_ts = ? WHERE job_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, slackMessageTs);
+            ps.setString(2, jobId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to update slack_message_ts for job " + jobId + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Returns per-workstream job activity for jobs completed on or after {@code since}.
+     *
+     * <p>Only workstreams with at least one completed job in the window are returned.
+     * A job is considered "in the window" when its {@code completed_at} timestamp falls
+     * on or after {@code since}. For rows that lack a {@code completed_at} value (e.g.,
+     * jobs inserted during a controller restart), {@code started_at} is used as the
+     * fallback via {@code COALESCE(completed_at, started_at)}.</p>
+     *
+     * <p>Each entry includes job counts by status and a short list of recent jobs with
+     * their Slack message timestamps (for constructing message links).</p>
+     *
+     * @param since the start of the activity window (inclusive), matched against completion time
+     * @return map of workstream ID to activity summary, ordered by job count descending
+     */
+    public synchronized Map<String, WorkstreamActivity> getActiveWorkstreams(Instant since) {
+        Map<String, WorkstreamActivity> result = new LinkedHashMap<>();
+        if (connection == null) return result;
+
+        String aggSql = "SELECT workstream_id, "
+            + "COUNT(*) AS job_count, "
+            + "COALESCE(SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END), 0) AS success_count, "
+            + "COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count, "
+            + "COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_count "
+            + "FROM job_timing "
+            + "WHERE COALESCE(completed_at, started_at) >= ? AND status <> 'STARTED' "
+            + "GROUP BY workstream_id "
+            + "ORDER BY job_count DESC";
+
+        try (PreparedStatement ps = connection.prepareStatement(aggSql)) {
+            ps.setTimestamp(1, Timestamp.from(since));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    WorkstreamActivity activity = new WorkstreamActivity();
+                    activity.workstreamId = rs.getString("workstream_id");
+                    activity.jobCount = rs.getInt("job_count");
+                    activity.successCount = rs.getInt("success_count");
+                    activity.failedCount = rs.getInt("failed_count");
+                    activity.cancelledCount = rs.getInt("cancelled_count");
+                    result.put(activity.workstreamId, activity);
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query active workstreams: " + e.getMessage());
+            return result;
+        }
+
+        // Fetch up to 5 recent jobs with Slack ts for each active workstream
+        String jobsSql = "SELECT job_id, slack_message_ts FROM job_timing "
+            + "WHERE workstream_id = ? AND COALESCE(completed_at, started_at) >= ? AND slack_message_ts IS NOT NULL "
+            + "ORDER BY COALESCE(completed_at, started_at) DESC LIMIT 5";
+
+        for (WorkstreamActivity activity : result.values()) {
+            try (PreparedStatement ps = connection.prepareStatement(jobsSql)) {
+                ps.setString(1, activity.workstreamId);
+                ps.setTimestamp(2, Timestamp.from(since));
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        activity.recentJobs.add(new String[]{
+                            rs.getString("job_id"),
+                            rs.getString("slack_message_ts")
+                        });
+                    }
+                }
+            } catch (SQLException e) {
+                warn("Failed to query recent jobs for workstream "
+                    + activity.workstreamId + ": " + e.getMessage());
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Truncates a string to at most {@code maxLength} characters.
+     *
+     * @param s         the string to truncate, or {@code null}
+     * @param maxLength maximum number of characters to retain
+     * @return the original string if it is shorter than {@code maxLength},
+     *         its first {@code maxLength} characters otherwise, or
+     *         {@code null} if {@code s} is {@code null}
+     */
     private static String truncate(String s, int maxLength) {
         if (s == null) return null;
         return s.length() <= maxLength ? s : s.substring(0, maxLength);
+    }
+
+    /**
+     * Per-workstream activity summary for a rolling time window.
+     */
+    public static class WorkstreamActivity {
+        /** The workstream identifier. */
+        public String workstreamId;
+        /** Total number of completed jobs in the window. */
+        public int jobCount;
+        /** Number of successful jobs in the window. */
+        public int successCount;
+        /** Number of failed jobs in the window. */
+        public int failedCount;
+        /** Number of cancelled jobs in the window. */
+        public int cancelledCount;
+        /**
+         * Up to 5 recent jobs, each as {@code [jobId, slackMessageTs]}.
+         * Only jobs with a stored Slack message timestamp are included.
+         */
+        public List<String[]> recentJobs = new ArrayList<>();
     }
 
     /**

@@ -35,16 +35,30 @@ Servers discover each other through explicit connection (host + port) or through
 - **[Coding Agent Integration](docs/coding-agent.md)** -- Execute Claude Code prompts as distributed jobs, with automatic git management for committing and pushing changes.
 - **[Slack Integration](docs/slack-integration.md)** -- Operate coding agents through Slack, with real-time status updates and bidirectional messaging via MCP tools. Includes dynamic workstream registration with auto-created private Slack channels.
 - **[CI Integration](docs/ci-integration.md)** -- Auto-resolve CI failures and implement plan goals via the verify-completion workflow, with workstream registration, prompt generation, and quality gates.
+- **[Node Relay and Job Routing](docs/node-relay.md)** -- How jobs move through the network: server vs. peer connections, the relay loop, label-based routing, and the controller's relay Node. **Read this before modifying Node, NodeGroup, or Connection.**
+- **[Agent Pool](docs/agent-pool.md)** -- Self-contained Docker setup for running a scalable pool of agent nodes. Includes automated build, OAuth token authentication, and one-command startup.
+- **[MCP Tools for Agent Jobs](../tools/mcp/README.md)** -- Detailed documentation on which MCP tools are available to coding agents, how they are delivered (centralized, pushed, or local), and how to configure `workstreams.yaml` to ensure cross-repo jobs have access to messaging, consultation, GitHub, and memory tools.
 
 ## Running
 
-### Start an Agent (passive node)
+### Start an Agent Pool (Docker)
+
+The recommended way to run agents. See [Agent Pool](docs/agent-pool.md) for full details.
 
 ```bash
-java -cp flowtree.jar io.flowtree.Agent
+cd flowtree/agent
+./start.sh
 ```
 
-This starts a server that does not listen for incoming connections (port -1) but can connect outward to other servers.
+This builds the flowtree JAR, prompts for your controller host and Claude Code OAuth token, and launches a pool of agent containers.
+
+### Start a Single Agent (bare metal)
+
+```bash
+./bin/start-agent.sh
+```
+
+Set `FLOWTREE_ROOT_HOST` and `FLOWTREE_ROOT_PORT` to point at the controller. Requires Java 17, Maven, Node.js, and Claude Code CLI installed locally.
 
 ### Start a Server
 
@@ -61,6 +75,7 @@ The properties file configures networking, node counts, and monitoring. Pass `-p
 | `server.port` | `7766` | Port for peer connections (-1 to disable) |
 | `nodes.peers.max` | -- | Maximum peer connections per node |
 | `nodes.jobs.max` | -- | Maximum job queue depth per node |
+| `nodes.workingDirectory` | -- | Server-side workspace root for repo checkouts |
 | `group.msc` | -- | Max sleep coefficient (controls idle backoff) |
 
 ## Module Structure
@@ -79,4 +94,7 @@ flowtree/
     job/                    # Job, JobFactory interfaces
     fs/                     # Distributed file system
     scheduler/              # Scheduled job support
+  agent/                    # Docker agent pool (Dockerfile, compose, start script)
+  bin/                      # Startup scripts (start-agent.sh, start-controller.sh)
+  conf/                     # Properties files (agent.properties)
 ```

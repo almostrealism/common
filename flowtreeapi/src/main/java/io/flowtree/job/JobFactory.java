@@ -22,20 +22,63 @@ import org.almostrealism.io.OutputHandler;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * A {@link JobFactory} implementation produces a queue of jobs.
- * A {@link JobFactory} implementation must also be able to
- * construct a Job object given the String that was returned
- * by calling {@link Job#encode()}.
- * 
+ * Produces a queue of {@link Job}s for a named task and handles their
+ * serialization for distribution across the FlowTree node cluster.
+ *
+ * <p>A {@link JobFactory} represents a task — a logical unit of work that may
+ * decompose into many individual {@link Job} instances. Nodes in the cluster pull
+ * jobs from the factory's queue via {@link #nextJob()} and execute them. When the
+ * factory is transmitted to a remote node, the receiving node calls
+ * {@link #createJob(String)} to reconstruct individual {@link Job} objects from
+ * their encoded string representations.</p>
+ *
+ * <h2>Implementation Contract</h2>
+ * <ul>
+ *   <li>{@link #encode()} must produce a string of the form
+ *       {@code classname::key0:=value0::key1:=value1...} sufficient to reconstruct
+ *       the factory's state via repeated {@link #set(String, String)} calls.</li>
+ *   <li>{@link #nextJob()} returns {@code null} when no more jobs are available.</li>
+ *   <li>{@link #isComplete()} returns {@code true} once {@link #getCompleteness()}
+ *       reaches {@code 1.0}.</li>
+ *   <li>Implementations must complete the future returned by
+ *       {@link #getCompletableFuture()} when all jobs have finished.</li>
+ * </ul>
+ *
  * @author  Michael Murray
+ * @see Job
+ * @see AbstractJobFactory
  */
 public interface JobFactory {
+    /**
+     * The separator token used between encoded entries in the serialized form of a
+     * {@link JobFactory} or {@link org.almostrealism.io.JobOutput}.
+     *
+     * <p>Value is {@code "::"}, inherited from {@link JobOutput#ENTRY_SEPARATOR}.</p>
+     */
     String ENTRY_SEPARATOR = JobOutput.ENTRY_SEPARATOR;
+
+    /**
+     * The separator token used between a key and its value in the encoded form
+     * of a {@link JobFactory}.
+     *
+     * <p>Value is {@code ":="}.</p>
+     */
     String KEY_VALUE_SEPARATOR = ":=";
 
+    /**
+     * Returns the network-wide unique identifier for the task represented by
+     * this factory.
+     *
+     * <p>This ID ties individual {@link Job} instances back to their originating
+     * factory so that output can be routed correctly throughout the cluster.</p>
+     *
+     * @return the task identifier; must be unique across the network
+     */
 	String getTaskId();
 	
     /**
+     * Returns the next job in the queue.
+     *
      * @return  Next job in the queue.
      */
     Job nextJob();
@@ -73,38 +116,78 @@ public interface JobFactory {
     String encode();
     
     /**
-     * @return  A name for the task represented by this JobFactory.
+     * Returns a human-readable name for the task represented by this factory.
+     *
+     * <p>The name is used for logging and monitoring purposes and does not need
+     * to be unique across the network.</p>
+     *
+     * @return a descriptive name for this task; may be {@code null} if unset
      */
     String getName();
-    
+
     /**
-     * @return  A value between 0.0 and 1.0 where 0.0 corresponds to 0% complete,
-     *          and 1.0 to 100% complete.
+     * Returns the fraction of this task that has been completed so far.
+     *
+     * <p>The value progresses from {@code 0.0} (not started) to {@code 1.0}
+     * (fully complete). Once this method returns {@code 1.0}, {@link #isComplete()}
+     * must also return {@code true} and {@link #nextJob()} must return {@code null}.</p>
+     *
+     * @return a value in the range {@code [0.0, 1.0]} representing the fraction complete
      */
     double getCompleteness();
-    
+
     /**
-     * @return  True if this JobFactory will not be producing any more jobs, false otherwise.
+     * Returns whether this factory has finished producing jobs.
+     *
+     * <p>Implementations should return {@code true} when {@link #getCompleteness()}
+     * reaches {@code 1.0}. Once complete, {@link #nextJob()} must not return any
+     * further jobs and the future from {@link #getCompletableFuture()} should be done.</p>
+     *
+     * @return {@code true} if no more jobs will be produced; {@code false} otherwise
      */
     boolean isComplete();
-    
+
     /**
-     * Sets the priority of this task.
+     * Sets the scheduling priority of this task.
+     *
+     * <p>Higher-priority tasks should be scheduled before lower-priority ones by
+     * node queue implementations. By convention, {@code 1.0} is the default priority.</p>
+     *
+     * @param p the new priority value; higher values indicate higher priority
      */
     void setPriority(double p);
-    
+
     /**
-     * @return  The priority of this task.
+     * Returns the scheduling priority of this task.
+     *
+     * <p>By convention, the default priority is {@code 1.0}. Higher values indicate
+     * higher priority and may cause this task to be scheduled before others.</p>
+     *
+     * @return the priority of this task
      */
     double getPriority();
 
     /**
-     * @return  A {@link CompletableFuture} that is marked done when this task is complete.
+     * Returns a {@link CompletableFuture} that is completed when this entire task
+     * finishes — that is, when all jobs produced by this factory have been executed.
+     *
+     * <p>Callers may use this future to await task-wide completion or chain
+     * follow-up actions. Implementations must ensure this future is eventually
+     * completed, even in error cases.</p>
+     *
+     * @return the future representing completion of the full task
      */
     CompletableFuture<Void> getCompletableFuture();
 
     /**
-     * @return  An {@link OutputHandler} for this task, if there is one.
+     * Returns the {@link OutputHandler} that should receive results produced by
+     * jobs from this factory, or {@code null} if no handler is configured.
+     *
+     * <p>The default implementation returns {@code null}. Implementations that
+     * need to persist or forward job output should override this method to return
+     * an appropriate handler.</p>
+     *
+     * @return the output handler for this task, or {@code null}
      */
     default OutputHandler getOutputHandler() {
         return null;

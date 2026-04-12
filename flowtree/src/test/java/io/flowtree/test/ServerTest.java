@@ -16,19 +16,22 @@
 
 package io.flowtree.test;
 
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 
 import io.flowtree.Server;
 import io.flowtree.jobs.ExternalProcessJob;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.util.Properties;
 
 public class ServerTest extends TestSuiteBase {
+	@Ignore("Interactive test — starts a server and sleeps for 2 hours")
 	@Test(timeout = 10000)
+	@TestProperties(longRunning = true)
 	public void server() throws IOException, InterruptedException {
-		if (testProfileIs("pipeline")) return;
 
 		Properties p = new Properties();
 		p.setProperty("server.port", "7700");

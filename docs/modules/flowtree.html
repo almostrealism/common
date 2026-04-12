@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowTree Module - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #3949ab; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #3949ab; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .tip { background-color: #e8eaf6; border-left: 4px solid #3949ab; padding: 12px; margin: 15px 0; }
+        .class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }
+        .class-item { background: #fff; border: 1px solid #ddd; padding: 12px; border-radius: 4px; }
+        .class-item h4 { margin: 0 0 8px 0; color: #3949ab; font-size: 1.1em; }
+        .class-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .diagram { background: #f5f5f5; border-left: 4px solid #3949ab; padding: 15px; margin: 15px 0; border-radius: 4px; font-family: monospace; white-space: pre; line-height: 1.4; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>FlowTree Module</h1>
+            <p class="tagline">Distributed Job Execution and Peer-to-Peer Relay</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#networking">Networking</a>
+                <a href="#relay">Job Relay</a>
+                <a href="#labels">Labels</a>
+                <a href="#classes">Key Classes</a>
+                <a href="#coding-agent">Coding Agent</a>
+            </nav>
+        </header>
+
+        <section id="overview">
+            <h2>Overview</h2>
+            <p>FlowTree is a distributed processing framework built on a decentralized
+            peer-to-peer network. Each node in the network can accept, execute, and
+            relay jobs to other nodes, enabling work to be distributed across an
+            arbitrary number of machines without a central coordinator.</p>
+
+            <p>A FlowTree network consists of <strong>Servers</strong>, each hosting a
+            <strong>NodeGroup</strong> containing one or more <strong>Nodes</strong>.
+            Jobs enter the system through a NodeGroup, are queued on child Nodes, and
+            are either executed locally or relayed to peer Nodes on other Servers.</p>
+        </section>
+
+        <section id="networking">
+            <h2>Two Networking Layers</h2>
+
+            <p>FlowTree has two distinct connection types. Confusing them is a common
+            source of bugs.</p>
+
+            <div class="key-concepts">
+                <div class="concept-card">
+                    <h4>Server Connections (NodeProxy)</h4>
+                    <p>Socket-level links between two Servers. Stored in
+                    <code>NodeGroup.servers</code>. Created when an agent Server
+                    connects to the controller. Carry <code>Message</code> objects
+                    (tasks, connection requests, job data).</p>
+                </div>
+                <div class="concept-card">
+                    <h4>Peer Connections (Connection)</h4>
+                    <p>Logical links between individual Nodes on different Servers.
+                    Stored in each <code>Node.peers</code>. Wrap a NodeProxy and
+                    target a specific remote Node by ID. <strong>This is how jobs
+                    actually move between Nodes.</strong></p>
+                </div>
+            </div>
+
+            <div class="diagram">Controller Server              Agent Server
+  NodeGroup                      NodeGroup
+    servers: [NodeProxy] &lt;-TCP-&gt; servers: [NodeProxy]
+
+    Node 0 (relay)               Node 0
+      peers: [Connection] &lt;---&gt; peers: [Connection]</div>
+
+            <h3>How Peer Connections Are Established</h3>
+            <p>Peer connections are not configured manually. Each Node's activity
+            thread periodically requests connections:</p>
+            <ol>
+                <li>Node checks if it has fewer peers than <code>maxPeers</code></li>
+                <li>Calls <code>parent.getConnection(this.id)</code></li>
+                <li>NodeGroup picks a random entry from <code>servers</code> and
+                    sends a <code>ConnectionRequest</code> message</li>
+                <li>Remote NodeGroup receives the request, creates a Connection,
+                    responds with <code>ConnectionConfirmation</code></li>
+                <li>Both sides now have a Connection in their <code>peers</code> set</li>
+            </ol>
+        </section>
+
+        <section id="relay">
+            <h2>Job Relay Mechanism</h2>
+
+            <p>Each Node runs two independent threads:</p>
+
+            <div class="key-concepts">
+                <div class="concept-card">
+                    <h4>Worker Thread</h4>
+                    <p>Pulls jobs from the queue and executes them. On relay
+                    Nodes (<code>role:relay</code>), the worker thread is
+                    never started — jobs remain in the queue exclusively for
+                    the relay loop.</p>
+                </div>
+                <div class="concept-card">
+                    <h4>Activity Thread</h4>
+                    <p>Manages peer connection establishment and relays excess
+                    jobs to peers. When the queue has jobs above
+                    <code>minJobs</code>, selects a random peer and calls
+                    <code>Connection.sendJob()</code>. This is the <strong>only
+                    mechanism</strong> that moves jobs between Nodes on different
+                    Servers.</p>
+                </div>
+            </div>
+
+            <div class="warning">
+                <strong>Critical invariant:</strong> Jobs are never filtered at the
+                queue level. Any Node accepts any job into its queue via
+                <code>addJob()</code>. On relay Nodes, the worker thread is never
+                started, so jobs remain in the queue for the relay loop. On
+                execution Nodes, the worker pulls and runs jobs directly.
+            </div>
+
+            <h3>Complete Flow</h3>
+            <div class="diagram">Controller                              Agent
+
+server.addTask(factory)
+  |
+NodeGroup run loop
+  factory.nextJob() -&gt; Job
+  getLeastActiveNode() -&gt; relay Node
+  relayNode.addJob(job)
+  |
+relay Node (worker thread not started)
+  jobs sit in queue
+  |
+relay Node activity thread
+  jobs.size() &gt; minJobs? YES
+  getRandomPeer() -&gt; Connection
+  peer.sendJob(job) --------&gt; NodeGroup.recievedMessage()
+                                getLeastActiveNode() -&gt; agent Node
+                                agentNode.addJob(job)
+                                |
+                              agent Node worker thread
+                                nextJob() -&gt; job
+                                satisfies()? YES
+                                job.run()</div>
+        </section>
+
+        <section id="labels">
+            <h2>Label-Based Routing</h2>
+
+            <h3>Node Labels</h3>
+            <p>Each Node has a label map set via properties
+            (<code>nodes.labels.&lt;key&gt;=&lt;value&gt;</code>), environment
+            variable (<code>FLOWTREE_NODE_LABELS</code>), or auto-detection
+            (the <code>platform</code> label).</p>
+
+            <h3>Job Requirements</h3>
+            <p>Each Job can declare required labels via
+            <code>getRequiredLabels()</code>. A Node satisfies requirements if
+            every required key-value pair exists in the Node's labels.</p>
+
+            <h3>The role:relay Label</h3>
+            <p>A Node with <code>role:relay</code> never executes jobs.
+            <code>satisfies()</code> always returns false regardless of the job's
+            requirements. The controller uses this to create a queue-only Node
+            that warehouses jobs for relay to agent Nodes.</p>
+
+            <div class="tip">
+                <strong>Design principle:</strong> The relay Node is not a special
+                mechanism. It uses exactly the same relay infrastructure as any
+                other Node. The only difference is that every job is rejected by
+                the worker, keeping the queue full and triggering the relay loop.
+            </div>
+        </section>
+
+        <section id="classes">
+            <h2>Key Classes</h2>
+            <div class="class-list">
+                <div class="class-item">
+                    <h4>Node</h4>
+                    <p>Processes jobs, manages peer connections, relays excess
+                    work. Contains worker thread (execution) and activity thread
+                    (connections + relay).</p>
+                </div>
+                <div class="class-item">
+                    <h4>NodeGroup</h4>
+                    <p>Collection of child Nodes. Manages server connections
+                    (NodeProxy list). Distributes jobs from factories to child
+                    Nodes. Brokers peer connection requests.</p>
+                </div>
+                <div class="class-item">
+                    <h4>Connection</h4>
+                    <p>Peer-to-peer link wrapping a NodeProxy. Targets a specific
+                    remote Node by ID. Used by the relay loop to send jobs between
+                    Nodes on different Servers.</p>
+                </div>
+                <div class="class-item">
+                    <h4>NodeProxy</h4>
+                    <p>Socket-level server connection. Carries Message objects
+                    between Servers. Multiple Connections can share one
+                    NodeProxy.</p>
+                </div>
+                <div class="class-item">
+                    <h4>Message</h4>
+                    <p>Wire-level protocol unit. Types include Job (relay a job),
+                    Task (distribute a factory), ConnectionRequest, and
+                    ConnectionConfirmation.</p>
+                </div>
+                <div class="class-item">
+                    <h4>Server</h4>
+                    <p>Entry point. Hosts a NodeGroup, accepts incoming socket
+                    connections, manages thread groups.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="coding-agent">
+            <h2>Coding Agent Integration</h2>
+
+            <p>FlowTree integrates with Claude Code to execute AI coding prompts as distributed
+            jobs. The controller dispatches <code>ClaudeCodeJob.Factory</code> instances to
+            connected agent nodes; each agent runs Claude Code in a headless subprocess
+            (<code>claude -p</code>) and commits the resulting changes via
+            <code>GitManagedJob</code>.</p>
+
+            <h3>ClaudeCodeJob Options</h3>
+
+            <p>Key configuration fields on <code>ClaudeCodeJob</code> and its
+            <code>Factory</code>:</p>
+
+            <table>
+                <thead>
+                    <tr><th>Property</th><th>Default</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>prompt</code></td><td>—</td><td>Prompt sent to Claude Code.</td></tr>
+                    <tr><td><code>allowedTools</code></td><td><code>Read,Edit,Write,Bash,Glob,Grep</code></td><td>Base tool allowlist; MCP tools are appended automatically.</td></tr>
+                    <tr><td><code>maxTurns</code></td><td>50</td><td>Maximum agentic turns before Claude Code stops.</td></tr>
+                    <tr><td><code>maxBudgetUsd</code></td><td>10.0</td><td>Spending cap in USD.</td></tr>
+                    <tr><td><code>targetBranch</code></td><td>null</td><td>Git branch for commits. If null, git operations are skipped.</td></tr>
+                    <tr><td><code>enforceChanges</code></td><td>false</td><td>When true, loops until the agent produces at least one code change.</td></tr>
+                    <tr><td><code>protectTestFiles</code></td><td>false</td><td>When true, prevents staging of existing test/CI files.</td></tr>
+                    <tr><td><code>deduplicationMode</code></td><td>null</td><td>Post-work duplicate-method scan. See below.</td></tr>
+                </tbody>
+            </table>
+
+            <h3>Deduplication Check</h3>
+
+            <p>Agent sessions routinely re-implement functionality that already exists
+            elsewhere in the codebase — renamed, slightly generalised, or placed in a
+            different class. The deduplication check runs after Claude Code finishes and
+            before changes are committed. It scans the diff for new Java method declarations
+            and submits an aggressive follow-up prompt that instructs a second agent to find
+            and eliminate any duplicates.</p>
+
+            <div class="key-concepts">
+                <div class="concept-card">
+                    <h4><code>DEDUP_LOCAL</code> ("local")</h4>
+                    <p>Runs an inline Claude Code session with the deduplication prompt before
+                    the commit is finalised. The dedup edits land in the same working tree and
+                    are committed together with the original work. No extra jobs are created.
+                    <strong>Recommended while iterating.</strong></p>
+                </div>
+                <div class="concept-card">
+                    <h4><code>DEDUP_SPAWN</code> ("spawn")</h4>
+                    <p>Posts a follow-up <code>ClaudeCodeJob</code> to the same workstream
+                    via <code>POST /api/submit</code> after the current commit. Fire-and-forget;
+                    requires a workstream URL. Useful in production pipelines where the
+                    dedup pass should be independently observable.</p>
+                </div>
+            </div>
+
+            <div class="tip">
+                <strong>Infinite loop safety.</strong> <code>DEDUP_LOCAL</code> calls
+                <code>executeSingleRun()</code> directly. This never re-invokes
+                <code>validateChanges()</code> and never copies <code>deduplicationMode</code>
+                to the inner session, so the check runs exactly once.
+            </div>
+
+            <h4>Via ar-manager MCP</h4>
+            <p>The <code>workstream_submit_task</code> MCP tool exposes
+            <code>deduplication_mode</code>:</p>
+            <pre><code>workstream_submit_task(
+    prompt="Implement feature X",
+    workstream_id="ws-common",
+    deduplication_mode="local"
+)</code></pre>
+        </section>
+
+        <section>
+            <h2>Common Pitfalls</h2>
+            <div class="warning">
+                <strong>Do not bypass the relay mechanism.</strong> Do not send jobs
+                directly to a specific server index. Do not create parallel relay
+                paths outside the activity thread. Do not attempt to relay from the
+                worker thread. The activity thread's relay loop is the only correct
+                way to move jobs between Nodes on different Servers.
+            </div>
+            <div class="warning">
+                <strong>Relay depends on peer connections.</strong> Jobs will not
+                move to remote Servers until peer Connections are established. This
+                happens automatically but takes a few seconds after the initial
+                server connection. If jobs appear stuck, check that
+                <code>nodes.peers.max</code> is at least 1.
+            </div>
+            <div class="warning">
+                <strong>Server connections are not peer connections.</strong>
+                <code>NodeGroup.servers</code> (NodeProxy) and
+                <code>Node.peers</code> (Connection) are completely separate.
+                Code that confuses them will silently fail to route jobs.
+            </div>
+        </section>
+    </div>
+</body>
+</html>

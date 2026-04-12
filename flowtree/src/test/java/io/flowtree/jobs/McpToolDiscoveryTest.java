@@ -29,8 +29,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Tests for {@link McpToolDiscovery} covering both the {@code @mcp.tool()}
- * decorator pattern and the {@code @server.list_tools()} handler pattern.
+ * Tests for {@link McpToolDiscovery} covering the {@code @mcp.tool()}
+ * decorator pattern, the {@code @server.list_tools()} handler pattern,
+ * and the dynamic {@code .tool()(fn)} registration pattern.
  */
 public class McpToolDiscoveryTest extends TestSuiteBase {
 
@@ -144,6 +145,64 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 30000)
+	public void discoverDynamicRegistrationPattern() throws IOException {
+		Path tempFile = Files.createTempFile("mcp_dynamic_", ".py");
+		try {
+			Files.writeString(tempFile, String.join("\n",
+				"from mcp.server.fastmcp import FastMCP",
+				"",
+				"def _get_mcp():",
+				"    return FastMCP('test-server')",
+				"",
+				"def tool_alpha(query: str):",
+				"    pass",
+				"",
+				"def tool_beta(item: str):",
+				"    pass",
+				"",
+				"def tool_gamma():",
+				"    pass",
+				"",
+				"def _register_mcp_tools():",
+				"    server = _get_mcp()",
+				"    for fn in [",
+				"        tool_alpha,",
+				"        tool_beta,",
+				"        tool_gamma,",
+				"    ]:",
+				"        server.tool()(fn)",
+				"",
+				"if __name__ == '__main__':",
+				"    _register_mcp_tools()",
+				"    mcp = _get_mcp()",
+				"    mcp.run()"
+			), StandardCharsets.UTF_8);
+
+			List<String> tools = McpToolDiscovery.discoverToolNames(tempFile);
+			assertEquals(3, tools.size());
+			assertEquals("tool_alpha", tools.get(0));
+			assertEquals("tool_beta", tools.get(1));
+			assertEquals("tool_gamma", tools.get(2));
+		} finally {
+			Files.deleteIfExists(tempFile);
+		}
+	}
+
+	@Test(timeout = 30000)
+	public void discoverFromActualGitHub() {
+		Path serverFile = Path.of("tools/mcp/github/server.py");
+		if (!Files.exists(serverFile)) return;
+
+		List<String> tools = McpToolDiscovery.discoverToolNames(serverFile);
+		assertTrue("Expected at least 4 tools from ar-github, got " + tools.size(),
+			tools.size() >= 4);
+		assertTrue("Expected github_pr_find", tools.contains("github_pr_find"));
+		assertTrue("Expected github_pr_review_comments", tools.contains("github_pr_review_comments"));
+		assertTrue("Expected github_pr_conversation", tools.contains("github_pr_conversation"));
+		assertTrue("Expected github_pr_reply", tools.contains("github_pr_reply"));
+	}
+
+	@Test(timeout = 30000)
 	public void missingFileReturnsEmpty() {
 		List<String> tools = McpToolDiscovery.discoverToolNames(Path.of("/nonexistent/server.py"));
 		assertTrue(tools.isEmpty());
@@ -153,5 +212,72 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	public void nullFileReturnsEmpty() {
 		List<String> tools = McpToolDiscovery.discoverToolNames(null);
 		assertTrue(tools.isEmpty());
+	}
+
+	@Test(timeout = 30000)
+	public void discoverToolParametersFromSignature() throws IOException {
+		Path tempFile = Files.createTempFile("mcp_params_", ".py");
+		try {
+			Files.writeString(tempFile, String.join("\n",
+				"from mcp.server.fastmcp import FastMCP",
+				"mcp = FastMCP('test-server')",
+				"",
+				"@mcp.tool()",
+				"def register_item(",
+				"    name: str,",
+				"    label: str = \"\",",
+				"    tags: str = \"\",",
+				") -> dict:",
+				"    pass"
+			), StandardCharsets.UTF_8);
+
+			List<String> params = McpToolDiscovery.discoverToolParameters(tempFile, "register_item");
+			assertEquals(3, params.size());
+			assertEquals("name", params.get(0));
+			assertEquals("label", params.get(1));
+			assertEquals("tags", params.get(2));
+		} finally {
+			Files.deleteIfExists(tempFile);
+		}
+	}
+
+	@Test(timeout = 30000)
+	public void discoverToolParametersMissingToolReturnsEmpty() throws IOException {
+		Path tempFile = Files.createTempFile("mcp_params_missing_", ".py");
+		try {
+			Files.writeString(tempFile, String.join("\n",
+				"from mcp.server.fastmcp import FastMCP",
+				"mcp = FastMCP('test-server')",
+				"",
+				"@mcp.tool()",
+				"def other_tool(x: str) -> dict:",
+				"    pass"
+			), StandardCharsets.UTF_8);
+
+			List<String> params = McpToolDiscovery.discoverToolParameters(tempFile, "nonexistent_tool");
+			assertTrue(params.isEmpty());
+		} finally {
+			Files.deleteIfExists(tempFile);
+		}
+	}
+
+	@Test(timeout = 30000)
+	public void managerRegisterAndUpdateConfigHaveRequiredLabelsAndDependentRepos() {
+		Path serverFile = Path.of("tools/mcp/manager/server.py");
+		if (!Files.exists(serverFile)) return;
+
+		List<String> registerParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+		assertTrue("workstream_register must declare required_labels parameter",
+			registerParams.contains("required_labels"));
+		assertTrue("workstream_register must declare dependent_repos parameter",
+			registerParams.contains("dependent_repos"));
+
+		List<String> updateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+		assertTrue("workstream_update_config must declare required_labels parameter",
+			updateParams.contains("required_labels"));
+		assertTrue("workstream_update_config must declare dependent_repos parameter",
+			updateParams.contains("dependent_repos"));
 	}
 }

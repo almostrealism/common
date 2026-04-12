@@ -16,6 +16,16 @@
 
 package io.almostrealism.nfs;
 
+/**
+ * Listener interface for receiving notifications when a file or directory is deleted
+ * from the virtual file system.
+ */
 public interface DeletionNotifier {
+	/**
+	 * Called when a resource at the specified path is to be deleted.
+	 *
+	 * @param path The path of the resource to delete
+	 * @return {@code true} if the deletion was successful, {@code false} otherwise
+	 */
 	boolean delete(String path);
 }

@@ -1,0 +1,53 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package io.almostrealism.scope;
+
+import io.almostrealism.expression.Expression;
+
+/**
+ * A {@link CachingSettings} strategy that caches expressions at a fixed tree depth.
+ *
+ * <p>Currently caches expressions whose {@link Expression#treeDepth()} is exactly 7.
+ * This is a simple, deterministic strategy useful for baseline comparisons against
+ * more sophisticated caching policies like {@link SpectrumCaching}.</p>
+ *
+ * @see CachingSettings
+ * @see SpectrumCaching
+ */
+public class ExplicitDepthCaching implements CachingSettings {
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns {@code true} when the expression's {@link Expression#treeDepth()} is 7.</p>
+	 */
+	@Override
+	public boolean isExpressionCacheTarget(Expression<?> e) {
+		int depth = e.treeDepth();
+//		return depth == 7 || depth == 11;
+		return depth == 7;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @return {@code "explicit"}
+	 */
+	@Override
+	public String shortDesc() {
+		return "explicit";
+	}
+}

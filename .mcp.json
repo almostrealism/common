@@ -25,20 +25,16 @@
       "args": ["tools/mcp/jmx/server.py"],
       "description": "JVM memory analysis and leak detection via JDK diagnostic tools"
     },
-    "ar-slack": {
-      "command": "python3",
-      "args": ["tools/mcp/slack/server.py"],
-      "description": "Send messages to channels via the FlowTreeController API endpoint"
-    },
-    "ar-github": {
-      "command": "python3",
-      "args": ["tools/mcp/github/server.py"],
-      "description": "Read and respond to GitHub PR review comments"
-    },
     "ar-manager": {
       "command": "python3",
       "args": ["tools/mcp/manager/server.py"],
       "description": "Internet-facing endpoint for managing workstreams and triggering project workflows"
+    },
+    "onyx": {
+      "command": "/Users/Shared/flowtree/tools/OnyxMCP",
+      "env": {
+        "ONYX_MCP_PORT": "19432"
+      }
     }
   }
 }

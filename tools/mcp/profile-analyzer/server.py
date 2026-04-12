@@ -40,13 +40,16 @@ def run_java_cli(command: str, file_path: str, *args) -> dict:
         f"-Dexec.args={command} {file_path} {' '.join(str(a) for a in args)}"
     ]
 
+    env = {**os.environ, "MAVEN_OPTS": os.environ.get("MAVEN_OPTS", "") + " -Djdk.xml.maxElementDepth=0"}
+
     try:
         result = subprocess.run(
             cmd,
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
+            env=env
         )
 
         if result.returncode != 0:
