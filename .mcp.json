@@ -10,6 +10,11 @@
       "args": ["tools/mcp/test-runner/server.py"],
       "description": "Test execution and result tracking server"
     },
+    "ar-build-validator": {
+      "command": "python3",
+      "args": ["tools/mcp/build-validator/server.py"],
+      "description": "Static analysis and build validation: checkstyle, CodePolicy, test timeouts, duplicate code, ErrorProne"
+    },
     "ar-profile-analyzer": {
       "command": "python3",
       "args": ["tools/mcp/profile-analyzer/server.py"],

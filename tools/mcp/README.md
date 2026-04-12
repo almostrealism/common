@@ -82,6 +82,7 @@ For agents working on **this repo** (almostrealism/common), additional project-l
 | MCP Tool | Description |
 |---|---|
 | **ar-consultant** | Documentation-aware assistant with LLM inference and memory |
+| **ar-build-validator** | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
 | **ar-test-runner** | Async test execution with structured result parsing |
 | **ar-jmx** | JVM memory diagnostics via JDK tools |
 | **ar-profile-analyzer** | Profile XML analysis for performance investigation |
@@ -107,6 +108,7 @@ See `flowtree/src/main/resources/workstreams-example.yaml` for full configuratio
 | **ar-manager** | [manager/](manager/) | Centralized MCP endpoint for messaging, memory, GitHub, and workstream management |
 | **ar-consultant** | [consultant/](consultant/) | Documentation-aware assistant with local LLM inference, memory, and doc retrieval |
 | **ar-memory** | [memory/](memory/) | Centralized HTTP memory service with embedding-based search |
+| **ar-build-validator** | [build-validator/](build-validator/) | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
 | **ar-test-runner** | [test-runner/](test-runner/) | Async test execution with structured result parsing |
 | **ar-jmx** | [jmx/](jmx/) | JVM memory diagnostics via JDK tools (jcmd, jstat, JFR) |
 | **ar-profile-analyzer** | [profile-analyzer/](profile-analyzer/) | Profile XML analysis for performance investigation |

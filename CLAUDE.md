@@ -304,6 +304,30 @@ Never add dependencies. Write code assuming the dependency exists, run `mvn comp
 
 Never include specific version numbers in any file. Versions change constantly. Refer to pom.xml as the source of truth.
 
+## Validate Code Quality Before Completing Any Task
+
+Before declaring a task done, run the build validator to catch style and policy violations
+that will fail CI. This is faster than waiting for CI to reject the work.
+
+```
+mcp__ar-build-validator__start_validation
+```
+
+Default checks (no arguments needed): `checkstyle`, `code_policy`, `test_timeouts`, `duplicate_code`.
+
+- **checkstyle** — catches `var`, `@SuppressWarnings`, file length, `System.out` usage
+- **code_policy** — catches Producer pattern violations, GPU memory model misuse, naming violations
+- **test_timeouts** — catches `@Test` annotations missing a `timeout` parameter
+- **duplicate_code** — catches 10+ identical lines duplicated across files
+
+If the project is already compiled (e.g., you just ran the test runner), pass `skip_build:true`
+to skip the `mvn install -DskipTests` step and run only the static checks.
+
+For checkstyle alone (fastest, no build at all): `start_validation checks:["checkstyle"]`
+
+Poll with `mcp__ar-build-validator__get_validation_status` until complete, then call
+`mcp__ar-build-validator__get_validation_violations` for structured file:line results.
+
 ## Use MCP Test Runner for All Tests
 
 Never use `Bash` with `mvn test`. Always use `mcp__ar-test-runner__start_test_run`. It handles environment setup, async execution, and structured failure reporting.
