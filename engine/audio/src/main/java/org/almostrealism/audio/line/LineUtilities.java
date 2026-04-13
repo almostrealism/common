@@ -23,6 +23,7 @@ import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.Mixer;
 import javax.sound.sampled.SourceDataLine;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.BufferedInputStream;
@@ -296,6 +297,32 @@ public class LineUtilities {
 		return frameBytes;
 	}
 	
+	/**
+	 * Returns a SourceDataOutputLine opened on the specified mixer device.
+	 *
+	 * @param mixerInfo   the mixer device to open the line on
+	 * @param format      the audio format for the line
+	 * @param bufferFrames the buffer size in frames
+	 * @return an OutputLine backed by the specified device, or null if unavailable
+	 */
+	public static OutputLine getLine(Mixer.Info mixerInfo,
+									 AudioFormat format, int bufferFrames) {
+		DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+		lastFormat = format;
+
+		try {
+			Mixer mixer = AudioSystem.getMixer(mixerInfo);
+			SourceDataLine line = (SourceDataLine) mixer.getLine(info);
+			line.open(format, Math.max(1024, bufferFrames * 4));
+			line.start();
+			return new SourceDataOutputLine(line, bufferFrames);
+		} catch (LineUnavailableException ex) {
+			System.out.println("Unavailable on " + mixerInfo.getName()
+					+ " (" + ex.getMessage() + ")");
+			return null;
+		}
+	}
+
 	/**
 	 * Returns the most recently used AudioFormat, or null if no line has been opened yet.
 	 *

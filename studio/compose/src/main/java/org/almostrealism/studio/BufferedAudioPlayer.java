@@ -38,7 +38,9 @@ import org.almostrealism.graph.temporal.WaveCell;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.DoubleConsumer;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
@@ -231,6 +233,22 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 
 		if (!enableUnifiedClock) {
 			this.clock = mixer.getSample(0).getClock();
+		}
+	}
+
+	/**
+	 * Ensures the mixer is initialized. This can be called before
+	 * {@link #deliver(OutputLine)} to allow configuration of output groups
+	 * on the underlying {@link Mixer} before the pipeline is built.
+	 *
+	 * @param bufferSize the output buffer size in frames, used to compute timing
+	 */
+	public void ensureMixerInitialized(int bufferSize) {
+		if (clock == null) {
+			initMixer();
+			long bufferDuration = bufferSize * 1000L / sampleRate;
+			int updates = BufferDefaults.groups * 2;
+			waitTime = bufferDuration / updates;
 		}
 	}
 
@@ -507,6 +525,47 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		} else {
 			return new AudioLineInputRecord(operation, record).buffer(out);
 		}
+	}
+
+	/**
+	 * Delivers audio to multiple output lines, one per output group configured
+	 * on the underlying {@link Mixer}. Each group gets its own
+	 * {@link BufferedOutputScheduler} that ticks only that group's cells.
+	 *
+	 * <p>Since each channel belongs to exactly one output group, the cell
+	 * pipelines are non-overlapping and can run on separate threads without
+	 * double-ticking any cell. Channel rendering happens exactly once.</p>
+	 *
+	 * <p>The mixer must have output groups configured via
+	 * {@link Mixer#addOutputGroup(String, int...)} and
+	 * {@link Mixer#applyOutputGroups()} before calling this method.
+	 * Call {@link #ensureMixerInitialized(int)} first if the mixer has
+	 * not yet been initialized.</p>
+	 *
+	 * @param groupOutputLines map from group name to the output line for that group's device
+	 * @return map from group name to the scheduler for that group
+	 */
+	public Map<String, BufferedOutputScheduler> deliverGroups(
+			Map<String, OutputLine> groupOutputLines) {
+		ensureMixerInitialized(groupOutputLines.values().iterator().next().getBufferSize());
+
+		Map<String, BufferedOutputScheduler> schedulers = new LinkedHashMap<>();
+
+		for (Map.Entry<String, OutputLine> entry : groupOutputLines.entrySet()) {
+			String groupName = entry.getKey();
+			OutputLine out = entry.getValue();
+
+			CellList groupCells = mixer.getGroupCellList(groupName);
+			if (enableUnifiedClock) {
+				groupCells = groupCells.addRequirement(clock);
+			}
+
+			AudioLineOperation operation = groupCells.toLineOperation();
+			BufferedOutputScheduler scheduler = operation.buffer(out);
+			schedulers.put(groupName, scheduler);
+		}
+
+		return schedulers;
 	}
 
 	@Override

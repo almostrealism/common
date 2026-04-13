@@ -142,6 +142,31 @@ public class StreamingAudioPlayer implements ConsoleFeatures {
 	}
 
 	/**
+	 * Sets the direct hardware output line explicitly, overriding the
+	 * lazily-created default. Use this to direct playback to a specific
+	 * audio device rather than the system default.
+	 *
+	 * @param output the output line for the target device
+	 */
+	public synchronized void setDirectOutput(SourceDataOutputLine output) {
+		SourceDataOutputLine old = this.directOutput;
+		this.directOutput = output;
+
+		// If currently in direct mode, switch the delegate to the new
+		// line BEFORE destroying the old one. The scheduler thread may
+		// be writing through the delegate at any moment — swapping
+		// first prevents it from writing to a destroyed line.
+		if (activeMode == OutputMode.DIRECT && output != null) {
+			outputLine.setOutputDelegate(output);
+			output.start();
+		}
+
+		if (old != null && old != output) {
+			old.destroy();
+		}
+	}
+
+	/**
 	 * Returns the current DAW connection, or null if no DAW has connected.
 	 */
 	public SharedMemoryAudioLine getDawConnection() {

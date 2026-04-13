@@ -18,19 +18,23 @@ package org.almostrealism.studio.stream;
 
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.BufferedAudioPlayer;
+import org.almostrealism.studio.Mixer;
 import org.almostrealism.studio.SampleMixer;
 import org.almostrealism.studio.ScheduledOutputAudioPlayer;
 import org.almostrealism.studio.StreamingAudioPlayer;
 import org.almostrealism.audio.line.AudioLine;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.DelegatedAudioLine;
+import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.audio.line.OutputLineGroup;
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -221,6 +225,97 @@ public class AudioStreamManager implements ConsoleFeatures {
 		scheduledPlayer.start();
 
 		return config;
+	}
+
+	/**
+	 * Creates a multi-device stream where different channels are routed to
+	 * different output devices. Each entry in the {@code deviceGroups} map
+	 * assigns a set of channel indices to an {@link OutputLine} for a
+	 * specific device.
+	 *
+	 * <p>The underlying {@link Mixer} is configured with output groups so
+	 * that channel rendering happens exactly once. Each group's summed
+	 * output is delivered to its device via a separate
+	 * {@link BufferedOutputScheduler}. An {@link OutputLineGroup} synchronizes
+	 * read positions across all devices.</p>
+	 *
+	 * @param channel      the channel name for DAW registration
+	 * @param playerCount  number of audio sources this player can mix
+	 * @param inputRecord  optional output line for recording the mixed output
+	 * @param initialMode  the initial output mode (DIRECT or DAW)
+	 * @param deviceGroups map from device/group name to (output line, channel indices)
+	 * @return the unified player configuration
+	 */
+	public StreamingAudioPlayer createMultiDeviceStream(
+			String channel, int playerCount,
+			OutputLine inputRecord,
+			StreamingAudioPlayer.OutputMode initialMode,
+			Map<String, DeviceGroup> deviceGroups) {
+
+		int bufferSize = BufferDefaults.defaultBufferSize;
+		int maxFrames = (int) (OutputLine.sampleRate * defaultLiveDuration);
+		maxFrames = (maxFrames / bufferSize) * bufferSize;
+
+		BufferedAudioPlayer player = new BufferedAudioPlayer(playerCount,
+				OutputLine.sampleRate, maxFrames);
+
+		// Configure output groups on the Mixer before building the pipeline
+		Mixer mixer = player.getMixer().getChannelMixer();
+		for (Map.Entry<String, DeviceGroup> entry : deviceGroups.entrySet()) {
+			mixer.addOutputGroup(entry.getKey(), entry.getValue().channelIndices());
+		}
+		mixer.applyOutputGroups();
+
+		// Build per-group output lines map for deliverGroups()
+		Map<String, OutputLine> groupLines = new LinkedHashMap<>();
+		for (Map.Entry<String, DeviceGroup> entry : deviceGroups.entrySet()) {
+			groupLines.put(entry.getKey(), entry.getValue().outputLine());
+		}
+
+		// Create per-group schedulers (each ticks only its group's cells)
+		Map<String, BufferedOutputScheduler> schedulers =
+				player.deliverGroups(groupLines);
+
+		// Wrap in ScheduledOutputAudioPlayer with multi-scheduler support
+		ScheduledOutputAudioPlayer scheduledPlayer =
+				new ScheduledOutputAudioPlayer(player, schedulers);
+
+		// Create an OutputLineGroup for DAW/streaming mode fallback
+		OutputLineGroup lineGroup = new OutputLineGroup();
+		for (DeviceGroup group : deviceGroups.values()) {
+			lineGroup.addMember(group.outputLine());
+		}
+
+		DelegatedAudioLine delegatedLine = new DelegatedAudioLine();
+
+		StreamingAudioPlayer config =
+				new StreamingAudioPlayer(scheduledPlayer, delegatedLine, inputRecord);
+
+		server.addStream(channel,
+				new AudioLineDelegationHandler(delegatedLine, config));
+		audioStreams.put(channel, config);
+
+		// In direct mode, the per-group schedulers handle output.
+		// The DelegatedAudioLine is used for DAW mode fallback.
+		if (initialMode == StreamingAudioPlayer.OutputMode.DIRECT) {
+			config.setDirectMode();
+		} else {
+			config.setDawMode();
+		}
+
+		scheduledPlayer.start();
+
+		return config;
+	}
+
+	/**
+	 * Describes a device output group: an output line for a specific device
+	 * and the channel indices that should be routed to it.
+	 *
+	 * @param outputLine     the output line for this device
+	 * @param channelIndices the channel indices (0-based) assigned to this device
+	 */
+	public record DeviceGroup(OutputLine outputLine, int[] channelIndices) {
 	}
 
 	@Override
