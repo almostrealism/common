@@ -323,7 +323,7 @@ Default checks (no arguments needed): `checkstyle`, `code_policy`, `test_timeout
 If the project is already compiled (e.g., you just ran the test runner), pass `skip_build:true`
 to skip the `mvn install -DskipTests` step and run only the static checks.
 
-For checkstyle alone (fastest, no build at all): `start_validation checks:["checkstyle"]`
+For checkstyle alone (fastest, no build at all): `mcp__ar-build-validator__start_validation checks:["checkstyle"]`
 
 Poll with `mcp__ar-build-validator__get_validation_status` until complete, then call
 `mcp__ar-build-validator__get_validation_violations` for structured file:line results.

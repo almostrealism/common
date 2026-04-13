@@ -56,10 +56,10 @@ RUNS_DIR.mkdir(parents=True, exist_ok=True)
 # A full "mvn install -DskipTests" is run before them unless skip_build=True.
 BUILD_REQUIRED_CHECKS = frozenset({"code_policy", "test_timeouts", "duplicate_code"})
 
-# errorprone triggers compilation only (no test fork), so it is treated
-# separately: if skip_build=False and a build step is NOT already running
-# (because no BUILD_REQUIRED_CHECKS were requested), we still compile first.
-COMPILE_REQUIRED_CHECKS = frozenset({"errorprone"})
+# errorprone runs its own 'mvn compile' as the check command itself, so it
+# does not need a separate pre-build compile step.  Including it here would
+# cause a duplicate compile when the errorprone check also runs mvn compile.
+COMPILE_REQUIRED_CHECKS = frozenset()
 
 DEFAULT_CHECKS = ["checkstyle", "code_policy", "test_timeouts", "duplicate_code"]
 
@@ -192,24 +192,39 @@ class BuildValidator:
         if not output_file.exists():
             return None
 
-        with open(output_file, encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-
-        total = len(lines)
-        if filter_pattern:
-            try:
-                pat = re.compile(filter_pattern)
-                lines = [l for l in lines if pat.search(l)]
-            except re.error:
-                pass
-
+        # When only a tail is requested (no filter), use a seek-from-end reader
+        # to avoid loading the entire file into memory.
         truncated = False
-        if tail and len(lines) > tail:
-            lines = lines[-tail:]
-            truncated = True
-        elif max_lines is None:
-            max_lines = DEFAULT_OUTPUT_LINES
-            if len(lines) > max_lines:
+        if tail and not filter_pattern:
+            # Seek-from-end reader: avoids loading the full file for simple tail requests.
+            lines = self._read_tail(output_file, tail)
+            total = None  # full line count unknown without reading the whole file
+        else:
+            with open(output_file, encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            total = len(lines)
+            if filter_pattern:
+                try:
+                    pat = re.compile(filter_pattern)
+                    lines = [line for line in lines if pat.search(line)]
+                except re.error:
+                    pass
+            if tail and len(lines) > tail:
+                lines = lines[-tail:]
+                truncated = True
+            elif max_lines is None:
+                max_lines = DEFAULT_OUTPUT_LINES
+                if len(lines) > max_lines:
+                    head = max_lines // 2
+                    tail_n = max_lines - head
+                    omitted = len(lines) - max_lines
+                    lines = (
+                        lines[:head]
+                        + [f"\n... ({omitted} lines truncated) ...\n\n"]
+                        + lines[-tail_n:]
+                    )
+                    truncated = True
+            elif max_lines > 0 and len(lines) > max_lines:
                 head = max_lines // 2
                 tail_n = max_lines - head
                 omitted = len(lines) - max_lines
@@ -219,16 +234,6 @@ class BuildValidator:
                     + lines[-tail_n:]
                 )
                 truncated = True
-        elif max_lines > 0 and len(lines) > max_lines:
-            head = max_lines // 2
-            tail_n = max_lines - head
-            omitted = len(lines) - max_lines
-            lines = (
-                lines[:head]
-                + [f"\n... ({omitted} lines truncated) ...\n\n"]
-                + lines[-tail_n:]
-            )
-            truncated = True
 
         return {
             "run_id": run_id,
@@ -310,14 +315,11 @@ class BuildValidator:
         metadata = self._load_metadata(run_id)
 
         needs_build = not config.skip_build and any(
-            c in BUILD_REQUIRED_CHECKS | COMPILE_REQUIRED_CHECKS
-            for c in config.checks
-        )
-        # If build-required checks are present we do a full install.
-        # If only compile-required checks are present, just compile.
-        needs_full_install = not config.skip_build and any(
             c in BUILD_REQUIRED_CHECKS for c in config.checks
         )
+        # BUILD_REQUIRED_CHECKS need a full install; no other checks require a
+        # separate pre-build step (errorprone compiles as its own check command).
+        needs_full_install = needs_build
 
         try:
             # ── Step 1: Build ────────────────────────────────────────
@@ -326,12 +328,8 @@ class BuildValidator:
                     self._finish_cancelled(run_id, metadata)
                     return
 
-                if needs_full_install:
-                    build_cmd = ["mvn", "install", "-DskipTests", "-B"]
-                    label = "BUILD (mvn install -DskipTests)"
-                else:
-                    build_cmd = ["mvn", "compile", "-B"]
-                    label = "COMPILE (mvn compile)"
+                build_cmd = ["mvn", "install", "-DskipTests", "-B"]
+                label = "BUILD (mvn install -DskipTests)"
 
                 self._write_section(output_file, label)
                 build_start = datetime.now()
@@ -346,8 +344,7 @@ class BuildValidator:
                         "\nBuild step failed — checks requiring compiled artifacts will be skipped.\n")
 
             elif config.skip_build and any(
-                c in BUILD_REQUIRED_CHECKS | COMPILE_REQUIRED_CHECKS
-                for c in config.checks
+                c in BUILD_REQUIRED_CHECKS for c in config.checks
             ):
                 metadata["build_status"] = "skipped"
                 self._save_metadata(run_id, metadata)
@@ -381,6 +378,18 @@ class BuildValidator:
                     offset_before = output_file.stat().st_size
                 except FileNotFoundError:
                     offset_before = 0
+
+                # Delete any stale surefire report before running test-based checks
+                # so that _parse_surefire cannot surface results from a previous run.
+                if check_name in BUILD_REQUIRED_CHECKS:
+                    stale_report = (
+                        PROJECT_ROOT / "tools" / "target" / "surefire-reports"
+                        / f"TEST-{SUREFIRE_TEST_CLASS}.xml"
+                    )
+                    try:
+                        stale_report.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
                 cmd = self._build_command(check_name)
                 check_start = datetime.now()
@@ -665,9 +674,48 @@ class BuildValidator:
                 preexec_fn=os.setsid,
             )
             self._active_pids[run_id] = process.pid
-            exit_code = process.wait()
-            self._active_pids.pop(run_id, None)
+            # Persist the subprocess PID so get_validation_status can report it.
+            meta = self._load_metadata(run_id)
+            if meta is not None:
+                meta["pid"] = process.pid
+                self._save_metadata(run_id, meta)
+            try:
+                exit_code = process.wait()
+            finally:
+                self._active_pids.pop(run_id, None)
+                # Clear pid on completion so status reflects no active process.
+                meta = self._load_metadata(run_id)
+                if meta is not None:
+                    meta["pid"] = None
+                    self._save_metadata(run_id, meta)
         return exit_code
+
+    @staticmethod
+    def _read_tail(path: Path, n: int) -> list:
+        """Return the last n lines of path without reading the entire file.
+
+        Uses binary seek-from-end so large output files are not loaded into
+        memory when the caller only needs a tail slice.
+        """
+        try:
+            with open(path, "rb") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                if size == 0:
+                    return []
+                buf = b""
+                pos = size
+                chunk = 8192
+                while pos > 0 and buf.count(b"\n") <= n:
+                    read_size = min(chunk, pos)
+                    pos -= read_size
+                    f.seek(pos)
+                    buf = f.read(read_size) + buf
+            text = buf.decode("utf-8", errors="replace")
+            lines = text.splitlines(keepends=True)
+            return lines[-n:]
+        except Exception:
+            return []
 
     @staticmethod
     def _read_from_offset(output_file: Path, offset: int) -> str:
