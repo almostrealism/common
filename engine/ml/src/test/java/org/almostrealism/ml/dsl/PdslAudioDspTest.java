@@ -1,0 +1,355 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.almostrealism.ml.dsl;
+
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.model.Block;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
+import org.almostrealism.util.FirFilterTestFeatures;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Tests for PDSL audio DSP primitives ({@code fir}, {@code scale},
+ * {@code lowpass}, {@code highpass}) and the {@code efx_channel.pdsl}
+ * definition file.
+ *
+ * <p>These tests demonstrate that audio DSP signal processing can be defined
+ * declaratively in PDSL and produce correct output, serving as a proof-of-concept
+ * for replacing CellList-based DSP with readable PDSL definitions.</p>
+ *
+ * <p>Structure tests verify parsing and block construction without hardware
+ * execution. Execution tests (annotated with {@link TestDepth}) actually run
+ * the compiled blocks and compare output to reference implementations.</p>
+ *
+ * @see PdslInterpreter
+ * @see org.almostrealism.time.computations.MultiOrderFilter
+ */
+public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeatures {
+
+	/** Audio buffer size used across tests. */
+	private static final int SIGNAL_SIZE = 256;
+
+	/** Sample rate used across tests (Hz). */
+	private static final int SAMPLE_RATE = 44100;
+
+	/** Filter order matching EfxManager.filterOrder. */
+	private static final int FILTER_ORDER = 40;
+
+	/** Low-pass cutoff for tests (Hz). */
+	private static final double LP_CUTOFF = 5000.0;
+
+	/** High-pass cutoff for tests (Hz). */
+	private static final double HP_CUTOFF = 200.0;
+
+	/** Wet output level used in efx_wet_chain tests. */
+	private static final double WET_LEVEL = 0.5;
+
+	// ---- Parsing / structure tests -----------------------------------------------
+
+	/**
+	 * Verifies that the {@code efx_channel.pdsl} file parses correctly and
+	 * contains all expected layer definitions.
+	 */
+	@Test
+	public void testEfxChannelPdslParsesCorrectly() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		Assert.assertNotNull("Program should not be null", program);
+
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		Assert.assertTrue("Should define 'efx_wet_chain' layer",
+				interpreter.getLayerNames().contains("efx_wet_chain"));
+		Assert.assertTrue("Should define 'efx_lowpass_wet' layer",
+				interpreter.getLayerNames().contains("efx_lowpass_wet"));
+		Assert.assertTrue("Should define 'efx_highpass_wet' layer",
+				interpreter.getLayerNames().contains("efx_highpass_wet"));
+		Assert.assertTrue("Should define 'efx_dry_path' layer",
+				interpreter.getLayerNames().contains("efx_dry_path"));
+	}
+
+	/**
+	 * Verifies that an {@code efx_wet_chain} block can be built from
+	 * pre-computed FIR coefficients using the {@code fir()} primitive.
+	 */
+	@Test
+	public void testEfxWetChainBlockBuilds() {
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
+		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
+		filterCoeffs.setMem(coeffs);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("filter_coeffs", filterCoeffs);
+		args.put("wet_level", WET_LEVEL);
+
+		Block block = loader.buildLayer(program, "efx_wet_chain", inputShape, args);
+
+		Assert.assertNotNull("efx_wet_chain block should not be null", block);
+		Assert.assertNotNull("Block should have input shape", block.getInputShape());
+		Assert.assertEquals("Input shape total size should match signal size",
+				SIGNAL_SIZE, block.getInputShape().getTotalSize());
+	}
+
+	/**
+	 * Verifies that an {@code efx_lowpass_wet} block can be built using the
+	 * {@code lowpass()} PDSL primitive. This exercises inline FIR coefficient
+	 * computation without pre-computing them in Java.
+	 */
+	@Test
+	public void testEfxLowpassWetBlockBuilds() {
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("cutoff", LP_CUTOFF);
+		args.put("sample_rate", (double) SAMPLE_RATE);
+		args.put("filter_order", (double) FILTER_ORDER);
+		args.put("wet_level", WET_LEVEL);
+
+		Block block = loader.buildLayer(program, "efx_lowpass_wet", inputShape, args);
+
+		Assert.assertNotNull("efx_lowpass_wet block should not be null", block);
+		Assert.assertNotNull("Block should have input shape", block.getInputShape());
+	}
+
+	/**
+	 * Verifies that an {@code efx_highpass_wet} block can be built using the
+	 * {@code highpass()} PDSL primitive.
+	 */
+	@Test
+	public void testEfxHighpassWetBlockBuilds() {
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("cutoff", HP_CUTOFF);
+		args.put("sample_rate", (double) SAMPLE_RATE);
+		args.put("filter_order", (double) FILTER_ORDER);
+		args.put("wet_level", WET_LEVEL);
+
+		Block block = loader.buildLayer(program, "efx_highpass_wet", inputShape, args);
+
+		Assert.assertNotNull("efx_highpass_wet block should not be null", block);
+		Assert.assertNotNull("Block should have input shape", block.getInputShape());
+	}
+
+	/**
+	 * Verifies that inline PDSL source with {@code fir()}, {@code scale()},
+	 * {@code lowpass()}, and {@code highpass()} primitives all parse and build
+	 * blocks successfully.
+	 */
+	@Test
+	public void testAudioPrimitivesParseAndBuild() {
+		String source = loadAudioPrimitivesSource();
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse(source);
+
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		Assert.assertTrue("Should define 'fir_filter' layer",
+				interpreter.getLayerNames().contains("fir_filter"));
+		Assert.assertTrue("Should define 'scale_layer' layer",
+				interpreter.getLayerNames().contains("scale_layer"));
+		Assert.assertTrue("Should define 'lp_filter' layer",
+				interpreter.getLayerNames().contains("lp_filter"));
+		Assert.assertTrue("Should define 'hp_filter' layer",
+				interpreter.getLayerNames().contains("hp_filter"));
+
+		TraversalPolicy shape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
+		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
+		filterCoeffs.setMem(coeffs);
+
+		// Build fir_filter
+		Map<String, Object> firArgs = new HashMap<>();
+		firArgs.put("coeffs", filterCoeffs);
+		Block firBlock = loader.buildLayer(program, "fir_filter", shape, firArgs);
+		Assert.assertNotNull("fir_filter block should not be null", firBlock);
+
+		// Build scale_layer (uses signal_size for shape inference via return annotation)
+		Map<String, Object> scaleArgs = new HashMap<>();
+		scaleArgs.put("signal_size", SIGNAL_SIZE);
+		scaleArgs.put("factor", 0.5);
+		Block scaleBlock = loader.buildLayer(program, "scale_layer", shape, scaleArgs);
+		Assert.assertNotNull("scale_layer block should not be null", scaleBlock);
+
+		// Build lp_filter
+		Map<String, Object> lpArgs = new HashMap<>();
+		lpArgs.put("signal_size", SIGNAL_SIZE);
+		lpArgs.put("cutoff", LP_CUTOFF);
+		lpArgs.put("sr", (double) SAMPLE_RATE);
+		lpArgs.put("order", (double) FILTER_ORDER);
+		Block lpBlock = loader.buildLayer(program, "lp_filter", shape, lpArgs);
+		Assert.assertNotNull("lp_filter block should not be null", lpBlock);
+
+		// Build hp_filter
+		Map<String, Object> hpArgs = new HashMap<>();
+		hpArgs.put("signal_size", SIGNAL_SIZE);
+		hpArgs.put("cutoff", HP_CUTOFF);
+		hpArgs.put("sr", (double) SAMPLE_RATE);
+		hpArgs.put("order", (double) FILTER_ORDER);
+		Block hpBlock = loader.buildLayer(program, "hp_filter", shape, hpArgs);
+		Assert.assertNotNull("hp_filter block should not be null", hpBlock);
+	}
+
+	// ---- Execution tests ---------------------------------------------------------
+
+	/**
+	 * Verifies that the PDSL {@code fir()} primitive produces the same output
+	 * as the reference Java FIR convolution when the efx_wet_chain block is
+	 * compiled and executed.
+	 *
+	 * <p>Processes a sine-wave signal through an {@code efx_wet_chain} block
+	 * (LP filter + wet scaling) and compares the result to the reference
+	 * convolution scaled by the wet level.</p>
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testEfxWetChainExecution() {
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		PackedCollection signal = createSignal(SIGNAL_SIZE,
+				i -> Math.sin(2.0 * Math.PI * i / 32.0));
+
+		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
+		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
+		filterCoeffs.setMem(coeffs);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("filter_coeffs", filterCoeffs);
+		args.put("wet_level", WET_LEVEL);
+
+		Block block = loader.buildLayer(program, "efx_wet_chain", inputShape, args);
+
+		// Compile and execute the PDSL-defined block
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection output = compiled.forward(signal);
+		Assert.assertNotNull("Output should not be null", output);
+
+		// Compare to reference: lowpass(signal) * wet_level
+		double[] expected = referenceConvolve(signal.toArray(0, SIGNAL_SIZE), coeffs);
+		for (int i = 0; i < SIGNAL_SIZE; i++) {
+			assertEquals(expected[i] * WET_LEVEL, output.toDouble(i));
+		}
+	}
+
+	/**
+	 * Verifies that the PDSL {@code lowpass()} primitive, when applied via
+	 * the {@code efx_lowpass_wet} layer, produces output consistent with a
+	 * reference low-pass FIR filter.
+	 *
+	 * <p>A signal dominated by high-frequency content should be significantly
+	 * attenuated after passing through the low-pass filter.</p>
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testLowpassPrimitiveAttenuation() {
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		// High-frequency sine (aliased near Nyquist) — should be attenuated by LP filter
+		PackedCollection signal = createSignal(SIGNAL_SIZE,
+				i -> Math.sin(2.0 * Math.PI * i / 4.0));
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("cutoff", LP_CUTOFF);
+		args.put("sample_rate", (double) SAMPLE_RATE);
+		args.put("filter_order", (double) FILTER_ORDER);
+		args.put("wet_level", 1.0);
+
+		Block block = loader.buildLayer(program, "efx_lowpass_wet", inputShape, args);
+
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection output = compiled.forward(signal);
+		Assert.assertNotNull("Output should not be null", output);
+
+		// The LP filter should heavily attenuate a ~11025 Hz signal when cutoff is 5000 Hz.
+		// Verify by checking that RMS of output is significantly less than input RMS.
+		double inputRms = 0.0;
+		double outputRms = 0.0;
+		// Skip filter edge samples (first filterOrder/2 and last filterOrder/2)
+		int skipEdge = FILTER_ORDER / 2;
+		int count = SIGNAL_SIZE - 2 * skipEdge;
+		for (int i = skipEdge; i < SIGNAL_SIZE - skipEdge; i++) {
+			inputRms += signal.toDouble(i) * signal.toDouble(i);
+			outputRms += output.toDouble(i) * output.toDouble(i);
+		}
+		inputRms = Math.sqrt(inputRms / count);
+		outputRms = Math.sqrt(outputRms / count);
+
+		// Output energy should be significantly reduced (at least 80% reduction)
+		Assert.assertTrue(
+				"LP filter should attenuate high-frequency signal significantly; " +
+						"inputRms=" + inputRms + " outputRms=" + outputRms,
+				outputRms < inputRms * 0.2);
+	}
+
+	// ---- Resource loading helpers ------------------------------------------------
+
+	/**
+	 * Loads inline PDSL source that exercises each audio DSP primitive
+	 * in isolation, for testing outside the efx_channel.pdsl file.
+	 *
+	 * @return PDSL source string with fir_filter, scale_layer, lp_filter, hp_filter layers
+	 */
+	private String loadAudioPrimitivesSource() {
+		try (InputStream is = getClass().getResourceAsStream(
+				"/pdsl/audio/test_audio_primitives.pdsl")) {
+			if (is == null) {
+				throw new IllegalStateException(
+						"Test resource not found: /pdsl/audio/test_audio_primitives.pdsl");
+			}
+			return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			throw new IllegalStateException("Failed to load audio primitives test fixture", e);
+		}
+	}
+}

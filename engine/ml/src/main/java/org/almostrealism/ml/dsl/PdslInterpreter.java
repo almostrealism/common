@@ -18,6 +18,7 @@ package org.almostrealism.ml.dsl;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.ml.AttentionFeatures;
@@ -25,6 +26,8 @@ import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.time.TemporalFeatures;
+import org.almostrealism.time.computations.MultiOrderFilter;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -54,6 +57,10 @@ import java.util.function.Function;
  *   <li>{@code attention(...)}, {@code transformer(...)},
  *       {@code feed_forward(...)}</li>
  *   <li>{@code embedding(table)}</li>
+ *   <li>{@code fir(coefficients)} - FIR filter (convolution with a coefficient array)</li>
+ *   <li>{@code scale(factor)} - multiply each element by a scalar factor</li>
+ *   <li>{@code lowpass(cutoff, sampleRate, filterOrder)} - low-pass FIR filter</li>
+ *   <li>{@code highpass(cutoff, sampleRate, filterOrder)} - high-pass FIR filter</li>
  * </ul>
  *
  * <p>Composition constructs:
@@ -664,6 +671,10 @@ public class PdslInterpreter {
 			case "feed_forward": return callFeedForward(args);
 				case "shape": return callShape(args);
 			case "range": return callRange(args);
+			case "fir": return callFir(args);
+			case "scale": return callScale(args);
+			case "lowpass": return callLowpass(args);
+			case "highpass": return callHighpass(args);
 			default: return null;
 		}
 	}
@@ -962,6 +973,89 @@ public class PdslInterpreter {
 				"range() expects 3 arguments (source, shape, offset), got " + args.size());
 	}
 
+	/**
+	 * Builds a FIR (Finite Impulse Response) filter block that convolves the input signal
+	 * with the provided coefficient array.
+	 *
+	 * @param args one weight argument: the FIR coefficient array ({@code filterOrder+1} elements)
+	 * @return a factory that creates a FIR filter block for any input shape
+	 */
+	private Object callFir(List<Object> args) {
+		if (args.size() == 1 && args.get(0) instanceof PackedCollection) {
+			PackedCollection coefficients = (PackedCollection) args.get(0);
+			return (Function<TraversalPolicy, Block>) (shape ->
+					FEATURES.layer("fir", shape, shape,
+							input -> MultiOrderFilter.create(input, FEATURES.p(coefficients))));
+		}
+		throw new PdslParseException(
+				"fir() expects 1 weight argument (coefficients), got " + args.size());
+	}
+
+	/**
+	 * Builds a scalar scaling block that multiplies each input element by the given factor.
+	 *
+	 * @param args one numeric argument: the scale factor
+	 * @return a factory that creates a scale block for any input shape
+	 */
+	private Object callScale(List<Object> args) {
+		if (args.size() == 1) {
+			double factor = toDouble(args.get(0));
+			return FEATURES.scale(factor);
+		}
+		throw new PdslParseException(
+				"scale() expects 1 numeric argument (factor), got " + args.size());
+	}
+
+	/**
+	 * Builds a low-pass FIR filter block using Hamming-windowed sinc coefficients.
+	 *
+	 * <p>Generates filter coefficients at block-build time using {@code lowPassCoefficients()}
+	 * and wraps them in a {@link MultiOrderFilter} computation. The cutoff, sample rate,
+	 * and filter order are fixed when the block is created.</p>
+	 *
+	 * @param args three numeric arguments: cutoff frequency (Hz), sample rate (Hz), filter order
+	 * @return a factory that creates a low-pass FIR filter block for any input shape
+	 */
+	private Object callLowpass(List<Object> args) {
+		if (args.size() == 3) {
+			double cutoff = toDouble(args.get(0));
+			int sampleRate = toInt(args.get(1));
+			int order = toInt(args.get(2));
+			CollectionProducer coefficients =
+					FEATURES.lowPassCoefficients(FEATURES.c(cutoff), sampleRate, order);
+			return (Function<TraversalPolicy, Block>) (shape ->
+					FEATURES.layer("lowpass", shape, shape,
+							input -> MultiOrderFilter.create(input, coefficients)));
+		}
+		throw new PdslParseException(
+				"lowpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());
+	}
+
+	/**
+	 * Builds a high-pass FIR filter block using spectral inversion of the Hamming-windowed sinc.
+	 *
+	 * <p>Generates filter coefficients at block-build time using {@code highPassCoefficients()}
+	 * and wraps them in a {@link MultiOrderFilter} computation. The cutoff, sample rate,
+	 * and filter order are fixed when the block is created.</p>
+	 *
+	 * @param args three numeric arguments: cutoff frequency (Hz), sample rate (Hz), filter order
+	 * @return a factory that creates a high-pass FIR filter block for any input shape
+	 */
+	private Object callHighpass(List<Object> args) {
+		if (args.size() == 3) {
+			double cutoff = toDouble(args.get(0));
+			int sampleRate = toInt(args.get(1));
+			int order = toInt(args.get(2));
+			CollectionProducer coefficients =
+					FEATURES.highPassCoefficients(FEATURES.c(cutoff), sampleRate, order);
+			return (Function<TraversalPolicy, Block>) (shape ->
+					FEATURES.layer("highpass", shape, shape,
+							input -> MultiOrderFilter.create(input, coefficients)));
+		}
+		throw new PdslParseException(
+				"highpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());
+	}
+
 	// ---- User-defined layer calls ----
 
 	/**
@@ -1196,6 +1290,6 @@ public class PdslInterpreter {
 	}
 
 	/** Mixin type providing access to all framework feature default methods. */
-	private static class Features implements AttentionFeatures, RotationFeatures {
+	private static class Features implements AttentionFeatures, RotationFeatures, TemporalFeatures {
 	}
 }
