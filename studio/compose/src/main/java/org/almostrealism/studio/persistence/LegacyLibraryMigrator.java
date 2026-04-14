@@ -88,7 +88,7 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 	 * @return true if {@code PREFIX_0.bin} exists
 	 */
 	public static boolean hasLegacyData(LibraryDestination destination) {
-		return destination.fileIterator().hasNext();
+		return destination.files().hasNext();
 	}
 
 	/**
@@ -99,7 +99,7 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 	 */
 	public static List<String> legacyFiles(LibraryDestination destination) {
 		List<String> files = new ArrayList<>();
-		destination.fileIterator().forEachRemaining(files::add);
+		destination.files().forEachRemaining(files::add);
 		return files;
 	}
 
