@@ -5,9 +5,10 @@ MCP Build Validator Server for Almost Realism
 THIS SERVER IS NOT A GENERAL TEST RUNNER. It runs only static analysis and a
 handful of tightly scoped policy-enforcement tests. It will NEVER trigger the
 compute-intensive ML/audio/render test suites, even if asked. A runtime safety
-guard in _run_subprocess enforces this invariant at the process level: any
-attempt to run 'mvn test' outside the tools module or without a CodePolicy class
-filter is refused with an error before a subprocess is ever created.
+guard in _run_subprocess enforces this invariant for direct Maven invocations:
+direct attempts to run 'mvn test' outside the tools module or without a
+CodePolicy class filter are refused with an error before a subprocess is ever
+created.
 
 Available checks:
   checkstyle    - Style rules: no var, no @SuppressWarnings, file length, etc.
@@ -635,6 +636,21 @@ class BuildValidator:
                 f"execution. Command was: {cmd_str}"
             )
 
+        # Reactor-expanding flags like -am (also-make) and -amd (also-make-dependents)
+        # cause Maven to run the test phase for additional modules beyond -pl, defeating
+        # the safety goal of restricting execution to the tools module only.
+        reactor_flags = {"-am", "--also-make", "-amd", "--also-make-dependents"}
+        offending = reactor_flags.intersection(cmd)
+        if offending:
+            raise RuntimeError(
+                f"Build validator safety guard: reactor-expanding flags "
+                f"{sorted(offending)} are not allowed when 'mvn test' is present. "
+                f"They would cause Maven to run the test phase for modules beyond "
+                f"'{_SAFE_TEST_MODULE}'. "
+                f"Use mcp__ar-test-runner__start_test_run for general test "
+                f"execution. Command was: {cmd_str}"
+            )
+
         # -Dtest= must reference _POLICY_TEST_CLASS with an explicit method filter.
         # Bare "-Dtest=CodePolicyEnforcementTest" (no #method) is also rejected
         # to prevent accidentally running every method in the class.
@@ -838,7 +854,7 @@ async def list_tools():
                 "without executing the full test suite. Returns a run_id for tracking. "
                 "\n\nDefault checks: checkstyle, code_policy, test_timeouts, duplicate_code. "
                 "Checks that need compiled artifacts (code_policy, test_timeouts, "
-                "duplicate_code, errorprone) automatically run 'mvn install -DskipTests' "
+                "duplicate_code) automatically run 'mvn install -DskipTests' "
                 "first unless skip_build=true. "
                 "\n\nFor a fast pre-commit check: use checks=['checkstyle'] — no build needed. "
                 "For a full pre-push check: use the defaults (all four checks)."
