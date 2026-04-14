@@ -999,7 +999,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     outputBuilder.append(line).append("\n");
-                    log("[ClaudeCode] " + line);
+                    log(line);
                 }
             }
 

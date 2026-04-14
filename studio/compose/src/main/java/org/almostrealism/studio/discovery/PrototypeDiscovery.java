@@ -405,8 +405,8 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 													   Consumer<String> statusCallback)
 			throws PrototypeDiscoveryException {
 		report(statusCallback, "Waiting for library refresh...");
-		log("[Prototypes] Waiting for library refresh to complete...");
-		log("[Prototypes] Library has " + library.getPendingJobs() + " pending jobs, "
+		log("Waiting for library refresh to complete...");
+		log("Library has " + library.getPendingJobs() + " pending jobs, "
 				+ "progress=" + String.format("%.1f%%", library.getProgress() * 100));
 
 		try {
@@ -415,19 +415,19 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 			String msg = "Library refresh did not complete within "
 					+ REFRESH_TIMEOUT_MINUTES + " minutes ("
 					+ library.getPendingJobs() + " jobs still pending)";
-			log("[Prototypes] TIMEOUT: " + msg);
+			log("TIMEOUT: " + msg);
 			throw new PrototypeDiscoveryException(msg, e);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new PrototypeDiscoveryException("Interrupted waiting for refresh", e);
 		}
 
-		log("[Prototypes] Library refresh complete");
+		log("Library refresh complete");
 
 		int totalDetails = library.getAllIdentifiers().size();
 
 		if (totalDetails == 0) {
-			log("[Prototypes] No samples in library");
+			log("No samples in library");
 			throw new PrototypeDiscoveryException("No samples in library");
 		}
 
@@ -436,11 +436,11 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		WaveDetailsStore store = library.getStore();
 		if (store != null) {
 			report(statusCallback, "Building sparse K-NN graph via HNSW...");
-			log("[Prototypes] Building sparse K-NN graph (K=" + DEFAULT_K_NEIGHBORS
+			log("Building sparse K-NN graph (K=" + DEFAULT_K_NEIGHBORS
 					+ ") for " + totalDetails + " samples...");
 			graph = buildSparseGraph(library, store, DEFAULT_K_NEIGHBORS, statusCallback);
 		} else {
-			log("[Prototypes] Computing pairwise similarities for "
+			log("Computing pairwise similarities for "
 					+ totalDetails + " samples...");
 			report(statusCallback, "Computing similarities...");
 			CompletableFuture<Void> similarityFuture =
@@ -448,24 +448,24 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 			similarityFuture.join();
 
 			report(statusCallback, "Building similarity graph...");
-			log("[Prototypes] Building similarity graph...");
+			log("Building similarity graph...");
 			graph = library.toSimilarityGraph();
 		}
 
 		int nodeCount = graph.countNodes();
 		if (nodeCount == 0) {
-			log("[Prototypes] No samples with similarity data");
+			log("No samples with similarity data");
 			throw new PrototypeDiscoveryException(
 					"Similarity graph is empty (no samples with feature data)");
 		}
 
-		log("[Prototypes] Graph has " + nodeCount + " nodes");
+		log("Graph has " + nodeCount + " nodes");
 
 		report(statusCallback, "Detecting communities...");
-		log("[Prototypes] Running Louvain community detection...");
+		log("Running Louvain community detection...");
 
 		List<PrototypeResult> prototypes = findPrototypesFromGraph(graph, maxPrototypes);
-		log("[Prototypes] Returning " + prototypes.size() + " prototypes");
+		log("Returning " + prototypes.size() + " prototypes");
 		return prototypes;
 	}
 
@@ -514,7 +514,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 			}
 		}
 
-		log("[Prototypes] Sparse graph: " + total + " nodes, K=" + k);
+		log("Sparse graph: " + total + " nodes, K=" + k);
 		return new AudioSimilarityGraph(allDetails);
 	}
 
