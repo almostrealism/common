@@ -19,7 +19,13 @@ they must be refactored. Three similar lines in one file — refactor before pro
    b. Use `mcp__ar-consultant__consult` with the class/method name as keywords
    c. Check `DuplicateCodeDetector` output if available
 
-2. Run `mcp__ar-test-runner__start_test_run` for `CodePolicyEnforcementTest#enforceNoDuplicateCode`
+2. Run the build validator to check for duplicate code:
+   ```
+   mcp__ar-build-validator__start_validation checks:["duplicate_code"]
+   ```
+   Poll `mcp__ar-build-validator__get_validation_status` until complete, then call
+   `mcp__ar-build-validator__get_validation_violations` for structured results.
+   Pass `skip_build:true` if the project is already compiled.
 
 3. For any duplicate found:
    - Identify which file is the canonical location (usually the type the method operates on)

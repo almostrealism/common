@@ -2476,6 +2476,7 @@ def github_create_pr(
     workstream_id: str = "",
     base: str = "",
     head: str = "",
+    request_copilot_review: bool = False,
 ) -> dict:
     """Create a pull request.
 
@@ -2485,9 +2486,11 @@ def github_create_pr(
         workstream_id: Workstream to resolve repo from. Defaults to token context.
         base: Base branch (default: workstream's baseBranch or "master").
         head: Head branch (default: workstream's defaultBranch).
+        request_copilot_review: If true, automatically request a Copilot review
+            after creating the PR.
 
     Returns:
-        The created PR details.
+        The created PR details, including copilot_review_requested if applicable.
     """
     _require_scope("write")
     owner, repo, default_branch, err = _resolve_github_repo(workstream_id)
@@ -2512,13 +2515,91 @@ def github_create_pr(
     })
 
     if result.get("number"):
-        return {
+        pr_number = result["number"]
+        response = {
             "ok": True,
-            "number": result["number"],
+            "number": pr_number,
             "url": result.get("html_url"),
             "title": result.get("title"),
         }
+
+        if request_copilot_review:
+            copilot_result = _request_copilot_review(owner, repo, pr_number)
+            response["copilot_review_requested"] = copilot_result.get("ok", False)
+            if not copilot_result.get("ok"):
+                response["copilot_review_error"] = copilot_result.get("error")
+
+        return response
     return result
+
+
+def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
+    """Request a GitHub Copilot review on a pull request.
+
+    Copilot reviews are triggered by requesting a review from the
+    'copilot-pull-request-reviewer' app. This is the standard GitHub
+    mechanism for invoking the Copilot automated code review feature.
+
+    Args:
+        owner: Repository owner.
+        repo: Repository name.
+        pr_number: Pull request number.
+
+    Returns:
+        dict with ok=True on success or ok=False with error details.
+    """
+    result = _github_request(
+        "POST",
+        f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
+        {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
+    )
+
+    # GitHub returns the updated PR object on success (has 'number' key),
+    # or an error dict from _github_request on failure.
+    if isinstance(result, dict) and result.get("number"):
+        return {"ok": True}
+    if isinstance(result, dict) and "ok" in result:
+        return result
+    return {"ok": False, "error": str(result)}
+
+
+@mcp.tool()
+def github_request_copilot_review(
+    pr_number: int = 0,
+    workstream_id: str = "",
+    branch: str = "",
+) -> dict:
+    """Request a GitHub Copilot automated code review on a pull request.
+
+    Copilot reviews are triggered by requesting a review from the
+    'copilot-pull-request-reviewer' app via the GitHub API.
+
+    Args:
+        pr_number: Pull request number. If omitted, the open PR for the
+            workstream/branch is looked up automatically.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint used to find the PR when pr_number is not given.
+
+    Returns:
+        dict with ok=True on success or ok=False with error details.
+    """
+    _require_scope("write")
+    owner, repo, effective_branch, err = _resolve_github_repo(workstream_id, branch)
+    if err:
+        return err
+
+    effective_pr = pr_number
+    if not effective_pr:
+        # Look up the open PR for the branch.
+        head = f"{owner}:{effective_branch}"
+        pr_list = _github_request("GET", f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open")
+        if not isinstance(pr_list, list) or not pr_list:
+            return {"ok": False, "error": f"No open PR found for branch '{effective_branch}'"}
+        effective_pr = pr_list[0]["number"]
+
+    _audit("github_request_copilot_review", pr_number=effective_pr)
+
+    return _request_copilot_review(owner, repo, effective_pr)
 
 
 # ---------------------------------------------------------------------------
