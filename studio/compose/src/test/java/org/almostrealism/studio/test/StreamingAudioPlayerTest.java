@@ -440,16 +440,12 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 	 * switching. Returns null if hardware is unavailable.
 	 */
 	private SourceDataOutputLine createHardwareOutputLine() {
-		try {
-			AudioFormat format = new AudioFormat(
-					AudioFormat.Encoding.PCM_SIGNED, SAMPLE_RATE,
-					16, 2, 4, SAMPLE_RATE, false);
-			OutputLine line = LineUtilities.getLine(
-					format, BufferDefaults.defaultBufferSize);
-			return line instanceof SourceDataOutputLine
-					? (SourceDataOutputLine) line : null;
-		} catch (Exception e) {
-			return null;
-		}
+		AudioFormat format = new AudioFormat(
+				AudioFormat.Encoding.PCM_SIGNED, SAMPLE_RATE,
+				16, 2, 4, SAMPLE_RATE, false);
+		OutputLine line = LineUtilities.getLine(
+				format, BufferDefaults.defaultBufferSize);
+		return line instanceof SourceDataOutputLine
+				? (SourceDataOutputLine) line : null;
 	}
 }
