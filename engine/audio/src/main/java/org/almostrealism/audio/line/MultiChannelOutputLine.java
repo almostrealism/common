@@ -18,10 +18,7 @@ package org.almostrealism.audio.line;
 
 import org.almostrealism.collect.PackedCollection;
 
-import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.SourceDataLine;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 /**
  * An {@link OutputLine} that writes to a multi-channel {@link SourceDataLine},
@@ -32,26 +29,25 @@ import java.nio.ByteOrder;
  * {@link org.almostrealism.audio.WaveOutput} writers) fills these buffers
  * during the tick cycle. On each {@link #write(PackedCollection)} call, this
  * class interleaves all pair buffers into a complete multi-channel frame
- * and writes to the hardware.</p>
+ * and writes to the hardware via {@link LineUtilities#toBytes}.</p>
+ *
+ * <p>Lifecycle operations ({@link #start}, {@link #stop}, {@link #isActive},
+ * {@link #getReadPosition}, {@link #getBufferSize}, {@link #reset}, {@link #destroy})
+ * are delegated to an internal {@link SourceDataOutputLine}.</p>
  *
  * @see ChannelPairView
+ * @see SourceDataOutputLine
  */
 public class MultiChannelOutputLine implements OutputLine {
 
-	/** The underlying multi-channel Java Sound API line. */
-	private SourceDataLine line;
+	/** Delegate that owns the underlying SourceDataLine and all lifecycle operations. */
+	private final SourceDataOutputLine delegate;
 
 	/** Total output channels (e.g., 8 for 4 stereo pairs). */
 	private final int outputChannels;
 
 	/** Number of stereo pairs available. */
 	private final int pairCount;
-
-	/** Buffer size in frames. */
-	private final int bufferSize;
-
-	/** Audio format of the underlying line. */
-	private final AudioFormat format;
 
 	/**
 	 * Per-pair source buffers. These are filled by the pipeline during the
@@ -61,23 +57,23 @@ public class MultiChannelOutputLine implements OutputLine {
 	 */
 	private final PackedCollection[] pairSources;
 
-	/** When true, the line is being reset. */
-	private volatile boolean resetting;
-
 	/**
 	 * Creates a new multi-channel output line.
 	 *
 	 * @param line           the opened multi-channel SourceDataLine
 	 * @param outputChannels the number of output channels (must be even)
 	 * @param bufferSize     the buffer size in frames per pair
+	 * @throws IllegalArgumentException if outputChannels is not even
 	 */
 	public MultiChannelOutputLine(SourceDataLine line, int outputChannels,
 								  int bufferSize) {
-		this.line = line;
+		if (outputChannels % 2 != 0) {
+			throw new IllegalArgumentException(
+					"outputChannels must be even, got " + outputChannels);
+		}
+		this.delegate = new SourceDataOutputLine(line, bufferSize);
 		this.outputChannels = outputChannels;
 		this.pairCount = outputChannels / 2;
-		this.bufferSize = bufferSize;
-		this.format = line.getFormat();
 		this.pairSources = new PackedCollection[pairCount];
 	}
 
@@ -123,100 +119,65 @@ public class MultiChannelOutputLine implements OutputLine {
 	}
 
 	/**
-	 * Interleaves all pair source buffers into a complete multi-channel
-	 * frame and writes it to the hardware. Pairs without a source buffer
-	 * contribute silence to their channel positions.
+	 * Interleaves all pair source buffers into a complete multi-channel frame
+	 * and writes it to the hardware using {@link LineUtilities#toBytes}. Pairs
+	 * without a source buffer contribute silence to their channel positions.
 	 */
 	@Override
 	public void write(PackedCollection sample) {
-		if (resetting || line == null) return;
+		SourceDataLine line = delegate.getDataLine();
+		if (line == null) return;
 
 		int frames = LineUtilities.frameCount(sample);
-		if (frames > bufferSize) frames = bufferSize;
+		if (frames > delegate.getBufferSize()) frames = delegate.getBufferSize();
 
-		int frameSize = format.getFrameSize();
-		int bytesPerSample = frameSize / outputChannels;
-		int bitRate = format.getSampleSizeInBits();
-		double floatScale = (1L << (bitRate - 1)) - 1;
-
-		byte[] bytes = new byte[frames * frameSize];
-		ByteBuffer buf = ByteBuffer.wrap(bytes);
-		if (!format.isBigEndian()) {
-			buf.order(ByteOrder.LITTLE_ENDIAN);
-		}
-
+		double[][] channelData = new double[outputChannels][frames];
 		for (int f = 0; f < frames; f++) {
 			for (int ch = 0; ch < outputChannels; ch++) {
 				int pair = ch / 2;
-				double s = 0.0;
 				PackedCollection src = pairSources[pair];
 				if (src != null && f < src.getShape().getTotalSize()) {
-					s = src.toDouble(f);
-				}
-				s = Math.max(-1.0, Math.min(1.0, s));
-				long val = (long) (floatScale * s);
-
-				if (bytesPerSample == 2) {
-					buf.putShort((short) val);
-				} else if (bytesPerSample == 1) {
-					buf.put((byte) val);
-				} else if (bytesPerSample == 4) {
-					buf.putInt((int) val);
+					channelData[ch][f] = src.toDouble(f);
 				}
 			}
 		}
 
+		byte[] bytes = LineUtilities.toBytes(channelData, line.getFormat());
 		line.write(bytes, 0, bytes.length);
 	}
 
 	@Override
 	public int getReadPosition() {
-		if (line == null) return 0;
-		long framePosition = line.getLongFramePosition();
-		return (int) (framePosition % bufferSize);
+		return delegate.getReadPosition();
 	}
 
 	@Override
 	public int getBufferSize() {
-		return bufferSize;
+		return delegate.getBufferSize();
 	}
 
 	@Override
 	public void start() {
-		if (line != null && !line.isActive()) {
-			line.start();
-		}
+		delegate.start();
 	}
 
 	@Override
 	public void stop() {
-		if (line != null && line.isActive()) {
-			line.stop();
-		}
+		delegate.stop();
 	}
 
 	@Override
 	public boolean isActive() {
-		return line != null && line.isActive();
+		return delegate.isActive();
 	}
 
 	@Override
 	public synchronized void reset() {
-		resetting = true;
-		resetting = false;
+		delegate.reset();
 	}
 
 	@Override
 	public void destroy() {
-		if (line != null) {
-			if (line.isActive()) {
-				line.drain();
-				line.stop();
-			}
-			if (line.isOpen()) {
-				line.close();
-			}
-			line = null;
-		}
+		delegate.destroy();
 	}
 }

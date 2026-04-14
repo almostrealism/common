@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.line.test;
 
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import javax.sound.sampled.AudioFormat;
@@ -32,7 +33,7 @@ import java.util.TreeSet;
  * available audio output devices. Used to understand multi-channel
  * device support for output pair routing.
  */
-public class AudioDeviceChannelTest {
+public class AudioDeviceChannelTest extends TestSuiteBase {
 
 	@Test
 	public void reportDeviceChannelCapabilities() {
@@ -49,7 +50,7 @@ public class AudioDeviceChannelTest {
 					}
 
 					if (maxChannels > 0) {
-						System.out.println(info.getName()
+						log(info.getName()
 								+ " (" + info.getDescription() + ")"
 								+ " - max output channels: " + maxChannels
 								+ " (" + (maxChannels / 2) + " stereo pairs)");
@@ -60,8 +61,7 @@ public class AudioDeviceChannelTest {
 								channelCounts.add(f.getChannels());
 							}
 						}
-						System.out.println("  Supported channel counts: "
-								+ channelCounts);
+						log("  Supported channel counts: " + channelCounts);
 					}
 				}
 			}

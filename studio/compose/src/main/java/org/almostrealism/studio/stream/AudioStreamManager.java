@@ -238,8 +238,13 @@ public class AudioStreamManager implements ConsoleFeatures {
 	 * <p>The underlying {@link Mixer} is configured with output groups so
 	 * that channel rendering happens exactly once. Each group's summed
 	 * output is delivered to its device via a separate
-	 * {@link BufferedOutputScheduler}. An {@link OutputLineGroup} synchronizes
-	 * read positions across all devices.</p>
+	 * {@link BufferedOutputScheduler}.</p>
+	 *
+	 * <p><b>Note:</b> In multi-device mode the {@link org.almostrealism.studio.StreamingAudioPlayer.OutputMode}
+	 * switching ({@code setDirectMode}/{@code setDawMode}) does not affect
+	 * where audio is actually delivered, because each scheduler writes
+	 * directly to its assigned device output line. OutputMode only controls
+	 * DAW registration for single-device streams.</p>
 	 *
 	 * @param channel      the channel name for DAW registration
 	 * @param playerCount  number of audio sources this player can mix

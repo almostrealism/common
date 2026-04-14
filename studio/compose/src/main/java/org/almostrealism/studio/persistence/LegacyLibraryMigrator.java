@@ -147,7 +147,7 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 	 */
 	private Result migrate() {
 		AtomicInteger inFlight = new AtomicInteger(0);
-		int migrated = 0;
+		int submitted = 0;
 		int skipped = 0;
 		int failed = 0;
 
@@ -188,7 +188,7 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 							Thread.sleep(50);
 						} catch (InterruptedException e) {
 							Thread.currentThread().interrupt();
-							return new Result(migrated, skipped, failed, files, totalBytes);
+							return new Result(submitted, skipped, failed, files, totalBytes);
 						}
 					}
 
@@ -196,7 +196,7 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 					WaveDetailsJob job = library.submitMigrationJob(
 							details, AudioLibrary.BACKGROUND_PRIORITY);
 					job.getFuture().thenRun(inFlight::decrementAndGet);
-					migrated++;
+					submitted++;
 				}
 			} catch (IOException e) {
 				warn("Error reading legacy batch", e);
@@ -220,22 +220,23 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 			}
 		}
 
-		log("Legacy migration complete: " + migrated + " migrated, "
+		log("Legacy migration complete: " + submitted + " submitted, "
 				+ skipped + " skipped, " + failed + " failed");
 
-		return new Result(migrated, skipped, failed, files, totalBytes);
+		return new Result(submitted, skipped, failed, files, totalBytes);
 	}
 
 	/**
 	 * Result of a legacy library migration.
 	 *
-	 * @param migratedCount number of records successfully migrated
-	 * @param skippedCount  number of records skipped (already in store)
-	 * @param failedCount   number of records that failed to decode
-	 * @param legacyFiles   list of legacy batch file paths
-	 * @param totalBytes    total size of legacy files in bytes
+	 * @param submittedCount number of records submitted for migration (jobs may still be in-flight
+	 *                       when this is returned; use the future to wait for completion)
+	 * @param skippedCount   number of records skipped (already in store)
+	 * @param failedCount    number of records that failed to decode
+	 * @param legacyFiles    list of legacy batch file paths
+	 * @param totalBytes     total size of legacy files in bytes
 	 */
-	public record Result(int migratedCount, int skippedCount, int failedCount,
+	public record Result(int submittedCount, int skippedCount, int failedCount,
 						 List<String> legacyFiles, long totalBytes) {
 
 		/**

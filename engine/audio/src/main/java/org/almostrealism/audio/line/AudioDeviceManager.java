@@ -47,7 +47,7 @@ public class AudioDeviceManager {
 	 * @return list of available output devices (never null, may be empty)
 	 */
 	public static List<AudioDeviceInfo> getOutputDevices() {
-		AudioFormat format = getDefaultFormat(2);
+		AudioFormat format = LineUtilities.getDefaultFormat(2);
 		List<AudioDeviceInfo> devices = new ArrayList<>();
 
 		for (Mixer.Info info : AudioSystem.getMixerInfo()) {
@@ -96,7 +96,7 @@ public class AudioDeviceManager {
 	 */
 	public static OutputLine getLine(AudioDeviceInfo device, int bufferFrames) {
 		return LineUtilities.getLine(device.mixerInfo(),
-				getDefaultFormat(2), bufferFrames);
+				LineUtilities.getDefaultFormat(2), bufferFrames);
 	}
 
 	/**
@@ -110,7 +110,7 @@ public class AudioDeviceManager {
 	public static MultiChannelOutputLine getMultiChannelLine(
 			AudioDeviceInfo device, int bufferFrames) {
 		int channels = device.maxOutputChannels();
-		AudioFormat format = getDefaultFormat(channels);
+		AudioFormat format = LineUtilities.getDefaultFormat(channels);
 
 		try {
 			Mixer mixer = AudioSystem.getMixer(device.mixerInfo());
@@ -145,16 +145,4 @@ public class AudioDeviceManager {
 		return null;
 	}
 
-	/**
-	 * Returns a PCM audio format with the specified channel count.
-	 *
-	 * @param channels the number of audio channels
-	 * @return the audio format
-	 */
-	private static AudioFormat getDefaultFormat(int channels) {
-		int frameSize = channels * 2; // 16-bit = 2 bytes per sample per channel
-		return new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
-				OutputLine.sampleRate, 16, channels, frameSize,
-				OutputLine.sampleRate, false);
-	}
 }

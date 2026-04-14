@@ -550,9 +550,14 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 	 *
 	 * @param groupOutputLines map from group name to the output line for that group's device
 	 * @return map from group name to the scheduler for that group
+	 * @throws IllegalArgumentException if groupOutputLines is null or empty
 	 */
 	public Map<String, BufferedOutputScheduler> deliverGroups(
 			Map<String, OutputLine> groupOutputLines) {
+		if (groupOutputLines == null || groupOutputLines.isEmpty()) {
+			throw new IllegalArgumentException(
+					"groupOutputLines must not be null or empty");
+		}
 		ensureMixerInitialized(groupOutputLines.values().iterator().next().getBufferSize());
 
 		Map<String, BufferedOutputScheduler> schedulers = new LinkedHashMap<>();
@@ -603,11 +608,19 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		ensureMixerInitialized(perTickFrames);
 
 		// Pre-allocate per-pair buffers sized to the per-tick frame count
-		// and register with the MCLine.
+		// and register with the MCLine.  Crucially, we iterate the mixer's
+		// output groups in their insertion order — the same order used by
+		// mixer.toCellList() — so that pairBuffers[i] corresponds to the
+		// i-th group that map() will visit when building mappedCells.
 		PackedCollection[] pairBuffers = new PackedCollection[groupPairMap.size()];
-		String[] groupNames = groupPairMap.keySet().toArray(new String[0]);
+		String[] groupNames = mixer.getChannelMixer().getOutputGroups()
+				.keySet().toArray(new String[0]);
 		for (int i = 0; i < groupNames.length; i++) {
-			int pairIndex = groupPairMap.get(groupNames[i]);
+			Integer pairIndex = groupPairMap.get(groupNames[i]);
+			if (pairIndex == null) {
+				throw new IllegalArgumentException(
+						"Group \"" + groupNames[i] + "\" has no entry in groupPairMap");
+			}
 			pairBuffers[i] = new PackedCollection(perTickFrames);
 			mcLine.setPairSource(pairIndex, pairBuffers[i]);
 		}

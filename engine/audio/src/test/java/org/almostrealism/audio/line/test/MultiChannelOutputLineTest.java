@@ -19,6 +19,7 @@ package org.almostrealism.audio.line.test;
 import org.almostrealism.audio.line.ChannelPairView;
 import org.almostrealism.audio.line.MultiChannelOutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
@@ -32,7 +33,7 @@ import javax.sound.sampled.SourceDataLine;
 /**
  * Tests for {@link MultiChannelOutputLine} and {@link ChannelPairView}.
  */
-public class MultiChannelOutputLineTest {
+public class MultiChannelOutputLineTest extends TestSuiteBase {
 
 	@Test
 	public void channelPairViewLabel() {

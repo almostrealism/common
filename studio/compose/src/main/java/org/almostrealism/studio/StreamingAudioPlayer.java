@@ -152,13 +152,14 @@ public class StreamingAudioPlayer implements ConsoleFeatures {
 		SourceDataOutputLine old = this.directOutput;
 		this.directOutput = output;
 
-		// If currently in direct mode, switch the delegate to the new
-		// line BEFORE destroying the old one. The scheduler thread may
-		// be writing through the delegate at any moment — swapping
-		// first prevents it from writing to a destroyed line.
-		if (activeMode == OutputMode.DIRECT && output != null) {
+		// If currently in direct mode, always update the delegate first —
+		// even when output is null — so the DelegatedAudioLine stops
+		// referencing the soon-to-be-destroyed old line before we destroy it.
+		if (activeMode == OutputMode.DIRECT) {
 			outputLine.setOutputDelegate(output);
-			output.start();
+			if (output != null) {
+				output.start();
+			}
 		}
 
 		if (old != null && old != output) {

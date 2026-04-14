@@ -1051,14 +1051,6 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
-	 * Creates and submits a WaveDetailsJob for the given provider.
-	 *
-	 * @param provider   the audio data provider to analyze
-	 * @param persistent if true, marks the resulting details as persistent
-	 * @param priority   the job priority (e.g., HIGH_PRIORITY or DEFAULT_PRIORITY)
-	 * @return the submitted job
-	 */
-	/**
 	 * Submits a migration job that stores an already-computed {@link WaveDetails}
 	 * into the backing store, computes its embedding vector for HNSW search,
 	 * and tracks completion through the standard progress system.
@@ -1086,9 +1078,12 @@ public class AudioLibrary implements ConsoleFeatures {
 				} else {
 					store.put(d.getIdentifier(), d);
 				}
+				// Skip include(d) when store != null: include() would re-write
+				// the id to the store without an embedding, removing it from the
+				// HNSW index (ProtobufDiskStore behaviour).
+			} else {
+				include(d);
 			}
-
-			include(d);
 			holder[0] = null;
 			return d;
 		}, null, true, priority);

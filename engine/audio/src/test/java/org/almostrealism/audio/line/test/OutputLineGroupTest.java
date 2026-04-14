@@ -19,13 +19,14 @@ package org.almostrealism.audio.line.test;
 import org.almostrealism.audio.line.MockOutputLine;
 import org.almostrealism.audio.line.OutputLineGroup;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 /**
  * Tests for {@link OutputLineGroup} synchronization and forwarding behavior.
  */
-public class OutputLineGroupTest {
+public class OutputLineGroupTest extends TestSuiteBase {
 
 	@Test
 	public void readPositionReturnsMinimum() {

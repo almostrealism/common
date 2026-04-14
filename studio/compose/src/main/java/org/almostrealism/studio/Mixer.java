@@ -24,8 +24,10 @@ import org.almostrealism.graph.CollectionCachedStateCell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.SummationCell;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Multi-channel audio mixer that routes a fixed number of input channels into a single
@@ -151,6 +153,22 @@ public class Mixer implements CellFeatures {
 	 */
 	public void applyOutputGroups() {
 		if (outputGroups.isEmpty()) return;
+
+		// Validate channel indices: in-range and no duplicates across groups
+		Set<Integer> seen = new HashSet<>();
+		for (OutputGroup group : outputGroups.values()) {
+			for (int idx : group.channelIndices()) {
+				if (idx < 0 || idx >= channels.length) {
+					throw new IllegalArgumentException(
+							"Channel index " + idx + " is out of range [0, "
+									+ channels.length + ") in group \"" + group.name() + "\"");
+				}
+				if (!seen.add(idx)) {
+					throw new IllegalArgumentException(
+							"Channel " + idx + " appears in more than one output group");
+				}
+			}
+		}
 
 		// Wire each channel to its group's SummationCell
 		for (OutputGroup group : outputGroups.values()) {

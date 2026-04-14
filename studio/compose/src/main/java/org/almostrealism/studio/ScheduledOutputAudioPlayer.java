@@ -110,10 +110,15 @@ public class ScheduledOutputAudioPlayer extends AudioPlayerBase {
 	 * as the primary scheduler; the rest are registered as additional.
 	 *
 	 * @param player     the underlying audio player
-	 * @param schedulers map from group name to scheduler (insertion-ordered)
+	 * @param schedulers map from group name to scheduler (insertion-ordered, must not be empty)
+	 * @throws IllegalArgumentException if schedulers is null or empty
 	 */
 	public ScheduledOutputAudioPlayer(BufferedAudioPlayer player,
 									  Map<String, BufferedOutputScheduler> schedulers) {
+		if (schedulers == null || schedulers.isEmpty()) {
+			throw new IllegalArgumentException(
+					"schedulers must not be null or empty");
+		}
 		this.player = player;
 		this.additionalSchedulers = new ArrayList<>();
 

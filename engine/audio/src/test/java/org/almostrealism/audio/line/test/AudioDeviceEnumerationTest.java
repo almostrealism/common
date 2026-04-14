@@ -18,6 +18,8 @@ package org.almostrealism.audio.line.test;
 
 import org.almostrealism.audio.line.AudioDeviceInfo;
 import org.almostrealism.audio.line.AudioDeviceManager;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
@@ -27,16 +29,15 @@ import java.util.List;
  * These tests verify the device enumeration works on the current
  * hardware without requiring specific devices to be present.
  */
-public class AudioDeviceEnumerationTest {
+public class AudioDeviceEnumerationTest extends TestSuiteBase {
 
 	@Test
 	public void enumerateOutputDevices() {
 		List<AudioDeviceInfo> devices = AudioDeviceManager.getOutputDevices();
 
-		System.out.println("Available output devices (" + devices.size() + "):");
+		log("Available output devices (" + devices.size() + "):");
 		for (AudioDeviceInfo device : devices) {
-			System.out.println("  - " + device.name()
-					+ " (" + device.description() + ")");
+			log("  - " + device.name() + " (" + device.description() + ")");
 		}
 
 		// On any system with audio, we should have at least one device
@@ -47,12 +48,12 @@ public class AudioDeviceEnumerationTest {
 	public void findByNameReturnsNullForMissing() {
 		AudioDeviceInfo result = AudioDeviceManager.findByName(
 				"Nonexistent Device That Does Not Exist");
-		assert result == null : "Should return null for unknown device";
+		Assert.assertNull("Should return null for unknown device", result);
 	}
 
 	@Test
 	public void findByNameHandlesNull() {
 		AudioDeviceInfo result = AudioDeviceManager.findByName(null);
-		assert result == null : "Should return null for null name";
+		Assert.assertNull("Should return null for null name", result);
 	}
 }

@@ -53,15 +53,27 @@ import java.nio.ByteOrder;
 public class LineUtilities {
 	/** The most recently used AudioFormat, cached to avoid recomputing the default format. */
 	protected static AudioFormat lastFormat;
-	
+
+	/**
+	 * Returns the standard 16-bit signed PCM audio format for the specified channel count.
+	 * The frame size is computed as {@code channels * 2} (2 bytes per 16-bit sample).
+	 *
+	 * @param channels the number of audio channels
+	 * @return a 16-bit signed PCM format at the standard sample rate
+	 */
+	public static AudioFormat getDefaultFormat(int channels) {
+		int frameSize = channels * 2;
+		return new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
+				OutputLine.sampleRate, 16, channels, frameSize,
+				OutputLine.sampleRate, false);
+	}
+
 	/**
 	 * Returns a SourceDataOutputLine for the most recent format requested.
 	 */
 	public static OutputLine getLine() {
 		if (lastFormat == null) {
-			lastFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, OutputLine.sampleRate,
-					16, 2, 4,
-					OutputLine.sampleRate, false);
+			lastFormat = getDefaultFormat(2);
 		}
 
 		return getLine(lastFormat, BufferDefaults.defaultBufferSize);
@@ -340,9 +352,7 @@ public class LineUtilities {
 	 */
 	public static boolean isHardwareAvailable() {
 		if (lastFormat == null) {
-			lastFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, OutputLine.sampleRate,
-					16, 2, 4,
-					OutputLine.sampleRate, false);
+			lastFormat = getDefaultFormat(2);
 		}
 
 		DataLine.Info info = new DataLine.Info(SourceDataLine.class, lastFormat);
@@ -379,9 +389,7 @@ public class LineUtilities {
 	 */
 	public static OutputLine getLineOrMock(int bufferFrames) {
 		if (lastFormat == null) {
-			lastFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, OutputLine.sampleRate,
-					16, 2, 4,
-					OutputLine.sampleRate, false);
+			lastFormat = getDefaultFormat(2);
 		}
 
 		OutputLine line = getLine(lastFormat, bufferFrames);

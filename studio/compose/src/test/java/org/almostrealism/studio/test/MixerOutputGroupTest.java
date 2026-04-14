@@ -19,6 +19,7 @@ package org.almostrealism.studio.test;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.studio.Mixer;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -26,7 +27,7 @@ import org.junit.Test;
  * Tests for {@link Mixer} output group functionality, verifying that channels
  * are correctly routed to their assigned group outputs.
  */
-public class MixerOutputGroupTest implements CellFeatures {
+public class MixerOutputGroupTest extends TestSuiteBase implements CellFeatures {
 
 	@Test
 	public void noOutputGroupsPreservesDefaultBehavior() {
