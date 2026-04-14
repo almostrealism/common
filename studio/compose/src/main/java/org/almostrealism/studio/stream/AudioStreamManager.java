@@ -26,6 +26,8 @@ import org.almostrealism.audio.line.AudioLine;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.DelegatedAudioLine;
 import org.almostrealism.audio.line.BufferDefaults;
+import org.almostrealism.audio.line.ChannelPairView;
+import org.almostrealism.audio.line.MultiChannelOutputLine;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.line.OutputLineGroup;
 import org.almostrealism.audio.line.SourceDataOutputLine;
@@ -259,34 +261,43 @@ public class AudioStreamManager implements ConsoleFeatures {
 		BufferedAudioPlayer player = new BufferedAudioPlayer(playerCount,
 				OutputLine.sampleRate, maxFrames);
 
-		// Configure output groups on the Mixer before building the pipeline
+		// Configure output groups on the Mixer
 		Mixer mixer = player.getMixer().getChannelMixer();
 		for (Map.Entry<String, DeviceGroup> entry : deviceGroups.entrySet()) {
 			mixer.addOutputGroup(entry.getKey(), entry.getValue().channelIndices());
 		}
 		mixer.applyOutputGroups();
 
-		// Build per-group output lines map for deliverGroups()
-		Map<String, OutputLine> groupLines = new LinkedHashMap<>();
-		for (Map.Entry<String, DeviceGroup> entry : deviceGroups.entrySet()) {
-			groupLines.put(entry.getKey(), entry.getValue().outputLine());
-		}
+		// Detect if all groups share a single MultiChannelOutputLine
+		MultiChannelOutputLine sharedMcLine = findSharedMultiChannelLine(deviceGroups);
 
-		// Create per-group schedulers (each ticks only its group's cells)
-		Map<String, BufferedOutputScheduler> schedulers =
-				player.deliverGroups(groupLines);
-
-		// Wrap in ScheduledOutputAudioPlayer with multi-scheduler support
-		ScheduledOutputAudioPlayer scheduledPlayer =
-				new ScheduledOutputAudioPlayer(player, schedulers);
-
-		// Create an OutputLineGroup for DAW/streaming mode fallback
-		OutputLineGroup lineGroup = new OutputLineGroup();
-		for (DeviceGroup group : deviceGroups.values()) {
-			lineGroup.addMember(group.outputLine());
-		}
-
+		ScheduledOutputAudioPlayer scheduledPlayer;
 		DelegatedAudioLine delegatedLine = new DelegatedAudioLine();
+
+		if (sharedMcLine != null) {
+			// Single device, multi-channel: ONE scheduler, multi-channel output
+			Map<String, Integer> groupPairMap = new LinkedHashMap<>();
+			for (Map.Entry<String, DeviceGroup> entry : deviceGroups.entrySet()) {
+				OutputLine line = entry.getValue().outputLine();
+				int pairIndex = (line instanceof ChannelPairView cpv)
+						? cpv.getPairIndex() : 0;
+				groupPairMap.put(entry.getKey(), pairIndex);
+			}
+
+			BufferedOutputScheduler scheduler =
+					player.deliverMultiChannel(sharedMcLine, groupPairMap);
+			scheduledPlayer = new ScheduledOutputAudioPlayer(player,
+					Map.of("multi-channel", scheduler));
+		} else {
+			// Multiple devices: per-group schedulers
+			Map<String, OutputLine> groupLines = new LinkedHashMap<>();
+			for (Map.Entry<String, DeviceGroup> entry : deviceGroups.entrySet()) {
+				groupLines.put(entry.getKey(), entry.getValue().outputLine());
+			}
+			Map<String, BufferedOutputScheduler> schedulers =
+					player.deliverGroups(groupLines);
+			scheduledPlayer = new ScheduledOutputAudioPlayer(player, schedulers);
+		}
 
 		StreamingAudioPlayer config =
 				new StreamingAudioPlayer(scheduledPlayer, delegatedLine, inputRecord);
@@ -295,8 +306,6 @@ public class AudioStreamManager implements ConsoleFeatures {
 				new AudioLineDelegationHandler(delegatedLine, config));
 		audioStreams.put(channel, config);
 
-		// In direct mode, the per-group schedulers handle output.
-		// The DelegatedAudioLine is used for DAW mode fallback.
 		if (initialMode == StreamingAudioPlayer.OutputMode.DIRECT) {
 			config.setDirectMode();
 		} else {
@@ -304,8 +313,30 @@ public class AudioStreamManager implements ConsoleFeatures {
 		}
 
 		scheduledPlayer.start();
-
 		return config;
+	}
+
+	/**
+	 * Checks if all device groups share the same {@link MultiChannelOutputLine}
+	 * (i.e., all groups are {@link ChannelPairView} instances with the same parent).
+	 *
+	 * @return the shared line, or null if groups use different devices
+	 */
+	private MultiChannelOutputLine findSharedMultiChannelLine(
+			Map<String, DeviceGroup> deviceGroups) {
+		MultiChannelOutputLine shared = null;
+		for (DeviceGroup group : deviceGroups.values()) {
+			if (group.outputLine() instanceof ChannelPairView cpv) {
+				if (shared == null) {
+					shared = cpv.getParent();
+				} else if (shared != cpv.getParent()) {
+					return null; // Different parents = different devices
+				}
+			} else {
+				return null; // Not a ChannelPairView = not multi-channel
+			}
+		}
+		return shared;
 	}
 
 	/**

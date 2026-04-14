@@ -17,6 +17,7 @@
 package org.almostrealism.studio;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WavFile;
+import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.CellFeatures;
 
 import org.almostrealism.audio.data.DynamicWaveDataProvider;
@@ -28,11 +29,15 @@ import org.almostrealism.audio.line.AudioLineOperation;
 import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.BufferedAudio;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
+import org.almostrealism.audio.line.ChannelPairView;
 import org.almostrealism.audio.line.DelegatedAudioLine;
+import org.almostrealism.audio.line.MultiChannelOutputLine;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.ReceptorCell;
 import org.almostrealism.graph.TimeCell;
+import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.graph.temporal.WaveCell;
 
 import java.io.File;
@@ -42,6 +47,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.DoubleConsumer;
+import java.util.function.Supplier;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
@@ -566,6 +572,66 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		}
 
 		return schedulers;
+	}
+
+	/**
+	 * Delivers audio to a multi-channel output line where all output groups
+	 * share a single physical device. Uses ONE scheduler that ticks the full
+	 * pipeline and writes a complete multi-channel frame on each cycle.
+	 *
+	 * <p>This method selects one output group as the "primary" whose output
+	 * drives the scheduler's standard write path. All other groups write to
+	 * their pair buffers via receptors. After the primary group writes (which
+	 * triggers {@link MultiChannelOutputLine#write(PackedCollection)}), the
+	 * multi-channel line flushes all pair buffers.</p>
+	 *
+	 * @param mcLine       the multi-channel output line
+	 * @param groupPairMap map from group name to 0-based pair index
+	 * @return a single scheduler that drives all output groups
+	 */
+	public BufferedOutputScheduler deliverMultiChannel(
+			MultiChannelOutputLine mcLine,
+			Map<String, Integer> groupPairMap) {
+		// The BufferedOutputScheduler divides output.getBufferSize() by
+		// BufferDefaults.batchCount to determine the per-tick frame count.
+		// The pair buffer (destination of WaveOutput's circular cursor)
+		// must be sized to match that per-tick frame count — otherwise
+		// MCLine.write() will repeatedly read the same stale positions
+		// while WaveOutput advances its cursor to fresh positions in a
+		// larger buffer, producing the "tiny clip repeated N times" artifact.
+		int perTickFrames = mcLine.getBufferSize() / BufferDefaults.batchCount;
+		ensureMixerInitialized(perTickFrames);
+
+		// Pre-allocate per-pair buffers sized to the per-tick frame count
+		// and register with the MCLine.
+		PackedCollection[] pairBuffers = new PackedCollection[groupPairMap.size()];
+		String[] groupNames = groupPairMap.keySet().toArray(new String[0]);
+		for (int i = 0; i < groupNames.length; i++) {
+			int pairIndex = groupPairMap.get(groupNames[i]);
+			pairBuffers[i] = new PackedCollection(perTickFrames);
+			mcLine.setPairSource(pairIndex, pairBuffers[i]);
+		}
+
+		// Start from the Mixer's CellList (group cells as roots, channel
+		// cells + WaveCells as requirements).
+		CellList baseCells = mixer.toCellList();
+		if (enableUnifiedClock) {
+			baseCells = baseCells.addRequirement(clock);
+		}
+
+		// map() mirrors the standard CellList.buffer(destination) path:
+		// each group SummationCell gets its WaveOutput writer cell set as
+		// its receptor, and the writer cells are added to the returned
+		// CellList.
+		final CellList mappedCells = map(baseCells, i -> {
+			WaveOutput pairWriter = new WaveOutput(pairBuffers[i]);
+			pairWriter.setCircular(true);
+			return pairWriter.getWriterCell(0);
+		});
+
+		AudioLineOperation operation = (in, out, frames) ->
+				new TemporalRunner(mappedCells, frames);
+		return operation.buffer(mcLine);
 	}
 
 	@Override

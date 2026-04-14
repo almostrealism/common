@@ -19,13 +19,35 @@ package org.almostrealism.audio.line;
 import javax.sound.sampled.Mixer;
 
 /**
- * Describes an available audio output device on the system.
+ * Describes an available audio output device on the system, including
+ * its channel capabilities for multi-channel output pair routing.
  *
- * @param name      the human-readable device name (used for persistence and display)
- * @param description the device description provided by the platform
- * @param mixerInfo the Java Sound API {@link Mixer.Info} for opening lines on this device
+ * @param name             the human-readable device name (used for persistence and display)
+ * @param description      the device description provided by the platform
+ * @param mixerInfo        the Java Sound API {@link Mixer.Info} for opening lines on this device
+ * @param maxOutputChannels the maximum number of output channels supported (e.g., 8 for 4 stereo pairs)
  */
-public record AudioDeviceInfo(String name, String description, Mixer.Info mixerInfo) {
+public record AudioDeviceInfo(String name, String description,
+							  Mixer.Info mixerInfo, int maxOutputChannels) {
+
+	/**
+	 * Returns the number of stereo output pairs available on this device.
+	 *
+	 * @return the stereo pair count (maxOutputChannels / 2)
+	 */
+	public int getOutputPairCount() {
+		return maxOutputChannels / 2;
+	}
+
+	/**
+	 * Returns true if this device supports multi-channel output
+	 * (more than one stereo pair).
+	 *
+	 * @return true if the device has more than 2 output channels
+	 */
+	public boolean isMultiChannel() {
+		return maxOutputChannels > 2;
+	}
 
 	@Override
 	public String toString() {
