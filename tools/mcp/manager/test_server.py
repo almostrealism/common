@@ -1335,10 +1335,113 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         )
 
     @patch.object(server, "_github_request")
+    def test_request_copilot_review_helper_empty_body_success(self, mock_gh):
+        """An empty-body 200 response (ok=True, status=200) should be treated as success."""
+        mock_gh.return_value = {"ok": True, "status": 200}
+        result = server._request_copilot_review("owner", "repo", 10)
+        self.assertTrue(result["ok"])
+
+    @patch.object(server, "_github_request")
     def test_request_copilot_review_helper_github_error(self, mock_gh):
+        """When the request fails and no dismissible reviews exist, returns ok=False."""
         mock_gh.return_value = {"ok": False, "error": "not found"}
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertFalse(result["ok"])
+
+    @patch.object(server, "_dismiss_copilot_review", return_value={"ok": True})
+    @patch.object(server, "_github_request")
+    def test_request_copilot_review_retries_after_dismiss(self, mock_gh, mock_dismiss):
+        """When the initial request fails, dismisses the prior review and retries."""
+        mock_gh.side_effect = [
+            {"ok": False, "error": "Review cannot be requested at this time."},
+            {"number": 10},
+        ]
+        result = server._request_copilot_review("owner", "repo", 10)
+        self.assertTrue(result["ok"])
+        mock_dismiss.assert_called_once_with("owner", "repo", 10)
+        self.assertEqual(mock_gh.call_count, 2)
+
+    @patch.object(server, "_dismiss_copilot_review", return_value={"ok": False, "error": "No dismissible reviews"})
+    @patch.object(server, "_github_request")
+    def test_request_copilot_review_error_when_dismiss_fails(self, mock_gh, mock_dismiss):
+        """When both the request and dismiss fail, returns ok=False with the original error."""
+        mock_gh.return_value = {"ok": False, "error": "Review cannot be requested at this time."}
+        result = server._request_copilot_review("owner", "repo", 10)
+        self.assertFalse(result["ok"])
+        self.assertIn("Review cannot be requested at this time.", result["error"])
+
+    @patch.object(server, "_github_request")
+    def test_dismiss_copilot_review_success(self, mock_gh):
+        """Dismisses the most recent CHANGES_REQUESTED Copilot review."""
+        mock_gh.side_effect = [
+            [
+                {
+                    "id": 42,
+                    "user": {"login": "copilot-pull-request-reviewer[bot]"},
+                    "state": "CHANGES_REQUESTED",
+                    "submitted_at": "2026-04-14T10:00:00Z",
+                }
+            ],
+            {"id": 42, "state": "DISMISSED"},
+        ]
+        result = server._dismiss_copilot_review("owner", "repo", 10)
+        self.assertTrue(result["ok"])
+        mock_gh.assert_any_call("GET", "/repos/owner/repo/pulls/10/reviews")
+        mock_gh.assert_any_call(
+            "PUT",
+            "/repos/owner/repo/pulls/10/reviews/42/dismissals",
+            {"message": "Dismissing prior Copilot review to allow re-review"},
+        )
+
+    @patch.object(server, "_github_request")
+    def test_dismiss_copilot_review_no_dismissible_reviews(self, mock_gh):
+        """Returns ok=False when no dismissible Copilot reviews exist."""
+        mock_gh.return_value = [
+            {
+                "id": 1,
+                "user": {"login": "copilot-pull-request-reviewer[bot]"},
+                "state": "COMMENTED",
+                "submitted_at": "2026-04-14T09:00:00Z",
+            }
+        ]
+        result = server._dismiss_copilot_review("owner", "repo", 10)
+        self.assertFalse(result["ok"])
+        self.assertIn("No dismissible", result["error"])
+
+    @patch.object(server, "_github_request")
+    def test_dismiss_copilot_review_list_error(self, mock_gh):
+        """Returns ok=False when the reviews list request fails."""
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        result = server._dismiss_copilot_review("owner", "repo", 10)
+        self.assertFalse(result["ok"])
+
+    @patch.object(server, "_github_request")
+    def test_dismiss_copilot_review_picks_most_recent(self, mock_gh):
+        """Dismisses the most recently submitted review when multiple exist."""
+        mock_gh.side_effect = [
+            [
+                {
+                    "id": 1,
+                    "user": {"login": "copilot-pull-request-reviewer[bot]"},
+                    "state": "APPROVED",
+                    "submitted_at": "2026-04-13T08:00:00Z",
+                },
+                {
+                    "id": 2,
+                    "user": {"login": "copilot-pull-request-reviewer[bot]"},
+                    "state": "CHANGES_REQUESTED",
+                    "submitted_at": "2026-04-14T10:00:00Z",
+                },
+            ],
+            {"id": 2, "state": "DISMISSED"},
+        ]
+        result = server._dismiss_copilot_review("owner", "repo", 10)
+        self.assertTrue(result["ok"])
+        mock_gh.assert_any_call(
+            "PUT",
+            "/repos/owner/repo/pulls/10/reviews/2/dismissals",
+            {"message": "Dismissing prior Copilot review to allow re-review"},
+        )
 
 
 if __name__ == "__main__":
