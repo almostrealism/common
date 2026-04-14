@@ -1,0 +1,28 @@
+{
+  "run_id": "1a516c5e",
+  "config": {
+    "checks": [
+      "checkstyle"
+    ],
+    "skip_build": false,
+    "timeout_minutes": 25
+  },
+  "status": "completed",
+  "started_at": "2026-04-14T19:28:03.051713",
+  "completed_at": "2026-04-14T19:28:10.242264",
+  "pid": null,
+  "build_status": null,
+  "build_duration_seconds": null,
+  "checks": [
+    {
+      "name": "checkstyle",
+      "status": "passed",
+      "started_at": "2026-04-14T19:28:03.054380",
+      "completed_at": "2026-04-14T19:28:10.242158",
+      "duration_seconds": 7.2,
+      "exit_code": 0,
+      "violation_count": 0,
+      "violations": []
+    }
+  ]
+}

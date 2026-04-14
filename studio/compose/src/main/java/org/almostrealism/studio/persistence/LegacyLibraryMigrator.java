@@ -240,6 +240,12 @@ public class LegacyLibraryMigrator implements ConsoleFeatures {
 						 List<String> legacyFiles, long totalBytes) {
 
 		/**
+		 * Returns the number of records submitted for migration.
+		 * This is an alias for {@link #submittedCount()} provided for readability.
+		 */
+		public int migratedCount() { return submittedCount(); }
+
+		/**
 		 * Deletes all legacy batch files.
 		 *
 		 * @return the number of files successfully deleted
