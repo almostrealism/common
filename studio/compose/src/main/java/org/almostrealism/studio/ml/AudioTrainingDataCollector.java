@@ -242,21 +242,12 @@ public class AudioTrainingDataCollector implements CollectionFeatures, ConsoleFe
 	protected WaveData normalizeAmplitude(WaveData audio) {
 		PackedCollection data = audio.getData();
 
-		// Find maximum absolute value using hardware acceleration
-		CollectionProducer absProducer = c(p(data)).abs();
-		PackedCollection maxResult = absProducer.max().get().evaluate();
-		double maxAbs = maxResult.toDouble(0);
-
-		// Normalize if max is greater than 0
-		if (maxAbs > 0 && maxAbs != 1.0) {
-			double scale = 1.0 / maxAbs;
-
-			// Scale using hardware acceleration
-			PackedCollection normalized = c(p(data)).multiply(c(scale)).get().evaluate();
-			return new WaveData(normalized, audio.getSampleRate());
-		}
-
-		return audio;
+		// Compute the per-device normalization scale as a single producer graph
+		// so the scalar decision stays on the device: scale = (max > 0) ? 1/max : 1.
+		CollectionProducer maxAbs = c(p(data)).abs().max();
+		CollectionProducer scale = maxAbs.greaterThan(c(0.0), c(1.0).divide(maxAbs), c(1.0));
+		PackedCollection normalized = c(p(data)).multiply(scale).get().evaluate();
+		return new WaveData(normalized, audio.getSampleRate());
 	}
 
 	/**

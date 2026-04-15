@@ -272,19 +272,13 @@ public class AudioDiffusionGenerator implements ConsoleFeatures, CollectionFeatu
 	private void normalizeAudio(WaveData audio) {
 		PackedCollection data = audio.getData();
 
-		// Find max absolute value using hardware acceleration
-		CollectionProducer absProducer = c(p(data)).abs();
-		PackedCollection maxResult = absProducer.max().get().evaluate();
-		double maxAbs = maxResult.toDouble(0);
+		// Compute the headroom-preserving scale as a producer graph so the
+		// peak check stays on the device: scale = (max > 1) ? 0.95/max : 1.
+		CollectionProducer maxAbs = c(p(data)).abs().max();
+		CollectionProducer scale = maxAbs.greaterThan(c(1.0), c(0.95).divide(maxAbs), c(1.0));
+		c(p(data)).multiply(scale).into(data).evaluate();
 
-		if (maxAbs > 1.0) {
-			double scale = 0.95 / maxAbs; // Leave some headroom
-
-			// Scale using hardware acceleration
-			c(p(data)).multiply(c(scale)).into(data).evaluate();
-
-			if (verbose) log("Normalized audio (max was " + String.format("%.2f", maxAbs) + ")");
-		}
+		if (verbose) log("Normalized audio (peak limited to 0.95)");
 	}
 
 	/**
