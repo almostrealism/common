@@ -221,14 +221,16 @@ public class MidiDataset implements Dataset<PackedCollection> {
 			return oneHot;
 		}
 
-		int[] values = token.toArray();
+		double[] attrValues = token.toDoubleArray();
+		double[] values = new double[vocabSize];
 		for (int attr = 0; attr < MoonbeamConfig.NUM_ATTRIBUTES; attr++) {
-			int index = vocabOffsets[attr + 1] + values[attr];
+			int index = vocabOffsets[attr + 1] + (int) attrValues[attr];
 			if (index >= 0 && index < vocabSize) {
-				oneHot.setMem(index, 1.0);
+				values[index] = 1.0;
 			}
 		}
 
+		oneHot.setMem(0, values);
 		return oneHot;
 	}
 
