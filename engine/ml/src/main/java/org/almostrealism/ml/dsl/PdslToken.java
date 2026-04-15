@@ -32,6 +32,8 @@ public class PdslToken {
 		CONFIG,
 		/** {@code data} keyword introducing a data block definition. */
 		DATA,
+		/** {@code state} keyword introducing a state block definition. */
+		STATE,
 		/** {@code let} keyword for local variable binding. */
 		LET,
 		/** {@code return} keyword for returning a value. */

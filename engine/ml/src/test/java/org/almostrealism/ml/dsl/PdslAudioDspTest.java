@@ -27,9 +27,6 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -75,7 +72,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	 * Verifies that the {@code efx_channel.pdsl} file parses correctly and
 	 * contains all expected layer definitions.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testEfxChannelPdslParsesCorrectly() {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -97,7 +94,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	 * Verifies that an {@code efx_wet_chain} block can be built from
 	 * pre-computed FIR coefficients using the {@code fir()} primitive.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testEfxWetChainBlockBuilds() {
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
@@ -125,7 +122,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	 * {@code lowpass()} PDSL primitive. This exercises inline FIR coefficient
 	 * computation without pre-computing them in Java.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testEfxLowpassWetBlockBuilds() {
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
@@ -149,7 +146,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	 * Verifies that an {@code efx_highpass_wet} block can be built using the
 	 * {@code highpass()} PDSL primitive.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testEfxHighpassWetBlockBuilds() {
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
@@ -174,11 +171,10 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	 * {@code lowpass()}, and {@code highpass()} primitives all parse and build
 	 * blocks successfully.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void testAudioPrimitivesParseAndBuild() {
-		String source = loadAudioPrimitivesSource();
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(source);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_audio_primitives.pdsl");
 
 		PdslInterpreter interpreter = new PdslInterpreter(program);
 		Assert.assertTrue("Should define 'fir_filter' layer",
@@ -332,24 +328,233 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 				outputRms < inputRms * 0.2);
 	}
 
-	// ---- Resource loading helpers ------------------------------------------------
+	// ---- State block tests -------------------------------------------------------
 
 	/**
-	 * Loads inline PDSL source that exercises each audio DSP primitive
-	 * in isolation, for testing outside the efx_channel.pdsl file.
-	 *
-	 * @return PDSL source string with fir_filter, scale_layer, lp_filter, hp_filter layers
+	 * Verifies that a PDSL source containing a {@code state} block parses correctly
+	 * and the interpreter reports the state definition name alongside the layer.
 	 */
-	private String loadAudioPrimitivesSource() {
-		try (InputStream is = getClass().getResourceAsStream(
-				"/pdsl/audio/test_audio_primitives.pdsl")) {
-			if (is == null) {
-				throw new IllegalStateException(
-						"Test resource not found: /pdsl/audio/test_audio_primitives.pdsl");
-			}
-			return new String(is.readAllBytes(), StandardCharsets.UTF_8);
-		} catch (IOException e) {
-			throw new IllegalStateException("Failed to load audio primitives test fixture", e);
-		}
+	@Test(timeout = 30000)
+	public void testStateBlockParsesCorrectly() {
+		String source =
+				"state biquad_state {\n" +
+				"    history: weight\n" +
+				"}\n" +
+				"layer biquad_layer(b0: scalar, b1: scalar, b2: scalar,\n" +
+				"                   a1: scalar, a2: scalar) -> [1, " + SIGNAL_SIZE + "] {\n" +
+				"    biquad(b0, b1, b2, a1, a2, history)\n" +
+				"}\n";
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse(source);
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		Assert.assertTrue("Should define 'biquad_state' state block",
+				interpreter.getStateDefNames().contains("biquad_state"));
+		Assert.assertTrue("Should define 'biquad_layer' layer",
+				interpreter.getLayerNames().contains("biquad_layer"));
 	}
+
+	/**
+	 * Verifies that a biquad layer defined with a state block can be built
+	 * into a {@link Block} without errors and without hardware execution.
+	 */
+	@Test(timeout = 30000)
+	public void testBiquadStateBlockBuilds() {
+		PackedCollection history = new PackedCollection(4);
+		history.setMem(new double[]{0.0, 0.0, 0.0, 0.0});
+
+		String source =
+				"state biquad_state {\n" +
+				"    history: weight\n" +
+				"}\n" +
+				"layer biquad_layer(b0: scalar, b1: scalar, b2: scalar,\n" +
+				"                   a1: scalar, a2: scalar) -> [1, " + SIGNAL_SIZE + "] {\n" +
+				"    biquad(b0, b1, b2, a1, a2, history)\n" +
+				"}\n";
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse(source);
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("b0", 1.0);
+		args.put("b1", 0.0);
+		args.put("b2", 0.0);
+		args.put("a1", 0.0);
+		args.put("a2", 0.0);
+		args.put("history", history);
+
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+		Block block = loader.buildLayer(program, "biquad_layer", inputShape, args);
+		Assert.assertNotNull("biquad_layer block should not be null", block);
+	}
+
+	/**
+	 * Verifies that biquad filter state persists across successive
+	 * {@link CompiledModel#forward} calls by using a one-sample-delay filter
+	 * ({@code b1=1}, all others zero) and checking that the first output of the
+	 * second call reflects the last input sample of the first call.
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testBiquadStatePersistence() {
+		PackedCollection history = new PackedCollection(4);
+		history.setMem(new double[]{0.0, 0.0, 0.0, 0.0});
+
+		// One-sample delay: y[n] = x[n-1]
+		String source =
+				"state biquad_state {\n" +
+				"    history: weight\n" +
+				"}\n" +
+				"layer biquad_layer(b0: scalar, b1: scalar, b2: scalar,\n" +
+				"                   a1: scalar, a2: scalar) -> [1, " + SIGNAL_SIZE + "] {\n" +
+				"    biquad(b0, b1, b2, a1, a2, history)\n" +
+				"}\n";
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse(source);
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("b0", 0.0);
+		args.put("b1", 1.0);
+		args.put("b2", 0.0);
+		args.put("a1", 0.0);
+		args.put("a2", 0.0);
+		args.put("history", history);
+
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+		Block block = loader.buildLayer(program, "biquad_layer", inputShape, args);
+
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		// First call: all-ones input, history starts at zero
+		PackedCollection signal1 = createSignal(SIGNAL_SIZE, i -> 1.0);
+		PackedCollection output1 = compiled.forward(signal1);
+		Assert.assertNotNull("First output should not be null", output1);
+		// output1[0] must be 0 (no prior history), rest must be 1.0
+		Assert.assertEquals("First call output[0] should be 0 (no history yet)",
+				0.0, output1.toDouble(0), 1e-6);
+
+		// Second call: all-twos input; output[0] must reflect last sample from first call
+		PackedCollection signal2 = createSignal(SIGNAL_SIZE, i -> 2.0);
+		PackedCollection output2 = compiled.forward(signal2);
+		Assert.assertNotNull("Second output should not be null", output2);
+		// history[0] was set to 1.0 by the first call, so output2[0] = x[-1] = 1.0
+		Assert.assertEquals("Second call output[0] should be 1.0 (persisted from first call)",
+				1.0, output2.toDouble(0), 1e-6);
+	}
+
+	/**
+	 * Verifies that the efx_delay layer (from {@code efx_channel.pdsl}) produces
+	 * delay-line output that is continuous across successive forward passes.
+	 *
+	 * <p>After a first pass of all-ones, the write-head and buffer are updated;
+	 * the first two output samples of the second pass must come from the buffer
+	 * written during the first pass.</p>
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testDelayLineStatePersistence() {
+		int delaySamples = 2;
+		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
+		buffer.setMem(new double[SIGNAL_SIZE]);
+		PackedCollection head = new PackedCollection(1);
+		head.setMem(new double[]{0.0});
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("delay_samples", delaySamples);
+		args.put("buffer", buffer);
+		args.put("head", head);
+
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+		Block block = loader.buildLayer(program, "efx_delay", inputShape, args);
+
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		// First call: all-ones; first 2 outputs are 0 (empty buffer), rest are 1.0
+		PackedCollection signal1 = createSignal(SIGNAL_SIZE, i -> 1.0);
+		PackedCollection output1 = compiled.forward(signal1);
+		Assert.assertNotNull("First output should not be null", output1);
+		Assert.assertEquals("First call output[0] should be 0 (empty buffer)",
+				0.0, output1.toDouble(0), 1e-6);
+		Assert.assertEquals("First call output[1] should be 0 (empty buffer)",
+				0.0, output1.toDouble(1), 1e-6);
+
+		// Second call: all-twos; first 2 outputs must come from first-call buffer (value 1.0)
+		PackedCollection signal2 = createSignal(SIGNAL_SIZE, i -> 2.0);
+		PackedCollection output2 = compiled.forward(signal2);
+		Assert.assertNotNull("Second output should not be null", output2);
+		Assert.assertEquals("Second call output[0] should be 1.0 (from first-call buffer)",
+				1.0, output2.toDouble(0), 1e-6);
+		Assert.assertEquals("Second call output[1] should be 1.0 (from first-call buffer)",
+				1.0, output2.toDouble(1), 1e-6);
+	}
+
+	/**
+	 * Verifies that LFO phase is continuous across successive forward passes.
+	 *
+	 * <p>The first call produces samples starting at phase zero; the second call
+	 * must start exactly where the first left off. The expected phase after the
+	 * first call is computed using the same wrapping logic as the interpreter.</p>
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testLfoPhaseContiguity() {
+		double freqHz = 440.0;
+		double sampleRate = 44100.0;
+		PackedCollection phase = new PackedCollection(1);
+		phase.setMem(new double[]{0.0});
+
+		String source =
+				"state lfo_state {\n" +
+				"    phase: weight\n" +
+				"}\n" +
+				"layer lfo_layer(freq_hz: scalar, sample_rate: scalar) -> [1, " + SIGNAL_SIZE + "] {\n" +
+				"    lfo(freq_hz, sample_rate, phase)\n" +
+				"}\n";
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse(source);
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("freq_hz", freqHz);
+		args.put("sample_rate", sampleRate);
+		args.put("phase", phase);
+
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+		Block block = loader.buildLayer(program, "lfo_layer", inputShape, args);
+
+		// Use any signal (lfo output ignores input)
+		PackedCollection signal = createSignal(SIGNAL_SIZE, i -> 0.0);
+
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		// First call: LFO starts at phase=0
+		PackedCollection output1 = compiled.forward(signal);
+		Assert.assertNotNull("First LFO output should not be null", output1);
+		Assert.assertEquals("LFO output[0] in first call should be sin(0)",
+				Math.sin(0.0), output1.toDouble(0), 1e-6);
+
+		// Compute expected phase after SIGNAL_SIZE samples using the same wrapping logic
+		double phaseInc = 2.0 * Math.PI * freqHz / sampleRate;
+		double expectedPhase = 0.0;
+		for (int i = 0; i < SIGNAL_SIZE; i++) {
+			expectedPhase += phaseInc;
+			if (expectedPhase >= 2.0 * Math.PI) {
+				expectedPhase -= 2.0 * Math.PI;
+			}
+		}
+
+		// Second call must start at the expected continuation phase
+		PackedCollection output2 = compiled.forward(signal);
+		Assert.assertNotNull("Second LFO output should not be null", output2);
+		Assert.assertEquals("Second LFO call output[0] must continue from first call's end phase",
+				Math.sin(expectedPhase), output2.toDouble(0), 1e-6);
+	}
+
 }

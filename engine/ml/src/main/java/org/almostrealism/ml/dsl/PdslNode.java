@@ -169,6 +169,39 @@ public abstract class PdslNode {
 		public Map<String, Expression> getDerivations() { return derivations; }
 	}
 
+	/**
+	 * A state block declaring persistent mutable DSP state.
+	 *
+	 * <p>Structurally identical to {@link DataDef} — the same parameter declarations and
+	 * derivations are supported. The different class type signals write-intent: state block
+	 * entries are read <em>and</em> written during execution by state-aware primitives
+	 * such as {@code biquad}, {@code delay}, and {@code lfo}.</p>
+	 *
+	 * <p>Example:
+	 * <pre>
+	 * state biquad_state {
+	 *     history: weight    // 4-element PackedCollection [x1, x2, y1, y2]
+	 * }
+	 * </pre>
+	 * </p>
+	 */
+	public static class StateDef extends DataDef {
+		/**
+		 * Constructs a state block definition.
+		 *
+		 * @param name        state block name
+		 * @param parameters  external input declarations
+		 * @param derivations derived bindings, in declaration order
+		 * @param line        source line number
+		 * @param column      source column number
+		 */
+		public StateDef(String name, List<Parameter> parameters,
+						Map<String, Expression> derivations,
+						int line, int column) {
+			super(name, parameters, derivations, line, column);
+		}
+	}
+
 	/** A layer definition: reusable block builder. */
 	public static class LayerDef extends Definition {
 		/** Formal parameters accepted by this layer. */

@@ -90,3 +90,34 @@ layer efx_highpass_wet(signal_size: int, cutoff: scalar, sample_rate: scalar,
 layer efx_dry_path(filter_coeffs: weight, dry_level: scalar) {
     scale(dry_level)
 }
+
+// ---------------------------------------------------------------------------
+// Delay line state block
+//
+// Holds the mutable circular buffer and write-head used by the efx_delay layer.
+// Both fields are caller-supplied PackedCollections that persist between calls.
+//
+// Parameters (all caller-supplied PackedCollections):
+//   buffer   Circular delay-line buffer (at least delay_samples + 1 elements long)
+//   head     1-element write-position counter (zero-initialised)
+// ---------------------------------------------------------------------------
+state efx_delay_state {
+    buffer: weight
+    head: weight
+}
+
+// ---------------------------------------------------------------------------
+// Stateful integer-sample delay line
+//
+// Uses the efx_delay_state block (buffer, head) that is automatically populated
+// into the layer environment when the block is built.  Each forward pass reads
+// delay_samples behind the current write head and then advances the write head,
+// so delay state is continuous across successive CompiledModel.forward() calls.
+//
+// Parameters:
+//   signal_size    Number of samples per audio frame (used for shape inference)
+//   delay_samples  Integer delay in samples (must be less than buffer length)
+// ---------------------------------------------------------------------------
+layer efx_delay(signal_size: int, delay_samples: int) -> [1, signal_size] {
+    delay(delay_samples, buffer, head)
+}

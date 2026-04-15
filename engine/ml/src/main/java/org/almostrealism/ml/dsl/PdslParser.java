@@ -90,10 +90,11 @@ public class PdslParser {
 		switch (token.getType()) {
 			case CONFIG: return parseConfigDef();
 			case DATA:   return parseDataDef();
+			case STATE:  return parseStateDef();
 			case LAYER:  return parseLayerDef();
 			case MODEL:  return parseModelDef();
 			default:
-				throw error("Expected 'config', 'data', 'layer', or 'model' but found " + token);
+				throw error("Expected 'config', 'data', 'state', 'layer', or 'model' but found " + token);
 		}
 	}
 
@@ -263,25 +264,55 @@ public class PdslParser {
 	private PdslNode.DataDef parseDataDef() {
 		PdslToken kw = consume(PdslToken.Type.DATA);
 		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
+		parseDataDefBody();
+		return new PdslNode.DataDef(name, parsedParams, parsedDerivations, kw.getLine(), kw.getColumn());
+	}
+
+	/**
+	 * Parses a {@code state Name { entries }} block.
+	 *
+	 * <p>Identical grammar to the {@code data} block; the different AST node type
+	 * ({@link PdslNode.StateDef}) signals write-intent to the interpreter.
+	 * State block entries are mutable during execution and updated by state-aware
+	 * primitives such as {@code biquad}, {@code delay}, and {@code lfo}.</p>
+	 *
+	 * @return The parsed state definition node
+	 */
+	private PdslNode.StateDef parseStateDef() {
+		PdslToken kw = consume(PdslToken.Type.STATE);
+		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
+		parseDataDefBody();
+		return new PdslNode.StateDef(name, parsedParams, parsedDerivations, kw.getLine(), kw.getColumn());
+	}
+
+	/** Accumulated parameter declarations from the most recent {@link #parseDataDefBody()} call. */
+	private List<PdslNode.Parameter> parsedParams;
+
+	/** Accumulated derivations from the most recent {@link #parseDataDefBody()} call. */
+	private Map<String, PdslNode.Expression> parsedDerivations;
+
+	/**
+	 * Parses the body of a {@code data} or {@code state} block (everything after the name).
+	 * Results are stored in {@link #parsedParams} and {@link #parsedDerivations} for the caller
+	 * to consume. Shared by {@link #parseDataDef()} and {@link #parseStateDef()} to eliminate
+	 * duplicate parse logic.
+	 */
+	private void parseDataDefBody() {
 		consume(PdslToken.Type.LBRACE);
-
-		List<PdslNode.Parameter> parameters = new ArrayList<>();
-		Map<String, PdslNode.Expression> derivations = new LinkedHashMap<>();
-
+		parsedParams = new ArrayList<>();
+		parsedDerivations = new LinkedHashMap<>();
 		while (!check(PdslToken.Type.RBRACE) && !check(PdslToken.Type.EOF)) {
 			PdslToken entryNameTok = consume(PdslToken.Type.IDENTIFIER);
 			if (check(PdslToken.Type.COLON)) {
 				consume(PdslToken.Type.COLON);
-				parameters.add(parseParameterAfterColon(entryNameTok));
+				parsedParams.add(parseParameterAfterColon(entryNameTok));
 			} else {
 				consume(PdslToken.Type.EQUALS);
-				derivations.put(entryNameTok.getValue(), parseExpression());
+				parsedDerivations.put(entryNameTok.getValue(), parseExpression());
 			}
 			while (check(PdslToken.Type.SEMICOLON)) advance();
 		}
-
 		consume(PdslToken.Type.RBRACE);
-		return new PdslNode.DataDef(name, parameters, derivations, kw.getLine(), kw.getColumn());
 	}
 
 	// ---- Body (statements) ----
