@@ -119,7 +119,7 @@ public class LibraryDestination implements ConsoleFeatures {
 	 *
 	 * @return an iterator of batch file paths
 	 */
-	protected Iterator<String> files() {
+	public Iterator<String> files() {
 		return new Iterator<>() {
 			int idx = 0;
 

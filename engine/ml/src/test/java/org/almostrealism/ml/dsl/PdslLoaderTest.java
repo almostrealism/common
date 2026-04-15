@@ -48,7 +48,7 @@ public class PdslLoaderTest extends TestSuiteBase {
 	 * Test that the lexer and parser can handle basic PDSL syntax
 	 * including layer definitions, function calls, and composition.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testParseTransformerBlock() {
 		String source = loadPdslSource();
 		PdslLoader loader = new PdslLoader();
@@ -72,7 +72,7 @@ public class PdslLoaderTest extends TestSuiteBase {
 	/**
 	 * Test that a dense_relu layer can be loaded and has correct shapes.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDenseReluLayer() {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parse(loadPdslSource());
@@ -97,7 +97,7 @@ public class PdslLoaderTest extends TestSuiteBase {
 	/**
 	 * Test that a normed_projection layer can be loaded correctly.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testNormedProjectionLayer() {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parse(loadPdslSource());
@@ -120,7 +120,7 @@ public class PdslLoaderTest extends TestSuiteBase {
 	 * Test that a SwiGLU FFN layer can be loaded from primitives.
 	 * This validates the product() composition construct.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSwigluFfnLayer() {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parse(loadPdslSource());
@@ -150,7 +150,7 @@ public class PdslLoaderTest extends TestSuiteBase {
 	 * The block composes attention (built-in) + SwiGLU FFN (user-defined)
 	 * with residual connections.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTransformerBlockLayer() {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parse(loadPdslSource());
@@ -195,7 +195,7 @@ public class PdslLoaderTest extends TestSuiteBase {
 	/**
 	 * Test parsing of inline PDSL source with config blocks.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testConfigParsing() {
 		String source = "config test_config {\n"
 				+ "    dim = 512\n"
@@ -217,7 +217,7 @@ public class PdslLoaderTest extends TestSuiteBase {
 	/**
 	 * Test parsing of various expression types.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testExpressionParsing() {
 		String source = "config math_test {\n"
 				+ "    a = 10 + 5\n"
@@ -243,7 +243,7 @@ public class PdslLoaderTest extends TestSuiteBase {
 	/**
 	 * Test that comments are properly skipped during parsing.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testCommentHandling() {
 		String source = "// This is a line comment\n"
 				+ "/* This is a block comment */\n"
@@ -268,7 +268,7 @@ public class PdslLoaderTest extends TestSuiteBase {
 	 * and that a parameter-free layer referencing data block entries builds
 	 * successfully.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDataBlockWithRange() {
 		int inDim = 8;
 		int hidDim = 16;

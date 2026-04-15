@@ -18,19 +18,25 @@ package org.almostrealism.studio.stream;
 
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.BufferedAudioPlayer;
+import org.almostrealism.studio.Mixer;
 import org.almostrealism.studio.SampleMixer;
 import org.almostrealism.studio.ScheduledOutputAudioPlayer;
 import org.almostrealism.studio.StreamingAudioPlayer;
 import org.almostrealism.audio.line.AudioLine;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.DelegatedAudioLine;
+import org.almostrealism.audio.line.BufferDefaults;
+import org.almostrealism.audio.line.ChannelPairView;
+import org.almostrealism.audio.line.MultiChannelOutputLine;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.audio.line.OutputLineGroup;
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -221,6 +227,131 @@ public class AudioStreamManager implements ConsoleFeatures {
 		scheduledPlayer.start();
 
 		return config;
+	}
+
+	/**
+	 * Creates a multi-device stream where different channels are routed to
+	 * different output devices. Each entry in the {@code deviceGroups} map
+	 * assigns a set of channel indices to an {@link OutputLine} for a
+	 * specific device.
+	 *
+	 * <p>The underlying {@link Mixer} is configured with output groups so
+	 * that channel rendering happens exactly once. Each group's summed
+	 * output is delivered to its device via a separate
+	 * {@link BufferedOutputScheduler}.</p>
+	 *
+	 * <p><b>Note:</b> In multi-device mode the {@link org.almostrealism.studio.StreamingAudioPlayer.OutputMode}
+	 * switching ({@code setDirectMode}/{@code setDawMode}) does not affect
+	 * where audio is actually delivered, because each scheduler writes
+	 * directly to its assigned device output line. OutputMode only controls
+	 * DAW registration for single-device streams.</p>
+	 *
+	 * @param channel      the channel name for DAW registration
+	 * @param playerCount  number of audio sources this player can mix
+	 * @param inputRecord  optional output line for recording the mixed output
+	 * @param initialMode  the initial output mode (DIRECT or DAW)
+	 * @param deviceGroups map from device/group name to (output line, channel indices)
+	 * @return the unified player configuration
+	 */
+	public StreamingAudioPlayer createMultiDeviceStream(
+			String channel, int playerCount,
+			OutputLine inputRecord,
+			StreamingAudioPlayer.OutputMode initialMode,
+			Map<String, DeviceGroup> deviceGroups) {
+
+		int bufferSize = BufferDefaults.defaultBufferSize;
+		int maxFrames = (int) (OutputLine.sampleRate * defaultLiveDuration);
+		maxFrames = (maxFrames / bufferSize) * bufferSize;
+
+		BufferedAudioPlayer player = new BufferedAudioPlayer(playerCount,
+				OutputLine.sampleRate, maxFrames);
+
+		// Configure output groups on the Mixer
+		Mixer mixer = player.getMixer().getChannelMixer();
+		for (Map.Entry<String, DeviceGroup> entry : deviceGroups.entrySet()) {
+			mixer.addOutputGroup(entry.getKey(), entry.getValue().channelIndices());
+		}
+		mixer.applyOutputGroups();
+
+		// Detect if all groups share a single MultiChannelOutputLine
+		MultiChannelOutputLine sharedMcLine = findSharedMultiChannelLine(deviceGroups);
+
+		ScheduledOutputAudioPlayer scheduledPlayer;
+		DelegatedAudioLine delegatedLine = new DelegatedAudioLine();
+
+		if (sharedMcLine != null) {
+			// Single device, multi-channel: ONE scheduler, multi-channel output
+			Map<String, Integer> groupPairMap = new LinkedHashMap<>();
+			for (Map.Entry<String, DeviceGroup> entry : deviceGroups.entrySet()) {
+				OutputLine line = entry.getValue().outputLine();
+				int pairIndex = (line instanceof ChannelPairView cpv)
+						? cpv.getPairIndex() : 0;
+				groupPairMap.put(entry.getKey(), pairIndex);
+			}
+
+			BufferedOutputScheduler scheduler =
+					player.deliverMultiChannel(sharedMcLine, groupPairMap);
+			scheduledPlayer = new ScheduledOutputAudioPlayer(player,
+					Map.of("multi-channel", scheduler));
+		} else {
+			// Multiple devices: per-group schedulers
+			Map<String, OutputLine> groupLines = new LinkedHashMap<>();
+			for (Map.Entry<String, DeviceGroup> entry : deviceGroups.entrySet()) {
+				groupLines.put(entry.getKey(), entry.getValue().outputLine());
+			}
+			Map<String, BufferedOutputScheduler> schedulers =
+					player.deliverGroups(groupLines);
+			scheduledPlayer = new ScheduledOutputAudioPlayer(player, schedulers);
+		}
+
+		StreamingAudioPlayer config =
+				new StreamingAudioPlayer(scheduledPlayer, delegatedLine, inputRecord);
+
+		server.addStream(channel,
+				new AudioLineDelegationHandler(delegatedLine, config));
+		audioStreams.put(channel, config);
+
+		if (initialMode == StreamingAudioPlayer.OutputMode.DIRECT) {
+			config.setDirectMode();
+		} else {
+			config.setDawMode();
+		}
+
+		scheduledPlayer.start();
+		return config;
+	}
+
+	/**
+	 * Checks if all device groups share the same {@link MultiChannelOutputLine}
+	 * (i.e., all groups are {@link ChannelPairView} instances with the same parent).
+	 *
+	 * @return the shared line, or null if groups use different devices
+	 */
+	private MultiChannelOutputLine findSharedMultiChannelLine(
+			Map<String, DeviceGroup> deviceGroups) {
+		MultiChannelOutputLine shared = null;
+		for (DeviceGroup group : deviceGroups.values()) {
+			if (group.outputLine() instanceof ChannelPairView cpv) {
+				if (shared == null) {
+					shared = cpv.getParent();
+				} else if (shared != cpv.getParent()) {
+					return null; // Different parents = different devices
+				}
+			} else {
+				return null; // Not a ChannelPairView = not multi-channel
+			}
+		}
+		return shared;
+	}
+
+	/**
+	 * Describes a device output group: an output line for a specific device
+	 * and the channel indices that should be routed to it.
+	 *
+	 * @param outputLine     the output line for this device
+	 * @param channelIndices the channel indices (0-based) assigned to this device
+	 */
+	public record DeviceGroup(OutputLine outputLine, int[] channelIndices) {
 	}
 
 	@Override

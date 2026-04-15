@@ -78,7 +78,7 @@ public class SkyTntIntegrationTest extends TestSuiteBase {
 	 * Milestone 6: load real weights, generate unconditionally from BOS,
 	 * and verify the token sequence is well-formed.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void testRealWeightsGenerationFromBos() throws IOException {
 		Assume.assumeTrue("Skipping: real weights not present at " + WEIGHTS_DIR,
 				new File(WEIGHTS_DIR).isDirectory());
@@ -113,7 +113,7 @@ public class SkyTntIntegrationTest extends TestSuiteBase {
 	 * and detokenize the result.  Verifies that detokenized events have
 	 * parameters within valid ranges.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void testRealWeightsGenerationFromPrompt() throws IOException {
 		Assume.assumeTrue("Skipping: real weights not present at " + WEIGHTS_DIR,
 				new File(WEIGHTS_DIR).isDirectory());

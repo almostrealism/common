@@ -44,7 +44,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Verify total vocabulary size is exactly 3406.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testVocabSize() {
         assertEquals("VOCAB_SIZE", 3406, SkyTntTokenizerV2.VOCAB_SIZE);
     }
@@ -52,7 +52,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Verify special token IDs match the V2 specification.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testSpecialTokenIds() {
         assertEquals("PAD_ID", 0, SkyTntTokenizerV2.PAD_ID);
         assertEquals("BOS_ID", 1, SkyTntTokenizerV2.BOS_ID);
@@ -62,7 +62,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Verify event-type token IDs are 3–8 in the declared order.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testEventTypeTokenIds() {
         assertEquals("EVENT_NOTE", 3, SkyTntTokenizerV2.EVENT_NOTE);
         assertEquals("EVENT_PATCH_CHANGE", 4, SkyTntTokenizerV2.EVENT_PATCH_CHANGE);
@@ -76,7 +76,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
      * Verify every parameter range starts at the correct offset and is
      * contiguous with the preceding range.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testParameterRangeOffsets() {
         assertEquals("TIME1_OFFSET",      9,    SkyTntTokenizerV2.TIME1_OFFSET);
         assertEquals("TIME2_OFFSET",      137,  SkyTntTokenizerV2.TIME2_OFFSET);
@@ -98,7 +98,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Verify the ranges are contiguous: no gaps and no overlap.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testRangesAreContiguous() {
         assertEquals("time1 end = time2 start",
                 SkyTntTokenizerV2.TIME1_OFFSET + 128, SkyTntTokenizerV2.TIME2_OFFSET);
@@ -139,7 +139,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Verify BOS and EOS rows are prepended and appended correctly.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testBosEosInjection() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -163,7 +163,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Verify BOS/EOS rows are stripped during detokenization.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testBosEosStripping() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -182,7 +182,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Verify every row has exactly MAX_TOKEN_SEQ = 8 token IDs.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testRowWidthAlwaysEight() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -200,7 +200,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Verify events shorter than 8 tokens are padded with PAD_ID.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testShortEventsArePadded() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -222,7 +222,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Round-trip test for NOTE events.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testNoteRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -244,7 +244,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Round-trip test for PATCH_CHANGE events.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testPatchChangeRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -263,7 +263,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Round-trip test for CONTROL_CHANGE events.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testControlChangeRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -282,7 +282,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Round-trip test for SET_TEMPO events.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testSetTempoRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -300,7 +300,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Round-trip test for TIME_SIGNATURE events.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testTimeSignatureRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -320,7 +320,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Round-trip test for KEY_SIGNATURE events.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testKeySignatureRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -344,7 +344,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Round-trip test with multiple events of mixed types.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testMixedEventRoundTrip() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -368,7 +368,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
      * Verify that the time1 delta encoding is monotonically consistent:
      * two notes one beat apart should produce time1_delta=1 for the second.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testTime1DeltaEncoding() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -387,7 +387,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Verify time2 encodes the fractional-beat position within [0,15].
      */
-    @Test
+    @Test(timeout = 60000)
     public void testTime2FineResolution() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -406,7 +406,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Empty input produces exactly BOS + EOS (seq_len = 2).
      */
-    @Test
+    @Test(timeout = 60000)
     public void testEmptyInput() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         int[][] tokens = tokenizer.tokenize(new ArrayList<>(), TICKS_PER_BEAT);
@@ -421,7 +421,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Single note round-trip.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testSingleNote() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -439,7 +439,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Maximum parameter values are encoded without crashing or wrapping.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testMaxParameterValues() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         List<MidiNoteEvent> events = new ArrayList<>();
@@ -471,7 +471,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Step 0 validity mask includes EOS and all 6 event-type tokens.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testStep0MaskContainsAllEventTypes() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         // eventTypeId is irrelevant at step 0
@@ -497,7 +497,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Validity mask for NOTE at steps 1–7 maps to the correct parameter ranges.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testNoteMaskSteps() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         int evId = SkyTntTokenizerV2.EVENT_NOTE;
@@ -528,7 +528,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Validity mask for PATCH_CHANGE: steps 6 and 7 are PAD only.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testPatchChangeMaskPaddedSlots() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         int evId = SkyTntTokenizerV2.EVENT_PATCH_CHANGE;
@@ -545,7 +545,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Validity mask for CONTROL_CHANGE: step 7 is PAD only.
      */
-    @Test
+    @Test(timeout = 60000)
     public void testControlChangeMaskStep7Padded() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         int[] mask7 = tokenizer.getValidTokenIds(7,
@@ -558,7 +558,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Validity mask for SET_TEMPO at step 4 covers the full BPM range (0–383).
      */
-    @Test
+    @Test(timeout = 60000)
     public void testSetTempoMaskBpmRange() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         int[] bpmMask = tokenizer.getValidTokenIds(4,
@@ -571,7 +571,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Validity mask for TIME_SIGNATURE: step 4=nn (16 values), step 5=dd (4 values).
      */
-    @Test
+    @Test(timeout = 60000)
     public void testTimeSignatureMaskNnDd() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         int evId = SkyTntTokenizerV2.EVENT_TIME_SIGNATURE;
@@ -585,7 +585,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * Validity mask for KEY_SIGNATURE: step 4=sf (15 values), step 5=mi (2 values).
      */
-    @Test
+    @Test(timeout = 60000)
     public void testKeySignatureMaskSfMi() {
         SkyTntTokenizerV2 tokenizer = new SkyTntTokenizerV2();
         int evId = SkyTntTokenizerV2.EVENT_KEY_SIGNATURE;
@@ -599,7 +599,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * getValidTokenIds throws IllegalArgumentException for an out-of-range step.
      */
-    @Test(expected = IllegalArgumentException.class)
+    @Test(timeout = 60000, expected = IllegalArgumentException.class)
     public void testInvalidStepThrows() {
         new SkyTntTokenizerV2().getValidTokenIds(8, SkyTntTokenizerV2.EVENT_NOTE);
     }
@@ -607,7 +607,7 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     /**
      * getValidTokenIds throws IllegalArgumentException for an out-of-range eventTypeId.
      */
-    @Test(expected = IllegalArgumentException.class)
+    @Test(timeout = 60000, expected = IllegalArgumentException.class)
     public void testInvalidEventTypeThrows() {
         new SkyTntTokenizerV2().getValidTokenIds(1, 99);
     }

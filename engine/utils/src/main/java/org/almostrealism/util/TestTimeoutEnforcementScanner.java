@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,7 +55,7 @@ import java.util.stream.Stream;
  *
  * @see CodePolicyViolationDetector
  */
-public class TestTimeoutEnforcementScanner {
+public class TestTimeoutEnforcementScanner implements ConsoleFeatures {
 
 	/**
 	 * A test method that is missing a timeout value.
@@ -200,7 +202,7 @@ public class TestTimeoutEnforcementScanner {
 				}
 			}
 		} catch (IOException e) {
-			System.err.println("Warning: Could not read file " + file + ": " + e.getMessage());
+			warn("Could not read file " + file + ": " + e.getMessage());
 		}
 	}
 

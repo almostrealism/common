@@ -999,7 +999,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     outputBuilder.append(line).append("\n");
-                    log("[ClaudeCode] " + line);
+                    log(line);
                 }
             }
 
@@ -1586,33 +1586,36 @@ public class ClaudeCodeJob extends GitManagedJob {
         try {
             JsonNode root = outputMapper.readTree(resultJson);
 
+            // Session ID and stop reason reflect the latest session only.
             sessionId = getTextOrNull(root, "session_id");
-
-            durationMs = root.path("duration_ms").asLong(0);
-            durationApiMs = root.path("duration_api_ms").asLong(0);
-            numTurns = root.path("num_turns").asInt(0);
-
-            costUsd = root.path("total_cost_usd").asDouble(0.0);
-            if (costUsd == 0.0) {
-                costUsd = root.path("cost_usd").asDouble(0.0);
-            }
-
             subtype = getTextOrNull(root, "subtype");
             isError = root.path("is_error").asBoolean(false);
 
-            // Count permission_denials array entries and extract denied tool names
+            // Accumulate numeric metrics across all sessions (main + enforcement
+            // correction sessions) so the final totals include every phase.
+            durationMs += root.path("duration_ms").asLong(0);
+            durationApiMs += root.path("duration_api_ms").asLong(0);
+            numTurns += root.path("num_turns").asInt(0);
+
+            double sessionCost = root.path("total_cost_usd").asDouble(0.0);
+            if (sessionCost == 0.0) {
+                sessionCost = root.path("cost_usd").asDouble(0.0);
+            }
+            costUsd += sessionCost;
+
+            // Accumulate permission denials across all sessions.
             JsonNode denials = root.get("permission_denials");
             if (denials != null && denials.isArray()) {
-                permissionDenials = denials.size();
-                deniedToolNames = new ArrayList<>();
+                permissionDenials += denials.size();
+                if (deniedToolNames == null) {
+                    deniedToolNames = new ArrayList<>();
+                }
                 for (JsonNode denial : denials) {
                     JsonNode toolNode = denial.get("tool");
                     if (toolNode != null && toolNode.isTextual()) {
                         deniedToolNames.add(toolNode.asText());
                     }
                 }
-            } else {
-                permissionDenials = 0;
             }
         } catch (Exception e) {
             warn("Failed to parse output metrics: " + e.getMessage());

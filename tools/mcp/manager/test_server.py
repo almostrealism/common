@@ -1098,6 +1098,7 @@ class TestToolRegistration(unittest.TestCase):
             "github_pr_reply",
             "github_list_open_prs",
             "github_create_pr",
+            "github_request_copilot_review",
         }
         registered = set(tools.keys())
         missing = expected - registered
@@ -1270,6 +1271,74 @@ class TestGithubPrReviewComments(unittest.TestCase):
 
         result = server.github_pr_review_comments(pr_number=1)
         self.assertEqual(result["comments"][0]["line"], 42)
+
+
+# -----------------------------------------------------------------------
+# github_request_copilot_review tests
+# -----------------------------------------------------------------------
+
+
+class TestGithubRequestCopilotReview(unittest.TestCase):
+    """Tests for github_request_copilot_review and the _request_copilot_review helper."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "branch", None))
+    @patch.object(server, "_request_copilot_review",
+                  return_value={"ok": True})
+    def test_requests_review_with_explicit_pr_number(self, mock_review, mock_repo):
+        result = server.github_request_copilot_review(pr_number=42)
+        self.assertTrue(result["ok"])
+        mock_review.assert_called_once_with("owner", "repo", 42)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "my-branch", None))
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_request_copilot_review",
+                  return_value={"ok": True})
+    def test_looks_up_pr_when_number_omitted(self, mock_review, mock_gh, mock_repo):
+        mock_gh.return_value = [{"number": 99}]
+        result = server.github_request_copilot_review()
+        self.assertTrue(result["ok"])
+        mock_review.assert_called_once_with("owner", "repo", 99)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "my-branch", None))
+    @patch.object(server, "_github_request", return_value=[])
+    def test_returns_error_when_no_open_pr(self, mock_gh, mock_repo):
+        result = server.github_request_copilot_review()
+        self.assertFalse(result["ok"])
+        self.assertIn("No open PR", result["error"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("", "", "", {"ok": False, "error": "bad repo"}))
+    def test_repo_resolution_error_propagates(self, mock_repo):
+        result = server.github_request_copilot_review(pr_number=1)
+        self.assertFalse(result["ok"])
+
+    def test_requires_write_scope(self):
+        _grant_scopes("read")
+        with self.assertRaises(PermissionError):
+            server.github_request_copilot_review(pr_number=1)
+
+    @patch.object(server, "_github_request")
+    def test_request_copilot_review_helper_success(self, mock_gh):
+        mock_gh.return_value = {"number": 10, "html_url": "https://github.com/x/y/pull/10"}
+        result = server._request_copilot_review("owner", "repo", 10)
+        self.assertTrue(result["ok"])
+        mock_gh.assert_called_once_with(
+            "POST",
+            "/repos/owner/repo/pulls/10/requested_reviewers",
+            {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
+        )
+
+    @patch.object(server, "_github_request")
+    def test_request_copilot_review_helper_github_error(self, mock_gh):
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        result = server._request_copilot_review("owner", "repo", 10)
+        self.assertFalse(result["ok"])
 
 
 if __name__ == "__main__":

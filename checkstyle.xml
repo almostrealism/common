@@ -25,6 +25,9 @@
                                191 legacy files are suppressed via checkstyle-suppressions.xml
                                and must be migrated over time.  New files may not be added
                                to the suppression list.
+      - RegexpSinglelineJava : prohibits bracket-prefixed labels in log/warn calls,
+                               e.g. log("[Tag] message").  Write messages directly.
+                               Enforced at severity=error.  No suppressions permitted.
 -->
 <module name="Checker">
     <property name="charset" value="UTF-8"/>
@@ -910,15 +913,21 @@
             <property name="ignoreComments" value="true"/>
             <property name="severity" value="warning"/>
         </module>
-        <!-- Detect System.out and System.err usage that should use
-             ConsoleFeatures logging instead. Classes should implement
-             ConsoleFeatures and use log(), warn(), or alert() methods.
-             Uses severity=warning until existing violations are cleaned up. -->
+        <!-- Prohibit bracket-prefixed labels in log/warn calls.
+             Pattern log("[ClassName] message") or log("[Tag] message") embeds
+             redundant source identification that the logging framework already
+             provides via the class name, and clutters log output with noise.
+             Write the message directly: log("message") instead.
+             Examples of the prohibited pattern:
+               log("[Prototypes] Library refresh complete");
+               log("[LICM] " + scope.getName());
+               log("[MoonbeamComponentTest] testSingleFmeEmbed: " + elapsed);
+             New code must comply from day one. -->
         <module name="RegexpSinglelineJava">
-            <property name="format" value="System\.(out|err)\.(print|println|printf|write)"/>
-            <property name="message" value="Use ConsoleFeatures (log/warn/alert) instead of System.out/err. Implement ConsoleFeatures interface on the class."/>
+            <property name="id" value="BracketLabelInLog"/>
+            <property name="format" value="\b(log|warn)\s*\(\s*&quot;\[[A-Za-z0-9]"/>
+            <property name="message" value="Do not prefix log/warn messages with bracket labels such as '[Tag] message'. Write the message text directly without a label prefix."/>
             <property name="ignoreComments" value="true"/>
-            <property name="severity" value="warning"/>
         </module>
     </module>
 </module>

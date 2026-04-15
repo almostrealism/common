@@ -109,6 +109,26 @@ public class SampleMixer implements CellFeatures {
 	}
 
 	/**
+	 * Returns a {@link CellList} for a single output group, containing the
+	 * group's output cell with its assigned channel cells and the corresponding
+	 * sample {@link WaveCell} sources as requirements.
+	 *
+	 * @param groupName the output group name as configured on the underlying {@link Mixer}
+	 * @return a CellList for this group's pipeline
+	 * @see Mixer#getGroupCells(String)
+	 */
+	public CellList getGroupCellList(String groupName) {
+		Mixer.OutputGroup group = mixer.getOutputGroup(groupName);
+		if (group == null) {
+			throw new IllegalArgumentException("No output group: " + groupName);
+		}
+
+		int[] indices = group.channelIndices();
+		CellList sampler = cells(indices.length, i -> samples[indices[i]]);
+		return mixer.getGroupCells(groupName).addRequirements(sampler);
+	}
+
+	/**
 	 * Delivers the mixed audio output to the specified output line via buffered scheduling.
 	 * Throws {@link UnsupportedOperationException} if {@link #init} has not been called.
 	 *

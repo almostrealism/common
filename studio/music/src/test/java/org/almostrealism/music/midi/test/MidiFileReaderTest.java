@@ -36,7 +36,7 @@ public class MidiFileReaderTest extends TestSuiteBase {
 	 * Verify that writing note events to a MIDI file and reading them
 	 * back preserves pitch, onset, duration, velocity, and instrument.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testWriteAndReadRoundTrip() throws Exception {
 		List<MidiNoteEvent> events = new ArrayList<>();
 		events.add(new MidiNoteEvent(60, 0, 50, 80, 0));
@@ -66,7 +66,7 @@ public class MidiFileReaderTest extends TestSuiteBase {
 	 * Verify that notes with different instruments are written to separate
 	 * MIDI channels and read back with the correct instrument assignments.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testMultipleInstruments() throws Exception {
 		List<MidiNoteEvent> events = new ArrayList<>();
 		events.add(new MidiNoteEvent(60, 0, 50, 80, 0));
@@ -93,7 +93,7 @@ public class MidiFileReaderTest extends TestSuiteBase {
 	 * Verify that drum events (instrument 128) are written to MIDI channel 9
 	 * and mixed correctly with non-drum events.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDrumChannel() throws Exception {
 		List<MidiNoteEvent> events = new ArrayList<>();
 		events.add(new MidiNoteEvent(60, 0, 100, 80, 0));
@@ -119,7 +119,7 @@ public class MidiFileReaderTest extends TestSuiteBase {
 	/**
 	 * Verify that writing and reading an empty event list produces no events.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testEmptyEventList() throws Exception {
 		MidiFileReader reader = new MidiFileReader();
 		File tempFile = File.createTempFile("midi-empty-", ".mid");
@@ -135,7 +135,7 @@ public class MidiFileReaderTest extends TestSuiteBase {
 	 * Verify that boundary MIDI values (pitch 0 and 127, velocity 1 and 127)
 	 * survive a write/read round-trip.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testBoundaryMidiValues() throws Exception {
 		List<MidiNoteEvent> events = new ArrayList<>();
 		events.add(new MidiNoteEvent(0, 0, 1, 1, 0));
@@ -162,7 +162,7 @@ public class MidiFileReaderTest extends TestSuiteBase {
 	 * Instruments 1-14 (on dedicated channels 1-8, 10-15) should round-trip.
 	 * All notes should still be present regardless of instrument mapping.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testChannelOverflow() throws Exception {
 		List<MidiNoteEvent> events = new ArrayList<>();
 		for (int inst = 0; inst < 20; inst++) {
@@ -197,7 +197,7 @@ public class MidiFileReaderTest extends TestSuiteBase {
 	/**
 	 * Verify that simultaneous notes (same onset time) are handled correctly.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSimultaneousNotes() throws Exception {
 		List<MidiNoteEvent> events = new ArrayList<>();
 		events.add(new MidiNoteEvent(60, 0, 100, 80, 0));

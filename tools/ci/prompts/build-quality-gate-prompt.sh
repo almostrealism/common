@@ -41,5 +41,37 @@ All tests are passing on branch "${BRANCH}" (commit ${COMMIT_SHA}), but ${FAILUR
 
 ${FAILURE_LIST}
 
-These are code quality and style issues, not functional test failures. Please investigate and fix them. Run the indicated commands locally to see the specific violations, then make the minimal changes needed to satisfy each quality gate.
+These are code quality and style issues, not functional test failures. Fix them using the MCP build validator.
+
+## How to reproduce and fix each gate
+
+Run the build validator to see the exact violations. Choose the checks that match the failing gate(s):
+
+**For checkstyle violations** (style rules: no var, no @SuppressWarnings, file length, System.out usage):
+  mcp__ar-build-validator__start_validation checks:["checkstyle"]
+  (No build step needed — this is pure source analysis and runs immediately.)
+
+**For Javadoc coverage violations** (missing Javadoc on non-private types/methods):
+  mcp__ar-build-validator__start_validation checks:["javadoc"]
+
+**For code policy violations** (Producer pattern, GPU memory model, naming conventions):
+  mcp__ar-build-validator__start_validation checks:["code_policy"]
+
+**For test timeout violations** (@Test annotations missing timeout parameter):
+  mcp__ar-build-validator__start_validation checks:["test_timeouts"]
+
+**For duplicate code violations** (10+ identical lines across files):
+  mcp__ar-build-validator__start_validation checks:["duplicate_code"]
+
+**To run all gates at once:**
+  mcp__ar-build-validator__start_validation
+
+After starting, poll status with:
+  mcp__ar-build-validator__get_validation_status run_id:<id>
+
+Then get structured violations (file, line, rule) with:
+  mcp__ar-build-validator__get_validation_violations run_id:<id>
+
+Fix the violations in production code, then re-run the validator with skip_build:true
+to verify (since the project is already built at that point).
 EOF
