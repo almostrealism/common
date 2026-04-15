@@ -28,7 +28,7 @@ import org.junit.Test;
  */
 public class OutputLineGroupTest extends TestSuiteBase {
 
-	@Test
+	@Test(timeout = 60000)
 	public void readPositionReturnsMinimum() {
 		SlowMockOutputLine fast = new SlowMockOutputLine(1024, 700);
 		SlowMockOutputLine slow = new SlowMockOutputLine(1024, 300);
@@ -41,13 +41,13 @@ public class OutputLineGroupTest extends TestSuiteBase {
 				300, group.getReadPosition());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void readPositionEmptyGroupReturnsZero() {
 		OutputLineGroup group = new OutputLineGroup();
 		Assert.assertEquals(0, group.getReadPosition());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void readPositionSingleMember() {
 		SlowMockOutputLine line = new SlowMockOutputLine(1024, 300);
 		OutputLineGroup group = new OutputLineGroup();
@@ -56,7 +56,7 @@ public class OutputLineGroupTest extends TestSuiteBase {
 		Assert.assertEquals(300, group.getReadPosition());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void writeForwardsToAllMembers() {
 		MockOutputLine a = new MockOutputLine(1024);
 		MockOutputLine b = new MockOutputLine(1024);
@@ -75,7 +75,7 @@ public class OutputLineGroupTest extends TestSuiteBase {
 		Assert.assertEquals(512, c.getFramesWritten());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void bufferSizeReturnsMinimum() {
 		MockOutputLine small = new MockOutputLine(512);
 		MockOutputLine large = new MockOutputLine(2048);
@@ -87,7 +87,7 @@ public class OutputLineGroupTest extends TestSuiteBase {
 		Assert.assertEquals(512, group.getBufferSize());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void removeMember() {
 		MockOutputLine a = new MockOutputLine(1024);
 		MockOutputLine b = new MockOutputLine(1024);
@@ -109,7 +109,7 @@ public class OutputLineGroupTest extends TestSuiteBase {
 		Assert.assertEquals(256, b.getFramesWritten());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void startStopDelegatesToAllMembers() {
 		MockOutputLine a = new MockOutputLine(1024);
 		MockOutputLine b = new MockOutputLine(1024);
@@ -130,7 +130,7 @@ public class OutputLineGroupTest extends TestSuiteBase {
 		Assert.assertFalse(b.isActive());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void destroyClearsMembers() {
 		MockOutputLine a = new MockOutputLine(1024);
 		MockOutputLine b = new MockOutputLine(1024);

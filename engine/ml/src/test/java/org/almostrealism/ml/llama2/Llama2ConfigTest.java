@@ -38,7 +38,7 @@ public class Llama2ConfigTest extends TestSuiteBase {
 	 * Verifies that a standard checkpoint header with shared weights
 	 * (positive vocabSize) is parsed correctly.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testParseSharedWeightsHeader() {
 		ByteBuffer buffer = createHeader(768, 2048, 12, 12, 12, 32000, 1024);
 
@@ -61,7 +61,7 @@ public class Llama2ConfigTest extends TestSuiteBase {
 	 * Verifies that a negative vocabSize in the header indicates
 	 * non-shared weights and that vocabSize is stored as a positive value.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testParseNonSharedWeightsHeader() {
 		ByteBuffer buffer = createHeader(512, 1024, 6, 8, 8, -32000, 512);
 
@@ -78,7 +78,7 @@ public class Llama2ConfigTest extends TestSuiteBase {
 	 * Verifies that grouped-query attention (kvHeadCount &lt; headCount)
 	 * is parsed correctly.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testGroupedQueryAttentionConfig() {
 		ByteBuffer buffer = createHeader(4096, 11008, 32, 32, 8, 32000, 2048);
 

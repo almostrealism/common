@@ -29,7 +29,7 @@ import org.junit.Test;
  */
 public class MixerOutputGroupTest extends TestSuiteBase implements CellFeatures {
 
-	@Test
+	@Test(timeout = 60000)
 	public void noOutputGroupsPreservesDefaultBehavior() {
 		Mixer mixer = new Mixer(4);
 
@@ -38,7 +38,7 @@ public class MixerOutputGroupTest extends TestSuiteBase implements CellFeatures 
 		Assert.assertNotNull(mixer.getOutput());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void addOutputGroupCreatesGroup() {
 		Mixer mixer = new Mixer(4);
 		Mixer.OutputGroup group = mixer.addOutputGroup("speakers", 0, 1);
@@ -49,20 +49,20 @@ public class MixerOutputGroupTest extends TestSuiteBase implements CellFeatures 
 		Assert.assertArrayEquals(new int[]{0, 1}, group.channelIndices());
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 60000, expected = IllegalArgumentException.class)
 	public void duplicateGroupNameThrows() {
 		Mixer mixer = new Mixer(4);
 		mixer.addOutputGroup("speakers", 0, 1);
 		mixer.addOutputGroup("speakers", 2, 3);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void getOutputGroupReturnsNullForMissing() {
 		Mixer mixer = new Mixer(4);
 		Assert.assertNull(mixer.getOutputGroup("nonexistent"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void outputGroupsRouteCorrectly() {
 		Mixer mixer = new Mixer(4);
 
@@ -89,7 +89,7 @@ public class MixerOutputGroupTest extends TestSuiteBase implements CellFeatures 
 				cells.size() >= 2);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void applyOutputGroupsPreservesChannels() {
 		Mixer mixer = new Mixer(4);
 		mixer.addOutputGroup("all", 0, 1, 2, 3);

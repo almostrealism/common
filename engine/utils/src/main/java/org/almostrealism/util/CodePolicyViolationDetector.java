@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.Console;
+
 import java.io.IOException;
 import java.nio.file.Path;
 
@@ -128,7 +130,7 @@ public class CodePolicyViolationDetector extends PolicyViolationDetector {
 		CodePolicyViolationDetector detector = new CodePolicyViolationDetector(rootDir);
 		detector.scan();
 
-		System.out.println(detector.generateReport());
+		Console.root().println(detector.generateReport());
 
 		if (detector.hasViolations()) {
 			System.exit(1);

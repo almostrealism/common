@@ -77,7 +77,7 @@ public class PrototypeDiscoveryPersistenceTest extends TestSuiteBase {
 	 * on subsequent runs the store already contains all details and the
 	 * refresh completes immediately.</p>
 	 */
-	@Test
+	@Test(timeout = 120000)
 	@TestDepth(10)
 	public void discoverAndPersist() throws Exception {
 		String samplesPath = System.getProperty("ar.test.samples", DEFAULT_SAMPLES);

@@ -36,7 +36,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	/**
 	 * Verify that a single FME produces an output vector of the correct dimension.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFmeOutputShape() {
 		int dim = 320;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(199999.0, dim);
@@ -49,7 +49,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	/**
 	 * Verify that the sinusoidal encoding produces values in [-1, 1].
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSinusoidalEncodingRange() {
 		int dim = 64;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(1031.0, dim);
@@ -65,7 +65,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	/**
 	 * Verify that different input values produce different sinusoidal encodings.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDifferentValuesProduceDifferentEncodings() {
 		int dim = 64;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(19.0, dim);
@@ -86,7 +86,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	/**
 	 * Verify that inverse frequencies follow the expected formula.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testInvFreqComputation() {
 		double base = 10000.0;
 		int dim = 8;
@@ -105,7 +105,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	/**
 	 * Verify that CompoundMidiEmbedding produces a vector of hiddenSize.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testCompoundEmbeddingOutputShape() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
@@ -125,7 +125,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	 * produce identical zero vectors. Difference testing requires
 	 * pretrained weights via StateDictionary.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSpecialTokenEmbedding() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
@@ -150,7 +150,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	/**
 	 * Verify that default config FME bases match the ropeThetas array.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDefaultConfigFmeBases() {
 		MoonbeamConfig config = MoonbeamConfig.defaultConfig();
 		double[] expectedBases = {199999, 1031, 19, 20, 199999, 131};
@@ -164,7 +164,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	 * Verify that the compound embedding dimensions align:
 	 * 6 * embeddingDim == hiddenSize.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testEmbeddingDimensionAlignment() {
 		MoonbeamConfig config = MoonbeamConfig.defaultConfig();
 		assertEquals("6 * embeddingDim should equal hiddenSize",
@@ -175,7 +175,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	/**
 	 * Verify that PAD tokens produce an all-zero embedding vector.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testPadTokenEmbedding() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
@@ -193,7 +193,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	/**
 	 * Verify that embedSequence produces the correct output shape.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testEmbedSequenceShape() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
@@ -214,7 +214,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	 * Verify that embedSequence content matches sequential embed() calls.
 	 * This ensures embedSequence correctly concatenates individual token embeddings.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testEmbedSequenceContentMatchesIndividualEmbeds() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
@@ -244,7 +244,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	/**
 	 * Verify that the same token produces identical embeddings on repeated calls.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testEmbeddingDeterminism() {
 		int dim = 64;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(1031.0, dim);

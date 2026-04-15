@@ -47,7 +47,7 @@ public class MoonbeamWeightVerificationTest extends TestSuiteBase implements Con
 	/**
 	 * Verify all expected weight keys are present and have correct shapes.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testWeightKeysAndShapes() throws IOException {
 		Assume.assumeTrue("Weights directory not found", new File(WEIGHTS_DIR).isDirectory());
@@ -119,7 +119,7 @@ public class MoonbeamWeightVerificationTest extends TestSuiteBase implements Con
 	/**
 	 * Verify no weight tensor contains NaN or infinity values.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testNoNanOrInfinity() throws IOException {
 		Assume.assumeTrue("Weights directory not found", new File(WEIGHTS_DIR).isDirectory());
@@ -147,7 +147,7 @@ public class MoonbeamWeightVerificationTest extends TestSuiteBase implements Con
 	/**
 	 * Verify weight value statistics are reasonable (not all zeros, etc.).
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testWeightStatistics() throws IOException {
 		Assume.assumeTrue("Weights directory not found", new File(WEIGHTS_DIR).isDirectory());

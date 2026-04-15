@@ -98,7 +98,7 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
      * to {@value #OUTPUT_DIR}. The method logs which weight mode was used so
      * the caller can assess the quality of the output.</p>
      */
-    @Test
+    @Test(timeout = 600000)
     public void generateMidiFiles() throws Exception {
         File outputDir = new File(OUTPUT_DIR);
         if (!outputDir.exists() && !outputDir.mkdirs()) {
