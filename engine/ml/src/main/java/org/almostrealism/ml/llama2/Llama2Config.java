@@ -16,6 +16,8 @@
 
 package org.almostrealism.ml.llama2;
 
+import org.almostrealism.ml.TransformerConfig;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -27,34 +29,9 @@ import java.nio.ByteBuffer;
  * with the output classifier.</p>
  *
  * @author Michael Murray
+ * @see TransformerConfig
  */
-public class Llama2Config {
-	/** Transformer dimension. */
-	public final int dim;
-
-	/** FFN hidden layer dimension. */
-	public final int hiddenDim;
-
-	/** Number of transformer layers. */
-	public final int layerCount;
-
-	/** Number of query attention heads. */
-	public final int headCount;
-
-	/** Number of key/value attention heads. */
-	public final int kvHeadCount;
-
-	/** Vocabulary size (always positive after parsing). */
-	public final int vocabSize;
-
-	/** Maximum sequence length. */
-	public final int seqLen;
-
-	/** Whether the token embedding table is shared with the classifier. */
-	public final boolean sharedWeights;
-
-	/** Size of each attention head ({@code dim / headCount}). */
-	public final int headSize;
+public class Llama2Config extends TransformerConfig {
 
 	/**
 	 * Reads configuration from a checkpoint header.
@@ -62,16 +39,6 @@ public class Llama2Config {
 	 * @param buffer the byte buffer positioned at the start of the header
 	 */
 	public Llama2Config(ByteBuffer buffer) {
-		this.dim = buffer.getInt();
-		this.hiddenDim = buffer.getInt();
-		this.layerCount = buffer.getInt();
-		this.headCount = buffer.getInt();
-		this.kvHeadCount = buffer.getInt();
-
-		int vocabSize = buffer.getInt();
-		this.vocabSize = Math.abs(vocabSize);
-		this.seqLen = buffer.getInt();
-		this.sharedWeights = vocabSize > 0;
-		this.headSize = dim / headCount;
+		super(buffer);
 	}
 }
