@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.AttentionFeatures;
@@ -178,9 +179,9 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		PdslNode.Program blockProgram = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
 		PdslNode.Program lmHeadProgram = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
 
-		PackedCollection netFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, config.netHeadSize, config.maxEventSeqLen);
-		PackedCollection netTokenFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer netTokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, config.netTokenHeadSize, config.maxEventSeqLen);
 
 		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
@@ -394,7 +395,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 											   PdslNode.Program blockProgram,
 											   PdslNode.Program lmHeadProgram,
 											   int numLayers, int numHeads,
-											   PackedCollection freqCis,
+											   CollectionProducer freqCis,
 											   PackedCollection position,
 											   boolean withLmHead,
 											   double epsilon,

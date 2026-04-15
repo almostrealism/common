@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
@@ -103,9 +104,9 @@ public class SkyTntMidiTest extends TestSuiteBase {
 		PackedCollection netPos = new PackedCollection(1);
 		PackedCollection tokenPos = new PackedCollection(1);
 
-		PackedCollection netFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, netHeadSize, SEQ_LEN);
-		PackedCollection tokenFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer tokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, tokenHeadSize, SEQ_LEN);
 
 		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
@@ -147,7 +148,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 
 		int netHeadSize = DIM / HEADS;
 		PackedCollection netPos = new PackedCollection(1);
-		PackedCollection netFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, netHeadSize, SEQ_LEN);
 
 		CompiledModel netModel = SkyTntMidi.buildTransformerModel(
@@ -185,7 +186,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 
 		int tokenHeadSize = DIM / HEADS_TOKEN;
 		PackedCollection tokenPos = new PackedCollection(1);
-		PackedCollection tokenFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer tokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, tokenHeadSize, SEQ_LEN);
 		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
 
@@ -233,9 +234,9 @@ public class SkyTntMidiTest extends TestSuiteBase {
 		PackedCollection netPos = new PackedCollection(1);
 		PackedCollection tokenPos = new PackedCollection(1);
 
-		PackedCollection netFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, netHeadSize, SEQ_LEN);
-		PackedCollection tokenFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer tokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, tokenHeadSize, SEQ_LEN);
 
 		PackedCollection netEmbed = new PackedCollection(new TraversalPolicy(VOCAB, DIM));

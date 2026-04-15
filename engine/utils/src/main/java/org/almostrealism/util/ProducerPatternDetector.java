@@ -56,6 +56,15 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 	);
 
 	/**
+	 * Methods where {@code .evaluate()} calls are legitimate despite being in
+	 * a computation source tree. These are autoregressive step loops or other
+	 * boundaries where the compiled model is invoked token-by-token.
+	 */
+	private static final List<String> EVALUATE_ALLOWED_METHODS = List.of(
+			"runGruDecode"              // Autoregressive GRU decode loop (step boundaries)
+	);
+
+	/**
 	 * Files in computation source trees where {@code .evaluate()} is legitimate.
 	 * These are pipeline boundaries, data loading, or sampling loops.
 	 */
@@ -181,13 +190,16 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 				continue;
 			}
 
-			// Check enclosing method — main methods and constructors are exempt
+			// Check enclosing method — main methods, constructors, and allowed autoregressive
+			// step methods are exempt
 			String methodName = findEnclosingMethodName(lines, i);
 			if (methodName.equals("main") || methodName.equals("<constructor>")) {
 				continue;
 			}
 
-			if (!evaluateAllowed && EVALUATE_CALL.matcher(line).find()) {
+			boolean inAllowedMethod = EVALUATE_ALLOWED_METHODS.contains(methodName);
+
+			if (!evaluateAllowed && !inAllowedMethod && EVALUATE_CALL.matcher(line).find()) {
 				violations.add(new Violation(file, lineNum, line,
 						"PRODUCER_EVALUATE_IN_COMPUTATION",
 						".evaluate() inside computation code breaks the computation graph. " +

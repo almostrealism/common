@@ -185,7 +185,7 @@ public class Llama2 implements AttentionFeatures {
 					weights.wv.range(shape(dim, dim), dim * dim * i),
 					weights.wq.range(shape(dim, dim), dim * dim * i),
 					weights.wo.range(shape(dim, dim), dim * dim * i),
-					weights.freqCis,
+					cp(weights.freqCis),
 					weights.rmsFfn.range(shape(config.dim), i * config.dim),
 					weights.w1.range(shape(config.hiddenDim, dim), dim * config.hiddenDim * i),
 					weights.w2.range(shape(dim, config.hiddenDim), dim * config.hiddenDim * i),
