@@ -61,7 +61,9 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 	 * boundaries where the compiled model is invoked token-by-token.
 	 */
 	private static final List<String> EVALUATE_ALLOWED_METHODS = List.of(
-			"runGruDecode"              // Autoregressive GRU decode loop (step boundaries)
+			"runGruDecode",             // Autoregressive GRU decode loop (step boundaries)
+			"embedAndSumNet"            // SkyTntMidi step-boundary: materializes the summed
+			                            // token embedding fed into netCompiledModel.forward
 	);
 
 	/**
