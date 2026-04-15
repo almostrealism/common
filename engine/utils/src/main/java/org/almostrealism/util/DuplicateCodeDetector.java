@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,7 +55,7 @@ import java.util.stream.Stream;
  *
  * @see CodePolicyViolationDetector
  */
-public class DuplicateCodeDetector {
+public class DuplicateCodeDetector implements ConsoleFeatures {
 
 	/**
 	 * A pair of locations that share an identical block of code.
@@ -319,7 +321,7 @@ public class DuplicateCodeDetector {
 				blocksByFingerprint.computeIfAbsent(fingerprint, k -> new ArrayList<>()).add(block);
 			}
 		} catch (IOException e) {
-			System.err.println("Warning: Could not read file " + file + ": " + e.getMessage());
+			warn("Could not read file " + file + ": " + e.getMessage());
 		}
 	}
 

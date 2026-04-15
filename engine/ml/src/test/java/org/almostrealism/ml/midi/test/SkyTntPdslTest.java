@@ -73,7 +73,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	/**
 	 * Verify that skytnt_block.pdsl parses and contains the expected layer definitions.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSkytntBlockParsing() {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
@@ -92,7 +92,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	/**
 	 * Verify that skytnt_lm_head.pdsl parses and contains the expected layer definitions.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSkytntLmHeadParsing() {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
@@ -109,7 +109,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	/**
 	 * Verify that skytnt_ffn can be loaded as a block with the correct input shape.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSkytntFfnBlock() {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
@@ -131,7 +131,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	/**
 	 * Verify that a skytnt_block (full LLaMA block) can be loaded for net hyperparameters.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSkytntBlockMainNet() {
 		Block block = buildSkytntBlock(HEADS, HEAD_SIZE, HIDDEN_DIM);
 		Assert.assertNotNull("skytnt_block should not be null", block);
@@ -144,7 +144,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	 * Verify that a skytnt_block can be loaded for net_token hyperparameters
 	 * (fewer heads, larger head size).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSkytntBlockTokenNet() {
 		Block block = buildSkytntBlock(HEADS_TOKEN, HEAD_SIZE_TOKEN, HIDDEN_DIM_TOKEN);
 		Assert.assertNotNull("skytnt_block (token net) should not be null", block);
@@ -154,7 +154,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	/**
 	 * Verify that skytnt_norm (final norm layer) can be loaded.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSkytntNormBlock() {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
@@ -172,7 +172,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	/**
 	 * Verify that skytnt_lm_head (final norm + vocabulary projection) can be loaded.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSkytntLmHeadBlock() {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");

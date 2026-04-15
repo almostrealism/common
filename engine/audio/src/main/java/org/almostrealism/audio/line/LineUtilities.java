@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.line;
 
+import org.almostrealism.io.Console;
 import org.almostrealism.collect.PackedCollection;
 
 import javax.sound.sampled.AudioFormat;
@@ -112,7 +113,7 @@ public class LineUtilities {
 		SourceDataLine line;
 		DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
 		if (!AudioSystem.isLineSupported(info)) {
-			System.out.println("Not supported");
+			Console.root().warn("Not supported");
 			return null;
 		}
 		
@@ -123,7 +124,7 @@ public class LineUtilities {
 			line.open(format, Math.max(1024, bufferFrames * 4));
 			line.start();
 		} catch (LineUnavailableException ex) {
-			System.out.println("Unavailable (" + ex.getMessage() + ")");
+			Console.root().warn("Unavailable (" + ex.getMessage() + ")");
 			return null;
 		}
 		
@@ -329,7 +330,7 @@ public class LineUtilities {
 			line.start();
 			return new SourceDataOutputLine(line, bufferFrames);
 		} catch (LineUnavailableException ex) {
-			System.out.println("Unavailable on " + mixerInfo.getName()
+			Console.root().warn("Unavailable on " + mixerInfo.getName()
 					+ " (" + ex.getMessage() + ")");
 			return null;
 		}

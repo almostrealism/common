@@ -106,7 +106,7 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
      * Verifies that {@link NodeGroup#findNodeForJob(Job)} returns null
      * when no child Node satisfies the job's required labels.
      */
-    @Test
+    @Test(timeout = 60000)
     public void findNodeForJobReturnsNullWhenNoMatch() throws Exception {
         if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -135,7 +135,7 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
      * Verifies that {@link NodeGroup#findNodeForJob(Job)} returns a
      * matching Node when one is available.
      */
-    @Test
+    @Test(timeout = 60000)
     public void findNodeForJobReturnsMatchingNode() throws Exception {
         if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -165,7 +165,7 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
      * to {@code getLeastActiveNode()} when the job has no label
      * requirements.
      */
-    @Test
+    @Test(timeout = 60000)
     public void findNodeForJobNoRequirementsFallsBack() throws Exception {
         if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -230,7 +230,7 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
      * Verifies that a Node with {@code role:relay} never executes
      * jobs, even when the job has no label requirements.
      */
-    @Test
+    @Test(timeout = 60000)
     public void relayNodeNeverSatisfiesRequirements() throws Exception {
         if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -253,7 +253,7 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
      * Verifies that {@link NodeGroup#findNodeForJob(Job)} skips relay
      * Nodes and returns null when the only child is a relay Node.
      */
-    @Test
+    @Test(timeout = 60000)
     public void findNodeForJobSkipsRelayNode() throws Exception {
         if (testProfileIs(TestUtils.PIPELINE)) return;
 

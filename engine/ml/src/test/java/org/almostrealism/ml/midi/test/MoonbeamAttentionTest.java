@@ -35,7 +35,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Verify that computeFreqCis produces the correct output shape.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFreqCisShape() {
 		int headDim = 160;
 		int maxSeqLen = 128;
@@ -52,7 +52,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Verify that freqCis values are valid cos/sin (in [-1, 1] range).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFreqCisValues() {
 		int headDim = 8;
 		int maxSeqLen = 16;
@@ -71,7 +71,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Verify that position 0 produces cos=1, sin=0 for all frequencies.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFreqCisPositionZero() {
 		int headDim = 8;
 		int maxSeqLen = 4;
@@ -92,7 +92,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Verify that different theta values produce different frequencies.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDifferentThetasProduceDifferentFreqs() {
 		int headDim = 8;
 		int maxSeqLen = 16;
@@ -117,7 +117,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	 * Verify that fromConfig creates the correct number of head groups
 	 * with the correct head counts.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFromConfigHeadGroups() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 
@@ -147,7 +147,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Verify that each head group's freqCis has the correct shape.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFromConfigFreqCisShapes() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		int freqDim = config.headDim / 2;
@@ -175,7 +175,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	 * Verify vocabulary offset computation for the GRU decode vocabulary.
 	 * Total should equal decodeVocabSize (8487).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDecodeVocabOffsets() {
 		MoonbeamConfig config = MoonbeamConfig.defaultConfig();
 		int[] offsets = GRUDecoder.computeVocabOffsets(config);

@@ -31,7 +31,7 @@ import java.util.List;
  */
 public class AudioDeviceEnumerationTest extends TestSuiteBase {
 
-	@Test
+	@Test(timeout = 60000)
 	public void enumerateOutputDevices() {
 		List<AudioDeviceInfo> devices = AudioDeviceManager.getOutputDevices();
 
@@ -44,14 +44,14 @@ public class AudioDeviceEnumerationTest extends TestSuiteBase {
 		// (but we don't assert this since CI may be headless)
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void findByNameReturnsNullForMissing() {
 		AudioDeviceInfo result = AudioDeviceManager.findByName(
 				"Nonexistent Device That Does Not Exist");
 		Assert.assertNull("Should return null for unknown device", result);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void findByNameHandlesNull() {
 		AudioDeviceInfo result = AudioDeviceManager.findByName(null);
 		Assert.assertNull("Should return null for null name", result);

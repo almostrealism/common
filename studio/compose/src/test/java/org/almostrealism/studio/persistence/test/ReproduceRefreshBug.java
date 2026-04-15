@@ -46,7 +46,7 @@ public class ReproduceRefreshBug extends TestSuiteBase {
 	private static final String SAMPLES_ROOT = "/Users/michael/Music/Samples";
 	private static final int SAMPLE_RATE = 44100;
 
-	@Test @TestDepth(10)
+	@Test(timeout = 600000) @TestDepth(10)
 	public void refreshDoesNotRecomputeCompleteEntries() throws Exception {
 		File samplesDir = new File(SAMPLES_ROOT);
 		if (!samplesDir.isDirectory()) {

@@ -102,7 +102,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	 * Verify that LoRA adapter configuration is correctly created from
 	 * training config and targets the expected attention projections.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoraConfigCreation() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiTrainingConfig trainConfig = MidiTrainingConfig.testConfig();
@@ -131,7 +131,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	/**
 	 * Verify that LoRA adapter can be saved to a file and the file is valid.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoraAdapterSaveLoad() throws IOException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiTrainingConfig trainConfig = MidiTrainingConfig.testConfig();
@@ -157,7 +157,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	 * Verify that MidiDataset produces correctly shaped training pairs
 	 * from synthetic compound token sequences.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testMidiDatasetTrainingPairs() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiDataset dataset = MidiDataset.synthetic(3, 5, config);
@@ -197,7 +197,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	 * targets from MidiDataset. This tests the multi-attribute loss aggregation
 	 * where each target has multiple hot positions (one per attribute).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testNllLossWithCompoundTokenTargets() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiDataset dataset = MidiDataset.synthetic(1, 3, config);
@@ -241,7 +241,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	 * <p>This test demonstrates that gradient computation and LoRA parameter
 	 * updates work correctly for the transformer layers.</p>
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testTransformerTrainingWithMSE() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		int dim = config.hiddenSize;
@@ -305,7 +305,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	 * be computed on the GRU's decode vocabulary output, but gradients from
 	 * that loss cannot reach the transformer parameters.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testGruDecoderGradientFlowDocumentation() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		GRUDecoder decoder = createSyntheticDecoder(config);
@@ -347,7 +347,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	 * MidiDataset provides input/target pairs of shape {@code (decodeVocabSize,)}.
 	 * This test documents the incompatibility.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testEndToEndPipelineShapeMismatch() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiDataset dataset = MidiDataset.synthetic(2, 4, config);
@@ -396,7 +396,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	 * {@code /Users/Shared/models/moonbeam-weights-protobuf}. It is
 	 * marked as depth 2 and will be skipped if weights are not available.</p>
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testCheckpoint309MLoraConfig() {
 		if (!Files.exists(Path.of(WEIGHTS_DIR))) {
 			log("Skipping: pretrained weights not found at " + WEIGHTS_DIR);

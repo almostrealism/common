@@ -80,7 +80,7 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 	 * ONNX encoder model. On subsequent runs, features are loaded from the
 	 * protobuf store, making discovery significantly faster.</p>
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void discoverWithOnnxFeatures() throws Exception {
 		String samplesPath = resolveSamplesPath();
 		String storePath = System.getProperty("ar.test.store", DEFAULT_STORE);

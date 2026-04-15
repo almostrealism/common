@@ -35,7 +35,7 @@ import javax.sound.sampled.SourceDataLine;
  */
 public class MultiChannelOutputLineTest extends TestSuiteBase {
 
-	@Test
+	@Test(timeout = 60000)
 	public void channelPairViewLabel() {
 		// Create a minimal multi-channel line for testing pair views
 		MultiChannelOutputLine mcLine = createMockMultiChannelLine(8);
@@ -52,7 +52,7 @@ public class MultiChannelOutputLineTest extends TestSuiteBase {
 		Assert.assertEquals("7-8", view3.getPairLabel());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void pairCountCalculation() {
 		MultiChannelOutputLine mcLine = createMockMultiChannelLine(8);
 		Assume.assumeNotNull(mcLine);
@@ -61,7 +61,7 @@ public class MultiChannelOutputLineTest extends TestSuiteBase {
 		Assert.assertEquals(8, mcLine.getOutputChannels());
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 60000, expected = IllegalArgumentException.class)
 	public void invalidPairIndexThrows() {
 		MultiChannelOutputLine mcLine = createMockMultiChannelLine(4);
 		Assume.assumeNotNull(mcLine);
@@ -69,7 +69,7 @@ public class MultiChannelOutputLineTest extends TestSuiteBase {
 		mcLine.getView(2); // only pairs 0 and 1 exist
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void viewBufferSizeMatchesParent() {
 		MultiChannelOutputLine mcLine = createMockMultiChannelLine(8);
 		Assume.assumeNotNull(mcLine);
@@ -78,7 +78,7 @@ public class MultiChannelOutputLineTest extends TestSuiteBase {
 		Assert.assertEquals(mcLine.getBufferSize(), view.getBufferSize());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void viewDestroyDoesNotDestroyParent() {
 		MultiChannelOutputLine mcLine = createMockMultiChannelLine(4);
 		Assume.assumeNotNull(mcLine);

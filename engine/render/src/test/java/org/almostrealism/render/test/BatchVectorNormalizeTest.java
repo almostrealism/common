@@ -38,7 +38,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	// =========================================================================
 
 	/** Normalize unit X axis — should remain (1, 0, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeUnitX() {
 		PackedCollection result = normalize(vector(1.0, 0.0, 0.0)).evaluate();
 		assertEquals(1.0, result.toDouble(0));
@@ -47,7 +47,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize unit Y axis — should remain (0, 1, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeUnitY() {
 		PackedCollection result = normalize(vector(0.0, 1.0, 0.0)).evaluate();
 		assertEquals(0.0, result.toDouble(0));
@@ -56,7 +56,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize unit Z axis — should remain (0, 0, 1). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeUnitZ() {
 		PackedCollection result = normalize(vector(0.0, 0.0, 1.0)).evaluate();
 		assertEquals(0.0, result.toDouble(0));
@@ -65,7 +65,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize negative X axis — should be (-1, 0, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeNegX() {
 		PackedCollection result = normalize(vector(-1.0, 0.0, 0.0)).evaluate();
 		assertEquals(-1.0, result.toDouble(0));
@@ -74,7 +74,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize negative Y axis — should be (0, -1, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeNegY() {
 		PackedCollection result = normalize(vector(0.0, -1.0, 0.0)).evaluate();
 		assertEquals(0.0, result.toDouble(0));
@@ -83,7 +83,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize negative Z axis — should be (0, 0, -1). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeNegZ() {
 		PackedCollection result = normalize(vector(0.0, 0.0, -1.0)).evaluate();
 		assertEquals(0.0, result.toDouble(0));
@@ -92,7 +92,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (2, 0, 0) — should be (1, 0, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeScaledX() {
 		PackedCollection result = normalize(vector(2.0, 0.0, 0.0)).evaluate();
 		assertEquals(1.0, result.toDouble(0));
@@ -101,7 +101,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (0, 5, 0) — should be (0, 1, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeScaledY() {
 		PackedCollection result = normalize(vector(0.0, 5.0, 0.0)).evaluate();
 		assertEquals(0.0, result.toDouble(0));
@@ -110,7 +110,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (0, 0, 100) — should be (0, 0, 1). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeScaledZ() {
 		PackedCollection result = normalize(vector(0.0, 0.0, 100.0)).evaluate();
 		assertEquals(0.0, result.toDouble(0));
@@ -119,7 +119,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (0, 0, -7) — should be (0, 0, -1). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeNegScaledZ() {
 		PackedCollection result = normalize(vector(0.0, 0.0, -7.0)).evaluate();
 		assertEquals(0.0, result.toDouble(0));
@@ -132,7 +132,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	// =========================================================================
 
 	/** Normalize (3, 4, 0) — magnitude 5. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalize3_4_0() {
 		PackedCollection result = normalize(vector(3.0, 4.0, 0.0)).evaluate();
 		assertEquals(3.0 / 5.0, result.toDouble(0));
@@ -141,7 +141,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (0, 3, 4) — magnitude 5. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalize0_3_4() {
 		PackedCollection result = normalize(vector(0.0, 3.0, 4.0)).evaluate();
 		assertEquals(0.0, result.toDouble(0));
@@ -150,7 +150,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (4, 0, 3) — magnitude 5. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalize4_0_3() {
 		PackedCollection result = normalize(vector(4.0, 0.0, 3.0)).evaluate();
 		assertEquals(4.0 / 5.0, result.toDouble(0));
@@ -159,7 +159,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (0, 5, 12) — magnitude 13. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalize0_5_12() {
 		PackedCollection result = normalize(vector(0.0, 5.0, 12.0)).evaluate();
 		assertEquals(0.0, result.toDouble(0));
@@ -168,7 +168,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (1, 1, 0) — magnitude sqrt(2). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalize1_1_0() {
 		double len = Math.sqrt(2.0);
 		PackedCollection result = normalize(vector(1.0, 1.0, 0.0)).evaluate();
@@ -178,7 +178,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (1, 1, 1) — magnitude sqrt(3). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalize1_1_1() {
 		double len = Math.sqrt(3.0);
 		PackedCollection result = normalize(vector(1.0, 1.0, 1.0)).evaluate();
@@ -188,7 +188,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (-1, -1, -1) — all components should be -1/sqrt(3). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeNeg1_1_1() {
 		double len = Math.sqrt(3.0);
 		PackedCollection result = normalize(vector(-1.0, -1.0, -1.0)).evaluate();
@@ -198,7 +198,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (2, 2, 1) — magnitude 3. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalize2_2_1() {
 		PackedCollection result = normalize(vector(2.0, 2.0, 1.0)).evaluate();
 		assertEquals(2.0 / 3.0, result.toDouble(0));
@@ -207,7 +207,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (1, 2, 2) — magnitude 3. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalize1_2_2() {
 		PackedCollection result = normalize(vector(1.0, 2.0, 2.0)).evaluate();
 		assertEquals(1.0 / 3.0, result.toDouble(0));
@@ -216,7 +216,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize (6, 0, 8) — magnitude 10. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalize6_0_8() {
 		PackedCollection result = normalize(vector(6.0, 0.0, 8.0)).evaluate();
 		assertEquals(0.6, result.toDouble(0));
@@ -229,7 +229,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	// =========================================================================
 
 	/** Length of normalized (3, 4, 0) should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedLengthPythagorean() {
 		CollectionProducer n = normalize(vector(3.0, 4.0, 0.0));
 		PackedCollection len = length(n).evaluate();
@@ -237,7 +237,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Length of normalized (1, 1, 1) should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedLengthDiagonal() {
 		CollectionProducer n = normalize(vector(1.0, 1.0, 1.0));
 		PackedCollection len = length(n).evaluate();
@@ -245,7 +245,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Length of normalized (7, 3, 2) should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedLength7_3_2() {
 		CollectionProducer n = normalize(vector(7.0, 3.0, 2.0));
 		PackedCollection len = length(n).evaluate();
@@ -253,7 +253,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Length of normalized (-5, 8, -1) should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedLengthMixed() {
 		CollectionProducer n = normalize(vector(-5.0, 8.0, -1.0));
 		PackedCollection len = length(n).evaluate();
@@ -261,7 +261,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Length of normalized (100, 200, 300) should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedLengthLarge() {
 		CollectionProducer n = normalize(vector(100.0, 200.0, 300.0));
 		PackedCollection len = length(n).evaluate();
@@ -269,7 +269,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** LengthSq of normalized (2, 3, 6) should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedLengthSq2_3_6() {
 		CollectionProducer n = normalize(vector(2.0, 3.0, 6.0));
 		PackedCollection lenSq = lengthSq(n).evaluate();
@@ -277,7 +277,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Length of normalized (0.001, 0.002, 0.003) should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedLengthSmall() {
 		CollectionProducer n = normalize(vector(0.001, 0.002, 0.003));
 		PackedCollection len = length(n).evaluate();
@@ -285,7 +285,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Length of normalized (-3, -4, 0) should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedLengthNeg3_4_0() {
 		CollectionProducer n = normalize(vector(-3.0, -4.0, 0.0));
 		PackedCollection len = length(n).evaluate();
@@ -293,7 +293,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Length of normalized (10, 0, 0) should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedLengthSingleAxis() {
 		CollectionProducer n = normalize(vector(10.0, 0.0, 0.0));
 		PackedCollection len = length(n).evaluate();
@@ -301,7 +301,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Length of normalized (9, 12, 20) should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedLength9_12_20() {
 		CollectionProducer n = normalize(vector(9.0, 12.0, 20.0));
 		PackedCollection len = length(n).evaluate();
@@ -313,7 +313,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	// =========================================================================
 
 	/** Normalize (3,0,4) + normalize (0,5,12) — sum of two unit vectors. */
-	@Test
+	@Test(timeout = 60000)
 	public void addTwoNormalized() {
 		CollectionProducer sum = add(normalize(vector(3.0, 0.0, 4.0)), normalize(vector(0.0, 5.0, 12.0)));
 		PackedCollection result = sum.evaluate();
@@ -323,7 +323,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize the sum of two vectors: normalize(a + b). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeOfSum() {
 		CollectionProducer sum = add(vector(1.0, 0.0, 0.0), vector(0.0, 1.0, 0.0));
 		PackedCollection result = normalize(sum).evaluate();
@@ -334,7 +334,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize(a) + a — unit direction plus original. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedPlusOriginal() {
 		CollectionProducer v = vector(3.0, 4.0, 0.0);
 		CollectionProducer result = add(normalize(v), v);
@@ -345,7 +345,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Add normalize(X axis) + normalize(Y axis) — should be (1, 1, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void addNormalizedAxes() {
 		CollectionProducer sum = add(normalize(vector(5.0, 0.0, 0.0)), normalize(vector(0.0, 3.0, 0.0)));
 		PackedCollection result = sum.evaluate();
@@ -355,7 +355,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize(a + b + c) for three axis vectors. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeTripleSum() {
 		CollectionProducer sum = add(add(vector(1.0, 0.0, 0.0), vector(0.0, 1.0, 0.0)), vector(0.0, 0.0, 1.0));
 		PackedCollection result = normalize(sum).evaluate();
@@ -366,7 +366,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Add two identical normalized vectors — should double the normalized vector. */
-	@Test
+	@Test(timeout = 60000)
 	public void addSameNormalizedTwice() {
 		CollectionProducer n = normalize(vector(1.0, 2.0, 2.0));
 		CollectionProducer sum = add(n, n);
@@ -377,7 +377,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize the sum of opposite vectors scaled differently: normalize((2,0,0) + (0,2,0)). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeXYSum() {
 		CollectionProducer sum = add(vector(2.0, 0.0, 0.0), vector(0.0, 2.0, 0.0));
 		PackedCollection result = normalize(sum).evaluate();
@@ -388,7 +388,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize((1,1,0) + (0,0,1)) = normalize(1,1,1). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeSumToUniform() {
 		CollectionProducer sum = add(vector(1.0, 1.0, 0.0), vector(0.0, 0.0, 1.0));
 		PackedCollection result = normalize(sum).evaluate();
@@ -399,7 +399,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize(v) + normalize(-v) should be (0, 0, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void addNormalizedOpposites() {
 		CollectionProducer sum = add(normalize(vector(3.0, 4.0, 0.0)), normalize(vector(-3.0, -4.0, 0.0)));
 		PackedCollection result = sum.evaluate();
@@ -409,7 +409,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize((5,0,0) + (0,0,5)) = normalize(5,0,5). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeXZSum() {
 		CollectionProducer sum = add(vector(5.0, 0.0, 0.0), vector(0.0, 0.0, 5.0));
 		PackedCollection result = normalize(sum).evaluate();
@@ -424,7 +424,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	// =========================================================================
 
 	/** normalize(a - b) where a=(2,0,0), b=(0,2,0) => normalize(2,-2,0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeDifference() {
 		CollectionProducer diff = subtract(vector(2.0, 0.0, 0.0), vector(0.0, 2.0, 0.0));
 		PackedCollection result = normalize(diff).evaluate();
@@ -435,7 +435,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize(a) - normalize(b) for orthogonal vectors. */
-	@Test
+	@Test(timeout = 60000)
 	public void subtractNormalized() {
 		CollectionProducer diff = subtract(normalize(vector(3.0, 0.0, 0.0)), normalize(vector(0.0, 4.0, 0.0)));
 		PackedCollection result = diff.evaluate();
@@ -445,7 +445,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize((4,3,0) - (4,0,0)) = normalize(0,3,0) = (0,1,0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeDiffToAxis() {
 		CollectionProducer diff = subtract(vector(4.0, 3.0, 0.0), vector(4.0, 0.0, 0.0));
 		PackedCollection result = normalize(diff).evaluate();
@@ -455,7 +455,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize(v) - normalize(v) = (0, 0, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void subtractSameNormalized() {
 		CollectionProducer n = normalize(vector(2.0, 3.0, 6.0));
 		CollectionProducer diff = subtract(n, n);
@@ -466,7 +466,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize((5,5,5) - (5,5,0)) = normalize(0,0,5) = (0,0,1). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeDiffIsolateZ() {
 		CollectionProducer diff = subtract(vector(5.0, 5.0, 5.0), vector(5.0, 5.0, 0.0));
 		PackedCollection result = normalize(diff).evaluate();
@@ -476,7 +476,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize(a - b) for a=(1,2,3), b=(1,2,0) => normalize(0,0,3) = (0,0,1). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeDiffZOnly() {
 		CollectionProducer diff = subtract(vector(1.0, 2.0, 3.0), vector(1.0, 2.0, 0.0));
 		PackedCollection result = normalize(diff).evaluate();
@@ -486,7 +486,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize((10,0,0) - (3,0,0)) = normalize(7,0,0) = (1,0,0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeDiffXOnly() {
 		CollectionProducer diff = subtract(vector(10.0, 0.0, 0.0), vector(3.0, 0.0, 0.0));
 		PackedCollection result = normalize(diff).evaluate();
@@ -496,7 +496,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Subtract normalize(1,0,0) from normalize(1,1,0) — Y component remains. */
-	@Test
+	@Test(timeout = 60000)
 	public void subtractNormalizedDiffY() {
 		CollectionProducer diff = subtract(normalize(vector(1.0, 1.0, 0.0)), normalize(vector(1.0, 0.0, 0.0)));
 		PackedCollection result = diff.evaluate();
@@ -506,7 +506,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize((0,6,0) - (0,0,8)) = normalize(0,6,-8), magnitude 10. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeDiffYZ() {
 		CollectionProducer diff = subtract(vector(0.0, 6.0, 0.0), vector(0.0, 0.0, 8.0));
 		PackedCollection result = normalize(diff).evaluate();
@@ -516,7 +516,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize((3,4,12) - (3,4,0)) = normalize(0,0,12) = (0,0,1). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeDiffRemoveXY() {
 		CollectionProducer diff = subtract(vector(3.0, 4.0, 12.0), vector(3.0, 4.0, 0.0));
 		PackedCollection result = normalize(diff).evaluate();
@@ -530,7 +530,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	// =========================================================================
 
 	/** Normalize then scale by 5 — length should be 5. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeAndScale() {
 		CollectionProducer scaled = multiply(normalize(vector(3.0, 4.0, 0.0)), scalar(5.0));
 		PackedCollection result = scaled.evaluate();
@@ -540,7 +540,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Scale by 2 then normalize — should be same as just normalize. */
-	@Test
+	@Test(timeout = 60000)
 	public void scaleThenNormalize() {
 		CollectionProducer scaled = multiply(vector(3.0, 4.0, 0.0), scalar(2.0));
 		PackedCollection result = normalize(scaled).evaluate();
@@ -550,7 +550,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize then scale by 10 — length of result should be 10. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeScaleLength() {
 		CollectionProducer scaled = multiply(normalize(vector(1.0, 2.0, 2.0)), scalar(10.0));
 		PackedCollection len = length(scaled).evaluate();
@@ -558,7 +558,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Multiply normalize by -1 — should reverse direction. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeNegate() {
 		CollectionProducer neg = multiply(normalize(vector(3.0, 4.0, 0.0)), scalar(-1.0));
 		PackedCollection result = neg.evaluate();
@@ -568,7 +568,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Element-wise multiply: normalize(a) * normalize(b). */
-	@Test
+	@Test(timeout = 60000)
 	public void multiplyTwoNormalized() {
 		CollectionProducer product = multiply(normalize(vector(1.0, 0.0, 0.0)), normalize(vector(0.0, 1.0, 0.0)));
 		PackedCollection result = product.evaluate();
@@ -578,7 +578,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Scale (1,1,1) by 100, then normalize — still 1/sqrt(3) per component. */
-	@Test
+	@Test(timeout = 60000)
 	public void largeScaleThenNormalize() {
 		CollectionProducer scaled = multiply(vector(1.0, 1.0, 1.0), scalar(100.0));
 		PackedCollection result = normalize(scaled).evaluate();
@@ -589,7 +589,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** normalize(v) * 0 should be (0, 0, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeScaleZero() {
 		CollectionProducer result = multiply(normalize(vector(1.0, 2.0, 3.0)), scalar(0.0));
 		PackedCollection r = result.evaluate();
@@ -599,7 +599,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize then scale by 3, then measure length = 3. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeScale3Length() {
 		CollectionProducer scaled = multiply(normalize(vector(2.0, 3.0, 6.0)), scalar(3.0));
 		PackedCollection len = length(scaled).evaluate();
@@ -607,7 +607,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Element-wise multiply: normalize(1,1,1) * (2,3,4). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeTimesVector() {
 		double c = 1.0 / Math.sqrt(3.0);
 		CollectionProducer product = multiply(normalize(vector(1.0, 1.0, 1.0)), vector(2.0, 3.0, 4.0));
@@ -618,7 +618,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Scale by 0.5 then normalize — should be same as normalizing the original. */
-	@Test
+	@Test(timeout = 60000)
 	public void halfScaleThenNormalize() {
 		CollectionProducer scaled = multiply(vector(6.0, 0.0, 8.0), scalar(0.5));
 		PackedCollection result = normalize(scaled).evaluate();
@@ -632,7 +632,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	// =========================================================================
 
 	/** Dot product of two identical normalized vectors should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalizedSelf() {
 		CollectionProducer n = normalize(vector(3.0, 4.0, 0.0));
 		PackedCollection dot = dotProduct(n, n).evaluate();
@@ -640,7 +640,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Dot product of two orthogonal normalized vectors should be 0. */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalizedOrthogonal() {
 		CollectionProducer a = normalize(vector(1.0, 0.0, 0.0));
 		CollectionProducer b = normalize(vector(0.0, 1.0, 0.0));
@@ -649,7 +649,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Dot product of opposite normalized vectors should be -1. */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalizedOpposite() {
 		CollectionProducer a = normalize(vector(3.0, 4.0, 0.0));
 		CollectionProducer b = normalize(vector(-3.0, -4.0, 0.0));
@@ -658,7 +658,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Dot product of normalized (1,1,0) with normalized (1,0,0) — cosine of 45 degrees. */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalized45Degrees() {
 		CollectionProducer a = normalize(vector(1.0, 1.0, 0.0));
 		CollectionProducer b = normalize(vector(1.0, 0.0, 0.0));
@@ -667,7 +667,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Dot product of normalized XZ with normalized X — cosine 45. */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalizedXZ_X() {
 		CollectionProducer a = normalize(vector(1.0, 0.0, 1.0));
 		CollectionProducer b = normalize(vector(1.0, 0.0, 0.0));
@@ -676,7 +676,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Dot product of normalized (1,1,1) with itself should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalizedDiagonalSelf() {
 		CollectionProducer n = normalize(vector(1.0, 1.0, 1.0));
 		PackedCollection dot = dotProduct(n, n).evaluate();
@@ -684,7 +684,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Dot product of normalized (2,3,6) with normalized (3,6,2). */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalized2_3_6_with_3_6_2() {
 		CollectionProducer a = normalize(vector(2.0, 3.0, 6.0));
 		CollectionProducer b = normalize(vector(3.0, 6.0, 2.0));
@@ -694,7 +694,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Dot product of normalize(1,0,0) with normalize(0,0,1) — orthogonal, expect 0. */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalizedXZ() {
 		CollectionProducer a = normalize(vector(1.0, 0.0, 0.0));
 		CollectionProducer b = normalize(vector(0.0, 0.0, 1.0));
@@ -703,7 +703,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Dot product of normalize(1,2,0) self — should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalized1_2_0Self() {
 		CollectionProducer n = normalize(vector(1.0, 2.0, 0.0));
 		PackedCollection dot = dotProduct(n, n).evaluate();
@@ -711,7 +711,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Dot product of two normalized vectors at 60 degrees: cos(60) = 0.5. */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalized60Degrees() {
 		CollectionProducer a = normalize(vector(1.0, 0.0, 0.0));
 		CollectionProducer b = normalize(vector(0.5, Math.sqrt(3.0) / 2.0, 0.0));
@@ -724,7 +724,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	// =========================================================================
 
 	/** Cross product of normalized X and Y axes should be Z axis. */
-	@Test
+	@Test(timeout = 60000)
 	public void crossNormalizedXY() {
 		CollectionProducer a = normalize(vector(5.0, 0.0, 0.0));
 		CollectionProducer b = normalize(vector(0.0, 3.0, 0.0));
@@ -735,7 +735,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Cross product of normalized X and Z should be -Y. */
-	@Test
+	@Test(timeout = 60000)
 	public void crossNormalizedXZ() {
 		CollectionProducer a = normalize(vector(7.0, 0.0, 0.0));
 		CollectionProducer b = normalize(vector(0.0, 0.0, 4.0));
@@ -746,7 +746,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Cross product of normalized Y and Z should be X. */
-	@Test
+	@Test(timeout = 60000)
 	public void crossNormalizedYZ() {
 		CollectionProducer a = normalize(vector(0.0, 2.0, 0.0));
 		CollectionProducer b = normalize(vector(0.0, 0.0, 9.0));
@@ -757,7 +757,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Cross of a normalized vector with itself should be (0, 0, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void crossNormalizedSelf() {
 		CollectionProducer n = normalize(vector(1.0, 2.0, 3.0));
 		PackedCollection result = crossProduct(n, n).evaluate();
@@ -767,7 +767,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize the cross product of two vectors — triangle normal computation. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeOfCross() {
 		CollectionProducer cross = crossProduct(vector(1.0, 0.0, 0.0), vector(0.0, 1.0, 0.0));
 		PackedCollection result = normalize(cross).evaluate();
@@ -777,7 +777,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize cross product of (1,0,0) and (1,1,0) — perpendicular to XY plane portion. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeCrossXXY() {
 		CollectionProducer cross = crossProduct(vector(1.0, 0.0, 0.0), vector(1.0, 1.0, 0.0));
 		PackedCollection result = normalize(cross).evaluate();
@@ -787,7 +787,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Cross product of normalize(1,1,0) and normalize(0,0,1). */
-	@Test
+	@Test(timeout = 60000)
 	public void crossNormalizedXYandZ() {
 		CollectionProducer a = normalize(vector(1.0, 1.0, 0.0));
 		CollectionProducer b = normalize(vector(0.0, 0.0, 1.0));
@@ -799,7 +799,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Length of cross(normalize(X), normalize(Y)) should be 1 (sin 90 = 1). */
-	@Test
+	@Test(timeout = 60000)
 	public void crossNormalizedLength() {
 		CollectionProducer cross = crossProduct(normalize(vector(1.0, 0.0, 0.0)), normalize(vector(0.0, 1.0, 0.0)));
 		PackedCollection len = length(cross).evaluate();
@@ -807,7 +807,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize cross of (1,2,0) and (0,0,3) — perpendicular to both. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeCross1_2_0_and_0_0_3() {
 		CollectionProducer cross = crossProduct(vector(1.0, 2.0, 0.0), vector(0.0, 0.0, 3.0));
 		normalize(cross).evaluate();
@@ -816,7 +816,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Cross(normalize(a), normalize(b)) perpendicular check via dot. */
-	@Test
+	@Test(timeout = 60000)
 	public void crossNormalizedPerpendicularCheck() {
 		CollectionProducer a = normalize(vector(1.0, 0.0, 0.0));
 		CollectionProducer b = normalize(vector(0.0, 1.0, 0.0));
@@ -832,7 +832,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	// =========================================================================
 
 	/** Extract X component of normalized (3, 4, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedXComponent() {
 		CollectionProducer n = normalize(vector(3.0, 4.0, 0.0));
 		PackedCollection result = x(n).evaluate();
@@ -840,7 +840,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Extract Y component of normalized (3, 4, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedYComponent() {
 		CollectionProducer n = normalize(vector(3.0, 4.0, 0.0));
 		PackedCollection result = y(n).evaluate();
@@ -848,7 +848,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Extract Z component of normalized (3, 4, 0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedZComponent() {
 		CollectionProducer n = normalize(vector(3.0, 4.0, 0.0));
 		PackedCollection result = z(n).evaluate();
@@ -856,7 +856,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Extract X from normalized (1, 1, 1). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedXDiagonal() {
 		CollectionProducer n = normalize(vector(1.0, 1.0, 1.0));
 		PackedCollection result = x(n).evaluate();
@@ -864,7 +864,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Reconstruct normalized vector from extracted components. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedReconstructFromComponents() {
 		CollectionProducer n = normalize(vector(2.0, 3.0, 6.0));
 		CollectionProducer reconstructed = vector(x(n), y(n), z(n));
@@ -875,7 +875,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Sum x+y+z components of normalized (1,2,2) = (1+2+2)/3 = 5/3. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedComponentSum() {
 		CollectionProducer n = normalize(vector(1.0, 2.0, 2.0));
 		CollectionProducer sum = add(add(x(n), y(n)), z(n));
@@ -884,7 +884,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** X component of normalized unit X should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedUnitXComponent() {
 		CollectionProducer n = normalize(vector(42.0, 0.0, 0.0));
 		PackedCollection result = x(n).evaluate();
@@ -892,7 +892,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Y component of normalized Y axis should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedUnitYComponent() {
 		CollectionProducer n = normalize(vector(0.0, 17.0, 0.0));
 		PackedCollection result = y(n).evaluate();
@@ -900,7 +900,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Z component of normalized Z axis should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedUnitZComponent() {
 		CollectionProducer n = normalize(vector(0.0, 0.0, 99.0));
 		PackedCollection result = z(n).evaluate();
@@ -908,7 +908,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Product of x and y components of normalize(1,1,0). */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizedComponentProduct() {
 		CollectionProducer n = normalize(vector(1.0, 1.0, 0.0));
 		CollectionProducer product = multiply(x(n), y(n));
@@ -921,7 +921,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	// =========================================================================
 
 	/** Batch normalize two vectors using shape (2, 3). */
-	@Test
+	@Test(timeout = 60000)
 	public void batchNormalizeTwoVectors() {
 		PackedCollection vecs = new PackedCollection(shape(2, 3));
 		vecs.setMem(0, 3.0);
@@ -941,7 +941,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Batch normalize length verification. */
-	@Test
+	@Test(timeout = 60000)
 	public void batchNormalizedLength() {
 		PackedCollection vecs = new PackedCollection(shape(2, 3));
 		vecs.setMem(0, 1.0);
@@ -959,7 +959,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Double normalize — normalizing an already-normalized vector. */
-	@Test
+	@Test(timeout = 60000)
 	public void doubleNormalize() {
 		CollectionProducer n = normalize(normalize(vector(3.0, 4.0, 0.0)));
 		PackedCollection result = n.evaluate();
@@ -969,7 +969,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize, cross, normalize pipeline — surface normal computation pattern. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeCrossNormalize() {
 		CollectionProducer edge1 = subtract(vector(1.0, 0.0, 0.0), vector(0.0, 0.0, 0.0));
 		CollectionProducer edge2 = subtract(vector(0.0, 1.0, 0.0), vector(0.0, 0.0, 0.0));
@@ -981,7 +981,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Reflect a vector around a normalized surface normal: r = d - 2(d.n)n. */
-	@Test
+	@Test(timeout = 60000)
 	public void reflectViaNormalize() {
 		CollectionProducer d = vector(1.0, -1.0, 0.0);
 		CollectionProducer n = normalize(vector(0.0, 1.0, 0.0));
@@ -994,7 +994,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize direction between two points. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeDirection() {
 		CollectionProducer from = vector(1.0, 2.0, 3.0);
 		CollectionProducer to = vector(4.0, 6.0, 3.0);
@@ -1006,7 +1006,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Projection of a onto normalized b: proj = (a.nb) * nb. */
-	@Test
+	@Test(timeout = 60000)
 	public void projectViaNormalize() {
 		CollectionProducer a = vector(3.0, 4.0, 0.0);
 		CollectionProducer nb = normalize(vector(1.0, 0.0, 0.0));
@@ -1019,7 +1019,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize combined with lengthSq — should be 1. */
-	@Test
+	@Test(timeout = 60000)
 	public void normalizeThenLengthSq() {
 		CollectionProducer n = normalize(vector(5.0, 12.0, 0.0));
 		PackedCollection result = lengthSq(n).evaluate();
@@ -1027,7 +1027,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Batch of 3 vectors: normalize and verify all unit length. */
-	@Test
+	@Test(timeout = 60000)
 	public void batchNormalizeThreeVectors() {
 		PackedCollection vecs = new PackedCollection(shape(3, 3));
 		vecs.setMem(0, 1.0);
@@ -1049,7 +1049,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	}
 
 	/** Normalize then dot with original — should equal the original length. */
-	@Test
+	@Test(timeout = 60000)
 	public void dotNormalizedWithOriginal() {
 		CollectionProducer v = vector(3.0, 4.0, 0.0);
 		CollectionProducer n = normalize(v);

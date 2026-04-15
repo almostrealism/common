@@ -35,7 +35,7 @@ import java.util.TreeSet;
  */
 public class AudioDeviceChannelTest extends TestSuiteBase {
 
-	@Test
+	@Test(timeout = 60000)
 	public void reportDeviceChannelCapabilities() {
 		for (Mixer.Info info : AudioSystem.getMixerInfo()) {
 			Mixer mixer = AudioSystem.getMixer(info);

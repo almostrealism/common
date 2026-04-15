@@ -71,7 +71,7 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 	 * 7-step decode. Validates the single-model architecture produces the correct
 	 * number of output tokens.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testGruDecoderSyntheticWeights() {
 		// hiddenSize must be divisible by NUM_ATTRIBUTES (6) for embeddingDim
 		int hiddenSize = 12;
@@ -141,7 +141,7 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 	 *
 	 * <p>Skipped when {@value WEIGHTS_DIR} is not present.</p>
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testGruDecoderRealWeights() throws IOException {
 		Assume.assumeTrue("Moonbeam weights not found at " + WEIGHTS_DIR,

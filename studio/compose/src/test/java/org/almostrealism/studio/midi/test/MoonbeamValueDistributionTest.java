@@ -161,7 +161,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	 * BEFORE argmax, revealing whether the lm_head projection produces
 	 * logits in a reasonable range or if they are exploding.</p>
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testGruDecoderLogitDistribution() {
 		if (skipHighMemTests) return;
@@ -305,7 +305,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	 * the decoder will produce garbage. This test prints all expected vs actual
 	 * shapes for the decoder components.</p>
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testWeightShapeVerification() {
 		if (skipHighMemTests) return;
@@ -565,7 +565,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	 *
 	 * <p>Tests both greedy (argmax) and sampling decode paths.</p>
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testDecodedAttributeRangeValidation() {
 		if (skipHighMemTests) return;
