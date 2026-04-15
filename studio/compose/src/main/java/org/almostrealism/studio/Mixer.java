@@ -24,6 +24,7 @@ import org.almostrealism.graph.CollectionCachedStateCell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.SummationCell;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -231,7 +232,10 @@ public class Mixer implements CellFeatures {
 	 * @return unmodifiable view of the output groups (insertion-ordered)
 	 */
 	public Map<String, OutputGroup> getOutputGroups() {
-		return Map.copyOf(outputGroups);
+		// Use Collections.unmodifiableMap rather than Map.copyOf — the latter
+		// does NOT preserve iteration order, which would cause
+		// deliverMultiChannel to wire pair buffers to the wrong output pairs.
+		return Collections.unmodifiableMap(outputGroups);
 	}
 
 	/**
