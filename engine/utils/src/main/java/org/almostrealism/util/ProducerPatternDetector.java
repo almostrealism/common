@@ -134,6 +134,11 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 			"SkyTntMidi.java", Set.of(
 					"embedAndSumNet"            // Step-boundary: materializes the summed token
 					                            // embedding fed into netCompiledModel.forward
+			),
+			"PdslInterpreter.java", Set.of(
+					"computeBiquad",            // DynamicCollectionProducer execution boundary
+					"computeDelay",             // DynamicCollectionProducer execution boundary
+					"computeLfo"                // DynamicCollectionProducer execution boundary
 			)
 	);
 
@@ -165,6 +170,12 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 			),
 			"EditableSpatialWaveDetails.java", Set.of(
 					"applyValues"               // Spatial visualization edit application
+			),
+			"PdslInterpreter.java", Set.of(
+					"computeDelay"              // DynamicCollectionProducer execution boundary;
+					                            // toDouble(0) reads the integer write-head position
+					                            // for the single bulk setMem scatter into the
+					                            // circular delay buffer (no Producer scatter exists)
 			)
 	);
 

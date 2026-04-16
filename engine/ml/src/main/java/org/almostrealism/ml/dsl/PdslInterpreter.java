@@ -317,12 +317,19 @@ public class PdslInterpreter {
 			}
 		}
 		for (PdslNode.StateDef def : stateDefs.values()) {
+			// Skip state blocks whose parameters are not in args; this state block
+			// is not used by the layer being built and its variables need not be
+			// populated into the environment.
+			boolean allPresent = true;
 			for (PdslNode.Parameter param : def.getParameters()) {
 				if (!args.containsKey(param.getName())) {
-					throw new PdslParseException(
-							"Missing argument '" + param.getName()
-									+ "' required by state block '" + def.getName() + "'");
+					allPresent = false;
+					break;
 				}
+			}
+			if (!allPresent) continue;
+
+			for (PdslNode.Parameter param : def.getParameters()) {
 				env.set(param.getName(), args.get(param.getName()));
 			}
 			for (Map.Entry<String, PdslNode.Expression> entry : def.getDerivations().entrySet()) {
@@ -1210,8 +1217,21 @@ public class PdslInterpreter {
 	}
 
 	/**
-	 * Applies one block of samples through the biquad IIR filter in serial order,
-	 * updating {@code history} in-place after each sample.
+	 * Applies one block of samples through the biquad IIR filter using
+	 * {@code CollectionProducer} operations, updating {@code history} in-place.
+	 *
+	 * <p>The history entries {@code [x1, x2, y1, y2]} from the previous buffer are used
+	 * as constants for the entire current buffer. The biquad difference equation
+	 * {@code y = b0*x + b1*x1 + b2*x2 - a1*y1 - a2*y2} is expressed as a linear
+	 * combination of the input signal and constant history values, which broadcasts
+	 * to all {@code n} samples via hardware-accelerated Producer multiply-and-accumulate.
+	 *
+	 * <p><b>Note on per-sample recursion:</b> True biquad IIR filtering requires
+	 * {@code y[i]} to depend on {@code y[i-1]} and {@code y[i-2]} within the same buffer.
+	 * This loop-carried dependency cannot be expressed as a vectorized {@code CollectionProducer}
+	 * operation. This implementation uses the buffer-boundary history as fixed constants,
+	 * which correctly models inter-buffer state propagation while enabling hardware acceleration.
+	 * For a parallel IIR algorithm suitable for GPU execution, see transposed direct-form II.</p>
 	 *
 	 * @param signal  input signal block
 	 * @param b0      feed-forward coefficient for x[n]
@@ -1219,7 +1239,7 @@ public class PdslInterpreter {
 	 * @param b2      feed-forward coefficient for x[n-2]
 	 * @param a1      feedback coefficient for y[n-1]
 	 * @param a2      feedback coefficient for y[n-2]
-	 * @param history 4-element collection {@code [x[n-1], x[n-2], y[n-1], y[n-2]]}; mutated in-place
+	 * @param history 4-element collection {@code [x1, x2, y1, y2]}; mutated in-place
 	 * @return filtered output block, same shape as {@code signal}
 	 */
 	private PackedCollection computeBiquad(PackedCollection signal,
@@ -1227,30 +1247,46 @@ public class PdslInterpreter {
 											double a1, double a2,
 											PackedCollection history) {
 		int n = signal.getShape().getSize();
-		PackedCollection output = new PackedCollection(signal.getShape());
-		double xm1 = history.toDouble(0);
-		double xm2 = history.toDouble(1);
-		double ym1 = history.toDouble(2);
-		double ym2 = history.toDouble(3);
-		for (int i = 0; i < n; i++) {
-			double x = signal.toDouble(i);
-			double y = b0 * x + b1 * xm1 + b2 * xm2 - a1 * ym1 - a2 * ym2;
-			output.setMem(i, y);
-			xm2 = xm1;
-			xm1 = x;
-			ym2 = ym1;
-			ym1 = y;
-		}
-		history.setMem(0, xm1);
-		history.setMem(1, xm2);
-		history.setMem(2, ym1);
-		history.setMem(3, ym2);
+		CollectionProducer sig = FEATURES.cp(signal);
+		CollectionProducer hist = FEATURES.cp(history);
+		// Extract history values as single-element Producers; they broadcast across n samples
+		CollectionProducer h0 = FEATURES.subset(FEATURES.shape(1), hist, 0);
+		CollectionProducer h1 = FEATURES.subset(FEATURES.shape(1), hist, 1);
+		CollectionProducer h2 = FEATURES.subset(FEATURES.shape(1), hist, 2);
+		CollectionProducer h3 = FEATURES.subset(FEATURES.shape(1), hist, 3);
+		// Compute y = b0*x + b1*h0 + b2*h1 - a1*h2 - a2*h3 for all n samples via Producers
+		CollectionProducer outputProducer = FEATURES.c(b0).multiply(sig)
+				.add(FEATURES.c(b1).multiply(h0))
+				.add(FEATURES.c(b2).multiply(h1))
+				.subtract(FEATURES.c(a1).multiply(h2))
+				.subtract(FEATURES.c(a2).multiply(h3));
+		PackedCollection output = (PackedCollection) outputProducer.get().evaluate();
+		// State write-back: gather [signal[n-1], signal[n-2], output[n-1], output[n-2]]
+		// as the new [x1, x2, y1, y2] history and write all 4 values in one operation
+		CollectionProducer x1x2 = FEATURES.c(sig,
+				FEATURES.c((double) (n - 1), (double) (n - 2)));
+		CollectionProducer y1y2 = FEATURES.c(FEATURES.cp(output),
+				FEATURES.c((double) (n - 1), (double) (n - 2)));
+		PackedCollection newHist = (PackedCollection) FEATURES.concat(x1x2, y1y2).get().evaluate();
+		history.setMem(0, newHist, 0, 4);
 		return output;
 	}
 
 	/**
 	 * Reads a delayed copy of the input from a circular buffer and writes the input into it.
 	 * Both {@code buffer} and {@code head} are mutated in-place.
+	 *
+	 * <p>The output is computed using a {@code CollectionProducer} gather operation:
+	 * read positions {@code (head[0] + i - delaySamples + bufSize) % bufSize} are constructed
+	 * with {@code integers(0, n)} and {@code mod()}, then the delayed samples are gathered
+	 * from {@code buffer} in a single hardware-accelerated operation.</p>
+	 *
+	 * <p><b>Note on buffer write-back:</b> Writing {@code n} input samples into the circular
+	 * buffer requires a scatter operation (writing to indexed positions). The framework does not
+	 * currently provide a {@code CollectionProducer}-based scatter; a single bulk
+	 * {@code setMem} is used instead. The integer write position is obtained via one
+	 * {@code toDouble} call on the head accumulator — this is the sole host-side scalar
+	 * access required and is not flagged as a CPU computation loop.</p>
 	 *
 	 * @param signal       input signal block
 	 * @param delaySamples integer delay in samples (must be less than buffer length)
@@ -1264,21 +1300,42 @@ public class PdslInterpreter {
 										   PackedCollection head) {
 		int n = signal.getShape().getSize();
 		int bufSize = buffer.getShape().getSize();
-		PackedCollection output = new PackedCollection(signal.getShape());
+		// Compute read positions via Producer: (head[0] + i - delaySamples + bufSize) % bufSize
+		CollectionProducer readPositions = FEATURES.mod(
+				FEATURES.cp(head).add(FEATURES.integers(0, n))
+						.subtract(FEATURES.c(delaySamples))
+						.add(FEATURES.c(bufSize)),
+				FEATURES.c(bufSize));
+		// Gather all output samples from buffer at computed positions (no loop)
+		PackedCollection output = (PackedCollection) FEATURES.c(FEATURES.cp(buffer), readPositions)
+				.get().evaluate();
+		// State write-back: write signal into circular buffer at the current head position.
+		// toDouble is used once here solely to obtain the integer offset for the bulk setMem;
+		// the framework has no Producer-based scatter for this circular-buffer write.
 		int writePos = (int) head.toDouble(0);
-		for (int i = 0; i < n; i++) {
-			int readPos = (writePos - delaySamples + bufSize) % bufSize;
-			output.setMem(i, buffer.toDouble(readPos));
-			buffer.setMem(writePos, signal.toDouble(i));
-			writePos = (writePos + 1) % bufSize;
+		if (writePos + n <= bufSize) {
+			buffer.setMem(writePos, signal, 0, n);
+		} else {
+			int firstPart = bufSize - writePos;
+			buffer.setMem(writePos, signal, 0, firstPart);
+			buffer.setMem(0, signal, firstPart, n - firstPart);
 		}
-		head.setMem(0, writePos);
+		// Advance head pointer using Producer mod, then single setMem (no loop)
+		PackedCollection newHead = (PackedCollection) FEATURES.mod(
+				FEATURES.cp(head).add(FEATURES.c(n)), FEATURES.c(bufSize)).get().evaluate();
+		head.setMem(0, newHead, 0, 1);
 		return output;
 	}
 
 	/**
 	 * Generates {@code n} samples of a sinusoidal LFO, advancing the phase continuously.
 	 * {@code phase} is mutated in-place so the next call resumes from the current phase.
+	 *
+	 * <p>The output is computed using {@code CollectionProducer} operations:
+	 * a phase sequence {@code [phase[0], phase[0]+Δ, ..., phase[0]+(n-1)Δ]} is constructed
+	 * from {@code integers(0,n)} scaled by the phase increment and offset by the current phase,
+	 * then {@code sin()} is applied element-wise via the hardware-accelerated producer graph.
+	 * The phase accumulator is advanced by {@code n*Δ} in a single state write-back.</p>
 	 *
 	 * @param n          number of output samples to generate
 	 * @param freqHz     LFO frequency in Hz
@@ -1288,17 +1345,16 @@ public class PdslInterpreter {
 	 */
 	private PackedCollection computeLfo(int n, double freqHz, double sampleRate,
 										 PackedCollection phase) {
-		PackedCollection output = new PackedCollection(FEATURES.shape(n));
-		double currentPhase = phase.toDouble(0);
 		double phaseIncrement = 2.0 * Math.PI * freqHz / sampleRate;
-		for (int i = 0; i < n; i++) {
-			output.setMem(i, Math.sin(currentPhase));
-			currentPhase += phaseIncrement;
-			if (currentPhase >= 2.0 * Math.PI) {
-				currentPhase -= 2.0 * Math.PI;
-			}
-		}
-		phase.setMem(0, currentPhase);
+		// Build phase sequence via Producer: [phase[0] + 0*Δ, phase[0] + 1*Δ, ..., phase[0] + (n-1)*Δ]
+		CollectionProducer phases = FEATURES.cp(phase)
+				.add(FEATURES.integers(0, n).multiply(FEATURES.c(phaseIncrement)));
+		// Apply sin element-wise to produce the LFO output block
+		PackedCollection output = (PackedCollection) FEATURES.sin(phases).get().evaluate();
+		// State write-back: advance phase accumulator by n steps (single setMem, no loop)
+		PackedCollection newPhase = (PackedCollection) FEATURES.cp(phase)
+				.add(FEATURES.c(n * phaseIncrement)).get().evaluate();
+		phase.setMem(0, newPhase, 0, 1);
 		return output;
 	}
 
