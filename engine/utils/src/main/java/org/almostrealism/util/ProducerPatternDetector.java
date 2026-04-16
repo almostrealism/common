@@ -20,6 +20,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -113,6 +115,63 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 			"GridSequencer.java"
 	);
 
+	/**
+	 * Per-method exemptions for {@code .evaluate()}, keyed by file name. This is
+	 * preferred over whole-file exemptions in {@link #EVALUATE_ALLOWED_FILES} when
+	 * only specific methods of a class act as pipeline boundaries. The set value
+	 * is the method names exempted within that file.
+	 */
+	private static final Map<String, Set<String>> EVALUATE_ALLOWED_FILE_METHODS = Map.of(
+			"CompiledModelAutoEncoder.java", Set.of(
+					"encode",                   // Producer / CompiledModel.forward boundary
+					"decode"                    // Producer / CompiledModel.forward boundary
+			),
+			"ConditionalAudioScoring.java", Set.of(
+					"computeDenoisingScore",    // Scoring method returning double; boundary
+					"computeReconstructionScore", // Scoring method returning double; boundary
+					"computeScore"              // Scoring method returning double; boundary
+			),
+			"AutoregressiveModel.java", Set.of(
+					"sampleToken",              // Token-selection at autoregressive step boundary
+					"of"                        // Step-sampler lambda in static factory
+			),
+			"CompoundMidiEmbedding.java", Set.of(
+					"embed",                    // Materializes Java MidiCompoundToken for type dispatch
+					"embedSequence"             // Materializes Java token list for Producer construction
+			)
+	);
+
+	/**
+	 * Per-method exemptions for {@code .toDouble()}, keyed by file name. Mirrors
+	 * {@link #EVALUATE_ALLOWED_FILE_METHODS} for {@code .toDouble()} calls.
+	 */
+	private static final Map<String, Set<String>> TODOUBLE_ALLOWED_FILE_METHODS = Map.of(
+			"AutoregressiveModel.java", Set.of(
+					"getTemperature",           // Accessor for temperature scalar
+					"sampleToken",              // Token-selection at autoregressive step boundary
+					"of"                        // Step-sampler lambda in static factory
+			),
+			"DiffusionNoiseScheduler.java", Set.of(
+					"addNoise",                 // Schedule-table scalar lookup at step boundary
+					"step",                     // DDPM step-boundary scalar lookups
+					"stepDDIM",                 // DDIM step-boundary scalar lookups
+					"getAlphaCumprod"           // Single-scalar schedule accessor
+			),
+			"SkyTntMidi.java", Set.of(
+					"applyMask",                // Token-selection orchestration (post-model)
+					"sampleWithTopK"            // Token-selection orchestration (post-model)
+			),
+			"AudioSceneOptimizer.java", Set.of(
+					"defaultBreeder"            // Heredity-domain genome perturbation
+			),
+			"SampleBrush.java", Set.of(
+					"addFrameValues"            // Spatial visualization data iteration
+			),
+			"EditableSpatialWaveDetails.java", Set.of(
+					"applyValues"               // Spatial visualization edit application
+			)
+	);
+
 	/** Detects {@code .evaluate()} calls in source code. */
 	private static final Pattern EVALUATE_CALL = Pattern.compile(
 			"\\.evaluate\\s*\\("
@@ -193,6 +252,10 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 			}
 		}
 
+		// Per-method exemptions scoped to this file (finer-grained than whole-file).
+		Set<String> fileEvaluateMethods = EVALUATE_ALLOWED_FILE_METHODS.getOrDefault(fileName, Set.of());
+		Set<String> fileToDoubleMethods = TODOUBLE_ALLOWED_FILE_METHODS.getOrDefault(fileName, Set.of());
+
 		boolean inJavadoc = false;
 
 		for (int i = 0; i < lines.size(); i++) {
@@ -214,15 +277,18 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 			}
 
 			boolean inAllowedMethod = EVALUATE_ALLOWED_METHODS.contains(methodName);
+			boolean evaluateMethodExempt = fileEvaluateMethods.contains(methodName);
+			boolean toDoubleMethodExempt = fileToDoubleMethods.contains(methodName);
 
-			if (!evaluateAllowed && !inAllowedMethod && EVALUATE_CALL.matcher(line).find()) {
+			if (!evaluateAllowed && !inAllowedMethod && !evaluateMethodExempt
+					&& EVALUATE_CALL.matcher(line).find()) {
 				violations.add(new Violation(file, lineNum, line,
 						"PRODUCER_EVALUATE_IN_COMPUTATION",
 						".evaluate() inside computation code breaks the computation graph. " +
 								"Return a CollectionProducer instead and let the caller evaluate at the pipeline boundary."));
 			}
 
-			if (!toDoubleAllowed && TODOUBLE_CALL.matcher(line).find()) {
+			if (!toDoubleAllowed && !toDoubleMethodExempt && TODOUBLE_CALL.matcher(line).find()) {
 				violations.add(new Violation(file, lineNum, line,
 						"PRODUCER_TODOUBLE_IN_COMPUTATION",
 						".toDouble() in computation code pulls data to host via JNI. " +
