@@ -29,7 +29,6 @@ import org.almostrealism.heredity.Gene;
 import org.almostrealism.heredity.HeredityFeatures;
 import org.almostrealism.heredity.ProjectedChromosome;
 import org.almostrealism.heredity.ProjectedGene;
-import org.almostrealism.heredity.ScaleFactor;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -178,62 +177,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	}
 
 	/**
-	 * Returns the scalar value encoded by the given factor. If the factor is a
-	 * {@link ScaleFactor} its scale value is returned directly; otherwise the factor
-	 * is evaluated and the result extracted.
-	 *
-	 * @param value the factor to evaluate
-	 * @return the scalar value of the factor
-	 */
-	default double valueForFactor(Factor<PackedCollection> value) {
-		if (value instanceof ScaleFactor) {
-			return ((ScaleFactor) value).getScaleValue();
-		} else {
-			return value.getResultant(c(1.0)).get().evaluate().toDouble(0);
-		}
-	}
-
-	/**
-	 * Returns the decoded value for a factor that was encoded via {@code oneToInfinity} with
-	 * the given exponent and multiplier.
-	 *
-	 * @param value      the factor to evaluate
-	 * @param exp        the exponent used in the original encoding
-	 * @param multiplier the multiplier used in the original encoding
-	 * @return the decoded scalar value
-	 */
-	default double valueForFactor(Factor<PackedCollection> value, double exp, double multiplier) {
-		if (value instanceof ScaleFactor) {
-			return oneToInfinity(((ScaleFactor) value).getScaleValue(), exp) * multiplier;
-		} else {
-			double v = value.getResultant(c(1.0)).get().evaluate().toDouble(0);
-			return oneToInfinity(v, exp) * multiplier;
-		}
-	}
-
-	/**
-	 * Returns a two-element array {@code [speedUp, slowDown]} encoding the repeat rate adjustment
-	 * implied by the given factor. Positive factor values produce speed-up; negative values produce
-	 * slow-down; zero returns {@code [1.0, 1.0]}.
-	 *
-	 * @param f the factor whose value determines the repeat adjustment
-	 * @return a two-element array where index 0 is the speed-up factor and index 1 is the slow-down factor
-	 */
-	default double[] repeatForFactor(Factor<PackedCollection> f) {
-		double v = 16 * (valueForFactor(f) - 0.5);
-
-		if (v == 0) {
-			return new double[] { 1.0, 1.0 };
-		} else if (v > 0) {
-			return new double[] { Math.pow(2.0, v), 1.0 };
-		} else if (v < 0) {
-			return new double[] { 1.0, Math.pow(2.0, -v) };
-		}
-
-		return null;
-	}
-
-	/**
 	 * Returns the unit-range gene factor value that encodes the given number of beats as a
 	 * repeat rate.
 	 *
@@ -255,16 +198,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	}
 
 	/**
-	 * Decodes the repeat speed-up duration in seconds from the given factor.
-	 *
-	 * @param f the factor encoding the speed-up duration
-	 * @return the speed-up duration in seconds
-	 */
-	default double repeatSpeedUpDurationForFactor(Factor<PackedCollection> f) {
-		return valueForFactor(f, 3, 60);
-	}
-
-	/**
 	 * Returns the unit-range factor encoding the given delay duration in seconds.
 	 *
 	 * @param seconds the delay duration in seconds
@@ -272,16 +205,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	 */
 	default double factorForDelay(double seconds) {
 		return invertOneToInfinity(seconds, 60, 3);
-	}
-
-	/**
-	 * Decodes the delay duration in seconds from the given factor.
-	 *
-	 * @param f the factor encoding the delay duration
-	 * @return the delay duration in seconds
-	 */
-	default double delayForFactor(Factor<PackedCollection> f) {
-		return valueForFactor(f, 3, 60);
 	}
 
 	/**
@@ -356,16 +279,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	}
 
 	/**
-	 * Decodes the speed-up ramp duration in seconds from the given factor.
-	 *
-	 * @param f the factor encoding the speed-up duration
-	 * @return the speed-up duration in seconds
-	 */
-	default double speedUpDurationForFactor(Factor<PackedCollection> f) {
-		return valueForFactor(f, 3, 60);
-	}
-
-	/**
 	 * Returns the unit-range factor encoding the given speed-up percentage as a decimal.
 	 *
 	 * @param decimal the speed-up percentage expressed as a decimal (e.g., 0.1 for 10%)
@@ -373,16 +286,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	 */
 	default double factorForSpeedUpPercentage(double decimal) {
 		return invertOneToInfinity(decimal, 10, 0.5);
-	}
-
-	/**
-	 * Decodes the speed-up percentage from the given factor.
-	 *
-	 * @param f the factor encoding the speed-up percentage
-	 * @return the speed-up percentage as a decimal
-	 */
-	default double speedUpPercentageForFactor(Factor<PackedCollection> f) {
-		return valueForFactor(f, 0.5, 10);
 	}
 
 	/**
@@ -396,16 +299,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	}
 
 	/**
-	 * Decodes the slow-down ramp duration in seconds from the given factor.
-	 *
-	 * @param f the factor encoding the slow-down duration
-	 * @return the slow-down duration in seconds
-	 */
-	default double slowDownDurationForFactor(Factor<PackedCollection> f) {
-		return valueForFactor(f, 3, 60);
-	}
-
-	/**
 	 * Returns the unit-range factor encoding the given slow-down percentage as a decimal.
 	 *
 	 * @param decimal the slow-down percentage expressed as a decimal
@@ -413,16 +306,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	 */
 	default double factorForSlowDownPercentage(double decimal) {
 		return decimal;
-	}
-
-	/**
-	 * Decodes the slow-down percentage from the given factor.
-	 *
-	 * @param f the factor encoding the slow-down percentage
-	 * @return the slow-down percentage as a decimal
-	 */
-	default double slowDownPercentageForFactor(Factor<PackedCollection> f) {
-		return valueForFactor(f);
 	}
 
 	/**
@@ -436,16 +319,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	}
 
 	/**
-	 * Decodes the polynomial speed-up duration in seconds from the given factor.
-	 *
-	 * @param f the factor encoding the polynomial speed-up duration
-	 * @return the polynomial speed-up duration in seconds
-	 */
-	default double polySpeedUpDurationForFactor(Factor<PackedCollection> f) {
-		return valueForFactor(f, 3, 60);
-	}
-
-	/**
 	 * Returns the unit-range factor encoding the given polynomial speed-up exponent.
 	 *
 	 * @param exp the polynomial speed-up exponent value
@@ -453,16 +326,6 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	 */
 	default double factorForPolySpeedUpExponent(double exp) {
 		return invertOneToInfinity(exp, 10, 1);
-	}
-
-	/**
-	 * Decodes the polynomial speed-up exponent from the given factor.
-	 *
-	 * @param f the factor encoding the polynomial speed-up exponent
-	 * @return the polynomial speed-up exponent value
-	 */
-	default double polySpeedUpExponentForFactor(Factor<PackedCollection> f) {
-		return valueForFactor(f, 1, 10);
 	}
 
 	/**

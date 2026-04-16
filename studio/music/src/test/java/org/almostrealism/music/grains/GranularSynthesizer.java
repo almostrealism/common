@@ -139,7 +139,10 @@ public class GranularSynthesizer implements StatelessSource, CellFeatures {
 						p.setMem(phase);
 						a.setMem(amp);
 
-						results.add(processor.apply(source.getChannelData(0), grain, w, p, a).getChannelData(0));
+						PackedCollection rendered = processor.getKernel()
+								.into(processor.newOutputBuffer())
+								.evaluate(source.getChannelData(0).traverse(0), grain, w, p, a);
+						results.add(new WaveData(rendered, processor.getSampleRate()).getChannelData(0));
 					}
 				}
 

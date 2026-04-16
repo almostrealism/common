@@ -18,6 +18,7 @@ package org.almostrealism.ml.dsl;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.ml.AttentionFeatures;
@@ -799,7 +800,7 @@ public class PdslInterpreter {
 	private Object callRopeRotation(List<Object> args) {
 		if (args.size() == 3) {
 			TraversalPolicy shape = (TraversalPolicy) args.get(0);
-			PackedCollection freqCis = (PackedCollection) args.get(1);
+			CollectionProducer freqCis = toCollectionProducer(args.get(1));
 			Producer<PackedCollection> position = toProducer(args.get(2));
 			return FEATURES.ropeRotation(shape, freqCis, position);
 		}
@@ -825,7 +826,7 @@ public class PdslInterpreter {
 					(PackedCollection) args.get(3),
 					(PackedCollection) args.get(4),
 					(PackedCollection) args.get(5),
-					(PackedCollection) args.get(6),
+					toCollectionProducer(args.get(6)),
 					toProducer(args.get(7)));
 		} else if (args.size() == 14) {
 			// attention(heads, kv_heads, rms_weight, wk, wv, wq, wo,
@@ -843,7 +844,7 @@ public class PdslInterpreter {
 					(PackedCollection) args.get(9),
 					(PackedCollection) args.get(10),
 					(PackedCollection) args.get(11),
-					(PackedCollection) args.get(12),
+					toCollectionProducer(args.get(12)),
 					toProducer(args.get(13)));
 		} else if (args.size() == 15) {
 			// attention(heads, kv_heads, rms_weight, wk, wv, wq, wo,
@@ -861,7 +862,7 @@ public class PdslInterpreter {
 					(PackedCollection) args.get(9),
 					(PackedCollection) args.get(10),
 					(PackedCollection) args.get(11),
-					(PackedCollection) args.get(12),
+					toCollectionProducer(args.get(12)),
 					toProducer(args.get(13)),
 					toDouble(args.get(14)));
 		}
@@ -891,7 +892,7 @@ public class PdslInterpreter {
 					(PackedCollection) args.get(9),  // bq
 					(PackedCollection) args.get(10), // qk_norm_q
 					(PackedCollection) args.get(11), // qk_norm_k
-					(PackedCollection) args.get(12), // freq_cis
+					toCollectionProducer(args.get(12)), // freq_cis
 					(PackedCollection) args.get(13), // rms_ffn_weight
 					(PackedCollection) args.get(14), // w1
 					(PackedCollection) args.get(15), // w2
@@ -1151,6 +1152,23 @@ public class PdslInterpreter {
 			return (Producer) value;
 		}
 		throw new PdslParseException("Expected PackedCollection or Producer but got " + value);
+	}
+
+	/**
+	 * Converts a value to a {@link CollectionProducer}, wrapping a raw
+	 * {@link PackedCollection} with {@code cp()} if needed.
+	 *
+	 * @param value PackedCollection or already-wrapped CollectionProducer
+	 * @return a CollectionProducer wrapping the value
+	 */
+	private CollectionProducer toCollectionProducer(Object value) {
+		if (value instanceof PackedCollection) {
+			return FEATURES.cp((PackedCollection) value);
+		}
+		if (value instanceof CollectionProducer) {
+			return (CollectionProducer) value;
+		}
+		throw new PdslParseException("Expected PackedCollection or CollectionProducer but got " + value);
 	}
 
 	// ---- Environment ----

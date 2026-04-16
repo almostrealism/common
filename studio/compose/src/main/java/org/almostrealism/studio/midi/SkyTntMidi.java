@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.AttentionFeatures;
@@ -178,9 +179,9 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		PdslNode.Program blockProgram = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
 		PdslNode.Program lmHeadProgram = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
 
-		PackedCollection netFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, config.netHeadSize, config.maxEventSeqLen);
-		PackedCollection netTokenFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer netTokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, config.netTokenHeadSize, config.maxEventSeqLen);
 
 		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
@@ -394,7 +395,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 											   PdslNode.Program blockProgram,
 											   PdslNode.Program lmHeadProgram,
 											   int numLayers, int numHeads,
-											   PackedCollection freqCis,
+											   CollectionProducer freqCis,
 											   PackedCollection position,
 											   boolean withLmHead,
 											   double epsilon,
@@ -463,23 +464,28 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 *
 	 * <p>Looks up the embedding vector for each non-PAD token in the event's
 	 * {@code maxTokenSeq} slots and sums them element-wise.  This is the
-	 * {@code embed_tokens(x).sum(dim=-2)} operation from the Python model.
-	 * It operates on the embedding lookup table (not on model computation).</p>
+	 * {@code embed_tokens(x).sum(dim=-2)} operation from the Python model.</p>
+	 *
+	 * <p>Builds a Producer DAG of per-token {@code subset} lookups into the
+	 * embedding table and materializes it with a single {@code .evaluate()} at
+	 * the step boundary (immediately before {@code netCompiledModel.forward}).
+	 * This is the sole pipeline-boundary evaluation in this class.</p>
 	 *
 	 * @param tokenRow array of {@code maxTokenSeq} token IDs
 	 * @return summed embedding, shape {@code [1, hiddenSize]}
 	 */
 	private PackedCollection embedAndSumNet(int[] tokenRow) {
-		PackedCollection result = new PackedCollection(new TraversalPolicy(1, config.hiddenSize));
-		result.setMem(0, netEmbedTokens, tokenRow[0] * config.hiddenSize, config.hiddenSize);
+		CollectionProducer sum = cp(netEmbedTokens)
+				.subset(shape(config.hiddenSize), tokenRow[0] * config.hiddenSize);
 
 		for (int j = 1; j < config.maxTokenSeq; j++) {
 			if (tokenRow[j] != config.padId) {
-				addEmbedding(netEmbedTokens, tokenRow[j], result);
+				sum = sum.add(cp(netEmbedTokens)
+						.subset(shape(config.hiddenSize), tokenRow[j] * config.hiddenSize));
 			}
 		}
 
-		return result;
+		return sum.reshape(shape(1, config.hiddenSize)).evaluate();
 	}
 
 	/**
@@ -492,21 +498,6 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		PackedCollection result = new PackedCollection(new TraversalPolicy(1, config.hiddenSize));
 		result.setMem(0, netTokenEmbedTokens, tokenId * config.hiddenSize, config.hiddenSize);
 		return result;
-	}
-
-	/**
-	 * Add the embedding vector for {@code tokenId} from {@code embedTable} to {@code dest}
-	 * in-place.
-	 *
-	 * @param embedTable embedding weight table, shape [vocabSize, hiddenSize]
-	 * @param tokenId    token index to look up
-	 * @param dest       destination to accumulate into, shape [1, hiddenSize]
-	 */
-	private void addEmbedding(PackedCollection embedTable, int tokenId, PackedCollection dest) {
-		int offset = tokenId * config.hiddenSize;
-		for (int d = 0; d < config.hiddenSize; d++) {
-			dest.setMem(d, dest.toDouble(d) + embedTable.toDouble(offset + d));
-		}
 	}
 
 	// -----------------------------------------------------------------------
@@ -525,13 +516,13 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * @return masked logits collection, shape [vocabSize]
 	 */
 	private PackedCollection applyMask(PackedCollection logits, int[] validIds) {
-		PackedCollection masked = new PackedCollection(config.vocabSize);
-		for (int i = 0; i < config.vocabSize; i++) {
-			masked.setMem(i, -1e9);
-		}
+		double[] values = new double[config.vocabSize];
+		Arrays.fill(values, -1e9);
 		for (int id : validIds) {
-			masked.setMem(id, logits.toDouble(id));
+			values[id] = logits.toDouble(id);
 		}
+		PackedCollection masked = new PackedCollection(config.vocabSize);
+		masked.setMem(0, values);
 		return masked;
 	}
 
@@ -564,10 +555,12 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			Arrays.sort(sorted);
 			double threshold = sorted[config.vocabSize - topK];
 
-			PackedCollection topKLogits = new PackedCollection(config.vocabSize);
+			double[] filtered = new double[config.vocabSize];
 			for (int i = 0; i < config.vocabSize; i++) {
-				topKLogits.setMem(i, values[i] >= threshold ? values[i] : -1e9);
+				filtered[i] = values[i] >= threshold ? values[i] : -1e9;
 			}
+			PackedCollection topKLogits = new PackedCollection(config.vocabSize);
+			topKLogits.setMem(0, filtered);
 			return AutoregressiveModel.sampleToken(topKLogits, config.vocabSize,
 					temperature, topP, random);
 		}

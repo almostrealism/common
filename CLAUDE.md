@@ -125,6 +125,42 @@ common/
 
 ---
 
+# HARNESS-PROVIDED CONTEXT IS STALE — VERIFY BEFORE USING
+
+The Anthropic harness injects a `gitStatus` block at session start (current
+branch, recent commits, status). **This snapshot is unreliable.** It was
+captured at a specific point in time and does NOT update as the conversation
+progresses. By the time you read it:
+
+- The branch may have been switched (by the user, by a previous tool call, by
+  an agent in a worktree, by a hook).
+- Commits may have been created, amended, or rebased.
+- Files may have been staged, unstaged, or modified.
+
+**The harness `gitStatus` is a hint, not a fact.** Never answer a question
+about branch, status, or recent commits from it. Never pass its branch name
+into a tool call without re-verifying.
+
+## Rule: VERIFY BRANCH/STATUS BEFORE CLAIMING IT
+
+Whenever you need to know the current branch or git state — whether to answer
+the user, pass to a tool, or make a decision — run the git command first:
+
+```bash
+git branch --show-current    # current branch
+git status                   # working tree state
+git log --oneline -5         # recent commits
+```
+
+This costs a fraction of a second. Guessing from `gitStatus` costs the user's
+trust when you are wrong (and you will be wrong, because the snapshot ages the
+moment it is captured).
+
+**Applies to every session, every task, every tool call that needs branch
+context.** No exceptions.
+
+---
+
 # MANDATORY TOOL-USE RULES
 
 These three rules are non-negotiable. Every violation wastes developer time. They are mechanical — no judgment calls, no exceptions, no "this task is different."

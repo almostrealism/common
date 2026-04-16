@@ -18,15 +18,26 @@ package org.almostrealism.music.grains;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.audio.SamplingFeatures;
-import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 
 /**
- * Applies granular synthesis processing to a single audio grain.
+ * Pre-compiles a grain sampling kernel for reuse across rendering calls.
  *
- * <p>Pre-compiles a sampling kernel for the specified duration and sample rate, then
- * evaluates it against a source audio buffer and grain descriptors to produce a
- * {@link WaveData} segment.</p>
+ * <p>The kernel takes five positional inputs &mdash; a source audio buffer, a
+ * {@link Grain} descriptor, and per-grain wavelength, phase, and amplitude
+ * modulation values &mdash; and produces a fixed-length audio segment. Callers
+ * bind inputs and invoke the kernel at a pipeline boundary using
+ * {@link #getKernel()} and {@link #newOutputBuffer()}:</p>
+ *
+ * <pre>{@code
+ * PackedCollection rendered = processor.getKernel()
+ *         .into(processor.newOutputBuffer())
+ *         .evaluate(source.traverse(0), grain, wavelength, phase, amp);
+ * }</pre>
+ *
+ * <p>Keeping {@code .evaluate()} at the caller's rendering boundary preserves
+ * the computation graph up to that point and satisfies the framework's
+ * Producer-pattern policy for this class.</p>
  *
  * @deprecated Prefer the updated granular synthesis pipeline.
  * @see Grain
@@ -64,19 +75,21 @@ public class GrainProcessor implements SamplingFeatures {
 	/** Returns the total number of audio frames this processor produces. */
 	public int getFrames() { return frames; }
 
+	/** Returns the audio sample rate in Hz. */
+	public int getSampleRate() { return sampleRate; }
+
 	/**
-	 * Applies the grain sampling kernel to produce a {@link WaveData} segment.
+	 * Returns the pre-compiled grain sampling kernel.
 	 *
-	 * @param input      the source audio buffer
-	 * @param grain      the grain descriptor (start, duration, rate)
-	 * @param wavelength per-grain wavelength modulation values
-	 * @param phase      per-grain phase modulation values
-	 * @param amp        per-grain amplitude modulation values
-	 * @return the processed grain as a {@link WaveData} instance
+	 * <p>The returned kernel expects five positional arguments, in order: source
+	 * audio buffer (traversed on axis 0), {@link Grain} descriptor, wavelength,
+	 * phase, amplitude. Callers should pair this with {@link #newOutputBuffer()}
+	 * and invoke {@code .into(buffer).evaluate(...)} at a rendering boundary.</p>
 	 */
-	public WaveData apply(PackedCollection input, Grain grain, PackedCollection wavelength, PackedCollection phase, PackedCollection amp) {
-		PackedCollection result = ev.into(new PackedCollection(shape(frames), 1))
-				.evaluate(input.traverse(0), grain, wavelength, phase, amp);
-		return new WaveData(result, sampleRate);
+	public Evaluable<PackedCollection> getKernel() { return ev; }
+
+	/** Allocates a fresh output buffer sized for one kernel invocation. */
+	public PackedCollection newOutputBuffer() {
+		return new PackedCollection(shape(frames), 1);
 	}
 }

@@ -5,6 +5,7 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
@@ -345,7 +346,7 @@ public class Qwen3 implements AttentionFeatures {
 		PackedCollection rmsFinalWeight = stateDict.get("model.norm.weight");
 
 		// Compute RoPE frequencies (not stored in state dict)
-		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer freqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, config.headSize, config.seqLen);
 
 		// Build transformer stack: 36 layers for Qwen3-4B

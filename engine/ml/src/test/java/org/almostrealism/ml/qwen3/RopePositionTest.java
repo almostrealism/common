@@ -83,7 +83,7 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 		TraversalPolicy ropeShape = shape(heads, freqDim, 2);
 
 		// Build model with just ropeRotation
-		CellularLayer ropeLayer = ropeRotation(ropeShape, freqCis, dynamicPosition);
+		CellularLayer ropeLayer = ropeRotation(ropeShape, cp(freqCis), dynamicPosition);
 
 		Model model = new Model(ropeShape);
 		model.add(ropeLayer);
