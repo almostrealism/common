@@ -438,9 +438,9 @@ public class GRUDecoder implements LayerFeatures {
 				add(matmul(cp(summaryWeight), cp(transformerHidden)), cp(summaryBias)).evaluate();
 
 		// Initialise all per-layer hidden states from the summary projection
-		PackedCollection[] h = new PackedCollection[numLayers];
+		CollectionProducer[] h = new CollectionProducer[numLayers];
 		for (int l = 0; l < numLayers; l++) {
-			h[l] = initialHidden;
+			h[l] = cp(initialHidden);
 		}
 
 		// Initial decoder input: SOS embedding (token index 0)
@@ -453,7 +453,7 @@ public class GRUDecoder implements LayerFeatures {
 			CollectionProducer[] stateParts = new CollectionProducer[1 + numLayers];
 			stateParts[0] = cp(x).reshape(shape(dh));
 			for (int l = 0; l < numLayers; l++) {
-				stateParts[l + 1] = cp(h[l]).reshape(shape(dh));
+				stateParts[l + 1] = h[l].reshape(shape(dh));
 			}
 			PackedCollection state = concat(stateParts).reshape(shape(inputSize)).evaluate();
 
@@ -462,7 +462,7 @@ public class GRUDecoder implements LayerFeatures {
 
 			// Extract new hidden states from output [h0' | ... | hL' | logits]
 			for (int l = 0; l < numLayers; l++) {
-				h[l] = cp(output).subset(shape(dh), l * dh).evaluate();
+				h[l] = cp(output).subset(shape(dh), l * dh);
 			}
 
 			// Extract logits from tail of output

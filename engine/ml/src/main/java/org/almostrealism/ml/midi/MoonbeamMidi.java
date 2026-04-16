@@ -101,8 +101,13 @@ public class MoonbeamMidi implements AttentionFeatures {
 	/** Sequential position counter for KV cache indexing. */
 	private final PackedCollection position;
 
-	/** Per-attribute position values for MRA RoPE (6 collections, one per attribute). */
-	private final PackedCollection[] attributePositions;
+	/**
+	 * Per-attribute position values for MRA RoPE, packed into a single collection
+	 * of shape {@code (NUM_ATTRIBUTES)}. Each slot is exposed to the compiled
+	 * transformer as a {@code subset(shape(1), i)} producer so all six
+	 * attribute positions can be updated with a single bulk {@code setMem} call.
+	 */
+	private final PackedCollection attributePositions;
 
 	/**
 	 * Create a MoonbeamMidi model with explicit components for testing.
@@ -122,7 +127,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 		this.decoder = decoder;
 		this.profile = new OperationProfileNode("moonbeam");
 		this.position = new PackedCollection(1);
-		this.attributePositions = createAttributePositions();
+		this.attributePositions = new PackedCollection(MoonbeamConfig.NUM_ATTRIBUTES);
 		this.compiledTransformer = buildTransformer(stateDict, profile);
 	}
 
@@ -152,7 +157,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 		this.decoder = buildDecoder(stateDict, config);
 		this.profile = new OperationProfileNode("moonbeam");
 		this.position = new PackedCollection(1);
-		this.attributePositions = createAttributePositions();
+		this.attributePositions = new PackedCollection(MoonbeamConfig.NUM_ATTRIBUTES);
 		this.compiledTransformer = buildTransformer(stateDict, profile);
 	}
 
@@ -171,7 +176,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 
 		Producer<PackedCollection>[] attrProducers = createProducerArray(MoonbeamConfig.NUM_ATTRIBUTES);
 		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
-			attrProducers[i] = p(attributePositions[i]);
+			attrProducers[i] = cp(attributePositions).subset(shape(1), i);
 		}
 
 		HeadGroupConfig[] headGroups = HeadGroupConfig.fromParams(
@@ -240,16 +245,10 @@ public class MoonbeamMidi implements AttentionFeatures {
 	 * @param token the compound token providing attribute values
 	 */
 	public void setAttributePositions(MidiCompoundToken token) {
-		if (token.isSpecial()) {
-			for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
-				attributePositions[i].setMem(0, 0.0);
-			}
-		} else {
-			int[] values = token.toArray();
-			for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
-				attributePositions[i].setMem(0, (double) values[i]);
-			}
-		}
+		double[] values = token.isSpecial()
+				? new double[MoonbeamConfig.NUM_ATTRIBUTES]
+				: token.toDoubleArray();
+		attributePositions.setMem(0, values);
 	}
 
 	/** Returns the compound MIDI embedding layer. */
@@ -266,17 +265,6 @@ public class MoonbeamMidi implements AttentionFeatures {
 
 	/** Returns the compiled transformer model (for testing). */
 	public CompiledModel getCompiledTransformer() { return compiledTransformer; }
-
-	/**
-	 * Create 6 position collections for per-attribute MRA RoPE.
-	 */
-	private PackedCollection[] createAttributePositions() {
-		PackedCollection[] positions = new PackedCollection[MoonbeamConfig.NUM_ATTRIBUTES];
-		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
-			positions[i] = new PackedCollection(1);
-		}
-		return positions;
-	}
 
 	/**
 	 * Create a typed Producer array, isolating the unavoidable unchecked cast

@@ -283,10 +283,30 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 			"synchronized", "native", "strictfp", "default", "transient", "volatile");
 
 	/**
+	 * Keywords that can appear immediately before {@code (} on a line that is NOT a
+	 * method declaration (e.g. {@code for (...)}, {@code if (...)}, {@code return (...)}).
+	 * Used to prevent {@link #findEnclosingMethodName} from mistaking control-flow
+	 * and statement lines for method signatures.
+	 */
+	private static final Set<String> CONTROL_FLOW_KEYWORDS = Set.of(
+			"for", "while", "if", "else", "catch", "switch",
+			"return", "throw", "yield", "assert", "do", "try");
+
+	/**
 	 * Walks backward from {@code lineIndex} to find the name of the enclosing method
 	 * or constructor. Returns {@code "<constructor>"} for constructor declarations,
 	 * the method name for regular methods, or an empty string if no enclosing method
 	 * is found.
+	 *
+	 * <p>Lines that look like method calls, control-flow statements, or lambda
+	 * signatures (e.g. {@code return () -> args -> { ... }}) are skipped so they do
+	 * not masquerade as enclosing declarations. A line qualifies as a declaration
+	 * only when the text after its matched {@code )} begins with {@code {} or
+	 * {@code throws}.
+	 *
+	 * <p>Handles multi-line method signatures where the parameter list spans
+	 * multiple lines (the closing {@code ) {} or {@code ) throws} is on a
+	 * different line from the method name and opening {@code (}).
 	 *
 	 * @param lines      all lines of the file
 	 * @param lineIndex  0-based index of the line to check
@@ -295,28 +315,55 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 	protected String findEnclosingMethodName(List<String> lines, int lineIndex) {
 		for (int i = lineIndex; i >= 0; i--) {
 			String line = lines.get(i);
-			if (line.matches(".*\\s+(\\w+)\\s*\\([^)]*\\)\\s*\\{?.*") ||
-					line.matches(".*\\s+(\\w+)\\s*\\([^)]*\\)\\s*throws.*")) {
-				String trimmed = line.trim();
-				int parenIdx = trimmed.indexOf('(');
-				if (parenIdx > 0) {
-					int spaceIdx = trimmed.lastIndexOf(' ', parenIdx);
-					if (spaceIdx >= 0 && spaceIdx < parenIdx) {
-						String name = trimmed.substring(spaceIdx + 1, parenIdx);
-						// If the token immediately before the name is a modifier keyword
-						// (e.g. "public Foo()" has no return type), this is a constructor.
-						String before = trimmed.substring(0, spaceIdx).trim();
-						String precedingToken = before.isEmpty() ? ""
-								: before.contains(" ")
-										? before.substring(before.lastIndexOf(' ') + 1)
-										: before;
-						if (precedingToken.isEmpty() || JAVA_MODIFIERS.contains(precedingToken)) {
-							return "<constructor>";
-						}
-						return name;
-					}
-				}
+			String trimmed = line.trim();
+
+			// A method/constructor declaration's body-opener line ends with
+			// `) {` or `) throws ...`. Locate the rightmost `)` and require
+			// that the text after it begins with `{` or `throws`.
+			int rparenIdx = trimmed.lastIndexOf(')');
+			if (rparenIdx < 0) continue;
+			String afterParen = trimmed.substring(rparenIdx + 1).trim();
+			if (!afterParen.startsWith("{") && !afterParen.startsWith("throws")) {
+				continue;
 			}
+
+			// Accumulate lines backward until paren depth is balanced, so that
+			// multi-line parameter lists are handled. The earliest line then
+			// contains the method name and the opening `(`.
+			int parenDepth = countChar(trimmed, ')') - countChar(trimmed, '(');
+			StringBuilder combined = new StringBuilder(trimmed);
+			int j = i;
+			while (parenDepth > 0 && j > 0) {
+				j--;
+				String prev = lines.get(j);
+				parenDepth += countChar(prev, ')') - countChar(prev, '(');
+				combined.insert(0, prev + " ");
+			}
+			if (parenDepth != 0) continue;
+
+			String signature = combined.toString();
+			int parenIdx = signature.indexOf('(');
+			if (parenIdx <= 0) continue;
+
+			int spaceIdx = signature.lastIndexOf(' ', parenIdx);
+			if (spaceIdx < 0 || spaceIdx >= parenIdx) continue;
+
+			String name = signature.substring(spaceIdx + 1, parenIdx).trim();
+			// Empty name (lambda signatures like `() -> {`) or a control-flow
+			// keyword (for/while/if/catch/...) is not a method.
+			if (name.isEmpty() || CONTROL_FLOW_KEYWORDS.contains(name)) continue;
+
+			String before = signature.substring(0, spaceIdx).trim();
+			String precedingToken = before.isEmpty() ? ""
+					: before.contains(" ")
+							? before.substring(before.lastIndexOf(' ') + 1)
+							: before;
+			// If the token immediately before the name is a modifier keyword
+			// (e.g. "public Foo()" has no return type), this is a constructor.
+			if (precedingToken.isEmpty() || JAVA_MODIFIERS.contains(precedingToken)) {
+				return "<constructor>";
+			}
+			return name;
 		}
 		return "";
 	}

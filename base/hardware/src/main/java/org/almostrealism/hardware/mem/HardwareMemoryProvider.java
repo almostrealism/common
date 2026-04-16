@@ -281,24 +281,26 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/**
 	 * Deallocates a memory block identified by its native reference.
 	 *
-	 * <p>If the {@link KernelMemoryGuard} indicates the block is still in use, it is
-	 * re-queued for later deallocation rather than being released immediately.</p>
+	 * <p>Consults {@link KernelMemoryGuard} for diagnostic visibility: if the
+	 * guard reports the block as still referenced by an active kernel, a warning
+	 * is emitted (with allocation stack trace when available) but deallocation
+	 * proceeds regardless. Blocking or silently deferring an explicit deallocate
+	 * has been determined to be a more dangerous strategy than producing a
+	 * visible warning plus potential use-after-free — the warning at least gives
+	 * the developer the context needed to diagnose the problem.</p>
+	 *
+	 * <p>Note: for the GC-driven deallocation path, the guard's strong references
+	 * to active RAMs should normally prevent the underlying phantom reference
+	 * from being enqueued in the first place. A warning here from the GC path
+	 * would therefore indicate either a race window between reference-queue
+	 * enqueuing and guard release, or a bug in the guard's accounting.</p>
 	 *
 	 * @param ref Native reference to the memory block to deallocate
 	 */
 	private void deallocateNow(NativeRef<T> ref) {
-		try {
-			Hardware hw = Hardware.getLocalHardware();
-			if (hw != null) {
-				KernelMemoryGuard guard = hw.getKernelMemoryGuard();
-				if (guard != null && !guard.canDeallocate(ref.getAddress())) {
-					getDeallocationQueue().put(ref);
-					return;
-				}
-			}
-		} catch (Exception e) {
-			// Guard check must not prevent deallocation
-		}
+		KernelMemoryGuard.warnIfActivelyReferenced(
+				ref.getAddress(), ref.getAllocationStackTrace(),
+				getClass().getSimpleName());
 
 		deallocate(ref);
 

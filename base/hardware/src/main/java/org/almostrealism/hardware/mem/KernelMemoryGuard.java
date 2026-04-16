@@ -204,6 +204,51 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	}
 
 	/**
+	 * Consults the local {@link Hardware}'s {@link KernelMemoryGuard} and emits a
+	 * warning if the given native address is still marked as actively referenced
+	 * by a running kernel. This is a <em>diagnostic-only</em> check: it never
+	 * throws, never blocks, and does not prevent the caller from proceeding with
+	 * deallocation. Callers that want to avoid an imminent use-after-free crash
+	 * must decide how to react on their own (defer, retry, etc.) — this helper
+	 * only surfaces the condition.
+	 *
+	 * <p>When the allocation stack trace is available (controlled by
+	 * {@code AR_HARDWARE_ALLOCATION_TRACE_FRAMES}) it is included in the warning
+	 * so the developer can see where the memory about to be freed was allocated.</p>
+	 *
+	 * @param address         the native content pointer about to be freed
+	 * @param allocationTrace the allocation stack trace captured at RAM creation time, may be null
+	 * @param context         short description of the destroy path (e.g. {@code "NativeBuffer"},
+	 *                        {@code "NativeMemory"}) used to identify the source of the warning
+	 */
+	public static void warnIfActivelyReferenced(long address,
+												StackTraceElement[] allocationTrace,
+												String context) {
+		try {
+			Hardware hw = Hardware.getLocalHardware();
+			if (hw == null) return;
+			KernelMemoryGuard guard = hw.getKernelMemoryGuard();
+			if (guard == null || guard.canDeallocate(address)) return;
+
+			Hardware.console.warn(
+					context + " at 0x" + Long.toHexString(address) +
+					" is being deallocated while the KernelMemoryGuard still " +
+					"reports active kernel references; in-flight kernels may " +
+					"read from unmapped memory");
+			if (allocationTrace != null && allocationTrace.length > 0) {
+				StringBuilder sb = new StringBuilder("  (allocated at:");
+				for (StackTraceElement el : allocationTrace) {
+					sb.append("\n    at ").append(el);
+				}
+				sb.append(")");
+				Hardware.console.warn(sb.toString());
+			}
+		} catch (Throwable t) {
+			// Diagnostic inspection must never block the caller's destroy/deallocate path
+		}
+	}
+
+	/**
 	 * Resolves the underlying {@link RAM} object from a {@link MemoryData} argument.
 	 *
 	 * @param data the memory data to resolve
