@@ -19,7 +19,9 @@ package org.almostrealism.nio;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.mem.RAM;
 
 import java.io.File;
@@ -116,6 +118,37 @@ public class NativeBuffer extends RAM implements Destroyable {
 
 	@Override
 	public void destroy() {
+		// Best-effort check against the KernelMemoryGuard. A held address here means a
+		// kernel is still using this buffer; proceeding will likely crash or corrupt
+		// that kernel. We warn (with the allocation stack trace when available) but do
+		// not block — callers may have legitimate reasons to force destroy, and blocking
+		// here is as dangerous as complex logic in a finalizer.
+		try {
+			Hardware hw = Hardware.getLocalHardware();
+			if (hw != null) {
+				KernelMemoryGuard guard = hw.getKernelMemoryGuard();
+				long address = getContentPointer();
+				if (guard != null && !guard.canDeallocate(address)) {
+					Hardware.console.warn(
+							"NativeBuffer at 0x" + Long.toHexString(address) +
+							" is being destroyed while the KernelMemoryGuard still " +
+							"reports active kernel references; in-flight kernels may " +
+							"read from unmapped memory");
+					StackTraceElement[] trace = getAllocationStackTrace();
+					if (trace != null && trace.length > 0) {
+						StringBuilder sb = new StringBuilder("  (allocated at:");
+						for (StackTraceElement el : trace) {
+							sb.append("\n    at ").append(el);
+						}
+						sb.append(")");
+						Hardware.console.warn(sb.toString());
+					}
+				}
+			}
+		} catch (Throwable t) {
+			// Diagnostic inspection must never block destroy()
+		}
+
 		if (sharedLocation != null) {
 			NIO.unmapSharedMemory(rootBuffer, rootBuffer.capacity());
 		}
