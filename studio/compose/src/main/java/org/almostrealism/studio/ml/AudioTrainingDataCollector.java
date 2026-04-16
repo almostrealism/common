@@ -234,20 +234,23 @@ public class AudioTrainingDataCollector implements CollectionFeatures, ConsoleFe
 	}
 
 	/**
-	 * Normalizes audio amplitude to the range [-1, 1].
+	 * Normalizes audio amplitude to the range [-1, 1] in-place, returning the
+	 * same {@link WaveData} instance so its underlying buffer is reused and the
+	 * caller does not need to destroy a separate intermediate allocation.
 	 *
 	 * @param audio the audio to normalize
-	 * @return normalized audio
+	 * @return the same {@code audio} instance, with its buffer rewritten in place
 	 */
 	protected WaveData normalizeAmplitude(WaveData audio) {
 		PackedCollection data = audio.getData();
 
 		// Compute the per-device normalization scale as a single producer graph
 		// so the scalar decision stays on the device: scale = (max > 0) ? 1/max : 1.
+		// Write back into the same PackedCollection to avoid leaking the input buffer.
 		CollectionProducer maxAbs = c(p(data)).abs().max();
 		CollectionProducer scale = maxAbs.greaterThan(c(0.0), c(1.0).divide(maxAbs), c(1.0));
-		PackedCollection normalized = c(p(data)).multiply(scale).get().evaluate();
-		return new WaveData(normalized, audio.getSampleRate());
+		c(p(data)).multiply(scale).into(data).evaluate();
+		return audio;
 	}
 
 	/**

@@ -278,7 +278,7 @@ public class AudioDiffusionGenerator implements ConsoleFeatures, CollectionFeatu
 		CollectionProducer scale = maxAbs.greaterThan(c(1.0), c(0.95).divide(maxAbs), c(1.0));
 		c(p(data)).multiply(scale).into(data).evaluate();
 
-		if (verbose) log("Normalized audio (peak limited to 0.95)");
+		if (verbose) log("Normalized audio (applied peak limiting if needed)");
 	}
 
 	/**

@@ -58,17 +58,6 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 	);
 
 	/**
-	 * Methods where {@code .evaluate()} calls are legitimate despite being in
-	 * a computation source tree. These are autoregressive step loops or other
-	 * boundaries where the compiled model is invoked token-by-token.
-	 */
-	private static final List<String> EVALUATE_ALLOWED_METHODS = List.of(
-			"runGruDecode",             // Autoregressive GRU decode loop (step boundaries)
-			"embedAndSumNet"            // SkyTntMidi step-boundary: materializes the summed
-			                            // token embedding fed into netCompiledModel.forward
-	);
-
-	/**
 	 * Files in computation source trees where {@code .evaluate()} is legitimate.
 	 * These are pipeline boundaries, data loading, or sampling loops.
 	 */
@@ -138,6 +127,13 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 			"CompoundMidiEmbedding.java", Set.of(
 					"embed",                    // Materializes Java MidiCompoundToken for type dispatch
 					"embedSequence"             // Materializes Java token list for Producer construction
+			),
+			"GRUDecoder.java", Set.of(
+					"runGruDecode"              // Autoregressive GRU decode loop (step boundaries)
+			),
+			"SkyTntMidi.java", Set.of(
+					"embedAndSumNet"            // Step-boundary: materializes the summed token
+					                            // embedding fed into netCompiledModel.forward
 			)
 	);
 
@@ -269,18 +265,16 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 				continue;
 			}
 
-			// Check enclosing method — main methods, constructors, and allowed autoregressive
-			// step methods are exempt
+			// Check enclosing method — main methods and constructors are exempt
 			String methodName = findEnclosingMethodName(lines, i);
 			if (methodName.equals("main") || methodName.equals("<constructor>")) {
 				continue;
 			}
 
-			boolean inAllowedMethod = EVALUATE_ALLOWED_METHODS.contains(methodName);
 			boolean evaluateMethodExempt = fileEvaluateMethods.contains(methodName);
 			boolean toDoubleMethodExempt = fileToDoubleMethods.contains(methodName);
 
-			if (!evaluateAllowed && !inAllowedMethod && !evaluateMethodExempt
+			if (!evaluateAllowed && !evaluateMethodExempt
 					&& EVALUATE_CALL.matcher(line).find()) {
 				violations.add(new Violation(file, lineNum, line,
 						"PRODUCER_EVALUATE_IN_COMPUTATION",
