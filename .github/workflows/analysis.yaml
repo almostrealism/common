@@ -127,26 +127,6 @@ jobs:
       - name: Build
         run: mvn install -DskipTests
 
-      - name: Flowtree Tests
-        run: |
-          mvn test -pl flowtree \
-           -DAR_TEST_PROFILE=pipeline
-
-      - name: Collect Coverage Data
-        if: always()
-        run: |
-          mkdir -p coverage-data
-          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
-
-      - name: Upload Coverage Data
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-flowtree
-          path: coverage-data/
-          retention-days: 1
-          if-no-files-found: ignore
-
   # ─── Code Policy Enforcement ───────────────────────────────────────
   code-policy-check:
     needs: build
@@ -585,6 +565,57 @@ jobs:
             echo "Run \`mvn checkstyle:check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # ─── Flowtree Tests ────────────────────────────────────────────────
+  # Runs in parallel with the test matrix after the validation gates.
+  # Extracted from `build` so that slow flowtree tests do not block the
+  # rest of the pipeline.
+  test-flowtree:
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    if: >-
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests
+
+      - name: Flowtree Tests
+        run: |
+          mvn test -pl flowtree \
+           -DAR_TEST_PROFILE=pipeline
+
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-flowtree
+          path: coverage-data/
+          retention-days: 1
+          if-no-files-found: ignore
+
   test:
     needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # Layer gate: engine tests only run when engine-or-below layers are modified
@@ -961,7 +992,7 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
   analysis:
-    needs: [build, test, test-media]
+    needs: [build, test, test-flowtree, test-media]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -1089,7 +1120,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [changes, build, test, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
+    needs: [changes, build, test, test-flowtree, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     runs-on: [self-hosted, macos, ar-ci]
     concurrency:
