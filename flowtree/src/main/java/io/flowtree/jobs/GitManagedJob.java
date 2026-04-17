@@ -30,7 +30,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
@@ -660,8 +662,8 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     /** Returns the local hostname for log diagnostics, or {@code "unknown"} on failure. */
     private static String hostname() {
         try {
-            return java.net.InetAddress.getLocalHost().getHostName();
-        } catch (java.net.UnknownHostException e) {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
             return "unknown";
         }
     }
