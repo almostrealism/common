@@ -135,11 +135,11 @@ without authentication (for trusted LAN use). A warning is logged on startup.
 
 ### Docker Compose (recommended)
 
-ar-manager is defined as a service in `tools/docker-compose.yml` alongside
+ar-manager is defined as a service in `flowtree/controller/docker-compose.yml` alongside
 ar-memory and the FlowTree controller:
 
 ```bash
-docker compose -f tools/docker-compose.yml up -d
+docker compose -f flowtree/controller/docker-compose.yml up -d
 ```
 
 Place `manager-tokens.json` in `/Users/Shared/flowtree/manager/` on the host.
