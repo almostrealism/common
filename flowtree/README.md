@@ -44,14 +44,36 @@ A full FlowTree deployment has two parts — a **controller stack** running on a
 
 | Component | Location | Role |
 |-----------|----------|------|
-| `flowtree-controller` | `flowtree/Dockerfile` | Java server that accepts agent connections (:7766), exposes the job submission API (:7780), integrates with Slack, and dispatches `ClaudeCodeJob` instances to agents |
-| `ar-manager` | `tools/mcp/manager/` | Python MCP server that bridges Claude Code agents to the controller, GitHub, and ar-memory. Exposes tools like `workstream_submit_task`, `github_create_pr`, and `memory_store` |
+| `flowtree-controller` | `flowtree/controller/Dockerfile` | Java server that accepts agent connections (:7766), exposes a low-level job submission API (:7780), integrates with Slack, and dispatches `ClaudeCodeJob` instances to agents |
+| **`ar-manager`** | `tools/mcp/manager/` | **Preferred entrypoint.** Python MCP server that exposes FlowTree to Claude Code agents, Claude mobile, CI pipelines, and any other HTTP client. Handles authentication, rate limiting, GitHub integration, and memory. |
 | `ar-memory` | `tools/mcp/memory/` | Semantic vector store that persists agent memories and decisions across sessions |
 | Agent containers | `flowtree/agent/` | Each agent connects outbound to the controller, receives `ClaudeCodeJob` instances, and executes Claude Code prompts inside a Docker container with its own git workspace |
 
-Agents connect **out** to the controller — the controller never initiates connections to agents. This means agents can run behind NAT or on ephemeral machines with no inbound firewall rules required.
+### ar-manager is the preferred entrypoint
 
-The `ar-manager` is the HTTP bridge that CI pipelines, Claude Code MCP tools, and the `submit-agent-job.sh` CI script use to reach the controller. It is intentionally separate from the controller so it can be upgraded, scaled, or replaced without touching the core FlowTree network.
+**Do not call the FlowTree controller API (port 7780) directly** except for
+low-level diagnostics. Everything that submits jobs, registers workstreams, or
+queries status should go through ar-manager:
+
+- **Claude mobile / external AI** — configure ar-manager's public Tailscale
+  Funnel URL as a remote MCP server.
+- **Claude Code agents** — MCP tools (`workstream_submit_task`,
+  `workstream_get_status`, etc.) are served by ar-manager.
+- **CI pipelines** — `tools/ci/submit-agent-job.sh` calls ar-manager's HTTP
+  API, not the controller directly.
+- **Slack** — the controller listens to Slack for interactive use, but
+  programmatic submission should still go through ar-manager.
+
+The controller's port 7780 API exists for ar-manager and the Slack integration
+to use internally. Bypassing ar-manager means losing authentication, rate
+limiting, GitHub integration, and memory tooling.
+
+See the [ar-manager README](../tools/mcp/manager/README.md) for setup
+instructions, including how to expose it publicly via Tailscale Funnel.
+
+Agents connect **out** to the controller — the controller never initiates
+connections to agents. Agents can therefore run behind NAT or on ephemeral
+machines with no inbound firewall rules required.
 
 ---
 
@@ -178,7 +200,8 @@ Servers discover each other through explicit connection (host + port) or through
 
 ```
 flowtree/
-  controller/               # Controller stack Docker Compose
+  controller/               # Controller stack
+    Dockerfile
     docker-compose.yml
   agent/                    # Agent pool Docker Compose + Dockerfile
     docker-compose.yml
@@ -190,7 +213,6 @@ flowtree/
   conf/                     # Runtime properties
     agent.properties
   rebuild.sh                # One-command build + deploy script
-  Dockerfile                # flowtree-controller image
   docs/                     # Architecture and integration guides
   src/main/java/io/flowtree/
     Server.java             # Core server with peer networking
