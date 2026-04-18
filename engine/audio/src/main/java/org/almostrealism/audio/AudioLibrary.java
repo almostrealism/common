@@ -1051,12 +1051,48 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
-	 * Creates and submits a WaveDetailsJob for the given provider.
+	 * Submits a migration job that stores an already-computed {@link WaveDetails}
+	 * into the backing store, computes its embedding vector for HNSW search,
+	 * and tracks completion through the standard progress system.
 	 *
-	 * @param provider   the audio data provider to analyze
-	 * @param persistent if true, marks the resulting details as persistent
-	 * @param priority   the job priority (e.g., HIGH_PRIORITY or DEFAULT_PRIORITY)
+	 * <p>This is used by the legacy-to-new-format migration path. The runner
+	 * calls {@link #include(WaveDetails)} (which writes through to the store)
+	 * and then releases the in-memory reference so the migrated record does
+	 * not accumulate on the heap.</p>
+	 *
+	 * @param details  the pre-computed WaveDetails to migrate
+	 * @param priority the job priority (typically {@link #BACKGROUND_PRIORITY})
 	 * @return the submitted job
+	 */
+	public WaveDetailsJob submitMigrationJob(WaveDetails details, double priority) {
+		final WaveDetails[] holder = { details };
+
+		WaveDetailsJob job = new WaveDetailsJob(j -> {
+			WaveDetails d = holder[0];
+			if (d == null) return null;
+
+			if (store != null) {
+				PackedCollection embedding = computeEmbeddingVector(d);
+				if (embedding != null) {
+					store.put(d.getIdentifier(), d, embedding);
+				} else {
+					store.put(d.getIdentifier(), d);
+				}
+				// Skip include(d) when store != null: include() would re-write
+				// the id to the store without an embedding, removing it from the
+				// HNSW index (ProtobufDiskStore behaviour).
+			} else {
+				include(d);
+			}
+			holder[0] = null;
+			return d;
+		}, null, true, priority);
+
+		return submitJob(job);
+	}
+
+	/**
+	 * Creates and submits a WaveDetailsJob for the given provider.
 	 */
 	protected WaveDetailsJob submitJob(WaveDataProvider provider, boolean persistent, double priority) {
 		return submitJob(new WaveDetailsJob(this::processJob, provider, persistent, priority));

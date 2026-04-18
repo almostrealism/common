@@ -336,17 +336,35 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 	 * Converts RAM regions to native content pointers and delegates to the
 	 * primitive array apply method.
 	 *
+	 * <p>Each argument's {@link RAM#getContentPointer()} is checked for a
+	 * zero (null) pointer before the kernel is dispatched. A null content
+	 * pointer indicates that the RAM's backing memory has been deallocated
+	 * or unmapped since the argument was resolved, which would otherwise
+	 * produce a silent {@code SIGSEGV} deep inside the generated native
+	 * kernel. Throwing here converts that into a diagnosable
+	 * {@link NullPointerException} at the framework boundary.</p>
+	 *
 	 * @param commandQueue the OpenCL command queue pointer, or -1 if not using OpenCL
 	 * @param args the RAM memory regions containing the data
 	 * @param offsets the starting offset within each RAM region
 	 * @param sizes the size of each memory region in atomic units
 	 * @param globalId the starting global index for kernel execution
 	 * @param kernelSize the total number of kernel iterations
+	 * @throws NullPointerException if any argument's content pointer is zero
 	 */
 	default void apply(long commandQueue, RAM[] args, int[] offsets, int[] sizes, int globalId, long kernelSize) {
-		apply(commandQueue,
-				Stream.of(args).mapToLong(RAM::getContentPointer).toArray(),
-				offsets, sizes, args.length, globalId, kernelSize);
+		long[] pointers = new long[args.length];
+		for (int i = 0; i < args.length; i++) {
+			pointers[i] = args[i].getContentPointer();
+			if (pointers[i] == 0) {
+				throw new NullPointerException(
+						"Argument " + i + " has a null content pointer " +
+						"(backing memory may have been deallocated or unmapped " +
+						"between argument resolution and kernel dispatch)");
+			}
+		}
+
+		apply(commandQueue, pointers, offsets, sizes, args.length, globalId, kernelSize);
 	}
 
 	/**

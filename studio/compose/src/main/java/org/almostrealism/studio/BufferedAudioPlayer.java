@@ -17,6 +17,7 @@
 package org.almostrealism.studio;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WavFile;
+import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.CellFeatures;
 
 import org.almostrealism.audio.data.DynamicWaveDataProvider;
@@ -28,18 +29,25 @@ import org.almostrealism.audio.line.AudioLineOperation;
 import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.BufferedAudio;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
+import org.almostrealism.audio.line.ChannelPairView;
 import org.almostrealism.audio.line.DelegatedAudioLine;
+import org.almostrealism.audio.line.MultiChannelOutputLine;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.ReceptorCell;
 import org.almostrealism.graph.TimeCell;
+import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.graph.temporal.WaveCell;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.DoubleConsumer;
+import java.util.function.Supplier;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
@@ -231,6 +239,22 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 
 		if (!enableUnifiedClock) {
 			this.clock = mixer.getSample(0).getClock();
+		}
+	}
+
+	/**
+	 * Ensures the mixer is initialized. This can be called before
+	 * {@link #deliver(OutputLine)} to allow configuration of output groups
+	 * on the underlying {@link Mixer} before the pipeline is built.
+	 *
+	 * @param bufferSize the output buffer size in frames, used to compute timing
+	 */
+	public void ensureMixerInitialized(int bufferSize) {
+		if (clock == null) {
+			initMixer();
+			long bufferDuration = bufferSize * 1000L / sampleRate;
+			int updates = BufferDefaults.groups * 2;
+			waitTime = bufferDuration / updates;
 		}
 	}
 
@@ -507,6 +531,120 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		} else {
 			return new AudioLineInputRecord(operation, record).buffer(out);
 		}
+	}
+
+	/**
+	 * Delivers audio to multiple output lines, one per output group configured
+	 * on the underlying {@link Mixer}. Each group gets its own
+	 * {@link BufferedOutputScheduler} that ticks only that group's cells.
+	 *
+	 * <p>Since each channel belongs to exactly one output group, the cell
+	 * pipelines are non-overlapping and can run on separate threads without
+	 * double-ticking any cell. Channel rendering happens exactly once.</p>
+	 *
+	 * <p>The mixer must have output groups configured via
+	 * {@link Mixer#addOutputGroup(String, int...)} and
+	 * {@link Mixer#applyOutputGroups()} before calling this method.
+	 * Call {@link #ensureMixerInitialized(int)} first if the mixer has
+	 * not yet been initialized.</p>
+	 *
+	 * @param groupOutputLines map from group name to the output line for that group's device
+	 * @return map from group name to the scheduler for that group
+	 * @throws IllegalArgumentException if groupOutputLines is null or empty
+	 */
+	public Map<String, BufferedOutputScheduler> deliverGroups(
+			Map<String, OutputLine> groupOutputLines) {
+		if (groupOutputLines == null || groupOutputLines.isEmpty()) {
+			throw new IllegalArgumentException(
+					"groupOutputLines must not be null or empty");
+		}
+		ensureMixerInitialized(groupOutputLines.values().iterator().next().getBufferSize());
+
+		Map<String, BufferedOutputScheduler> schedulers = new LinkedHashMap<>();
+
+		for (Map.Entry<String, OutputLine> entry : groupOutputLines.entrySet()) {
+			String groupName = entry.getKey();
+			OutputLine out = entry.getValue();
+
+			CellList groupCells = mixer.getGroupCellList(groupName);
+			if (enableUnifiedClock) {
+				groupCells = groupCells.addRequirement(clock);
+			}
+
+			AudioLineOperation operation = groupCells.toLineOperation();
+			BufferedOutputScheduler scheduler = operation.buffer(out);
+			schedulers.put(groupName, scheduler);
+		}
+
+		return schedulers;
+	}
+
+	/**
+	 * Delivers audio to a multi-channel output line where all output groups
+	 * share a single physical device. Uses ONE scheduler that ticks the full
+	 * pipeline and writes a complete multi-channel frame on each cycle.
+	 *
+	 * <p>This method selects one output group as the "primary" whose output
+	 * drives the scheduler's standard write path. All other groups write to
+	 * their pair buffers via receptors. After the primary group writes (which
+	 * triggers {@link MultiChannelOutputLine#write(PackedCollection)}), the
+	 * multi-channel line flushes all pair buffers.</p>
+	 *
+	 * @param mcLine       the multi-channel output line
+	 * @param groupPairMap map from group name to 0-based pair index
+	 * @return a single scheduler that drives all output groups
+	 */
+	public BufferedOutputScheduler deliverMultiChannel(
+			MultiChannelOutputLine mcLine,
+			Map<String, Integer> groupPairMap) {
+		// The BufferedOutputScheduler divides output.getBufferSize() by
+		// BufferDefaults.batchCount to determine the per-tick frame count.
+		// The pair buffer (destination of WaveOutput's circular cursor)
+		// must be sized to match that per-tick frame count — otherwise
+		// MCLine.write() will repeatedly read the same stale positions
+		// while WaveOutput advances its cursor to fresh positions in a
+		// larger buffer, producing the "tiny clip repeated N times" artifact.
+		int perTickFrames = mcLine.getBufferSize() / BufferDefaults.batchCount;
+		ensureMixerInitialized(perTickFrames);
+
+		// Pre-allocate per-pair buffers sized to the per-tick frame count
+		// and register with the MCLine.  Crucially, we iterate the mixer's
+		// output groups in their insertion order — the same order used by
+		// mixer.toCellList() — so that pairBuffers[i] corresponds to the
+		// i-th group that map() will visit when building mappedCells.
+		PackedCollection[] pairBuffers = new PackedCollection[groupPairMap.size()];
+		String[] groupNames = mixer.getChannelMixer().getOutputGroups()
+				.keySet().toArray(new String[0]);
+		for (int i = 0; i < groupNames.length; i++) {
+			Integer pairIndex = groupPairMap.get(groupNames[i]);
+			if (pairIndex == null) {
+				throw new IllegalArgumentException(
+						"Group \"" + groupNames[i] + "\" has no entry in groupPairMap");
+			}
+			pairBuffers[i] = new PackedCollection(perTickFrames);
+			mcLine.setPairSource(pairIndex, pairBuffers[i]);
+		}
+
+		// Start from the Mixer's CellList (group cells as roots, channel
+		// cells + WaveCells as requirements).
+		CellList baseCells = mixer.toCellList();
+		if (enableUnifiedClock) {
+			baseCells = baseCells.addRequirement(clock);
+		}
+
+		// map() mirrors the standard CellList.buffer(destination) path:
+		// each group SummationCell gets its WaveOutput writer cell set as
+		// its receptor, and the writer cells are added to the returned
+		// CellList.
+		final CellList mappedCells = map(baseCells, i -> {
+			WaveOutput pairWriter = new WaveOutput(pairBuffers[i]);
+			pairWriter.setCircular(true);
+			return pairWriter.getWriterCell(0);
+		});
+
+		AudioLineOperation operation = (in, out, frames) ->
+				new TemporalRunner(mappedCells, frames);
+		return operation.buffer(mcLine);
 	}
 
 	@Override

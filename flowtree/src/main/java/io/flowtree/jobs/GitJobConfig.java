@@ -77,7 +77,10 @@ public final class GitJobConfig {
 
         // Claude Code agent outputs and settings
         "claude-output/**", "commit.txt",
-        ".claude/**", "settings.local.json"
+        ".claude/**", "settings.local.json",
+
+        // FlowTree internal lock files
+        ".flowtree.lock"
     )));
 
     /** Path patterns for test/CI files protected by {@link #protectTestFiles}. */

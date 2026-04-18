@@ -252,7 +252,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 					layerWk, layerWv, layerWq, layerWo,
 					layerBk, layerBv, layerBq,
 					layerQkNormQ, layerQkNormK,
-					freqCis,
+					cp(freqCis),
 					layerRmsFfn,
 					layerW1, layerW2, layerW3,
 					p(position)));

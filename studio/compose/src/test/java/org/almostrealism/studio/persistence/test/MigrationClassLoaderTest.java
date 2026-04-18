@@ -39,84 +39,84 @@ import java.util.List;
  */
 public class MigrationClassLoaderTest extends TestSuiteBase {
 
-	@Test
+	@Test(timeout = 60000)
 	public void exactMappingAudioChoiceNode() {
 		Assert.assertEquals(
 				"org.almostrealism.studio.notes.AudioChoiceNode",
 				MigrationClassLoader.translate("org.almostrealism.audio.notes.AudioChoiceNode"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void exactMappingChannelAudioNode() {
 		Assert.assertEquals(
 				"org.almostrealism.studio.notes.ChannelAudioNode",
 				MigrationClassLoader.translate("org.almostrealism.audio.notes.ChannelAudioNode"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void exactMappingSceneAudioNode() {
 		Assert.assertEquals(
 				"org.almostrealism.studio.notes.SceneAudioNode",
 				MigrationClassLoader.translate("org.almostrealism.audio.notes.SceneAudioNode"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void prefixMappingFileNoteSource() {
 		Assert.assertEquals(
 				"org.almostrealism.music.notes.FileNoteSource",
 				MigrationClassLoader.translate("org.almostrealism.audio.notes.FileNoteSource"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void prefixMappingTreeNoteSource() {
 		Assert.assertEquals(
 				"org.almostrealism.music.notes.TreeNoteSource",
 				MigrationClassLoader.translate("org.almostrealism.audio.notes.TreeNoteSource"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void prefixMappingFilter() {
 		Assert.assertEquals(
 				"org.almostrealism.music.filter.ParameterizedFilterEnvelope",
 				MigrationClassLoader.translate("org.almostrealism.audio.filter.ParameterizedFilterEnvelope"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void prefixMappingPattern() {
 		Assert.assertEquals(
 				"org.almostrealism.music.pattern.PatternElementFactory",
 				MigrationClassLoader.translate("org.almostrealism.audio.pattern.PatternElementFactory"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void prefixMappingHealth() {
 		Assert.assertEquals(
 				"org.almostrealism.studio.health.AudioHealthScore",
 				MigrationClassLoader.translate("org.almostrealism.audio.health.AudioHealthScore"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void prefixMappingMlAudio() {
 		Assert.assertEquals(
 				"org.almostrealism.studio.ml.AudioGenerator",
 				MigrationClassLoader.translate("org.almostrealism.ml.audio.AudioGenerator"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void prefixMappingComAlmostrealism() {
 		Assert.assertEquals(
 				"org.almostrealism.spatial.GenomicNetwork",
 				MigrationClassLoader.translate("com.almostrealism.spatial.GenomicNetwork"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void unmappedNamePassesThrough() {
 		Assert.assertEquals(
 				"java.util.ArrayList",
 				MigrationClassLoader.translate("java.util.ArrayList"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void migrateContentExactAndPrefix() {
 		String input = "class=\"org.almostrealism.audio.notes.AudioChoiceNode\" " +
 				"class=\"org.almostrealism.audio.notes.FileNoteSource\"";
@@ -125,7 +125,7 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 		Assert.assertTrue(result.contains("org.almostrealism.music.notes.FileNoteSource"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void migrateContentXmlFragment() {
 		String xml = "<object class=\"com.almostrealism.spatial.GenomicNetwork\">" +
 				"<object class=\"org.almostrealism.audio.health.AudioHealthScore\">";
@@ -134,7 +134,7 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 		Assert.assertTrue(result.contains("org.almostrealism.studio.health.AudioHealthScore"));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void migrateContentJsonFragment() {
 		String json = "{\"@type\":\"org.almostrealism.audio.notes.TreeNoteSource\"}";
 		String result = MigrationClassLoader.migrateContent(json);
@@ -147,7 +147,7 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 	 * classpath (GenomicNetwork lives in studio/spatial), so this test
 	 * only checks that the content transformation is correct.
 	 */
-	@Test
+	@Test(timeout = 120000)
 	public void migrateNetworksXmlContent() throws Exception {
 		File file = new File("../../../examples/networks.xml");
 		if (!file.exists()) return;
@@ -173,7 +173,7 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 		}
 	}
 
-	@Test
+	@Test(timeout = 120000)
 	public void loadPatternFactoryJson() throws Exception {
 		File file = new File("../../../examples/pattern-factory.json");
 		if (!file.exists()) return;

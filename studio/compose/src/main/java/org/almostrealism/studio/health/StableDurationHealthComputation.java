@@ -32,10 +32,8 @@ import org.almostrealism.time.TemporalRunner;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -233,8 +231,9 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		encounteredSilence = false;
 		OperationList.setAbortFlag(abortFlag);
 
-//		TODO  Restore average amplitude computation
-//		AverageAmplitude avg = new AverageAmplitude();
+//		TODO  Restore average amplitude computation using an on-device
+//		TODO  Producer-graph reduction (accumulate samples into a flat
+//		TODO  PackedCollection and compute abs().sum()/n at the boundary).
 
 		double score = 0.0;
 		double errorMultiplier = 1.0;
@@ -384,36 +383,4 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		return seconds == 0 ? 0 : (generationTime / seconds);
 	}
 
-	/**
-	 * Collects audio amplitude samples and provides statistics about when the
-	 * average amplitude is first reached.
-	 */
-	private static class AverageAmplitude implements Consumer<PackedCollection> {
-		/** The collected amplitude samples. */
-		private final List<PackedCollection> values = new ArrayList<>();
-
-		/** {@inheritDoc} */
-		@Override
-		public void accept(PackedCollection s) {
-			values.add(s);
-		}
-
-		/** Returns the mean absolute amplitude across all collected samples. */
-		public double average() {
-			return values.stream().mapToDouble(v -> v.toDouble(0)).map(Math::abs).average().orElse(0.0);
-		}
-
-		/**
-		 * Returns the index of the first sample that meets or exceeds the average
-		 * amplitude, or -1 if all samples are below average.
-		 */
-		public int framesUntilAverage() {
-			double avg = average();
-			for (int i = 0; i < values.size(); i++) {
-				if (Math.abs(values.get(i).toDouble(0)) >= avg) return i;
-			}
-
-			return -1; // The mean value theorem states this should never happen
-		}
-	}
 }

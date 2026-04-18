@@ -71,7 +71,6 @@
     <suppress id="DirectSystemOut" files="WaveData\.java"/>
     <suppress id="DirectSystemOut" files="BasicDelayCell\.java"/>
     <suppress id="DirectSystemOut" files="DelayNetwork\.java"/>
-    <suppress id="DirectSystemOut" files="LineUtilities\.java"/>
     <suppress id="DirectSystemOut" files="CCMappingManager\.java"/>
     <suppress id="DirectSystemOut" files="MidiDeviceManager\.java"/>
     <suppress id="DirectSystemOut" files="MidiInputConnection\.java"/>
@@ -197,11 +196,8 @@
     <suppress id="DirectSystemOut" files="OperationProfileUI\.java"/>
     <suppress id="DirectSystemOut" files="ProfileAnalyzerCLI\.java"/>
     <suppress id="DirectSystemOut" files="Chart\.java"/>
-    <suppress id="DirectSystemOut" files="CodePolicyViolationDetector\.java"/>
-    <suppress id="DirectSystemOut" files="DuplicateCodeDetector\.java"/>
     <suppress id="DirectSystemOut" files="ProcessFeatures\.java"/>
     <suppress id="DirectSystemOut" files="SignalWireDeliveryProvider\.java"/>
     <suppress id="DirectSystemOut" files="TestFeatures\.java"/>
-    <suppress id="DirectSystemOut" files="TestTimeoutEnforcementScanner\.java"/>
     <suppress id="DirectSystemOut" files="PriorityQueue\.java"/>
 </suppressions>

@@ -92,14 +92,22 @@ The `changes` job detects which top-level directories changed and sets flags:
 **No flag exists for `flowtree/`, `flowtreeapi/`, `graphpersist/`, or `tools/`.**
 Changes to those directories set `code_changed=true` (triggering the build) but
 no layer flag — so all layer-gated test jobs are skipped. This is intentional:
-flowtree tests always run inside the `build` job regardless of what changed.
+flowtree tests always run in the `test-flowtree` job regardless of what changed.
 
 ### What the `build` job covers
 
-The `build` job always runs when `code_changed=true`. It:
-1. Builds all modules (`mvn install -DskipTests`)
-2. Runs `mvn test -pl flowtree` (flowtree tests always run here)
-3. Uploads JaCoCo coverage as `coverage-flowtree`
+The `build` job always runs when `code_changed=true`. It is the critical path
+blocker: every downstream job depends on it, so it MUST stay as short as
+possible. It does one thing: `mvn install -DskipTests`. It does not run tests
+and does not upload coverage.
+
+### What the `test-flowtree` job covers
+
+Runs `mvn test -pl flowtree` and uploads JaCoCo coverage as `coverage-flowtree`.
+Gated on the same validation prerequisites as the `test` matrix
+(`code-policy-check`, `test-timeout-check`, `duplicate-code-check`,
+`test-integrity-check`) and runs in parallel with `test`. Extracted from `build`
+because flowtree tests are slow and would otherwise block every other job.
 
 ### What the `test` job covers
 
@@ -114,10 +122,10 @@ Uploads `coverage-media`.
 
 ### What the `analysis` job does
 
-Waits for `build`, `test`, and `test-media` (all three — any may be skipped).
-Downloads all `coverage-*` artifacts, merges them with JaCoCo CLI, generates
-an XML report for Qodana. The `mkdir -p all-coverage` guard ensures it
-tolerates missing artifacts when test jobs are skipped.
+Waits for `build`, `test`, `test-flowtree`, and `test-media` (any may be
+skipped). Downloads all `coverage-*` artifacts, merges them with JaCoCo CLI,
+generates an XML report for Qodana. The `mkdir -p all-coverage` guard ensures
+it tolerates missing artifacts when test jobs are skipped.
 
 ---
 
@@ -145,8 +153,10 @@ tolerates missing artifacts when test jobs are skipped.
 - Determine which layer it belongs to based on its dependencies.
 - If it introduces a new top-level directory, add a `*_changed` flag to the
   `changes` job and gate the appropriate test job on it.
-- If it depends on the `flowtree` family or `tools`, add its tests to
-  the `build` job (these always run) — do NOT create a separately-gated job.
+- If it depends on the `flowtree` family, add its tests to `test-flowtree`
+  (this job runs on every code change) — do NOT create a separately-gated job.
+- If it depends on `tools`, add its tests to the appropriate tools-using
+  job (`code-policy-check` or `test-timeout-check`).
 
 ### Changing layer flags
 
@@ -167,8 +177,14 @@ Always grep ALL pom.xml files for `ar-<module-name>` to find every consumer.
 
 **Mistake: Adding a layer flag for a standalone module.**
 `flowtree/`, `tools/`, `graphpersist/` are not layers. Their tests run in
-specific jobs (`build`, `code-policy-check`) that always execute on code
-changes. Do not create spurious layer flags for them.
+specific jobs (`test-flowtree`, `code-policy-check`) that always execute on
+code changes. Do not create spurious layer flags for them.
+
+**Mistake: Adding test steps to the `build` job.**
+`build` is the critical path — every downstream job waits for it. Keep it
+limited to `mvn install -DskipTests`. Add new test coverage in a dedicated
+job that gates on `build` (and whatever validation jobs make sense) so the
+rest of the pipeline is not blocked.
 
 **Mistake: Forgetting to add a new test job to `analysis` needs.**
 Every job that uploads `coverage-*` artifacts must appear in `analysis`'s

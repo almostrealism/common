@@ -30,8 +30,16 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.URL;
+import java.net.UnknownHostException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -105,6 +113,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * independent of the creating server's configuration.</p>
      */
     public static final String WORKING_DIRECTORY_PROPERTY = "flowtree.workingDirectory";
+
 
     // ---- Identity and branch configuration ----
 
@@ -205,6 +214,20 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * Follows the pattern {@code http://controller/api/workstreams/{id}/jobs/{jobId}}.
      */
     private String workstreamUrl;
+
+    /**
+     * Channel held open for the duration of the job to back {@link #workspaceLock}.
+     * Closed unconditionally in the {@code finally} block of {@link #run()}.
+     */
+    private FileChannel workspaceLockChannel;
+
+    /**
+     * Exclusive OS-level lock on the workspace directory's {@code .flowtree.lock} file.
+     * Prevents two {@link GitManagedJob} instances — whether in the same JVM or in
+     * sibling containers sharing a bind-mounted host path — from concurrently operating
+     * on the same working directory.
+     */
+    private FileLock workspaceLock;
 
     // ---- Per-run helper instances ----
 
@@ -339,7 +362,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             }
 
             // Resolve working directory from repoUrl if needed (clone if absent).
+            // Acquire a filesystem lock BEFORE cloning so that two jobs targeting
+            // the same repo — whether in this JVM or in a sibling container sharing
+            // the same bind-mounted host path — cannot operate concurrently.
             if (repoUrl != null && !repoUrl.isEmpty()) {
+                String lockTarget = workingDirectory != null && !workingDirectory.isEmpty()
+                    ? workingDirectory
+                    : WorkspaceResolver.resolve(defaultWorkspacePath, repoUrl);
+                acquireWorkspaceLock(lockTarget);
                 repoSetup = new GitRepositorySetup(this);
                 workingDirectory = repoSetup.resolveAndClone();
             }
@@ -405,6 +435,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             warn("Error: " + e.getMessage(), e);
             error = e;
         } finally {
+            releaseWorkspaceLock();
             fireJobCompleted(error);
             future.complete(null);
         }
@@ -595,6 +626,69 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                     throw new IOException("Git push failed for dependent repo: " + depPath);
                 }
             }
+        }
+    }
+
+    /**
+     * Acquires an exclusive OS-level lock on {@code <workspacePath>/.flowtree.lock},
+     * scoped to the git repository directory itself.
+     *
+     * <p>{@link FileLock} uses the host kernel's advisory locking. When the repository
+     * directory lives on a filesystem shared between agent containers (e.g. a
+     * bind-mounted host path), the lock is visible to all containers and serialises
+     * concurrent jobs that target the same repository. The call blocks until the lock
+     * is available.</p>
+     *
+     * <p>Lock failures are logged as warnings but do not abort the job.</p>
+     *
+     * @param workspacePath the git repository root in which the lock file is created
+     */
+    private void acquireWorkspaceLock(String workspacePath) {
+        try {
+            Path lockFile = Paths.get(workspacePath, ".flowtree.lock");
+            Files.createDirectories(lockFile.getParent());
+            workspaceLockChannel = FileChannel.open(lockFile,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            String host = hostname();
+            log("[" + host + "] Acquiring workspace lock: " + lockFile
+                    + " (job=" + taskId + ", repo=" + new File(workspacePath).getName() + ")");
+            workspaceLock = workspaceLockChannel.lock();
+            log("[" + host + "] Workspace lock acquired: " + lockFile);
+        } catch (IOException e) {
+            warn("Failed to acquire workspace lock for " + workspacePath + ": " + e.getMessage());
+        }
+    }
+
+    /** Returns the local hostname for log diagnostics, or {@code "unknown"} on failure. */
+    private static String hostname() {
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
+            return "unknown";
+        }
+    }
+
+    /**
+     * Releases the workspace lock acquired by {@link #acquireWorkspaceLock(String)}.
+     * Safe to call when no lock is held.
+     */
+    private void releaseWorkspaceLock() {
+        if (workspaceLock != null) {
+            try {
+                workspaceLock.release();
+                log("[" + hostname() + "] Workspace lock released (job=" + taskId + ")");
+            } catch (IOException e) {
+                warn("Failed to release workspace lock: " + e.getMessage());
+            }
+            workspaceLock = null;
+        }
+        if (workspaceLockChannel != null) {
+            try {
+                workspaceLockChannel.close();
+            } catch (IOException e) {
+                warn("Failed to close workspace lock channel: " + e.getMessage());
+            }
+            workspaceLockChannel = null;
         }
     }
 

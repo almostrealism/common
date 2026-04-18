@@ -103,23 +103,18 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	);
 
 	private static Path findProjectRoot() {
-		// Start from current directory and look for common/ or pom.xml
+		// Walk up from the Surefire working directory (the tools module directory)
+		// until we find the project root, identified by the presence of both the
+		// base/ and engine/ layer directories alongside pom.xml.
 		Path current = Path.of("").toAbsolutePath();
 
-		// If we're in a submodule, go up to find common/
 		while (current != null) {
 			if (Files.exists(current.resolve("pom.xml")) &&
-					Files.exists(current.resolve("algebra")) &&
-					Files.exists(current.resolve("ml"))) {
+					Files.exists(current.resolve("base")) &&
+					Files.exists(current.resolve("engine"))) {
 				return current;
 			}
 			current = current.getParent();
-		}
-
-		// Fallback to workspace path
-		Path workspace = Path.of("/workspace/project/common");
-		if (Files.exists(workspace)) {
-			return workspace;
 		}
 
 		return Path.of("").toAbsolutePath();

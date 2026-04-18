@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
@@ -85,7 +86,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 	 * Milestone 4: verify that both PDSL-compiled transformers can be built from
 	 * random synthetic weights without throwing exceptions.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testModelAssemblyWithSyntheticWeights() {
 		SkyTntConfig config = new SkyTntConfig(VOCAB, DIM, EPSILON, 10000.0,
 				NET_LAYERS, HEADS, FFN, SEQ_LEN,
@@ -103,9 +104,9 @@ public class SkyTntMidiTest extends TestSuiteBase {
 		PackedCollection netPos = new PackedCollection(1);
 		PackedCollection tokenPos = new PackedCollection(1);
 
-		PackedCollection netFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, netHeadSize, SEQ_LEN);
-		PackedCollection tokenFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer tokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, tokenHeadSize, SEQ_LEN);
 
 		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
@@ -131,7 +132,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 	 * <p>Guarded by {@code skipLongTests} — runs one forward pass through the compiled
 	 * net transformer and checks output shape.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testNetForwardPassShape() {
 		if (skipLongTests) return;
 
@@ -147,7 +148,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 
 		int netHeadSize = DIM / HEADS;
 		PackedCollection netPos = new PackedCollection(1);
-		PackedCollection netFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, netHeadSize, SEQ_LEN);
 
 		CompiledModel netModel = SkyTntMidi.buildTransformerModel(
@@ -169,7 +170,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 	 *
 	 * <p>Guarded by {@code skipLongTests}.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testNetTokenForwardPassShape() {
 		if (skipLongTests) return;
 
@@ -185,7 +186,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 
 		int tokenHeadSize = DIM / HEADS_TOKEN;
 		PackedCollection tokenPos = new PackedCollection(1);
-		PackedCollection tokenFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer tokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, tokenHeadSize, SEQ_LEN);
 		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
 
@@ -213,7 +214,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 	 *   <li>Each generated row (step 0) contains a valid event-type token or PAD</li>
 	 * </ul>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testGenerationFromBos() {
 		if (skipLongTests) return;
 
@@ -233,9 +234,9 @@ public class SkyTntMidiTest extends TestSuiteBase {
 		PackedCollection netPos = new PackedCollection(1);
 		PackedCollection tokenPos = new PackedCollection(1);
 
-		PackedCollection netFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, netHeadSize, SEQ_LEN);
-		PackedCollection tokenFreqCis = RotationFeatures.computeRopeFreqs(
+		CollectionProducer tokenFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, tokenHeadSize, SEQ_LEN);
 
 		PackedCollection netEmbed = new PackedCollection(new TraversalPolicy(VOCAB, DIM));
