@@ -88,23 +88,64 @@ import java.util.function.BiConsumer;
  */
 public class FlowTreeController implements ConsoleFeatures {
 
-    /** Slack Bot User OAuth Token (xoxb-...) used for posting messages. */
-    private final String botToken;
-    /** Slack App-level token (xapp-...) used for Socket Mode event delivery. */
-    private final String appToken;
-    /** Posts job status updates and completion notifications to Slack channels. */
-    private final SlackNotifier notifier;
+    /**
+     * Runtime state for a single Slack workspace connection.
+     *
+     * <p>Each entry holds the tokens, Bolt {@link App}, {@link SocketModeApp}, and
+     * {@link SlackNotifier} for one Slack team. In single-workspace mode only
+     * {@link #defaultConnection} is populated; in multi-workspace mode
+     * {@link #workspaceConnections} holds one entry per {@code slackWorkspaces} entry.</p>
+     */
+    public static class WorkspaceConnection {
+        /** Slack team ID (T...) identifying this workspace. */
+        public final String workspaceId;
+        /** Bot User OAuth token for posting messages (xoxb-...). */
+        public final String botToken;
+        /** App-level token for Socket Mode delivery (xapp-...). */
+        public final String appToken;
+        /** Bolt application instance for this workspace. */
+        public App app;
+        /** Socket Mode connection for this workspace. */
+        public SocketModeApp socketModeApp;
+        /** Bot's own Slack user ID; used to suppress echoed messages. */
+        public String botUserId;
+        /** Notifier backed by this workspace's bot token. */
+        public final SlackNotifier notifier;
+
+        /**
+         * Creates a workspace connection with the given tokens.
+         *
+         * @param workspaceId human-readable or team-ID label
+         * @param botToken    Slack bot user token (xoxb-...)
+         * @param appToken    Slack app-level token (xapp-...)
+         */
+        public WorkspaceConnection(String workspaceId, String botToken, String appToken) {
+            this.workspaceId = workspaceId;
+            this.botToken = botToken;
+            this.appToken = appToken;
+            this.notifier = new SlackNotifier(botToken);
+        }
+    }
+
+    /**
+     * Per-workspace Slack connections, keyed by workspace ID.
+     * Populated by {@link #loadConfig(File)} from the {@code slackWorkspaces} config list.
+     * Empty when running in single-workspace (legacy) mode.
+     */
+    private final Map<String, WorkspaceConnection> workspaceConnections = new LinkedHashMap<>();
+
+    /**
+     * Fallback single-workspace connection used when {@code slackWorkspaces} is absent
+     * from the config (backward-compatible mode).  Also used when the controller is
+     * constructed directly with {@code (botToken, appToken)}.
+     */
+    private WorkspaceConnection defaultConnection;
+
     /** Parses incoming Slack messages and slash commands into agent jobs. */
     private final SlackListener listener;
 
     /** Guards against double-start; set to {@code true} on the first {@link #start()} call. */
     private final AtomicBoolean running;
-    /** The Bolt Slack application that registers event handlers. */
-    private App app;
-    /** Maintains the persistent Socket Mode WebSocket connection to Slack. */
-    private SocketModeApp socketModeApp;
-    /** Bot's own Slack user ID; used to suppress echoed messages from the bot itself. */
-    private String botUserId;
 
     /** The FlowTree server that accepts inbound agent connections and relays jobs. */
     private Server flowtreeServer;
@@ -150,16 +191,18 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Creates a new controller with explicit tokens.
+     * Creates a new controller with explicit tokens (single-workspace / legacy mode).
      *
-     * @param botToken the Slack Bot User OAuth Token
-     * @param appToken the Slack App-level token (for Socket Mode)
+     * <p>When {@code slackWorkspaces} is later loaded via {@link #loadConfig(File)},
+     * the multi-workspace path is used instead and {@code defaultConnection} is
+     * replaced with the per-workspace connections.</p>
+     *
+     * @param botToken the Slack Bot User OAuth Token (xoxb-...), or {@code null}
+     * @param appToken the Slack App-level token (xapp-...), or {@code null}
      */
     public FlowTreeController(String botToken, String appToken) {
-        this.botToken = botToken;
-        this.appToken = appToken;
-        this.notifier = new SlackNotifier(botToken);
-        this.listener = new SlackListener(notifier);
+        this.defaultConnection = new WorkspaceConnection("default", botToken, appToken);
+        this.listener = new SlackListener(this.defaultConnection.notifier);
         this.running = new AtomicBoolean(false);
     }
 
@@ -226,14 +269,23 @@ public class FlowTreeController implements ConsoleFeatures {
             listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
         }
 
-        // Pass channel owner user ID to notifier for auto-inviting to new channels
-        if (config.getChannelOwnerUserId() != null) {
-            notifier.setChannelOwnerUserId(config.getChannelOwnerUserId());
+        // Populate per-workspace connections from slackWorkspaces list
+        if (config.getSlackWorkspaces() != null && !config.getSlackWorkspaces().isEmpty()) {
+            buildWorkspaceConnections(config.getSlackWorkspaces());
         }
 
-        // Pass default channel to notifier for fallback message delivery
-        if (config.getDefaultChannel() != null) {
-            notifier.setDefaultChannelId(config.getDefaultChannel());
+        // Apply global notifier settings to the active notifier (single-workspace fallback)
+        SlackNotifier activeNotifier = getNotifier();
+        if (activeNotifier != null) {
+            // Pass channel owner user ID to notifier for auto-inviting to new channels
+            if (config.getChannelOwnerUserId() != null) {
+                activeNotifier.setChannelOwnerUserId(config.getChannelOwnerUserId());
+            }
+
+            // Pass default channel to notifier for fallback message delivery
+            if (config.getDefaultChannel() != null) {
+                activeNotifier.setDefaultChannelId(config.getDefaultChannel());
+            }
         }
 
         // Pass config and file reference to listener for /flowtree setup persistence
@@ -337,6 +389,12 @@ public class FlowTreeController implements ConsoleFeatures {
                 listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
             }
 
+            // Rebuild workspace connections if slackWorkspaces has entries
+            if (config.getSlackWorkspaces() != null && !config.getSlackWorkspaces().isEmpty()) {
+                buildWorkspaceConnections(config.getSlackWorkspaces());
+                log("Rebuilt " + workspaceConnections.size() + " workspace connection(s)");
+            }
+
             for (Workstream workstream : config.toWorkstreams()) {
                 registerWorkstream(workstream);
             }
@@ -358,10 +416,33 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Returns the notifier instance.
+     * Returns the primary notifier instance.
+     *
+     * <p>In single-workspace mode this is the {@code defaultConnection} notifier.
+     * In multi-workspace mode this is the first workspace connection's notifier.
+     * Tests and callers that need only one notifier should use this method.</p>
      */
     public SlackNotifier getNotifier() {
-        return notifier;
+        if (!workspaceConnections.isEmpty()) {
+            return workspaceConnections.values().iterator().next().notifier;
+        }
+        return defaultConnection != null ? defaultConnection.notifier : null;
+    }
+
+    /**
+     * Returns all workspace connections, keyed by workspace ID.
+     * Returns an empty map in single-workspace (legacy) mode.
+     */
+    public Map<String, WorkspaceConnection> getWorkspaceConnections() {
+        return workspaceConnections;
+    }
+
+    /**
+     * Returns the fallback single-workspace connection used in legacy mode,
+     * or {@code null} when multi-workspace mode is active.
+     */
+    public WorkspaceConnection getDefaultConnection() {
+        return defaultConnection;
     }
 
     /**
@@ -410,13 +491,67 @@ public class FlowTreeController implements ConsoleFeatures {
         listener.setConfigReloader(this::reloadConfig);
         log("FlowTree server listening on port " + flowtreePort);
 
+        if (workspaceConnections.isEmpty()) {
+            // Single-workspace (legacy) mode: use defaultConnection
+            startSingleWorkspace();
+        } else {
+            // Multi-workspace mode: start one App + SocketModeApp per workspace
+            startMultiWorkspace();
+        }
+
+        startApiEndpoint();
+        // Pushed tools removed — ar-manager is the single centralized tool
+        printStartupSummary();
+    }
+
+    /**
+     * Clears and rebuilds {@link #workspaceConnections} from the given config entries.
+     *
+     * <p>Each entry is converted to a {@link WorkspaceConnection} with per-workspace notifier
+     * settings applied. After the loop, {@link #defaultConnection} is updated to the first
+     * connection and the listener's notifier is re-wired to match.</p>
+     *
+     * @param entries the Slack workspace entries from the YAML configuration
+     */
+    private void buildWorkspaceConnections(List<WorkstreamConfig.SlackWorkspaceEntry> entries) {
+        workspaceConnections.clear();
+        for (WorkstreamConfig.SlackWorkspaceEntry wsEntry : entries) {
+            try {
+                SlackTokens tokens = SlackTokens.from(wsEntry);
+                WorkspaceConnection conn = new WorkspaceConnection(
+                        wsEntry.getWorkspaceId(), tokens.getBotToken(), tokens.getAppToken());
+                if (wsEntry.getChannelOwnerUserId() != null) {
+                    conn.notifier.setChannelOwnerUserId(wsEntry.getChannelOwnerUserId());
+                }
+                if (wsEntry.getDefaultChannel() != null) {
+                    conn.notifier.setDefaultChannelId(wsEntry.getDefaultChannel());
+                }
+                workspaceConnections.put(wsEntry.getWorkspaceId(), conn);
+                log("Configured workspace connection: " + wsEntry.getWorkspaceId()
+                        + (wsEntry.getName() != null ? " (" + wsEntry.getName() + ")" : ""));
+            } catch (IOException e) {
+                warn("Failed to load tokens for workspace " + wsEntry.getWorkspaceId()
+                        + ": " + e.getMessage());
+            }
+        }
+        if (!workspaceConnections.isEmpty()) {
+            defaultConnection = workspaceConnections.values().iterator().next();
+            listener.setNotifier(defaultConnection.notifier);
+        }
+    }
+
+    /**
+     * Starts the controller in single-workspace (legacy) mode using {@link #defaultConnection}.
+     * Falls back to simulation mode when tokens are absent.
+     */
+    private void startSingleWorkspace() throws Exception {
+        String botToken = defaultConnection != null ? defaultConnection.botToken : null;
+        String appToken = defaultConnection != null ? defaultConnection.appToken : null;
+
         if (botToken == null || botToken.isEmpty() || appToken == null || appToken.isEmpty()) {
             log("WARNING: Missing SLACK_BOT_TOKEN or SLACK_APP_TOKEN");
             log("         Running in simulation mode");
             simulationMode = true;
-            startApiEndpoint();
-            // Pushed tools removed — ar-manager is the single centralized tool
-            printStartupSummary();
             return;
         }
 
@@ -424,17 +559,17 @@ public class FlowTreeController implements ConsoleFeatures {
         AppConfig appConfig = AppConfig.builder()
             .singleTeamBotToken(botToken)
             .build();
-        app = new App(appConfig);
+        defaultConnection.app = new App(appConfig);
 
         // Register event handlers
-        registerEventHandlers();
+        registerEventHandlers(defaultConnection.app, defaultConnection.workspaceId);
 
-        // Get bot user ID
+        // Resolve bot user ID
         try {
-            AuthTestResponse authTest = app.client().authTest(r -> r.token(botToken));
+            AuthTestResponse authTest = defaultConnection.app.client().authTest(r -> r.token(botToken));
             if (authTest.isOk()) {
-                botUserId = authTest.getUserId();
-                log("Bot User ID: " + botUserId);
+                defaultConnection.botUserId = authTest.getUserId();
+                log("Bot User ID: " + defaultConnection.botUserId);
                 log("Bot Name: " + authTest.getUser());
                 log("Team: " + authTest.getTeam());
             } else {
@@ -445,18 +580,52 @@ public class FlowTreeController implements ConsoleFeatures {
         }
 
         // Start Socket Mode
-        socketModeApp = new SocketModeApp(appToken, app);
-        socketModeApp.startAsync();
-
-        log("Socket Mode connection established");
-
-        startApiEndpoint();
-        // Pushed tools removed — ar-manager is the single centralized tool
-        printStartupSummary();
+        defaultConnection.socketModeApp = new SocketModeApp(appToken, defaultConnection.app);
+        defaultConnection.socketModeApp.startAsync();
+        log("Socket Mode connection established (single workspace)");
     }
 
     /**
-     * Registers all Slack event handlers with the Bolt {@link App}.
+     * Starts one Bolt App + SocketModeApp for each entry in {@link #workspaceConnections}.
+     */
+    private void startMultiWorkspace() throws Exception {
+        log("Starting multi-workspace mode with " + workspaceConnections.size() + " workspace(s)");
+        for (WorkspaceConnection conn : workspaceConnections.values()) {
+            String botToken = conn.botToken;
+            String appToken = conn.appToken;
+
+            if (botToken == null || botToken.isEmpty() || appToken == null || appToken.isEmpty()) {
+                warn("Workspace " + conn.workspaceId + " missing tokens — skipping");
+                continue;
+            }
+
+            AppConfig appConfig = AppConfig.builder()
+                .singleTeamBotToken(botToken)
+                .build();
+            conn.app = new App(appConfig);
+
+            registerEventHandlers(conn.app, conn.workspaceId);
+
+            try {
+                AuthTestResponse authTest = conn.app.client().authTest(r -> r.token(botToken));
+                if (authTest.isOk()) {
+                    conn.botUserId = authTest.getUserId();
+                    log("Workspace " + conn.workspaceId + " bot user ID: " + conn.botUserId);
+                } else {
+                    warn("Workspace " + conn.workspaceId + " auth test failed: " + authTest.getError());
+                }
+            } catch (SlackApiException e) {
+                warn("Workspace " + conn.workspaceId + " failed to verify token: " + e.getMessage());
+            }
+
+            conn.socketModeApp = new SocketModeApp(appToken, conn.app);
+            conn.socketModeApp.startAsync();
+            log("Socket Mode established for workspace: " + conn.workspaceId);
+        }
+    }
+
+    /**
+     * Registers all Slack event handlers with the given Bolt {@link App}.
      *
      * <p>Handlers registered here:</p>
      * <ul>
@@ -468,16 +637,19 @@ public class FlowTreeController implements ConsoleFeatures {
      *       also dispatched to {@link SlackListener#handleMessage}</li>
      * </ul>
      *
-     * <p>The bot suppresses its own messages by comparing the event user ID to
-     * {@link #botUserId}.</p>
+     * <p>The {@code workspaceId} is passed through to listener methods so that
+     * workspace-scoped routing can be implemented in Phase 1c.</p>
+     *
+     * @param app         the Bolt application to register handlers on
+     * @param workspaceId the Slack team ID for this App's workspace
      */
-    private void registerEventHandlers() {
+    private void registerEventHandlers(App app, String workspaceId) {
         // Handle /flowtree slash command
         app.command("/flowtree", (req, ctx) -> {
             String channelId = req.getPayload().getChannelId();
             String channelName = req.getPayload().getChannelName();
             String text = req.getPayload().getText();
-            listener.handleSlashCommand(text, channelId, channelName, ctx::respond);
+            listener.handleSlashCommand(text, channelId, channelName, ctx::respond, workspaceId);
             return ctx.ack();
         });
 
@@ -490,14 +662,16 @@ public class FlowTreeController implements ConsoleFeatures {
             String messageTs = event.getTs();
             String threadTs = event.getThreadTs();
 
-            log("App mention in " + channelId + ": " + text);
+            log("App mention in " + channelId + " (workspace " + workspaceId + "): " + text);
 
-            // Skip bot's own messages
+            // Skip bot's own messages; check against the connection's botUserId
+            WorkspaceConnection conn = resolveConnection(workspaceId);
+            String botUserId = conn != null ? conn.botUserId : null;
             if (userId != null && userId.equals(botUserId)) {
                 return ctx.ack();
             }
 
-            listener.handleMessage(channelId, userId, text, messageTs, threadTs);
+            listener.handleMessage(channelId, userId, text, messageTs, threadTs, workspaceId);
             return ctx.ack();
         });
 
@@ -517,14 +691,30 @@ public class FlowTreeController implements ConsoleFeatures {
             String threadTs = event.getThreadTs();
 
             // Skip bot's own messages
+            WorkspaceConnection conn = resolveConnection(workspaceId);
+            String botUserId = conn != null ? conn.botUserId : null;
             if (userId != null && userId.equals(botUserId)) {
                 return ctx.ack();
             }
 
-            log("DM from " + userId + ": " + text);
-            listener.handleMessage(channelId, userId, text, messageTs, threadTs);
+            log("DM from " + userId + " (workspace " + workspaceId + "): " + text);
+            listener.handleMessage(channelId, userId, text, messageTs, threadTs, workspaceId);
             return ctx.ack();
         });
+    }
+
+    /**
+     * Resolves the {@link WorkspaceConnection} for the given workspace ID.
+     * Falls back to {@link #defaultConnection} when the ID is absent or unknown.
+     *
+     * @param workspaceId the Slack team ID, or {@code null}
+     * @return the matching connection, or the default
+     */
+    private WorkspaceConnection resolveConnection(String workspaceId) {
+        if (workspaceId != null && workspaceConnections.containsKey(workspaceId)) {
+            return workspaceConnections.get(workspaceId);
+        }
+        return defaultConnection;
     }
 
     /**
@@ -790,13 +980,16 @@ public class FlowTreeController implements ConsoleFeatures {
         new File(dataDir).mkdirs();
         statsStore = new JobStatsStore(dataDir + "/stats");
         statsStore.initialize();
-        notifier.setStatsStore(statsStore);
+        SlackNotifier primaryNotifier = getNotifier();
+        if (primaryNotifier != null) {
+            primaryNotifier.setStatsStore(statsStore);
+        }
 
         // Initialize SignalWire SMS alerting (no-op if config file is absent)
         SignalWireDeliveryProvider.attachDefault();
 
         try {
-            apiEndpoint = new FlowTreeApiEndpoint(apiPort, notifier);
+            apiEndpoint = new FlowTreeApiEndpoint(apiPort, primaryNotifier);
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
@@ -897,14 +1090,28 @@ public class FlowTreeController implements ConsoleFeatures {
             statsStore = null;
         }
 
-        if (socketModeApp != null) {
-            socketModeApp.stop();
-            socketModeApp = null;
+        // Stop all workspace connections
+        for (WorkspaceConnection conn : workspaceConnections.values()) {
+            if (conn.socketModeApp != null) {
+                conn.socketModeApp.stop();
+                conn.socketModeApp = null;
+            }
+            if (conn.app != null) {
+                conn.app.stop();
+                conn.app = null;
+            }
         }
 
-        if (app != null) {
-            app.stop();
-            app = null;
+        // Stop the default (single-workspace) connection if distinct from workspace connections
+        if (defaultConnection != null && !workspaceConnections.containsValue(defaultConnection)) {
+            if (defaultConnection.socketModeApp != null) {
+                defaultConnection.socketModeApp.stop();
+                defaultConnection.socketModeApp = null;
+            }
+            if (defaultConnection.app != null) {
+                defaultConnection.app.stop();
+                defaultConnection.app = null;
+            }
         }
 
         log("Stopped");
@@ -930,14 +1137,21 @@ public class FlowTreeController implements ConsoleFeatures {
     /**
      * Sets a simulator callback for testing without real Slack connection.
      *
+     * <p>In multi-workspace mode this installs the callback on the first workspace
+     * connection's notifier. For tests that need per-workspace callbacks, use
+     * {@link #getWorkspaceConnections()} to access individual notifiers directly.</p>
+     *
      * @param simulator callback receiving (channelId, message) for outgoing messages
      */
     public void setEventSimulator(BiConsumer<String, String> simulator) {
-        notifier.setMessageCallback(json -> {
-            String channel = extractJsonField(json, "channel");
-            String text = extractJsonField(json, "text");
-            simulator.accept(channel, text);
-        });
+        SlackNotifier activeNotifier = getNotifier();
+        if (activeNotifier != null) {
+            activeNotifier.setMessageCallback(json -> {
+                String channel = extractJsonField(json, "channel");
+                String text = extractJsonField(json, "text");
+                simulator.accept(channel, text);
+            });
+        }
     }
 
     /**

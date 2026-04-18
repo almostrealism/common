@@ -1657,4 +1657,180 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
+
+    // -------------------------------------------------------------------------
+    // Phase 1a: Multi-Tenant Config Schema Tests
+    // -------------------------------------------------------------------------
+
+    @Test(timeout = 10000)
+    public void testSlackWorkspaceEntryYamlRoundTrip() throws IOException {
+        String yaml = "slackWorkspaces:\n" +
+                      "  - workspaceId: \"T0123456789\"\n" +
+                      "    name: \"my-org\"\n" +
+                      "    botToken: \"xoxb-test\"\n" +
+                      "    appToken: \"xapp-test\"\n" +
+                      "    defaultChannel: \"C0987654321\"\n" +
+                      "    channelOwnerUserId: \"U0123456789\"\n" +
+                      "workstreams: []\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        assertNotNull(config.getSlackWorkspaces());
+        assertEquals(1, config.getSlackWorkspaces().size());
+
+        WorkstreamConfig.SlackWorkspaceEntry entry = config.getSlackWorkspaces().get(0);
+        assertEquals("T0123456789", entry.getWorkspaceId());
+        assertEquals("my-org", entry.getName());
+        assertEquals("xoxb-test", entry.getBotToken());
+        assertEquals("xapp-test", entry.getAppToken());
+        assertEquals("C0987654321", entry.getDefaultChannel());
+        assertEquals("U0123456789", entry.getChannelOwnerUserId());
+    }
+
+    @Test(timeout = 10000)
+    public void testMultipleSlackWorkspacesYamlParsing() throws IOException {
+        String yaml = "slackWorkspaces:\n" +
+                      "  - workspaceId: \"T111\"\n" +
+                      "    name: \"workspace-one\"\n" +
+                      "    botToken: \"xoxb-one\"\n" +
+                      "    appToken: \"xapp-one\"\n" +
+                      "    githubOrgs:\n" +
+                      "      my-org:\n" +
+                      "        token: \"ghp_one\"\n" +
+                      "  - workspaceId: \"T222\"\n" +
+                      "    name: \"workspace-two\"\n" +
+                      "    botToken: \"xoxb-two\"\n" +
+                      "    appToken: \"xapp-two\"\n" +
+                      "workstreams: []\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        assertEquals(2, config.getSlackWorkspaces().size());
+
+        WorkstreamConfig.SlackWorkspaceEntry ws1 = config.getSlackWorkspaces().get(0);
+        assertEquals("T111", ws1.getWorkspaceId());
+        assertEquals("workspace-one", ws1.getName());
+        assertEquals("xoxb-one", ws1.getBotToken());
+        assertNotNull(ws1.getGithubOrgs());
+        assertEquals("ghp_one", ws1.getGithubOrgs().get("my-org").getToken());
+
+        WorkstreamConfig.SlackWorkspaceEntry ws2 = config.getSlackWorkspaces().get(1);
+        assertEquals("T222", ws2.getWorkspaceId());
+        assertEquals("xoxb-two", ws2.getBotToken());
+    }
+
+    @Test(timeout = 10000)
+    public void testBackwardCompatNoSlackWorkspaces() throws IOException {
+        String yaml = "workstreams:\n" +
+                      "  - channelId: \"C0123456789\"\n" +
+                      "    channelName: \"#project-agent\"\n" +
+                      "    defaultBranch: \"feature/work\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        // slackWorkspaces should be an empty list, not null
+        assertNotNull(config.getSlackWorkspaces());
+        assertEquals(0, config.getSlackWorkspaces().size());
+
+        // Regular workstreams still parse correctly
+        assertEquals(1, config.getWorkstreams().size());
+        assertEquals("C0123456789", config.getWorkstreams().get(0).getChannelId());
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamEntryWithSlackWorkspaceId() throws IOException {
+        String yaml = "slackWorkspaces:\n" +
+                      "  - workspaceId: \"T111\"\n" +
+                      "    botToken: \"xoxb-one\"\n" +
+                      "    appToken: \"xapp-one\"\n" +
+                      "workstreams:\n" +
+                      "  - channelId: \"C001\"\n" +
+                      "    channelName: \"#ws-with-id\"\n" +
+                      "    slackWorkspaceId: \"T111\"\n" +
+                      "    defaultBranch: \"feature/work\"\n" +
+                      "  - channelId: \"C002\"\n" +
+                      "    channelName: \"#ws-without-id\"\n" +
+                      "    defaultBranch: \"feature/other\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        assertEquals(2, config.getWorkstreams().size());
+
+        WorkstreamConfig.WorkstreamEntry entryWithId = config.getWorkstreams().get(0);
+        assertEquals("C001", entryWithId.getChannelId());
+        assertEquals("T111", entryWithId.getSlackWorkspaceId());
+
+        WorkstreamConfig.WorkstreamEntry entryWithoutId = config.getWorkstreams().get(1);
+        assertEquals("C002", entryWithoutId.getChannelId());
+        assertNull(entryWithoutId.getSlackWorkspaceId());
+
+        // Verify toWorkstream() propagates slackWorkspaceId
+        List<Workstream> workstreams = config.toWorkstreams();
+        assertEquals("T111", workstreams.get(0).getSlackWorkspaceId());
+        assertNull(workstreams.get(1).getSlackWorkspaceId());
+    }
+
+    @Test(timeout = 10000)
+    public void testSlackTokensFromEntryInlineTokens() throws IOException {
+        WorkstreamConfig.SlackWorkspaceEntry entry = new WorkstreamConfig.SlackWorkspaceEntry();
+        entry.setWorkspaceId("T999");
+        entry.setBotToken("xoxb-inline-bot");
+        entry.setAppToken("xapp-inline-app");
+
+        SlackTokens tokens = SlackTokens.from(entry);
+
+        assertEquals("xoxb-inline-bot", tokens.getBotToken());
+        assertEquals("xapp-inline-app", tokens.getAppToken());
+    }
+
+    @Test(timeout = 10000)
+    public void testSlackTokensFromEntryTokensFile() throws IOException {
+        File tempFile = File.createTempFile("workspace-tokens-test", ".json");
+        tempFile.deleteOnExit();
+        Files.write(tempFile.toPath(),
+                "{ \"botToken\": \"xoxb-from-file\", \"appToken\": \"xapp-from-file\" }".getBytes());
+
+        WorkstreamConfig.SlackWorkspaceEntry entry = new WorkstreamConfig.SlackWorkspaceEntry();
+        entry.setWorkspaceId("T888");
+        entry.setTokensFile(tempFile.getAbsolutePath());
+        entry.setBotToken("xoxb-should-be-ignored");
+
+        SlackTokens tokens = SlackTokens.from(entry);
+
+        // tokensFile takes priority over inline fields
+        assertEquals("xoxb-from-file", tokens.getBotToken());
+        assertEquals("xapp-from-file", tokens.getAppToken());
+    }
+
+    @Test(timeout = 10000)
+    public void testSlackWorkspaceEntryUnknownFieldsIgnored() throws IOException {
+        String yaml = "slackWorkspaces:\n" +
+                      "  - workspaceId: \"T777\"\n" +
+                      "    botToken: \"xoxb-777\"\n" +
+                      "    futureField: \"ignored\"\n" +
+                      "workstreams: []\n";
+
+        // Should not throw
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals("T777", config.getSlackWorkspaces().get(0).getWorkspaceId());
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamSlackWorkspaceIdPreservedInAddAndSync() {
+        WorkstreamConfig config = new WorkstreamConfig();
+
+        Workstream ws = new Workstream("ws-1", "C001", "#channel-one");
+        ws.setSlackWorkspaceId("T111");
+        ws.setDefaultBranch("main");
+
+        config.addWorkstream(ws);
+        assertEquals(1, config.getWorkstreams().size());
+        assertEquals("T111", config.getWorkstreams().get(0).getSlackWorkspaceId());
+
+        // Update via syncFromWorkstreams
+        ws.setSlackWorkspaceId("T222");
+        config.syncFromWorkstreams(List.of(ws));
+        assertEquals("T222", config.getWorkstreams().get(0).getSlackWorkspaceId());
+    }
 }
+

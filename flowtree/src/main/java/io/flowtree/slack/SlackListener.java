@@ -94,7 +94,7 @@ public class SlackListener implements ConsoleFeatures {
     /** Maps Slack channel ID to the registered workstream for that channel. */
     private final Map<String, Workstream> channelToWorkstream;
     /** Posts status and completion messages back to Slack. */
-    private final SlackNotifier notifier;
+    private SlackNotifier notifier;
 
     /** FlowTree server that accepts inbound agent connections and queues jobs. */
     private Server server;
@@ -122,6 +122,18 @@ public class SlackListener implements ConsoleFeatures {
     public SlackListener(SlackNotifier notifier) {
         this.notifier = notifier;
         this.channelToWorkstream = new HashMap<>();
+    }
+
+    /**
+     * Replaces the notifier used for posting status messages.
+     *
+     * <p>Called by {@link FlowTreeController} when multi-workspace config is loaded
+     * so the listener's primary notifier matches the first workspace connection.</p>
+     *
+     * @param notifier the new notifier instance
+     */
+    public void setNotifier(SlackNotifier notifier) {
+        this.notifier = notifier;
     }
 
     /**
@@ -244,6 +256,27 @@ public class SlackListener implements ConsoleFeatures {
      */
     public void setDefaultWorkspacePath(String defaultWorkspacePath) {
         this.defaultWorkspacePath = defaultWorkspacePath;
+    }
+
+    /**
+     * Handles an incoming Slack message event (workspace-aware overload).
+     *
+     * <p>This method is called by {@link FlowTreeController} in multi-workspace mode.
+     * The {@code workspaceId} identifies which Slack team sent the event, enabling
+     * future workspace-scoped routing. For Phase 1b the parameter is recorded but
+     * routing is still channel-based; full workspace routing is added in Phase 1c.</p>
+     *
+     * @param channelId   the channel where the message was posted
+     * @param userId      the user who posted the message
+     * @param text        the message text
+     * @param messageTs   the timestamp of this message (used to create a thread under it)
+     * @param threadTs    the thread timestamp (non-null if the message is already in a thread)
+     * @param workspaceId the Slack team ID of the workspace that sent this event, or {@code null}
+     * @return true if a job was created, false if the message was ignored
+     */
+    public boolean handleMessage(String channelId, String userId, String text,
+                                  String messageTs, String threadTs, String workspaceId) {
+        return handleMessage(channelId, userId, text, messageTs, threadTs);
     }
 
     /**
@@ -519,6 +552,25 @@ public class SlackListener implements ConsoleFeatures {
     public void setWorkstreamConfig(WorkstreamConfig config, File configFile) {
         this.workstreamConfig = config;
         this.configFile = configFile;
+    }
+
+    /**
+     * Handles the {@code /flowtree} slash command (workspace-aware overload).
+     *
+     * <p>In multi-workspace mode the controller calls this overload so that the
+     * {@code workspaceId} is available for future workspace-scoped filtering (Phase 1c).
+     * For Phase 1b the parameter is accepted but routing is still channel-based.</p>
+     *
+     * @param text        the full command text after "/flowtree "
+     * @param channelId   the channel where the command was invoked
+     * @param channelName the human-readable channel name
+     * @param responder   the responder for sending ephemeral replies
+     * @param workspaceId the Slack team ID of the workspace, or {@code null}
+     */
+    public void handleSlashCommand(String text, String channelId,
+                                    String channelName, SlashCommandResponder responder,
+                                    String workspaceId) {
+        handleSlashCommand(text, channelId, channelName, responder);
     }
 
     /**
