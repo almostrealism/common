@@ -258,21 +258,22 @@ public class FlowTreeController implements ConsoleFeatures {
             log("Generated workstream IDs and saved to " + configFile.getName());
         }
 
-        for (Workstream workstream : config.toWorkstreams()) {
-            registerWorkstream(workstream);
-        }
-        log("Loaded " + config.getWorkstreams().size() +
-                          " workstream(s) from " + configFile.getName());
-
         // Pass global default workspace path to listener
         if (config.getDefaultWorkspacePath() != null) {
             listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
         }
 
-        // Populate per-workspace connections from slackWorkspaces list
+        // Populate per-workspace connections from slackWorkspaces list before registering
+        // workstreams so that notifiersByWorkspace is ready when registerWorkstream() is called.
         if (config.getSlackWorkspaces() != null && !config.getSlackWorkspaces().isEmpty()) {
             buildWorkspaceConnections(config.getSlackWorkspaces());
         }
+
+        for (Workstream workstream : config.toWorkstreams()) {
+            registerWorkstream(workstream);
+        }
+        log("Loaded " + config.getWorkstreams().size() +
+                          " workstream(s) from " + configFile.getName());
 
         // Apply global notifier settings to the active notifier (single-workspace fallback)
         SlackNotifier activeNotifier = getNotifier();
@@ -389,7 +390,8 @@ public class FlowTreeController implements ConsoleFeatures {
                 listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
             }
 
-            // Rebuild workspace connections if slackWorkspaces has entries
+            // Rebuild workspace connections before re-registering workstreams so that
+            // notifiersByWorkspace is populated when registerWorkstream() runs.
             if (config.getSlackWorkspaces() != null && !config.getSlackWorkspaces().isEmpty()) {
                 buildWorkspaceConnections(config.getSlackWorkspaces());
                 log("Rebuilt " + workspaceConnections.size() + " workspace connection(s)");
@@ -537,6 +539,14 @@ public class FlowTreeController implements ConsoleFeatures {
         if (!workspaceConnections.isEmpty()) {
             defaultConnection = workspaceConnections.values().iterator().next();
             listener.setNotifier(defaultConnection.notifier);
+
+            // Build workspace-ID → notifier map and push it to the listener so that
+            // Phase 1c routing can resolve the correct notifier per workspace.
+            Map<String, SlackNotifier> notifierMap = new LinkedHashMap<>();
+            for (Map.Entry<String, WorkspaceConnection> entry : workspaceConnections.entrySet()) {
+                notifierMap.put(entry.getKey(), entry.getValue().notifier);
+            }
+            listener.setNotifiersByWorkspace(notifierMap);
         }
     }
 
@@ -984,6 +994,13 @@ public class FlowTreeController implements ConsoleFeatures {
         if (primaryNotifier != null) {
             primaryNotifier.setStatsStore(statsStore);
         }
+        // Propagate the global stats store to every workspace notifier so that
+        // per-workspace slash commands (/flowtree jobs, /flowtree stats) work correctly.
+        for (WorkspaceConnection conn : workspaceConnections.values()) {
+            if (conn.notifier != primaryNotifier) {
+                conn.notifier.setStatsStore(statsStore);
+            }
+        }
 
         // Initialize SignalWire SMS alerting (no-op if config file is absent)
         SignalWireDeliveryProvider.attachDefault();
@@ -994,14 +1011,37 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
 
-            // Populate per-org GitHub tokens from config
-            if (loadedConfig != null && loadedConfig.getGithubOrgs() != null) {
+            // Populate per-org GitHub tokens: start with global githubOrgs, then merge
+            // per-workspace entries so that multi-tenant deployments can have distinct
+            // GitHub tokens per workspace. Warn on collision (same org name in two workspaces).
+            if (loadedConfig != null) {
                 Map<String, String> orgTokens = new LinkedHashMap<>();
-                for (Map.Entry<String, WorkstreamConfig.GitHubOrgEntry> entry
-                        : loadedConfig.getGithubOrgs().entrySet()) {
-                    String orgToken = entry.getValue().getToken();
-                    if (orgToken != null && !orgToken.isEmpty()) {
-                        orgTokens.put(entry.getKey(), orgToken);
+                if (loadedConfig.getGithubOrgs() != null) {
+                    for (Map.Entry<String, WorkstreamConfig.GitHubOrgEntry> entry
+                            : loadedConfig.getGithubOrgs().entrySet()) {
+                        String orgToken = entry.getValue().getToken();
+                        if (orgToken != null && !orgToken.isEmpty()) {
+                            orgTokens.put(entry.getKey(), orgToken);
+                        }
+                    }
+                }
+                if (loadedConfig.getSlackWorkspaces() != null) {
+                    for (WorkstreamConfig.SlackWorkspaceEntry wsEntry
+                            : loadedConfig.getSlackWorkspaces()) {
+                        if (wsEntry.getGithubOrgs() == null) continue;
+                        for (Map.Entry<String, WorkstreamConfig.GitHubOrgEntry> entry
+                                : wsEntry.getGithubOrgs().entrySet()) {
+                            String orgName = entry.getKey();
+                            String orgToken = entry.getValue().getToken();
+                            if (orgToken == null || orgToken.isEmpty()) continue;
+                            if (orgTokens.containsKey(orgName)) {
+                                warn("GitHub org name collision: '" + orgName
+                                        + "' defined in both global githubOrgs and workspace '"
+                                        + wsEntry.getWorkspaceId()
+                                        + "' — workspace entry will override the global one");
+                            }
+                            orgTokens.put(orgName, orgToken);
+                        }
                     }
                 }
                 if (!orgTokens.isEmpty()) {

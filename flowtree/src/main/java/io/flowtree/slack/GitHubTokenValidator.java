@@ -255,6 +255,29 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 			}
 		}
 
+		// Per-workspace githubOrgs: each workspace can define its own set of org tokens.
+		// Warn when two workspaces define a token for the same org name (collision).
+		if (config.getSlackWorkspaces() != null) {
+			for (WorkstreamConfig.SlackWorkspaceEntry wsEntry : config.getSlackWorkspaces()) {
+				if (wsEntry.getGithubOrgs() == null) continue;
+				for (Map.Entry<String, WorkstreamConfig.GitHubOrgEntry> entry
+						: wsEntry.getGithubOrgs().entrySet()) {
+					String orgName = entry.getKey();
+					String orgToken = entry.getValue().getToken();
+					if (orgToken == null || orgToken.isEmpty()) continue;
+					if (orgTokens.containsKey(orgName)) {
+						log("WARNING: GitHub org '" + orgName
+								+ "' appears in both global githubOrgs and workspace '"
+								+ wsEntry.getWorkspaceId()
+								+ "' — workspace entry will override for validation");
+					}
+					String label = "workspace:" + wsEntry.getWorkspaceId() + ":org:" + orgName;
+					orgTokens.put(orgName, orgToken);
+					contexts.computeIfAbsent(orgToken, k -> new TokenContext(label));
+				}
+			}
+		}
+
 		// Scan workstreams to determine which token handles which repo
 		for (WorkstreamConfig.WorkstreamEntry ws : config.getWorkstreams()) {
 			String ownerRepo = extractOwnerRepo(ws.getRepoUrl());

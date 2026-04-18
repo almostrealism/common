@@ -39,6 +39,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1831,6 +1832,180 @@ public class SlackIntegrationTest extends TestSuiteBase {
         ws.setSlackWorkspaceId("T222");
         config.syncFromWorkstreams(List.of(ws));
         assertEquals("T222", config.getWorkstreams().get(0).getSlackWorkspaceId());
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 1c: Listener and Notifier Routing Tests
+    // -------------------------------------------------------------------------
+
+    @Test(timeout = 10000)
+    public void testChannelKeyNullWorkspaceReturnsBareChannelId() {
+        assertEquals("C_ALPHA", SlackListener.channelKey(null, "C_ALPHA"));
+    }
+
+    @Test(timeout = 10000)
+    public void testChannelKeyWithWorkspaceReturnsCompositeKey() {
+        assertEquals("T111:C_ALPHA", SlackListener.channelKey("T111", "C_ALPHA"));
+    }
+
+    @Test(timeout = 10000)
+    public void testChannelKeyDifferentWorkspacesSameChannelProduceDifferentKeys() {
+        String keyA = SlackListener.channelKey("T111", "C_SHARED");
+        String keyB = SlackListener.channelKey("T222", "C_SHARED");
+        assertFalse("Same channel in different workspaces must produce different keys",
+                keyA.equals(keyB));
+    }
+
+    @Test(timeout = 10000)
+    public void testBackwardCompatNullWorkspaceIdRouting() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream ws = new Workstream("ws-back", "C_BACK", "#back");
+        ws.setDefaultBranch("main");
+        listener.registerWorkstream(ws);
+
+        // Bare channel ID lookup (legacy / 5-arg path) must still work
+        Workstream found = listener.getWorkstream("C_BACK");
+        assertNotNull("Backward compat: getWorkstream() with bare channel ID must work", found);
+        assertEquals("C_BACK", found.getChannelId());
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkspaceAwareWorkstreamRegistration() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream ws = new Workstream("ws-multi", "C_MULTI", "#multi");
+        ws.setDefaultBranch("main");
+        ws.setSlackWorkspaceId("T111");
+        listener.registerWorkstream(ws);
+
+        // Composite key lookup: handleMessage with workspaceId=T111 should find it.
+        // Returns false (no agents/server), but the channel is found — does not trigger reload.
+        listener.handleMessage("C_MULTI", "U1", "hello", "ts1", null, "T111");
+        boolean found = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "C_MULTI".equals(w.getChannelId()));
+        assertTrue("Workspace-aware workstream should be registered", found);
+    }
+
+    @Test(timeout = 10000)
+    public void testSameChannelIdInTwoWorkspacesRoutedIndependently() {
+        SlackNotifier notifierA = new SlackNotifier(null);
+        SlackNotifier notifierB = new SlackNotifier(null);
+
+        SlackListener listener = new SlackListener(notifierA);
+
+        Map<String, SlackNotifier> byWorkspace = new HashMap<>();
+        byWorkspace.put("T111", notifierA);
+        byWorkspace.put("T222", notifierB);
+        listener.setNotifiersByWorkspace(byWorkspace);
+
+        Workstream wsA = new Workstream("ws-a", "C_SHARED", "#shared-a");
+        wsA.setDefaultBranch("main");
+        wsA.setSlackWorkspaceId("T111");
+        listener.registerWorkstream(wsA);
+
+        Workstream wsB = new Workstream("ws-b", "C_SHARED", "#shared-b");
+        wsB.setDefaultBranch("develop");
+        wsB.setSlackWorkspaceId("T222");
+        listener.registerWorkstream(wsB);
+
+        // Both workstreams are registered (two separate map entries)
+        assertEquals("Two workstreams with same channelId in different workspaces must coexist",
+                2, listener.getWorkstreams().size());
+
+        // Routing: T111 message goes to wsA (branch=main), T222 to wsB (branch=develop)
+        // We verify by examining the getWorkstreams() values
+        boolean hasMain = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "main".equals(w.getDefaultBranch()));
+        boolean hasDevelop = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "develop".equals(w.getDefaultBranch()));
+        assertTrue("wsA (main branch) must be registered", hasMain);
+        assertTrue("wsB (develop branch) must be registered", hasDevelop);
+    }
+
+    @Test(timeout = 10000)
+    public void testHandleMessageUnknownChannelReturnsFalseWithWorkspaceId() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        boolean handled = listener.handleMessage("C_UNKNOWN", "U1", "hello", "ts1", null, "T111");
+        assertFalse("Message to unknown channel must return false", handled);
+    }
+
+    @Test(timeout = 10000)
+    public void testSlashCommandSetupSetsSlackWorkspaceIdOnNewWorkstream() throws IOException {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        List<String> responses = new ArrayList<>();
+        SlackListener.SlashCommandResponder responder = text -> responses.add(text);
+
+        listener.handleSlashCommand("setup /workspace/project feature/test",
+                "C_SETUP_WS", "#setup-ws", responder, "T999");
+
+        // Workstream should be created and keyed under T999:C_SETUP_WS
+        boolean foundWithWorkspace = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "T999".equals(w.getSlackWorkspaceId())
+                        && "C_SETUP_WS".equals(w.getChannelId()));
+        assertTrue("Setup must store slackWorkspaceId on new workstream", foundWithWorkspace);
+    }
+
+    @Test(timeout = 10000)
+    public void testSlashCommandActiveFiltersWorkstreamsByWorkspace() throws IOException {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Map<String, SlackNotifier> byWorkspace = new HashMap<>();
+        byWorkspace.put("T111", notifier);
+        listener.setNotifiersByWorkspace(byWorkspace);
+
+        // Register two workstreams: one in T111, one in T222
+        Workstream wsA = new Workstream("ws-act-a", "C_ACT_A", "#act-a");
+        wsA.setDefaultBranch("main");
+        wsA.setSlackWorkspaceId("T111");
+        listener.registerWorkstream(wsA);
+
+        Workstream wsB = new Workstream("ws-act-b", "C_ACT_B", "#act-b");
+        wsB.setDefaultBranch("develop");
+        wsB.setSlackWorkspaceId("T222");
+        listener.registerWorkstream(wsB);
+
+        // /flowtree active with workspaceId=T111 should not throw
+        // (stats store is null, so it returns the "not available" message)
+        List<String> responses = new ArrayList<>();
+        SlackListener.SlashCommandResponder responder = text -> responses.add(text);
+        listener.handleSlashCommand("active", "C_ACT_A", "#act-a", responder, "T111");
+
+        assertFalse("Active command should respond", responses.isEmpty());
+        // With null stats store, should get "not available"
+        assertTrue("With null stats store active command warns",
+                responses.get(0).contains("not available"));
+    }
+
+    @Test(timeout = 10000)
+    public void testSetNotifiersByWorkspaceIsUsedForNotifierResolution() {
+        SlackNotifier primaryNotifier = new SlackNotifier(null);
+        SlackNotifier workspaceNotifier = new SlackNotifier(null);
+
+        SlackListener listener = new SlackListener(primaryNotifier);
+
+        Map<String, SlackNotifier> byWorkspace = new HashMap<>();
+        byWorkspace.put("T_SPECIAL", workspaceNotifier);
+        listener.setNotifiersByWorkspace(byWorkspace);
+
+        // Register a workstream in T_SPECIAL
+        Workstream ws = new Workstream("ws-special", "C_SPECIAL", "#special");
+        ws.setSlackWorkspaceId("T_SPECIAL");
+        ws.setDefaultBranch("main");
+        listener.registerWorkstream(ws);
+
+        // The workstream should be registered in the workspace notifier, not the primary
+        // Verify by checking that the workspace notifier has the workstream
+        // (getRecentJobs returns non-null for a registered workstream)
+        Map<String, JobCompletionEvent> jobs = workspaceNotifier.getRecentJobs(ws.getWorkstreamId());
+        assertNotNull("Workspace notifier should have workstream registered", jobs);
     }
 }
 
