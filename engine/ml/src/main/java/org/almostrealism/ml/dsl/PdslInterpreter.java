@@ -1078,7 +1078,7 @@ public class PdslInterpreter {
 	private Object callFir(List<Object> args) {
 		if (args.size() == 1 && args.get(0) instanceof PackedCollection) {
 			PackedCollection coefficients = (PackedCollection) args.get(0);
-			return firFilterBlock("fir", FEATURES.p(coefficients));
+			return firFilterBlock("fir", FEATURES.cp(coefficients));
 		}
 		throw new PdslParseException(
 				"fir() expects 1 weight argument (coefficients), got " + args.size());
