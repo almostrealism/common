@@ -1,0 +1,24 @@
+// Test fixture for state-aware audio DSP primitives.
+// Used by PdslAudioDspTest state-block tests.
+
+// Biquad IIR filter state — 4-element history [x1, x2, y1, y2]
+state biquad_state {
+    history: weight
+}
+
+// Biquad filter layer: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
+// State (history) is populated from the biquad_state block.
+layer biquad_layer(signal_size: int, b0: scalar, b1: scalar, b2: scalar,
+                   a1: scalar, a2: scalar) -> [1, signal_size] {
+    biquad(b0, b1, b2, a1, a2, history)
+}
+
+// LFO phase-accumulator state — 1-element phase in [0, 2π)
+state lfo_state {
+    phase: weight
+}
+
+// Sinusoidal LFO layer. State (phase) is populated from the lfo_state block.
+layer lfo_layer(signal_size: int, freq_hz: scalar, sample_rate: scalar) -> [1, signal_size] {
+    lfo(freq_hz, sample_rate, phase)
+}

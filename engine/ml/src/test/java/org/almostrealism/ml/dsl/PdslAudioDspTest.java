@@ -341,16 +341,8 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	 */
 	@Test(timeout = 30000)
 	public void testStateBlockParsesCorrectly() {
-		String source =
-				"state biquad_state {\n" +
-				"    history: weight\n" +
-				"}\n" +
-				"layer biquad_layer(b0: scalar, b1: scalar, b2: scalar,\n" +
-				"                   a1: scalar, a2: scalar) -> [1, " + SIGNAL_SIZE + "] {\n" +
-				"    biquad(b0, b1, b2, a1, a2, history)\n" +
-				"}\n";
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(source);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
 		PdslInterpreter interpreter = new PdslInterpreter(program);
 		Assert.assertTrue("Should define 'biquad_state' state block",
 				interpreter.getStateDefNames().contains("biquad_state"));
@@ -367,18 +359,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection history = new PackedCollection(4);
 		history.setMem(new double[]{0.0, 0.0, 0.0, 0.0});
 
-		String source =
-				"state biquad_state {\n" +
-				"    history: weight\n" +
-				"}\n" +
-				"layer biquad_layer(b0: scalar, b1: scalar, b2: scalar,\n" +
-				"                   a1: scalar, a2: scalar) -> [1, " + SIGNAL_SIZE + "] {\n" +
-				"    biquad(b0, b1, b2, a1, a2, history)\n" +
-				"}\n";
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(source);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
 		args.put("b0", 1.0);
 		args.put("b1", 0.0);
 		args.put("b2", 0.0);
@@ -404,18 +389,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		history.setMem(new double[]{0.0, 0.0, 0.0, 0.0});
 
 		// One-sample delay: y[n] = x[n-1]
-		String source =
-				"state biquad_state {\n" +
-				"    history: weight\n" +
-				"}\n" +
-				"layer biquad_layer(b0: scalar, b1: scalar, b2: scalar,\n" +
-				"                   a1: scalar, a2: scalar) -> [1, " + SIGNAL_SIZE + "] {\n" +
-				"    biquad(b0, b1, b2, a1, a2, history)\n" +
-				"}\n";
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(source);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
 		args.put("b0", 0.0);
 		args.put("b1", 1.0);
 		args.put("b2", 0.0);
@@ -668,17 +646,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection phase = new PackedCollection(1);
 		phase.setMem(new double[]{0.0});
 
-		String source =
-				"state lfo_state {\n" +
-				"    phase: weight\n" +
-				"}\n" +
-				"layer lfo_layer(freq_hz: scalar, sample_rate: scalar) -> [1, " + SIGNAL_SIZE + "] {\n" +
-				"    lfo(freq_hz, sample_rate, phase)\n" +
-				"}\n";
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(source);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
 		args.put("freq_hz", freqHz);
 		args.put("sample_rate", sampleRate);
 		args.put("phase", phase);
