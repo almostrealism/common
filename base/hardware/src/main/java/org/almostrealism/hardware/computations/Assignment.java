@@ -280,8 +280,9 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		OptionalLong contextCount = context.getKernelMaximum();
 
 		if (contextCount.isPresent() && contextCount.getAsLong() != getCountLong()) {
-			if (enableAdaptiveMemLength && getCountLong() % contextCount.getAsLong() == 0) {
-				len = Math.toIntExact(getCountLong() / contextCount.getAsLong());
+			long ctx = contextCount.getAsLong();
+			if (ctx > 0 && enableAdaptiveMemLength && getCountLong() % ctx == 0) {
+				len = Math.toIntExact(getCountLong() / ctx);
 			} else {
 				throw new UnsupportedOperationException();
 			}
