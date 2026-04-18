@@ -1,6 +1,6 @@
 # PDSL for Audio DSP Processing
 
-**Status:** Exploratory design. No implementation has been started.  
+**Status:** Phase A (FIR primitives: `fir`, `scale`, `lowpass`, `highpass`) complete. Phase B (`state` block syntax and AST) partially complete. State-aware primitives (`biquad`, `delay`, `lfo`) in progress.  
 **Related:** `docs/plans/AUDIO_SCENE_REDESIGN.md`
 
 ---
@@ -274,8 +274,9 @@ This is precisely what DSP state needs:
 - **LFO phase** is a 1-element `PackedCollection` that gets incremented each call.
 
 The ONLY difference between ML weights and DSP state: weights are **read-only** during
-execution; state is **read-write**. `PackedCollection` is already mutable — `setMem()`
-exists and works. The write step just needs a primitive that calls it.
+execution; state is **read-write**. The write step needs a primitive that updates the
+state `PackedCollection` using `CollectionProducer` operations — following the same
+pattern as the existing non-stateful primitives in `PdslInterpreter.java`.
 
 ### 5B: What Is Actually Missing
 
@@ -290,13 +291,15 @@ will be mutated during execution. No change to `PackedCollection`, `PdslLoader`,
 the environment mechanism is needed. The `PdslInterpreter` only needs to recognize the
 `state` keyword and populate the environment identically to how it handles `data`.
 
-**2. State-aware primitives that call `setMem` on their state argument**
+**2. State-aware primitives that update their state argument**
 
 The existing primitives (`dense`, `fir`, `rmsnorm`, etc.) receive `PackedCollection`
 arguments and read from them. State-aware primitives (`delay`, `biquad`, `lfo_sin`)
-additionally write their updated state back. This is already possible — the Java
-implementation calls `setMem()` on the passed-in `PackedCollection` sub-view.
-No new memory model, no new infrastructure. Just: read state, compute, write state.
+additionally write their updated state back. The implementation follows the same
+`CollectionProducer` pattern as `callFir`, `callLowpass`, and `callHighpass` in
+`PdslInterpreter.java` — study those methods before writing state-aware primitives.
+No new memory model, no new infrastructure. Just: read state as Producer inputs,
+compute, write state back as Producer outputs.
 
 That is the complete extension required.
 
@@ -322,12 +325,14 @@ layer biquad_filter(b0: scalar, b1: scalar, b2: scalar,
 }
 ```
 
-Java side of `biquad(b0, b1, b2, a1, a2, history)`:
-- Reads `history[0..3]` (x1, x2, y1, y2) from the passed-in `PackedCollection`
-- Computes `y = b0*x + b1*x1 + b2*x2 - a1*y1 - a2*y2` for each sample in the buffer
-- Writes updated `{x, x1, y, y1}` back into `history` via `setMem`
-- The loop over samples is internal to the primitive (same as how `fir()` internally
-  iterates over the coefficient convolution window)
+Implementation of `biquad(b0, b1, b2, a1, a2, history)`:
+Follow the pattern established by `callFir`, `callLowpass`, and `callHighpass` in
+`PdslInterpreter.java`. Those methods return `Block` objects composed from
+`CollectionProducer` operations. Study those implementations. The `biquad` primitive
+must use the same approach: return a `Block` that reads the history state as a
+`CollectionProducer` input, applies the biquad difference equation as Producer
+operations, and writes updated state back via Producer assignments — no `setMem()`
+calls and no `toDouble()` calls in the implementation.
 
 Note on IIR parallelism: the loop-carried dependency in biquad means samples cannot
 be parallelized across each other within a buffer. This is a vectorization concern,
@@ -357,12 +362,14 @@ layer delay_line(delay_samples: scalar, s: delay_state) {
 }
 ```
 
-Java side of `delay(delay_samples, buffer, head)`:
-- Reads write position from `head[0]` (e.g., `writePos = (int) head.toDouble(0)`)
-- Reads delayed sample from `buffer[(writePos - delay_samples + max) % max]`
-- Writes current input sample into `buffer[writePos]`
-- Advances `head[0] = (writePos + 1) % max_delay_samples`
-- Returns the delayed sample
+Implementation of `delay(delay_samples, buffer, head)`:
+Follow the pattern established by `callFir`, `callLowpass`, and `callHighpass` in
+`PdslInterpreter.java`. Those methods return `Block` objects composed from
+`CollectionProducer` operations. Study those implementations. The `delay` primitive
+must use the same approach: compose the circular buffer read (delayed sample at
+`(head - delay_samples + max) % max`), the buffer write, and the head-pointer
+advancement all as `CollectionProducer` operations — no `toDouble()` calls and no
+`setMem()` calls in the implementation.
 
 The maximum delay length is fixed at block-build time (the `PackedCollection` has a
 fixed size, determined by the caller based on gene range bounds). Variable delay within
@@ -384,14 +391,18 @@ layer lfo_sin(freq_hz: scalar, sample_rate: scalar, s: lfo_state) {
 }
 ```
 
-Java side of `lfo(freq_hz, sample_rate, phase)`:
-- Reads `phi = phase[0]`
-- Returns `sin(phi)` (or a buffer of samples with incrementing phase, if buffer-mode)
-- Writes `phase[0] = (phi + 2π * freq_hz / sample_rate) % (2π)`
+Implementation of `lfo(freq_hz, sample_rate, phase)`:
+Follow the pattern established by `callFir`, `callLowpass`, and `callHighpass` in
+`PdslInterpreter.java`. Those methods return `Block` objects composed from
+`CollectionProducer` operations. Study those implementations. The `lfo` primitive
+must use the same approach: compose `sin(phase)` and the phase-increment
+`(phase + 2π * freq_hz / sample_rate) % 2π` as `CollectionProducer` operations,
+writing the updated phase back as a Producer assignment — no `toDouble()` calls
+and no `setMem()` calls in the implementation.
 
 This is the most trivial state case — a 1-element `PackedCollection` that gets
 incremented. The `data` block already supports 1-element scalars as `PackedCollection`
-entries; `state` just adds the write-back.
+entries; `state` adds the write-back via Producer operations.
 
 ### 5D: The Full Picture — `data` vs `state` Semantics
 
@@ -402,14 +413,15 @@ entries; `state` just adds the write-back.
 | **Access during execution** | Read-only (passed to primitives as weights) | Read-write (passed to state-aware primitives) |
 | **Lifecycle** | Persists as long as caller holds the reference | Same |
 | **Interpreter change** | None needed | Recognize `state` keyword; populate env identically to `data` |
-| **Runtime change** | None | None — `PackedCollection.setMem()` already works |
+| **Runtime change** | None | None — state `PackedCollection` is updated via Producer operations inside state-aware primitives |
 
 The only implementation cost is:
 1. Add `state` as a parser keyword (one line in the parser switch)
 2. Add `StateDef` AST node (structurally identical to `DataDef`, different class for type-checking)
 3. Populate `StateDef` entries the same way `DataDef` entries are populated
-4. Implement state-aware primitives (`biquad`, `delay`, `lfo`) that call `setMem()` on
-   their state arguments
+4. Implement state-aware primitives (`biquad`, `delay`, `lfo`) that update their state
+   arguments using `CollectionProducer` operations, following the pattern of `callFir`,
+   `callLowpass`, and `callHighpass` in `PdslInterpreter.java`
 
 ### 5E: Comparison to the Original Two Options
 
@@ -715,14 +727,29 @@ correct assessment is: the `data` block already provides the storage model; a `s
 keyword and state-aware primitives are a small mechanical extension, not a new concept.
 The IIR feedback concern is a vectorization optimization question, not a blocker.
 
-**The recommended path:**
+**Current status and recommended path:**
+
+- **Phase A — FIR primitives (complete).** `fir`, `lowpass`, `highpass`, `scale` are
+  implemented in `PdslInterpreter.java`. The `efx_channel.pdsl` file on this branch
+  demonstrates them working end-to-end.
+- **Phase B — `state` block extension (partially complete).** The `state` keyword,
+  `StateDef` AST node, parser support, and interpreter population are implemented.
+  State-aware primitives (`callBiquad`, `callDelay`, `callLfo`) are in progress — they
+  must follow the `CollectionProducer` pattern of `callFir`/`callLowpass`/`callHighpass`.
+- **Phase C — End-to-end audio output.** Wire a complete PDSL-defined DSP pipeline
+  through `AudioScene` and produce a `.wav` file. This is the deliverable that proves
+  the system works (see Deliverables section).
+- **Phase D — Modulation.** `automation`, `lfo` — straightforward since they are
+  already expressed as Producers.
+- **Phase E — IIR optimization.** Parallel IIR algorithms for GPU execution, only
+  after Phase C is working.
+
 1. Proceed with the Channel-Scoped CellLists redesign (Option A in the AudioScene plan)
    as the immediate performance improvement.
-2. Implement the `state` block extension in parallel — it requires: one parser keyword,
-   one AST node, and state-aware primitives (`biquad`, `delay`, `lfo`). This is days
-   of implementation, not weeks.
+2. Complete state-aware primitives (`biquad`, `delay`, `lfo`) using `CollectionProducer`
+   operations. Study `callFir`, `callLowpass`, `callHighpass` as the canonical examples.
 3. Migrate `EfxManager` first — it already uses FIR (Phase A is done), making it the
-   simplest candidate for PDSL expression.
+   simplest candidate for PDSL expression. Produce audio output to verify.
 4. Evaluate `MixdownManager` migration after `EfxManager` is working, resolving the
    IIR filter question in the process.
 5. Use the declarative graph structure to drive the next round of kernel optimization
@@ -732,6 +759,47 @@ The long-term vision — everything from audio DSP to ML inference defined as PD
 computation graphs, compiled to the same native kernels — is coherent and achievable.
 The path there is shorter than the original plan suggested: the state storage problem
 is already solved; only the write-back semantics are missing.
+
+---
+
+## Deliverables: Audio Output Is the Proof
+
+Every phase of this workstream must end with **audio you can listen to**. Passing code
+policy checks and unit test assertions are prerequisites, not deliverables. The actual
+proof that PDSL-defined DSP works is a `.wav` file that demonstrates the signal path.
+
+### What "Done" Looks Like at Each Phase
+
+**Phase A (FIR primitives — complete):**
+A `.wav` file where a test signal (e.g., white noise or a sine sweep) passes through
+`efx_channel.pdsl` and the output is audibly filtered. The FIR low-pass should
+attenuate high frequencies; the high-pass should attenuate low frequencies.
+
+**Phase B (state-aware primitives):**
+A `.wav` file where a test signal passes through a biquad filter defined in PDSL.
+The filter state should persist across buffer boundaries — the first few samples
+should not exhibit the transient artifacts of a cold-started filter.
+
+**Phase C (full pipeline — primary deliverable):**
+A `.wav` file produced by running a complete PDSL-defined `efx_channel` or
+`mixdown_channel` on a real audio buffer from `AudioScene`. The pipeline must
+include at least one stateful primitive (delay or biquad) and the output must be
+audibly different from the dry input.
+
+### How to Produce a .wav File
+
+Wire the PDSL pipeline output into `WavFile.write()` (see `engine/audio`) with a
+test buffer as input. This can be done in a test or a standalone main method —
+what matters is that the output file exists and sounds correct. The `.wav` file
+does not need to be committed; the test that generates it must pass in CI.
+
+### Why This Matters
+
+The PDSL audio DSP workstream exists to make it possible to define audio signal
+processing declaratively. If the PDSL pipeline cannot produce audio, the workstream
+has not achieved its goal regardless of what the tests assert. Every agent working
+on this branch should ask: *"Can I listen to the output?"* If the answer is no,
+the work is not done.
 
 ---
 
@@ -766,12 +834,12 @@ different class for semantic distinction.
 `stateDefs`. The population logic is identical — bind parameters from args, evaluate
 derivations, set in environment.
 
-**Primitives:** `callBiquad`, `callDelay`, `callLfo` — these receive a `PackedCollection`
-argument (the state buffer) and call `setMem()` on it after computing new state values.
-The existing `callFir`, `callLowpass`, `callHighpass` primitives are the model for the
-non-state-writing case; state-aware primitives extend this pattern with the write-back.
+**Primitives:** `callBiquad`, `callDelay`, `callLfo` — these must follow the pattern
+established by `callFir`, `callLowpass`, and `callHighpass` in `PdslInterpreter.java`.
+Study those implementations before writing state-aware primitives. All computation
+must be expressed as `CollectionProducer` operations. Do not use `setMem()` or
+`toDouble()` in the implementation — these are Java-side operations that bypass the
+Producer computation graph and cannot be hardware-accelerated.
 
 No changes to `PackedCollection`, `SequentialBlock`, `Model`, `CompiledModel`, or any
-hardware backend are needed. The state buffer is just a `PackedCollection` that the
-primitive treats as mutable — the same kind of mutability that `assignGenome()` relies
-on in the Cell model today.
+hardware backend are needed.
