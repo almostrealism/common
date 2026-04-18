@@ -280,17 +280,44 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	}
 
 	/**
-	 * Returns the maximum kernel count for this computation.
-	 * The value is cached after the first call. Returns an empty optional
-	 * if the computation does not have a fixed count.
+	 * Returns the iteration count for this computation's compiled kernel, or
+	 * {@link OptionalLong#empty()} if it is variable. Cached after the first
+	 * call.
 	 *
-	 * @return the maximum kernel count, or empty if not fixed
+	 * <p>A present zero is forbidden by the
+	 * {@link io.almostrealism.kernel.KernelStructureContext#getKernelMaximum()}
+	 * contract. If the backing {@link Countable} advertises a fixed count of
+	 * zero, that {@code Countable} is broken — there is no such thing as a
+	 * fixed-count zero-iteration kernel. Rather than silently propagate the
+	 * lie (and crash at scope compilation), we fail loudly here with the
+	 * identity of the offending computation, so the caller learns which
+	 * {@code Countable} to fix.</p>
+	 *
+	 * @return the fixed kernel iteration count ({@code > 0}) if known, else
+	 *         empty
+	 * @throws IllegalStateException if the backing computation reports
+	 *         {@code isFixedCount() == true} with {@code getCountLong() == 0}
 	 */
 	@Override
 	public OptionalLong getKernelMaximum() {
 		if (kernelMaximum == null) {
-			kernelMaximum = Countable.isFixedCount(getComputation()) ?
-					OptionalLong.of(Countable.countLong(getComputation())) : OptionalLong.empty();
+			if (Countable.isFixedCount(getComputation())) {
+				long count = Countable.countLong(getComputation());
+				if (count <= 0) {
+					throw new IllegalStateException(
+							"Fixed-count computation " + getComputation()
+							+ " reports getCountLong() = " + count
+							+ ". A kernel with " + count + " iterations "
+							+ "cannot exist. Either the Countable should "
+							+ "report isFixedCount() == false (count is "
+							+ "variable), or it has been constructed with an "
+							+ "invalid size. Fix the Countable; do not relax "
+							+ "this check.");
+				}
+				kernelMaximum = OptionalLong.of(count);
+			} else {
+				kernelMaximum = OptionalLong.empty();
+			}
 		}
 
 		return kernelMaximum;
