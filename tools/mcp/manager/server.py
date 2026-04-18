@@ -2533,12 +2533,58 @@ def github_create_pr(
     return result
 
 
+def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
+    """Dismiss the most recent dismissible Copilot review on a pull request.
+
+    Looks for reviews from the copilot-pull-request-reviewer bot and dismisses
+    the most recent one that is in APPROVED or CHANGES_REQUESTED state, which
+    allows a fresh review to be requested.
+
+    Args:
+        owner: Repository owner.
+        repo: Repository name.
+        pr_number: Pull request number.
+
+    Returns:
+        dict with ok=True if a review was dismissed, ok=False otherwise.
+    """
+    reviews = _github_request("GET", f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews")
+    if not isinstance(reviews, list):
+        if isinstance(reviews, dict):
+            return reviews
+        return {"ok": False, "error": "Failed to list reviews"}
+
+    dismissible = [
+        r for r in reviews
+        if isinstance(r.get("user"), dict)
+        and "copilot" in r.get("user", {}).get("login", "").lower()
+        and r.get("state") in ("APPROVED", "CHANGES_REQUESTED")
+    ]
+
+    if not dismissible:
+        return {"ok": False, "error": "No dismissible Copilot reviews found"}
+
+    most_recent = max(dismissible, key=lambda r: r.get("submitted_at", ""))
+    review_id = most_recent["id"]
+    result = _github_request(
+        "PUT",
+        f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews/{review_id}/dismissals",
+        {"message": "Dismissing prior Copilot review to allow re-review"},
+    )
+    if isinstance(result, dict) and result.get("id"):
+        return {"ok": True}
+    if isinstance(result, dict) and "ok" in result:
+        return result
+    return {"ok": False, "error": str(result)}
+
+
 def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     """Request a GitHub Copilot review on a pull request.
 
     Copilot reviews are triggered by requesting a review from the
-    'copilot-pull-request-reviewer' app. This is the standard GitHub
-    mechanism for invoking the Copilot automated code review feature.
+    'copilot-pull-request-reviewer' app. If Copilot has already reviewed
+    the PR, the most recent dismissible review is dismissed and the request
+    is retried, making this call idempotent.
 
     Args:
         owner: Repository owner.
@@ -2554,12 +2600,28 @@ def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
         {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
     )
 
-    # GitHub returns the updated PR object on success (has 'number' key),
-    # or an error dict from _github_request on failure.
     if isinstance(result, dict) and result.get("number"):
         return {"ok": True}
-    if isinstance(result, dict) and "ok" in result:
-        return result
+    # _github_request returns {"ok": True, "status": ...} for empty-body 200 responses.
+    if isinstance(result, dict) and result.get("ok"):
+        return {"ok": True}
+    if isinstance(result, dict) and result.get("ok") is False:
+        # Request failed — Copilot may have already reviewed. Try dismiss + retry.
+        dismiss = _dismiss_copilot_review(owner, repo, pr_number)
+        if not dismiss.get("ok"):
+            return {"ok": False, "error": f"Review request failed: {result.get('error', '')}"}
+        retry = _github_request(
+            "POST",
+            f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
+            {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
+        )
+        if isinstance(retry, dict) and retry.get("number"):
+            return {"ok": True}
+        if isinstance(retry, dict) and retry.get("ok"):
+            return {"ok": True}
+        if isinstance(retry, dict) and "ok" in retry:
+            return retry
+        return {"ok": False, "error": str(retry)}
     return {"ok": False, "error": str(result)}
 
 

@@ -23,7 +23,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -259,6 +262,121 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		} finally {
 			Files.deleteIfExists(tempFile);
 		}
+	}
+
+	/**
+	 * Verifies that every tool expected in the ar-manager MCP server is actually
+	 * registered with the {@code @mcp.tool()} decorator in {@code server.py}.
+	 *
+	 * <p>If a new tool is added to the expected set but its function is missing
+	 * the decorator, this test fails with a clear list of which tools are missing
+	 * from the registry.</p>
+	 *
+	 * <p>History: new tools were repeatedly added as plain functions without the
+	 * {@code @mcp.tool()} decorator, making them invisible to MCP clients.
+	 * This test catches that mistake before code is merged.</p>
+	 */
+	@Test(timeout = 30000)
+	public void managerAllExpectedToolsAreRegisteredInServerPy() {
+		Path serverFile = Path.of("tools/mcp/manager/server.py");
+		if (!Files.exists(serverFile)) return;
+
+		Set<String> expected = new HashSet<>(Arrays.asList(
+			"controller_health",
+			"controller_update_config",
+			"workstream_list",
+			"workstream_get_status",
+			"workstream_list_jobs",
+			"workstream_get_job",
+			"workstream_submit_task",
+			"workstream_register",
+			"workstream_update_config",
+			"project_create_branch",
+			"project_verify_branch",
+			"project_commit_plan",
+			"project_read_plan",
+			"memory_recall",
+			"memory_branch_context",
+			"memory_store",
+			"send_message",
+			"github_pr_find",
+			"github_pr_review_comments",
+			"github_pr_conversation",
+			"github_pr_reply",
+			"github_list_open_prs",
+			"github_create_pr",
+			"github_request_copilot_review"
+		));
+
+		List<String> discovered = McpToolDiscovery.discoverToolNames(serverFile);
+		Set<String> discoveredSet = new HashSet<>(discovered);
+
+		Set<String> missing = new HashSet<>(expected);
+		missing.removeAll(discoveredSet);
+
+		assertTrue(
+			"The following tools are expected in ar-manager but are NOT decorated with " +
+				"@mcp.tool() in server.py (they will be invisible to MCP clients): " + missing,
+			missing.isEmpty()
+		);
+	}
+
+	/**
+	 * Verifies that key parameters are properly declared in the function signatures
+	 * of ar-manager MCP tools.
+	 *
+	 * <p>FastMCP generates the MCP tool schema from the Python function signature,
+	 * including type hints and defaults. If a parameter is handled inside the function
+	 * body (e.g. extracted from {@code **kwargs}) rather than declared in the
+	 * signature, it will be absent from the schema and invisible to MCP clients.</p>
+	 *
+	 * <p>This test catches that pattern by asserting that important parameters appear
+	 * in the function signature as discovered by {@link McpToolDiscovery}.</p>
+	 */
+	@Test(timeout = 30000)
+	public void managerToolParametersAreProperlyDeclaredInSignatures() {
+		Path serverFile = Path.of("tools/mcp/manager/server.py");
+		if (!Files.exists(serverFile)) return;
+
+		List<String> copilotParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "github_request_copilot_review");
+		assertTrue("github_request_copilot_review must declare pr_number in signature",
+			copilotParams.contains("pr_number"));
+		assertTrue("github_request_copilot_review must declare workstream_id in signature",
+			copilotParams.contains("workstream_id"));
+		assertTrue("github_request_copilot_review must declare branch in signature",
+			copilotParams.contains("branch"));
+
+		List<String> createPrParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "github_create_pr");
+		assertTrue("github_create_pr must declare title in signature",
+			createPrParams.contains("title"));
+		assertTrue("github_create_pr must declare body in signature",
+			createPrParams.contains("body"));
+		assertTrue("github_create_pr must declare request_copilot_review in signature",
+			createPrParams.contains("request_copilot_review"));
+
+		List<String> submitParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_submit_task");
+		assertTrue("workstream_submit_task must declare prompt in signature",
+			submitParams.contains("prompt"));
+		assertTrue("workstream_submit_task must declare workstream_id in signature",
+			submitParams.contains("workstream_id"));
+
+		List<String> memoryRecallParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "memory_recall");
+		assertTrue("memory_recall must declare query in signature",
+			memoryRecallParams.contains("query"));
+
+		List<String> memoryStoreParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "memory_store");
+		assertTrue("memory_store must declare content in signature",
+			memoryStoreParams.contains("content"));
+
+		List<String> sendMessageParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "send_message");
+		assertTrue("send_message must declare text in signature",
+			sendMessageParams.contains("text"));
 	}
 
 	@Test(timeout = 30000)
