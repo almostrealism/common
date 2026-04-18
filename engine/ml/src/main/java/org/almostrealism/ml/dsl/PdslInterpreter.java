@@ -20,10 +20,15 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.Receptor;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.model.Block;
+import org.almostrealism.model.DefaultBlock;
+import org.almostrealism.model.ForwardOnlyBlock;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.time.TemporalFeatures;
@@ -35,7 +40,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Interprets a parsed PDSL program to construct {@link Block} and {@link Model}
@@ -61,15 +68,12 @@ import java.util.function.Function;
  *   <li>{@code scale(factor)} - multiply each element by a scalar factor</li>
  *   <li>{@code lowpass(cutoff, sampleRate, filterOrder)} - low-pass FIR filter</li>
  *   <li>{@code highpass(cutoff, sampleRate, filterOrder)} - high-pass FIR filter</li>
- *   <li>{@code biquad(b0,b1,b2,a1,a2,history)} - biquad IIR filter using
- *       {@code history} (4-element {@link PackedCollection} {@code [x[n-1], x[n-2], y[n-1], y[n-2]]})
- *       as read-only initial conditions; state write-back is managed by the caller</li>
- *   <li>{@code delay(delaySamples,buffer,head)} - integer-sample delay line;
- *       reads from circular {@code buffer} at {@code head}-relative positions;
- *       state write-back is managed by the caller</li>
- *   <li>{@code lfo(freqHz,sampleRate,phase)} - sinusoidal LFO starting from
- *       {@code phase} (1-element {@link PackedCollection});
- *       state write-back is managed by the caller</li>
+ *   <li>{@code biquad(b0,b1,b2,a1,a2,history)} - stateful biquad IIR filter;
+ *       {@code history} (4-element {@link PackedCollection}) is updated after each forward pass</li>
+ *   <li>{@code delay(delaySamples,buffer,head)} - stateful integer-sample delay line;
+ *       {@code buffer} and {@code head} are updated after each forward pass</li>
+ *   <li>{@code lfo(freqHz,sampleRate,phase)} - stateful sinusoidal LFO;
+ *       {@code phase} (1-element {@link PackedCollection}) is advanced after each forward pass</li>
  * </ul>
  *
  * <p>Composition constructs:
@@ -1063,8 +1067,8 @@ public class PdslInterpreter {
 		if (args.size() == 1 && args.get(0) instanceof PackedCollection) {
 			PackedCollection coefficients = (PackedCollection) args.get(0);
 			return (Function<TraversalPolicy, Block>) (shape ->
-					FEATURES.layer("fir", shape, shape,
-							input -> MultiOrderFilter.create(input, FEATURES.p(coefficients))));
+					new ForwardOnlyBlock(FEATURES.layer("fir", shape, shape,
+							input -> MultiOrderFilter.create(input, FEATURES.p(coefficients)))));
 		}
 		throw new PdslParseException(
 				"fir() expects 1 weight argument (coefficients), got " + args.size());
@@ -1103,8 +1107,8 @@ public class PdslInterpreter {
 			CollectionProducer coefficients =
 					FEATURES.lowPassCoefficients(FEATURES.c(cutoff), sampleRate, order);
 			return (Function<TraversalPolicy, Block>) (shape ->
-					FEATURES.layer("lowpass", shape, shape,
-							input -> MultiOrderFilter.create(input, coefficients)));
+					new ForwardOnlyBlock(FEATURES.layer("lowpass", shape, shape,
+							input -> MultiOrderFilter.create(input, coefficients))));
 		}
 		throw new PdslParseException(
 				"lowpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());
@@ -1128,28 +1132,21 @@ public class PdslInterpreter {
 			CollectionProducer coefficients =
 					FEATURES.highPassCoefficients(FEATURES.c(cutoff), sampleRate, order);
 			return (Function<TraversalPolicy, Block>) (shape ->
-					FEATURES.layer("highpass", shape, shape,
-							input -> MultiOrderFilter.create(input, coefficients)));
+					new ForwardOnlyBlock(FEATURES.layer("highpass", shape, shape,
+							input -> MultiOrderFilter.create(input, coefficients))));
 		}
 		throw new PdslParseException(
 				"highpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());
 	}
 
 	/**
-	 * Builds a biquad IIR filter block as a pure {@link CollectionProducer} graph.
+	 * Builds a stateful biquad IIR filter block.
 	 *
-	 * <p>Applies the difference equation
-	 * {@code y = b0*x + b1*history[0] + b2*history[1] - a1*history[2] - a2*history[3]}
-	 * to all input samples simultaneously, using the {@code history} collection as
-	 * read-only initial conditions. The scalar history terms broadcast across the
-	 * {@code n}-sample input via hardware-accelerated Producer operations.</p>
-	 *
-	 * <p>State write-back (updating {@code history} with the last two input and output
-	 * samples) is the caller's responsibility. This keeps the primitive stateless and
-	 * architecturally correct as a feedforward {@link Block}.</p>
+	 * <p>Applies the difference equation and updates the {@code history} collection
+	 * after each forward pass so that state persists across successive calls.</p>
 	 *
 	 * @param args six arguments: b0, b1, b2, a1, a2 (numeric), history (PackedCollection, size 4)
-	 * @return a factory that creates a biquad filter block for any input shape
+	 * @return a factory that creates a stateful biquad filter block for any input shape
 	 */
 	private Object callBiquad(List<Object> args) {
 		if (args.size() == 6) {
@@ -1159,39 +1156,56 @@ public class PdslInterpreter {
 			double a1 = toDouble(args.get(3));
 			double a2 = toDouble(args.get(4));
 			PackedCollection history = (PackedCollection) args.get(5);
-			return (Function<TraversalPolicy, Block>) (shape ->
-					FEATURES.layer("biquad", shape, shape,
-							input -> {
-								CollectionProducer hist = FEATURES.cp(history);
-								CollectionProducer h0 = FEATURES.subset(FEATURES.shape(1), hist, 0);
-								CollectionProducer h1 = FEATURES.subset(FEATURES.shape(1), hist, 1);
-								CollectionProducer h2 = FEATURES.subset(FEATURES.shape(1), hist, 2);
-								CollectionProducer h3 = FEATURES.subset(FEATURES.shape(1), hist, 3);
-								return FEATURES.multiply(b0, input)
-										.add(FEATURES.c(b1).multiply(h0))
-										.add(FEATURES.c(b2).multiply(h1))
-										.subtract(FEATURES.c(a1).multiply(h2))
-										.subtract(FEATURES.c(a2).multiply(h3));
-							}));
+			return (Function<TraversalPolicy, Block>) (shape -> {
+				int n = shape.getSize();
+				Cell<PackedCollection> forward = Cell.of(
+						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+								Supplier<Runnable>>) (in, next) -> {
+							CollectionProducer hist = FEATURES.cp(history);
+							CollectionProducer h0 = FEATURES.subset(FEATURES.shape(1), hist, 0);
+							CollectionProducer h1 = FEATURES.subset(FEATURES.shape(1), hist, 1);
+							CollectionProducer h2 = FEATURES.subset(FEATURES.shape(1), hist, 2);
+							CollectionProducer h3 = FEATURES.subset(FEATURES.shape(1), hist, 3);
+							CollectionProducer output = FEATURES.multiply(b0, in)
+									.add(FEATURES.c(b1).multiply(h0))
+									.add(FEATURES.c(b2).multiply(h1))
+									.subtract(FEATURES.c(a1).multiply(h2))
+									.subtract(FEATURES.c(a2).multiply(h3));
+							CollectionProducer flatIn = FEATURES.c(in).reshape(FEATURES.shape(n));
+							CollectionProducer flatOut = output.reshape(FEATURES.shape(n));
+							CollectionProducer newH0 = FEATURES.subset(FEATURES.shape(1), flatIn, n - 1);
+							CollectionProducer newH1 = n >= 2
+									? FEATURES.subset(FEATURES.shape(1), flatIn, n - 2)
+									: FEATURES.subset(FEATURES.shape(1), FEATURES.cp(history), 0);
+							CollectionProducer newH2 = FEATURES.subset(FEATURES.shape(1), flatOut, n - 1);
+							CollectionProducer newH3 = n >= 2
+									? FEATURES.subset(FEATURES.shape(1), flatOut, n - 2)
+									: FEATURES.subset(FEATURES.shape(1), FEATURES.cp(history), 2);
+							OperationList ops = new OperationList("biquad");
+							ops.add(next.push(output));
+							ops.add(FEATURES.into("biquad-history",
+									FEATURES.concat(newH0, newH1, newH2, newH3),
+									FEATURES.cp(history), false));
+							return ops;
+						});
+				Cell<PackedCollection> backward = Cell.of(
+						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+								Supplier<Runnable>>) (in, next) -> new OperationList("biquad-backward"));
+				return new DefaultBlock(shape, shape, forward, backward);
+			});
 		}
 		throw new PdslParseException(
 				"biquad() expects 6 arguments (b0, b1, b2, a1, a2, history), got " + args.size());
 	}
 
 	/**
-	 * Builds an integer-sample delay line block as a pure {@link CollectionProducer} graph.
+	 * Builds a stateful integer-sample delay line block.
 	 *
-	 * <p>Computes read positions {@code (head[0] + i - delaySamples + bufSize) % bufSize}
-	 * for each sample index {@code i} using {@link org.almostrealism.collect.CollectionFeatures#integers}
-	 * and {@link org.almostrealism.collect.CollectionFeatures#mod}, then gathers the delayed
-	 * samples from {@code buffer} in a single hardware-accelerated operation.</p>
-	 *
-	 * <p>State write-back (writing the input signal into the circular buffer and advancing
-	 * {@code head}) is the caller's responsibility. This keeps the primitive stateless and
-	 * architecturally correct as a feedforward {@link Block}.</p>
+	 * <p>Reads delayed samples from the circular {@code buffer}, then writes the input
+	 * into the buffer and advances {@code head} so state persists across successive calls.</p>
 	 *
 	 * @param args three arguments: delaySamples (int), buffer (PackedCollection), head (PackedCollection, size 1)
-	 * @return a factory that creates a delay-line block for any input shape
+	 * @return a factory that creates a stateful delay-line block for any input shape
 	 */
 	private Object callDelay(List<Object> args) {
 		if (args.size() == 3) {
@@ -1199,36 +1213,48 @@ public class PdslInterpreter {
 			PackedCollection buffer = (PackedCollection) args.get(1);
 			PackedCollection head = (PackedCollection) args.get(2);
 			int bufSize = buffer.getShape().getSize();
-			return (Function<TraversalPolicy, Block>) (shape ->
-					FEATURES.layer("delay", shape, shape,
-							input -> {
-								int n = shape.getSize();
-								CollectionProducer readPositions = FEATURES.mod(
-										FEATURES.cp(head).add(FEATURES.integers(0, n))
-												.subtract(FEATURES.c(delaySamples))
-												.add(FEATURES.c(bufSize)),
-										FEATURES.c(bufSize));
-								return FEATURES.c(FEATURES.cp(buffer), readPositions).reshape(shape);
-							}));
+			return (Function<TraversalPolicy, Block>) (shape -> {
+				int n = shape.getSize();
+				Cell<PackedCollection> forward = Cell.of(
+						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+								Supplier<Runnable>>) (in, next) -> {
+							CollectionProducer readPositions = FEATURES.mod(
+									FEATURES.cp(head).add(FEATURES.integers(0, n))
+											.subtract(FEATURES.c(delaySamples))
+											.add(FEATURES.c(bufSize)),
+									FEATURES.c(bufSize));
+							CollectionProducer output =
+									FEATURES.c(FEATURES.cp(buffer), readPositions).reshape(shape);
+							CollectionProducer flatInput = FEATURES.c(in).reshape(FEATURES.shape(bufSize));
+							CollectionProducer newHead = FEATURES.cp(head)
+									.add(FEATURES.c((double) n))
+									.mod(FEATURES.c((double) bufSize));
+							OperationList ops = new OperationList("delay");
+							ops.add(next.push(output));
+							ops.add(FEATURES.into("delay-buffer-write", flatInput,
+									FEATURES.cp(buffer), false));
+							ops.add(FEATURES.into("delay-head-write", newHead,
+									FEATURES.cp(head), false));
+							return ops;
+						});
+				Cell<PackedCollection> backward = Cell.of(
+						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+								Supplier<Runnable>>) (in, next) -> new OperationList("delay-backward"));
+				return new DefaultBlock(shape, shape, forward, backward);
+			});
 		}
 		throw new PdslParseException(
 				"delay() expects 3 arguments (delaySamples, buffer, head), got " + args.size());
 	}
 
 	/**
-	 * Builds a sinusoidal LFO block as a pure {@link CollectionProducer} graph.
+	 * Builds a stateful sinusoidal LFO block.
 	 *
-	 * <p>Constructs a phase sequence {@code [phase[0], phase[0]+Δ, ..., phase[0]+(n-1)Δ]}
-	 * using {@link org.almostrealism.collect.CollectionFeatures#integers} scaled by
-	 * {@code Δ = 2π * freqHz / sampleRate}, then applies {@code sin()} element-wise
-	 * via the hardware-accelerated producer graph.</p>
-	 *
-	 * <p>Phase accumulation (advancing {@code phase[0]} by {@code n * Δ} for continuity
-	 * across successive calls) is the caller's responsibility. This keeps the primitive
-	 * stateless and architecturally correct as a feedforward {@link Block}.</p>
+	 * <p>Produces sin values for the current phase window and advances {@code phase}
+	 * by {@code n * phaseIncrement} (mod 2π) so subsequent calls continue seamlessly.</p>
 	 *
 	 * @param args three arguments: freqHz (numeric), sampleRate (numeric), phase (PackedCollection, size 1)
-	 * @return a factory that creates an LFO block for any input shape
+	 * @return a factory that creates a stateful LFO block for any input shape
 	 */
 	private Object callLfo(List<Object> args) {
 		if (args.size() == 3) {
@@ -1236,14 +1262,28 @@ public class PdslInterpreter {
 			double sampleRate = toDouble(args.get(1));
 			PackedCollection phase = (PackedCollection) args.get(2);
 			double phaseIncrement = 2.0 * Math.PI * freqHz / sampleRate;
-			return (Function<TraversalPolicy, Block>) (shape ->
-					FEATURES.layer("lfo", shape, shape,
-							input -> {
-								int n = shape.getSize();
-								CollectionProducer phases = FEATURES.cp(phase)
-										.add(FEATURES.integers(0, n).multiply(FEATURES.c(phaseIncrement)));
-								return FEATURES.sin(phases).reshape(shape);
-							}));
+			return (Function<TraversalPolicy, Block>) (shape -> {
+				int n = shape.getSize();
+				Cell<PackedCollection> forward = Cell.of(
+						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+								Supplier<Runnable>>) (in, next) -> {
+							CollectionProducer phases = FEATURES.cp(phase)
+									.add(FEATURES.integers(0, n).multiply(FEATURES.c(phaseIncrement)));
+							CollectionProducer output = FEATURES.sin(phases).reshape(shape);
+							CollectionProducer newPhase = FEATURES.cp(phase)
+									.add(FEATURES.c((double) n * phaseIncrement))
+									.mod(FEATURES.c(2.0 * Math.PI));
+							OperationList ops = new OperationList("lfo");
+							ops.add(next.push(output));
+							ops.add(FEATURES.into("lfo-phase-update", newPhase,
+									FEATURES.cp(phase), false));
+							return ops;
+						});
+				Cell<PackedCollection> backward = Cell.of(
+						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+								Supplier<Runnable>>) (in, next) -> new OperationList("lfo-backward"));
+				return new DefaultBlock(shape, shape, forward, backward);
+			});
 		}
 		throw new PdslParseException(
 				"lfo() expects 3 arguments (freqHz, sampleRate, phase), got " + args.size());
