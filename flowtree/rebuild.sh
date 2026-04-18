@@ -9,7 +9,7 @@ AGENT_ENV="flowtree/agent/.env"
 # ── Usage ──────────────────────────────────────────────────────────
 usage() {
   cat <<'EOF'
-Usage: tools/rebuild.sh [services...] [--agents]
+Usage: flowtree/rebuild.sh [services...] [--agents]
 
   No args        Rebuild all controller-stack containers
   --agents       Also rebuild and restart the agent pool
@@ -17,10 +17,10 @@ Usage: tools/rebuild.sh [services...] [--agents]
   service names  Rebuild specific controller-stack services
 
 Examples:
-  tools/rebuild.sh                  # controller stack only
-  tools/rebuild.sh --agents         # controller stack + agents
-  tools/rebuild.sh --agents-only    # agents only
-  tools/rebuild.sh controller       # just the controller service
+  flowtree/rebuild.sh                        # controller stack only
+  flowtree/rebuild.sh --agents               # controller stack + agents
+  flowtree/rebuild.sh --agents-only          # agents only
+  flowtree/rebuild.sh flowtree-controller    # just the controller service
 EOF
   exit 0
 }
@@ -56,7 +56,7 @@ NEEDS_BUILD=false
 
 if [ "${AGENTS_ONLY}" = true ] || [ "${AGENTS}" = true ]; then
   NEEDS_BUILD=true
-elif [ ${#SERVICES[@]} -eq 0 ] || printf '%s\n' "${SERVICES[@]}" | grep -qwE "controller|ar-manager"; then
+elif [ ${#SERVICES[@]} -eq 0 ] || printf '%s\n' "${SERVICES[@]}" | grep -qwE "flowtree-controller|ar-manager"; then
   NEEDS_BUILD=true
 fi
 
@@ -71,10 +71,10 @@ fi
 if [ "${AGENTS_ONLY}" = false ]; then
   if [ ${#SERVICES[@]} -eq 0 ]; then
     echo "Rebuilding all controller-stack containers..."
-    docker compose -f tools/docker-compose.yml up -d --build
+    docker compose -f flowtree/controller/docker-compose.yml up -d --build
   else
     echo "Rebuilding: ${SERVICES[*]}"
-    docker compose -f tools/docker-compose.yml up -d --build "${SERVICES[@]}"
+    docker compose -f flowtree/controller/docker-compose.yml up -d --build "${SERVICES[@]}"
   fi
 fi
 

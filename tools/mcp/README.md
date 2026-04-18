@@ -122,7 +122,7 @@ See `flowtree/src/main/resources/workstreams-example.yaml` for full configuratio
 ## Docker Infrastructure
 
 ar-memory, the FlowTree controller, and ar-manager run as Docker services
-defined in `tools/docker-compose.yml`:
+defined in `flowtree/controller/docker-compose.yml`:
 
 ```bash
 # Pre-build the controller JAR (from repo root)
@@ -130,7 +130,7 @@ mvn package -pl flowtree -am -DskipTests
 mvn dependency:copy-dependencies -pl flowtree -DoutputDirectory=target/dependency
 
 # Start all services
-docker compose -f tools/docker-compose.yml up -d
+docker compose -f flowtree/controller/docker-compose.yml up -d
 ```
 
 **Host directories:**
@@ -138,7 +138,7 @@ docker compose -f tools/docker-compose.yml up -d
 - `/Users/Shared/flowtree/manager/` — `manager-tokens.json`
 - `/Users/Shared/flowtree/memory-data/` — SQLite DB and FAISS indices
 
-See `tools/docker-compose.yml` for full configuration.
+See `flowtree/controller/docker-compose.yml` for full configuration.
 
 ## Installation
 
