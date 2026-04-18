@@ -1057,6 +1057,18 @@ public class PdslInterpreter {
 	}
 
 	/**
+	 * Returns a block factory that wraps the given FIR coefficients in a {@link MultiOrderFilter}.
+	 *
+	 * @param name         primitive name used as the layer label
+	 * @param coefficients pre-computed FIR coefficient producer
+	 * @return a factory that creates a FIR filter block for any input shape
+	 */
+	private Function<TraversalPolicy, Block> firFilterBlock(String name, CollectionProducer coefficients) {
+		return shape -> new ForwardOnlyBlock(FEATURES.layer(name, shape, shape,
+				input -> MultiOrderFilter.create(input, coefficients)));
+	}
+
+	/**
 	 * Builds a FIR (Finite Impulse Response) filter block that convolves the input signal
 	 * with the provided coefficient array.
 	 *
@@ -1066,9 +1078,7 @@ public class PdslInterpreter {
 	private Object callFir(List<Object> args) {
 		if (args.size() == 1 && args.get(0) instanceof PackedCollection) {
 			PackedCollection coefficients = (PackedCollection) args.get(0);
-			return (Function<TraversalPolicy, Block>) (shape ->
-					new ForwardOnlyBlock(FEATURES.layer("fir", shape, shape,
-							input -> MultiOrderFilter.create(input, FEATURES.p(coefficients)))));
+			return firFilterBlock("fir", FEATURES.p(coefficients));
 		}
 		throw new PdslParseException(
 				"fir() expects 1 weight argument (coefficients), got " + args.size());
@@ -1104,11 +1114,8 @@ public class PdslInterpreter {
 			double cutoff = toDouble(args.get(0));
 			int sampleRate = toInt(args.get(1));
 			int order = toInt(args.get(2));
-			CollectionProducer coefficients =
-					FEATURES.lowPassCoefficients(FEATURES.c(cutoff), sampleRate, order);
-			return (Function<TraversalPolicy, Block>) (shape ->
-					new ForwardOnlyBlock(FEATURES.layer("lowpass", shape, shape,
-							input -> MultiOrderFilter.create(input, coefficients))));
+			return firFilterBlock("lowpass",
+					FEATURES.lowPassCoefficients(FEATURES.c(cutoff), sampleRate, order));
 		}
 		throw new PdslParseException(
 				"lowpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());
@@ -1129,11 +1136,8 @@ public class PdslInterpreter {
 			double cutoff = toDouble(args.get(0));
 			int sampleRate = toInt(args.get(1));
 			int order = toInt(args.get(2));
-			CollectionProducer coefficients =
-					FEATURES.highPassCoefficients(FEATURES.c(cutoff), sampleRate, order);
-			return (Function<TraversalPolicy, Block>) (shape ->
-					new ForwardOnlyBlock(FEATURES.layer("highpass", shape, shape,
-							input -> MultiOrderFilter.create(input, coefficients))));
+			return firFilterBlock("highpass",
+					FEATURES.highPassCoefficients(FEATURES.c(cutoff), sampleRate, order));
 		}
 		throw new PdslParseException(
 				"highpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());

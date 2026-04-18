@@ -27,6 +27,11 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -501,6 +506,160 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	 * must start exactly where the first left off. The expected phase after the
 	 * first call is computed using the same wrapping logic as the interpreter.</p>
 	 */
+	// ---- Audio output demo -------------------------------------------------------
+
+	/**
+	 * Demonstrates the PDSL DSP pipeline by processing audio signals and writing
+	 * {@code .wav} files to {@code results/pdsl-audio-dsp/} for human review.
+	 *
+	 * <p>Two demonstrations:
+	 * <ol>
+	 *   <li><b>Low-pass FIR filter</b> — a multi-tone input (440 Hz + 2 kHz + 12 kHz)
+	 *       passes through the {@code efx_lowpass_wet} PDSL layer. The 12 kHz component
+	 *       is strongly attenuated by the 5 kHz LP filter, producing audibly filtered output.</li>
+	 *   <li><b>Delay line</b> — a 440 Hz sine that stops at 0.5 s passes through the
+	 *       {@code efx_delay} PDSL layer. The delay-line buffer persists across
+	 *       {@link CompiledModel#forward} calls, producing a delayed-echo effect.</li>
+	 * </ol>
+	 *
+	 * <p>The {@code .wav} files are not committed; they are left for human review to
+	 * confirm that the PDSL-defined pipeline produces audible output.</p>
+	 */
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testPdslDspProducesAudio() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		int totalSamples = SAMPLE_RATE; // 1 second at 44100 Hz
+		int numPasses = totalSamples / SIGNAL_SIZE;
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		// ---- Demo 1: PDSL low-pass FIR filter ----
+		Map<String, Object> lpArgs = new HashMap<>();
+		lpArgs.put("signal_size", SIGNAL_SIZE);
+		lpArgs.put("cutoff", LP_CUTOFF);
+		lpArgs.put("sample_rate", (double) SAMPLE_RATE);
+		lpArgs.put("filter_order", (double) FILTER_ORDER);
+		lpArgs.put("wet_level", 1.0);
+		Block lpBlock = loader.buildLayer(program, "efx_lowpass_wet", inputShape, lpArgs);
+		Model lpModel = new Model(inputShape);
+		lpModel.add(lpBlock);
+		CompiledModel lpCompiled = lpModel.compile();
+
+		float[] drySignal = new float[totalSamples];
+		float[] lpSignal = new float[totalSamples];
+
+		for (int pass = 0; pass < numPasses; pass++) {
+			final int sampleOffset = pass * SIGNAL_SIZE;
+			PackedCollection input = createSignal(SIGNAL_SIZE, i -> {
+				double t = (double) (sampleOffset + i) / SAMPLE_RATE;
+				return 0.33 * Math.sin(2.0 * Math.PI * 440.0 * t)
+						+ 0.33 * Math.sin(2.0 * Math.PI * 2000.0 * t)
+						+ 0.33 * Math.sin(2.0 * Math.PI * 12000.0 * t);
+			});
+			PackedCollection output = lpCompiled.forward(input);
+			double[] inArr = input.toArray(0, SIGNAL_SIZE);
+			double[] outArr = output.toArray(0, SIGNAL_SIZE);
+			for (int i = 0; i < SIGNAL_SIZE; i++) {
+				drySignal[sampleOffset + i] = (float) inArr[i];
+				lpSignal[sampleOffset + i] = (float) outArr[i];
+			}
+		}
+
+		writePdslDemoWav(new File(outputDir, "pdsl_dry_multitone.wav"), drySignal, SAMPLE_RATE);
+		writePdslDemoWav(new File(outputDir, "pdsl_lowpass_multitone.wav"), lpSignal, SAMPLE_RATE);
+		Assert.assertTrue("Dry WAV must be non-empty",
+				new File(outputDir, "pdsl_dry_multitone.wav").length() > 0);
+		Assert.assertTrue("Lowpass WAV must be non-empty",
+				new File(outputDir, "pdsl_lowpass_multitone.wav").length() > 0);
+
+		// LP output must have less energy than dry (12 kHz content attenuated)
+		double dryEnergy = 0.0;
+		double lpEnergy = 0.0;
+		int skipEdge = FILTER_ORDER / 2;
+		for (int i = skipEdge; i < totalSamples - skipEdge; i++) {
+			dryEnergy += drySignal[i] * drySignal[i];
+			lpEnergy += lpSignal[i] * lpSignal[i];
+		}
+		Assert.assertTrue("LP output must have less energy than dry (LP attenuates 12 kHz)",
+				lpEnergy < dryEnergy * 0.9);
+
+		// ---- Demo 2: PDSL delay line ----
+		// Buffer size equals signal size so the circular buffer holds exactly one frame.
+		int delaySamples = SIGNAL_SIZE / 4;
+		PackedCollection delayBuffer = new PackedCollection(SIGNAL_SIZE);
+		delayBuffer.setMem(new double[SIGNAL_SIZE]);
+		PackedCollection delayHead = new PackedCollection(1);
+		delayHead.setMem(new double[]{0.0});
+
+		Map<String, Object> delayArgs = new HashMap<>();
+		delayArgs.put("signal_size", SIGNAL_SIZE);
+		delayArgs.put("delay_samples", delaySamples);
+		delayArgs.put("buffer", delayBuffer);
+		delayArgs.put("head", delayHead);
+
+		Block delayBlock = loader.buildLayer(program, "efx_delay", inputShape, delayArgs);
+		Model delayModel = new Model(inputShape);
+		delayModel.add(delayBlock);
+		CompiledModel delayCompiled = delayModel.compile();
+
+		float[] delaySignal = new float[totalSamples];
+
+		for (int pass = 0; pass < numPasses; pass++) {
+			final int sampleOffset = pass * SIGNAL_SIZE;
+			PackedCollection input = createSignal(SIGNAL_SIZE, i -> {
+				double t = (double) (sampleOffset + i) / SAMPLE_RATE;
+				return t < 0.5 ? Math.sin(2.0 * Math.PI * 440.0 * t) : 0.0;
+			});
+			PackedCollection output = delayCompiled.forward(input);
+			double[] outArr = output.toArray(0, SIGNAL_SIZE);
+			for (int i = 0; i < SIGNAL_SIZE; i++) {
+				delaySignal[sampleOffset + i] = (float) outArr[i];
+			}
+		}
+
+		writePdslDemoWav(new File(outputDir, "pdsl_delay_echo.wav"), delaySignal, SAMPLE_RATE);
+		Assert.assertTrue("Delay WAV must be non-empty",
+				new File(outputDir, "pdsl_delay_echo.wav").length() > 0);
+	}
+
+	/**
+	 * Writes a mono 16-bit PCM WAV file with the given samples.
+	 *
+	 * @param file       the file to create (parent directories must exist)
+	 * @param samples    the audio samples in the range {@code [-1.0, 1.0]}
+	 * @param sampleRate the audio sample rate in Hz
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void writePdslDemoWav(File file, float[] samples, int sampleRate)
+			throws IOException {
+		int dataSize = samples.length * 2; // 16-bit = 2 bytes per sample
+		ByteBuffer buf = ByteBuffer.allocate(44 + dataSize).order(ByteOrder.LITTLE_ENDIAN);
+		buf.put(new byte[]{'R', 'I', 'F', 'F'});
+		buf.putInt(36 + dataSize);
+		buf.put(new byte[]{'W', 'A', 'V', 'E'});
+		buf.put(new byte[]{'f', 'm', 't', ' '});
+		buf.putInt(16);           // fmt chunk size
+		buf.putShort((short) 1);  // PCM
+		buf.putShort((short) 1);  // mono
+		buf.putInt(sampleRate);
+		buf.putInt(sampleRate * 2); // byteRate
+		buf.putShort((short) 2);  // blockAlign
+		buf.putShort((short) 16); // bitsPerSample
+		buf.put(new byte[]{'d', 'a', 't', 'a'});
+		buf.putInt(dataSize);
+		for (float s : samples) {
+			buf.putShort((short) Math.max(-32768, Math.min(32767, (int) (s * 32767.0f))));
+		}
+		try (FileOutputStream fos = new FileOutputStream(file)) {
+			fos.write(buf.array());
+		}
+	}
+
 	@Test(timeout = 60000)
 	@TestDepth(2)
 	public void testLfoPhaseContiguity() {
