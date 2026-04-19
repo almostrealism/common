@@ -100,6 +100,10 @@ COPY --chown=agent:agent flowtree/conf/agent.properties /app/conf/agent.properti
 COPY --chown=agent:agent flowtree/agent/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-VOLUME /workspace/project
+# Intentionally NO `VOLUME /workspace/project` — declaring a VOLUME
+# would force Docker to create an anonymous volume at that path on
+# every run, tripping the writable-volume guard in entrypoint.sh.
+# Each container uses /workspace/project on its private overlay
+# filesystem. See FLOWTREE_COLLISIONS.md.
 
 ENTRYPOINT ["/app/entrypoint.sh"]
