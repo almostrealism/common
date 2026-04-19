@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import io.flowtree.job.Job;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.HostFingerprint;
 import org.almostrealism.io.JobOutput;
 
 import java.io.BufferedReader;
@@ -217,12 +218,10 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     private FileChannel workspaceLockChannel;
 
     /**
-     * Exclusive OS-level lock on {@code <parent>/.flowtree-locks/<repoName>.lock}.
-     * Placed outside the git working tree so that {@code git stash
-     * --include-untracked} cannot unlink the lock file mid-job (see
-     * {@code FLOWTREE_COLLISIONS.md}). Prevents concurrent {@link GitManagedJob}
-     * instances — same JVM or sibling containers sharing the filesystem —
-     * from operating on the same working directory.
+     * Exclusive OS-level lock on {@code <parent>/.flowtree-locks/<repoName>.lock},
+     * placed outside the git working tree so {@code git stash --include-untracked}
+     * cannot unlink it mid-job (see {@code FLOWTREE_COLLISIONS.md}). Prevents
+     * concurrent {@link GitManagedJob} instances on the same working directory.
      */
     private FileLock workspaceLock;
 
@@ -350,6 +349,11 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         Exception error = null;
 
         try {
+            if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
+                postJson(resolveWorkstreamUrl() + "/messages",
+                        eventMapper.createObjectNode().put("text", HostFingerprint.describe()).toString());
+            }
+
             // Apply server-wide workspace override if configured.
             String serverWorkDir = System.getProperty(WORKING_DIRECTORY_PROPERTY);
             if (serverWorkDir != null && !serverWorkDir.isEmpty()) {
