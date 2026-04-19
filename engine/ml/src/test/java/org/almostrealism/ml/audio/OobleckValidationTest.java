@@ -62,8 +62,8 @@ public class OobleckValidationTest extends OobleckValidationBase {
 	public void testEncoderAgainstPyTorchReference() throws IOException {
 		// Skip if test data not available
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping validation test - weights not found at " + WEIGHTS_DIR);
-			System.out.println("Run extract_stable_audio_autoencoder.py to generate test data.");
+			log("Skipping validation test - weights not found at " + WEIGHTS_DIR);
+			log("Run extract_stable_audio_autoencoder.py to generate test data.");
 			return;
 		}
 
@@ -132,7 +132,7 @@ public class OobleckValidationTest extends OobleckValidationBase {
 	public void testEncoderIntermediatesAgainstPyTorch() throws IOException {
 		// Skip if test data not available
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping validation test - weights not found at " + WEIGHTS_DIR);
+			log("Skipping validation test - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -171,7 +171,7 @@ public class OobleckValidationTest extends OobleckValidationBase {
 	public void testDecoderAgainstPyTorchReference() throws IOException {
 		// Skip if test data not available
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping validation test - weights not found at " + WEIGHTS_DIR);
+			log("Skipping validation test - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -310,7 +310,7 @@ public class OobleckValidationTest extends OobleckValidationBase {
 	@TestDepth(2)
 	public void testDecoderBlockByBlockComparison() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -501,7 +501,7 @@ public class OobleckValidationTest extends OobleckValidationBase {
 	@TestDepth(2)
 	public void testBlock1SubComponents() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 

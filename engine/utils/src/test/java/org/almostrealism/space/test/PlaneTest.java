@@ -39,7 +39,7 @@ public class PlaneTest extends TestSuiteBase {
 	private void intersectionTest1() {
 		ShadableIntersection intersection = test1();
 		double distance = intersection.getDistance().evaluate().toDouble();
-		System.out.println("distance = " + distance);
+		log("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
 		Assert.assertEquals(intersection.get(0).get().evaluate(), ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get().evaluate());
@@ -52,7 +52,7 @@ public class PlaneTest extends TestSuiteBase {
 		Producer<PackedCollection> p = intersection.getDistance();
 
 		double distance = p.get().evaluate().toDouble();
-		System.out.println("distance = " + distance);
+		log("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
 		Assert.assertEquals(intersection.get(0).get().evaluate(), new Ray(new Vector(0.0, -10.0, 21.0),

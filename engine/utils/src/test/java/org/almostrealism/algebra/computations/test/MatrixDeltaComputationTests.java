@@ -50,13 +50,13 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		// x0 * 4 + x1 * -3,  x0 * 2 + x1 * 1.5
 		// 2 * 4 + 3 * -3, 2 * 2 + 3 * 1.5
 		CollectionProducer c = matmul(p(w), p(v));
-		System.out.println("c: " + shape(c).toStringDetail());
-		System.out.println("v: " + shape(v).toStringDetail());
+		log("c: " + shape(c).toStringDetail());
+		log("v: " + shape(v).toStringDetail());
 
 		// y = f(x)
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate();
-		System.out.println(Arrays.toString(out.toArray(0, dim)));
+		log(Arrays.toString(out.toArray(0, dim)));
 		assertEquals(8.5, out.toDouble(1));
 
 		// dy0/dw = x0, x1, 0,  0
@@ -84,20 +84,20 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		// x0 * 4 + x1 * -3,  x0 * 2 + x1 * 1.5
 		// 2 * 4 + 3 * -3, 2 * 2 + 3 * 1.5
 		CollectionProducer c = matmul(p(w), p(v));
-		System.out.println("c: " + shape(c).toStringDetail());
-		System.out.println("v: " + shape(v).toStringDetail());
+		log("c: " + shape(c).toStringDetail());
+		log("v: " + shape(v).toStringDetail());
 
 		// y = f(x)
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate();
-		System.out.println(Arrays.toString(out.toArray(0, dim)));
+		log(Arrays.toString(out.toArray(0, dim)));
 		// assertEquals(8.5, out.toDouble(1));
 
 		// dy0/dw = x0, x1, 0,  0
 		// dy1/dw = 0,  0,  x0, x1
 		Evaluable<? extends PackedCollection> dy = Process.optimized(c.delta(p(w))).get();
 		PackedCollection dout = dy.evaluate();
-		System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
+		log(Arrays.toString(dout.toArray(0, dout.getMemLength())));
 		Assert.assertEquals(dout.getMemLength(), out.getMemLength() * w.getMemLength());
 		// assertEquals(0.0, dout.toDouble(5));
 		// assertEquals(3.0, dout.toDouble(7));
@@ -183,11 +183,11 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 				30.0, 300.0)
 				.reshape(shape(rows, cols));
 		CollectionProducer c = matmul(cp(w), cp(v).traverseAll());
-		System.out.println(v.getShape().toStringDetail());
+		log(v.getShape().toStringDetail());
 		v.print();
 
 		PackedCollection out = c.delta(cp(w)).get().evaluate();
-		System.out.println(out.getShape().toStringDetail());
+		log(out.getShape().toStringDetail());
 		out.print();
 
 		for (int i = 0; i < rows; i++) {
@@ -218,7 +218,7 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 
 		out = d.get().evaluate();
 		
-		System.out.println(out.getShape().toStringDetail());
+		log(out.getShape().toStringDetail());
 
 		for (int i = 0; i < nodes; i++) {
 			for (int j = 0; j < nodes; j++) {
@@ -358,8 +358,8 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 				.each();
 
 		PackedCollection sparse = new PackedCollection(shape(outSize, weightSize));
-		System.out.println("c: " + shape(c).toStringDetail());
-		System.out.println("v: " + shape(v).toStringDetail());
+		log("c: " + shape(c).toStringDetail());
+		log("v: " + shape(v).toStringDetail());
 
 		int traversalAxis = AggregatedProducerComputation.enableTransitiveDelta ? 2 : 1;
 
@@ -386,7 +386,7 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 			cda.get().run();
 		});
 
-		System.out.println(w.toArrayString());
+		log(String.valueOf(w.toArrayString()));
 		assertEquals(999.8, w.toDouble(0));
 		assertEquals(999.7, w.toDouble(1));
 		assertEquals(999.6, w.toDouble(2));

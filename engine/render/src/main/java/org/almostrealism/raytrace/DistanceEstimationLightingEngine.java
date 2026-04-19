@@ -20,6 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.Shadable;
@@ -156,7 +157,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 	 * with the ContinuousField interface.</p>
 	 */
 	public static class Locus extends ArrayList<Producer<PackedCollection>>
-			implements ContinuousField, Callable<Producer<PackedCollection>>, Shadable, CodeFeatures {
+			implements ContinuousField, Callable<Producer<PackedCollection>>, Shadable, CodeFeatures, ConsoleFeatures {
 		/** The shaders used to compute surface color at this intersection point. */
 		private ShaderSet shaders;
 		/** The shader context providing light and surface information for shading. */
@@ -188,7 +189,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 			try {
 				return String.valueOf(get(0));
 			} catch (Exception e) {
-				System.err.println("DistanceEstimationLightingEngine: " + e.getMessage());
+				warn(e.getMessage(), e);
 			}
 
 			return "null";
@@ -204,7 +205,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 
 				return color;
 			} catch (Exception e) {
-				System.err.println("DistanceEstimationLightingEngine: " + e.getMessage());
+				warn(e.getMessage(), e);
 				return null;
 			}
 		}

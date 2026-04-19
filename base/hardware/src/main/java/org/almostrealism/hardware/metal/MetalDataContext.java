@@ -308,7 +308,7 @@ public class MetalDataContext extends HardwareDataContext {
 		}
 
 		try {
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + ccName);
+			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Start " + ccName);
 			computeContext.set(next);
 			return exec.call();
 		} catch (RuntimeException e) {
@@ -316,9 +316,9 @@ public class MetalDataContext extends HardwareDataContext {
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + ccName);
+			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: End " + ccName);
 			next.destroy();
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + ccName);
+			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Destroyed " + ccName);
 			computeContext.set(current);
 		}
 	}

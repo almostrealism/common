@@ -19,6 +19,7 @@ package org.almostrealism.studio.health;
 import org.almostrealism.studio.AudioMeter;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,7 +31,7 @@ import java.util.Map;
  * remained audible — if silence persists beyond the configured maximum, evaluation
  * ends early and a partial score is returned.
  */
-public class SilenceDurationHealthComputation extends HealthComputationAdapter {
+public class SilenceDurationHealthComputation extends HealthComputationAdapter implements ConsoleFeatures {
 	/** When {@code true}, prints diagnostic frame counts at the end of evaluation. */
 	public static boolean enableVerbose = false;
 
@@ -141,7 +142,7 @@ public class SilenceDurationHealthComputation extends HealthComputationAdapter {
 		// Report the health score as an inverse
 		// percentage of the expected duration
 		if (enableVerbose)
-			System.out.println("SilenceDurationHealthComputation: " + l + " frames of survival");
+			log(l + " frames of survival");
 		
 		// If no silence which was too long in duration
 		// has occurred, return a perfect health score.

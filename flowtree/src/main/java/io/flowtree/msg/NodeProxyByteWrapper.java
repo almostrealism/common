@@ -16,6 +16,8 @@
 
 package io.flowtree.msg;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
@@ -42,7 +44,7 @@ import java.io.ObjectOutput;
  * file-length limit.  The shared decrypt cipher is obtained via the
  * package-accessible {@link NodeProxy#sInc} field.</p>
  */
-class NodeProxyByteWrapper implements Externalizable {
+class NodeProxyByteWrapper implements Externalizable, ConsoleFeatures {
 
 	/** Serial version UID required by {@link Externalizable}. */
 	private static final long serialVersionUID = 6512456536452755866L;
@@ -110,16 +112,16 @@ class NodeProxyByteWrapper implements Externalizable {
 				for (int i = l; i < this.b.length; i++) this.b[i] = -1;
 
 				if (Message.dverbose)
-					System.out.println("NodeProxy.ByteWrapper: Padded message by " + div);
+					log("NodeProxy.ByteWrapper: Padded message by " + div);
 			}
 
 			byte[] b = this.c.doFinal(this.b);
 			out.writeInt(b.length);
 			out.write(b);
 		} catch (IllegalBlockSizeException e) {
-			System.out.println("NodeProxy.ByteWrapper: Illegal block size (" + e.getMessage() + ")");
+			warn("NodeProxy.ByteWrapper: Illegal block size (" + e.getMessage() + ")", e);
 		} catch (BadPaddingException e) {
-			System.out.println("NodeProxy.ByteWrapper: Bad padding (" + e.getMessage() + ")");
+			warn("NodeProxy.ByteWrapper: Bad padding (" + e.getMessage() + ")", e);
 		}
 	}
 
@@ -149,12 +151,12 @@ class NodeProxyByteWrapper implements Externalizable {
 				this.b = temp;
 
 				if (Message.dverbose)
-					System.out.println("NodeProxy.ByteWrapper: Truncated message by " + i);
+					log("NodeProxy.ByteWrapper: Truncated message by " + i);
 			}
 		} catch (IllegalBlockSizeException e) {
-			System.out.println("NodeProxy.ByteWrapper: Illegal block size (" + e.getMessage() + ")");
+			warn("NodeProxy.ByteWrapper: Illegal block size (" + e.getMessage() + ")", e);
 		} catch (BadPaddingException e) {
-			System.out.println("NodeProxy.ByteWrapper: Bad padding (" + e.getMessage() + ")");
+			warn("NodeProxy.ByteWrapper: Bad padding (" + e.getMessage() + ")", e);
 		}
 	}
 }

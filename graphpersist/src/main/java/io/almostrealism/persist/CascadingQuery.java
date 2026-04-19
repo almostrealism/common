@@ -1,6 +1,7 @@
 package io.almostrealism.persist;
 
 import io.almostrealism.sql.SQLConnectionProvider;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -21,7 +22,7 @@ import java.util.Map;
  * @param <K> The key type passed to {@link #getQuery(Object)} and {@link #init(Object)}
  * @param <V> The result type, which must be {@link Cacheable}
  */
-public abstract class CascadingQuery<D extends SQLConnectionProvider, K, V extends Cacheable> extends CacheableQuery<D, K, V> {
+public abstract class CascadingQuery<D extends SQLConnectionProvider, K, V extends Cacheable> extends CacheableQuery<D, K, V> implements ConsoleFeatures {
 	@Override
 	public Collection<V> execute(D database, K key, Map<Class, List<CascadingQuery>> cascades) {
 		init(key);
@@ -37,7 +38,7 @@ public abstract class CascadingQuery<D extends SQLConnectionProvider, K, V exten
 				process(rs, key, cascades);
 			}
 		} catch (SQLException e) {
-			System.err.println("CascadingQuery: SQL error during execution: " + e.getMessage());
+			warn("CascadingQuery: SQL error during execution: " + e.getMessage());
 		}
 		
 		return getReturnValue(key);

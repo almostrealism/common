@@ -22,6 +22,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -41,7 +42,7 @@ import java.util.ArrayDeque;
  *
  * @author Michael Murray
  */
-public class LSystem implements CodeFeatures {
+public class LSystem implements CodeFeatures, ConsoleFeatures {
 	/** Symbol that advances the cursor one step in the current direction and places a surface. */
 	public static final String STEP = "step";
 
@@ -260,7 +261,7 @@ public class LSystem implements CodeFeatures {
 				d = (Vector) dstack.removeFirst();
 				continue i;
 			} else {
-				System.out.println("Encountered non-terminal: " + data[i]);
+				log("Encountered non-terminal: " + data[i]);
 				continue i;
 			}
 			

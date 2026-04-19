@@ -77,7 +77,7 @@ public interface OutputFeatures {
 				}
 			};
 		} catch (FileNotFoundException e) {
-			System.out.println("Output destination does not exist - " +
+			Console.root().println("Output destination does not exist - " +
 								e.getMessage());
 			return s -> {};
 		} catch (Exception e) {

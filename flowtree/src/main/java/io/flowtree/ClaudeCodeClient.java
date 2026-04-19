@@ -383,26 +383,26 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 	 * {@link System#out}.
 	 */
 	private static void printUsage() {
-		System.out.println("Usage: ClaudeCodeClient [options]");
-		System.out.println();
-		System.out.println("Options:");
-		System.out.println("  --host, -h <host>       Agent hostname (default: localhost)");
-		System.out.println("  --port, -p <port,...>   Agent port(s), comma-separated (default: 7766)");
-		System.out.println("  --prompt <text>         The prompt to execute (required)");
-		System.out.println("  --tools <list>          Allowed tools (default: Read,Edit,Write,Bash,Glob,Grep)");
-		System.out.println("  --max-turns <n>         Maximum agent turns (default: 50)");
-		System.out.println("  --max-budget <usd>      Maximum budget in USD (default: 10.0)");
-		System.out.println("  --help                  Show this help");
-		System.out.println();
-		System.out.println("Examples:");
-		System.out.println("  # Submit to single agent");
-		System.out.println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
-		System.out.println("      --host localhost --port 7766 \\");
-		System.out.println("      --prompt \"Fix the null pointer in UserService\"");
-		System.out.println();
-		System.out.println("  # Submit to multiple agents");
-		System.out.println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
-		System.out.println("      --host localhost --port 7766,7767,7768,7769 \\");
-		System.out.println("      --prompt \"Review error handling across the codebase\"");
+		Console.root().println("Usage: ClaudeCodeClient [options]");
+		Console.root().println("");
+		Console.root().println("Options:");
+		Console.root().println("  --host, -h <host>       Agent hostname (default: localhost)");
+		Console.root().println("  --port, -p <port,...>   Agent port(s), comma-separated (default: 7766)");
+		Console.root().println("  --prompt <text>         The prompt to execute (required)");
+		Console.root().println("  --tools <list>          Allowed tools (default: Read,Edit,Write,Bash,Glob,Grep)");
+		Console.root().println("  --max-turns <n>         Maximum agent turns (default: 50)");
+		Console.root().println("  --max-budget <usd>      Maximum budget in USD (default: 10.0)");
+		Console.root().println("  --help                  Show this help");
+		Console.root().println("");
+		Console.root().println("Examples:");
+		Console.root().println("  # Submit to single agent");
+		Console.root().println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
+		Console.root().println("      --host localhost --port 7766 \\");
+		Console.root().println("      --prompt \"Fix the null pointer in UserService\"");
+		Console.root().println("");
+		Console.root().println("  # Submit to multiple agents");
+		Console.root().println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
+		Console.root().println("      --host localhost --port 7766,7767,7768,7769 \\");
+		Console.root().println("      --prompt \"Review error handling across the codebase\"");
 	}
 }

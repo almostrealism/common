@@ -23,6 +23,7 @@ import org.almostrealism.physics.Absorber;
 import org.almostrealism.physics.AbsorberSet;
 import org.almostrealism.physics.Clock;
 import org.almostrealism.physics.PhotonField;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.physics.PhysicalConstants;
 import org.almostrealism.util.Chart;
 
@@ -56,7 +57,7 @@ import java.util.Set;
  * @author Michael Murray
  */
 // TODO  Consider creating a custom list for photon set (tick creates many many double[][]).
-public class DefaultPhotonField implements PhotonField {
+public class DefaultPhotonField implements PhotonField, ConsoleFeatures {
 	/** Fraction of ticks for which verbose photon movement output is logged (0.0 disables logging). */
 	public static double verbose = 0.01;
 	/** When true, emitted photon directions are validated to have unit length. */
@@ -208,7 +209,7 @@ public class DefaultPhotonField implements PhotonField {
 		if (verbose > 0.0) r = Math.random();
 
 		if (r < verbose)
-			System.out.println("Photons: " + this.photons.size());
+			log("Photons: " + this.photons.size());
 		
 		Iterator<Object[]> itr = this.photons.iterator();
 		
@@ -229,7 +230,7 @@ public class DefaultPhotonField implements PhotonField {
 			}
 			
 			if (o && r < verbose) {
-				System.out.println("PhotonMoved: " + ((Vector) p[1]).length() * delta);
+				log("PhotonMoved: " + ((Vector) p[1]).length() * delta);
 				o = false;
 			}
 			
@@ -239,7 +240,7 @@ public class DefaultPhotonField implements PhotonField {
 				dist = ((AbsorberSet) this.absorber).getDistance((Vector) p[0], (Vector) p[1]);
 			
 			if (r < verbose)
-				System.out.println("DefaultPhotonField: Distance = " + dist);
+				log("Distance = " + dist);
 			
 			((double[]) p[3])[0] = dist;
 			
@@ -257,28 +258,26 @@ public class DefaultPhotonField implements PhotonField {
 
 		w: while ((next = this.absorber.getNextEmit()) < s) {
 			if (r < verbose)
-				System.out.println("Next Emit: " + next);
+				log("Next Emit: " + next);
 
 			double d = this.absorber.getEmitEnergy();
 			Evaluable<PackedCollection> x = this.absorber.getEmitPosition().get();
 			Vector y = new Vector(this.absorber.emit().get().evaluate(), 0);
 			
 			if (x == null) {
-				System.out.println("DefaultPhotonField: " + this.absorber +
-									" returned null emit position.");
+				log(this.absorber + " returned null emit position.");
 				continue w;
 			}
-			
+
 			if (y == null) {
-				System.out.println("DefaultPhotonField: " + this.absorber +
-									" returned null emit direction.");
+				log(this.absorber + " returned null emit direction.");
 				continue w;
 			}
-			
+
 			if (checkLength) {
 				double l = y.length();
 				if (l > 1.0 + ep || l < 1.0 - ep)
-					System.out.println("DefaultPhotonField: Length was " + l);
+					log("Length was " + l);
 			}
 			
 			if (this.trace)
@@ -304,7 +303,7 @@ public class DefaultPhotonField implements PhotonField {
 				try (BufferedWriter out = new BufferedWriter(new FileWriter(this.file))) {
 					out.write(b.toString());
 				} catch (IOException e) {
-					System.out.println("DefaultPhotonField: " + e.getMessage());
+					warn(e.getMessage(), e);
 				}
 			}
 		}

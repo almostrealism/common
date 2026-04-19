@@ -86,24 +86,24 @@ public class PrototypeDiscoveryPersistenceTest extends TestSuiteBase {
 
 		File samplesDir = new File(samplesPath);
 		if (!samplesDir.isDirectory()) {
-			System.out.println("SKIP: Samples directory not found: " + samplesDir);
+			log("SKIP: Samples directory not found: " + samplesDir);
 			return;
 		}
 
 		File storeDir = new File(storePath);
 
-		System.out.println("=== PrototypeDiscovery Persistence Test ===");
-		System.out.println("Samples:    " + samplesDir.getAbsolutePath());
-		System.out.println("Store:      " + storeDir.getAbsolutePath());
-		System.out.println("Store exists: " + storeDir.exists());
-		System.out.println("Max prototypes: " + maxPrototypes);
-		System.out.println();
+		log("=== PrototypeDiscovery Persistence Test ===");
+		log("Samples:    " + samplesDir.getAbsolutePath());
+		log("Store:      " + storeDir.getAbsolutePath());
+		log("Store exists: " + storeDir.exists());
+		log("Max prototypes: " + maxPrototypes);
+		log("");
 
 		long startTotal = System.currentTimeMillis();
 
 		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir);
 		int initialSize = store.size();
-		System.out.println("Store loaded with " + initialSize + " existing entries");
+		log("Store loaded with " + initialSize + " existing entries");
 
 		AudioLibrary library = new AudioLibrary(
 				new FileWaveDataProviderNode(samplesDir),
@@ -111,33 +111,31 @@ public class PrototypeDiscoveryPersistenceTest extends TestSuiteBase {
 		library.getWaveDetailsFactory().setFeatureProvider(new SimpleFeatureProvider());
 
 		long startRefresh = System.currentTimeMillis();
-		System.out.println("Starting library refresh...");
+		log("Starting library refresh...");
 		library.refresh().join();
 		long refreshMs = System.currentTimeMillis() - startRefresh;
-		System.out.println("Refresh completed in " + refreshMs + " ms");
+		log("Refresh completed in " + refreshMs + " ms");
 
 		int totalIdentifiers = library.getAllIdentifiers().size();
 		int storeSize = store.size();
-		System.out.println("Library identifiers: " + totalIdentifiers);
-		System.out.println("Store size after refresh: " + storeSize);
-		System.out.println();
+		log("Library identifiers: " + totalIdentifiers);
+		log("Store size after refresh: " + storeSize);
+		log("");
 
 		long startDiscovery = System.currentTimeMillis();
-		System.out.println("Running prototype discovery...");
+		log("Running prototype discovery...");
 		List<PrototypeDiscovery.PrototypeResult> prototypes =
 				PrototypeDiscovery.discoverPrototypes(library, maxPrototypes, System.out::println);
 		long discoveryMs = System.currentTimeMillis() - startDiscovery;
-		System.out.println();
+		log("");
 
-		System.out.println("=== Results ===");
-		System.out.println("Discovered " + prototypes.size() + " prototypes:");
+		log("=== Results ===");
+		log("Discovered " + prototypes.size() + " prototypes:");
 		for (int i = 0; i < prototypes.size(); i++) {
 			PrototypeDiscovery.PrototypeResult prototype = prototypes.get(i);
-			System.out.printf("  %d. %s (community=%d, centrality=%.6f)%n",
-					i + 1, prototype.identifier(),
-					prototype.communitySize(), prototype.centrality());
+			log(String.format("  %d. %s (community=%d, centrality=%.6f)%n", i + 1, prototype.identifier(), prototype.communitySize(), prototype.centrality()));
 		}
-		System.out.println();
+		log("");
 
 		library.stop();
 		store.flush();
@@ -145,12 +143,12 @@ public class PrototypeDiscoveryPersistenceTest extends TestSuiteBase {
 
 		long totalMs = System.currentTimeMillis() - startTotal;
 
-		System.out.println("=== Timing ===");
-		System.out.println("Refresh:   " + refreshMs + " ms");
-		System.out.println("Discovery: " + discoveryMs + " ms");
-		System.out.println("Total:     " + totalMs + " ms");
-		System.out.println();
-		System.out.println("Run this test again — second run should be significantly faster.");
+		log("=== Timing ===");
+		log("Refresh:   " + refreshMs + " ms");
+		log("Discovery: " + discoveryMs + " ms");
+		log("Total:     " + totalMs + " ms");
+		log("");
+		log("Run this test again — second run should be significantly faster.");
 	}
 
 	/**

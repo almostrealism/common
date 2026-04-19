@@ -97,14 +97,14 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		// y = f(x)
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate(v);
-		System.out.println(Arrays.toString(out.toArray(0, count * dim)));
+		log(Arrays.toString(out.toArray(0, count * dim)));
 
 		// dy = f'(x)
 		//    = w
 		Evaluable<PackedCollection> dy = c.delta(x).get();
 		PackedCollection dout = dy.evaluate(v);
 		double[] d = dout.toArray(0, count * dim * dim);
-		System.out.println(Arrays.toString(d));
+		log(Arrays.toString(d));
 
 		for (int i = 0; i < count; i++) {
 			for (int j = 0 ; j < dim; j++) {
@@ -137,7 +137,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate(v);
 		double[] l = out.toArray(0, count * dim);
-		System.out.println(Arrays.toString(l));
+		log(Arrays.toString(l));
 		assertEquals(1.0, l[0]);
 		assertEquals(-2.0, l[1]);
 
@@ -146,7 +146,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		Evaluable<PackedCollection> dy = c.delta(x).get();
 		PackedCollection dout = dy.evaluate(v);
 		double[] d = dout.toArray(0, count * dim * dim);
-		System.out.println(Arrays.toString(d));
+		log(Arrays.toString(d));
 
 		for (int i = 0; i < count; i++) {
 			for (int j = 0 ; j < dim; j++) {
@@ -215,7 +215,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		// y = f(x)
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate(v);
-		System.out.println(Arrays.toString(out.toArray(0, 4 * dim)));
+		log(Arrays.toString(out.toArray(0, 4 * dim)));
 
 		// dy = f'(x)
 		//    = 2x - w
@@ -248,7 +248,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 
 		// x^2 + w * -x + 1
 		CollectionProducer c = x.sq().add(x.minus().mul(p(w))).add(c(1).repeat(3).consolidate());
-		System.out.println(c.describe());
+		log(String.valueOf(c.describe()));
 
 		// y = f(x)
 		Evaluable<PackedCollection> y = c.get();
@@ -1072,7 +1072,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		verboseLog(() -> {
 			CollectionProducer c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, cp(vector))));
 			PackedCollection out = c.delta(cp(vector)).evaluate();
-			System.out.println(out.getShape().toStringDetail());
+			log(out.getShape().toStringDetail());
 			out.print();
 
 			assertEquals(2.0, out.toDouble(0));
@@ -1095,7 +1095,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 
 		CollectionProducer c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, x(dim))));
 		PackedCollection out = c.delta(x(dim)).evaluate(vector);
-		System.out.println(out.getShape().toStringDetail());
+		log(out.getShape().toStringDetail());
 		out.print();
 
 		assertEquals(2.0, out.toDouble(0));
@@ -1117,7 +1117,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 
 		CollectionProducer c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, x(dim))));
 		PackedCollection out = c.delta(cp(matrix)).evaluate(vector.traverse());
-		System.out.println(out.getShape().toStringDetail());
+		log(out.getShape().toStringDetail());
 		out.print();
 
 		for (int i = 0; i < (dim * dim); i++) {
@@ -1217,7 +1217,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				.sum(1);
 		Evaluable<PackedCollection> dy = cdy.get();
 		PackedCollection dout = dy.evaluate();
-		System.out.println(dout.getShape().toStringDetail());
+		log(dout.getShape().toStringDetail());
 		dout.print();
 
 		for (int n = 0; n < dim; n++) {
@@ -1554,8 +1554,8 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				.delta(p(v));
 		Evaluable<PackedCollection> dy = cdy.get();
 		PackedCollection dout = dy.evaluate();
-		System.out.println(dout.getShape());
-		System.out.println(dout.toArrayString());
+		log(String.valueOf(dout.getShape()));
+		log(String.valueOf(dout.toArrayString()));
 
 		assertEquals(12, dout.toDouble(0));
 		assertEquals(-9, dout.toDouble(1));

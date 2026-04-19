@@ -41,12 +41,12 @@ public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioT
 						.map(i -> out.getWriterCell(0))
 						.iter(10);
 		Runnable r = op.get();
-		System.out.println(out.getChannelData(0).evaluate().toArrayString(0, 5));
+		log(String.valueOf(out.getChannelData(0).evaluate().toArrayString(0, 5)));
 
 		r.run();
 
 		PackedCollection result = out.getChannelData(0).evaluate();
-		System.out.println(result.toArrayString(0, 5));
+		log(String.valueOf(result.toArrayString(0, 5)));
 
 		Assert.assertEquals(0.0, result.toDouble(2), 0.0);
 		Assert.assertNotEquals(0.0, result.toDouble(3), 0.0);

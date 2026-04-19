@@ -90,7 +90,7 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 					Files.copy(file.toPath(),
 							new File(root, file.getName()).toPath(),
 							StandardCopyOption.REPLACE_EXISTING);
-					System.out.println("Copied " + file.getName());
+					log("Copied " + file.getName());
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
@@ -162,7 +162,7 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 		double a = Math.random(); // 0.2;
 		manager.setLayerCount(3);
 
-		System.out.println("a = " + a);
+		log("a = " + a);
 
 		AudioSceneContext context = new AudioSceneContext();
 		context.setMeasures(measures);

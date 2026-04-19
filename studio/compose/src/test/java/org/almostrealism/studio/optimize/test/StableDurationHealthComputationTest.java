@@ -75,15 +75,15 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 
 		IntStream.range(0, 5 * OutputLine.sampleRate).forEach(i -> {
 			tick.run();
-			if ((i + 1) % 1000 == 0) System.out.println("StableDurationHealthComputationTest: " + (i + 1) + " iterations");
+			if ((i + 1) % 1000 == 0) log("StableDurationHealthComputationTest: " + (i + 1) + " iterations");
 		});
 
-		System.out.println("StableDurationHealthComputationTest: Writing WAVs...");
+		log("StableDurationHealthComputationTest: Writing WAVs...");
 		output1.write().get().run();
 		output2.write().get().run();
 		// output3.write().get().run();
 		// output4.write().get().run();
-		System.out.println("Done");
+		log("Done");
 	}
 
 	@Test(timeout = 600_000)
@@ -167,7 +167,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 
 				health.setOutputFile(() -> "results/samples-pop-test-" + index.incrementAndGet() + ".wav");
 
-				System.out.println("Creating AudioScenePopulation...");
+				log("Creating AudioScenePopulation...");
 				AudioScenePopulation pop =
 						new AudioScenePopulation(null, AudioScenePopulation.read(new FileInputStream(AudioSceneOptimizer.POPULATION_FILE)));
 				pop.init(pop.getGenomes().get(0), health.getOutput());

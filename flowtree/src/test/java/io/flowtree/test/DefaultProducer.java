@@ -16,6 +16,8 @@
 
 package io.flowtree.test;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,7 +33,7 @@ import java.util.concurrent.ThreadLocalRandom;
  *
  * @author Michael Murray
  */
-public class DefaultProducer implements UrlProfilingTask.Producer {
+public class DefaultProducer implements UrlProfilingTask.Producer, ConsoleFeatures {
 	private String dir, uri, sufix;
 	private List<String> files;
 	private int size = 10;
@@ -65,7 +67,7 @@ public class DefaultProducer implements UrlProfilingTask.Producer {
 					ioe.getMessage());
 		}
 
-		System.out.println("DefaultProducer: Initialized with " + this.files.size() + " URLs.");
+		log("DefaultProducer: Initialized with " + this.files.size() + " URLs.");
 	}
 
 	@Override

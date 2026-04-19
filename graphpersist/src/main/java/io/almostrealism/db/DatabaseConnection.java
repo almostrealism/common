@@ -17,6 +17,7 @@
 package io.almostrealism.db;
 
 import io.almostrealism.db.Query.ResultHandler;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.io.OutputHandler;
 import org.almostrealism.util.KeyValueStore;
@@ -48,7 +49,7 @@ import java.util.Set;
  *
  * @author  Michael Murray
  */
-public class DatabaseConnection {
+public class DatabaseConnection implements ConsoleFeatures {
 	/** The bytea type name used by PostgreSQL for binary data columns. */
 	public static final String postgresBytea = "bytea";
 	/** The bytea type name used by HSQLDB for binary data columns. */
@@ -103,7 +104,7 @@ public class DatabaseConnection {
 					DatabaseConnection.this.storeOutput.executeUpdate();
 				}
 			} catch (SQLException sqle) {
-				System.out.println("DatabaseConnection.DefaultOutputHandler: SQL Error (" +
+				DatabaseConnection.this.warn("DatabaseConnection.DefaultOutputHandler: SQL Error (" +
 									sqle.getMessage() + ")");
 			}
 		}
@@ -120,7 +121,7 @@ public class DatabaseConnection {
 		@Override
 		public Map executeQuery(Query q) {
 			if (DatabaseConnection.this.db == null) {
-				System.out.println("DBS: Not connected.");
+				DatabaseConnection.this.warn("DBS: Not connected.");
 				return null;
 			}
 			
@@ -160,7 +161,7 @@ public class DatabaseConnection {
 				r = s.executeQuery(sql.toString());
 				
 				if (DatabaseConnection.verbose)
-					System.out.println("DBS DefaultOutputHandler: Executed SQL -- " + sql);
+					DatabaseConnection.this.log("DBS DefaultOutputHandler: Executed SQL -- " + sql);
 				
 				LinkedHashMap h = new LinkedHashMap();
 
@@ -198,18 +199,18 @@ public class DatabaseConnection {
 				}
 				
 				if (DatabaseConnection.verbose && handler == null)
-					System.out.println("DBS DefaultOutputHandler: Query returned " +
+					DatabaseConnection.this.log("DBS DefaultOutputHandler: Query returned " +
 										h.size() + " entries.");
 				
 				return h;
 			} catch (SQLException sqle) {
-				System.out.println("DatabaseConnection.DefaultQueryHandler: " + sqle);
+				DatabaseConnection.this.warn("DatabaseConnection.DefaultQueryHandler: " + sqle);
 				return null;
 			} finally {
 				try {
 					if (r != null) r.close();
 					if (s != null) s.close();
-				} catch (Exception e) { System.err.println("DatabaseConnection: Error closing resources: " + e.getMessage()); }
+				} catch (Exception e) { DatabaseConnection.this.warn("DatabaseConnection: Error closing resources: " + e.getMessage()); }
 			}
 		}
 	}
@@ -277,22 +278,22 @@ public class DatabaseConnection {
 	/** Loads the JDBC driver and establishes a connection to the database. */
 	public void loadDriver(String driver, String dburi, String dbuser, String dbpasswd) {
 		try {
-			System.out.print("DBS: Loading " + driver + "... ");
+			log("DBS: Loading " + driver + "... ");
 			Class.forName(driver);
-			System.out.println("Done");
-			
-			System.out.print("DBS: Opening " + dburi + " as user " + dbuser + "... ");
+			log("Done");
+
+			log("DBS: Opening " + dburi + " as user " + dbuser + "... ");
 			this.db = DriverManager.getConnection(dburi, dbuser, dbpasswd);
-			System.out.println(" Connected");
-			
+			log(" Connected");
+
 			try {
-				System.out.println("DatabaseConnection: Creating table...");
+				log("DatabaseConnection: Creating table...");
 				this.createOutputTable();
 			} catch (SQLException sqle) {
-				System.out.println("DatabaseConnection: " + sqle.getMessage());
+				warn("DatabaseConnection: " + sqle.getMessage());
 			}
-			
-			System.out.print("DBS: Preparing statements... ");
+
+			log("DBS: Preparing statements... ");
 			
 			StringBuilder buf = new StringBuilder();
 			buf.append("SELECT * FROM ");
@@ -387,14 +388,14 @@ public class DatabaseConnection {
 				buf.append(" = ?");
 				this.selectUser = this.db.prepareStatement(buf.toString());
 			} catch (SQLException sqle) {
-				System.out.println("\nDatabaseConnection: " + sqle);
+				warn("DatabaseConnection: " + sqle);
 			}
-			
-			System.out.println(" Done");
+
+			log(" Done");
 		} catch (ClassNotFoundException cnf) {
-			System.out.println("\nDatabaseConnection: JDBC driver not found");
+			warn("DatabaseConnection: JDBC driver not found");
 		} catch (SQLException sqle) {
-			System.out.println("\nDatabaseConnection: " + sqle);
+			warn("DatabaseConnection: " + sqle);
 		}
 	}
 	
@@ -487,11 +488,11 @@ public class DatabaseConnection {
 	public void storeOutput() {
 		try {
 			ResultSet r;
-			
+
 			synchronized (this.selectAll) {
 				r = this.selectAll.executeQuery();
 			}
-			
+
 			while(r.next()) {
 				long time = r.getLong(toaColumn);
 				int uid = r.getInt(uidColumn);
@@ -500,7 +501,7 @@ public class DatabaseConnection {
 				this.storeOutput(time, uid, tid, output);
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection: " + sqle);
+			warn("DatabaseConnection: " + sqle);
 		}
 	}
 
@@ -583,12 +584,12 @@ public class DatabaseConnection {
 				this.binaryInsert.executeUpdate();
 				
 				if (verbose)
-					System.out.println("DatabaseConnection: Executed binary insert.");
-				
+					log("DatabaseConnection: Executed binary insert.");
+
 				return true;
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection.DefaultOutputHandler: SQL Error (" +
+			warn("DatabaseConnection.DefaultOutputHandler: SQL Error (" +
 								sqle.getMessage() + ")");
 		}
 		
@@ -658,10 +659,10 @@ public class DatabaseConnection {
 				outputHandlers.forEach(oh -> oh.storeOutput(t, fid, o));
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection: " + sqle);
+			warn("DatabaseConnection: " + sqle);
 		}
 	}
-	
+
 	/**
 	 * Executes a query and returns the result in the form of a map.
 	 *
@@ -670,7 +671,7 @@ public class DatabaseConnection {
 	 */
 	public Map executeQuery(Query q) {
 		if (DatabaseConnection.verbose) {
-			System.out.println("DatabaseConnection: Executing " + q);
+			log("DatabaseConnection: Executing " + q);
 		}
 
 		LinkedHashMap result = new LinkedHashMap();
@@ -686,10 +687,10 @@ public class DatabaseConnection {
 	 */
 	public void updateDuplication(long toa, int dup) {
 		if (DatabaseConnection.verbose) {
-			System.out.println("DatabaseConnection (" + this.outputTable +
+			log("DatabaseConnection (" + this.outputTable +
 								"): Updating duplication to " + dup + ". ");
 		}
-		
+
 		try {
 			synchronized (this.updateDup) {
 				this.updateDup.setInt(1, dup);
@@ -697,7 +698,7 @@ public class DatabaseConnection {
 				this.updateDup.executeUpdate();
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConenction(" + this.outputTable +
+			warn("DatabaseConenction(" + this.outputTable +
 								"): Error executing update (" +
 								sqle.getMessage() + ")");
 		}
@@ -716,7 +717,7 @@ public class DatabaseConnection {
 			synchronized (this.configJob) {
 				this.configJob.setLong(1, toa);
 				if (DatabaseConnection.verbose)
-					System.out.println("DatabaseConnection (" + this.outputTable +
+					log("DatabaseConnection (" + this.outputTable +
 										"): Executing config job SQL (" + toa + ")");
 				
 				ResultSet s = this.configJob.executeQuery();
@@ -732,13 +733,13 @@ public class DatabaseConnection {
 				}
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConenction(" + this.outputTable +
+			warn("DatabaseConenction(" + this.outputTable +
 								"): Error configuring job (" +
 								sqle.getMessage() + ")");
 			return false;
 		}
 	}
-	
+
 	/**
 	 * Deletes all rows from the output table whose URI column matches the given value.
 	 *
@@ -748,14 +749,14 @@ public class DatabaseConnection {
 		try {
 			synchronized (this.deleteUri) {
 				if (DatabaseConnection.verbose)
-					System.out.println("DatabaseConnection (" + this.outputTable +
+					log("DatabaseConnection (" + this.outputTable +
 										"): Executing delete uri SQL (" + uri + ")");
-				
+
 				this.deleteUri.setString(1, uri);
 				this.deleteUri.executeUpdate();
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection(" + this.outputTable +
+			warn("DatabaseConnection(" + this.outputTable +
 								"): Error deleting " + uri + " (" +
 								sqle.getMessage() + ")");
 		}
@@ -774,17 +775,17 @@ public class DatabaseConnection {
 		try {
 			synchronized (this.deleteIndex) {
 				if (DatabaseConnection.verbose)
-					System.out.println("DatabaseConnection (" + this.outputTable +
+					log("DatabaseConnection (" + this.outputTable +
 										"): Executing delete uri SQL (" + uri + "  " +
 										index + ")");
-				
+
 				this.deleteIndex.setString(1, uri);
 				this.deleteIndex.setInt(2, index);
 				this.deleteIndex.executeUpdate();
 				return true;
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection(" + this.outputTable +
+			warn("DatabaseConnection(" + this.outputTable +
 								"): Error deleting " + uri + "  " + index +
 								" (" + sqle.getMessage() + ")");
 		}
@@ -801,14 +802,14 @@ public class DatabaseConnection {
 		try {
 			synchronized (this.deleteToa) {
 				if (DatabaseConnection.verbose)
-					System.out.println("DatabaseConnection (" + this.outputTable +
+					log("DatabaseConnection (" + this.outputTable +
 										"): Executing delete toa SQL (" + toa + ")");
-				
+
 				this.deleteToa.setLong(1, toa);
 				this.deleteToa.executeUpdate();
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection(" + this.outputTable +
+			warn("DatabaseConnection(" + this.outputTable +
 								"): Error deleting " + toa + " (" +
 								sqle.getMessage() + ")");
 		}

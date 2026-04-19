@@ -539,7 +539,6 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 			roots.forEach(layer -> layer.setAutomationParameters(automationParams));
 		} else {
 			if (enableLogging) {
-				System.out.println();
 				log(roots.size() +
 						" roots (scale = " + scale + ", duration = " + duration + ")");
 			}

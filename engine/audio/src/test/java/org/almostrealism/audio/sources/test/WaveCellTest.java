@@ -56,7 +56,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		WaveCell cell = cell();
 		cell.setReceptor(protein -> {
 			Evaluable<? extends PackedCollection> ev = protein.get();
-			return () -> () -> System.out.println(ev.evaluate().toDouble(0));
+			return () -> () -> log(String.valueOf(ev.evaluate().toDouble(0)));
 		});
 
 		OperationList l = (OperationList) cell.push(c(0.0));
@@ -84,7 +84,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 					int tot = total.incrementAndGet();
 
 					if (tot % 10 == 0) {
-						System.out.println(Instant.now() + " - Completed " + tot);
+						log(String.valueOf(Instant.now() + " - Completed " + tot));
 					}
 				}
 			});
@@ -147,7 +147,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		OperationList ops = (OperationList) cells.sec(10);
 		Runnable r = ops.get();
 		r.run();
-		System.out.println("Result after 10s: " + out.toDouble(0) + " (expected !" + 0.0 + ")");
+		log("Result after 10s: " + out.toDouble(0) + " (expected !" + 0.0 + ")");
 		Assert.assertNotEquals(0.0, out.toDouble(0), 0.0);
 	}
 
@@ -176,8 +176,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		Runnable r = op.get();
 		r.run();
 
-		System.out.println("Result after 0.3s: " + out.toDouble(0) + " (expected " +
-				data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1) + ")");
+		log("Result after 0.3s: " + out.toDouble(0) + " (expected " + data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1) + ")");
 		assertEquals(data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1), out.toDouble(0));
 	}
 
@@ -207,10 +206,8 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		op.add(sec(temporals, 0.3));
 		op.get().run();
 
-		System.out.println("Clock after 0.3s: " + clock.frame().evaluate().toDouble() +
-				" (expected " + 0.3 * OutputLine.sampleRate + ")");
-		System.out.println("Result after 0.3s: " + out.toDouble(0) + " (expected " +
-				data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1) + ")");
+		log("Clock after 0.3s: " + clock.frame().evaluate().toDouble() + " (expected " + 0.3 * OutputLine.sampleRate + ")");
+		log("Result after 0.3s: " + out.toDouble(0) + " (expected " + data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1) + ")");
 		assertEquals(data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1), out.toDouble(0));
 	}
 }

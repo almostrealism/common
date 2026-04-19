@@ -47,6 +47,7 @@ import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.physics.Absorber;
 import org.almostrealism.physics.AbsorberSet;
 import org.almostrealism.physics.Clock;
@@ -70,7 +71,7 @@ import java.util.Set;
  * @author  Michael Murray
  */
 public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> implements AbsorberSet<AbsorberHashSet.StoredItem>,
-																		ShadableSurface, Colorable, RGBFeatures, CodeFeatures {
+																		ShadableSurface, Colorable, RGBFeatures, CodeFeatures, ConsoleFeatures {
 	/** When true, front/back face detection is used during photon absorption. */
 	public static final boolean enableFrontBackDetection = false;
 
@@ -795,9 +796,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				d = this.emitter.absorber.emit();
 				
 				if (d == null)
-					System.out.println("AbsorberHashSet: " +
-										this.emitter.absorber +
-										" emitted null.");
+					log(this.emitter.absorber + " emitted null.");
 				
 				boolean front = !enableFrontBackDetection || dotProduct(d, vol.getNormalAt(p)).get().evaluate().toDouble(0) >= 0.0;
 				
@@ -913,7 +912,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			this.itemsUser = Thread.currentThread();
 			return this.items;
 		} else if (this.items != null) {
-			System.out.println("AbsorberHashSet: Needed extra iterator for " +
+			log("Needed extra iterator for " +
 								Thread.currentThread() + " (" + this.itemsUser + ")");
 		}
 		
@@ -1165,7 +1164,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 
 				if (rclosest.highlight) {
 					if (Math.random() < 0.1)
-						System.out.println("AbsorberHashSet: " + rclosest + " was highlighted.");
+						AbsorberHashSet.this.log(rclosest + " was highlighted.");
 					return new RGB(colorDepth, 1.0, 1.0, 1.0);
 				}
 
@@ -1174,7 +1173,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				try {
 					point = new Ray(p.getIntersection().get(0).get().evaluate(), 0);
 				} catch (Exception ex) {
-					System.err.println("AbsorberHashSet: " + ex.getMessage());
+					AbsorberHashSet.this.warn(ex.getMessage(), ex);
 				}
 
 				Vector po = point.getOrigin();
@@ -1262,11 +1261,10 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				if (c != null) r.addTo(c);
 
 				if (Math.random() < 0.0000001) {
-					System.out.println("****************");
-					System.out.println("AbsorberHashSet: " + rclosest + " " + closest);
-					System.out.println("AbsorberHashSet: Colors = " + rgb + " " + b + " " + c );
-					System.out.println("AbsorberHashSet: Final = " + r);
-					System.out.println();
+					AbsorberHashSet.this.log("****************");
+					AbsorberHashSet.this.log(rclosest + " " + closest);
+					AbsorberHashSet.this.log("Colors = " + rgb + " " + b + " " + c);
+					AbsorberHashSet.this.log("Final = " + r);
 				}
 
 				return r;

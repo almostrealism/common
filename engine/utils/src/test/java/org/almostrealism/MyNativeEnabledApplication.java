@@ -52,7 +52,7 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		compiledOperation.evaluate().print(displayResult::append);
 
 		// Display the result
-		System.out.println(displayResult);
+		log(String.valueOf(displayResult));
 	}
 
 	@Test(timeout = 30000)
@@ -92,11 +92,11 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		Evaluable<PackedCollection> compiledOperation = constantOperation.get();
 
 		// Evaluate the expression repeatedly
-		System.out.println("7 * 3 | 7 * 2 = ");
+		log("7 * 3 | 7 * 2 = ");
 		compiledOperation.evaluate(pack(3, 2)).print();
-		System.out.println("7 * 4 | 7 * 3 = ");
+		log("7 * 4 | 7 * 3 = ");
 		compiledOperation.evaluate(pack(4, 3)).print();
-		System.out.println("7 * 5 | 7 * 4 = ");
+		log("7 * 5 | 7 * 4 = ");
 		compiledOperation.evaluate(pack(5, 4)).print();
 	}
 
@@ -114,11 +114,11 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 				Evaluable<PackedCollection> compiledOperation = constantOperation.get();
 
 				// Evaluate the expression repeatedly
-				System.out.println("7 * 3 | 7 * 2 = ");
+				log("7 * 3 | 7 * 2 = ");
 				compiledOperation.evaluate(pack(3, 2)).print();
-				System.out.println("7 * 4 | 7 * 3 = ");
+				log("7 * 4 | 7 * 3 = ");
 				compiledOperation.evaluate(pack(4, 3)).print();
-				System.out.println("7 * 5 | 7 * 4 = ");
+				log("7 * 5 | 7 * 4 = ");
 				compiledOperation.evaluate(pack(5, 4)).print();
 			});
 		}
@@ -159,7 +159,7 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		// Evaluate the expression with the accelerator deciding how to parallelize it
 		compiledOperation.into(results).evaluate(bank);
 
-		System.out.println("7 * 3, 7 * 4, 7 * 5 = ");
+		log("7 * 3, 7 * 4, 7 * 5 = ");
 		results.print();
 	}
 
@@ -170,14 +170,14 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		// value with 80 elements. In this case, 1 is referred to as the count and
 		// 80 is referred to as the size.
 		TraversalPolicy shape = shape(10, 4, 2);
-		System.out.println("Shape = " + shape.toStringDetail());
+		log("Shape = " + shape.toStringDetail());
 		// Shape = (10, 4, 2)[axis=0|1x80]
 		//           <dims> [Count x Size]
 
 		// What if we want to operate on groups of elements at once, via SIMD or
 		// some other method? We can simply adjust the traversal axis
 		shape = shape.traverse();
-		System.out.println("Shape = " + shape.toStringDetail());
+		log("Shape = " + shape.toStringDetail());
 		// Shape = (10, 4, 2)[axis=1|10x8]
 		//           <dims> [Count x Size]
 		// --> Now we have 10 groups of 8 elements each, and 10 operations can work on
@@ -186,7 +186,7 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		shape = shape.traverseEach(); // Move the traversal axis to the innermost dimension
 		shape = shape.consolidate(); // Move the traversal axis back by 1 position
 		shape = shape.item(); // Pull off just the shape of one item in the parallel group
-		System.out.println("Shape = " + shape.toStringDetail());
+		log("Shape = " + shape.toStringDetail());
 		// Shape = (2)[axis=0|1x2]
 		// --> And that's just one item from the original shape (which contained 40 of them).
 	}
@@ -204,7 +204,7 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 					pack(2, 3, 4, 5, 6, 7, 8, 9)
 						.reshape(2, 4);
 		PackedCollection r = c(a).enumerate(1, 2, 2).evaluate();
-		System.out.println(r.getShape().toStringDetail());
+		log(r.getShape().toStringDetail());
 		// Shape = (2, 2, 2)[axis=0|1x8]
 
 		r.traverse(2).print();
@@ -290,7 +290,7 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		ComplexNumber b = new ComplexNumber(3, 4);
 
 		Producer<ComplexNumber> c = (Producer) multiplyComplex(c(a), c(b));
-		System.out.println("(1 + 2i) * (3 + 4i) = ");
+		log("(1 + 2i) * (3 + 4i) = ");
 		c.evaluate().print();
 	}
 
