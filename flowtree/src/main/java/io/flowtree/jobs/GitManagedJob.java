@@ -100,7 +100,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     /** File patterns that are always excluded from commits. */
     private static final Set<String> DEFAULT_EXCLUDED_PATTERNS = GitJobConfig.DEFAULT_EXCLUDED_PATTERNS;
 
-    /** Jackson mapper used to construct JSON event payloads posted to the workstream messages endpoint. */
+    /** Shared Jackson mapper used to build JSON payloads for workstream messaging. */
     private static final ObjectMapper eventMapper = new ObjectMapper();
 
 

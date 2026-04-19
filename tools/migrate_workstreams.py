@@ -116,7 +116,7 @@ def apply_migration(
     top_orgs = new_config.pop("githubOrgs", {}) or {}
 
     # Embed the relevant githubOrgs into each workspace entry.
-    for ws_entry in workspace_entries:
+    for i, ws_entry in enumerate(workspace_entries):
         if not ws_entry.get("githubOrgs"):
             ws_id = ws_entry.get("workspaceId")
             ws_orgs = {
@@ -125,8 +125,8 @@ def apply_migration(
                 if org_to_workspace_id.get(org) == ws_id
             }
             if ws_orgs:
-                ws_entry = dict(ws_entry)
-                ws_entry["githubOrgs"] = ws_orgs
+                workspace_entries[i] = dict(ws_entry)
+                workspace_entries[i]["githubOrgs"] = ws_orgs
 
     new_config["slackWorkspaces"] = workspace_entries
 

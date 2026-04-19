@@ -109,6 +109,16 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Removes all registered workstreams from this notifier.
+     *
+     * <p>Called during configuration reload so that workstreams removed or moved
+     * between workspaces do not remain active after the reload completes.</p>
+     */
+    public void clearWorkstreams() {
+        workstreams.clear();
+    }
+
+    /**
      * Returns the workstream for a given ID.
      *
      * @param workstreamId the workstream identifier

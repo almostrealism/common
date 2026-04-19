@@ -153,11 +153,7 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Sets the per-workspace notifier map.
-     *
-     * <p>Called by {@link FlowTreeController#buildWorkspaceConnections} after
-     * multi-workspace config is loaded. Enables workspace-scoped routing so that
-     * each workspace's events are handled with that workspace's bot token.</p>
+     * Sets the per-workspace notifier map used for workspace-scoped routing.
      *
      * @param notifiersByWorkspace map of workspace ID to notifier; must not be {@code null}
      */
@@ -166,11 +162,8 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Returns the composite map key used to identify a workstream.
-     *
-     * <p>When {@code workspaceId} is non-null the key is {@code workspaceId:channelId},
-     * ensuring uniqueness across workspaces. When {@code workspaceId} is {@code null}
-     * (single-workspace / legacy mode) the key is the bare {@code channelId}.</p>
+     * Returns the composite map key for a workstream: {@code workspaceId:channelId}
+     * in multi-workspace mode, or the bare {@code channelId} when workspace is null.
      *
      * @param workspaceId the Slack team ID (T...), or {@code null}
      * @param channelId   the Slack channel ID
@@ -181,29 +174,29 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Resolves the notifier for the given workspace.
-     *
-     * <p>Returns the workspace-specific notifier when one is registered in
-     * {@link #notifiersByWorkspace}, otherwise falls back to the primary
-     * {@link #notifier} field.</p>
+     * Resolves the notifier for the given workspace. In multi-workspace mode
+     * an unknown workspace ID returns a no-op notifier to prevent cross-tenant
+     * token use; in single-workspace mode the primary notifier is always returned.
      *
      * @param workspaceId the Slack team ID, or {@code null}
-     * @return the appropriate notifier, never {@code null} if the primary is set
+     * @return the appropriate notifier
      */
     private SlackNotifier resolveNotifier(String workspaceId) {
         if (workspaceId != null) {
             SlackNotifier wsNotifier = notifiersByWorkspace.get(workspaceId);
             if (wsNotifier != null) return wsNotifier;
+            if (!notifiersByWorkspace.isEmpty()) {
+                warn("Unknown workspace ID '" + workspaceId
+                        + "' — using no-op notifier to prevent cross-workspace posting");
+                return new SlackNotifier(null);
+            }
         }
         return notifier;
     }
 
     /**
-     * Looks up the workstream for a given workspace + channel combination.
-     *
-     * <p>Tries the composite key {@code workspaceId:channelId} first. If not found
-     * and {@code workspaceId} is non-null, falls back to the bare {@code channelId}
-     * for backward compatibility with workstreams registered without a workspace ID.</p>
+     * Looks up the workstream for a workspace + channel pair. Tries the composite
+     * key first, then falls back to bare channelId for backward compatibility.
      *
      * @param workspaceId the Slack team ID, or {@code null}
      * @param channelId   the Slack channel ID
@@ -220,12 +213,23 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Registers a workstream. Agents connect inbound to the controller's
-     * FlowTree {@link Server}, so no outbound connections are needed here.
-     *
-     * <p>The workstream is keyed in {@link #channelToWorkstream} using the composite
-     * key (see {@link #channelKey}). In single-workspace mode the key is the bare
-     * channel ID, preserving backward compatibility.</p>
+     * Clears all registered workstreams from the channel map and every notifier.
+     * Called by {@link FlowTreeController#reloadConfig()} before re-registering
+     * so removed or relocated workstreams do not remain active after reload.
+     */
+    public void clearWorkstreams() {
+        channelToWorkstream.clear();
+        if (notifier != null) {
+            notifier.clearWorkstreams();
+        }
+        for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) {
+            wsNotifier.clearWorkstreams();
+        }
+    }
+
+    /**
+     * Registers a workstream keyed in {@link #channelToWorkstream} using
+     * {@link #channelKey}. Agents connect inbound via the FlowTree {@link Server}.
      *
      * @param workstream the workstream to register
      */
@@ -349,10 +353,6 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Handles an incoming Slack message event (workspace-aware overload).
-     *
-     * <p>This is the primary implementation in Phase 1c. The {@code workspaceId}
-     * is used to build the composite key for workstream lookup, enabling correct
-     * routing when the same channel ID exists in multiple workspaces.</p>
      *
      * @param channelId   the channel where the message was posted
      * @param userId      the user who posted the message

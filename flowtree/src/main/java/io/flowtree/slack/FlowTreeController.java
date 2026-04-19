@@ -397,6 +397,11 @@ public class FlowTreeController implements ConsoleFeatures {
                 log("Rebuilt " + workspaceConnections.size() + " workspace connection(s)");
             }
 
+            // Clear stale channel→workstream entries and per-notifier registrations
+            // before re-registering. Without this, workstreams removed or moved to a
+            // different workspace would remain active after the reload.
+            listener.clearWorkstreams();
+
             for (Workstream workstream : config.toWorkstreams()) {
                 registerWorkstream(workstream);
             }
@@ -533,7 +538,11 @@ public class FlowTreeController implements ConsoleFeatures {
                         + (wsEntry.getName() != null ? " (" + wsEntry.getName() + ")" : ""));
             } catch (IOException e) {
                 warn("Failed to load tokens for workspace " + wsEntry.getWorkspaceId()
-                        + ": " + e.getMessage());
+                        + ": " + e.getMessage() + " — registering with no-op notifier to prevent"
+                        + " cross-workspace fallback");
+                WorkspaceConnection conn = new WorkspaceConnection(
+                        wsEntry.getWorkspaceId(), null, null);
+                workspaceConnections.put(wsEntry.getWorkspaceId(), conn);
             }
         }
         if (!workspaceConnections.isEmpty()) {
@@ -1011,39 +1020,10 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
 
-            // Populate per-org GitHub tokens: start with global githubOrgs, then merge
-            // per-workspace entries so that multi-tenant deployments can have distinct
-            // GitHub tokens per workspace. Warn on collision (same org name in two workspaces).
+            // Populate per-org GitHub tokens: global githubOrgs merged with per-workspace
+            // overrides via WorkstreamConfig.mergedGithubOrgTokens().
             if (loadedConfig != null) {
-                Map<String, String> orgTokens = new LinkedHashMap<>();
-                if (loadedConfig.getGithubOrgs() != null) {
-                    for (Map.Entry<String, WorkstreamConfig.GitHubOrgEntry> entry
-                            : loadedConfig.getGithubOrgs().entrySet()) {
-                        String orgToken = entry.getValue().getToken();
-                        if (orgToken != null && !orgToken.isEmpty()) {
-                            orgTokens.put(entry.getKey(), orgToken);
-                        }
-                    }
-                }
-                if (loadedConfig.getSlackWorkspaces() != null) {
-                    for (WorkstreamConfig.SlackWorkspaceEntry wsEntry
-                            : loadedConfig.getSlackWorkspaces()) {
-                        if (wsEntry.getGithubOrgs() == null) continue;
-                        for (Map.Entry<String, WorkstreamConfig.GitHubOrgEntry> entry
-                                : wsEntry.getGithubOrgs().entrySet()) {
-                            String orgName = entry.getKey();
-                            String orgToken = entry.getValue().getToken();
-                            if (orgToken == null || orgToken.isEmpty()) continue;
-                            if (orgTokens.containsKey(orgName)) {
-                                warn("GitHub org name collision: '" + orgName
-                                        + "' defined in both global githubOrgs and workspace '"
-                                        + wsEntry.getWorkspaceId()
-                                        + "' — workspace entry will override the global one");
-                            }
-                            orgTokens.put(orgName, orgToken);
-                        }
-                    }
-                }
+                Map<String, String> orgTokens = loadedConfig.mergedGithubOrgTokens();
                 if (!orgTokens.isEmpty()) {
                     apiEndpoint.setGithubOrgTokens(orgTokens);
                     log("Loaded GitHub tokens for " + orgTokens.size() + " org(s)");

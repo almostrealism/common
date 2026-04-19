@@ -181,6 +181,20 @@ class TestApplyMigration(unittest.TestCase):
         result = migrate.apply_migration(config, self._two_workspace_entries(), org_map, "T111")
         self.assertNotIn("githubOrgs", result)
 
+    def test_top_level_githubOrgs_embedded_in_workspace_entries(self):
+        # Regression test: prior bug reassigned ws_entry as a local variable only,
+        # so githubOrgs were never written back into workspace_entries.
+        config = yaml.safe_load(SINGLE_WORKSPACE_YAML)
+        org_map = {"my-org": "T111", "other-org": "T222"}
+        result = migrate.apply_migration(config, self._two_workspace_entries(), org_map, "T111")
+        ws_list = result["slackWorkspaces"]
+        primary = next(w for w in ws_list if w["workspaceId"] == "T111")
+        secondary = next(w for w in ws_list if w["workspaceId"] == "T222")
+        self.assertIn("githubOrgs", primary, "T111 workspace must receive my-org token")
+        self.assertIn("my-org", primary["githubOrgs"])
+        self.assertIn("githubOrgs", secondary, "T222 workspace must receive other-org token")
+        self.assertIn("other-org", secondary["githubOrgs"])
+
     def test_workstream_gets_slackWorkspaceId_from_githubOrg(self):
         config = yaml.safe_load(SINGLE_WORKSPACE_YAML)
         org_map = {"my-org": "T111", "other-org": "T222"}

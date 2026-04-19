@@ -514,6 +514,39 @@ public class WorkstreamConfig {
     public Map<String, GitHubOrgEntry> getGithubOrgs() { return githubOrgs; }
     public void setGithubOrgs(Map<String, GitHubOrgEntry> githubOrgs) { this.githubOrgs = githubOrgs; }
 
+    /**
+     * Returns a merged map of GitHub org name to token, combining the global
+     * {@code githubOrgs} with per-workspace {@code githubOrgs} overrides. When
+     * the same org name appears in both, the per-workspace entry takes precedence
+     * (last write wins across workspaces). Only entries with non-null, non-empty
+     * tokens are included.
+     *
+     * @return merged org-name → token map, in insertion order
+     */
+    public Map<String, String> mergedGithubOrgTokens() {
+        Map<String, String> orgTokens = new LinkedHashMap<>();
+        if (githubOrgs != null) {
+            for (Map.Entry<String, GitHubOrgEntry> entry : githubOrgs.entrySet()) {
+                String token = entry.getValue().getToken();
+                if (token != null && !token.isEmpty()) {
+                    orgTokens.put(entry.getKey(), token);
+                }
+            }
+        }
+        if (slackWorkspaces != null) {
+            for (SlackWorkspaceEntry wsEntry : slackWorkspaces) {
+                if (wsEntry.getGithubOrgs() == null) continue;
+                for (Map.Entry<String, GitHubOrgEntry> entry : wsEntry.getGithubOrgs().entrySet()) {
+                    String token = entry.getValue().getToken();
+                    if (token != null && !token.isEmpty()) {
+                        orgTokens.put(entry.getKey(), token);
+                    }
+                }
+            }
+        }
+        return orgTokens;
+    }
+
     /** Returns the list of workstream configuration entries. */
     public List<WorkstreamEntry> getWorkstreams() { return workstreams; }
     /** Sets the list of workstream configuration entries. */
