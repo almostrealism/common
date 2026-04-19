@@ -18,10 +18,22 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Map of path-relative-to-repo-root -> max allowed line count at time of exemption
 declare -A EXEMPT_FILES
+
+# Pre-existing exemptions (exceeded 1800-line limit before the cap was lowered to 1600)
 EXEMPT_FILES["compute/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java"]=3738
 EXEMPT_FILES["base/code/src/main/java/io/almostrealism/expression/Expression.java"]=2094
 EXEMPT_FILES["engine/ml/src/main/java/org/almostrealism/ml/AttentionFeatures.java"]=2084
 EXEMPT_FILES["domain/graph/src/main/java/org/almostrealism/layers/LayerFeatures.java"]=2006
+
+# Phased-reduction exemptions (exceeded 1600-line limit when the cap was lowered from 1800)
+# These files must not grow; reduce them over time and remove their entries here + in checkstyle.xml.
+EXEMPT_FILES["flowtree/src/main/java/io/flowtree/jobs/GitManagedJob.java"]=1795
+EXEMPT_FILES["engine/ml/src/test/java/org/almostrealism/ml/audio/OobleckLayerValidationTest.java"]=1793
+EXEMPT_FILES["flowtree/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java"]=1783
+EXEMPT_FILES["flowtree/src/test/java/io/flowtree/test/NodeRelaySimulationTest.java"]=1779
+EXEMPT_FILES["studio/compose/src/main/java/org/almostrealism/studio/AudioScene.java"]=1715
+EXEMPT_FILES["engine/utils/src/test/java/org/almostrealism/collect/computations/test/TraversableDeltaComputationTests.java"]=1690
+EXEMPT_FILES["flowtree/src/test/java/io/flowtree/slack/SlackIntegrationTest.java"]=1660
 
 FAILED=0
 

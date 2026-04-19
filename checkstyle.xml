@@ -7,10 +7,10 @@
     Project-wide code quality rules applied to every module in the default build.
 
     Rules applied:
-      - FileLength           : Java source files are capped at 1800 lines.  Files
+      - FileLength           : Java source files are capped at 1600 lines.  Files
                                larger than this are a sign that a class is doing
                                too much and should be split into focused collaborators.
-                               Three legacy files exceed this limit and are individually
+                               Eleven legacy files exceed this limit and are individually
                                exempted via SuppressionSingleFilter (see below).  Those
                                files are tracked by scripts/check-exempt-file-lengths.sh,
                                which enforces that they do not grow beyond their current
@@ -39,16 +39,25 @@
         <property name="fileNamePattern" value="[/\\]generated[/\\]"/>
     </module>
 
-    <!-- Cap Java source files at 1800 lines.  Files larger than this are a
+    <!-- Cap Java source files at 1600 lines.  Files larger than this are a
          sign that a class is doing too much and should be split into focused
-         collaborators. -->
+         collaborators.  The limit was lowered from 1800 to 1600 to reduce
+         the amount of context agents must read to understand a class.
+         Eleven legacy files exceed this limit and are individually exempted
+         via SuppressionSingleFilter (see below).  All are tracked by
+         scripts/check-exempt-file-lengths.sh, which enforces that they do
+         not grow beyond their sizes at the time of exemption. -->
     <module name="FileLength">
-        <property name="max" value="1800"/>
+        <property name="max" value="1600"/>
     </module>
 
-    <!-- Exempt legacy files that currently exceed 1800 lines.  These files are
+    <!-- Exempt legacy files that currently exceed 1600 lines.  These files are
          tracked by scripts/check-exempt-file-lengths.sh, which prevents them
-         from growing beyond their sizes at the time of exemption. -->
+         from growing beyond their sizes at the time of exemption.
+         To remove an exemption: split the file below 1600 lines, then remove
+         its SuppressionSingleFilter entry and its entry in check-exempt-file-lengths.sh. -->
+
+    <!-- Pre-existing exemptions (exceeded 1800 lines): -->
     <module name="SuppressionSingleFilter">
         <property name="checks" value="FileLength"/>
         <property name="files" value="CollectionFeatures\.java"/>
@@ -61,11 +70,40 @@
         <property name="checks" value="FileLength"/>
         <property name="files" value="AttentionFeatures\.java"/>
     </module>
-    <!-- LayerFeatures.java grew past 1800 lines when Javadoc was added;
-         tracked by scripts/check-exempt-file-lengths.sh -->
+    <!-- LayerFeatures.java grew past 1800 lines when Javadoc was added -->
     <module name="SuppressionSingleFilter">
         <property name="checks" value="FileLength"/>
         <property name="files" value="LayerFeatures\.java"/>
+    </module>
+
+    <!-- Phased-reduction exemptions (exceeded 1600 lines when limit was lowered): -->
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="GitManagedJob\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="OobleckLayerValidationTest\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="ClaudeCodeJob\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="NodeRelaySimulationTest\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="AudioScene\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="TraversableDeltaComputationTests\.java"/>
+    </module>
+    <module name="SuppressionSingleFilter">
+        <property name="checks" value="FileLength"/>
+        <property name="files" value="SlackIntegrationTest\.java"/>
     </module>
     <!-- Console.java is the logging system itself — it must write to System.out/err
          directly to deliver output.  The DirectSystemOut rule is suppressed for it. -->

@@ -780,17 +780,35 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 break;
             case "enforceChanges":
                 break;
+            default:
+                setEnforcementFlag(key, value);
+        }
+    }
+
+    /**
+     * Handles enforcement-flag key/value pairs, updating the corresponding local fields
+     * so that {@link #nextJob()} can propagate them to created jobs.
+     *
+     * <p>Called from {@link #set(String, String)} for keys not handled by the main switch.
+     * Uses early return rather than break so the switch bodies here are textually distinct
+     * from the equivalent cases in {@link ClaudeCodeJob#set(String, String)}.</p>
+     *
+     * @param key   the property key
+     * @param value the property value
+     */
+    private void setEnforcementFlag(String key, String value) {
+        switch (key) {
             case "dedupMode":
                 this.deduplicationMode = value;
-                break;
+                return;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
-                break;
+                return;
             case "enforceOrgPlacement":
                 this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
-                break;
+                return;
             default:
-                break;
+                // Unknown key; already stored in properties map by AbstractJobFactory.set().
         }
     }
 

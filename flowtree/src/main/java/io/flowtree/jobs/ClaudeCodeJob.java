@@ -968,11 +968,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                     if (file.contains(" -> ")) {
                         file = file.split(" -> ")[1];
                     }
-                    if (!file.isEmpty()
-                            && !file.startsWith("claude-output/")
-                            && !file.startsWith(".claude/")
-                            && !file.startsWith("target/")
-                            && !file.equals("commit.txt")) {
+                    if (!isExcludedPath(file)) {
                         return true;
                     }
                 }
@@ -1308,7 +1304,8 @@ public class ClaudeCodeJob extends GitManagedJob {
             String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             p.waitFor();
             for (String path : listing.split("\n")) {
-                addNewFilePath(path.trim(), seen);
+                String trimmed = path.trim();
+                if (!isExcludedPath(trimmed)) seen.add(trimmed);
             }
         } catch (IOException | InterruptedException e) {
             warn("Organizational placement scan: failed to diff tracked files: " + e.getMessage());
@@ -1326,7 +1323,8 @@ public class ClaudeCodeJob extends GitManagedJob {
             String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             p.waitFor();
             for (String path : listing.split("\n")) {
-                addNewFilePath(path.trim(), seen);
+                String trimmed = path.trim();
+                if (!isExcludedPath(trimmed)) seen.add(trimmed);
             }
         } catch (IOException | InterruptedException e) {
             warn("Organizational placement scan: failed to list untracked files: " + e.getMessage());
@@ -1336,21 +1334,18 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Adds {@code path} to {@code sink} unless it matches a scratch directory
-     * or scratch file that should be excluded from placement review.
+     * Returns {@code true} if {@code path} matches a scratch directory or file that
+     * should be excluded from placement and change-set reviews.
      *
      * @param path  the candidate file path (relative to the working directory)
-     * @param sink  the set to add the path to if it passes the exclusion filter
+     * @return {@code true} if the path should be excluded
      */
-    private static void addNewFilePath(String path, Set<String> sink) {
-        if (path.isEmpty()
+    private static boolean isExcludedPath(String path) {
+        return path.isEmpty()
                 || path.startsWith("claude-output/")
                 || path.startsWith(".claude/")
                 || path.startsWith("target/")
-                || path.equals("commit.txt")) {
-            return;
-        }
-        sink.add(path);
+                || path.equals("commit.txt");
     }
 
     /**

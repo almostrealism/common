@@ -16,70 +16,33 @@
 
 package io.flowtree.jobs;
 
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Enforcement rule that verifies new files introduced since the base branch are
  * placed at the appropriate level of the organizational hierarchy.
  *
- * <p>Uses file-set comparison to determine when to stop looping. Before each correction
- * session, {@link #isViolated} records the current set of new file paths. After the
- * session completes, {@link #onCorrectionAttempted} compares the post-session set with
- * the pre-session set. If the sets are identical, the agent is satisfied with placement
- * and the rule marks itself resolved so the loop exits on the next {@link #isViolated}
- * check. If the set changed (files were moved), another pass is made to confirm the
- * final placement is correct.</p>
+ * <p>Uses set-snapshot comparison (inherited from {@link SetComparisonRule}) to
+ * determine when to stop looping: after a correction session that produces no
+ * change in the new-file set, the rule considers the agent satisfied with the
+ * current placement and marks itself resolved.</p>
  *
  * <p>Active when {@link ClaudeCodeJob#isEnforceOrganizationalPlacement()} is {@code true}
  * (the default).</p>
  *
  * @author Michael Murray
  * @see ClaudeCodeJob#extractNewFilePaths()
+ * @see SetComparisonRule
  * @see EnforcementRule
  */
-class OrganizationalPlacementRule implements EnforcementRule {
-
-    /**
-     * The set of new file paths recorded by the most recent {@link #isViolated} call.
-     * Used by {@link #onCorrectionAttempted} to compare against the post-session set
-     * and determine whether the agent moved any files.
-     */
-    private Set<String> fileSetBeforeSession = null;
-
-    /**
-     * Set to {@code true} by {@link #onCorrectionAttempted} when a correction session
-     * completes without changing the file set, indicating the agent is satisfied with
-     * the current placement of all new files. Once resolved, {@link #isViolated} returns
-     * {@code false} immediately so the loop exits.
-     */
-    private boolean resolved = false;
+class OrganizationalPlacementRule extends SetComparisonRule {
 
     @Override
     public String getName() { return "organizational-placement"; }
 
     @Override
-    public boolean isViolated(ClaudeCodeJob job) {
-        if (resolved) return false;
-        List<String> newFiles = job.extractNewFilePaths();
-        fileSetBeforeSession = new LinkedHashSet<>(newFiles);
-        return !newFiles.isEmpty();
-    }
-
-    /**
-     * Compares the post-session file set against the pre-session snapshot recorded by
-     * {@link #isViolated}. If the sets are equal, the agent moved nothing during the
-     * correction session and the rule marks itself resolved so the loop exits on the
-     * next {@link #isViolated} check.
-     */
-    @Override
-    public void onCorrectionAttempted(ClaudeCodeJob job) {
-        if (fileSetBeforeSession == null) return;
-        Set<String> currentFileSet = new LinkedHashSet<>(job.extractNewFilePaths());
-        if (currentFileSet.equals(fileSetBeforeSession)) {
-            resolved = true;
-        }
+    protected List<String> extractItems(ClaudeCodeJob job) {
+        return job.extractNewFilePaths();
     }
 
     @Override
