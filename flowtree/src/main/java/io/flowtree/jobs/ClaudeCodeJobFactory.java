@@ -85,6 +85,13 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     private boolean enforceMavenDependencies;
 
     /**
+     * When {@code true} (the default), jobs created by this factory activate the
+     * organizational placement rule, prompting the agent to verify that new files
+     * are placed at the appropriate level of the module hierarchy.
+     */
+    private boolean enforceOrganizationalPlacement = true;
+
+    /**
      * Default constructor for deserialization.
      */
     public ClaudeCodeJobFactory() {
@@ -524,6 +531,27 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns whether jobs created by this factory activate the organizational
+     * placement rule.
+     *
+     * @return {@code true} if placement enforcement is enabled (the default)
+     */
+    public boolean isEnforceOrganizationalPlacement() {
+        return enforceOrganizationalPlacement;
+    }
+
+    /**
+     * Sets whether jobs created by this factory activate the organizational
+     * placement rule.
+     *
+     * @param enforceOrganizationalPlacement {@code false} to disable placement enforcement
+     */
+    public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
+        this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
+        set("enforceOrgPlacement", String.valueOf(enforceOrganizationalPlacement));
+    }
+
+    /**
      * Returns whether a pull request should be automatically created
      * upon successful job completion.
      */
@@ -673,6 +701,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setEnforceChanges(isEnforceChanges());
         job.setDeduplicationMode(deduplicationMode);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
+        job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
 
         String pyReqs = getPythonRequirements();
         if (pyReqs != null) {
@@ -756,6 +785,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 break;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
+                break;
+            case "enforceOrgPlacement":
+                this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
                 break;
             default:
                 break;

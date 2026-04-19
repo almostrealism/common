@@ -375,4 +375,183 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
 		assertEquals(ClaudeCodeJob.DEDUP_LOCAL, factory.getDeduplicationMode());
 	}
+
+	// ── OrganizationalPlacementRule — flag defaults ──────────────────────────
+
+	@Test(timeout = 30000)
+	public void enforceOrganizationalPlacementDefaultTrue() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		assertTrue(job.isEnforceOrganizationalPlacement());
+	}
+
+	@Test(timeout = 30000)
+	public void setEnforceOrganizationalPlacementFalse() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		job.setEnforceOrganizationalPlacement(false);
+		assertFalse(job.isEnforceOrganizationalPlacement());
+	}
+
+	@Test(timeout = 30000)
+	public void setEnforceOrganizationalPlacementRoundTrip() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		assertTrue(job.isEnforceOrganizationalPlacement());
+		job.setEnforceOrganizationalPlacement(false);
+		assertFalse(job.isEnforceOrganizationalPlacement());
+		job.setEnforceOrganizationalPlacement(true);
+		assertTrue(job.isEnforceOrganizationalPlacement());
+	}
+
+	// ── OrganizationalPlacementRule — serialisation ──────────────────────────
+
+	@Test(timeout = 30000)
+	public void enforceOrgPlacementAbsentInWireFormatWhenTrue() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		// default is true — should not appear in wire format
+		String encoded = job.encode();
+		assertNotNull(encoded);
+		assertFalse("Did not expect enforceOrgPlacement in: " + encoded,
+				encoded.contains("enforceOrgPlacement"));
+	}
+
+	@Test(timeout = 30000)
+	public void enforceOrgPlacementAppearsInWireFormatWhenFalse() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		job.setEnforceOrganizationalPlacement(false);
+		String encoded = job.encode();
+		assertNotNull(encoded);
+		assertTrue("Expected enforceOrgPlacement:=false in: " + encoded,
+				encoded.contains("enforceOrgPlacement:=false"));
+	}
+
+	@Test(timeout = 30000)
+	public void enforceOrgPlacementDeserialises() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		job.setEnforceOrganizationalPlacement(false);
+		String encoded = job.encode();
+
+		ClaudeCodeJob restored = new ClaudeCodeJob();
+		for (String part : encoded.split("::")) {
+			int sep = part.indexOf(":=");
+			if (sep > 0) {
+				restored.set(part.substring(0, sep), part.substring(sep + 2));
+			}
+		}
+		assertFalse(restored.isEnforceOrganizationalPlacement());
+	}
+
+	// ── OrganizationalPlacementRule — factory propagation ───────────────────
+
+	@Test(timeout = 30000)
+	public void factoryEnforceOrganizationalPlacementDefaultTrue() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		assertTrue(factory.isEnforceOrganizationalPlacement());
+	}
+
+	@Test(timeout = 30000)
+	public void factorySetEnforceOrganizationalPlacementFalsePropagatesToJob() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		factory.setEnforceOrganizationalPlacement(false);
+		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		assertNotNull(job);
+		assertFalse(job.isEnforceOrganizationalPlacement());
+	}
+
+	@Test(timeout = 30000)
+	public void factoryEnforceOrganizationalPlacementDefaultPropagatesToJob() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		assertNotNull(job);
+		assertTrue(job.isEnforceOrganizationalPlacement());
+	}
+
+	@Test(timeout = 30000)
+	public void factoryEnforceOrgPlacementRoundTripViaSet() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		assertTrue(factory.isEnforceOrganizationalPlacement());
+
+		factory.set("enforceOrgPlacement", "false");
+		assertFalse(factory.isEnforceOrganizationalPlacement());
+
+		factory.set("enforceOrgPlacement", "true");
+		assertTrue(factory.isEnforceOrganizationalPlacement());
+	}
+
+	// ── Outer do-while loop — cycling between rules ──────────────────────────
+
+	/**
+	 * Simulates the outer do-while loop in {@code runEnforcementRules()}: when rule A
+	 * runs a correction session during a pass, the loop restarts and both rules are
+	 * checked again. The loop exits only when a full pass produces no correction sessions.
+	 */
+	@Test(timeout = 30000)
+	public void outerLoopRestartsCycleWhenAnyRuleCorrectionRan() {
+		AtomicInteger ruleACorrections = new AtomicInteger();
+		AtomicInteger ruleBChecks = new AtomicInteger();
+
+		// Rule A: violated on first check only (simulates one correction needed)
+		AtomicInteger ruleACheckCount = new AtomicInteger();
+		EnforcementRule ruleA = new EnforcementRule() {
+			@Override
+			public String getName() { return "rule-a"; }
+
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) {
+				// Violated only on the first check; clean afterwards
+				return ruleACheckCount.incrementAndGet() <= 2;
+			}
+
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix A"; }
+
+			@Override
+			public void onCorrectionAttempted(ClaudeCodeJob job) {
+				ruleACorrections.incrementAndGet();
+			}
+		};
+
+		// Rule B: always clean — just counts how many times it is checked
+		EnforcementRule ruleB = new EnforcementRule() {
+			@Override
+			public String getName() { return "rule-b"; }
+
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) {
+				ruleBChecks.incrementAndGet();
+				return false;
+			}
+
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix B"; }
+		};
+
+		// Simulate one outer loop pass where rule A corrects and rule B passes
+		// Pass 1: ruleA violated (outer if) → violated (while condition) → correction → resolved
+		//         ruleB: not violated → skip
+		// anyRuleCorrectionRan = true → restart
+		// Pass 2: ruleA not violated → skip; ruleB not violated → skip
+		// anyRuleCorrectionRan = false → exit
+
+		boolean anyRuleCorrectionRan;
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		List<EnforcementRule> rules = List.of(ruleA, ruleB);
+
+		do {
+			anyRuleCorrectionRan = false;
+			for (EnforcementRule rule : rules) {
+				if (!rule.isViolated(job)) continue;
+				int attempts = 0;
+				while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+					attempts++;
+					anyRuleCorrectionRan = true;
+					rule.buildCorrectionPrompt(job); // simulate correction session
+					rule.onCorrectionAttempted(job);
+				}
+			}
+		} while (anyRuleCorrectionRan);
+
+		// Rule A should have had exactly one correction
+		assertEquals(1, ruleACorrections.get());
+		// Rule B should have been checked in both passes (2 times)
+		assertEquals(2, ruleBChecks.get());
+	}
 }

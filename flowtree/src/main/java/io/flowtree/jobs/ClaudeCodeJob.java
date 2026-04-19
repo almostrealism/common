@@ -150,6 +150,13 @@ public class ClaudeCodeJob extends GitManagedJob {
     private boolean enforceMavenDependencies;
 
     /**
+     * When {@code true} (the default), the organizational placement rule is active.
+     * After the agent's primary work, a correction session prompts the agent to review
+     * whether new files are placed at the appropriate level of the module hierarchy.
+     */
+    private boolean enforceOrganizationalPlacement = true;
+
+    /**
      * Additional enforcement rules registered via {@link #addEnforcementRule(EnforcementRule)}.
      * Built-in rules (enforce-changes, deduplication, maven-dependency-protection) are
      * instantiated from job flags in {@link #buildActiveRules()} and are not stored here.
@@ -506,6 +513,29 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
+     * Returns whether the organizational placement rule is active for this job.
+     *
+     * <p>When active, a correction session is run after the agent's primary work to
+     * verify that new files are placed at the appropriate level of the module hierarchy.
+     * If the agent moves no files after reviewing placement, the rule considers the
+     * placement correct and exits.</p>
+     *
+     * @return {@code true} if organizational placement enforcement is enabled (the default)
+     */
+    public boolean isEnforceOrganizationalPlacement() {
+        return enforceOrganizationalPlacement;
+    }
+
+    /**
+     * Sets whether the organizational placement rule is active for this job.
+     *
+     * @param enforceOrganizationalPlacement {@code false} to disable placement enforcement
+     */
+    public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
+        this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
+    }
+
+    /**
      * Registers an additional enforcement rule to run after the agent completes
      * its primary work.
      *
@@ -622,6 +652,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (DEDUP_LOCAL.equals(deduplicationMode)) {
             rules.add(new DeduplicationRule());
         }
+        if (enforceOrganizationalPlacement) {
+            rules.add(new OrganizationalPlacementRule());
+        }
         if (enforceMavenDependencies) {
             rules.add(new MavenDependencyProtectionRule());
         }
@@ -641,46 +674,51 @@ public class ClaudeCodeJob extends GitManagedJob {
      * tampering-detection path in {@link GitManagedJob} handles that case.</p>
      */
     private void runEnforcementRules() {
-        for (EnforcementRule rule : buildActiveRules()) {
-            if (!rule.isViolated(this)) {
-                log("Enforcement rule '" + rule.getName() + "': no violation");
-                continue;
-            }
+        boolean anyRuleCorrectionRan;
+        do {
+            anyRuleCorrectionRan = false;
+            for (EnforcementRule rule : buildActiveRules()) {
+                if (!rule.isViolated(this)) {
+                    log("Enforcement rule '" + rule.getName() + "': no violation");
+                    continue;
+                }
 
-            log("Enforcement rule '" + rule.getName() + "': violation detected");
-            int attempts = 0;
-            while (attempts < rule.getMaxRetries()
-                    && rule.isViolated(this)
-                    && !hasAgentCommitted()) {
-                attempts++;
-                log("Enforcement rule '" + rule.getName()
-                        + "': correction attempt " + attempts);
-                String correctionPrompt = rule.buildCorrectionPrompt(this);
-                if (correctionPrompt != null) {
-                    runCorrectionSession(correctionPrompt);
-                } else {
-                    // Re-run with the existing prompt; the job's built-in instruction
-                    // context (e.g., enforceChanges) already provides correction guidance.
-                    // Only escalate enforcementAttempt for the enforce-changes rule so
-                    // that unrelated custom rules returning null do not inflate the counter
-                    // and trigger spurious enforcement escalation messaging.
-                    if ("enforce-changes".equals(rule.getName())) {
-                        enforcementAttempt++;
-                        log("Enforcement attempt: " + (enforcementAttempt + 1));
+                log("Enforcement rule '" + rule.getName() + "': violation detected");
+                int attempts = 0;
+                while (attempts < rule.getMaxRetries()
+                        && rule.isViolated(this)
+                        && !hasAgentCommitted()) {
+                    attempts++;
+                    anyRuleCorrectionRan = true;
+                    log("Enforcement rule '" + rule.getName()
+                            + "': correction attempt " + attempts);
+                    String correctionPrompt = rule.buildCorrectionPrompt(this);
+                    if (correctionPrompt != null) {
+                        runCorrectionSession(correctionPrompt);
+                    } else {
+                        // Re-run with the existing prompt; the job's built-in instruction
+                        // context (e.g., enforceChanges) already provides correction guidance.
+                        // Only escalate enforcementAttempt for the enforce-changes rule so
+                        // that unrelated custom rules returning null do not inflate the counter
+                        // and trigger spurious enforcement escalation messaging.
+                        if ("enforce-changes".equals(rule.getName())) {
+                            enforcementAttempt++;
+                            log("Enforcement attempt: " + (enforcementAttempt + 1));
+                        }
+                        executeSingleRun();
                     }
-                    executeSingleRun();
+                    rule.onCorrectionAttempted(this);
+                    if (hasAgentCommitted()) {
+                        break;
+                    }
                 }
-                rule.onCorrectionAttempted(this);
-                if (hasAgentCommitted()) {
-                    break;
-                }
-            }
 
-            if (!hasAgentCommitted() && rule.isViolated(this)) {
-                warn("Enforcement rule '" + rule.getName() + "': exhausted "
-                        + rule.getMaxRetries() + " retries without resolution");
+                if (!hasAgentCommitted() && rule.isViolated(this)) {
+                    warn("Enforcement rule '" + rule.getName() + "': exhausted "
+                            + rule.getMaxRetries() + " retries without resolution");
+                }
             }
-        }
+        } while (anyRuleCorrectionRan && !hasAgentCommitted());
     }
 
     /**
@@ -753,136 +791,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             // Return null: re-run with the existing prompt.  The enforceChanges
             // flag causes InstructionPromptBuilder to emit the escalating warning.
             return null;
-        }
-    }
-
-    /**
-     * Enforcement rule that detects new Java methods introduced since the base
-     * branch and runs a deduplication session to remove any that duplicate
-     * existing functionality. Active when {@link #getDeduplicationMode()} is
-     * {@link #DEDUP_LOCAL}.
-     *
-     * <p>This rule uses method-set comparison to determine when to stop looping.
-     * Before each correction session, {@link #isViolated(ClaudeCodeJob)} records
-     * the current set of new method names. After the session completes,
-     * {@link #onCorrectionAttempted(ClaudeCodeJob)} compares the post-session
-     * set with the recorded pre-session set. If the sets are identical, the agent
-     * had one opportunity and removed nothing — the rule marks itself as resolved
-     * so the loop exits on the next {@link #isViolated} check. If the set changed
-     * (methods were removed), another pass is made to check for remaining
-     * duplicates. This approach is deterministic and does not rely on heuristics
-     * about file changes or agent output.</p>
-     */
-    private class DeduplicationRule implements EnforcementRule {
-
-        /**
-         * The set of new method names recorded by the most recent {@link #isViolated}
-         * call. Used by {@link #onCorrectionAttempted} to compare against the
-         * post-session set and determine whether the agent removed any methods.
-         */
-        private Set<String> methodSetBeforeSession = null;
-
-        /**
-         * Set to {@code true} by {@link #onCorrectionAttempted} when a correction
-         * session completes without changing the method set, indicating the agent
-         * found no duplicates to remove. Once resolved, {@link #isViolated} returns
-         * {@code false} immediately so the loop exits.
-         */
-        private boolean resolved = false;
-
-        @Override
-        public String getName() { return "deduplication"; }
-
-        @Override
-        public boolean isViolated(ClaudeCodeJob job) {
-            if (resolved) return false;
-            List<String> newMethods = job.extractNewMethodNames();
-            methodSetBeforeSession = new LinkedHashSet<>(newMethods);
-            if (!newMethods.isEmpty()) {
-                log("Deduplication scan: found " + newMethods.size() + " new method(s)");
-            }
-            return !newMethods.isEmpty();
-        }
-
-        /**
-         * Compares the post-session method set against the pre-session snapshot
-         * recorded by {@link #isViolated}. If the sets are equal, the agent
-         * removed nothing during the correction session and the rule marks itself
-         * resolved so the loop exits on the next {@link #isViolated} check.
-         *
-         * <p><b>Performance note:</b> this method calls
-         * {@link ClaudeCodeJob#extractNewMethodNames()}, which spawns
-         * {@code git diff} and {@code git ls-files} processes. Combined with the
-         * calls already made in {@link #isViolated} and
-         * {@link #buildCorrectionPrompt}, each correction attempt currently
-         * performs three separate scans. A future improvement would be to cache
-         * the pre-session result from {@code isViolated} in a {@code List<String>}
-         * field and reuse it in {@code buildCorrectionPrompt}, reducing each
-         * attempt to one pre-session scan and one post-session scan.</p>
-         */
-        @Override
-        public void onCorrectionAttempted(ClaudeCodeJob job) {
-            if (methodSetBeforeSession == null) return;
-            Set<String> currentMethodSet = new LinkedHashSet<>(job.extractNewMethodNames());
-            if (currentMethodSet.equals(methodSetBeforeSession)) {
-                // The correction session ran but the method set is unchanged.
-                // The agent had one shot and removed nothing — mark as resolved.
-                log("Deduplication: method set unchanged after correction session; stopping deduplication loop");
-                resolved = true;
-            }
-        }
-
-        @Override
-        public String buildCorrectionPrompt(ClaudeCodeJob job) {
-            List<String> newMethods = job.extractNewMethodNames();
-            List<String> capped = newMethods.size() > MAX_DEDUP_METHODS
-                    ? newMethods.subList(0, MAX_DEDUP_METHODS) : newMethods;
-            return buildDeduplicationPrompt(capped,
-                    newMethods.size() > MAX_DEDUP_METHODS, newMethods.size());
-        }
-    }
-
-    /**
-     * Enforcement rule that prevents {@code <dependency>} changes in Maven
-     * {@code pom.xml} files. Active when {@link #isEnforceMavenDependencies()}
-     * is {@code true}.
-     *
-     * <p>Only {@code <dependency>} element additions, removals, or modifications
-     * are flagged. Changes to other {@code pom.xml} content (plugin configuration,
-     * properties, etc.) are not affected.</p>
-     */
-    private static class MavenDependencyProtectionRule implements EnforcementRule {
-        @Override
-        public String getName() { return "no-maven-dependency-changes"; }
-
-        @Override
-        public boolean isViolated(ClaudeCodeJob job) {
-            return job.hasMavenDependencyChanges();
-        }
-
-        @Override
-        public String buildCorrectionPrompt(ClaudeCodeJob job) {
-            String baseBranch = job.getBaseBranch() != null ? job.getBaseBranch() : "master";
-            StringBuilder sb = new StringBuilder();
-            sb.append("MAVEN DEPENDENCY PROTECTION RULE VIOLATION\n\n");
-            sb.append("Your changes to one or more pom.xml files add, remove, or modify ");
-            sb.append("<dependency> entries. Maven module dependencies are externally ");
-            sb.append("controlled and MUST NOT be modified by agents.\n\n");
-            sb.append("MANDATORY ACTION: Revert all <dependency> changes in any pom.xml files.\n\n");
-            sb.append("Steps to identify and fix the violation:\n");
-            sb.append("1. Run: git diff origin/").append(baseBranch)
-              .append(" -- '**/pom.xml' 'pom.xml'\n");
-            sb.append("   to see exactly what <dependency> lines you added or removed.\n");
-            sb.append("2. Use the Edit tool to surgically remove any added <dependency> ");
-            sb.append("blocks and restore any removed ones.\n\n");
-            sb.append("IMPORTANT — do NOT use git restore, git checkout --, or git reset ");
-            sb.append("to revert pom.xml files. Those commands discard ALL your changes ");
-            sb.append("to the file, not just the dependency modifications. Use the Edit ");
-            sb.append("tool to remove only the <dependency> changes.\n\n");
-            sb.append("You MAY keep all non-dependency changes to pom.xml files ");
-            sb.append("(plugin configuration, properties, build settings, etc.). ");
-            sb.append("Only <dependency> additions, removals, and modifications must be undone.");
-            return sb.toString();
         }
     }
 
@@ -1088,7 +996,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * @return {@code true} if any {@code <dependency>} additions or removals
      *         were detected
      */
-    private boolean hasMavenDependencyChanges() {
+    boolean hasMavenDependencyChanges() {
         String workDir = getWorkingDirectory();
         String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
 
@@ -1186,7 +1094,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             "^\\+[ \\t]+(?:public|private|protected)\\b.*\\b(\\w+)[ \\t]*\\(");
 
     /** Maximum number of method names included in a single deduplication prompt. */
-    private static final int MAX_DEDUP_METHODS = 50;
+    static final int MAX_DEDUP_METHODS = 50;
 
     @Override
     protected boolean validateChanges() throws Exception {
@@ -1328,7 +1236,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      *
      * @return deduplicated list of new method names, order-preserving
      */
-    private List<String> extractNewMethodNames() {
+    List<String> extractNewMethodNames() {
         Set<String> seen = new LinkedHashSet<>();
         String workDir = getWorkingDirectory();
         String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
@@ -1371,6 +1279,78 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
 
         return new ArrayList<>(seen);
+    }
+
+    /**
+     * Returns the paths of files that are new on the branch since the base branch,
+     * combining tracked newly-added files (via {@code git diff --diff-filter=A}) with
+     * untracked files (via {@code git ls-files --others}).
+     *
+     * <p>Common scratch directories ({@code claude-output/}, {@code .claude/},
+     * {@code target/}) and the {@code commit.txt} file are excluded from the result.</p>
+     *
+     * @return deduplicated list of new file paths, relative to the working directory
+     */
+    List<String> extractNewFilePaths() {
+        Set<String> seen = new LinkedHashSet<>();
+        String workDir = getWorkingDirectory();
+        String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
+
+        // Tracked newly-added files: those with status A (added) in the diff
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    GitOperations.resolveGitCommand(),
+                    "diff", "--name-only", "--diff-filter=A", "origin/" + baseBranch);
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            GitOperations.augmentPath(pb);
+            Process p = pb.start();
+            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            p.waitFor();
+            for (String path : listing.split("\n")) {
+                addNewFilePath(path.trim(), seen);
+            }
+        } catch (IOException | InterruptedException e) {
+            warn("Organizational placement scan: failed to diff tracked files: " + e.getMessage());
+        }
+
+        // Untracked files not yet staged
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    GitOperations.resolveGitCommand(),
+                    "ls-files", "--others", "--exclude-standard");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            GitOperations.augmentPath(pb);
+            Process p = pb.start();
+            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            p.waitFor();
+            for (String path : listing.split("\n")) {
+                addNewFilePath(path.trim(), seen);
+            }
+        } catch (IOException | InterruptedException e) {
+            warn("Organizational placement scan: failed to list untracked files: " + e.getMessage());
+        }
+
+        return new ArrayList<>(seen);
+    }
+
+    /**
+     * Adds {@code path} to {@code sink} unless it matches a scratch directory
+     * or scratch file that should be excluded from placement review.
+     *
+     * @param path  the candidate file path (relative to the working directory)
+     * @param sink  the set to add the path to if it passes the exclusion filter
+     */
+    private static void addNewFilePath(String path, Set<String> sink) {
+        if (path.isEmpty()
+                || path.startsWith("claude-output/")
+                || path.startsWith(".claude/")
+                || path.startsWith("target/")
+                || path.equals("commit.txt")) {
+            return;
+        }
+        sink.add(path);
     }
 
     /**
@@ -1430,7 +1410,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * @param totalCount   the total number of methods found (before capping)
      * @return the full prompt string
      */
-    private static String buildDeduplicationPrompt(List<String> methodNames,
+    static String buildDeduplicationPrompt(List<String> methodNames,
                                                     boolean truncated,
                                                     int totalCount) {
         StringBuilder sb = new StringBuilder();
@@ -1660,6 +1640,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (enforceMavenDependencies) {
             sb.append("::enforceMavenDeps:=true");
         }
+        if (!enforceOrganizationalPlacement) {
+            sb.append("::enforceOrgPlacement:=false");
+        }
         return sb.toString();
     }
 
@@ -1698,6 +1681,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
+                break;
+            case "enforceOrgPlacement":
+                this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
                 break;
             default:
                 // Delegate to parent for git-related properties
