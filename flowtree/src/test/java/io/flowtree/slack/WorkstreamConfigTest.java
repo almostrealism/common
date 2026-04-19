@@ -212,4 +212,92 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals(25.0, entry.getMaxBudgetUsd(), 0.001);
         assertEquals("/new/path", entry.getWorkingDirectory());
     }
+
+    @Test(timeout = 10000)
+    public void testMultiWorkspaceSaveAndReload() throws IOException {
+        String yaml = "slackWorkspaces:\n" +
+                      "  - workspaceId: \"T111\"\n" +
+                      "    name: \"primary\"\n" +
+                      "    botToken: \"xoxb-one\"\n" +
+                      "    appToken: \"xapp-one\"\n" +
+                      "workstreams:\n" +
+                      "  - channelId: \"C0001\"\n" +
+                      "    channelName: \"#alpha\"\n" +
+                      "    slackWorkspaceId: \"T111\"\n" +
+                      "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig original = WorkstreamConfig.loadFromYamlString(yaml);
+
+        // Save to a temp file and reload
+        File tempFile = File.createTempFile("workstream-config-roundtrip", ".yaml");
+        tempFile.deleteOnExit();
+        original.saveToYaml(tempFile);
+
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+
+        // slackWorkspaces must survive the round-trip
+        assertEquals(1, reloaded.getSlackWorkspaces().size());
+        WorkstreamConfig.SlackWorkspaceEntry ws = reloaded.getSlackWorkspaces().get(0);
+        assertEquals("T111", ws.getWorkspaceId());
+        assertEquals("primary", ws.getName());
+        assertEquals("xoxb-one", ws.getBotToken());
+        assertEquals("xapp-one", ws.getAppToken());
+
+        // slackWorkspaceId on workstream entries must survive the round-trip
+        assertEquals(1, reloaded.getWorkstreams().size());
+        assertEquals("T111", reloaded.getWorkstreams().get(0).getSlackWorkspaceId());
+    }
+
+    @Test(timeout = 10000)
+    public void testMigratedConfigParsesCorrectly() throws IOException {
+        // Simulate the output of the Python migration tool and verify it loads
+        String migratedYaml = "slackWorkspaces:\n" +
+                              "- workspaceId: T111\n" +
+                              "  name: primary\n" +
+                              "  tokensFile: /config/slack-tokens.json\n" +
+                              "  githubOrgs:\n" +
+                              "    my-org:\n" +
+                              "      token: ghp_token\n" +
+                              "    other-org:\n" +
+                              "      token: ghp_other\n" +
+                              "workstreams:\n" +
+                              "- channelId: C0000001\n" +
+                              "  channelName: '#alpha'\n" +
+                              "  defaultBranch: feature/alpha\n" +
+                              "  githubOrg: my-org\n" +
+                              "  slackWorkspaceId: T111\n" +
+                              "- channelId: C0000002\n" +
+                              "  channelName: '#beta'\n" +
+                              "  defaultBranch: feature/beta\n" +
+                              "  githubOrg: other-org\n" +
+                              "  slackWorkspaceId: T111\n" +
+                              "- channelId: C0000003\n" +
+                              "  channelName: '#gamma'\n" +
+                              "  defaultBranch: feature/gamma\n" +
+                              "  slackWorkspaceId: T111\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(migratedYaml);
+
+        // Verify the migrated structure loads correctly
+        assertEquals(1, config.getSlackWorkspaces().size());
+        WorkstreamConfig.SlackWorkspaceEntry migratedWs = config.getSlackWorkspaces().get(0);
+        assertEquals("T111", migratedWs.getWorkspaceId());
+        assertEquals("primary", migratedWs.getName());
+        assertEquals("/config/slack-tokens.json", migratedWs.getTokensFile());
+        assertNotNull("githubOrgs should be parsed from migrated YAML", migratedWs.getGithubOrgs());
+        assertEquals(2, migratedWs.getGithubOrgs().size());
+        assertEquals(3, config.getWorkstreams().size());
+
+        // All workstreams must have slackWorkspaceId
+        for (WorkstreamConfig.WorkstreamEntry entry : config.getWorkstreams()) {
+            assertEquals("T111", entry.getSlackWorkspaceId());
+        }
+
+        // Convert to runtime workstreams and verify slackWorkspaceId propagates
+        List<Workstream> workstreams = config.toWorkstreams();
+        assertEquals(3, workstreams.size());
+        for (Workstream ws : workstreams) {
+            assertEquals("T111", ws.getSlackWorkspaceId());
+        }
+    }
 }

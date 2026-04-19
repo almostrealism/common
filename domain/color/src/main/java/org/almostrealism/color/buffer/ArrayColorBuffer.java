@@ -19,6 +19,7 @@ package org.almostrealism.color.buffer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.AverageColor;
+import org.almostrealism.io.ConsoleFeatures;
 
 /**
  * A {@link ColorBuffer} backed by 2D {@link RGB} arrays for the front and back surfaces.
@@ -31,7 +32,7 @@ import org.almostrealism.color.computations.AverageColor;
  * @see ColorBuffer
  * @author Michael Murray
  */
-public class ArrayColorBuffer implements ColorBuffer {
+public class ArrayColorBuffer implements ColorBuffer, ConsoleFeatures {
 	/** Current pixel position; may be used externally to track the active sample position. */
 	public double[] position;
 
@@ -245,8 +246,7 @@ public class ArrayColorBuffer implements ColorBuffer {
 			rgb = this.back;
 		
 		if (u >= 1.0 || v >= 1.0 || u < 0.0 || v < 0.0) {
-			System.out.println(
-					"AbsorberHashSet: Surface coords from absorber (" + u + ", " + v + ")");
+			log("Surface coords from absorber (" + u + ", " + v + ")");
 			return;
 		}
 		

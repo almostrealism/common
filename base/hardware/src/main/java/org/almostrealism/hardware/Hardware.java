@@ -457,7 +457,7 @@ import java.util.function.Consumer;
  *
  * @author  Michael Murray
  */
-public final class Hardware {
+public final class Hardware implements ConsoleFeatures {
 	/** If true, log detailed initialization and backend configuration messages. */
 	public static boolean enableVerbose = false;
 	/** If true, new compute contexts default to kernel-friendly mode, enabling GPU dispatch. */
@@ -682,7 +682,7 @@ public final class Hardware {
 	 */
 	private int processRequirements(List<ComputeRequirement> requirements, Precision precision) {
 		if (enableVerbose) {
-			System.out.println("Hardware[" + getName() + "]: Processing Hardware Requirements...");
+			log("Hardware[" + getName() + "]: Processing Hardware Requirements...");
 		}
 
 		List<ComputeRequirement> done = new ArrayList<>();
@@ -717,17 +717,17 @@ public final class Hardware {
 
 				if (locationUsed) {
 					if (location == Location.HEAP)
-						System.out.println("Hardware[" + ctx.getName() + "]: Heap RAM enabled");
+						log("Hardware[" + ctx.getName() + "]: Heap RAM enabled");
 					if (location == Location.HOST)
-						System.out.println("Hardware[" + ctx.getName() + "]: Host RAM enabled");
+						log("Hardware[" + ctx.getName() + "]: Host RAM enabled");
 					if (location == Location.DELEGATE)
-						System.out.println("Hardware[" + ctx.getName() + "]: Delegate RAM enabled");
+						log("Hardware[" + ctx.getName() + "]: Delegate RAM enabled");
 				}
 
 				done.add(type);
 				ctx.init();
 
-				System.out.println("Hardware[" + ctx.getName() + "]: Max RAM is " +
+				log("Hardware[" + ctx.getName() + "]: Max RAM is " +
 						ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes (" +
 						ctx.getPrecision().name() + ")");
 
@@ -762,7 +762,7 @@ public final class Hardware {
 		if (provider != null) {
 			for (DataContext<MemoryData> c : contexts) {
 				if (c instanceof NativeDataContext) {
-					System.out.println("Hardware[" + c.getName() +
+					log("Hardware[" + c.getName() +
 							"]: Enabling shared memory via " +
 							provider.getClass().getSimpleName());
 					((NativeDataContext) c).setDelegate(sharedMemoryCtx);
@@ -772,7 +772,7 @@ public final class Hardware {
 		}
 
 		if (!kernelFriendly) {
-			System.out.println("Hardware[" + getName() + "]: Kernels will be avoided");
+			log("Hardware[" + getName() + "]: Kernels will be avoided");
 			KernelPreferences.setPreferKernels(false);
 		}
 
@@ -1011,7 +1011,7 @@ public final class Hardware {
 		}
 
 		try {
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: Start " + dcName);
+			if (Hardware.enableVerbose) log("Hardware[" + next.getName() + "]: Start " + dcName);
 			next.init();
 			explicitDataCtx.set(next);
 			forEachContextListener(l -> l.contextStarted(getDataContext()));
@@ -1023,9 +1023,9 @@ public final class Hardware {
 		} finally {
 			forEachContextListener(l -> l.contextDestroyed(next));
 			explicitDataCtx.set(current);
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: End " + dcName);
+			if (Hardware.enableVerbose) log("Hardware[" + next.getName() + "]: End " + dcName);
 			next.destroy();
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: Destroyed " + dcName);
+			if (Hardware.enableVerbose) log("Hardware[" + next.getName() + "]: Destroyed " + dcName);
 		}
 	}
 
@@ -1197,7 +1197,7 @@ public final class Hardware {
 			}
 
 			if (!supported) {
-				System.out.println("WARN: Ignoring ComputeRequirement as only one DataContext is available");
+				warn("Ignoring ComputeRequirement as only one DataContext is available");
 			}
 
 			return contexts.get(0);

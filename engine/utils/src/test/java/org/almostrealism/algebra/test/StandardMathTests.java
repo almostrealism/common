@@ -29,7 +29,7 @@ public class StandardMathTests extends TestSuiteBase {
 	public void add() {
 		CollectionProducer sum = add(c(1.0), c(2.0));
 		Evaluable ev = sum.get();
-		System.out.println(ev.evaluate());
+		log(String.valueOf(ev.evaluate()));
 		assertEquals(3.0, ev.evaluate());
 	}
 

@@ -5,6 +5,7 @@ import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -137,7 +138,7 @@ import java.util.function.Supplier;
  * @see MemoryReplacementManager
  * @see Process
  */
-public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, OperationInfo {
+public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, OperationInfo, ConsoleFeatures {
 	/** If true, logs each copy operation to stdout including source, target, and length. */
 	public static boolean enableVerbose = false;
 
@@ -235,7 +236,7 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 			MemoryData target = this.target.get();
 
 			if (enableVerbose) {
-				System.out.println("MemoryDataCopy[" + getMetadata().getDisplayName() + "]: Copying " + source + " (" +
+				log("MemoryDataCopy[" + getMetadata().getDisplayName() + "]: Copying " + source + " (" +
 						sourcePosition + ") to " + target + " (" + targetPosition + ") [" + length + "]");
 			}
 

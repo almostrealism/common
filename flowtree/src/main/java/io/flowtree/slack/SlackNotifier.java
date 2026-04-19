@@ -32,10 +32,6 @@ import org.almostrealism.io.Alert;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-import com.slack.api.methods.response.conversations.ConversationsListResponse;
-import com.slack.api.model.Conversation;
-import com.slack.api.model.ConversationType;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -110,6 +106,16 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     public void registerWorkstream(Workstream workstream) {
         workstreams.put(workstream.getWorkstreamId(), workstream);
+    }
+
+    /**
+     * Removes all registered workstreams from this notifier.
+     *
+     * <p>Called during configuration reload so that workstreams removed or moved
+     * between workspaces do not remain active after the reload completes.</p>
+     */
+    public void clearWorkstreams() {
+        workstreams.clear();
     }
 
     /**
@@ -304,6 +310,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     public void setChannelOwnerUserId(String userId) {
         this.channelOwnerUserId = userId;
+    }
+
+    /**
+     * Returns the Slack user ID that is automatically invited to newly created channels,
+     * or {@code null} if not configured.
+     */
+    public String getChannelOwnerUserId() {
+        return channelOwnerUserId;
     }
 
     /**

@@ -215,7 +215,7 @@ public class CLOperator extends HardwareOperator {
 		long id = totalInvocations++;
 
 		if (enableVerboseLog) {
-			System.out.println("CL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
+			log("CL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}
 
 		if (dependsOn != null) dependsOn.waitFor();

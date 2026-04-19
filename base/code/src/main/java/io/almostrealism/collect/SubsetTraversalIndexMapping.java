@@ -73,7 +73,7 @@ public class SubsetTraversalIndexMapping extends SubsetTraversalExpression imple
 		Expression[] subsetPosition = getPositionOfGroup(outputIndex);
 
 		if (enableLogging) {
-			System.out.println("Operand " + operandShape +
+			log("Operand " + operandShape +
 					" in " + groupShape + " group over " + positions +
 					" [member " + groupIndex + "] is in position " + Arrays.toString(groupPosition));
 		}
@@ -88,7 +88,7 @@ public class SubsetTraversalIndexMapping extends SubsetTraversalExpression imple
 			inputPosition[i] = subsetPosition[i].add(groupPosition[i]);
 
 			if (enableLogging)
-				System.out.println("\t" + i + " " + Arrays.toString(inputPosition[i].sequence().toArray()));
+				log("\t" + i + " " + Arrays.toString(inputPosition[i].sequence().toArray()));
 		}
 
 		// Provide the index in the operand that is associated

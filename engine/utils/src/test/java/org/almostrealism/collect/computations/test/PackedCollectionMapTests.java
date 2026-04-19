@@ -449,20 +449,20 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 					log(i + ", " + j);
 
 					for (int k = 0; k < w; k++) {
-						System.out.print("\t[");
+						log("\t[");
 						for (int l = 0; l < w; l++) {
 							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
 
-							System.out.print(expected + ", ");
+							log(String.valueOf(expected + ", "));
 						}
 
-						System.out.print("]\t[");
+						log("]\t[");
 
 						for (int l = 0; l < w; l++) {
 							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
 							double actual = output.toDouble(output.getShape().index(i, j, k, l));
 
-							System.out.print(actual + ", ");
+							log(String.valueOf(actual + ", "));
 
 							Assert.assertEquals(expected, actual, 0.0001);
 						}
@@ -638,15 +638,15 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 							log("PackedCollectionMapTests: " + i + ", " + j);
 
 							for (int k = 0; k < w; k++) {
-								System.out.print("\t[");
+								log("\t[");
 								for (int l = 0; l < w; l++) {
 									double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
 											filter.toDouble(filter.getShape().index(copy, k, l));
 
-									System.out.print(expected + ", ");
+									log(String.valueOf(expected + ", "));
 								}
 
-								System.out.print("]\t[");
+								log("]\t[");
 
 								for (int l = 0; l < w; l++) {
 									double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
@@ -654,7 +654,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 
 									double actual = output.toDouble(output.getShape().index(i, j, copy, k, l));
 
-									System.out.print(actual + ", ");
+									log(String.valueOf(actual + ", "));
 
 									Assert.assertEquals(expected, actual, 0.0001);
 								}

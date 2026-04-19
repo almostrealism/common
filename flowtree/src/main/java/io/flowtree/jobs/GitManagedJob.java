@@ -17,7 +17,6 @@
 package io.flowtree.jobs;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import io.flowtree.job.Job;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.HostFingerprint;

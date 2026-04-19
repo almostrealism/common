@@ -80,30 +80,29 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	 */
 	@Test(timeout = 60000)
 	public void testStandaloneGroupSizes() {
-		System.out.println("=== Standalone WeightedSumComputation: Group Size vs Compilation Time ===\n");
+		log("=== Standalone WeightedSumComputation: Group Size vs Compilation Time ===\n");
 
 		int[] groupSizes = {4, 8, 16, 32, 64, 128, 256};
 		int outputSize = 16;
 
-		System.out.println(String.format("%-12s %-15s %-15s %-10s", "GroupSize", "NoIsolation(ms)", "Isolated(ms)", "Speedup"));
-		System.out.println("-".repeat(55));
+		log(String.format("%-12s %-15s %-15s %-10s", "GroupSize", "NoIsolation(ms)", "Isolated(ms)", "Speedup"));
+		log("-".repeat(55));
 
 		for (int groupSize : groupSizes) {
 			long noIsolationTime = measureCompilation(outputSize, groupSize, false);
 			long isolatedTime = measureCompilation(outputSize, groupSize, true);
 			double speedup = (double) noIsolationTime / Math.max(isolatedTime, 1);
 
-			System.out.println(String.format("%-12d %-15d %-15d %-10.2fx",
-					groupSize, noIsolationTime, isolatedTime, speedup));
+			log(String.valueOf(String.format("%-12d %-15d %-15d %-10.2fx", groupSize, noIsolationTime, isolatedTime, speedup)));
 
 			// Stop if non-isolated takes too long
 			if (noIsolationTime > 30000) {
-				System.out.println("\nStopping - compilation time exceeds 30 seconds");
+				log("\nStopping - compilation time exceeds 30 seconds");
 				break;
 			}
 		}
 
-		System.out.println("\nConclusion: Find where speedup > 1.0 consistently");
+		log("\nConclusion: Find where speedup > 1.0 consistently");
 	}
 
 	/**
@@ -111,24 +110,23 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	 */
 	@Test(timeout = 60000)
 	public void testEmbeddedInMultiply() {
-		System.out.println("=== WeightedSumComputation Embedded in Multiply ===\n");
+		log("=== WeightedSumComputation Embedded in Multiply ===\n");
 
 		int[] groupSizes = {4, 8, 16, 32, 64, 128};
 		int outputSize = 16;
 
-		System.out.println(String.format("%-12s %-15s %-15s %-10s", "GroupSize", "NoIsolation(ms)", "Isolated(ms)", "Speedup"));
-		System.out.println("-".repeat(55));
+		log(String.format("%-12s %-15s %-15s %-10s", "GroupSize", "NoIsolation(ms)", "Isolated(ms)", "Speedup"));
+		log("-".repeat(55));
 
 		for (int groupSize : groupSizes) {
 			long noIsolationTime = measureEmbeddedMultiply(outputSize, groupSize, false);
 			long isolatedTime = measureEmbeddedMultiply(outputSize, groupSize, true);
 			double speedup = (double) noIsolationTime / Math.max(isolatedTime, 1);
 
-			System.out.println(String.format("%-12d %-15d %-15d %-10.2fx",
-					groupSize, noIsolationTime, isolatedTime, speedup));
+			log(String.valueOf(String.format("%-12d %-15d %-15d %-10.2fx", groupSize, noIsolationTime, isolatedTime, speedup)));
 
 			if (noIsolationTime > 30000) {
-				System.out.println("\nStopping - compilation time exceeds 30 seconds");
+				log("\nStopping - compilation time exceeds 30 seconds");
 				break;
 			}
 		}
@@ -139,24 +137,23 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	 */
 	@Test(timeout = 60000)
 	public void testEmbeddedInAdd() {
-		System.out.println("=== WeightedSumComputation Embedded in Add ===\n");
+		log("=== WeightedSumComputation Embedded in Add ===\n");
 
 		int[] groupSizes = {4, 8, 16, 32, 64, 128};
 		int outputSize = 16;
 
-		System.out.println(String.format("%-12s %-15s %-15s %-10s", "GroupSize", "NoIsolation(ms)", "Isolated(ms)", "Speedup"));
-		System.out.println("-".repeat(55));
+		log(String.format("%-12s %-15s %-15s %-10s", "GroupSize", "NoIsolation(ms)", "Isolated(ms)", "Speedup"));
+		log("-".repeat(55));
 
 		for (int groupSize : groupSizes) {
 			long noIsolationTime = measureEmbeddedAdd(outputSize, groupSize, false);
 			long isolatedTime = measureEmbeddedAdd(outputSize, groupSize, true);
 			double speedup = (double) noIsolationTime / Math.max(isolatedTime, 1);
 
-			System.out.println(String.format("%-12d %-15d %-15d %-10.2fx",
-					groupSize, noIsolationTime, isolatedTime, speedup));
+			log(String.valueOf(String.format("%-12d %-15d %-15d %-10.2fx", groupSize, noIsolationTime, isolatedTime, speedup)));
 
 			if (noIsolationTime > 30000) {
-				System.out.println("\nStopping - compilation time exceeds 30 seconds");
+				log("\nStopping - compilation time exceeds 30 seconds");
 				break;
 			}
 		}
@@ -167,14 +164,13 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	 */
 	@Test(timeout = 60000)
 	public void testFineGrainedThreshold() {
-		System.out.println("=== Fine-Grained Threshold Analysis ===\n");
+		log("=== Fine-Grained Threshold Analysis ===\n");
 
 		int[] groupSizes = {8, 12, 16, 20, 24, 28, 32, 40, 48, 56, 64};
 		int outputSize = 16;
 
-		System.out.println(String.format("%-12s %-15s %-15s %-10s %-15s",
-				"GroupSize", "NoIsolation(ms)", "Isolated(ms)", "Speedup", "Recommendation"));
-		System.out.println("-".repeat(70));
+		log(String.valueOf(String.format("%-12s %-15s %-15s %-10s %-15s", "GroupSize", "NoIsolation(ms)", "Isolated(ms)", "Speedup", "Recommendation")));
+		log("-".repeat(70));
 
 		for (int groupSize : groupSizes) {
 			long noIsolationTime = measureCompilation(outputSize, groupSize, false);
@@ -190,16 +186,15 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 				recommendation = "no isolation";
 			}
 
-			System.out.println(String.format("%-12d %-15d %-15d %-10.2fx %-15s",
-					groupSize, noIsolationTime, isolatedTime, speedup, recommendation));
+			log(String.valueOf(String.format("%-12d %-15d %-15d %-10.2fx %-15s", groupSize, noIsolationTime, isolatedTime, speedup, recommendation)));
 
 			if (noIsolationTime > 60000) {
-				System.out.println("\nStopping - compilation time exceeds 60 seconds");
+				log("\nStopping - compilation time exceeds 60 seconds");
 				break;
 			}
 		}
 
-		System.out.println("\nThe optimal threshold is where 'ISOLATE' recommendations start consistently.");
+		log("\nThe optimal threshold is where 'ISOLATE' recommendations start consistently.");
 	}
 
 	/**
@@ -242,7 +237,7 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 		try {
 			ops.get();
 		} catch (Exception e) {
-			System.err.println("Compilation failed for groupSize=" + groupSize + ", isolate=" + isolate + ": " + e.getMessage());
+			warn("Compilation failed for groupSize=" + groupSize + ", isolate=" + isolate + ": " + e.getMessage());
 			return -1;
 		}
 		return System.currentTimeMillis() - start;
@@ -282,7 +277,7 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 		try {
 			ops.get();
 		} catch (Exception e) {
-			System.err.println("Compilation failed for groupSize=" + groupSize + ", isolate=" + isolate + ": " + e.getMessage());
+			warn("Compilation failed for groupSize=" + groupSize + ", isolate=" + isolate + ": " + e.getMessage());
 			return -1;
 		}
 		return System.currentTimeMillis() - start;
@@ -322,7 +317,7 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 		try {
 			ops.get();
 		} catch (Exception e) {
-			System.err.println("Compilation failed for groupSize=" + groupSize + ", isolate=" + isolate + ": " + e.getMessage());
+			warn("Compilation failed for groupSize=" + groupSize + ", isolate=" + isolate + ": " + e.getMessage());
 			return -1;
 		}
 		return System.currentTimeMillis() - start;

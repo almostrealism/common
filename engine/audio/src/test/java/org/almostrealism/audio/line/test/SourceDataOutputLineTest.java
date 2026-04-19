@@ -53,7 +53,7 @@ public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatu
 		// Create BufferedOutputScheduler for scheduled writes
 		BufferedOutputScheduler scheduler = cells.buffer(outputLine);
 
-		System.out.println("Starting scheduled WAV playback...");
+		log("Starting scheduled WAV playback...");
 
 		// Start the buffered, scheduled playback
 		scheduler.start();
@@ -63,13 +63,13 @@ public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatu
 
 		// Verify playback occurred
 		long renderedFrames = scheduler.getRenderedFrames();
-		System.out.println("Rendered frames: " + renderedFrames);
+		log("Rendered frames: " + renderedFrames);
 
 		// Stop and clean up
 		scheduler.stop();
 		outputLine.destroy();
 
-		System.out.println("WAV playback test completed");
+		log("WAV playback test completed");
 	}
 
 }

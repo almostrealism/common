@@ -44,7 +44,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -133,7 +133,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -218,7 +218,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -307,7 +307,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -395,7 +395,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -500,7 +500,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");

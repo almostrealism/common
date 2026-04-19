@@ -27,6 +27,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.profile.ProfileData;
 import org.almostrealism.hardware.profile.RunData;
+import org.almostrealism.io.ConsoleFeatures;
 import org.jocl.CL;
 import org.jocl.Pointer;
 import org.jocl.Sizeof;
@@ -203,7 +204,7 @@ import java.util.function.Consumer;
  * @see CLOperatorMap
  * @see CLOperator
  */
-public class CLComputeContext extends AbstractComputeContext {
+public class CLComputeContext extends AbstractComputeContext implements ConsoleFeatures {
 	/**
 	 * Enables creation of a separate fast command queue for certain operations.
 	 *
@@ -273,18 +274,18 @@ public class CLComputeContext extends AbstractComputeContext {
 		this.profiling = profiling;
 
 		queue = CL.clCreateCommandQueue(ctx, mainDevice, profiling ? CL.CL_QUEUE_PROFILING_ENABLE : 0, null);
-		if (Hardware.enableVerbose) System.out.println("Hardware[CL]: OpenCL command queue initialized");
+		if (Hardware.enableVerbose) log("Hardware[CL]: OpenCL command queue initialized");
 
 		if (enableFastQueue) {
 			fastQueue = CL.clCreateCommandQueue(ctx, mainDevice, profiling ? CL.CL_QUEUE_PROFILING_ENABLE : 0, null);
 			if (Hardware.enableVerbose)
-				System.out.println("Hardware[CL]: OpenCL fast command queue initialized");
+				log("Hardware[CL]: OpenCL fast command queue initialized");
 		}
 
 		if (kernelDevice != null) {
 			kernelQueue = CL.clCreateCommandQueue(ctx, kernelDevice, profiling ? CL.CL_QUEUE_PROFILING_ENABLE : 0, null);
 			if (Hardware.enableVerbose)
-				System.out.println("Hardware[CL]: OpenCL kernel command queue initialized");
+				log("Hardware[CL]: OpenCL kernel command queue initialized");
 		}
 	}
 
@@ -429,7 +430,7 @@ public class CLComputeContext extends AbstractComputeContext {
 	 */
 	public void logProfiles() {
 		if (profiles.size() <= 0) {
-			System.out.println("No profiling results");
+			log("No profiling results");
 			return;
 		}
 
@@ -441,25 +442,25 @@ public class CLComputeContext extends AbstractComputeContext {
 
 		int include = 4;
 
-		System.out.println("Profiler Results:");
+		log("Profiler Results:");
 
 		names.sort(totalDuration);
 
-		System.out.println("\tTop Total Durations:");
+		log("\tTop Total Durations:");
 		for (int i = 0; i < Math.min(include, names.size()); i++) {
-			System.out.println("\t\t-" + names.get(i) + ": " + profiles.get(names.get(i)).getSummaryString());
+			log("\t\t-" + names.get(i) + ": " + profiles.get(names.get(i)).getSummaryString());
 		}
 
-		System.out.println("\tBottom Total Durations:");
+		log("\tBottom Total Durations:");
 		for (int i = 0; i < Math.min(include, names.size()); i++) {
-			System.out.println("\t\t-" + names.get(names.size() - i - 1) + ": " + profiles.get(names.get(names.size() - i - 1)).getSummaryString());
+			log("\t\t-" + names.get(names.size() - i - 1) + ": " + profiles.get(names.get(names.size() - i - 1)).getSummaryString());
 		}
 
 		names.sort(totalCount.thenComparing(totalDuration));
 
-		System.out.println("\tTop Execution Count:");
+		log("\tTop Execution Count:");
 		for (int i = 0; i < Math.min(include, names.size()); i++) {
-			System.out.println("\t\t-" + names.get(i) + ": " + profiles.get(names.get(i)).getSummaryString());
+			log("\t\t-" + names.get(i) + ": " + profiles.get(names.get(i)).getSummaryString());
 		}
 	}
 

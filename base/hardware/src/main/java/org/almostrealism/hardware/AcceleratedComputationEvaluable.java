@@ -88,7 +88,7 @@ import java.util.function.IntFunction;
  * // Set downstream consumer
  * transform.setDownstream(result -> {
  *     // Process each result
- *     System.out.println("Result: " + result);
+ *     log("Result: " + result);
  * });
  *
  * // Evaluate pushes to downstream

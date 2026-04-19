@@ -18,6 +18,7 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,7 +41,7 @@ import java.util.List;
  * and determine whether a given operand index falls within the active group window for a given
  * output index.</p>
  */
-public class SubsetTraversalExpression {
+public class SubsetTraversalExpression implements ConsoleFeatures {
 	/** Whether to emit diagnostic logging during index computation. */
 	public static boolean enableLogging = false;
 
@@ -188,7 +189,7 @@ public class SubsetTraversalExpression {
 		Expression[] subsetPosition = getPositionOfGroup(outputIndex);
 
 		if (enableLogging) {
-			System.out.println("Operand " + operandShape +
+			log("Operand " + operandShape +
 					" in " + groupShape + " group over " + positions +
 					" [member " + groupIndex + "] is in position " + Arrays.toString(groupPosition));
 		}
@@ -203,7 +204,7 @@ public class SubsetTraversalExpression {
 			inputPosition[i] = subsetPosition[i].add(groupPosition[i]);
 
 			if (enableLogging)
-				System.out.println("\t" + i + " " + Arrays.toString(inputPosition[i].sequence().toArray()));
+				log("\t" + i + " " + Arrays.toString(inputPosition[i].sequence().toArray()));
 		}
 
 		// Provide the index in the operand that is associated

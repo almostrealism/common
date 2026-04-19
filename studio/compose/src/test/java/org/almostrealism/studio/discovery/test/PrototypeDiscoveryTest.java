@@ -40,7 +40,7 @@ public class PrototypeDiscoveryTest extends TestSuiteBase {
 	public void runDiscovery() throws Exception {
 		File protobufFile = new File(PROTOBUF_PREFIX + "_0.bin");
 		if (!protobufFile.exists()) {
-			System.out.println("SKIP: Protobuf file not found: " + protobufFile);
+			log("SKIP: Protobuf file not found: " + protobufFile);
 			return;
 		}
 

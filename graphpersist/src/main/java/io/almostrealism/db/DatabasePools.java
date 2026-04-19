@@ -1,6 +1,7 @@
 package io.almostrealism.db;
 
 import com.mchange.v2.c3p0.ComboPooledDataSource;
+import org.almostrealism.io.Console;
 
 import java.beans.PropertyVetoException;
 import java.util.HashMap;
@@ -33,7 +34,7 @@ public class DatabasePools {
 		try {
 			pool.setDriverClass("com.mysql.jdbc.Driver");
 		} catch (PropertyVetoException e) {
-			System.err.println("DatabasePools: Failed to set driver class: " + e.getMessage());
+			Console.root().warn("DatabasePools: Failed to set driver class: " + e.getMessage(), null);
 		}
 
 		pool.setJdbcUrl(url);

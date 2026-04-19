@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.db.DatabaseConnection;
 import io.almostrealism.db.Query;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.Console;
 import org.hsqldb.Server;
 
 import java.util.Properties;
@@ -56,7 +57,7 @@ public class GraphPersist {
 		String dbpasswd = properties.getProperty("db.password", "root");
 
 		if (driver == null || dburi == null) {
-			System.out.println("GraphPersist: Driver and/or URI not specified, " +
+			Console.root().println("GraphPersist: Driver and/or URI not specified, " +
 					"starting HSQLDB...");
 
 			String[] args = new String[4];
@@ -65,8 +66,8 @@ public class GraphPersist {
 			args[2] = "-dbname.0";
 			args[3] = "graphpersist";
 
-			System.out.println("OutputServer: HSQLDB file = " + args[1]);
-			System.out.println("OutputServer: HSQLDB name = " + args[3]);
+			Console.root().println("OutputServer: HSQLDB file = " + args[1]);
+			Console.root().println("OutputServer: HSQLDB name = " + args[3]);
 
 			Server.main(args);
 

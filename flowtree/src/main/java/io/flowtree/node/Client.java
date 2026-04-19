@@ -22,6 +22,8 @@ import io.flowtree.Server;
 import io.flowtree.fs.OutputServer;
 import io.flowtree.fs.ResourceDistributionTask;
 import io.flowtree.ui.LoginDialog;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import javax.swing.*;
 import java.io.IOException;
@@ -42,7 +44,7 @@ import java.util.Properties;
  * 
  * @author  Michael Murray
  */
-public class Client {
+public class Client implements ConsoleFeatures {
 	/** The singleton {@link Client} instance set by {@link #main(String[])} or {@link #setCurrentClient(Client)}. */
 	private static Client client;
 
@@ -74,10 +76,10 @@ public class Client {
 			InputStream in = (new URL(args[0])).openStream();
 			p.load(in);            
 		} catch (MalformedURLException e) {
-			System.out.println("Client: Malformed properties URL");
+			Console.root().println("Client: Malformed properties URL");
 			System.exit(1);
 		} catch (IOException e) {
-			System.out.println("Client: IO error loading properties");
+			Console.root().println("Client: IO error loading properties");
 			System.exit(2);
 		}
 		
@@ -96,7 +98,7 @@ public class Client {
 					try {
 						Client.client = new Client(p, user, passwd, null);
 					} catch (IOException e) {
-						System.out.println("Client: " + e);
+						Console.root().println("Client: " + e);
 					}
 				}
 			};
@@ -127,9 +129,9 @@ public class Client {
 
 		try {
 			new OutputServer(p, server);
-			System.out.println("DB Server created");
+			log("DB Server created");
 		} catch (IOException ioe) {
-			System.out.println("IO error starting DBS: " + ioe.getMessage());
+			warn("IO error starting DBS: " + ioe.getMessage());
 		}
 
 		this.server.start();
@@ -265,13 +267,13 @@ public class Client {
 			Hashtable h = (Hashtable) in.readObject();
 			return h;
 		} catch (ClassNotFoundException cnf) {
-			System.out.println("Client: " + cnf);
+			warn(String.valueOf(cnf));
 			return null;
 		} catch (UnknownHostException uh) {
-			System.out.println("Client: Output host " + this.outputHost + ":"+ this.outputPort + ") not found.");
+			warn("Output host " + this.outputHost + ":" + this.outputPort + ") not found.");
 			return null;
 		} catch (IOException ioe) {
-			System.out.println("Client: " + ioe);
+			warn(String.valueOf(ioe));
 			return null;
 		}
 	}

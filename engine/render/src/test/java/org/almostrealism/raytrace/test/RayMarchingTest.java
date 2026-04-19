@@ -13,6 +13,7 @@ import org.almostrealism.render.RayTracedScene;
 import org.almostrealism.space.DistanceEstimator;
 import org.almostrealism.texture.Animation;
 import org.almostrealism.texture.ImageCanvas;
+import org.almostrealism.io.Console;
 import org.almostrealism.util.TestSuiteBase;
 
 import javax.swing.text.NumberFormatter;
@@ -104,7 +105,7 @@ public class RayMarchingTest extends TestSuiteBase {
 					try {
 						return "marching" + format.valueToString(POWER) + ".jpg";
 					} catch (ParseException e) {
-						e.printStackTrace();
+						warn(e.getMessage(), e);
 						return null;
 					}
 				}
@@ -117,9 +118,9 @@ public class RayMarchingTest extends TestSuiteBase {
 						new File("test-march.jpeg"),
 						ImageCanvas.JPEGEncoding);
 			} catch (FileNotFoundException fnf) {
-				System.out.println("ERROR: Output file not found");
+				Console.root().println("ERROR: Output file not found");
 			} catch (IOException ioe) {
-				System.out.println("IO ERROR");
+				Console.root().println("IO ERROR");
 			}
 		}
 

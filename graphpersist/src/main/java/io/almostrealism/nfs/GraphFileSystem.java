@@ -22,6 +22,7 @@ import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Graph;
 import io.almostrealism.resource.Permissions;
 import io.almostrealism.resource.Resource;
+import org.almostrealism.io.ConsoleFeatures;
 import org.dcache.nfs.v4.NfsIdMapping;
 import org.dcache.nfs.v4.xdr.nfsace4;
 import org.dcache.nfs.vfs.AclCheckable;
@@ -50,7 +51,7 @@ import java.util.Iterator;
  *
  * @param <T> The type of {@link Resource} created by this file system's factory
  */
-public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
+public class GraphFileSystem<T extends Resource> implements VirtualFileSystem, ConsoleFeatures {
 	/** One kilobyte, in bytes. */
 	public static final long KB = 1024;
 	/** One megabyte, in bytes. */
@@ -94,7 +95,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 
 	@Override
 	public int access(Subject subject, Inode inode, int mode) throws IOException {
-		System.out.println("GraphFileSystem: Access " + inode);
+		log("GraphFileSystem: Access " + inode);
 		return getModeForPermissions(((ResourceInode) inode).getPermissions()) & mode;
 	}
 
@@ -133,7 +134,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 
 	@Override
 	public Inode getRootInode() throws IOException {
-		System.out.println("GraphFileSystem: getRootInode()");
+		log("GraphFileSystem: getRootInode()");
 		return new Inode(new FileHandle("/".getBytes()));
 	}
 
@@ -291,7 +292,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 
 	@Override
 	public nfsace4[] getAcl(Inode inode) throws IOException {
-		System.out.println("GraphFileSystem: getAcl(" + inode + ")");
+		log("GraphFileSystem: getAcl(" + inode + ")");
 		return null;
 	}
 
@@ -303,7 +304,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 
 	@Override
 	public boolean hasIOLayout(Inode inode) throws IOException {
-		System.out.println("GraphFileSystem: hasIOLayout(" + inode + ")");
+		log("GraphFileSystem: hasIOLayout(" + inode + ")");
 		return false;
 	}
 
@@ -319,7 +320,7 @@ public class GraphFileSystem<T extends Resource> implements VirtualFileSystem {
 
 	@Override
 	public NfsIdMapping getIdMapper() {
-		System.out.println("GraphFileSystem: getIdMapper()");
+		log("GraphFileSystem: getIdMapper()");
 		return null;
 	}
 

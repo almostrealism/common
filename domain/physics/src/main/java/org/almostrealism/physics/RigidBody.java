@@ -19,6 +19,7 @@ package org.almostrealism.physics;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Camera;
 import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.io.Console;
 import org.almostrealism.time.Temporal;
 
 import java.awt.*;
@@ -173,12 +174,12 @@ public interface RigidBody {
 		 * @param impulse  the impulse vector to add to linear momentum
 		 */
 		public void linearImpulse(Vector impulse) {
-			System.out.print(this.toString() + ": " + impulse.toString() + " (" + this.p.toString() + " -->");
-			
+			Console.root().println(this.toString() + ": " + impulse.toString() + " (" + this.p.toString() + " --> ");
+
 			this.p.addTo(impulse);
 			this.v = this.p.divide(this.mass);
-			
-			System.out.println(this.p +") " + this.v);
+
+			Console.root().println(String.valueOf(this.p) + ") " + this.v);
 		}
 		
 		/**

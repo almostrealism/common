@@ -25,6 +25,7 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Countable;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Describable;
 
 import java.io.DataInputStream;
@@ -61,7 +62,7 @@ import java.util.stream.Stream;
  * @author  Michael Murray
  * @see Countable#isFixedCount()
  */
-public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable, ExpressionFeatures {
+public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable, ExpressionFeatures, ConsoleFeatures {
 	/** Whether to enforce strict validation of dimension sizes during construction. */
 	public static boolean enableStrictSizes = true;
 
@@ -613,7 +614,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 */
 	public Expression subset(TraversalPolicy shape, Expression index, Expression... loc) {
 		if (shape.getDimensions() != getDimensions()) {
-			System.out.println("WARN: Obtaining a " + shape.getDimensions() +
+			warn("Obtaining a " + shape.getDimensions() +
 					"d subset of a " + getDimensions() +
 					"d collection is likely to produce an unexpected result");
 		}
@@ -1594,7 +1595,6 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 				break i;
 			}
 		}
-
 		return i;
 	}
 }
