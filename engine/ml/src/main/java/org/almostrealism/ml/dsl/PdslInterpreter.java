@@ -74,6 +74,8 @@ import java.util.function.Supplier;
  *       {@code buffer} and {@code head} are updated after each forward pass</li>
  *   <li>{@code lfo(freqHz,sampleRate,phase)} - stateful sinusoidal LFO;
  *       {@code phase} (1-element {@link PackedCollection}) is advanced after each forward pass</li>
+ *   <li>{@code identity()} - pass-through block; useful as the dry-path arm of
+ *       {@code accum_blocks({ identity() }, { wet_chain; scale(level) })}</li>
  * </ul>
  *
  * <p>Composition constructs:
@@ -758,6 +760,7 @@ public class PdslInterpreter {
 			case "biquad": return callBiquad(args);
 			case "delay": return callDelay(args);
 			case "lfo": return callLfo(args);
+			case "identity": return callIdentity(args);
 			default: return null;
 		}
 	}
@@ -1097,6 +1100,31 @@ public class PdslInterpreter {
 		}
 		throw new PdslParseException(
 				"scale() expects 1 numeric argument (factor), got " + args.size());
+	}
+
+	/**
+	 * Builds an identity (pass-through) block that forwards its input unchanged.
+	 *
+	 * <p>Used as the dry path inside {@code accum_blocks} to express a wet/dry mix:
+	 * {@code accum_blocks({ identity() }, { wet_chain; scale(wet_level) })}.</p>
+	 *
+	 * @param args no arguments
+	 * @return a factory that creates a pass-through block for any input shape
+	 */
+	private Object callIdentity(List<Object> args) {
+		if (!args.isEmpty()) {
+			throw new PdslParseException(
+					"identity() expects no arguments, got " + args.size());
+		}
+		return (Function<TraversalPolicy, Block>) (shape -> {
+			Cell<PackedCollection> forward = Cell.of(
+					(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+							Supplier<Runnable>>) (in, next) -> next.push(in));
+			Cell<PackedCollection> backward = Cell.of(
+					(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+							Supplier<Runnable>>) (in, next) -> new OperationList("identity-backward"));
+			return new DefaultBlock(shape, shape, forward, backward);
+		});
 	}
 
 	/**

@@ -610,8 +610,8 @@ branch. State-aware primitives are tractable given the `state` block extension.
 | Primitive | Description | Notes |
 |-----------|-------------|-------|
 | `scale(factor)` | Multiply each element by a scalar factor | **Already implemented** |
-| `mix(a, b, level)` | Weighted mix of two inputs | |
-| `identity()` | Pass-through (useful for branching) | |
+| `mix` | Weighted mix of wet/dry paths | **No new primitive needed** — use `accum_blocks({ scale(dry) }, { wet_chain; scale(wet) })`. See Part 10. |
+| `identity()` | Pass-through (useful for branching) | **Already implemented** — used as dry-path arm of `accum_blocks` |
 | `gate(threshold)` | Zero output if input below threshold | |
 | `lowpass(cutoff, sampleRate, filterOrder)` | Low-pass FIR filter | **Already implemented** |
 | `highpass(cutoff, sampleRate, filterOrder)` | High-pass FIR filter | **Already implemented** |
@@ -759,6 +759,158 @@ The long-term vision — everything from audio DSP to ML inference defined as PD
 computation graphs, compiled to the same native kernels — is coherent and achievable.
 The path there is shorter than the original plan suggested: the state storage problem
 is already solved; only the write-back semantics are missing.
+
+---
+
+## Part 10: CellList ↔ SequentialBlock Convergence — Code Observations
+
+The following analysis is grounded in the actual code at the commit when it was written.
+No abstract speculation — only observations that can be verified by reading the listed
+source files.
+
+### 10A: What the Two Systems Share
+
+Both `CellList` (`engine/audio`) and `SequentialBlock` (`domain/graph`) route data
+through processing stages built from the same building block: `Cell<PackedCollection>`
+(`domain/graph/Cell.java`). The `Cell` interface defines one operation:
+
+```java
+Supplier<Runnable> push(Producer<PackedCollection> protein);
+void setReceptor(Receptor<PackedCollection> r);
+```
+
+Everything else — how cells are ordered, how they are composed, whether state is
+preserved, how they compile to native code — differs.
+
+**Where they diverge:**
+
+| Dimension | CellList | SequentialBlock |
+|-----------|----------|-----------------|
+| **Composition** | Parent/child hierarchy; roots push to roots, parents tick before children | Sequential receptor wiring: `last.setReceptor(next)` in `SequentialBlock.add()` |
+| **Activation** | Push-driven via `tick()` → `OperationList` returned from `CellList.tick()` | Pull-driven: caller calls `CompiledModel.forward(input)` |
+| **State** | `CachedStateCell`: two PackedCollection buffers (`cachedValue`, `outValue`); `tick()` copies cache→out, then resets | PDSL `into()`: stateful block's `push()` runs forward pass then writes new state back via `FEATURES.into(...)` |
+| **Compilation** | `CellList.tick()` returns `Supplier<Runnable>` wrapping an `OperationList` | `CompiledModel.compile(Model)` flattens all forward cells, runs `Process.optimized()`, returns pre-compiled `Runnable` |
+| **Granularity** | Per-sample: each `tick()` call processes one sample | Per-buffer: each `CompiledModel.forward()` call processes `shape.getSize()` samples |
+
+### 10B: Block → CellList Adapter
+
+**This adapter is trivially available today.** A `Block` implements `Block`, and
+`Block.getForward()` returns `Cell<PackedCollection>`. That return value can be
+added directly to a `CellList`:
+
+```java
+Block pdslBlock = loader.buildLayer(program, "efx_delay", shape, args);
+CellList cells = new CellList();
+cells.add(pdslBlock.getForward());  // Block's forward cell IS a Cell
+```
+
+**What works:** The push mechanism is identical. When the `CellList` ticks and pushes
+to the cell, `Block.getForward().push(input)` runs exactly as it would under
+`CompiledModel.forward()`.
+
+**Stateful blocks in CellList context:** The state write-back in `callBiquad`,
+`callDelay`, and `callLfo` happens inside `push()` via `FEATURES.into(...)`. This
+means state is updated on every tick — exactly like `CachedStateCell.tick()`. A
+PDSL biquad block added to a `CellList` maintains correct per-call state without any
+adapter code.
+
+**What is lost:** `SequentialBlock` tracks input/output shapes via
+`getInputShape()`/`getOutputShape()`. `CellList` is shape-agnostic. The shape contract
+is invisible to `CellList`. This is a debugging concern, not a correctness concern.
+
+### 10C: CellList → Block Adapter
+
+**This adapter is harder and requires explicit output capture.** `CellList.tick()`
+returns a `Supplier<Runnable>` — not a `Cell` that processes a single input and
+forwards to a receptor. To wrap a `CellList` as a `Block`, you need:
+
+1. A way to inject input into the `CellList`'s root cells.
+2. A way to capture the output from the `CellList`'s leaf cells.
+
+The natural pattern (not yet implemented in the codebase):
+
+```java
+// Adapter sketch — illustrative, not production code
+PackedCollection outputCapture = new PackedCollection(shape);
+Cell<PackedCollection> captureCell = Cell.of((in, next) -> 
+    FEATURES.into("capture", in, FEATURES.cp(outputCapture), false));
+
+// Wire: last CellList cell → captureCell
+lastCellInList.setReceptor(captureCell);
+
+Cell<PackedCollection> forward = Cell.of((in, next) -> {
+    OperationList ops = new OperationList("CellListBlock");
+    ops.add(rootCell.push(in));       // Inject input into CellList root
+    ops.add(cellList.tick());         // Run the CellList
+    ops.add(next.push(FEATURES.cp(outputCapture)));  // Forward captured output
+    return ops;
+});
+
+Block adapter = new DefaultBlock(shape, shape, forward, null);
+```
+
+**The fundamental challenge:** `CellList` manages its own internal tick ordering via
+parent/child hierarchy and `getAllTemporals()`. Wrapping it as a block forces this
+into a flat `push()` → capture cycle, which loses the hierarchical tick ordering.
+For simple linear chains this is fine; for complex graphs with feedback (which
+CellList is designed for) the adapter may reorder operations incorrectly.
+
+### 10D: Is There a Unified Composition Abstraction?
+
+**No, and one is not needed.** The existing `Cell` interface already IS the shared
+abstraction. Both systems build on it. The differences in composition (hierarchy vs.
+sequential wiring) and activation (tick vs. forward) reflect genuinely different
+execution models for genuinely different use cases:
+
+- Audio DSP needs hierarchical, push-based, per-sample execution with real-time
+  guarantees. CellList delivers this.
+- ML inference needs sequential, pull-based, per-buffer execution with gradient
+  backpropagation. SequentialBlock delivers this.
+
+Forcing them into a single unified API would produce an API that does neither well.
+The right approach is the B→CellList direction (Part 10B): PDSL-compiled Blocks
+compose with CellList pipelines directly via `getForward()`, so the two systems
+can coexist without a new abstraction.
+
+### 10E: The State Block as Bridge
+
+The PDSL `state` block (Part 5) and the `into()` mechanism make PDSL Blocks
+structurally equivalent to `CachedStateCell` from the cell graph's perspective:
+
+| Mechanism | `CachedStateCell` | PDSL stateful Block |
+|-----------|-------------------|---------------------|
+| **State storage** | `cachedValue` PackedCollection (heap) | `state` block PackedCollection (caller-owned) |
+| **Read old state** | `getResultant()` returns `p(outValue)` | `FEATURES.cp(history)` reads current PackedCollection |
+| **Write new state** | `tick()` copies cachedValue → outValue | `FEATURES.into("name", newState, cp(history), false)` |
+| **Update trigger** | Explicit `tick()` call in OperationList | Happens inside `push()`, same call as the forward pass |
+| **Lifecycle** | JVM GC (cell holds reference) | Caller holds PackedCollection reference |
+
+The `state` block eliminates the need for `CachedStateCell` when processing
+audio through the PDSL pipeline: the state PackedCollection serves the same role as
+`cachedValue`, and `into()` serves the same role as `tick()`. The caller's Java
+code that owns the state PackedCollection takes the role of the cell graph's
+temporal ordering.
+
+### 10F: Implications for AudioScene
+
+`AudioScene.getCells()` builds a `CellList` pipeline. To incorporate PDSL-defined
+DSP into AudioScene without structural changes:
+
+1. Replace a Java-defined cell (e.g., a `BiquadFilterCell`) with the PDSL equivalent:
+   `loader.buildLayer(program, "efx_delay", shape, args).getForward()`
+2. Add this cell to the CellList at the same position.
+3. The PDSL block's `push()` performs the DSP computation and updates state on each
+   tick — indistinguishable from a hand-written cell.
+
+No changes to `AudioScene`, `EfxManager`, or `MixdownManager` are required for the
+first PDSL cells to appear in the audio pipeline. The PDSL blocks participate in
+CellList composition because `Block.getForward()` returns `Cell<PackedCollection>`,
+which is exactly what CellList expects.
+
+The migration path: replace cells one at a time, verifying audio output after each
+replacement. The PDSL definitions can be developed and tested independently using
+`CompiledModel.forward()`, then dropped into the CellList pipeline with a single
+`block.getForward()` call.
 
 ---
 

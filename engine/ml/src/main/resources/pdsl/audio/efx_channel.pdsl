@@ -121,3 +121,29 @@ state efx_delay_state {
 layer efx_delay(signal_size: int, delay_samples: int) -> [1, signal_size] {
     delay(delay_samples, buffer, head)
 }
+
+// ---------------------------------------------------------------------------
+// Wet/dry mix via accum_blocks + identity
+//
+// Demonstrates that mix = accum_blocks(dry_path, wet_path) using existing
+// Block composition — no separate mix primitive is needed.
+//
+// Signal flow:
+//   input ─┬─── identity() ─────────────────────────────────┐
+//           └─── delay(delay_samples, buffer, head) ─── scale(wet_level) ─┘
+//                                                                           ↓ sum
+//                                                                       output
+//
+// Parameters:
+//   signal_size    Number of samples per audio frame (for shape inference)
+//   delay_samples  Integer delay in samples (must be < buffer length)
+//   wet_level      Wet output level, e.g. 0.5 for -6 dB wet/dry mix
+//
+// Requires efx_delay_state block populated with buffer and head.
+// ---------------------------------------------------------------------------
+layer efx_wet_dry_mix(signal_size: int, delay_samples: int, wet_level: scalar) -> [1, signal_size] {
+    accum_blocks(
+        { identity() },
+        { delay(delay_samples, buffer, head); scale(wet_level) }
+    )
+}

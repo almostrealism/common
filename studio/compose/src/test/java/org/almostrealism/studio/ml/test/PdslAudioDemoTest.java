@@ -184,6 +184,86 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 	}
 
 	/**
+	 * Demonstrates wet/dry mixing using {@code accum_blocks + identity} in PDSL.
+	 *
+	 * <p>Processes a 440 Hz sine through the {@code efx_wet_dry_mix} layer, which
+	 * combines the dry (pass-through) signal with a 50 % wet delayed copy using
+	 * {@code accum_blocks({ identity() }, { delay(...); scale(0.5) })}. No separate
+	 * {@code mix} primitive is needed — the composition already expresses it.</p>
+	 *
+	 * <p>The output WAV {@code pdsl_wet_dry_mix.wav} should sound like the dry sine
+	 * with an audible echo approximately a quarter-buffer offset behind it.</p>
+	 */
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testPdslMixDemo() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		int totalSamples = SAMPLE_RATE;
+		int numPasses = totalSamples / SIGNAL_SIZE;
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		int delaySamples = SIGNAL_SIZE / 4;
+		double wetLevel = 0.5;
+
+		PackedCollection mixBuffer = new PackedCollection(SIGNAL_SIZE);
+		mixBuffer.setMem(new double[SIGNAL_SIZE]);
+		PackedCollection mixHead = new PackedCollection(1);
+		mixHead.setMem(new double[]{0.0});
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		Map<String, Object> mixArgs = new HashMap<>();
+		mixArgs.put("signal_size", SIGNAL_SIZE);
+		mixArgs.put("delay_samples", delaySamples);
+		mixArgs.put("wet_level", wetLevel);
+		mixArgs.put("buffer", mixBuffer);
+		mixArgs.put("head", mixHead);
+
+		Block mixBlock = loader.buildLayer(program, "efx_wet_dry_mix", inputShape, mixArgs);
+		Model mixModel = new Model(inputShape);
+		mixModel.add(mixBlock);
+		CompiledModel mixCompiled = mixModel.compile();
+
+		float[] drySignal = new float[totalSamples];
+		float[] mixSignal = new float[totalSamples];
+
+		for (int pass = 0; pass < numPasses; pass++) {
+			final int sampleOffset = pass * SIGNAL_SIZE;
+			PackedCollection input = createSignal(SIGNAL_SIZE, i -> {
+				double t = (double) (sampleOffset + i) / SAMPLE_RATE;
+				return Math.sin(2.0 * Math.PI * 440.0 * t);
+			});
+			PackedCollection output = mixCompiled.forward(input);
+			double[] inArr = input.toArray(0, SIGNAL_SIZE);
+			double[] outArr = output.toArray(0, SIGNAL_SIZE);
+			for (int i = 0; i < SIGNAL_SIZE; i++) {
+				drySignal[sampleOffset + i] = (float) inArr[i];
+				mixSignal[sampleOffset + i] = (float) outArr[i];
+			}
+		}
+
+		writeDemoWav(new File(outputDir, "pdsl_wet_dry_mix.wav"), mixSignal, SAMPLE_RATE);
+		Assert.assertTrue("Mix WAV must be non-empty",
+				new File(outputDir, "pdsl_wet_dry_mix.wav").length() > 0);
+
+		// The mix output must have more energy than the wet-only path
+		// (dry signal is preserved at full level, wet is at 0.5 level).
+		// The energy of the sum (dry + 0.5 * delayed) > energy of dry alone
+		// would not hold in general, but we can at least check the file exists
+		// and the output differs from the raw input.
+		double diffEnergy = 0.0;
+		for (int i = 0; i < totalSamples; i++) {
+			double diff = mixSignal[i] - drySignal[i];
+			diffEnergy += diff * diff;
+		}
+		Assert.assertTrue("Mix output must differ from dry (wet path contributes delay echo)",
+				diffEnergy > 0.0);
+	}
+
+	/**
 	 * Writes a mono 16-bit PCM WAV file with the given samples using {@link WavFile}.
 	 *
 	 * @param file       the file to create (parent directories must exist)
