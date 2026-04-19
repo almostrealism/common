@@ -3,6 +3,7 @@ package org.almostrealism.hardware.metal.test;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.metal.MTL;
 import org.almostrealism.hardware.metal.MetalComputeContext;
+import org.almostrealism.io.Console;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -45,13 +46,13 @@ public class MetalJNI extends TestSuiteBase {
 
 		long device = MTL.createSystemDefaultDevice();
 
-		log("Loaded device: " + device);
+		Console.root().println("Loaded device: " + device);
 
 		long function = MTL.createFunction(device, "vectorMatrixMultiply", functionSource.toString());
 
 		// Create a compute pipeline
 		long pipeline = MTL.createComputePipelineState(device, function);
-		log("Created pipeline: " + pipeline);
+		Console.root().println("Created pipeline: " + pipeline);
 
 		long commandQueue = MTL.createCommandQueue(device);
 		long commandBuffer;
@@ -77,7 +78,7 @@ public class MetalJNI extends TestSuiteBase {
 
 			MTL.commitCommandBuffer(commandBuffer);
 			MTL.waitUntilCompleted(commandBuffer);
-			log("Time: " + (System.nanoTime() - start));
+			Console.root().println("Time: " + (System.nanoTime() - start));
 
 			ByteBuffer resultBufferByte = ByteBuffer.allocateDirect(result.length * 4).order(ByteOrder.nativeOrder());
 			FloatBuffer resultBufferFloat = resultBufferByte.asFloatBuffer();

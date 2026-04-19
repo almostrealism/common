@@ -2,6 +2,7 @@ package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.Console;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -38,8 +39,8 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 
-		log("Creating random weights for config: " + config);
-		log("  kvDim: " + kvDim);
+		Console.root().println("Creating random weights for config: " + config);
+		Console.root().println("  kvDim: " + kvDim);
 
 		// Token embeddings
 		weights.put("model.embed_tokens.weight",
@@ -244,10 +245,10 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 	 * Main method for running tests without JUnit.
 	 */
 	public static void main(String[] args) {
-		log("+============================================================+");
-		log("|  Qwen3 Synthetic Test - Random Weights                    |");
-		log("|  Purpose: Verify model doesn't crash with valid shapes    |");
-		log("+============================================================+");
+		Console.root().println("+============================================================+");
+		Console.root().println("|  Qwen3 Synthetic Test - Random Weights                    |");
+		Console.root().println("|  Purpose: Verify model doesn't crash with valid shapes    |");
+		Console.root().println("+============================================================+");
 
 		Qwen3SyntheticTest test = new Qwen3SyntheticTest();
 		int passed = 0;
@@ -258,8 +259,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 			test.testTinyModelConstruction();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			warn("[FAIL] Test 1 FAILED: " + e.getMessage());
-			warn(e.getMessage(), e);
+			Console.root().warn("[FAIL] Test 1 FAILED: " + e.getMessage(), e);
 			failed++;
 		}
 
@@ -268,8 +268,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 			test.testModelCompilation();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			warn("[FAIL] Test 2 FAILED: " + e.getMessage());
-			warn(e.getMessage(), e);
+			Console.root().warn("[FAIL] Test 2 FAILED: " + e.getMessage(), e);
 			failed++;
 		}
 
@@ -278,17 +277,16 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 			test.testWeightShapes();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			warn("[FAIL] Test 3 FAILED: " + e.getMessage());
-			warn(e.getMessage(), e);
+			Console.root().warn("[FAIL] Test 3 FAILED: " + e.getMessage(), e);
 			failed++;
 		}
 
-		log("\n+============================================================+");
-		log("|  Test Results                                              |");
-		log("+------------------------------------------------------------+");
-		log(String.format("|  Passed: %d                                                  |%n", passed));
-		log(String.format("|  Failed: %d                                                  |%n", failed));
-		log("+============================================================+");
+		Console.root().println("\n+============================================================+");
+		Console.root().println("|  Test Results                                              |");
+		Console.root().println("+------------------------------------------------------------+");
+		Console.root().println(String.format("|  Passed: %d                                                  |%n", passed));
+		Console.root().println(String.format("|  Failed: %d                                                  |%n", failed));
+		Console.root().println("+============================================================+");
 
 		if (failed > 0) {
 			System.exit(1);

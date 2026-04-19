@@ -16,7 +16,7 @@
 
 package org.almostrealism.utils;
 
-import io.almostrealism.io.Console;
+import org.almostrealism.io.Console;
 import java.util.SortedSet;
 import java.util.TreeSet;
 

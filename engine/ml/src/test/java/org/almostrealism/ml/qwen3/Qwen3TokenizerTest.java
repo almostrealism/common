@@ -1,5 +1,6 @@
 package org.almostrealism.ml.qwen3;
 
+import org.almostrealism.io.Console;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -167,43 +168,42 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 	 * Main method for manual testing without JUnit.
 	 */
 	public static void main(String[] args) {
-		log("=== Qwen3Tokenizer Manual Test ===\n");
+		Console.root().println("=== Qwen3Tokenizer Manual Test ===\n");
 
 		Qwen3TokenizerTest test = new Qwen3TokenizerTest();
 
 		try {
-			log("1. Basic Encoding Test:");
+			Console.root().println("1. Basic Encoding Test:");
 			test.testBasicEncoding();
-			log("");
+			Console.root().println("");
 
-			log("2. Encode/Decode Test:");
+			Console.root().println("2. Encode/Decode Test:");
 			test.testEncodeDecode();
-			log("");
+			Console.root().println("");
 
-			log("3. Special Tokens Test:");
+			Console.root().println("3. Special Tokens Test:");
 			test.testSpecialTokens();
-			log("");
+			Console.root().println("");
 
-			log("4. Empty String Test:");
+			Console.root().println("4. Empty String Test:");
 			test.testEmptyString();
-			log("");
+			Console.root().println("");
 
-			log("5. Multi-byte Characters Test:");
+			Console.root().println("5. Multi-byte Characters Test:");
 			test.testMultiByteCharacters();
-			log("");
+			Console.root().println("");
 
-			log("6. Vocab Size Test:");
+			Console.root().println("6. Vocab Size Test:");
 			test.testVocabSize();
-			log("");
+			Console.root().println("");
 
-			log("7. Decode Test:");
+			Console.root().println("7. Decode Test:");
 			test.testDecode();
-			log("");
+			Console.root().println("");
 
-			log("=== All tests completed ===");
+			Console.root().println("=== All tests completed ===");
 		} catch (Exception e) {
-			warn("Test failed: " + e.getMessage());
-			warn(e.getMessage(), e);
+			Console.root().warn("Test failed: " + e.getMessage(), e);
 		}
 	}
 }
