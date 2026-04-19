@@ -16,6 +16,7 @@
 
 package org.almostrealism.utils;
 
+import org.almostrealism.io.Console;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -124,7 +125,7 @@ public class PriorityQueue {
 		StoredItem s = (StoredItem) this.data.last();
 		StoredItem f = (StoredItem) this.data.first();
 		if (f.p - s.p < 0)
-			System.out.println("PriorityQueue: Last - Next = " + (f.p - s.p));
+			Console.root().warn("Last - Next = " + (f.p - s.p));
 		return s.p;
 	}
 	

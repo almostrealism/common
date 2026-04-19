@@ -476,9 +476,9 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 		// Weighted sum size per output element = inputChannels * kernelSize
 		int weightedSumSize = inputChannels * kernelSize;
-		System.err.println("ConvTranspose1d correctness test:");
-		System.err.println("  inputChannels=" + inputChannels + ", kernelSize=" + kernelSize);
-		System.err.println("  Weighted sum size per output element: " + weightedSumSize);
+		warn("ConvTranspose1d correctness test:");
+		warn("  inputChannels=" + inputChannels + ", kernelSize=" + kernelSize);
+		warn("  Weighted sum size per output element: " + weightedSumSize);
 
 		// Create simple input: all 1s
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
@@ -490,8 +490,8 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		weights.fill(pos -> weightVal);
 
 		int outLength = (seqLength - 1) * stride - 2 * padding + kernelSize + outputPadding;
-		System.err.println("  Output length: " + outLength);
-		System.err.println("  Total output elements: " + (batchSize * outputChannels * outLength));
+		warn("  Output length: " + outLength);
+		warn("  Total output elements: " + (batchSize * outputChannels * outLength));
 
 		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
 									  kernelSize, stride, padding, outputPadding, weights, null);
@@ -511,9 +511,9 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 		// Print actual output for verification
 		double[] actual = actualOutput.toArray(0, batchSize * outputChannels * outLength);
-		System.err.println("  Output values: ");
+		warn("  Output values: ");
 		for (int i = 0; i < actual.length; i++) {
-			System.err.println("    [" + i + "] = " + actual[i]);
+			warn("    [" + i + "] = " + actual[i]);
 		}
 
 		// Verify at least one non-zero output
@@ -541,17 +541,17 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 		// Weighted sum size per output element = inputChannels * kernelSize
 		int weightedSumSize = inputChannels * kernelSize;
-		System.err.println("\n=== ConvTranspose1d LARGE CHANNEL TEST ===");
-		System.err.println("  inputChannels=" + inputChannels + ", kernelSize=" + kernelSize);
-		System.err.println("  Weighted sum size per output element: " + weightedSumSize);
-		System.err.println("  This is " + (weightedSumSize / 1024) + "K values summed PER OUTPUT ELEMENT!");
+		warn("\n=== ConvTranspose1d LARGE CHANNEL TEST ===");
+		warn("  inputChannels=" + inputChannels + ", kernelSize=" + kernelSize);
+		warn("  Weighted sum size per output element: " + weightedSumSize);
+		warn("  This is " + (weightedSumSize / 1024) + "K values summed PER OUTPUT ELEMENT!");
 
 		int outLength = (seqLength - 1) * stride - 2 * padding + kernelSize + outputPadding;
 		int totalOutputElements = batchSize * outputChannels * outLength;
-		System.err.println("  Output length: " + outLength);
-		System.err.println("  Total output elements: " + totalOutputElements);
-		System.err.println("  Total weighted sums computed: " + totalOutputElements);
-		System.err.println("  Total multiply-adds: " + ((long) totalOutputElements * weightedSumSize));
+		warn("  Output length: " + outLength);
+		warn("  Total output elements: " + totalOutputElements);
+		warn("  Total weighted sums computed: " + totalOutputElements);
+		warn("  Total multiply-adds: " + ((long) totalOutputElements * weightedSumSize));
 
 		// Create input
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
@@ -561,11 +561,11 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		PackedCollection weights = new PackedCollection(shape(inputChannels, outputChannels, kernelSize));
 		weights.fill(pos -> 0.0001);
 
-		System.err.println("\nBuilding convTranspose1d block...");
+		warn("\nBuilding convTranspose1d block...");
 		long buildStart = System.currentTimeMillis();
 		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
 									  kernelSize, stride, padding, outputPadding, weights, null);
-		System.err.println("  Block build time: " + (System.currentTimeMillis() - buildStart) + "ms");
+		warn("  Block build time: " + (System.currentTimeMillis() - buildStart) + "ms");
 
 		SequentialBlock model = new SequentialBlock(shape(batchSize, inputChannels, seqLength));
 		model.add(convT);
@@ -574,27 +574,27 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 			out.get().evaluate();
 		});
 
-		System.err.println("Compiling model...");
+		warn("Compiling model...");
 		long compileStart = System.currentTimeMillis();
 		OperationList op = (OperationList) model.getForward().push(p(input));
 
 		// Optimize the operation list to enable proper isolation of LoopedWeightedSumComputation
-		System.err.println("Optimizing operation list...");
+		warn("Optimizing operation list...");
 		long optimizeStart = System.currentTimeMillis();
 		op = (OperationList) op.optimize();
-		System.err.println("  optimize() time: " + (System.currentTimeMillis() - optimizeStart) + "ms");
+		warn("  optimize() time: " + (System.currentTimeMillis() - optimizeStart) + "ms");
 
 		// This is where it gets slow - the .get() triggers kernel compilation
-		System.err.println("Getting compiled operation (this is where slowness occurs)...");
+		warn("Getting compiled operation (this is where slowness occurs)...");
 		long getStart = System.currentTimeMillis();
 		Runnable compiled = op.get();
-		System.err.println("  op.get() time: " + (System.currentTimeMillis() - getStart) + "ms");
+		warn("  op.get() time: " + (System.currentTimeMillis() - getStart) + "ms");
 
-		System.err.println("Running forward pass...");
+		warn("Running forward pass...");
 		long runStart = System.currentTimeMillis();
 		compiled.run();
-		System.err.println("  Forward pass time: " + (System.currentTimeMillis() - runStart) + "ms");
+		warn("  Forward pass time: " + (System.currentTimeMillis() - runStart) + "ms");
 
-		System.err.println("Total compile time: " + (System.currentTimeMillis() - compileStart) + "ms");
+		warn("Total compile time: " + (System.currentTimeMillis() - compileStart) + "ms");
 	}
 }

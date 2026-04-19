@@ -240,22 +240,22 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		Vector mousePosition = new Vector(-193.811, 21.358, 0.0);
 		TemporalSpatialContext.TemporalCoordinates coords = context.inverse(mousePosition);
 
-		System.out.println("=== Negative X Position Analysis ===");
-		System.out.println("Input position: " + mousePosition);
-		System.out.println("Extracted time: " + coords.time());
-		System.out.println("Extracted frequency: " + coords.frequency());
-		System.out.println("Extracted layer: " + coords.layer());
+		log("=== Negative X Position Analysis ===");
+		log("Input position: " + mousePosition);
+		log("Extracted time: " + coords.time());
+		log("Extracted frequency: " + coords.frequency());
+		log("Extracted layer: " + coords.layer());
 
 		// With duration=10, scale = min(340/10, 1000) = 34
 		// time = x / scale / temporalScale = -193.811 / 34 / 1.0 = -5.7
 		double expectedScale = Math.min(340.0 / 10.0, 1000);
 		double expectedTime = mousePosition.getX() / expectedScale;
-		System.out.println("Expected scale: " + expectedScale);
-		System.out.println("Expected time: " + expectedTime);
+		log("Expected scale: " + expectedScale);
+		log("Expected time: " + expectedTime);
 
 		// This test documents the current behavior - time is negative
 		Assert.assertTrue("Time should be negative for negative X", coords.time() < 0);
-		System.out.println("ISSUE: Negative time values are skipped in applyValues()");
+		log("ISSUE: Negative time values are skipped in applyValues()");
 	}
 
 	/**
@@ -266,17 +266,17 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		TemporalSpatialContext context = new TemporalSpatialContext();
 
 		// Without duration set, what scale is used?
-		System.out.println("=== Required X Position Analysis ===");
+		log("=== Required X Position Analysis ===");
 
 		// When duration is 0 (not set), scale defaults to 3
 		// For time=0.5s: X = 0.5 * 1.0 * 3 = 1.5
 		Vector pos = context.position(context.getSecondsToTime().applyAsDouble(0.5), 0, 0, 0.5);
-		System.out.println("Position for time=0.5s, freq=0.5 (no duration): " + pos);
+		log("Position for time=0.5s, freq=0.5 (no duration): " + pos);
 
 		// With duration set
 		context.setDuration(10.0);
 		pos = context.position(context.getSecondsToTime().applyAsDouble(0.5), 0, 0, 0.5);
-		System.out.println("Position for time=0.5s, freq=0.5 (duration=10): " + pos);
+		log("Position for time=0.5s, freq=0.5 (duration=10): " + pos);
 
 		// Verify positions are positive for valid time
 		Assert.assertTrue("X should be positive for positive time", pos.getX() > 0);
@@ -286,18 +286,18 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		double freqSampleRate = 100;
 		double maxValidTime = (timeFrames - 1) / freqSampleRate; // 0.99 seconds
 
-		System.out.println("Max valid time for 100 frames at 100Hz: " + maxValidTime + "s");
+		log("Max valid time for 100 frames at 100Hz: " + maxValidTime + "s");
 
 		// What X position gives us this time?
 		Vector maxPos = context.position(context.getSecondsToTime().applyAsDouble(maxValidTime), 0, 0, 0.5);
-		System.out.println("X position for max valid time: " + maxPos.getX());
+		log("X position for max valid time: " + maxPos.getX());
 
 		// Min valid X (time=0)
 		Vector minPos = context.position(context.getSecondsToTime().applyAsDouble(0), 0, 0, 0.5);
-		System.out.println("X position for time=0: " + minPos.getX());
+		log("X position for time=0: " + minPos.getX());
 
-		System.out.println("\nVALID X RANGE: [" + minPos.getX() + ", " + maxPos.getX() + "]");
-		System.out.println("Mouse position X=-193.811 is WAY outside this range!");
+		log("\nVALID X RANGE: [" + minPos.getX() + ", " + maxPos.getX() + "]");
+		log("Mouse position X=-193.811 is WAY outside this range!");
 	}
 
 	/**
@@ -317,7 +317,7 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		// Duration = timeFrames / freqSampleRate = 100 / 100 = 1.0 seconds
 		context.setDuration(timeFrames / freqSampleRate);
 
-		System.out.println("=== Full Round Trip Test ===");
+		log("=== Full Round Trip Test ===");
 
 		// Create a value at the CENTER of the canvas (time=0.5s, freq=0.5)
 		double targetTime = 0.5;
@@ -325,16 +325,16 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		double internalTime = context.getSecondsToTime().applyAsDouble(targetTime);
 		Vector position = context.position(internalTime, 0, 0, targetFreq);
 
-		System.out.println("Target: time=" + targetTime + "s, freq=" + targetFreq);
-		System.out.println("Created position: " + position);
+		log("Target: time=" + targetTime + "s, freq=" + targetFreq);
+		log("Created position: " + position);
 
 		// Verify coordinates round-trip
 		TemporalSpatialContext.TemporalCoordinates coords = context.inverse(position);
-		System.out.println("Inverse coords: time=" + coords.time() + ", freq=" + coords.frequency());
+		log("Inverse coords: time=" + coords.time() + ", freq=" + coords.frequency());
 
 		int expectedFrame = (int) (coords.time() * freqSampleRate);
 		int expectedBin = (int) (coords.frequency() * frequencyBins);
-		System.out.println("Expected frame: " + expectedFrame + ", expected bin: " + expectedBin);
+		log("Expected frame: " + expectedFrame + ", expected bin: " + expectedBin);
 
 		Assert.assertTrue("Frame should be valid", expectedFrame >= 0 && expectedFrame < timeFrames);
 		Assert.assertTrue("Bin should be valid", expectedBin >= 0 && expectedBin < frequencyBins);
@@ -342,7 +342,7 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		// Create a high-magnitude value to ensure visibility
 		double targetMagnitude = 100.0; // Well above the threshold of 35
 		double logValue = Math.log(targetMagnitude + 1);
-		System.out.println("Value to apply: log(" + targetMagnitude + "+1) = " + logValue);
+		log("Value to apply: log(" + targetMagnitude + "+1) = " + logValue);
 
 		List<SpatialValue<?>> inputValues = List.of(
 				new SpatialValue<>(position, logValue, 0.5, true)
@@ -356,14 +356,14 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		PackedCollection freqData = canvas.getWave().getFreqData();
 		int dataIndex = expectedFrame * frequencyBins + expectedBin;
 		double writtenValue = freqData.toDouble(dataIndex);
-		System.out.println("Written to freqData[" + dataIndex + "]: " + writtenValue);
+		log("Written to freqData[" + dataIndex + "]: " + writtenValue);
 
 		// Verify non-zero
 		Assert.assertTrue("Written value should be non-zero", writtenValue > 0);
 
 		// Now get elements back from the canvas
 		List<SpatialValue> regeneratedElements = canvas.elements(context);
-		System.out.println("Regenerated " + regeneratedElements.size() + " elements");
+		log("Regenerated " + regeneratedElements.size() + " elements");
 
 		// There should be at least one element
 		Assert.assertTrue("Should regenerate at least one element", regeneratedElements.size() > 0);
@@ -373,8 +373,7 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		for (SpatialValue element : regeneratedElements) {
 			double dist = distanceTo(element.getPosition(), position);
 			if (dist < 20) {
-				System.out.println("Found element near target: " + element.getPosition() +
-						", value=" + element.getValue() + ", distance=" + dist);
+				log("Found element near target: " + element.getPosition() + ", value=" + element.getValue() + ", distance=" + dist);
 				foundNearTarget = true;
 			}
 		}
@@ -398,7 +397,7 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		TemporalSpatialContext context = new TemporalSpatialContext();
 		context.setDuration(timeFrames / freqSampleRate);
 
-		System.out.println("=== Brush Stroke Round Trip Test ===");
+		log("=== Brush Stroke Round Trip Test ===");
 
 		// Create brush centered in valid range
 		SphericalBrush brush = new SphericalBrush();
@@ -412,19 +411,17 @@ public class SpatialDrawingTest extends TestSuiteBase {
 				context.getSecondsToTime().applyAsDouble(targetTime),
 				0, 0, targetFreq);
 
-		System.out.println("Brush center (proper spatial coords): " + center);
+		log("Brush center (proper spatial coords): " + center);
 
 		// Generate stroke
 		List<SpatialValue<?>> strokeValues = brush.stroke(center, 1.0, 0.1);
-		System.out.println("Generated " + strokeValues.size() + " stroke values");
+		log("Generated " + strokeValues.size() + " stroke values");
 
 		// Print some sample positions
 		for (int i = 0; i < Math.min(5, strokeValues.size()); i++) {
 			SpatialValue<?> v = strokeValues.get(i);
 			TemporalSpatialContext.TemporalCoordinates coords = context.inverse(v.getPosition());
-			System.out.println("  Value " + i + ": pos=" + v.getPosition() +
-					" -> time=" + coords.time() + ", freq=" + coords.frequency() +
-					", value=" + v.getValue());
+			log("  Value " + i + ": pos=" + v.getPosition() + " -> time=" + coords.time() + ", freq=" + coords.frequency() + ", value=" + v.getValue());
 		}
 
 		// Apply to canvas
@@ -438,14 +435,14 @@ public class SpatialDrawingTest extends TestSuiteBase {
 				nonZeroCells++;
 			}
 		}
-		System.out.println("Non-zero cells in freqData: " + nonZeroCells);
+		log("Non-zero cells in freqData: " + nonZeroCells);
 
 		// Should have written something
 		Assert.assertTrue("Should have non-zero cells", nonZeroCells > 0);
 
 		// Regenerate elements
 		List<SpatialValue> regeneratedElements = canvas.elements(context);
-		System.out.println("Regenerated " + regeneratedElements.size() + " elements");
+		log("Regenerated " + regeneratedElements.size() + " elements");
 
 		Assert.assertTrue("Should regenerate elements", regeneratedElements.size() > 0);
 	}
@@ -470,16 +467,16 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		TemporalSpatialContext context = new TemporalSpatialContext();
 		context.setDuration(timeFrames / freqSampleRate);
 
-		System.out.println("=== Visualization Origin Transformation Test ===");
+		log("=== Visualization Origin Transformation Test ===");
 
 		// The visualization origin offset (from SpatioTemporalUserExperience)
 		// leftShift=180, upShift=30, origin = (-180, -70-30, 0) = (-180, -100, 0)
 		Vector visualizationOrigin = new Vector(-180, -100, 0);
-		System.out.println("Visualization origin: " + visualizationOrigin);
+		log("Visualization origin: " + visualizationOrigin);
 
 		// Raw viewer position (clicking near left edge of visualization)
 		Vector rawMousePosition = new Vector(-154.304, 45.3553, 0.0);
-		System.out.println("Raw viewer position: " + rawMousePosition);
+		log("Raw viewer position: " + rawMousePosition);
 
 		// Transform by subtracting visualization origin
 		// canvasPosition = viewerPosition - visualizationOrigin
@@ -488,7 +485,7 @@ public class SpatialDrawingTest extends TestSuiteBase {
 				rawMousePosition.getY() - visualizationOrigin.getY(),
 				rawMousePosition.getZ() - visualizationOrigin.getZ()
 		);
-		System.out.println("Transformed position: " + transformedPosition);
+		log("Transformed position: " + transformedPosition);
 
 		// Verify the transformation makes sense
 		// X: -154.304 - (-180) = 25.696 (near left edge, positive)
@@ -501,7 +498,7 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		brush.setDensity(100.0);
 
 		List<SpatialValue<?>> strokeValues = brush.stroke(transformedPosition, 1.0, 0.1);
-		System.out.println("Generated " + strokeValues.size() + " stroke values");
+		log("Generated " + strokeValues.size() + " stroke values");
 
 		// Count valid positions after transformation
 		int validCount = 0;
@@ -518,7 +515,7 @@ public class SpatialDrawingTest extends TestSuiteBase {
 			}
 		}
 
-		System.out.println("Valid values after transformation: " + validCount);
+		log("Valid values after transformation: " + validCount);
 
 		// Most values should now be valid (some may be outside due to brush radius)
 		Assert.assertTrue("Most values should be valid after transformation",
@@ -535,7 +532,7 @@ public class SpatialDrawingTest extends TestSuiteBase {
 				nonZeroCells++;
 			}
 		}
-		System.out.println("Non-zero cells in freqData: " + nonZeroCells);
+		log("Non-zero cells in freqData: " + nonZeroCells);
 
 		Assert.assertTrue("Should have non-zero cells after transformed strokes", nonZeroCells > 0);
 	}

@@ -46,7 +46,7 @@ public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 			double a = x.valueAt(i, 0);
 			double b = y.valueAt(i, 0);
 			double s = less.valueAt(i, 0);
-			System.out.println("lessThan = " + s);
+			log("lessThan = " + s);
 
 			if (a < b) {
 				assertEquals(a, s);

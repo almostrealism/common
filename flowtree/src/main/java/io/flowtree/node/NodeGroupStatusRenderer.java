@@ -20,6 +20,7 @@ import io.flowtree.fs.OutputServer;
 import io.flowtree.job.JobFactory;
 import io.flowtree.msg.Message;
 import io.flowtree.msg.NodeProxy;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.Chart;
 
 import java.io.File;
@@ -50,7 +51,7 @@ import java.util.List;
  * @author  Michael Murray
  * @see NodeGroup
  */
-class NodeGroupStatusRenderer {
+class NodeGroupStatusRenderer implements ConsoleFeatures {
 
 	/**
 	 * Format used to print floating-point throughput and job-time metrics in the
@@ -191,7 +192,7 @@ class NodeGroupStatusRenderer {
 	 * @return    The rendered HTML status string; never {@code null}.
 	 */
 	String getStatus(String nl) {
-		if (Message.verbose) System.out.println("NodeGroup: Starting status check.");
+		if (Message.verbose) log("NodeGroup: Starting status check.");
 
 		StringBuilder buf = new StringBuilder();
 
@@ -204,7 +205,7 @@ class NodeGroupStatusRenderer {
 		buf.append("<b>Sleep time:</b> " + NodeTimeFormatter.format(group.getSleep()) + "</p></center>" + nl);
 
 		NodeProxy[] s = group.getServers();
-		if (Message.verbose) System.out.println("NodeGroup.getStatus: Got server list.");
+		if (Message.verbose) log("NodeGroup.getStatus: Got server list.");
 
 		buf.append("<table><tr><td><h3>Servers</h3></td><td><h3>TaskList</h3></td></tr><tr>");
 
@@ -272,7 +273,7 @@ class NodeGroupStatusRenderer {
 			buf.append("</font></pre>" + nl);
 		}
 
-		if (Message.verbose) System.out.println("NodeGroup: Getting dbs info...");
+		if (Message.verbose) log("NodeGroup: Getting dbs info...");
 
 		OutputServer dbs = OutputServer.getCurrentServer();
 		if (dbs != null) {
@@ -299,7 +300,7 @@ class NodeGroupStatusRenderer {
 			}
 		}
 
-		if (Message.verbose) System.out.println("NodeGroup: Returning status check.");
+		if (Message.verbose) log("NodeGroup: Returning status check.");
 
 		return buf.toString();
 	}

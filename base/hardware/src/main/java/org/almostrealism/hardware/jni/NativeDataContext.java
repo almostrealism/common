@@ -294,7 +294,7 @@ public class NativeDataContext extends HardwareDataContext {
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		if (context == null) {
-			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
+			if (Hardware.enableVerbose) log("No explicit ComputeContext for " + Thread.currentThread().getName());
 			context = new NativeComputeContext(this, getNativeCompiler());
 		}
 

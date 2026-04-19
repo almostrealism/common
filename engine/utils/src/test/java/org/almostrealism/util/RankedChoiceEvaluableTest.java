@@ -43,7 +43,7 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 			Pair out = RankedChoiceEvaluable.highestRank.evaluate(
 					in, new Pair(3, Intersection.e));
 
-			System.out.println("rank = " + out.toDouble(0));
+			log("rank = " + out.toDouble(0));
 			assertEquals(1.0, out.toDouble(0));
 		});
 	}
@@ -95,7 +95,7 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 		Evaluable<Vector> acc = rcp.getAccelerated();
 
 		Vector result = acc.evaluate();
-		System.out.println("result = " + result);
+		log("result = " + result);
 		assert result.equals(new Vector(4, 5, 6));
 	}
 
@@ -105,7 +105,7 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 		Evaluable<Vector> acc = rcp.getAccelerated();
 
 		Vector result = acc.evaluate();
-		System.out.println("result = " + result);
+		log("result = " + result);
 		assert result.equals(new Vector(0.7034, 0.7034, 0.7034));
 	}
 
@@ -115,7 +115,7 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 		Evaluable<Vector> acc = rcp.getAccelerated();
 
 		Vector result = acc.evaluate();
-		System.out.println("result = " + result);
+		log("result = " + result);
 		assert result.equals(new Vector(4, 5, 6));
 	}
 }

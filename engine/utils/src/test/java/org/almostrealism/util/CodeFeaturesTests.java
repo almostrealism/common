@@ -155,7 +155,7 @@ public class CodeFeaturesTests extends TestSuiteBase {
 
 		Runnable r = s.get();
 		r.run();
-		System.out.println(dest.toDouble(0));
+		log(String.valueOf(dest.toDouble(0)));
 		assertEquals(1.5, dest.toDouble(0));
 
 		value.setMem(0, 3.0);
@@ -172,7 +172,7 @@ public class CodeFeaturesTests extends TestSuiteBase {
 
 		Runnable r = s.get();
 		r.run();
-		System.out.println(dest.toDouble(0));
+		log(String.valueOf(dest.toDouble(0)));
 		assertEquals(1.5, dest.toDouble(0));
 
 		value.setMem(0, 3.0);
@@ -187,11 +187,11 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		Runnable r = s.get();
 
 		r.run();
-		System.out.println(dest.toDouble(0));
+		log(String.valueOf(dest.toDouble(0)));
 		assertEquals(3.0, dest);
 
 		r.run();
-		System.out.println(dest.toDouble(0));
+		log(String.valueOf(dest.toDouble(0)));
 		assertEquals(6.0, dest);
 	}
 }

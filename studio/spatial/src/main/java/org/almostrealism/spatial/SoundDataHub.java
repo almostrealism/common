@@ -208,7 +208,7 @@ public class SoundDataHub implements ConsoleFeatures {
 					try {
 						current.selected(data);
 					} catch (Exception e) {
-						System.err.println("SoundDataHub: " + e.getMessage());
+						warn(e.getMessage(), e);
 					}
 				});
 			}
@@ -219,7 +219,7 @@ public class SoundDataHub implements ConsoleFeatures {
 					try {
 						current.published(index, data);
 					} catch (Exception e) {
-						System.err.println("SoundDataHub: " + e.getMessage());
+						warn(e.getMessage(), e);
 					}
 				});
 			}
@@ -244,7 +244,7 @@ public class SoundDataHub implements ConsoleFeatures {
 							try {
 								current.addListener(listener);
 							} catch (Exception e) {
-								System.err.println("SoundDataHub: " + e.getMessage());
+								warn(e.getMessage(), e);
 							}
 						}
 				);

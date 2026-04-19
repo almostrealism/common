@@ -186,7 +186,7 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 				loaded = AudioScenePopulation.read(new FileInputStream(file));
 				log("Read chromosome data from " + file);
 			} catch (IOException e) {
-				e.printStackTrace();
+				warn(e.getMessage(), e);
 				loaded = new ArrayList<>();
 			}
 		} else {
@@ -250,7 +250,7 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 			((AudioScenePopulation) getPopulation()).store(new FileOutputStream(file));
 			log("Wrote " + file);
 		} catch (IOException e) {
-			System.err.println("AudioPopulationOptimizer: " + e.getMessage());
+			warn(e.getMessage(), e);
 		}
 	}
 

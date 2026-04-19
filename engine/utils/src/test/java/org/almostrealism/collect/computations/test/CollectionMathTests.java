@@ -68,7 +68,7 @@ public class CollectionMathTests extends TestSuiteBase {
 
 		verboseLog(() -> {
 			PackedCollection result = cp(a).multiply(cp(b.traverse(1))).get().evaluate();
-			System.out.println(result.getShape().toStringDetail());
+			log(result.getShape().toStringDetail());
 			Assert.assertEquals(1, result.getShape().getTraversalAxis());
 
 			for (int i = 0; i < 10; i++) {
@@ -84,7 +84,7 @@ public class CollectionMathTests extends TestSuiteBase {
 
 		verboseLog(() -> {
 			PackedCollection result = cp(a).multiply(cp(b)).get().evaluate();
-			System.out.println(result.getShape().toStringDetail());
+			log(result.getShape().toStringDetail());
 
 			for (int i = 0; i < 2; i++) {
 				for (int j = 0; j < 5; j++) {
@@ -486,7 +486,7 @@ public class CollectionMathTests extends TestSuiteBase {
 		Producer<PackedCollection> result = lessThan(a, b, a, b);
 
 		try (PackedCollection value = result.get().evaluate()) {
-			System.out.println("lessThan single: " + value.toDouble() + " (expected 5.0)");
+			log("lessThan single: " + value.toDouble() + " (expected 5.0)");
 			Assert.assertEquals(5.0, value.toDouble(), 0.001);
 		}
 	}
@@ -514,10 +514,10 @@ public class CollectionMathTests extends TestSuiteBase {
 
 		result.get().into(resultData.each()).evaluate(valuesA, valuesB);
 
-		System.out.println("lessThan small batch:");
-		System.out.println("  [0]: " + resultData.valueAt(0, 0) + " (expected 2.0, min of 2.0 and 7.0)");
-		System.out.println("  [1]: " + resultData.valueAt(1, 0) + " (expected 3.0, min of 8.0 and 3.0)");
-		System.out.println("  [2]: " + resultData.valueAt(2, 0) + " (expected 5.0, min of 5.0 and 5.0)");
+		log("lessThan small batch:");
+		log("  [0]: " + resultData.valueAt(0, 0) + " (expected 2.0, min of 2.0 and 7.0)");
+		log("  [1]: " + resultData.valueAt(1, 0) + " (expected 3.0, min of 8.0 and 3.0)");
+		log("  [2]: " + resultData.valueAt(2, 0) + " (expected 5.0, min of 5.0 and 5.0)");
 
 		Assert.assertEquals(2.0, resultData.valueAt(0, 0), 0.001);
 		Assert.assertEquals(3.0, resultData.valueAt(1, 0), 0.001);
@@ -549,13 +549,13 @@ public class CollectionMathTests extends TestSuiteBase {
 		PackedCollection resultData = new PackedCollection(shape(batchSize, 1).traverse(1));
 		result.get().into(resultData.each()).evaluate(valuesA, valuesB);
 
-		System.out.println("lessThan large batch (size=" + batchSize + "):");
-		System.out.println("  [0]: " + resultData.valueAt(0, 0) + " (expected 0.0)");
-		System.out.println("  [100]: " + resultData.valueAt(100, 0) + " (expected 100.0)");
-		System.out.println("  [127]: " + resultData.valueAt(127, 0) + " (expected 127.0)");
-		System.out.println("  [128]: " + resultData.valueAt(128, 0) + " (expected 127.0)");
-		System.out.println("  [200]: " + resultData.valueAt(200, 0) + " (expected 55.0)");
-		System.out.println("  [255]: " + resultData.valueAt(255, 0) + " (expected 0.0)");
+		log("lessThan large batch (size=" + batchSize + "):");
+		log("  [0]: " + resultData.valueAt(0, 0) + " (expected 0.0)");
+		log("  [100]: " + resultData.valueAt(100, 0) + " (expected 100.0)");
+		log("  [127]: " + resultData.valueAt(127, 0) + " (expected 127.0)");
+		log("  [128]: " + resultData.valueAt(128, 0) + " (expected 127.0)");
+		log("  [200]: " + resultData.valueAt(200, 0) + " (expected 55.0)");
+		log("  [255]: " + resultData.valueAt(255, 0) + " (expected 0.0)");
 
 		// Check key values
 		Assert.assertEquals(0.0, resultData.valueAt(0, 0), 0.001);

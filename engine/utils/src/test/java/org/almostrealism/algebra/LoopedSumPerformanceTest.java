@@ -59,13 +59,13 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 	public void testPerformanceMatrix() throws IOException {
 		List<TestResult> results = new ArrayList<>();
 
-		System.out.println("=== LoopedWeightedSumComputation Performance Analysis ===");
-		System.out.println("Timeout per test: " + TIMEOUT_SECONDS + " seconds");
-		System.out.println();
+		log("=== LoopedWeightedSumComputation Performance Analysis ===");
+		log("Timeout per test: " + TIMEOUT_SECONDS + " seconds");
+		log("");
 
 		// Phase 1: Low outerCount, increasing innerCount
 		// This tests how innerCount scaling affects performance
-		System.out.println("--- Phase 1: outerCount=16, varying innerCount ---");
+		log("--- Phase 1: outerCount=16, varying innerCount ---");
 		int[] innerCounts1 = {4, 8, 16, 32, 64, 128, 256, 512};
 		for (int innerCount : innerCounts1) {
 			TestResult result = runTimedTest(16, innerCount);
@@ -75,7 +75,7 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 		}
 
 		// Phase 2: Medium outerCount, increasing innerCount
-		System.out.println("\n--- Phase 2: outerCount=64, varying innerCount ---");
+		log("\n--- Phase 2: outerCount=64, varying innerCount ---");
 		int[] innerCounts2 = {4, 8, 16, 32, 64, 128, 256};
 		for (int innerCount : innerCounts2) {
 			TestResult result = runTimedTest(64, innerCount);
@@ -85,7 +85,7 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 		}
 
 		// Phase 3: Increasing outerCount with small innerCount (like our target)
-		System.out.println("\n--- Phase 3: innerCount=16, varying outerCount ---");
+		log("\n--- Phase 3: innerCount=16, varying outerCount ---");
 		int[] outerCounts3 = {16, 32, 64, 128, 256, 512, 1024, 2048};
 		for (int outerCount : outerCounts3) {
 			TestResult result = runTimedTest(outerCount, 16);
@@ -95,7 +95,7 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 		}
 
 		// Phase 4: Increasing outerCount with tiny innerCount
-		System.out.println("\n--- Phase 4: innerCount=4, varying outerCount ---");
+		log("\n--- Phase 4: innerCount=4, varying outerCount ---");
 		int[] outerCounts4 = {16, 32, 64, 128, 256, 512, 1024, 2048};
 		for (int outerCount : outerCounts4) {
 			TestResult result = runTimedTest(outerCount, 4);
@@ -105,7 +105,7 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 		}
 
 		// Phase 5: Target configuration and nearby
-		System.out.println("\n--- Phase 5: Near target (outerCount=2048, innerCount=16) ---");
+		log("\n--- Phase 5: Near target (outerCount=2048, innerCount=16) ---");
 		int[][] targetConfigs = {
 			{256, 16}, {512, 16}, {1024, 16}, {2048, 16},
 			{2048, 4}, {2048, 8}, {2048, 32}
@@ -127,7 +127,7 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 		}
 
 		// Phase 6: Subdivision candidates - what if we split the outer loop?
-		System.out.println("\n--- Phase 6: Subdivision analysis ---");
+		log("\n--- Phase 6: Subdivision analysis ---");
 		// If we split outerCount=2048 into chunks, what size chunks work well?
 		int[] chunkSizes = {32, 64, 128, 256, 512};
 		for (int chunk : chunkSizes) {
@@ -148,7 +148,7 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 
 		// Write CSV
 		writeCSV(results);
-		System.out.println("\n=== Results written to " + CSV_PATH + " ===");
+		log("\n=== Results written to " + CSV_PATH + " ===");
 	}
 
 	private TestResult runTimedTest(int outerCount, int innerCount) {
@@ -227,11 +227,9 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 
 	private void printResult(TestResult result) {
 		if (result.timedOut) {
-			System.out.printf("  outer=%4d, inner=%4d, total=%7d ops -> TIMEOUT (>%ds)%n",
-					result.outerCount, result.innerCount, result.totalOps, TIMEOUT_SECONDS);
+			log(String.format("  outer=%4d, inner=%4d, total=%7d ops -> TIMEOUT (>%ds)%n", result.outerCount, result.innerCount, result.totalOps, TIMEOUT_SECONDS));
 		} else {
-			System.out.printf("  outer=%4d, inner=%4d, total=%7d ops -> %6dms%n",
-					result.outerCount, result.innerCount, result.totalOps, result.compilationTimeMs);
+			log(String.format("  outer=%4d, inner=%4d, total=%7d ops -> %6dms%n", result.outerCount, result.innerCount, result.totalOps, result.compilationTimeMs));
 		}
 	}
 

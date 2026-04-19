@@ -16,6 +16,8 @@
 
 package io.almostrealism.db;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -37,7 +39,7 @@ import java.util.Map;
  * @author  Michael Murray
  */
 // TODO  Should extend io.almostrealism.query.Query
-public class Query implements Externalizable {
+public class Query implements Externalizable, ConsoleFeatures {
 	/** When {@code true}, logs each serialization and deserialization to standard output. */
 	public static boolean verbose = false;
 
@@ -260,8 +262,8 @@ public class Query implements Externalizable {
 		System.arraycopy(cn, 0, data, index, cn.length);
 		
 		if (verbose)
-			System.out.println("Write " + data.length + " bytes " + this);
-		
+			log("Write " + data.length + " bytes " + this);
+
 		return data;
 	}
 	
@@ -283,11 +285,11 @@ public class Query implements Externalizable {
 		index = index + b[3];
 		
 		if (index < b.length)
-			System.out.println("Query: " + (b.length - index) + " extra bytes (" +
+			log("Query: " + (b.length - index) + " extra bytes (" +
 								b[0] + ", " + b[1] + ", " + b[2] + ", " + b[3] + ").");
-		
+
 		if (verbose)
-			System.out.println("Read " + b.length + " bytes " + this);
+			log("Read " + b.length + " bytes " + this);
 	}
 	
 	/**
@@ -317,7 +319,7 @@ public class Query implements Externalizable {
 	 */
 	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
-		if (verbose) System.out.println("Write " + this);
+		if (verbose) log("Write " + this);
 		
 		out.writeInt(this.relay);
 		out.writeUTF(this.table);
@@ -337,7 +339,7 @@ public class Query implements Externalizable {
 		this.col2 = in.readUTF();
 		this.con = in.readUTF();
 		
-		if (verbose) System.out.println("Read " + this);
+		if (verbose) log("Read " + this);
 	}
 
 	@Override

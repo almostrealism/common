@@ -18,6 +18,7 @@ package org.almostrealism.chem;
 
 import io.almostrealism.relation.Validity;
 import org.almostrealism.algebra.Tensor;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -64,7 +65,7 @@ import java.util.List;
  * @see Shell
  * @see Atom
  */
-public class Electrons {
+public class Electrons implements ConsoleFeatures {
 	/**
 	 * The maximum difference, in electron volts, between the energy specified to {@link #absorb(double)}
 	 * and the energy subsequently returned by {@link #emit()}. The smaller this number is, the more exact
@@ -279,7 +280,7 @@ public class Electrons {
 			ExcitationConfiguration c = new ExcitationConfiguration(clone(cursor));
 
 			if (c.isValid()) {
-				System.out.println(c + ": " + energy);
+				log(c + ": " + energy);
 
 				this.configurationMap.put(c, energy);
 

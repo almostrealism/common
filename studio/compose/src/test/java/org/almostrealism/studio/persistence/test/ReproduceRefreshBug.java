@@ -50,13 +50,13 @@ public class ReproduceRefreshBug extends TestSuiteBase {
 	public void refreshDoesNotRecomputeCompleteEntries() throws Exception {
 		File samplesDir = new File(SAMPLES_ROOT);
 		if (!samplesDir.isDirectory()) {
-			System.out.println("SKIP: Samples directory not found: " + SAMPLES_ROOT);
+			log("SKIP: Samples directory not found: " + SAMPLES_ROOT);
 			return;
 		}
 
 		File protobufFile = new File(PROTOBUF_PREFIX + "_0.bin");
 		if (!protobufFile.exists()) {
-			System.out.println("SKIP: Protobuf file not found: " + protobufFile);
+			log("SKIP: Protobuf file not found: " + protobufFile);
 			return;
 		}
 
@@ -67,29 +67,28 @@ public class ReproduceRefreshBug extends TestSuiteBase {
 			// Step 2: Load from protobuf (the standard app startup path)
 			AudioLibraryPersistence.loadLibrary(library, PROTOBUF_PREFIX);
 			int identifierCount = library.getAllIdentifiers().size();
-			System.out.println("Identifiers loaded from protobuf: " + identifierCount);
+			log("Identifiers loaded from protobuf: " + identifierCount);
 
 			// Step 3: Record jobs before refresh
 			int totalBefore = library.getTotalJobs();
-			System.out.println("Jobs before refresh: " + totalBefore);
+			log("Jobs before refresh: " + totalBefore);
 
 			// Step 4: Call refresh
-			System.out.println("Calling refresh()...");
+			log("Calling refresh()...");
 			library.refresh();
 			library.awaitRefresh().get(120, TimeUnit.SECONDS);
 
 			int totalAfter = library.getTotalJobs();
 			int jobsSubmitted = totalAfter - totalBefore;
 
-			System.out.println("Jobs after refresh: " + totalAfter);
-			System.out.println("Jobs submitted by refresh(): " + jobsSubmitted);
+			log("Jobs after refresh: " + totalAfter);
+			log("Jobs submitted by refresh(): " + jobsSubmitted);
 
 			// The protobuf has complete data for all known entries.
 			// refresh() may submit a few jobs for genuinely new files on
 			// disk that are not in the protobuf, but should NOT recompute
 			// the thousands of entries that already have complete data.
-			System.out.println("Jobs submitted by refresh(): " + jobsSubmitted +
-					" (of " + identifierCount + " known entries)");
+			log("Jobs submitted by refresh(): " + jobsSubmitted + " (of " + identifierCount + " known entries)");
 			assertTrue(
 					"refresh() submitted " + jobsSubmitted +
 							" recomputation jobs — far too many for " + identifierCount +

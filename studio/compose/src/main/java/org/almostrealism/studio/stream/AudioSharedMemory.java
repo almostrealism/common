@@ -62,7 +62,7 @@ public class AudioSharedMemory implements CellFeatures {
 
 		manager.start();
 		player.play();
-		System.out.println("Server started");
+		log("Server started");
 
 		while (true) {
 			Thread.sleep(2000);

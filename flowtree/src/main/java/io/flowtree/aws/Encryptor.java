@@ -28,6 +28,7 @@ import com.amazonaws.services.s3.AmazonS3EncryptionClientBuilder;
 import com.amazonaws.services.s3.model.EncryptionMaterials;
 import com.amazonaws.services.s3.model.EncryptionMaterialsProvider;
 import com.amazonaws.services.s3.model.StaticEncryptionMaterialsProvider;
+import org.almostrealism.io.ConsoleFeatures;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
@@ -66,7 +67,7 @@ import java.util.Map;
  *
  * @author  Michael Murray
  */
-public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsProvider {
+public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsProvider, ConsoleFeatures {
 
     /**
      * When {@code true}, RSA key material is loaded from {@code private.key} /
@@ -106,14 +107,14 @@ public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsPro
                 bytes = FileUtils.readFileToByteArray(new File(
                         "private.key"));
             } catch (IOException e) {
-                System.err.println("Encryptor: Error reading private key: " + e);
+                warn(e.getMessage(), e);
             }
 
             KeyFactory kf = null;
             try {
                 kf = KeyFactory.getInstance("RSA");
             } catch (NoSuchAlgorithmException e) {
-                System.err.println("Encryptor: RSA algorithm unavailable: " + e);
+                warn(e.getMessage(), e);
             }
 
             PKCS8EncodedKeySpec ks = bytes == null ? null : new PKCS8EncodedKeySpec(bytes);
@@ -123,14 +124,14 @@ public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsPro
                 try {
                     pk = kf.generatePrivate(ks);
                 } catch (InvalidKeySpecException e) {
-                    System.err.println("Encryptor: Invalid private key spec: " + e);
+                    warn(e.getMessage(), e);
                 }
             }
 
             try {
                 bytes = FileUtils.readFileToByteArray(new File("public.key"));
             } catch (IOException e) {
-                System.err.println("Encryptor: Error reading public key: " + e);
+                warn(e.getMessage(), e);
             }
 
             PublicKey publicKey = null;
@@ -147,16 +148,16 @@ public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsPro
                         new ProfileCredentialsProvider(),
                         new StaticEncryptionMaterialsProvider(encryptionMaterials));
             } catch (InvalidKeySpecException e) {
-                System.err.println("Encryptor: Invalid public key spec: " + e);
+                warn(e.getMessage(), e);
             } catch (NoSuchAlgorithmException e) {
-                System.err.println("Encryptor: RSA algorithm unavailable: " + e);
+                warn(e.getMessage(), e);
             }
         } else {
             KeyPairGenerator keyGenerator = null;
             try {
                 keyGenerator = KeyPairGenerator.getInstance("RSA");
             } catch (NoSuchAlgorithmException e) {
-                System.err.println("Encryptor: RSA algorithm unavailable: " + e);
+                warn(e.getMessage(), e);
             }
 
             keyGenerator.initialize(1024, new SecureRandom());
@@ -203,7 +204,7 @@ public class Encryptor implements EncryptionMaterialsProvider, AWSCredentialsPro
 
         if (enableS3) {
             byte[] plaintext = "Flow Tree Test".getBytes();
-            System.out.println("plaintext's length: " + plaintext.length);
+            log(String.valueOf(plaintext.length));
             encryptionClient.putObject(bucket, key, new File(file));
         }
     }

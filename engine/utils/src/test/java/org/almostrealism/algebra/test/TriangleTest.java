@@ -135,7 +135,7 @@ public class TriangleTest extends TestSuiteBase {
 
 	protected PackedCollection triangle() {
 		Ray in = new Ray((PackedCollection) ((Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get().evaluate(), 0);
-		System.out.println(in);
+		log(String.valueOf(in));
 
 		PackedCollection data = new PackedCollection(9);
 		PackedCollection tp = new PackedCollection(new TraversalPolicy(3, 3), 1,

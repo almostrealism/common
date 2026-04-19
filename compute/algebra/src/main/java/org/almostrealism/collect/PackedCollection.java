@@ -30,6 +30,7 @@ import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -186,7 +187,7 @@ import java.util.stream.Stream;
  * @see CollectionFeatures
  */
 public class PackedCollection extends MemoryDataAdapter
-		implements MemoryBank<PackedCollection>, Collection<PackedCollection, PackedCollection>, CollectionFeatures, Cloneable {
+		implements MemoryBank<PackedCollection>, Collection<PackedCollection, PackedCollection>, CollectionFeatures, ConsoleFeatures, Cloneable {
 	/** Shared hardware-accelerated evaluable for zeroing a single element, used by {@link #clear()}. */
 	private static final Evaluable<PackedCollection> clear;
 
@@ -466,7 +467,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 * Prints each row of this collection to standard output.
 	 */
 	public void print() {
-		print(System.out::println);
+		print(this::log);
 	}
 
 	/**

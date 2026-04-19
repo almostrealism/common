@@ -65,12 +65,12 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 	 * Creates a receptor that logs output values to console.
 	 */
 	protected Receptor<PackedCollection> loggingReceptor() {
-		return protein -> () -> () -> System.out.println(protein.get().evaluate().toDouble(0));
+		return protein -> () -> () -> log(String.valueOf(protein.get().evaluate().toDouble(0)));
 	}
 
 	protected Cell<PackedCollection> loggingCell() {
 		return new ReceptorCell<>(protein -> () -> () ->
-				System.out.println(protein.get().evaluate().toDouble(0)));
+				log(String.valueOf(protein.get().evaluate().toDouble(0))));
 	}
 
 	/**

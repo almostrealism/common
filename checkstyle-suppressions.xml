@@ -35,8 +35,6 @@
     <suppress id="DirectSystemOut" files="ScopeSettings\.java"/>
     <suppress id="DirectSystemOut" files="ClaudeCodeClient\.java"/>
     <suppress id="DirectSystemOut" files="AirflowJob\.java"/>
-    <suppress id="DirectSystemOut" files="Encryptor\.java"/>
-    <suppress id="DirectSystemOut" files="KMSEngine\.java"/>
     <suppress id="DirectSystemOut" files="RandomPeerJoin\.java"/>
     <suppress id="DirectSystemOut" files="FlowTreeCli\.java"/>
     <suppress id="DirectSystemOut" files="FlowTreeCliServer\.java"/>
@@ -60,7 +58,6 @@
     <suppress id="DirectSystemOut" files="NodeGroupNodeConfig\.java"/>
     <suppress id="DirectSystemOut" files="NodeGroupStatusRenderer\.java"/>
     <suppress id="DirectSystemOut" files="FlowTreeController\.java"/>
-    <suppress id="DirectSystemOut" files="SendTaskDialog\.java"/>
     <suppress id="DirectSystemOut" files="PairFeatures\.java"/>
     <suppress id="DirectSystemOut" files="AudioLibrary\.java"/>
     <suppress id="DirectSystemOut" files="CellFeatures\.java"/>
@@ -89,12 +86,10 @@
     <suppress id="DirectSystemOut" files="ShaderContext\.java"/>
     <suppress id="DirectSystemOut" files="ArrayColorBuffer\.java"/>
     <suppress id="DirectSystemOut" files="AveragedVectorMap2D96Bit\.java"/>
-    <suppress id="DirectSystemOut" files="SimpleEventServer\.java"/>
     <suppress id="DirectSystemOut" files="JavaFileGenerator\.java"/>
     <suppress id="DirectSystemOut" files="BasicGeometry\.java"/>
     <suppress id="DirectSystemOut" files="RankedChoiceEvaluable\.java"/>
     <suppress id="DirectSystemOut" files="CellAdapter\.java"/>
-    <suppress id="DirectSystemOut" files="AcceleratedComputationEvaluable\.java"/>
     <suppress id="DirectSystemOut" files="DefaultComputer\.java"/>
     <suppress id="DirectSystemOut" files="Hardware\.java"/>
     <suppress id="DirectSystemOut" files="HardwareException\.java"/>
@@ -143,8 +138,6 @@
     <suppress id="DirectSystemOut" files="ModelOptimizer\.java"/>
     <suppress id="DirectSystemOut" files="PopulationOptimizer\.java"/>
     <suppress id="DirectSystemOut" files="package-info\.java"/>
-    <suppress id="DirectSystemOut" files="Asset\.java"/>
-    <suppress id="DirectSystemOut" files="AssetInfoProvider\.java"/>
     <suppress id="DirectSystemOut" files="HarmonicAbsorber\.java"/>
     <suppress id="DirectSystemOut" files="RigidBody\.java"/>
     <suppress id="DirectSystemOut" files="AbsorptionPlane\.java"/>
@@ -179,10 +172,6 @@
     <suppress id="DirectSystemOut" files="AudioSharedMemory\.java"/>
     <suppress id="DirectSystemOut" files="BufferedOutputControl\.java"/>
     <suppress id="DirectSystemOut" files="Animation\.java"/>
-    <suppress id="DirectSystemOut" files="GraphicsConverter\.java"/>
-    <suppress id="DirectSystemOut" files="ImageCanvas\.java"/>
-    <suppress id="DirectSystemOut" files="ImageTexture\.java"/>
-    <suppress id="DirectSystemOut" files="URLImageSource\.java"/>
     <suppress id="DirectSystemOut" files="AcceleratedTimeSeries\.java"/>
     <suppress id="DirectSystemOut" files="CursorPair\.java"/>
     <suppress id="DirectSystemOut" files="Frequency\.java"/>

@@ -58,7 +58,7 @@ public class BufferedAudioPlayerTest extends TestSuiteBase implements AudioTestF
 				Thread.sleep(1000);
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
-				System.err.println("BufferedAudioPlayerTest: " + e.getMessage());
+				warn("BufferedAudioPlayerTest: " + e.getMessage());
 			}
 		}
 
