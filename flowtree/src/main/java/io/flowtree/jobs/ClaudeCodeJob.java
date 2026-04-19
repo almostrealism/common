@@ -35,11 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 
 /**
@@ -969,7 +965,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                     if (file.contains(" -> ")) {
                         file = file.split(" -> ")[1];
                     }
-                    if (!isExcludedPath(file)) {
+                    if (!GitOperations.isExcludedPath(file)) {
                         return true;
                     }
                 }
@@ -1076,19 +1072,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             ccEvent.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames);
         }
     }
-
-    /**
-     * Pattern that matches new Java method declarations in a unified diff.
-     *
-     * <p>Matches lines beginning with {@code +} (new content) followed by
-     * optional whitespace, an access modifier, optional other modifiers and
-     * generic type parameters, a return type, and then the method name
-     * immediately before an opening parenthesis.  Constructors and interface
-     * default methods are included intentionally — the deduplication agent
-     * decides whether they constitute genuine duplicates.</p>
-     */
-    private static final Pattern NEW_METHOD_PATTERN = Pattern.compile(
-            "^\\+[ \\t]+(?:public|private|protected)\\b.*\\b(\\w+)[ \\t]*\\(");
 
     /** Maximum number of method names included in a single deduplication prompt. */
     static final int MAX_DEDUP_METHODS = 50;
@@ -1211,204 +1194,25 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Scans the working tree for new Java method declarations introduced since
-     * the base branch.
-     *
-     * <p>Two sources are checked:
-     * <ol>
-     *   <li>The unified diff of tracked {@code .java} files against
-     *       {@code origin/<baseBranch>} — new lines ({@code +}) that contain
-     *       a method declaration are parsed via {@link #NEW_METHOD_PATTERN}.</li>
-     *   <li>Untracked {@code .java} files reported by {@code git ls-files --others}
-     *       — every method declaration in these entirely new files is included.</li>
-     * </ol>
-     *
-     * <p><b>Performance note:</b> each call spawns at least two child processes
-     * ({@code git diff} and {@code git ls-files}). {@link DeduplicationRule}
-     * currently calls this method up to three times per correction attempt (once
-     * in {@code isViolated}, once in {@code buildCorrectionPrompt}, once in
-     * {@code onCorrectionAttempted}). A future improvement would cache the
-     * pre-session result in {@code DeduplicationRule} and reuse it in
-     * {@code buildCorrectionPrompt} to reduce that to two calls per attempt.</p>
+     * Returns new Java method names introduced since the base branch.
+     * Delegates to {@link GitOperations#extractNewMethodNames}.
      *
      * @return deduplicated list of new method names, order-preserving
      */
     List<String> extractNewMethodNames() {
-        Set<String> seen = new LinkedHashSet<>();
-        String workDir = getWorkingDirectory();
-        String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
-
-        // Tracked Java files: diff working tree against remote base branch
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    GitOperations.resolveGitCommand(),
-                    "diff", "origin/" + baseBranch, "--", "*.java");
-            if (workDir != null) pb.directory(new File(workDir));
-            pb.redirectErrorStream(true);
-            GitOperations.augmentPath(pb);
-            Process p = pb.start();
-            String diff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor();
-            extractMethodNamesFromDiff(diff, seen);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            warn("Deduplication scan: failed to diff tracked Java files: " + e.getMessage());
-        } catch (IOException e) {
-            warn("Deduplication scan: failed to diff tracked Java files: " + e.getMessage());
-        }
-
-        // Untracked Java files: every method in these files is new
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    GitOperations.resolveGitCommand(),
-                    "ls-files", "--others", "--exclude-standard", "--", "*.java");
-            if (workDir != null) pb.directory(new File(workDir));
-            pb.redirectErrorStream(true);
-            GitOperations.augmentPath(pb);
-            Process p = pb.start();
-            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor();
-            for (String rel : listing.split("\n")) {
-                rel = rel.trim();
-                if (!rel.isEmpty()) {
-                    extractMethodNamesFromFile(rel, workDir, seen);
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            warn("Deduplication scan: failed to list untracked Java files: " + e.getMessage());
-        } catch (IOException e) {
-            warn("Deduplication scan: failed to list untracked Java files: " + e.getMessage());
-        }
-
-        return new ArrayList<>(seen);
+        String base = getBaseBranch() != null ? getBaseBranch() : "master";
+        return GitOperations.extractNewMethodNames(getWorkingDirectory(), base, this::warn);
     }
 
     /**
-     * Returns the paths of files that are new on the branch since the base branch,
-     * combining tracked newly-added files (via {@code git diff --diff-filter=A}) with
-     * untracked files (via {@code git ls-files --others}).
-     *
-     * <p>Common scratch directories ({@code claude-output/}, {@code .claude/},
-     * {@code target/}) and the {@code commit.txt} file are excluded from the result.</p>
+     * Returns the paths of files that are new on the branch since the base branch.
+     * Delegates to {@link GitOperations#extractNewFilePaths}.
      *
      * @return deduplicated list of new file paths, relative to the working directory
      */
     List<String> extractNewFilePaths() {
-        Set<String> seen = new LinkedHashSet<>();
-        String workDir = getWorkingDirectory();
-        String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
-
-        // Tracked newly-added files: those with status A (added) in the diff
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    GitOperations.resolveGitCommand(),
-                    "diff", "--name-only", "--diff-filter=A", "origin/" + baseBranch);
-            if (workDir != null) pb.directory(new File(workDir));
-            pb.redirectErrorStream(true);
-            GitOperations.augmentPath(pb);
-            Process p = pb.start();
-            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor();
-            for (String path : listing.split("\n")) {
-                String trimmed = path.trim();
-                if (!isExcludedPath(trimmed)) seen.add(trimmed);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            warn("Organizational placement scan: failed to diff tracked files: " + e.getMessage());
-        } catch (IOException e) {
-            warn("Organizational placement scan: failed to diff tracked files: " + e.getMessage());
-        }
-
-        // Untracked files not yet staged
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    GitOperations.resolveGitCommand(),
-                    "ls-files", "--others", "--exclude-standard");
-            if (workDir != null) pb.directory(new File(workDir));
-            pb.redirectErrorStream(true);
-            GitOperations.augmentPath(pb);
-            Process p = pb.start();
-            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor();
-            for (String path : listing.split("\n")) {
-                String trimmed = path.trim();
-                if (!isExcludedPath(trimmed)) seen.add(trimmed);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            warn("Organizational placement scan: failed to list untracked files: " + e.getMessage());
-        } catch (IOException e) {
-            warn("Organizational placement scan: failed to list untracked files: " + e.getMessage());
-        }
-
-        return new ArrayList<>(seen);
-    }
-
-    /**
-     * Returns {@code true} if {@code path} matches a scratch directory or file that
-     * should be excluded from placement and change-set reviews.
-     *
-     * @param path  the candidate file path (relative to the working directory)
-     * @return {@code true} if the path should be excluded
-     */
-    private static boolean isExcludedPath(String path) {
-        return path.isEmpty()
-                || path.startsWith("claude-output/")
-                || path.startsWith(".claude/")
-                || path.startsWith("target/")
-                || path.equals("commit.txt")
-                || path.equals(".flowtree.lock")
-                || path.startsWith(".flowtree-locks/");
-    }
-
-    /**
-     * Parses new-line entries ({@code +} prefix) from a unified diff and adds
-     * any Java method names found to {@code sink}.
-     *
-     * @param diff  the unified diff output
-     * @param sink  the set to add discovered method names to
-     */
-    private static void extractMethodNamesFromDiff(String diff, Set<String> sink) {
-        for (String line : diff.split("\n")) {
-            if (line.startsWith("+++") || line.startsWith("---")) {
-                continue;
-            }
-            Matcher m = NEW_METHOD_PATTERN.matcher(line);
-            if (m.find()) {
-                sink.add(m.group(1));
-            }
-        }
-    }
-
-    /**
-     * Reads a Java source file and adds all method names declared with a
-     * public/private/protected access modifier to {@code sink}.
-     *
-     * @param relativePath  path relative to the working directory (or absolute)
-     * @param workDir       working directory, or {@code null}
-     * @param sink          the set to add discovered method names to
-     */
-    private void extractMethodNamesFromFile(String relativePath,
-                                             String workDir,
-                                             Set<String> sink) {
-        File file = (workDir != null)
-                ? new File(workDir, relativePath) : new File(relativePath);
-        if (!file.exists()) return;
-
-        try {
-            String source = Files.readString(file.toPath(), StandardCharsets.UTF_8);
-            // Synthesise a diff-like representation so the same pattern applies
-            for (String line : source.split("\n")) {
-                Matcher m = NEW_METHOD_PATTERN.matcher("+ " + line);
-                if (m.find()) {
-                    sink.add(m.group(1));
-                }
-            }
-        } catch (IOException e) {
-            warn("Deduplication scan: cannot read " + relativePath + ": " + e.getMessage());
-        }
+        String base = getBaseBranch() != null ? getBaseBranch() : "master";
+        return GitOperations.extractNewFilePaths(getWorkingDirectory(), base, this::warn);
     }
 
     /**

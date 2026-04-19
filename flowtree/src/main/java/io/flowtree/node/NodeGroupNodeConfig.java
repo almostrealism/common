@@ -61,7 +61,7 @@ import java.util.Properties;
  * @author  Michael Murray
  * @see NodeGroup
  */
-class NodeGroupNodeConfig {
+public class NodeGroupNodeConfig {
 
 	/**
 	 * Result returned by {@link #setParam} when the key is not recognised.

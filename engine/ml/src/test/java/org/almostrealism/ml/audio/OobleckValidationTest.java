@@ -26,16 +26,10 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestDepth;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-import java.io.DataInputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 /**
  * Validation tests comparing AR Oobleck implementation against PyTorch reference outputs.
@@ -47,11 +41,7 @@ import java.nio.file.Paths;
  * <p>The reference outputs were generated using {@code extract_stable_audio_autoencoder.py}
  * which runs the encoder and decoder through PyTorch with deterministic input.</p>
  */
-public class OobleckValidationTest extends TestSuiteBase {
-
-	private static final Path TEST_DATA_DIR = Paths.get("test_data/stable_audio");
-	private static final Path WEIGHTS_DIR = TEST_DATA_DIR.resolve("weights");
-	private static final Path REFERENCE_DIR = TEST_DATA_DIR.resolve("reference");
+public class OobleckValidationTest extends OobleckValidationBase {
 
 	/** Target tolerance for numerical comparison. */
 	private static final double TOLERANCE = 0.01;
@@ -236,32 +226,6 @@ public class OobleckValidationTest extends TestSuiteBase {
 		compareOutputs("Decoder", output, referenceOutput, TOLERANCE * 5);
 
 		log("\n=== Decoder Validation PASSED ===");
-	}
-
-	/**
-	 * Loads a reference output file in binary format.
-	 *
-	 * <p>Format: 4-byte int (count), followed by count float32 values.</p>
-	 */
-	private float[] loadReferenceOutput(String filename) throws IOException {
-		Path filepath = REFERENCE_DIR.resolve(filename);
-
-		try (DataInputStream dis = new DataInputStream(new FileInputStream(filepath.toFile()))) {
-			// Read count (little-endian int32)
-			byte[] countBytes = new byte[4];
-			dis.readFully(countBytes);
-			int count = ByteBuffer.wrap(countBytes).order(ByteOrder.LITTLE_ENDIAN).getInt();
-
-			// Read float values
-			float[] values = new float[count];
-			byte[] floatBytes = new byte[4];
-			for (int i = 0; i < count; i++) {
-				dis.readFully(floatBytes);
-				values[i] = ByteBuffer.wrap(floatBytes).order(ByteOrder.LITTLE_ENDIAN).getFloat();
-			}
-
-			return values;
-		}
 	}
 
 	/**

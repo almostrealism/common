@@ -76,35 +76,6 @@
         <property name="files" value="LayerFeatures\.java"/>
     </module>
 
-    <!-- Phased-reduction exemptions (exceeded 1600 lines when limit was lowered): -->
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="GitManagedJob\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="OobleckLayerValidationTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="ClaudeCodeJob\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="NodeRelaySimulationTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="AudioScene\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="TraversableDeltaComputationTests\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="SlackIntegrationTest\.java"/>
-    </module>
     <!-- Console.java is the logging system itself — it must write to System.out/err
          directly to deliver output.  The DirectSystemOut rule is suppressed for it. -->
     <module name="SuppressionSingleFilter">

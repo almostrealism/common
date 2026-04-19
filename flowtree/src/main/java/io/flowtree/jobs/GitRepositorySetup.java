@@ -50,6 +50,9 @@ class GitRepositorySetup implements ConsoleFeatures {
     /** Paths of files that were in a conflicted state during base-branch synchronization. */
     private final List<String> conflictFiles = new ArrayList<>();
 
+    /** Resolved filesystem paths for dependent repos after cloning. */
+    private final List<String> dependentRepoPaths = new ArrayList<>();
+
     /**
      * Creates a new {@code GitRepositorySetup} for the given job.
      *
@@ -336,6 +339,121 @@ class GitRepositorySetup implements ConsoleFeatures {
             }
         }
         return result;
+    }
+
+    /**
+     * Returns the resolved filesystem paths for dependent repos cloned during
+     * {@link #prepareDependentRepos()}.
+     *
+     * @return list of dependent repo paths
+     */
+    List<String> getDependentRepoPaths() {
+        return new ArrayList<>(dependentRepoPaths);
+    }
+
+    /**
+     * Clones dependent repositories as siblings of the primary repo and records
+     * their paths in {@link #dependentRepoPaths} for later branch preparation
+     * and commit handling.
+     *
+     * @throws IOException if a git command fails
+     * @throws InterruptedException if a command is interrupted
+     */
+    void prepareDependentRepos() throws IOException, InterruptedException {
+        List<String> deps = job.getDependentRepos();
+        if (deps == null || deps.isEmpty()) {
+            return;
+        }
+
+        String workDir = job.getWorkingDirectory();
+        String defaultWsPath = job.getDefaultWorkspacePath();
+        String parentDir = (workDir != null && !workDir.isEmpty())
+                ? new File(workDir).getParent() : defaultWsPath;
+        if (parentDir == null) {
+            warn("Cannot resolve parent directory for dependent repos");
+            return;
+        }
+
+        for (String depRepoUrl : deps) {
+            String repoName = WorkspaceResolver.extractRepoName(depRepoUrl);
+            String depPath = parentDir + "/" + repoName;
+            File depDir = new File(depPath);
+            if (new File(depDir, ".git").exists()) {
+                log("Dependent repo already cloned: " + depPath);
+            } else {
+                log("Cloning dependent repo: " + depRepoUrl + " into " + depPath);
+                GitOperations gitOps = new GitOperations(parentDir, job.getTaskId());
+                gitOps.cloneRepository(depRepoUrl, depPath);
+            }
+            dependentRepoPaths.add(depPath);
+        }
+    }
+
+    /**
+     * Prepares branch state for all dependent repos: stash, fetch, checkout the target
+     * branch (creating it from the base branch if needed), and pull latest changes.
+     *
+     * @throws IOException if a git command fails
+     * @throws InterruptedException if a command is interrupted
+     */
+    void prepareDependentReposBranches() throws IOException, InterruptedException {
+        String targetBranch = job.getTargetBranch();
+        String baseBranch = job.getBaseBranch();
+        for (String depPath : dependentRepoPaths) {
+            log("Preparing dependent repo branch: " + depPath);
+            GitOperations gitOps = new GitOperations(depPath, job.getTaskId());
+
+            String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
+            if (!statusOutput.trim().isEmpty()) {
+                String stashMsg = "flowtree: dependent repo cleanup before " + job.getTaskId();
+                log("Stashing uncommitted changes in dependent repo: " + depPath);
+                int stashExit = gitOps.execute("stash", "push", "--include-untracked", "-m", stashMsg);
+                if (stashExit != 0) {
+                    throw new IOException("git stash push failed (exit " + stashExit + ") in " + depPath);
+                }
+            }
+
+            if (gitOps.execute("fetch", "origin") != 0) {
+                warn("git fetch origin failed in dependent repo: " + depPath);
+            }
+
+            String currentBranch = gitOps.executeWithOutput(
+                "rev-parse", "--abbrev-ref", "HEAD").trim();
+            boolean remoteExists = gitOps.execute("show-ref", "--verify", "--quiet",
+                "refs/remotes/origin/" + targetBranch) == 0;
+
+            if (!targetBranch.equals(currentBranch)) {
+                boolean localExists = gitOps.execute("show-ref", "--verify", "--quiet",
+                    "refs/heads/" + targetBranch) == 0;
+                if (localExists || remoteExists) {
+                    int checkoutExit = gitOps.execute("checkout", targetBranch);
+                    if (checkoutExit != 0) {
+                        throw new IOException("git checkout " + targetBranch
+                            + " failed (exit " + checkoutExit + ") in " + depPath);
+                    }
+                } else {
+                    String startPoint = "origin/" + baseBranch;
+                    log("Creating branch " + targetBranch + " from " + startPoint + " in " + depPath);
+                    int createExit = gitOps.execute("checkout", "-b", targetBranch, "--no-track", startPoint);
+                    if (createExit != 0) {
+                        throw new IOException("git checkout -b " + targetBranch
+                            + " failed (exit " + createExit + ") in " + depPath);
+                    }
+                    continue;
+                }
+            }
+
+            if (remoteExists) {
+                int pullExit = gitOps.execute("pull", "--ff-only", "origin", targetBranch);
+                if (pullExit != 0) {
+                    log("Fast-forward pull failed; resetting to origin/" + targetBranch + " in " + depPath);
+                    int resetExit = gitOps.execute("reset", "--hard", "origin/" + targetBranch);
+                    if (resetExit != 0) {
+                        throw new IOException("Failed to sync with origin/" + targetBranch + " in " + depPath);
+                    }
+                }
+            }
+        }
     }
 
     @Override
