@@ -41,10 +41,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.DoubleConsumer;
+import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.IntToDoubleFunction;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Supplier;
+import org.almostrealism.music.notes.NoteAudioContext;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -435,6 +437,71 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		});
 
 		return op;
+	}
+
+	/**
+	 * Pre-evaluates all note audio for each pattern layer to warm the kernel compilation cache.
+	 *
+	 * <p>Iterates every {@link PatternLayerManager}, evaluates each note's audio producer,
+	 * and discards the result. Call this after construction and genome assignment, before
+	 * starting the real-time loop, to populate the {@code FrequencyCache} upfront.</p>
+	 *
+	 * @param contextProvider a function that creates an {@link AudioSceneContext} for a channel
+	 * @return the number of notes successfully evaluated during warmup
+	 */
+	public int warmNoteCache(Function<ChannelInfo, AudioSceneContext> contextProvider) {
+		init();
+		int notesEvaluated = 0;
+
+		for (PatternLayerManager plm : patterns) {
+			boolean melodic = plm.isMelodic();
+			ChannelInfo channel = new ChannelInfo(plm.getChannel(),
+					ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
+			AudioSceneContext ctx = contextProvider.apply(channel);
+			PackedCollection warmDest = new PackedCollection(4096);
+			ctx.setDestination(warmDest);
+			plm.updateDestination(ctx);
+
+			Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
+					plm.getAllElementsByChoice(0.0, plm.getDuration());
+
+			for (Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
+					elementsByChoice.entrySet()) {
+				NoteAudioChoice choice = entry.getKey();
+				List<PatternElement> elements = entry.getValue();
+
+				NoteAudioContext audioContext =
+						new NoteAudioContext(
+								ChannelInfo.Voicing.MAIN,
+								ChannelInfo.StereoChannel.LEFT,
+								choice.getValidPatternNotes(),
+								pos -> pos + 1.0);
+
+				for (PatternElement element : elements) {
+					List<RenderedNoteAudio> notes =
+							element.getNoteDestinations(melodic, 0.0, ctx, audioContext);
+
+					for (RenderedNoteAudio note : notes) {
+						if (note.getExpectedFrameCount() <= 0) continue;
+
+						Producer<PackedCollection> producer =
+								note.getProducer(note.getExpectedFrameCount());
+						if (producer != null) {
+							try {
+								PackedCollection audio = traverse(1, producer).get().evaluate();
+								if (audio != null) {
+									notesEvaluated++;
+								}
+							} catch (Exception e) {
+								// Skip notes that fail evaluation during warmup
+							}
+						}
+					}
+				}
+			}
+		}
+
+		return notesEvaluated;
 	}
 
 	/**

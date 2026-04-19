@@ -16,9 +16,6 @@
 
 package io.flowtree.jobs;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.flowtree.job.Job;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.HostFingerprint;
@@ -157,8 +154,6 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     private String defaultWorkspacePath;
     /** Dependent repository URLs to clone alongside the primary repo. */
     private List<String> dependentRepos;
-    /** Resolved filesystem paths for dependent repos after cloning. */
-    private List<String> dependentRepoPaths = new ArrayList<>();
 
     // ---- Git operation flags ----
 
@@ -381,7 +376,10 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             }
 
             // Clone/sync dependent repos alongside the primary repo
-            prepareDependentRepos();
+            if (dependentRepos != null && !dependentRepos.isEmpty()) {
+                if (repoSetup == null) repoSetup = new GitRepositorySetup(this);
+                repoSetup.prepareDependentRepos();
+            }
 
             // Prepare working directory: stash dirty files, fetch, checkout branch,
             // pull latest, and merge base branch.
@@ -389,7 +387,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 originalBranch = getCurrentBranch();
                 if (repoSetup == null) repoSetup = new GitRepositorySetup(this);
                 repoSetup.prepare();
-                prepareDependentReposBranches();
+                repoSetup.prepareDependentReposBranches();
             }
 
             // Prepare execution environment (Python venv, etc.)
@@ -431,7 +429,8 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 if (validateChanges()) {
                     commitHandler = new GitCommitHandler(this);
                     commitHandler.handle(repoSetup.hasMergeConflicts());
-                    handleDependentRepoGitOperations();
+                    List<String> depPaths = repoSetup.getDependentRepoPaths();
+                    commitHandler.handleDependentRepos(depPaths);
                 } else {
                     warn("Change validation failed - skipping git operations");
                 }
@@ -444,194 +443,6 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             releaseWorkspaceLock();
             fireJobCompleted(error);
             future.complete(null);
-        }
-    }
-
-    /**
-     * Clones dependent repositories alongside the primary repo and records their paths.
-     *
-     * <p>Each dependent repo is cloned as a sibling directory of the
-     * primary working directory. If a repo is already cloned, this
-     * method reuses the existing clone. Branch checkout and synchronization
-     * with origin are handled separately by {@link #prepareDependentReposBranches()}.</p>
-     */
-    private void prepareDependentRepos() throws IOException, InterruptedException {
-        if (dependentRepos == null || dependentRepos.isEmpty()) {
-            return;
-        }
-
-        String parentDir = resolveParentDirectory();
-        if (parentDir == null) {
-            warn("Cannot resolve parent directory for dependent repos");
-            return;
-        }
-
-        for (String depRepoUrl : dependentRepos) {
-            String repoName = WorkspaceResolver.extractRepoName(depRepoUrl);
-            String depPath = parentDir + "/" + repoName;
-
-            File depDir = new File(depPath);
-            if (new File(depDir, ".git").exists()) {
-                log("Dependent repo already cloned: " + depPath);
-            } else {
-                log("Cloning dependent repo: " + depRepoUrl + " into " + depPath);
-                GitOperations gitOps = new GitOperations(parentDir, taskId);
-                gitOps.cloneRepository(depRepoUrl, depPath);
-            }
-
-            dependentRepoPaths.add(depPath);
-        }
-    }
-
-    /**
-     * Prepares branch state for all dependent repos: stash dirty files, fetch,
-     * checkout the target branch (creating it from the base branch if needed),
-     * and pull latest changes. Mirrors the lifecycle of
-     * {@link GitRepositorySetup#prepare()} for the primary repo.
-     */
-    private void prepareDependentReposBranches() throws IOException, InterruptedException {
-        for (String depPath : dependentRepoPaths) {
-            log("Preparing dependent repo branch: " + depPath);
-
-            GitOperations gitOps = new GitOperations(depPath, taskId);
-
-            // 1. Stash any uncommitted changes so they do not block branch switches.
-            String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
-            if (!statusOutput.trim().isEmpty()) {
-                String stashMsg = "flowtree: dependent repo cleanup before " + taskId;
-                log("Stashing uncommitted changes in dependent repo: " + depPath);
-                int stashExit = gitOps.execute("stash", "push", "--include-untracked", "-m", stashMsg);
-                if (stashExit != 0) {
-                    throw new IOException("git stash push failed (exit " + stashExit + ") in " + depPath);
-                }
-            }
-
-            // 2. Fetch latest from origin.
-            if (gitOps.execute("fetch", "origin") != 0) {
-                warn("git fetch origin failed in dependent repo: " + depPath);
-            }
-
-            // 3. Check out target branch or create it from the base branch.
-            String currentBranch = gitOps.executeWithOutput(
-                "rev-parse", "--abbrev-ref", "HEAD").trim();
-            boolean remoteExists = gitOps.execute("show-ref", "--verify", "--quiet",
-                "refs/remotes/origin/" + targetBranch) == 0;
-
-            if (!targetBranch.equals(currentBranch)) {
-                boolean localExists = gitOps.execute("show-ref", "--verify", "--quiet",
-                    "refs/heads/" + targetBranch) == 0;
-
-                if (localExists || remoteExists) {
-                    int checkoutExit = gitOps.execute("checkout", targetBranch);
-                    if (checkoutExit != 0) {
-                        throw new IOException("git checkout " + targetBranch
-                            + " failed (exit " + checkoutExit + ") in " + depPath);
-                    }
-                } else {
-                    String startPoint = "origin/" + baseBranch;
-                    log("Creating branch " + targetBranch + " from "
-                        + startPoint + " in " + depPath);
-                    int createExit = gitOps.execute("checkout", "-b",
-                        targetBranch, "--no-track", startPoint);
-                    if (createExit != 0) {
-                        throw new IOException("git checkout -b " + targetBranch
-                            + " failed (exit " + createExit + ") in " + depPath);
-                    }
-                    // New branch — remote does not exist yet, skip pull
-                    continue;
-                }
-            }
-
-            // 4. Sync with remote if remote branch exists; fall back to hard reset.
-            if (remoteExists) {
-                int pullExit = gitOps.execute("pull", "--ff-only", "origin", targetBranch);
-                if (pullExit != 0) {
-                    log("Fast-forward pull failed; resetting to origin/" + targetBranch
-                        + " in " + depPath);
-                    int resetExit = gitOps.execute("reset", "--hard", "origin/" + targetBranch);
-                    if (resetExit != 0) {
-                        throw new IOException("Failed to sync with origin/" + targetBranch
-                            + " in " + depPath);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Handles git operations (stage, commit, push) for all dependent
-     * repos. Uses the same commit message pattern as the primary repo,
-     * reading {@code commit.txt} from the primary working directory if
-     * it exists.
-     */
-    private void handleDependentRepoGitOperations() throws IOException, InterruptedException {
-        for (String depPath : dependentRepoPaths) {
-            GitOperations gitOps = new GitOperations(depPath, taskId);
-            if (gitUserName != null && !gitUserName.isEmpty()) {
-                gitOps.setGitUserName(gitUserName);
-            }
-            if (gitUserEmail != null && !gitUserEmail.isEmpty()) {
-                gitOps.setGitUserEmail(gitUserEmail);
-            }
-
-            // Check for changes
-            String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
-            List<String> changedFiles = new ArrayList<>();
-            for (String line : statusOutput.split("\n")) {
-                if (line.length() > 3) {
-                    String file = line.substring(3).trim();
-                    if (file.contains(" -> ")) {
-                        file = file.split(" -> ")[1];
-                    }
-                    if (!file.isEmpty()) {
-                        changedFiles.add(file);
-                    }
-                }
-            }
-
-            if (changedFiles.isEmpty()) {
-                log("No changes in dependent repo: " + depPath);
-                continue;
-            }
-
-            log("Committing " + changedFiles.size() + " changes in dependent repo: " + depPath);
-
-            // Stage all changes (apply same size guardrail)
-            boolean anyStagedInDep = false;
-            for (String file : changedFiles) {
-                File f = new File(depPath, file);
-                if (f.exists() && f.length() > maxFileSizeBytes) {
-                    log("SKIP (size) in dependent repo: " + file);
-                    continue;
-                }
-                gitOps.execute("add", file);
-                anyStagedInDep = true;
-            }
-
-            if (!anyStagedInDep) {
-                log("No files staged in dependent repo (all skipped): " + depPath);
-                continue;
-            }
-
-            // Use the same commit message as the primary repo (reads commit.txt with UTF-8)
-            String commitMessage = getCommitMessage();
-
-            int commitExitCode = gitOps.execute("commit", "-m", commitMessage);
-            if (commitExitCode != 0) {
-                log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
-                continue;
-            }
-
-            // Push
-            if (pushToOrigin && !dryRun) {
-                String refspec = targetBranch + ":" + targetBranch;
-                int pushExitCode = gitOps.execute("push", "-u", "origin", refspec);
-                if (pushExitCode == 0) {
-                    log("Pushed dependent repo: " + depPath);
-                } else {
-                    throw new IOException("Git push failed for dependent repo: " + depPath);
-                }
-            }
         }
     }
 
@@ -704,20 +515,6 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             }
             workspaceLockChannel = null;
         }
-    }
-
-    /**
-     * Resolves the parent directory of the primary working directory.
-     * Dependent repos are cloned as siblings of the primary repo.
-     */
-    private String resolveParentDirectory() {
-        if (workingDirectory != null && !workingDirectory.isEmpty()) {
-            return new File(workingDirectory).getParent();
-        }
-        if (defaultWorkspacePath != null && !defaultWorkspacePath.isEmpty()) {
-            return defaultWorkspacePath;
-        }
-        return null;
     }
 
     /**
@@ -1051,7 +848,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * {@link #run()} has completed the preparation phase.
      */
     public List<String> getDependentRepoPaths() {
-        return new ArrayList<>(dependentRepoPaths);
+        return repoSetup != null ? repoSetup.getDependentRepoPaths() : new ArrayList<>();
     }
 
     /**
@@ -1301,7 +1098,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         }
 
         String baseUrl = resolveWorkstreamUrl();
-        String json = buildEventJson(event);
+        String json = event.toJson();
 
         log("Posting status event (" + event.getStatus() + ") to " + baseUrl);
         postJson(baseUrl, json);
@@ -1350,60 +1147,6 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             }
         } catch (Exception e) {
             warn("Failed to POST to " + url + ": " + e.getMessage());
-        }
-    }
-
-    /** Shared Jackson mapper used to serialize {@link JobCompletionEvent} instances to JSON. */
-    private static final ObjectMapper eventMapper = new ObjectMapper();
-
-    /**
-     * Serializes a {@link JobCompletionEvent} to a JSON string using Jackson.
-     *
-     * @param event the event to serialize
-     * @return JSON string representation
-     */
-    private String buildEventJson(JobCompletionEvent event) {
-        ObjectNode root = eventMapper.createObjectNode();
-        root.put("jobId", event.getJobId());
-        root.put("status", event.getStatus().name());
-        root.put("description", event.getDescription());
-        root.put("targetBranch", event.getTargetBranch());
-        root.put("commitHash", event.getCommitHash());
-        root.put("pushed", event.isPushed());
-
-        ArrayNode stagedArray = root.putArray("stagedFiles");
-        for (String f : event.getStagedFiles()) stagedArray.add(f);
-
-        ArrayNode skippedArray = root.putArray("skippedFiles");
-        for (String f : event.getSkippedFiles()) skippedArray.add(f);
-
-        root.put("pullRequestUrl", event.getPullRequestUrl());
-        root.put("errorMessage", event.getErrorMessage());
-
-        // Claude Code specific (base class returns defaults)
-        root.put("prompt", event.getPrompt());
-        root.put("sessionId", event.getSessionId());
-        root.put("exitCode", event.getExitCode());
-
-        // Timing information
-        root.put("durationMs", event.getDurationMs());
-        root.put("durationApiMs", event.getDurationApiMs());
-        root.put("costUsd", event.getCostUsd());
-        root.put("numTurns", event.getNumTurns());
-
-        // Session details
-        root.put("subtype", event.getSubtype());
-        root.put("sessionIsError", event.isSessionError());
-        root.put("permissionDenials", event.getPermissionDenials());
-
-        ArrayNode deniedArray = root.putArray("deniedToolNames");
-        for (String t : event.getDeniedToolNames()) deniedArray.add(t);
-
-        try {
-            return eventMapper.writeValueAsString(root);
-        } catch (Exception e) {
-            warn("Failed to serialize event JSON: " + e.getMessage());
-            return "{}";
         }
     }
 
