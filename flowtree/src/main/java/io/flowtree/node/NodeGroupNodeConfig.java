@@ -61,7 +61,7 @@ import java.util.Properties;
  * @author  Michael Murray
  * @see NodeGroup
  */
-class NodeGroupNodeConfig {
+public class NodeGroupNodeConfig {
 
 	/**
 	 * Result returned by {@link #setParam} when the key is not recognised.
@@ -294,15 +294,57 @@ class NodeGroupNodeConfig {
 	}
 
 	/**
+	 * System property that disables all outbound connections to external servers.
+	 *
+	 * <p>Set {@code -Dflowtree.offline=true} (or call
+	 * {@code System.setProperty("flowtree.offline", "true")}) to prevent any
+	 * {@link NodeGroup} from connecting to {@code FLOWTREE_ROOT_HOST} or to
+	 * enumerated {@code servers.N.host} entries.  This is the required guard
+	 * for tests that construct real {@link Server} instances — without it, a
+	 * test running in a production environment (where {@code FLOWTREE_ROOT_HOST}
+	 * is set) would connect to the live controller and receive real jobs.</p>
+	 *
+	 * <p>Tests must activate offline mode before any {@link Server} is constructed:</p>
+	 * <pre>{@code
+	 * @BeforeClass
+	 * public static void enforceOfflineMode() {
+	 *     System.setProperty(NodeGroupNodeConfig.OFFLINE_MODE_PROPERTY, "true");
+	 * }
+	 * }</pre>
+	 */
+	public static final String OFFLINE_MODE_PROPERTY = "flowtree.offline";
+
+	/**
+	 * Returns {@code true} when offline mode is active, meaning all outbound
+	 * server connections should be suppressed.
+	 *
+	 * @return {@code true} if {@code flowtree.offline} system property is set to {@code "true"}
+	 */
+	public static boolean isOfflineMode() {
+		return Boolean.getBoolean(OFFLINE_MODE_PROPERTY);
+	}
+
+	/**
 	 * Opens the initial server connections specified in {@code p} and wires up
 	 * the persistent-host reconnect thread when the {@code FLOWTREE_ROOT_HOST}
 	 * environment variable is set.
+	 *
+	 * <p>All outbound connections are suppressed when
+	 * {@link #OFFLINE_MODE_PROPERTY} ({@code flowtree.offline}) is set to
+	 * {@code true}.  Tests that construct real {@link Server} instances must
+	 * activate offline mode via {@code System.setProperty} before the
+	 * constructor runs.</p>
 	 *
 	 * @param group        The {@link NodeGroup} to register new server connections on.
 	 * @param p            Properties to read server host/port entries from.
 	 * @param serverCount  Number of server entries to open.
 	 */
 	static void initServerConnections(NodeGroup group, Properties p, int serverCount) {
+		if (isOfflineMode()) {
+			System.out.println("NodeGroup: Offline mode active — skipping all external server connections.");
+			return;
+		}
+
 		String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
 		String rootPort = System.getenv("FLOWTREE_ROOT_PORT");
 

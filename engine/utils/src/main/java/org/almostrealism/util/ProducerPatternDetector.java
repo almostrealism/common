@@ -111,6 +111,9 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 	 * is the method names exempted within that file.
 	 */
 	private static final Map<String, Set<String>> EVALUATE_ALLOWED_FILE_METHODS = Map.of(
+			"PatternSystemManager.java", Set.of(
+					"warmNoteCache"             // Warmup pipeline boundary — pre-evaluates kernels before real-time loop
+			),
 			"CompiledModelAutoEncoder.java", Set.of(
 					"encode",                   // Producer / CompiledModel.forward boundary
 					"decode"                    // Producer / CompiledModel.forward boundary

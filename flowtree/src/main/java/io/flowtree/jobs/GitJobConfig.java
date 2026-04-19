@@ -79,8 +79,8 @@ public final class GitJobConfig {
         "claude-output/**", "commit.txt",
         ".claude/**", "settings.local.json",
 
-        // FlowTree internal lock files
-        ".flowtree.lock"
+        // FlowTree internal lock files (placed in <parent>/.flowtree-locks/ outside the workspace)
+        ".flowtree.lock", ".flowtree-locks/**"
     )));
 
     /** Path patterns for test/CI files protected by {@link #protectTestFiles}. */

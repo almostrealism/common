@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""
+ar-find-method: Find a Java method by name and display its full body.
+
+Usage: ar-find-method <method_name> [root_dir]
+
+Searches recursively from root_dir (default: current directory) for Java
+methods with the given name. Returns the method body with file path and
+line numbers for each match.
+
+Examples:
+  ar-find-method handleSubmit
+  ar-find-method forward flowtree/
+  ar-find-method isViolated domain/
+"""
+
+import re
+import sys
+from pathlib import Path
+
+
+# Matches a method declaration line (not abstract — those end with ;).
+# Captures modifiers + return type + name + opening paren.
+METHOD_DECL = re.compile(
+    r'^\s*'
+    r'(?:(?:public|private|protected|static|final|synchronized|default|abstract'
+    r'|native|strictfp|override|transient|volatile)\s+)*'
+    r'(?:<[^>]+>\s+)?'          # optional generic return type
+    r'[\w\[\]<>.,?\s]+\s+'      # return type (including generics)
+    r'(\w+)\s*\('               # method name captured in group 1
+)
+
+
+def count_braces(line):
+    """Return net brace depth change for one line, ignoring strings and comments."""
+    depth = 0
+    in_string = False
+    in_char = False
+    escape = False
+    i = 0
+    while i < len(line):
+        c = line[i]
+        if escape:
+            escape = False
+        elif in_string:
+            if c == '\\':
+                escape = True
+            elif c == '"':
+                in_string = False
+        elif in_char:
+            if c == '\\':
+                escape = True
+            elif c == "'":
+                in_char = False
+        elif c == '/' and i + 1 < len(line) and line[i + 1] == '/':
+            break  # rest of line is a comment
+        elif c == '"':
+            in_string = True
+        elif c == "'":
+            in_char = True
+        elif c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+        i += 1
+    return depth
+
+
+def extract_body(lines, decl_line_idx):
+    """
+    Starting from decl_line_idx, scan forward until the method body is complete
+    (brace depth returns to 0 after the opening brace).  Returns (body, end_idx).
+    body is a list of (line_number_1based, text) pairs.
+    """
+    body = []
+    depth = 0
+    found_open = False
+    for i in range(decl_line_idx, len(lines)):
+        line = lines[i]
+        body.append((i + 1, line.rstrip('\n')))
+        delta = count_braces(line)
+        depth += delta
+        if not found_open and depth > 0:
+            found_open = True
+        if found_open and depth == 0:
+            return body, i
+        # Abstract method or annotation — semicolon before any brace
+        if not found_open and ';' in line:
+            return body, i
+    return body, len(lines) - 1
+
+
+def search_file(path, method_name):
+    """Return list of (start_lineno, body_pairs) for each match in path."""
+    try:
+        text = path.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return []
+    lines = text.splitlines(keepends=True)
+    results = []
+    # Strip block comments before searching to avoid false positives in Javadoc
+    # Simple approach: just scan line by line and check declaration pattern
+    in_block_comment = False
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if in_block_comment:
+            if '*/' in line:
+                in_block_comment = False
+            continue
+        if stripped.startswith('/*') or stripped.startswith('/**'):
+            if '*/' not in line:
+                in_block_comment = True
+            continue
+        m = METHOD_DECL.match(line)
+        if m and m.group(1) == method_name:
+            body, end_idx = extract_body(lines, idx)
+            results.append((idx + 1, end_idx + 1, body))
+    return results
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ('-h', '--help'):
+        print(__doc__)
+        sys.exit(0 if sys.argv[1:] else 1)
+
+    method_name = sys.argv[1]
+    root = Path(sys.argv[2]) if len(sys.argv) > 2 else Path('.')
+
+    found = 0
+    for java_file in sorted(root.rglob('*.java')):
+        if 'target' in java_file.parts or 'generated' in java_file.parts:
+            continue
+        matches = search_file(java_file, method_name)
+        for start, end, body in matches:
+            rel = java_file.relative_to(root) if java_file.is_relative_to(root) else java_file
+            print(f'\n{"=" * 72}')
+            print(f'FILE: {rel}  (lines {start}–{end})')
+            print('=' * 72)
+            for lineno, text in body:
+                print(f'{lineno:5d}  {text}')
+            found += 1
+
+    if found == 0:
+        print(f"No method '{method_name}' found.")
+    else:
+        print(f'\n{found} match(es) for method \'{method_name}\'.')
+
+
+if __name__ == '__main__':
+    main()

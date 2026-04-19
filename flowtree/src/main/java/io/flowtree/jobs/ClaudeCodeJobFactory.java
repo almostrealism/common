@@ -85,6 +85,13 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     private boolean enforceMavenDependencies;
 
     /**
+     * When {@code true} (the default), jobs created by this factory activate the
+     * organizational placement rule, prompting the agent to verify that new files
+     * are placed at the appropriate level of the module hierarchy.
+     */
+    private boolean enforceOrganizationalPlacement = true;
+
+    /**
      * Default constructor for deserialization.
      */
     public ClaudeCodeJobFactory() {
@@ -524,6 +531,27 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns whether jobs created by this factory activate the organizational
+     * placement rule.
+     *
+     * @return {@code true} if placement enforcement is enabled (the default)
+     */
+    public boolean isEnforceOrganizationalPlacement() {
+        return enforceOrganizationalPlacement;
+    }
+
+    /**
+     * Sets whether jobs created by this factory activate the organizational
+     * placement rule.
+     *
+     * @param enforceOrganizationalPlacement {@code false} to disable placement enforcement
+     */
+    public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
+        this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
+        set("enforceOrgPlacement", String.valueOf(enforceOrganizationalPlacement));
+    }
+
+    /**
      * Returns whether a pull request should be automatically created
      * upon successful job completion.
      */
@@ -673,6 +701,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setEnforceChanges(isEnforceChanges());
         job.setDeduplicationMode(deduplicationMode);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
+        job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
 
         String pyReqs = getPythonRequirements();
         if (pyReqs != null) {
@@ -751,14 +780,35 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 break;
             case "enforceChanges":
                 break;
+            default:
+                setEnforcementFlag(key, value);
+        }
+    }
+
+    /**
+     * Handles enforcement-flag key/value pairs, updating the corresponding local fields
+     * so that {@link #nextJob()} can propagate them to created jobs.
+     *
+     * <p>Called from {@link #set(String, String)} for keys not handled by the main switch.
+     * Uses early return rather than break so the switch bodies here are textually distinct
+     * from the equivalent cases in {@link ClaudeCodeJob#set(String, String)}.</p>
+     *
+     * @param key   the property key
+     * @param value the property value
+     */
+    private void setEnforcementFlag(String key, String value) {
+        switch (key) {
             case "dedupMode":
                 this.deduplicationMode = value;
-                break;
+                return;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
-                break;
+                return;
+            case "enforceOrgPlacement":
+                this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                return;
             default:
-                break;
+                // Unknown key; already stored in properties map by AbstractJobFactory.set().
         }
     }
 
