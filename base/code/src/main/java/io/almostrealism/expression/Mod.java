@@ -24,6 +24,7 @@ import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ScopeSettings;
+import org.almostrealism.io.Console;
 
 import java.util.List;
 import java.util.Optional;
@@ -445,7 +446,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			Expression m1 = ExpressionFeatures.getInstance().e(constant + 1);
 			return Product.of(Mod.of(arg, m0, false), m1);
 		} else {
-			warn("Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
+			Console.root().warn("Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
 			return null;
 		}
 	}

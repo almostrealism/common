@@ -16,7 +16,7 @@
 
 package io.almostrealism.profile;
 
-import io.almostrealism.io.Console;
+import org.almostrealism.io.Console;
 
 /**
  * A functional interface for listening to and recording the execution duration

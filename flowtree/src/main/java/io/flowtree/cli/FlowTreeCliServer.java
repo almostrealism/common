@@ -787,7 +787,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		} catch (ConnectException ce) {
 			return "Could not connect to host: " + ce.getMessage();
 		} catch (Exception e) {
-			warn(e.getMessage(), e);
+			Console.root().warn(e.getMessage(), e);
 			return "Exception while running command: " + e;
 		}
 	}

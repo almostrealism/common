@@ -296,15 +296,20 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 	}
 
 	/**
-	 * System property that disables all outbound connections to external servers.
+	 * System property that suppresses the environment-provided root-host connection.
 	 *
 	 * <p>Set {@code -Dflowtree.offline=true} (or call
 	 * {@code System.setProperty("flowtree.offline", "true")}) to prevent any
-	 * {@link NodeGroup} from connecting to {@code FLOWTREE_ROOT_HOST} or to
-	 * enumerated {@code servers.N.host} entries.  This is the required guard
-	 * for tests that construct real {@link Server} instances — without it, a
-	 * test running in a production environment (where {@code FLOWTREE_ROOT_HOST}
-	 * is set) would connect to the live controller and receive real jobs.</p>
+	 * {@link NodeGroup} from connecting to the host named by the
+	 * {@code FLOWTREE_ROOT_HOST} environment variable.  This is the required
+	 * guard for tests that construct real {@link Server} instances — without
+	 * it, a test running in a production environment (where
+	 * {@code FLOWTREE_ROOT_HOST} is set) would connect to the live controller
+	 * and receive real jobs.</p>
+	 *
+	 * <p>Offline mode does <em>not</em> suppress explicitly configured
+	 * {@code servers.N.host} entries; those are test-internal peers that are
+	 * still reachable even when the production coordinator is off-limits.</p>
 	 *
 	 * <p>Tests must activate offline mode before any {@link Server} is constructed:</p>
 	 * <pre>{@code
@@ -317,8 +322,8 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 	public static final String OFFLINE_MODE_PROPERTY = "flowtree.offline";
 
 	/**
-	 * Returns {@code true} when offline mode is active, meaning all outbound
-	 * server connections should be suppressed.
+	 * Returns {@code true} when offline mode is active, meaning the
+	 * environment-provided {@code FLOWTREE_ROOT_HOST} connection is suppressed.
 	 *
 	 * @return {@code true} if {@code flowtree.offline} system property is set to {@code "true"}
 	 */
@@ -331,11 +336,11 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 	 * the persistent-host reconnect thread when the {@code FLOWTREE_ROOT_HOST}
 	 * environment variable is set.
 	 *
-	 * <p>All outbound connections are suppressed when
-	 * {@link #OFFLINE_MODE_PROPERTY} ({@code flowtree.offline}) is set to
-	 * {@code true}.  Tests that construct real {@link Server} instances must
-	 * activate offline mode via {@code System.setProperty} before the
-	 * constructor runs.</p>
+	 * <p>When {@link #OFFLINE_MODE_PROPERTY} ({@code flowtree.offline}) is
+	 * {@code true} the {@code FLOWTREE_ROOT_HOST} connection is suppressed so
+	 * that tests cannot accidentally contact a live production controller.
+	 * Explicitly configured {@code servers.N.host} entries are still opened;
+	 * they are test-internal peers, not production endpoints.</p>
 	 *
 	 * @param group        The {@link NodeGroup} to register new server connections on.
 	 * @param p            Properties to read server host/port entries from.
@@ -343,16 +348,15 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 	 */
 	static void initServerConnections(NodeGroup group, Properties p, int serverCount) {
 		if (isOfflineMode()) {
-			Console.root().println("NodeGroup: Offline mode active — skipping all external server connections.");
-			return;
-		}
+			Console.root().println("NodeGroup: Offline mode active — skipping environment-provided root-host connection.");
+		} else {
+			String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
+			String rootPort = System.getenv("FLOWTREE_ROOT_PORT");
 
-		String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-		String rootPort = System.getenv("FLOWTREE_ROOT_PORT");
-
-		if (rootHost != null) {
-			if (rootPort == null) rootPort = String.valueOf(Server.defaultPort);
-			group.startPersistentHost(rootHost, Integer.parseInt(rootPort));
+			if (rootHost != null) {
+				if (rootPort == null) rootPort = String.valueOf(Server.defaultPort);
+				group.startPersistentHost(rootHost, Integer.parseInt(rootPort));
+			}
 		}
 
 		if (serverCount > 0) Console.root().println("NodeGroup: Opening server connections...");
