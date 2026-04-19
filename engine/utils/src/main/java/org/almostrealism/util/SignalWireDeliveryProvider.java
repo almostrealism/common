@@ -201,7 +201,7 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 
 			Console.root().addAlertDeliveryProvider(defaultProvider);
 		} catch (IOException e) {
-			System.err.println("Failed to initialize SignalWire delivery provider: " + e.getMessage());
+			Console.root().warn("Failed to initialize SignalWire delivery provider: " + e.getMessage(), e);
 		}
 	}
 

@@ -77,7 +77,7 @@ public class NodeGroupTaskRemovalTest extends TestSuiteBase {
 			try {
 				group.run();
 			} catch (IndexOutOfBoundsException e) {
-				System.err.println("NodeGroup threw IOOB: " + e.getMessage());
+				warn("NodeGroup threw IOOB: " + e.getMessage());
 				failed.set(true);
 			}
 		});

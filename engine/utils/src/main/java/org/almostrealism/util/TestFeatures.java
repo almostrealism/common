@@ -119,7 +119,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		}
 
 		value.reshape(shape(rows, colWidth).traverse()).print();
-		System.out.println("--");
+		log("--");
 	}
 
 	/**
@@ -435,14 +435,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (Math.abs(a - b) >= gap) {
 			if (positive) {
 				if (Math.abs(a - b) >= fallbackGap) {
-					System.err.println("TestFeatures: " + b + " != " + a);
+					Console.root().warn(b + " != " + a, null);
 					throw new AssertionError(msg == null ? b + " != " + a : msg);
 				} else {
-					System.out.println("TestFeatures: " + b + " != " + a);
+					Console.root().println(String.valueOf(b) + " != " + a);
 				}
 			}
 		} else if (!positive) {
-			System.err.println("TestFeatures: " + b + " == " + a);
+			Console.root().warn(b + " == " + a, null);
 			throw new AssertionError(msg == null ? b + " == " + a : msg);
 		}
 	}
@@ -588,7 +588,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		AtomicReference<PackedCollection> outputRef = new AtomicReference<>();
 
 		if (kernel) {
-			System.out.println("TestFeatures: Running kernel evaluation...");
+			log("Running kernel evaluation...");
 			Producer<PackedCollection> p = supply.get();
 			profile(profile, () -> {
 				PackedCollection output = p.get().evaluate();

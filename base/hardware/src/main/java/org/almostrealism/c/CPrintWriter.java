@@ -28,6 +28,7 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.PrintStreamPrintWriter;
 import org.almostrealism.io.PrintWriter;
 
@@ -45,7 +46,7 @@ import java.util.stream.IntStream;
  * <p>This writer extends {@link CodePrintWriterAdapter} to provide C-specific code generation,
  * including method signatures, argument handling, and scope management for compiled kernels.</p>
  */
-public class CPrintWriter extends CodePrintWriterAdapter {
+public class CPrintWriter extends CodePrintWriterAdapter implements ConsoleFeatures {
 	/** The name of the top-level method to generate, or null to use scope names directly. */
 	private final String topLevelMethodName;
 	/** Stack tracking accessibility levels of nested scopes. */
@@ -168,7 +169,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	public void beginScope(String name, OperationMetadata metadata, Accessibility access,
 						   List<ArrayVariable<?>> arguments, List<Variable<?, ?>> parameters) {
 		if (arguments.size() > 150) {
-			System.out.println("WARN: " + arguments.size() + " arguments to generated function");
+			warn(arguments.size() + " arguments to generated function");
 		}
 
 		renderMetadata(metadata);

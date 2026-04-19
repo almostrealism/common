@@ -126,6 +126,9 @@ public class Workstream {
     /** Default Node labels applied to jobs when no job-level labels are specified. */
     private Map<String, String> requiredLabels;
 
+    /** Slack workspace ID (team ID) that this workstream is bound to; null for single-workspace mode. */
+    private String slackWorkspaceId;
+
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
 
@@ -446,6 +449,24 @@ public class Workstream {
      */
     public void setRequiredLabels(Map<String, String> requiredLabels) {
         this.requiredLabels = requiredLabels;
+    }
+
+    /**
+     * Returns the Slack workspace ID (team ID, e.g. "T0123456789") that this workstream
+     * is bound to.  When {@code null}, the workstream belongs to the first (or only)
+     * workspace connection, maintaining backward compatibility with single-workspace mode.
+     */
+    public String getSlackWorkspaceId() {
+        return slackWorkspaceId;
+    }
+
+    /**
+     * Sets the Slack workspace ID for this workstream.
+     *
+     * @param slackWorkspaceId the Slack team ID (T...) or {@code null} for default workspace
+     */
+    public void setSlackWorkspaceId(String slackWorkspaceId) {
+        this.slackWorkspaceId = slackWorkspaceId;
     }
 
     /**

@@ -137,7 +137,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		runner.get().run();
 		cells.reset();
 
-		System.out.println(out);
+		log(String.valueOf(out));
 	}
 
 	@Test(timeout = 60_000)
@@ -266,7 +266,7 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	protected Receptor<PackedCollection> loggingReceptor() {
-		return protein -> () -> () -> System.out.println(protein.get().evaluate());
+		return protein -> () -> () -> log(String.valueOf(protein.get().evaluate()));
 	}
 
 }

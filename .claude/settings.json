@@ -18,13 +18,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-git-commit.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-commit.sh",
             "description": "Block git commit — agents stage only, humans commit"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-mvn-test-direct.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-mvn-test-direct.sh",
             "description": "Block direct mvn test — must use mcp__ar-test-runner__start_test_run"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
+            "description": "Block shell writes into ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
           }
         ]
       },
@@ -33,12 +38,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/guard-ci-file.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-ci-file.sh",
             "description": "Inject .github/CLAUDE.md context when reading analysis.yaml"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/guard-pom-read.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-pom-read.sh",
             "description": "Inject bidirectional dependency check when reading any pom.xml"
           }
         ]
@@ -48,28 +53,53 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-pom-write.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pom-write.sh",
             "description": "Block pom.xml edits — dependency graph is externally controlled"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/enforce-consultant-first.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-consultant-first.sh",
             "description": "Warn if ar-consultant not called before editing computation-layer Java"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/guard-ci-file.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-ci-file.sh",
             "description": "Inject .github/CLAUDE.md context when editing analysis.yaml"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/validate-ci-edit.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/validate-ci-edit.sh",
             "description": "Validate analysis.needs includes all coverage-* uploaders before edit"
           },
           {
             "type": "command",
             "command": ".claude/hooks/warn-defensive-guard.sh",
             "description": "Warn on added defensive-tolerance patterns (see .claude/rules/fail-loud.md)"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
+            "description": "Block edits to ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+          }
+        ]
+      },
+      {
+        "matcher": "MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
+            "description": "Block MultiEdit in ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+          }
+        ]
+      },
+      {
+        "matcher": "NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
+            "description": "Block NotebookEdit in ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
           }
         ]
       },
@@ -78,28 +108,33 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-pom-write.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pom-write.sh",
             "description": "Block pom.xml writes — dependency graph is externally controlled"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/enforce-consultant-first.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-consultant-first.sh",
             "description": "Warn if ar-consultant not called before writing computation-layer Java"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/guard-ci-file.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-ci-file.sh",
             "description": "Inject .github/CLAUDE.md context when writing analysis.yaml"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/validate-ci-edit.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/validate-ci-edit.sh",
             "description": "Validate analysis.needs includes all coverage-* uploaders before write"
           },
           {
             "type": "command",
             "command": ".claude/hooks/warn-defensive-guard.sh",
             "description": "Warn on added defensive-tolerance patterns (see .claude/rules/fail-loud.md)"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
+            "description": "Block writes to ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
           }
         ]
       }
@@ -110,7 +145,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/scan-producer-violations.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/scan-producer-violations.sh",
             "description": "Scan written Java for Producer pattern violations (.evaluate, .toDouble, setMem loops)"
           },
           {
@@ -125,7 +160,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/scan-producer-violations.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/scan-producer-violations.sh",
             "description": "Scan edited Java for Producer pattern violations"
           },
           {
@@ -140,7 +175,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/track-consultant-call.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/track-consultant-call.sh",
             "description": "Record timestamp of consultant call for enforce-consultant-first.sh"
           }
         ]

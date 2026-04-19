@@ -20,6 +20,7 @@ import org.almostrealism.algebra.Gradient;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.physics.Clock;
 import org.almostrealism.physics.RigidBody;
@@ -55,7 +56,7 @@ import java.util.function.Function;
  * @see Scene
  * @see RigidBody
  */
-public class Animation<T extends ShadableSurface> extends Scene<T> implements Runnable, VectorFeatures {
+public class Animation<T extends ShadableSurface> extends Scene<T> implements Runnable, VectorFeatures, ConsoleFeatures {
 	/** Number of physics iterations to execute. */
 	private int itr;
 
@@ -272,7 +273,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	/** Runs the animation. */
 	@Override
 	public void run() {
-		System.out.println("Starting simulation (" + this.itr + "): dt = " + this.dt + "  fdt = " + this.fdt);
+		log("Starting simulation (" + this.itr + "): dt = " + this.dt + "  fdt = " + this.fdt);
 
 		String instance = "0";
 
@@ -281,9 +282,9 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 			pr.load(new FileInputStream(this.dir == null ? "instance" : (this.dir + "instance")));
 			instance = pr.getProperty("instance");
 		} catch (FileNotFoundException fnf) {
-			System.out.println("Instance file not found. Zero will be used.");
+			log("Instance file not found. Zero will be used.");
 		} catch (IOException ioe) {
-			System.out.println("Error reading instance file. Zero will be used.");
+			log("Error reading instance file. Zero will be used.");
 		}
 
 		int iterationsPerFrame = (int) (this.fdt / this.dt);
@@ -292,7 +293,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 			try {
 				if (getSleepEachFrame() && i * this.dt % this.fdt == 0) Thread.sleep((int)(this.fdt * 1000));
 			} catch (InterruptedException ie) {
-				System.err.println(ie.getMessage());
+				warn(ie.getMessage(), ie);
 			}
 
 			for (ShadableSurface s : this)
@@ -383,7 +384,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 					long time = System.currentTimeMillis();
 					Properties p = this.generateProperties();
 
-					System.out.println("Writing simulation state: " + time);
+					log("Writing simulation state: " + time);
 
 					String head = "Simulation state for instance " + instance + ": " + this.totalTime;
 
@@ -391,7 +392,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 						p.store(new FileOutputStream(dir == null ? (time + ".state") : (dir + time + ".state")), head);
 					p.store(new FileOutputStream(dir == null ? "latest.state" : (dir + "latest.state")), head);
 				} catch (IOException ioe) {
-					System.out.println("IO error writing state " + i * this.dt);
+					log("IO error writing state " + i * this.dt);
 				}
 
 				if (this.render) this.writeImage(i, instance);
@@ -405,7 +406,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 				else
 					this.dt = this.vdt / this.getAverageLinearVelocity();
 
-				System.out.println("dt = " + this.dt);
+				log("dt = " + this.dt);
 			}
 		}
 

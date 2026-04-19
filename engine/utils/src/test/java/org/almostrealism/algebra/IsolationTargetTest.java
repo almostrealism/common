@@ -72,9 +72,9 @@ public class IsolationTargetTest extends TestSuiteBase {
 				cp(input),
 				cp(weights));
 
-		System.out.println("=== Test 1: LoopedWeightedSumComputation alone ===");
-		System.out.println("outerCount=" + outerCount + ", innerCount=" + innerCount);
-		System.out.println("isIsolationTarget: " + computation.isIsolationTarget(null));
+		log("=== Test 1: LoopedWeightedSumComputation alone ===");
+		log("outerCount=" + outerCount + ", innerCount=" + innerCount);
+		log("isIsolationTarget: " + computation.isIsolationTarget(null));
 
 		// Compile and run - this should use getScope()
 		OperationList ops = new OperationList();
@@ -84,15 +84,15 @@ public class IsolationTargetTest extends TestSuiteBase {
 		// CRITICAL: Call optimize() before get() to trigger isolation
 		ops = (OperationList) ops.optimize();
 
-		System.out.println("Compiling...");
+		log("Compiling...");
 		long start = System.currentTimeMillis();
 		Runnable r = ops.get();
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("Compilation took " + elapsed + "ms");
+		log("Compilation took " + elapsed + "ms");
 
 		r.run();
-		System.out.println("Output[0]: " + output.toDouble(0));
-		System.out.println("Test 1 PASSED - compilation completed without timeout\n");
+		log("Output[0]: " + output.toDouble(0));
+		log("Test 1 PASSED - compilation completed without timeout\n");
 	}
 
 	/**
@@ -132,13 +132,13 @@ public class IsolationTargetTest extends TestSuiteBase {
 				cp(input),
 				cp(weights));
 
-		System.out.println("=== Test 2: LoopedWeightedSumComputation wrapped with traverseEach ===");
-		System.out.println("outerCount=" + outerCount + ", innerCount=" + innerCount);
-		System.out.println("isIsolationTarget: " + computation.isIsolationTarget(null));
+		log("=== Test 2: LoopedWeightedSumComputation wrapped with traverseEach ===");
+		log("outerCount=" + outerCount + ", innerCount=" + innerCount);
+		log("isIsolationTarget: " + computation.isIsolationTarget(null));
 
 		// Wrap with traverseEach - this is what the layer framework does
 		Producer wrapped = traverseEach(computation);
-		System.out.println("Wrapped type: " + wrapped.getClass().getSimpleName());
+		log("Wrapped type: " + wrapped.getClass().getSimpleName());
 
 		// Compile and run
 		OperationList ops = new OperationList();
@@ -148,15 +148,15 @@ public class IsolationTargetTest extends TestSuiteBase {
 		// CRITICAL: Call optimize() before get() to trigger isolation
 		ops = (OperationList) ops.optimize();
 
-		System.out.println("Compiling...");
+		log("Compiling...");
 		long start = System.currentTimeMillis();
 		Runnable r = ops.get();
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("Compilation took " + elapsed + "ms");
+		log("Compilation took " + elapsed + "ms");
 
 		r.run();
-		System.out.println("Output[0]: " + output.toDouble(0));
-		System.out.println("Test 2 PASSED - compilation completed without timeout\n");
+		log("Output[0]: " + output.toDouble(0));
+		log("Test 2 PASSED - compilation completed without timeout\n");
 	}
 
 	/**
@@ -200,10 +200,10 @@ public class IsolationTargetTest extends TestSuiteBase {
 				cp(input),
 				cp(weights));
 
-		System.out.println("=== Test 3: Large LoopedWeightedSumComputation (2048 * 16 = 32K ops) ===");
-		System.out.println("outerCount=" + outerCount + ", innerCount=" + innerCount);
-		System.out.println("Total ops per output element: " + (outerCount * innerCount));
-		System.out.println("isIsolationTarget: " + computation.isIsolationTarget(null));
+		log("=== Test 3: Large LoopedWeightedSumComputation (2048 * 16 = 32K ops) ===");
+		log("outerCount=" + outerCount + ", innerCount=" + innerCount);
+		log("Total ops per output element: " + (outerCount * innerCount));
+		log("isIsolationTarget: " + computation.isIsolationTarget(null));
 
 		// Compile and run - this SHOULD use getScope() and be fast
 		OperationList ops = new OperationList();
@@ -213,19 +213,19 @@ public class IsolationTargetTest extends TestSuiteBase {
 		// CRITICAL: Call optimize() before get() to trigger isolation
 		ops = (OperationList) ops.optimize();
 
-		System.out.println("Compiling (should be fast if using native loop)...");
+		log("Compiling (should be fast if using native loop)...");
 		long start = System.currentTimeMillis();
 		Runnable r = ops.get();
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("Compilation took " + elapsed + "ms");
+		log("Compilation took " + elapsed + "ms");
 
 		if (elapsed > 10000) {
-			System.out.println("WARNING: Compilation took >10s - likely using getValueAt() instead of getScope()");
+			log("WARNING: Compilation took >10s - likely using getValueAt() instead of getScope()");
 		}
 
 		r.run();
-		System.out.println("Output[0]: " + output.toDouble(0));
-		System.out.println("Test 3 completed\n");
+		log("Output[0]: " + output.toDouble(0));
+		log("Test 3 completed\n");
 	}
 
 	/**
@@ -269,10 +269,10 @@ public class IsolationTargetTest extends TestSuiteBase {
 				cp(input),
 				cp(weights));
 
-		System.out.println("=== Test 4: Large outerCount, small innerCount (2048 * 4) ===");
-		System.out.println("outerCount=" + outerCount + ", innerCount=" + innerCount);
-		System.out.println("Total ops per output element: " + (outerCount * innerCount));
-		System.out.println("isIsolationTarget: " + computation.isIsolationTarget(null));
+		log("=== Test 4: Large outerCount, small innerCount (2048 * 4) ===");
+		log("outerCount=" + outerCount + ", innerCount=" + innerCount);
+		log("Total ops per output element: " + (outerCount * innerCount));
+		log("isIsolationTarget: " + computation.isIsolationTarget(null));
 
 		// Compile and run
 		OperationList ops = new OperationList();
@@ -282,20 +282,20 @@ public class IsolationTargetTest extends TestSuiteBase {
 		// CRITICAL: Call optimize() before get() to trigger isolation
 		ops = (OperationList) ops.optimize();
 
-		System.out.println("Compiling (should be fast if native loop works)...");
+		log("Compiling (should be fast if native loop works)...");
 		long start = System.currentTimeMillis();
 		Runnable r = ops.get();
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("Compilation took " + elapsed + "ms");
+		log("Compilation took " + elapsed + "ms");
 
 		if (elapsed > 5000) {
-			System.out.println("WARNING: Compilation took >5s - native loop may not be working!");
+			log("WARNING: Compilation took >5s - native loop may not be working!");
 		} else {
-			System.out.println("GOOD: Compilation was fast - native loop is working");
+			log("GOOD: Compilation was fast - native loop is working");
 		}
 
 		r.run();
-		System.out.println("Output[0]: " + output.toDouble(0));
-		System.out.println("Test 4 completed\n");
+		log("Output[0]: " + output.toDouble(0));
+		log("Test 4 completed\n");
 	}
 }

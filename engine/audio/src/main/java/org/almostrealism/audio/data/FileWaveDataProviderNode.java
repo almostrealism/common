@@ -17,6 +17,7 @@
 package org.almostrealism.audio.data;
 
 import io.almostrealism.uml.Named;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
@@ -50,7 +51,7 @@ import java.util.stream.Stream;
  * @see FileWaveDataProviderTree
  * @see FileWaveDataProvider
  */
-public class FileWaveDataProviderNode implements FileWaveDataProviderTree<FileWaveDataProviderNode>, Supplier<FileWaveDataProvider>, Named {
+public class FileWaveDataProviderNode implements FileWaveDataProviderTree<FileWaveDataProviderNode>, Supplier<FileWaveDataProvider>, Named, ConsoleFeatures {
 	/** The underlying file or directory this node represents. */
 	private final File file;
 
@@ -98,7 +99,7 @@ public class FileWaveDataProviderNode implements FileWaveDataProviderTree<FileWa
 		try {
 			return new FileWaveDataProvider(file.getCanonicalPath());
 		} catch (IOException e) {
-			e.printStackTrace();
+			warn(e.getMessage(), e);
 			return null;
 		}
 	}

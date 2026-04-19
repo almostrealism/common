@@ -24,6 +24,8 @@ import com.amazonaws.services.kms.model.EnableKeyResult;
 import com.amazonaws.services.kms.model.EncryptRequest;
 import com.amazonaws.services.kms.model.EncryptResult;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -61,7 +63,7 @@ import java.util.Scanner;
  *
  * @author  Michael Murray
  */
-public class KMSEngine {
+public class KMSEngine implements ConsoleFeatures {
 
     /** Shared secure random generator used for RSA key-pair generation. */
     private static final SecureRandom srand = new SecureRandom();
@@ -96,7 +98,7 @@ public class KMSEngine {
         req.setKeyId(c.getKey());
 
         EnableKeyResult r = client.enableKey(req);
-        System.out.println(r.getSdkResponseMetadata());
+        log(String.valueOf(r.getSdkResponseMetadata()));
 
         if (commands != null) {
             Thread t = new Thread(() -> {
@@ -106,7 +108,7 @@ public class KMSEngine {
                     this.setString(s.nextLine());
                     EncryptResult res = client.encrypt(new EncryptRequest().withPlaintext(next()));
                     DecryptResult result = client.decrypt(new DecryptRequest().withCiphertextBlob(res.getCiphertextBlob()));
-                    System.out.println(result.getPlaintext());
+                    log(String.valueOf(result.getPlaintext()));
                 }
             });
 
@@ -135,7 +137,7 @@ public class KMSEngine {
         try {
             return encoder.encode(CharBuffer.wrap(str));
         } catch (IOException e) {
-            System.err.println("KMSEngine: Encoding error: " + e);
+            warn(e.getMessage(), e);
         }
 
         return null;

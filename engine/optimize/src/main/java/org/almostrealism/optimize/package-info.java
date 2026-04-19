@@ -49,7 +49,7 @@
  * // Run evolution
  * for (int gen = 0; gen < 50; gen++) {
  *     optimizer.iterate();
- *     System.out.println("Generation " + gen +
+ *     Console.root().println("Generation " + gen +
  *         ": avg=" + optimizer.getAverageScore());
  * }
  * }</pre>

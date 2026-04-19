@@ -1,5 +1,6 @@
 package org.almostrealism.ml.qwen3;
 
+import org.almostrealism.io.Console;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -23,8 +24,8 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		assertNotNull(tokens);
 		assertTrue("Should have at least one token", tokens.length > 0);
 
-		System.out.println("Encoded '" + text + "' to " + tokens.length + " tokens");
-		System.out.println("Tokens: " + Arrays.toString(tokens));
+		log("Encoded '" + text + "' to " + tokens.length + " tokens");
+		log("Tokens: " + Arrays.toString(tokens));
 	}
 
 	@Test(timeout = 5000)
@@ -35,8 +36,8 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		int[] tokens = tokenizer.encode(text, false, false);
 		String decoded = tokenizer.decode(tokens);
 
-		System.out.println("Original: " + text);
-		System.out.println("Decoded:  " + decoded);
+		log("Original: " + text);
+		log("Decoded:  " + decoded);
 
 		// The decoded text should be similar (may not be exact due to byte-level encoding)
 		assertNotNull(decoded);
@@ -58,9 +59,9 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		// With both BOS and EOS
 		int[] tokensWithBoth = tokenizer.encode(text, true, true);
 
-		System.out.println("No special tokens: " + Arrays.toString(tokensNoSpecial));
-		System.out.println("With BOS: " + Arrays.toString(tokensWithBos));
-		System.out.println("With BOS+EOS: " + Arrays.toString(tokensWithBoth));
+		log("No special tokens: " + Arrays.toString(tokensNoSpecial));
+		log("With BOS: " + Arrays.toString(tokensWithBos));
+		log("With BOS+EOS: " + Arrays.toString(tokensWithBoth));
 
 		// Verify BOS is added
 		assertEquals("First token should be BOS",
@@ -91,8 +92,8 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		assertNotNull(tokens);
 		assertTrue("Should encode multi-byte characters", tokens.length > 0);
 
-		System.out.println("Multi-byte text: " + text);
-		System.out.println("Tokens: " + Arrays.toString(tokens));
+		log("Multi-byte text: " + text);
+		log("Tokens: " + Arrays.toString(tokens));
 	}
 
 	@Test(timeout = 5000)
@@ -103,7 +104,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		assertTrue("Vocab size should be positive", vocabSize > 0);
 		assertTrue("Vocab size should include byte tokens (256+)", vocabSize >= 256);
 
-		System.out.println("Vocabulary size: " + vocabSize);
+		log("Vocabulary size: " + vocabSize);
 	}
 
 	@Test(timeout = 5000)
@@ -118,7 +119,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		};
 
 		String decoded = tokenizer.decode(tokens);
-		System.out.println("Decoded: " + decoded);
+		log("Decoded: " + decoded);
 
 		// Should not contain special tokens in output
 		assertFalse("Should not contain <|im_start|>", decoded.contains("<|im_start|>"));
@@ -134,77 +135,75 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		String tokenizerPath = "/workspace/project/common/ml/qwen3_weights/tokenizer.bin";
 		File f = new File(tokenizerPath);
 		if (!f.exists()) {
-			System.out.println("Skipping: tokenizer.bin not found at " + tokenizerPath);
+			log("Skipping: tokenizer.bin not found at " + tokenizerPath);
 			return;
 		}
 
 		Qwen3Tokenizer tokenizer = new Qwen3Tokenizer(tokenizerPath);
-		System.out.println("Real tokenizer vocab size: " + tokenizer.getVocabSize());
+		log("Real tokenizer vocab size: " + tokenizer.getVocabSize());
 
 		// Test "Hello" - should encode to single token 9707 like PyTorch
 		int[] helloTokens = tokenizer.encode("Hello", false, false);
-		System.out.println("'Hello' encoded to: " + Arrays.toString(helloTokens));
+		log("'Hello' encoded to: " + Arrays.toString(helloTokens));
 
 		// PyTorch reference: token_id = 9707 for "Hello"
 		if (helloTokens.length == 1 && helloTokens[0] == 9707) {
-			System.out.println("[PASS] 'Hello' encodes to 9707 (matches PyTorch)");
+			log("[PASS] 'Hello' encodes to 9707 (matches PyTorch)");
 		} else {
-			System.out.println("[INFO] 'Hello' did not encode to 9707 (got " +
-					Arrays.toString(helloTokens) + ")");
+			log("[INFO] 'Hello' did not encode to 9707 (got " + Arrays.toString(helloTokens) + ")");
 			// Show what token 9707 decodes to
 			String token9707 = tokenizer.decode(new int[]{9707});
-			System.out.println("Token 9707 decodes to: '" + token9707 + "'");
+			log("Token 9707 decodes to: '" + token9707 + "'");
 		}
 
 		// Test other tokens
 		int[] worldTokens = tokenizer.encode("World", false, false);
-		System.out.println("'World' encoded to: " + Arrays.toString(worldTokens));
+		log("'World' encoded to: " + Arrays.toString(worldTokens));
 
 		int[] helloWorldTokens = tokenizer.encode("Hello World!", false, false);
-		System.out.println("'Hello World!' encoded to: " + Arrays.toString(helloWorldTokens));
+		log("'Hello World!' encoded to: " + Arrays.toString(helloWorldTokens));
 	}
 
 	/**
 	 * Main method for manual testing without JUnit.
 	 */
 	public static void main(String[] args) {
-		System.out.println("=== Qwen3Tokenizer Manual Test ===\n");
+		Console.root().println("=== Qwen3Tokenizer Manual Test ===\n");
 
 		Qwen3TokenizerTest test = new Qwen3TokenizerTest();
 
 		try {
-			System.out.println("1. Basic Encoding Test:");
+			Console.root().println("1. Basic Encoding Test:");
 			test.testBasicEncoding();
-			System.out.println();
+			Console.root().println("");
 
-			System.out.println("2. Encode/Decode Test:");
+			Console.root().println("2. Encode/Decode Test:");
 			test.testEncodeDecode();
-			System.out.println();
+			Console.root().println("");
 
-			System.out.println("3. Special Tokens Test:");
+			Console.root().println("3. Special Tokens Test:");
 			test.testSpecialTokens();
-			System.out.println();
+			Console.root().println("");
 
-			System.out.println("4. Empty String Test:");
+			Console.root().println("4. Empty String Test:");
 			test.testEmptyString();
-			System.out.println();
+			Console.root().println("");
 
-			System.out.println("5. Multi-byte Characters Test:");
+			Console.root().println("5. Multi-byte Characters Test:");
 			test.testMultiByteCharacters();
-			System.out.println();
+			Console.root().println("");
 
-			System.out.println("6. Vocab Size Test:");
+			Console.root().println("6. Vocab Size Test:");
 			test.testVocabSize();
-			System.out.println();
+			Console.root().println("");
 
-			System.out.println("7. Decode Test:");
+			Console.root().println("7. Decode Test:");
 			test.testDecode();
-			System.out.println();
+			Console.root().println("");
 
-			System.out.println("=== All tests completed ===");
+			Console.root().println("=== All tests completed ===");
 		} catch (Exception e) {
-			System.err.println("Test failed: " + e.getMessage());
-			e.printStackTrace();
+			Console.root().warn("Test failed: " + e.getMessage(), e);
 		}
 	}
 }

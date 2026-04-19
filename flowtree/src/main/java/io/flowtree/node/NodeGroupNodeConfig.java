@@ -19,6 +19,8 @@ package io.flowtree.node;
 import io.flowtree.Server;
 import io.flowtree.job.JobFactory;
 import io.flowtree.msg.Message;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -61,7 +63,7 @@ import java.util.Properties;
  * @author  Michael Murray
  * @see NodeGroup
  */
-class NodeGroupNodeConfig {
+public class NodeGroupNodeConfig implements ConsoleFeatures {
 
 	/**
 	 * Result returned by {@link #setParam} when the key is not recognised.
@@ -157,7 +159,7 @@ class NodeGroupNodeConfig {
 		}
 
 		if (msg != null) {
-			System.out.println("NodeGroup: " + msg);
+			log("NodeGroup: " + msg);
 			group.getStatusRenderer().addActivityMessage(msg);
 		}
 
@@ -289,8 +291,44 @@ class NodeGroupNodeConfig {
 			for (Node n : nodes) {
 				n.setLabel("platform", platform);
 			}
-			System.out.println("NodeGroup: Auto-detected platform label: platform=" + platform);
+			Console.root().println("NodeGroup: Auto-detected platform label: platform=" + platform);
 		}
+	}
+
+	/**
+	 * System property that suppresses the environment-provided root-host connection.
+	 *
+	 * <p>Set {@code -Dflowtree.offline=true} (or call
+	 * {@code System.setProperty("flowtree.offline", "true")}) to prevent any
+	 * {@link NodeGroup} from connecting to the host named by the
+	 * {@code FLOWTREE_ROOT_HOST} environment variable.  This is the required
+	 * guard for tests that construct real {@link Server} instances — without
+	 * it, a test running in a production environment (where
+	 * {@code FLOWTREE_ROOT_HOST} is set) would connect to the live controller
+	 * and receive real jobs.</p>
+	 *
+	 * <p>Offline mode does <em>not</em> suppress explicitly configured
+	 * {@code servers.N.host} entries; those are test-internal peers that are
+	 * still reachable even when the production coordinator is off-limits.</p>
+	 *
+	 * <p>Tests must activate offline mode before any {@link Server} is constructed:</p>
+	 * <pre>{@code
+	 * @BeforeClass
+	 * public static void enforceOfflineMode() {
+	 *     System.setProperty(NodeGroupNodeConfig.OFFLINE_MODE_PROPERTY, "true");
+	 * }
+	 * }</pre>
+	 */
+	public static final String OFFLINE_MODE_PROPERTY = "flowtree.offline";
+
+	/**
+	 * Returns {@code true} when offline mode is active, meaning the
+	 * environment-provided {@code FLOWTREE_ROOT_HOST} connection is suppressed.
+	 *
+	 * @return {@code true} if {@code flowtree.offline} system property is set to {@code "true"}
+	 */
+	public static boolean isOfflineMode() {
+		return Boolean.getBoolean(OFFLINE_MODE_PROPERTY);
 	}
 
 	/**
@@ -298,36 +336,46 @@ class NodeGroupNodeConfig {
 	 * the persistent-host reconnect thread when the {@code FLOWTREE_ROOT_HOST}
 	 * environment variable is set.
 	 *
+	 * <p>When {@link #OFFLINE_MODE_PROPERTY} ({@code flowtree.offline}) is
+	 * {@code true} the {@code FLOWTREE_ROOT_HOST} connection is suppressed so
+	 * that tests cannot accidentally contact a live production controller.
+	 * Explicitly configured {@code servers.N.host} entries are still opened;
+	 * they are test-internal peers, not production endpoints.</p>
+	 *
 	 * @param group        The {@link NodeGroup} to register new server connections on.
 	 * @param p            Properties to read server host/port entries from.
 	 * @param serverCount  Number of server entries to open.
 	 */
 	static void initServerConnections(NodeGroup group, Properties p, int serverCount) {
-		String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-		String rootPort = System.getenv("FLOWTREE_ROOT_PORT");
+		if (isOfflineMode()) {
+			Console.root().println("NodeGroup: Offline mode active — skipping environment-provided root-host connection.");
+		} else {
+			String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
+			String rootPort = System.getenv("FLOWTREE_ROOT_PORT");
 
-		if (rootHost != null) {
-			if (rootPort == null) rootPort = String.valueOf(Server.defaultPort);
-			group.startPersistentHost(rootHost, Integer.parseInt(rootPort));
+			if (rootHost != null) {
+				if (rootPort == null) rootPort = String.valueOf(Server.defaultPort);
+				group.startPersistentHost(rootHost, Integer.parseInt(rootPort));
+			}
 		}
 
-		if (serverCount > 0) System.out.println("NodeGroup: Opening server connections...");
+		if (serverCount > 0) Console.root().println("NodeGroup: Opening server connections...");
 
 		for (int i = 0; i < serverCount; i++) {
 			String host = p.getProperty("servers." + i + ".host", "localhost");
 			int port = Integer.parseInt(p.getProperty("servers." + i + ".port", "7777"));
 
 			try {
-				System.out.println("NodeGroup: Connecting to server " + i + " (" + host + ":" + port + ")...");
+				Console.root().println("NodeGroup: Connecting to server " + i + " (" + host + ":" + port + ")...");
 				group.addServer(new Socket(host, port));
 			} catch (UnknownHostException uh) {
-				System.out.println("NodeGroup: Server " + i + " is unknown host");
+				Console.root().warn("NodeGroup: Server " + i + " is unknown host", null);
 			} catch (IOException ioe) {
-				System.out.println("NodeGroup: IO error while connecting to server " +
-						i + " -- " + ioe.getMessage());
+				Console.root().warn("NodeGroup: IO error while connecting to server " +
+						i + " -- " + ioe.getMessage(), ioe);
 			} catch (SecurityException se) {
-				System.out.println("NodeGroup: Security exception while connecting to server " + i +
-						" (" + se.getMessage() + ")");
+				Console.root().warn("NodeGroup: Security exception while connecting to server " + i +
+						" (" + se.getMessage() + ")", se);
 			}
 		}
 	}
@@ -384,13 +432,13 @@ class NodeGroupNodeConfig {
 				j.set(key, value);
 			}
 		} catch (ClassNotFoundException cnf) {
-			System.out.println("NodeGroup: Class not found: " + className);
+			Console.root().warn("NodeGroup: Class not found: " + className, cnf);
 		} catch (ClassCastException cce) {
-			System.out.println("NodeGroup: Error casting " +
+			Console.root().warn("NodeGroup: Error casting " +
 					Optional.ofNullable(c).map(Class::getName).orElse(null) +
-					" to JobFactory");
+					" to JobFactory", cce);
 		} catch (Exception e) {
-			System.out.println("NodeGroup: " + e);
+			Console.root().warn("NodeGroup: " + e, e);
 		}
 
 		return j;

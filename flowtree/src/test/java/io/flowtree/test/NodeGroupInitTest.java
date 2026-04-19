@@ -17,7 +17,7 @@
 package io.flowtree.test;
 
 import io.flowtree.Server;
-import org.almostrealism.util.TestSuiteBase;
+import io.flowtree.node.NodeGroupNodeConfig;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -32,7 +32,22 @@ import java.util.Properties;
  * like {@code nodeConfig} must be set before {@code setParam(Properties)}
  * is called in the constructor.</p>
  */
-public class NodeGroupInitTest extends TestSuiteBase {
+public class NodeGroupInitTest extends ServerTestBase {
+
+	/**
+	 * Regression guard: fails if offline mode is not active.
+	 *
+	 * <p>If this test fails it means {@link #enforceOfflineMode()} did not run
+	 * before a {@link Server} was constructed, which would allow the test
+	 * Server to connect to production.</p>
+	 */
+	@Test(timeout = 5000)
+	public void offlineModeIsActiveForServerTests() {
+		Assert.assertTrue(
+				"Tests that create Server instances must run with flowtree.offline=true. " +
+				"The @BeforeClass enforceOfflineMode() must execute before any Server is constructed.",
+				NodeGroupNodeConfig.isOfflineMode());
+	}
 
 	/**
 	 * Verifies that a {@link Server} with one initial node can be

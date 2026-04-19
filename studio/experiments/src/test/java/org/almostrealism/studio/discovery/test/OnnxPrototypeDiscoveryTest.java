@@ -93,50 +93,50 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 		File decoderFile = new File(modelsDir, "decoder.onnx");
 		File storeDir = new File(storePath);
 
-		System.out.println("=== ONNX Prototype Discovery Test ===");
-		System.out.println("Samples dir:  " + samplesDir.getAbsolutePath());
-		System.out.println("Store dir:    " + storeDir.getAbsolutePath());
-		System.out.println("Models dir:   " + modelsDir.getAbsolutePath());
-		System.out.println("Encoder:      " + encoderFile.getAbsolutePath() + " (exists: " + encoderFile.exists() + ")");
-		System.out.println("Decoder:      " + decoderFile.getAbsolutePath() + " (exists: " + decoderFile.exists() + ")");
-		System.out.println("Max prototypes: " + maxPrototypes);
-		System.out.println();
+		log("=== ONNX Prototype Discovery Test ===");
+		log("Samples dir:  " + samplesDir.getAbsolutePath());
+		log("Store dir:    " + storeDir.getAbsolutePath());
+		log("Models dir:   " + modelsDir.getAbsolutePath());
+		log("Encoder:      " + encoderFile.getAbsolutePath() + " (exists: " + encoderFile.exists() + ")");
+		log("Decoder:      " + decoderFile.getAbsolutePath() + " (exists: " + decoderFile.exists() + ")");
+		log("Max prototypes: " + maxPrototypes);
+		log("");
 
 		// Validate prerequisites
 		if (!samplesDir.isDirectory()) {
-			System.out.println("ERROR: Samples directory not found: " + samplesDir.getAbsolutePath());
+			log("ERROR: Samples directory not found: " + samplesDir.getAbsolutePath());
 			Assert.fail("Samples directory required: " + samplesDir.getAbsolutePath());
 		}
 		if (!encoderFile.exists()) {
-			System.out.println("ERROR: ONNX encoder model not found: " + encoderFile.getAbsolutePath());
+			log("ERROR: ONNX encoder model not found: " + encoderFile.getAbsolutePath());
 			Assert.fail("ONNX encoder model required: " + encoderFile.getAbsolutePath());
 		}
 		if (!decoderFile.exists()) {
-			System.out.println("ERROR: ONNX decoder model not found: " + decoderFile.getAbsolutePath());
+			log("ERROR: ONNX decoder model not found: " + decoderFile.getAbsolutePath());
 			Assert.fail("ONNX decoder model required: " + decoderFile.getAbsolutePath());
 		}
 
 		// Check store state before we start
 		long storeInitialBytes = getDirectorySize(storeDir);
-		System.out.println("Store exists: " + storeDir.exists());
-		System.out.println("Store initial size: " + formatBytes(storeInitialBytes));
-		System.out.println();
+		log("Store exists: " + storeDir.exists());
+		log("Store initial size: " + formatBytes(storeInitialBytes));
+		log("");
 
 		long startTotal = System.currentTimeMillis();
 
 		// Initialize ONNX autoencoder
-		System.out.println("Loading ONNX autoencoder...");
+		log("Loading ONNX autoencoder...");
 		long startOnnx = System.currentTimeMillis();
 		OnnxAutoEncoder autoencoder = createAutoEncoder(encoderFile, decoderFile);
 		long onnxMs = System.currentTimeMillis() - startOnnx;
-		System.out.println("ONNX autoencoder loaded in " + onnxMs + " ms");
+		log("ONNX autoencoder loaded in " + onnxMs + " ms");
 
 		AutoEncoderFeatureProvider featureProvider = new AutoEncoderFeatureProvider(autoencoder);
 
 		// Initialize store and library
 		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir);
 		int initialStoreEntries = store.size();
-		System.out.println("Store loaded with " + initialStoreEntries + " existing entries");
+		log("Store loaded with " + initialStoreEntries + " existing entries");
 
 		AudioLibrary library = new AudioLibrary(
 				new FileWaveDataProviderNode(samplesDir),
@@ -145,8 +145,8 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 
 		// Refresh library (compute features for new samples)
 		long startRefresh = System.currentTimeMillis();
-		System.out.println();
-		System.out.println("Starting library refresh (ONNX feature computation)...");
+		log("");
+		log("Starting library refresh (ONNX feature computation)...");
 		library.refresh().join();
 		long refreshMs = System.currentTimeMillis() - startRefresh;
 
@@ -157,21 +157,21 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 		int newEntriesComputed = finalStoreEntries - initialStoreEntries;
 		long storeFinalBytes = getDirectorySize(storeDir);
 
-		System.out.println();
-		System.out.println("=== Refresh Statistics ===");
-		System.out.println("Total samples in library: " + totalSamples);
-		System.out.println("Store entries before:     " + initialStoreEntries);
-		System.out.println("Store entries after:      " + finalStoreEntries);
-		System.out.println("New entries computed:     " + newEntriesComputed);
-		System.out.println("Refresh time:             " + refreshMs + " ms");
+		log("");
+		log("=== Refresh Statistics ===");
+		log("Total samples in library: " + totalSamples);
+		log("Store entries before:     " + initialStoreEntries);
+		log("Store entries after:      " + finalStoreEntries);
+		log("New entries computed:     " + newEntriesComputed);
+		log("Refresh time:             " + refreshMs + " ms");
 		if (newEntriesComputed > 0) {
 			double avgTimePerSample = (double) refreshMs / newEntriesComputed;
-			System.out.printf("Avg time per new sample:  %.1f ms%n", avgTimePerSample);
+			log(String.format("Avg time per new sample:  %.1f ms%n", avgTimePerSample));
 		} else {
-			System.out.println("Avg time per new sample:  N/A (all loaded from cache)");
+			log("Avg time per new sample:  N/A (all loaded from cache)");
 		}
-		System.out.println("Store size on disk:       " + formatBytes(storeFinalBytes));
-		System.out.println();
+		log("Store size on disk:       " + formatBytes(storeFinalBytes));
+		log("");
 
 		// Sanity check
 		Assert.assertTrue("Expected at least 1 sample in library", totalSamples > 0);
@@ -179,23 +179,23 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 
 		// Run prototype discovery
 		long startDiscovery = System.currentTimeMillis();
-		System.out.println("Running prototype discovery...");
+		log("Running prototype discovery...");
 		List<PrototypeDiscovery.PrototypeResult> prototypes =
 				PrototypeDiscovery.discoverPrototypes(library, maxPrototypes, System.out::println);
 		long discoveryMs = System.currentTimeMillis() - startDiscovery;
-		System.out.println();
+		log("");
 
 		// Print discovered prototypes
-		System.out.println("=== Discovered Prototypes ===");
-		System.out.println("Found " + prototypes.size() + " prototypes:");
-		System.out.println();
+		log("=== Discovered Prototypes ===");
+		log("Found " + prototypes.size() + " prototypes:");
+		log("");
 		for (int i = 0; i < prototypes.size(); i++) {
 			PrototypeDiscovery.PrototypeResult prototype = prototypes.get(i);
-			System.out.printf("Prototype %d:%n", i + 1);
-			System.out.printf("  Identifier:  %s%n", prototype.identifier());
-			System.out.printf("  Community:   %d samples%n", prototype.communitySize());
-			System.out.printf("  Centrality:  %.6f%n", prototype.centrality());
-			System.out.println();
+			log(String.format("Prototype %d:%n", i + 1));
+			log(String.format("  Identifier:  %s%n", prototype.identifier()));
+			log(String.format("  Community:   %d samples%n", prototype.communitySize()));
+			log(String.format("  Centrality:  %.6f%n", prototype.centrality()));
+			log("");
 		}
 
 		// Cleanup
@@ -207,17 +207,17 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 		long totalMs = System.currentTimeMillis() - startTotal;
 
 		// Final summary
-		System.out.println("=== Final Summary ===");
-		System.out.println("ONNX model load:      " + onnxMs + " ms");
-		System.out.println("Library refresh:      " + refreshMs + " ms");
-		System.out.println("Prototype discovery:  " + discoveryMs + " ms");
-		System.out.println("Total time:           " + totalMs + " ms");
-		System.out.println("Samples processed:    " + totalSamples);
-		System.out.println("Prototypes found:     " + prototypes.size());
-		System.out.println("Store size on disk:   " + formatBytes(storeFinalBytes));
-		System.out.println();
-		System.out.println("Run this test again - second run should be significantly faster");
-		System.out.println("because features are loaded from the protobuf store.");
+		log("=== Final Summary ===");
+		log("ONNX model load:      " + onnxMs + " ms");
+		log("Library refresh:      " + refreshMs + " ms");
+		log("Prototype discovery:  " + discoveryMs + " ms");
+		log("Total time:           " + totalMs + " ms");
+		log("Samples processed:    " + totalSamples);
+		log("Prototypes found:     " + prototypes.size());
+		log("Store size on disk:   " + formatBytes(storeFinalBytes));
+		log("");
+		log("Run this test again - second run should be significantly faster");
+		log("because features are loaded from the protobuf store.");
 
 		// Verify we found prototypes
 		Assert.assertTrue("Expected at least 1 prototype", prototypes.size() > 0);

@@ -16,6 +16,8 @@
 
 package org.almostrealism.texture;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.PixelGrabber;
@@ -32,7 +34,7 @@ import java.net.URL;
  * @see ImageTexture
  * @author Michael Murray
  */
-public class URLImageSource implements ImageSource {
+public class URLImageSource implements ImageSource, ConsoleFeatures {
 	/** The URL from which the image is loaded. */
 	private final URL url;
 
@@ -58,7 +60,7 @@ public class URLImageSource implements ImageSource {
 		try {
 			m.waitForAll();
 		} catch (InterruptedException e) {
-			System.err.println("ImageTexture: Wait for image loading was interrupted.");
+			warn(e.getMessage(), e);
 		}
 
 		if (m.isErrorAny()) throw new RuntimeException("ImageTexture: Error loading image.");
@@ -77,7 +79,7 @@ public class URLImageSource implements ImageSource {
 		try {
 			p.grabPixels();
 		} catch (InterruptedException e) {
-			System.err.println("ImageTexture: Pixel grabbing interrupted.");
+			warn(e.getMessage(), e);
 		}
 		
 		return pixels;

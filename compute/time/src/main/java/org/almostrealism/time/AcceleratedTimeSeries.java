@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
+import org.almostrealism.io.Console;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesAdd;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesPurge;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
@@ -216,7 +217,7 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 
 	static {
 		if (defaultCacheLevel == CacheLevel.ALL) {
-			System.out.println("WARN: AcceleratedTimeSeries default cache level is ALL");
+			Console.root().println("WARN: AcceleratedTimeSeries default cache level is ALL");
 		}
 	}
 

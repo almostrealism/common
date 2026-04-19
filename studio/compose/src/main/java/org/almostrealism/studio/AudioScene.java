@@ -67,7 +67,6 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 import org.almostrealism.space.Animation;
 import org.almostrealism.time.Frequency;
-import org.almostrealism.time.Temporal;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -1057,16 +1056,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 	/**
 	 * Creates cells for the specified channels with the given buffer configuration.
-	 *
-	 * <p>This is the single entry point for cell construction used by both the
-	 * offline and real-time paths. The only difference between them is the
-	 * {@code bufferSize} and {@code frameSupplier}:</p>
-	 * <ul>
-	 *   <li><strong>Offline:</strong> {@code bufferSize = totalFrames},
-	 *       {@code frameSupplier = () -> 0}. Renders everything in one batch.</li>
-	 *   <li><strong>Real-time:</strong> {@code bufferSize = 1024},
-	 *       {@code frameSupplier} tracks playback position. Renders incrementally.</li>
-	 * </ul>
+	 * Single entry point for both offline ({@code bufferSize=totalFrames}, {@code frameSupplier=()->0})
+	 * and real-time ({@code bufferSize=1024}, dynamic supplier) paths.
 	 *
 	 * @param output        the audio output to write to
 	 * @param channels      the channel indices to render
@@ -1107,17 +1098,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		setup.add(() -> () -> patterns.setTuning(tuning));
 		setup.add(sections.setup());
 
-		// Consolidate render buffers so all PatternAudioBuffer outputs are
-		// delegates of a single PackedCollection.  The Loop scope's argument
-		// deduplication resolves delegates to their root, collapsing all
-		// render buffer arguments into one kernel argument.  This applies
-		// to both offline and real-time modes since both compile a Loop.
+		// Consolidate render buffers into one root so the compiled Loop collapses
+		// all PatternAudioBuffer arguments into a single kernel argument.
 		consolidateRenderBuffers(channels.size(), bufferSize);
 		if (bufferSize < getAvailableSamples()) {
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 		}
 
-		// Destroy previous cell graph if getCells() is called again
 		if (activeCells != null) {
 			activeCells.destroy();
 			activeCells = null;
@@ -1131,22 +1118,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 		cells.addSetup(() -> setup);
 		if (waveCellFrame == null) {
-			// Offline rendering processes every sample through the cell
-			// graph.  Calling tick.run() from Java for each of the
-			// ~176,400 samples incurs ProcessDetailsFactory overhead per
-			// invocation (argument marshalling, async evaluable creation,
-			// thread creation) that dominates runtime.  Wrapping all tick
-			// operations in a compiled Loop executes every iteration in a
-			// single native function call -- one ProcessDetailsFactory
-			// construction for the entire render instead of one per sample.
-			// The returned Runnable executes all iterations on its first
-			// call and is a no-op on subsequent calls.
-			//
-			// The Loop body is compiled at -O0 (NONE) because LLVM -O3
-			// optimization time is super-linear in argument count and
-			// prohibitively slow on aarch64 for the ~140 arguments in the
-			// cell graph.  -O0 compiles instantly; the per-iteration cost
-			// is low since effects are typically disabled for offline mode.
+			// Offline path: wrap all tick ops in a compiled Loop so one ProcessDetailsFactory
+			// serves ~176K samples instead of one per sample. Use -O0 (NONE) because LLVM
+			// -O3 is super-linear in arg count and prohibitively slow for ~140 kernel args.
 			cells.setTickPreAction(() ->
 					LlvmCommandProvider.setMathOptLevel(
 							LlvmCommandProvider.MathOptLevel.NONE));
@@ -1202,16 +1176,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				getPatternChannel(new ChannelInfo(idx[i], ChannelInfo.Voicing.MAIN, audioChannel),
 						bufferSize, frameSupplier, setup, waveCellFrame));
 
-		// Skip WET voicing cells when MixdownManager will not use them.
-		// When enableEfx is false, createEfx() is never called, so WET
-		// cells would tick every frame with their output discarded.
-		// Worse, MixdownManager.createCells still enters the wet-source
-		// branch (line 439) and creates efx/reverb CellList branches
-		// that are never consumed, adding cells and arguments to the
-		// compiled tick function.  Passing wet = null for both modes
-		// routes MixdownManager into its fast path (line 452) which
-		// skips all branching, dramatically reducing cell count and
-		// kernel argument count.
+		// Skip WET cells when enableEfx is false — unused cells add kernel arguments and
+		// MixdownManager creates unreachable efx branches. null routes to the fast path.
 		CellList wet;
 		if (!MixdownManager.enableEfx) {
 			wet = null;
@@ -1356,30 +1322,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/**
 	 * Creates a real-time runner for specific channels.
 	 *
-	 * <p>This runner separates pattern preparation from per-frame processing:</p>
-	 * <ul>
-	 *   <li><strong>Prepare phase</strong> - {@link PatternAudioBuffer#prepareBatch()}
-	 *       renders pattern audio into output buffers. Called <em>outside</em> the loop,
-	 *       once per buffer. This is Java code that cannot be compiled.</li>
-	 *   <li><strong>Tick phase</strong> - The per-frame loop applies effects, advances
-	 *       cursors, and writes to output. This <em>must</em> be a compilable
-	 *       {@link io.almostrealism.code.Computation} for real-time performance.</li>
-	 *   <li><strong>Advance phase</strong> - Increments the frame counter by bufferSize.</li>
-	 * </ul>
-	 *
-	 * <p><b>Genome independence:</b> The compiled kernel produced by this runner is
-	 * structurally independent of the genome parameters. All genome-derived values
-	 * are referenced via {@link PackedCollection} handles whose contents are updated
-	 * by {@link #assignGenome}. This means the runner can be built once and reused
-	 * across genome changes without recompilation &mdash; only the underlying
-	 * {@link PackedCollection} values change.</p>
+	 * <p>Three phases per tick: prepare (Java) renders pattern audio via
+	 * {@link PatternAudioBuffer#prepareBatch()}; tick (compiled) applies effects per frame;
+	 * advance increments the frame counter. The compiled kernel is structurally independent
+	 * of the genome — only the {@link PackedCollection} contents change on
+	 * {@link #assignGenome}, so the runner can be reused without recompilation.</p>
 	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or null for all
 	 * @param bufferSize frames per buffer
 	 * @return a TemporalCellular for real-time playback
-	 *
-	 * @see PatternAudioBuffer
 	 */
 	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,
@@ -1442,83 +1394,15 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/**
 	 * Pre-evaluates all note audio to warm the kernel compilation cache.
 	 *
-	 * <p>This method iterates through all pattern elements in the scene,
-	 * evaluates each note's audio producer, and discards the result. The
-	 * purpose is to trigger kernel compilation for all unique instrument
-	 * chains <em>before</em> the real-time loop starts, so that the
-	 * {@code FrequencyCache} (instruction set cache) is populated.</p>
-	 *
-	 * <p>Without warmup, the first buffer that encounters each unique note
-	 * type pays the full compilation cost (~270ms). With warmup, all
-	 * compilations happen upfront during initialization, and the real-time
-	 * loop sees only cache hits.</p>
-	 *
-	 * <p>Call this method after construction and genome assignment, but
-	 * before starting the real-time loop:</p>
-	 * <pre>{@code
-	 * AudioScene scene = new AudioScene<>(...);
-	 * scene.assignGenome(genome);
-	 * int warmed = scene.warmNoteCache();
-	 * TemporalCellular runner = scene.runnerRealTime(output, bufferSize);
-	 * }</pre>
+	 * <p>Call after construction and genome assignment, before starting the real-time loop,
+	 * to trigger kernel compilation for all unique instrument chains upfront.</p>
 	 *
 	 * @return the number of notes evaluated during warmup
+	 * @see PatternSystemManager#warmNoteCache(java.util.function.Function)
 	 */
 	public int warmNoteCache() {
 		patterns.setTuning(tuning);
-		patterns.init();
-
-		int notesEvaluated = 0;
-
-		for (PatternLayerManager plm : patterns.getPatterns()) {
-			boolean melodic = plm.isMelodic();
-			ChannelInfo channel = new ChannelInfo(plm.getChannel(),
-					ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
-			AudioSceneContext ctx = getContext(List.of(channel));
-			PackedCollection warmDest = new PackedCollection(4096);
-			ctx.setDestination(warmDest);
-			plm.updateDestination(ctx);
-
-			Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
-					plm.getAllElementsByChoice(0.0, plm.getDuration());
-
-			for (Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
-					elementsByChoice.entrySet()) {
-				NoteAudioChoice choice = entry.getKey();
-				List<PatternElement> elements = entry.getValue();
-
-				NoteAudioContext audioContext =
-						new NoteAudioContext(
-								ChannelInfo.Voicing.MAIN,
-								ChannelInfo.StereoChannel.LEFT,
-								choice.getValidPatternNotes(),
-								pos -> pos + 1.0);
-
-				for (PatternElement element : elements) {
-					List<RenderedNoteAudio> notes =
-							element.getNoteDestinations(melodic, 0.0, ctx, audioContext);
-
-					for (RenderedNoteAudio note : notes) {
-						if (note.getExpectedFrameCount() <= 0) continue;
-
-						Producer<PackedCollection> producer =
-								note.getProducer(note.getExpectedFrameCount());
-						if (producer != null) {
-							try {
-								PackedCollection audio = traverse(1, producer).get().evaluate();
-								if (audio != null) {
-									notesEvaluated++;
-								}
-							} catch (Exception e) {
-								// Skip notes that fail evaluation during warmup
-							}
-						}
-					}
-				}
-			}
-		}
-
-		return notesEvaluated;
+		return patterns.warmNoteCache(channel -> getContext(List.of(channel)));
 	}
 
 	/**
@@ -1558,7 +1442,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 						AudioSceneLoader.Settings.class), libraryProvider, progress);
 				return;
 			} catch (Exception e) {
-				System.err.println("AudioScene: " + e.getMessage());
+				warn(e.getMessage(), e);
 			}
 		}
 

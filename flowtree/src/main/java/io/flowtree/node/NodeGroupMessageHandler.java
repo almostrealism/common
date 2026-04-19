@@ -23,6 +23,7 @@ import io.flowtree.msg.Connection;
 import io.flowtree.msg.Message;
 import io.flowtree.msg.NodeProxy;
 import io.flowtree.Server;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 
@@ -59,7 +60,7 @@ import java.io.IOException;
  * @author  Michael Murray
  * @see NodeGroup
  */
-class NodeGroupMessageHandler {
+class NodeGroupMessageHandler implements ConsoleFeatures {
 
 	/**
 	 * The {@link NodeGroup} on whose behalf messages are dispatched.
@@ -97,11 +98,11 @@ class NodeGroupMessageHandler {
 		int remoteId = m.getSender();
 
 		if (type == Message.Job) {
-			System.out.println("NodeGroup: Received job. Data = " + m.getData());
+			log("NodeGroup: Received job. Data = " + m.getData());
 			Job j = group.getJobFactory().createJob(m.getData());
 			group.routeJobFromHandler(j);
 		} else if (type == Message.StringMessage) {
-			System.out.println("Message from " + p.toString() + ": " + m.getData());
+			log("Message from " + p.toString() + ": " + m.getData());
 		} else if (type == Message.ConnectionRequest) {
 			handleConnectionRequest(p, remoteId);
 		} else if (type == Message.ConnectionConfirmation) {
@@ -148,20 +149,20 @@ class NodeGroupMessageHandler {
 			Connection c;
 
 			if (n == null) {
-				System.out.println("NodeGroup: ConnectionRequest rejected -- no available node (no workers, no relay)");
+				warn("NodeGroup: ConnectionRequest rejected -- no available node (no workers, no relay)");
 				c = null;
 			} else if (n.getPeers().length >= n.getMaxPeers()) {
-				System.out.println("NodeGroup: ConnectionRequest rejected -- node " + n.getId() +
+				warn("NodeGroup: ConnectionRequest rejected -- node " + n.getId() +
 						" at peer capacity (" + n.getPeers().length + "/" + n.getMaxPeers() + ")");
 				c = null;
 			} else if (n.isConnected(p)) {
 				if (Message.verbose) {
-					System.out.println("NodeGroup: ConnectionRequest rejected -- node " + n.getId() +
+					warn("NodeGroup: ConnectionRequest rejected -- node " + n.getId() +
 							" already connected via proxy " + p);
 				}
 				c = null;
 			} else {
-				System.out.println("NodeGroup: Constructing connection...");
+				log("NodeGroup: Constructing connection...");
 				c = new Connection(n, p, remoteId);
 			}
 
@@ -171,14 +172,14 @@ class NodeGroupMessageHandler {
 				response.send(remoteId);
 			} else {
 				if (c != null) {
-					System.out.println("NodeGroup: ConnectionRequest rejected -- n.connect(c) returned false for node " + n.getId());
+					warn("NodeGroup: ConnectionRequest rejected -- n.connect(c) returned false for node " + n.getId());
 				}
 				Message response = new Message(-1, -1, p);
 				response.setString("false");
 				response.send(remoteId);
 			}
 		} catch (IOException ioe) {
-			System.out.println("NodeGroup: " + ioe);
+			warn(String.valueOf(ioe));
 		}
 	}
 
@@ -197,7 +198,7 @@ class NodeGroupMessageHandler {
 				response.setString("true");
 				response.send(remoteId);
 			} catch (IOException ioe) {
-				System.out.println("NodeGroup: " + ioe);
+				warn(String.valueOf(ioe));
 			}
 		}
 	}
@@ -230,10 +231,10 @@ class NodeGroupMessageHandler {
 					p.setActivityRating(Double.parseDouble(v));
 					h = true;
 				} else {
-					System.out.println("NodeGroup: Unknown status type '" + s[i] + "'");
+					warn("NodeGroup: Unknown status type '" + s[i] + "'");
 				}
 			} catch (NumberFormatException nfe) {
-				System.out.println("NodeGroup: Could not parse status item '" +
+				warn("NodeGroup: Could not parse status item '" +
 						s[i] + "' (" + nfe.getMessage() + ")");
 			}
 		}
@@ -277,15 +278,14 @@ class NodeGroupMessageHandler {
 			}
 
 			if (Message.verbose) {
-				System.out.println("NodeGroup: Reported " + (svs.length - j) +
+				log("NodeGroup: Reported " + (svs.length - j) +
 						" peers for status query (Excluded " + p + ").");
 			}
 
 			response.setString(b.toString());
 			response.send(remoteId);
 		} catch (IOException ioe) {
-			System.out.println("NodeGroup: Error sending server status (" +
-					ioe.getMessage() + ")");
+			warn("NodeGroup: Error sending server status (" + ioe.getMessage() + ")");
 		}
 	}
 
@@ -304,12 +304,11 @@ class NodeGroupMessageHandler {
 
 			Server s = OutputServer.getCurrentServer().getNodeServer();
 			String r = s.getResourceUri(m.getData());
-			System.out.println("NodeGroup: Sending resource uri (" + r + ")");
+			log("NodeGroup: Sending resource uri (" + r + ")");
 			response.setString(r);
 			response.send(remoteId);
 		} catch (IOException ioe) {
-			System.out.println("NodeGroup: Error sending resource uri (" +
-					ioe.getMessage() + ")");
+			warn("NodeGroup: Error sending resource uri (" + ioe.getMessage() + ")");
 		}
 	}
 }

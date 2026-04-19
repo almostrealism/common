@@ -51,14 +51,14 @@ public class SphereTest extends TestSuiteBase {
 		assertEquals(2.2928932188134525, distance);
 
 		Ray r = new Ray(f.get(0).get().evaluate(), 0);
-		System.out.println(r);
+		log(String.valueOf(r));
 
 		f = s.intersectAt(ray(0.0, 0.0, -2.0, 57.22891566265059, 72.32037025267255, 404.1157064026493));
 		distance = f.getDistance().get().evaluate();
-		System.out.println(distance);
+		log(String.valueOf(distance));
 
 		r = new Ray(f.get(0).get().evaluate(), 0);
-		System.out.println(r);
+		log(String.valueOf(r));
 	}
 
 	@Test(timeout = 10000)
@@ -78,8 +78,8 @@ public class SphereTest extends TestSuiteBase {
 		Evaluable<PackedCollection> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(result.each()).evaluate(singleRay);
 
-		System.out.println("Single ray discriminant test: " + result.valueAt(0, 0));
-		System.out.println("Expected: 1.0 (hit), Got: " + result.valueAt(0, 0));
+		log("Single ray discriminant test: " + result.valueAt(0, 0));
+		log("Expected: 1.0 (hit), Got: " + result.valueAt(0, 0));
 		Assert.assertEquals(1.0, result.valueAt(0, 0), 0.01);
 	}
 
@@ -103,33 +103,33 @@ public class SphereTest extends TestSuiteBase {
 
 		PackedCollection oDotdVals = new PackedCollection(shape(3, 1).traverse(1));
 		oDotd(ray).get().into(oDotdVals.each()).evaluate(rays);
-		System.out.println("oDotd values: " + oDotdVals.valueAt(0, 0) + ", " + oDotdVals.valueAt(1, 0) + ", " + oDotdVals.valueAt(2, 0));
+		log("oDotd values: " + oDotdVals.valueAt(0, 0) + ", " + oDotdVals.valueAt(1, 0) + ", " + oDotdVals.valueAt(2, 0));
 
 		PackedCollection dDotdVals = new PackedCollection(shape(3, 1).traverse(1));
 		dDotd(ray).get().into(dDotdVals.each()).evaluate(rays);
-		System.out.println("dDotd values: " + dDotdVals.valueAt(0, 0) + ", " + dDotdVals.valueAt(1, 0) + ", " + dDotdVals.valueAt(2, 0));
+		log("dDotd values: " + dDotdVals.valueAt(0, 0) + ", " + dDotdVals.valueAt(1, 0) + ", " + dDotdVals.valueAt(2, 0));
 
 		PackedCollection oDotoVals = new PackedCollection(shape(3, 1).traverse(1));
 		oDoto(ray).get().into(oDotoVals.each()).evaluate(rays);
-		System.out.println("oDoto values: " + oDotoVals.valueAt(0, 0) + ", " + oDotoVals.valueAt(1, 0) + ", " + oDotoVals.valueAt(2, 0));
+		log("oDoto values: " + oDotoVals.valueAt(0, 0) + ", " + oDotoVals.valueAt(1, 0) + ", " + oDotoVals.valueAt(2, 0));
 
 		// First, check the raw discriminant values
 		PackedCollection discriminantValues = new PackedCollection(shape(3, 1).traverse(1));
 		d.get().into(discriminantValues.each()).evaluate(rays);
-		System.out.println("Raw discriminant values:");
-		System.out.println("  Ray 0: " + discriminantValues.valueAt(0, 0) + " (should be > 0 for hit)");
-		System.out.println("  Ray 1: " + discriminantValues.valueAt(1, 0) + " (should be > 0 for hit)");
-		System.out.println("  Ray 2: " + discriminantValues.valueAt(2, 0) + " (should be < 0 for miss)");
+		log("Raw discriminant values:");
+		log("  Ray 0: " + discriminantValues.valueAt(0, 0) + " (should be > 0 for hit)");
+		log("  Ray 1: " + discriminantValues.valueAt(1, 0) + " (should be > 0 for hit)");
+		log("  Ray 2: " + discriminantValues.valueAt(2, 0) + " (should be < 0 for miss)");
 
 		// Now test the conditional
 		PackedCollection result = new PackedCollection(shape(3, 1).traverse(1));
 		Evaluable<PackedCollection> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(result.each()).evaluate(rays);
 
-		System.out.println("Small batch discriminant test:");
-		System.out.println("  Ray 0 (hit): " + result.valueAt(0, 0) + " (expected 1.0)");
-		System.out.println("  Ray 1 (hit): " + result.valueAt(1, 0) + " (expected 1.0)");
-		System.out.println("  Ray 2 (miss): " + result.valueAt(2, 0) + " (expected -1.0)");
+		log("Small batch discriminant test:");
+		log("  Ray 0 (hit): " + result.valueAt(0, 0) + " (expected 1.0)");
+		log("  Ray 1 (hit): " + result.valueAt(1, 0) + " (expected 1.0)");
+		log("  Ray 2 (miss): " + result.valueAt(2, 0) + " (expected -1.0)");
 
 		Assert.assertEquals(1.0, result.valueAt(0, 0), 0.01);
 		Assert.assertEquals(1.0, result.valueAt(1, 0), 0.01);
@@ -157,10 +157,10 @@ public class SphereTest extends TestSuiteBase {
 		PackedCollection distances = new PackedCollection(shape(3, 1).traverse(1));
 		f.getDistance().get().into(distances.each()).evaluate(rays);
 
-		System.out.println("Small batch intersection test:");
-		System.out.println("  Ray 0 (hit): " + distances.valueAt(0, 0) + " (expected ~2.5)");
-		System.out.println("  Ray 1 (hit): " + distances.valueAt(1, 0) + " (expected ~2.5)");
-		System.out.println("  Ray 2 (miss): " + distances.valueAt(2, 0) + " (expected -1.0)");
+		log("Small batch intersection test:");
+		log("  Ray 0 (hit): " + distances.valueAt(0, 0) + " (expected ~2.5)");
+		log("  Ray 1 (hit): " + distances.valueAt(1, 0) + " (expected ~2.5)");
+		log("  Ray 2 (miss): " + distances.valueAt(2, 0) + " (expected -1.0)");
 
 		// Ray 0 and 1 should have positive distances
 		Assert.assertTrue("Ray 0 should hit", distances.valueAt(0, 0) > 0.0);
@@ -187,10 +187,10 @@ public class SphereTest extends TestSuiteBase {
 		PackedCollection sqrtVals = new PackedCollection(shape(3, 1).traverse(1));
 		dSqrt.get().into(sqrtVals.each()).evaluate(rays);
 
-		System.out.println("Discriminant sqrt test:");
-		System.out.println("  Ray 0: " + sqrtVals.valueAt(0, 0) + " (expected ~1.0)");
-		System.out.println("  Ray 1: " + sqrtVals.valueAt(1, 0) + " (expected ~0.99)");
-		System.out.println("  Ray 2: " + sqrtVals.valueAt(2, 0) + " (expected NaN)");
+		log("Discriminant sqrt test:");
+		log("  Ray 0: " + sqrtVals.valueAt(0, 0) + " (expected ~1.0)");
+		log("  Ray 1: " + sqrtVals.valueAt(1, 0) + " (expected ~0.99)");
+		log("  Ray 2: " + sqrtVals.valueAt(2, 0) + " (expected NaN)");
 
 		Assert.assertEquals(1.0, sqrtVals.valueAt(0, 0), 0.01);
 		Assert.assertTrue("Ray 1 sqrt should be close to 0.99", sqrtVals.valueAt(1, 0) > 0.95 && sqrtVals.valueAt(1, 0) < 1.0);
@@ -227,10 +227,10 @@ public class SphereTest extends TestSuiteBase {
 		PackedCollection dDotDInvVals = new PackedCollection(shape(3, 1).traverse(1));
 		dDotDInv.get().into(dDotDInvVals.each()).evaluate(rays);
 
-		System.out.println("t() calculation components:");
-		System.out.println("  sqrt(discriminant): " + dSqrtVals.valueAt(0, 0) + ", " + dSqrtVals.valueAt(1, 0) + ", " + dSqrtVals.valueAt(2, 0));
-		System.out.println("  -oDotd: " + minusODotDVals.valueAt(0, 0) + ", " + minusODotDVals.valueAt(1, 0) + ", " + minusODotDVals.valueAt(2, 0));
-		System.out.println("  1/dDotd: " + dDotDInvVals.valueAt(0, 0) + ", " + dDotDInvVals.valueAt(1, 0) + ", " + dDotDInvVals.valueAt(2, 0));
+		log("t() calculation components:");
+		log("  sqrt(discriminant): " + dSqrtVals.valueAt(0, 0) + ", " + dSqrtVals.valueAt(1, 0) + ", " + dSqrtVals.valueAt(2, 0));
+		log("  -oDotd: " + minusODotDVals.valueAt(0, 0) + ", " + minusODotDVals.valueAt(1, 0) + ", " + minusODotDVals.valueAt(2, 0));
+		log("  1/dDotd: " + dDotDInvVals.valueAt(0, 0) + ", " + dDotDInvVals.valueAt(1, 0) + ", " + dDotDInvVals.valueAt(2, 0));
 
 		// Expected values for ray 0:
 		// sqrt(discriminant) = 1.0
@@ -261,13 +261,13 @@ public class SphereTest extends TestSuiteBase {
 		PackedCollection distances = new PackedCollection(shape(batchSize, 1).traverse(1));
 		f.getDistance().get().into(distances.each()).evaluate(rays);
 
-		System.out.println("Intersection 1D batch (size=" + batchSize + "):");
+		log("Intersection 1D batch (size=" + batchSize + "):");
 		for (int i = 0; i < Math.min(10, batchSize); i++) {
-			System.out.println("  Ray " + i + ": distance=" + distances.valueAt(i, 0));
+			log("  Ray " + i + ": distance=" + distances.valueAt(i, 0));
 		}
 		if (batchSize > 10) {
-			System.out.println("  ...");
-			System.out.println("  Ray " + (batchSize - 1) + ": distance=" + distances.valueAt(batchSize - 1, 0));
+			log("  ...");
+			log("  Ray " + (batchSize - 1) + ": distance=" + distances.valueAt(batchSize - 1, 0));
 		}
 
 		// All rays should hit (distance > 0)
@@ -275,7 +275,7 @@ public class SphereTest extends TestSuiteBase {
 		for (int i = 0; i < batchSize; i++) {
 			if (distances.valueAt(i, 0) > 0.0) hits++;
 		}
-		System.out.println("  Hits: " + hits + "/" + batchSize);
+		log("  Hits: " + hits + "/" + batchSize);
 
 		// At least the center rays should hit
 		Assert.assertTrue("Center rays should hit", distances.valueAt(batchSize / 2, 0) > 0.0);
@@ -315,11 +315,11 @@ public class SphereTest extends TestSuiteBase {
 		PackedCollection distances = new PackedCollection(shape(batchSize, 1).traverse(1));
 		result.get().into(distances.each()).evaluate(pairs);
 
-		System.out.println("Closest batch test (size=" + batchSize + "):");
-		System.out.println("  Element 0 (both+, l<r): " + distances.valueAt(0, 0) + " (expected 2.0)");
-		System.out.println("  Element 64 (both+, l>r): " + distances.valueAt(64, 0) + " (expected 2.0)");
-		System.out.println("  Element 128 (l+ only): " + distances.valueAt(128, 0) + " (expected 3.0)");
-		System.out.println("  Element 192 (r+ only): " + distances.valueAt(192, 0) + " (expected 4.0)");
+		log("Closest batch test (size=" + batchSize + "):");
+		log("  Element 0 (both+, l<r): " + distances.valueAt(0, 0) + " (expected 2.0)");
+		log("  Element 64 (both+, l>r): " + distances.valueAt(64, 0) + " (expected 2.0)");
+		log("  Element 128 (l+ only): " + distances.valueAt(128, 0) + " (expected 3.0)");
+		log("  Element 192 (r+ only): " + distances.valueAt(192, 0) + " (expected 4.0)");
 
 		// Verify representative samples
 		Assert.assertEquals("Both positive, left closer", 2.0, distances.valueAt(0, 0), 0.01);
@@ -341,7 +341,7 @@ public class SphereTest extends TestSuiteBase {
 		for (int i = 192; i < 256; i++) {
 			if (Math.abs(distances.valueAt(i, 0) - 4.0) < 0.01) correct++;
 		}
-		System.out.println("  Correct: " + correct + "/" + batchSize);
+		log("  Correct: " + correct + "/" + batchSize);
 
 		Assert.assertTrue("Should handle at least 200 elements correctly", correct >= 200);
 	}
@@ -366,10 +366,10 @@ public class SphereTest extends TestSuiteBase {
 		PackedCollection pairResult = new PackedCollection(shape(3, 2).traverse(1));
 		testPair.get().into(pairResult.each()).evaluate(rays);
 
-		System.out.println("Pair creation test:");
-		System.out.println("  Ray 0: left=" + pairResult.valueAt(0, 0) + ", right=" + pairResult.valueAt(0, 1) + " (expected 3.0, -3.0)");
-		System.out.println("  Ray 1: left=" + pairResult.valueAt(1, 0) + ", right=" + pairResult.valueAt(1, 1) + " (expected 3.0, -3.0)");
-		System.out.println("  Ray 2: left=" + pairResult.valueAt(2, 0) + ", right=" + pairResult.valueAt(2, 1) + " (expected 15.0, -15.0)");
+		log("Pair creation test:");
+		log("  Ray 0: left=" + pairResult.valueAt(0, 0) + ", right=" + pairResult.valueAt(0, 1) + " (expected 3.0, -3.0)");
+		log("  Ray 1: left=" + pairResult.valueAt(1, 0) + ", right=" + pairResult.valueAt(1, 1) + " (expected 3.0, -3.0)");
+		log("  Ray 2: left=" + pairResult.valueAt(2, 0) + ", right=" + pairResult.valueAt(2, 1) + " (expected 15.0, -15.0)");
 
 		Assert.assertEquals(3.0, pairResult.valueAt(0, 0), 0.01);
 		Assert.assertEquals(-3.0, pairResult.valueAt(0, 1), 0.01);
@@ -410,7 +410,7 @@ public class SphereTest extends TestSuiteBase {
 			}
 		}
 
-		System.out.println(hits + " hits (expected 305)");
+		log(String.valueOf(hits + " hits (expected 305)"));
 		Assert.assertEquals(305, hits);
 	}
 
@@ -430,8 +430,8 @@ public class SphereTest extends TestSuiteBase {
 		ev.into(destination.each()).evaluate(singleRay);
 
 		double distance = destination.valueAt(0, 0);
-		System.out.println("Single ray intersection test: " + distance);
-		System.out.println("Expected: ~2.0 (3 - radius of 1), Got: " + distance);
+		log("Single ray intersection test: " + distance);
+		log("Expected: ~2.0 (3 - radius of 1), Got: " + distance);
 		Assert.assertTrue("Distance should be positive", distance > 0.0);
 		Assert.assertEquals(2.0, distance, 0.1);
 	}
@@ -475,12 +475,11 @@ public class SphereTest extends TestSuiteBase {
 			}
 		}
 
-		System.out.println(hits + " hits out of " + (w * h) + " rays");
-		System.out.println(misses + " misses");
-		System.out.println("First hit distance: " + firstHit);
-		System.out.println("First miss distance: " + firstMiss);
-		System.out.println("Sample distances: " + destination.valueAt(h / 2, w / 2, 0) + ", " +
-				destination.valueAt(0, 0, 0) + ", " + destination.valueAt(h - 1, w - 1, 0));
+		log(String.valueOf(hits + " hits out of " + (w * h) + " rays"));
+		log(String.valueOf(misses + " misses"));
+		log("First hit distance: " + firstHit);
+		log("First miss distance: " + firstMiss);
+		log("Sample distances: " + destination.valueAt(h / 2, w / 2, 0) + ", " + destination.valueAt(0, 0, 0) + ", " + destination.valueAt(h - 1, w - 1, 0));
 
 		// Expected hits for a 100x100 grid with radius 1.0 sphere is 305
 		// For smaller grids, calculate expected proportionally
@@ -488,7 +487,7 @@ public class SphereTest extends TestSuiteBase {
 		if (expectedHits > 0) {
 			Assert.assertEquals(expectedHits, hits);
 		} else {
-			System.out.println("Skipping assertion for " + w + "x" + h + " grid (not calibrated)");
+			log("Skipping assertion for " + w + "x" + h + " grid (not calibrated)");
 		}
 	}
 
@@ -521,7 +520,7 @@ public class SphereTest extends TestSuiteBase {
 			hits += destination.toDouble(destination.getShape().index(i, 0)) > 0.0 ? 1 : 0;
 		}
 
-		System.out.println(hits + " hits");
+		log(String.valueOf(hits + " hits"));
 		// Assert.assertEquals(4900, hits);
 	}
 }

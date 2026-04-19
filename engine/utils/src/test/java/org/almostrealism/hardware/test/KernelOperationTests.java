@@ -131,7 +131,7 @@ public class KernelOperationTests extends TestSuiteBase implements KernelAsserti
 
 		Evaluable<PackedCollection> ev = c(p(params)).traverseEach().map(v -> v.multiply(traverseEach(p(timeline)))).get();
 		ev.into(destination.traverseEach()).evaluate();
-		System.out.println(Arrays.toString(destination.toArray(20, 10)));
+		log(Arrays.toString(destination.toArray(20, 10)));
 	}
 
 	@Test(timeout = 30000)
@@ -156,7 +156,7 @@ public class KernelOperationTests extends TestSuiteBase implements KernelAsserti
 				.repeat(n)
 				.multiply(cp(filter))
 				.sum();
-		System.out.println(conv.getShape());
+		log(String.valueOf(conv.getShape()));
 
 		OperationList op = new OperationList();
 		op.add(a(1, traverse(3, p(output)), conv));

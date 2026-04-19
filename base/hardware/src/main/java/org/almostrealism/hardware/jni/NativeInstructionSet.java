@@ -285,7 +285,7 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 		long id = NativeComputeContext.totalInvocations++;
 
 		if (NativeComputeContext.enableVerbose && (id + 1) % 100000 == 0) {
-			System.out.println("NativeInstructionSet: " + id);
+			log("NativeInstructionSet: " + id);
 		}
 
 		if (idx > Integer.MAX_VALUE) {
