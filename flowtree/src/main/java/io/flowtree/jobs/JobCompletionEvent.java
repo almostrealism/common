@@ -16,6 +16,10 @@
 
 package io.flowtree.jobs;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -285,6 +289,55 @@ public class JobCompletionEvent {
     public JobCompletionEvent withPullRequestUrl(String url) {
         this.pullRequestUrl = url;
         return this;
+    }
+
+    /** Shared Jackson mapper for {@link #toJson()}. */
+    private static final ObjectMapper EVENT_MAPPER = new ObjectMapper();
+
+    /**
+     * Serializes this event to a JSON string for transmission to the controller.
+     *
+     * @return JSON string representation of this event
+     */
+    public String toJson() {
+        ObjectNode root = EVENT_MAPPER.createObjectNode();
+        root.put("jobId", jobId);
+        root.put("status", status.name());
+        root.put("description", description);
+        root.put("targetBranch", targetBranch);
+        root.put("commitHash", commitHash);
+        root.put("pushed", pushed);
+
+        ArrayNode stagedArray = root.putArray("stagedFiles");
+        for (String f : stagedFiles) stagedArray.add(f);
+
+        ArrayNode skippedArray = root.putArray("skippedFiles");
+        for (String f : skippedFiles) skippedArray.add(f);
+
+        root.put("pullRequestUrl", pullRequestUrl);
+        root.put("errorMessage", errorMessage);
+
+        root.put("prompt", getPrompt());
+        root.put("sessionId", getSessionId());
+        root.put("exitCode", getExitCode());
+
+        root.put("durationMs", getDurationMs());
+        root.put("durationApiMs", getDurationApiMs());
+        root.put("costUsd", getCostUsd());
+        root.put("numTurns", getNumTurns());
+
+        root.put("subtype", getSubtype());
+        root.put("sessionIsError", isSessionError());
+        root.put("permissionDenials", getPermissionDenials());
+
+        ArrayNode deniedArray = root.putArray("deniedToolNames");
+        for (String t : getDeniedToolNames()) deniedArray.add(t);
+
+        try {
+            return EVENT_MAPPER.writeValueAsString(root);
+        } catch (Exception e) {
+            return "{}";
+        }
     }
 
     /**

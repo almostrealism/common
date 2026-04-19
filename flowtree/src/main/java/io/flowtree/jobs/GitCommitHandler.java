@@ -423,6 +423,70 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
+     * Handles git operations (stage, commit, push) for all dependent repos.
+     * Uses the same commit message as the primary repo. No-op when {@code depPaths} is empty.
+     *
+     * @param depPaths resolved filesystem paths of dependent repositories
+     * @throws IOException if a git operation fails
+     * @throws InterruptedException if a command is interrupted
+     */
+    void handleDependentRepos(List<String> depPaths) throws IOException, InterruptedException {
+        for (String depPath : depPaths) {
+            GitOperations gitOps = new GitOperations(depPath, job.getTaskId());
+            String name = job.getGitUserName();
+            String email = job.getGitUserEmail();
+            if (name != null && !name.isEmpty()) gitOps.setGitUserName(name);
+            if (email != null && !email.isEmpty()) gitOps.setGitUserEmail(email);
+
+            String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
+            List<String> changedFiles = new ArrayList<>();
+            for (String line : statusOutput.split("\n")) {
+                if (line.length() > 3) {
+                    String file = line.substring(3).trim();
+                    if (file.contains(" -> ")) file = file.split(" -> ")[1];
+                    if (!file.isEmpty()) changedFiles.add(file);
+                }
+            }
+            if (changedFiles.isEmpty()) {
+                log("No changes in dependent repo: " + depPath);
+                continue;
+            }
+            log("Committing " + changedFiles.size() + " changes in dependent repo: " + depPath);
+
+            boolean anyStagedInDep = false;
+            for (String file : changedFiles) {
+                File f = new File(depPath, file);
+                if (f.exists() && f.length() > job.getMaxFileSizeBytes()) {
+                    log("SKIP (size) in dependent repo: " + file);
+                    continue;
+                }
+                gitOps.execute("add", file);
+                anyStagedInDep = true;
+            }
+            if (!anyStagedInDep) {
+                log("No files staged in dependent repo (all skipped): " + depPath);
+                continue;
+            }
+
+            int commitExitCode = gitOps.execute("commit", "-m", job.getCommitMessage());
+            if (commitExitCode != 0) {
+                log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
+                continue;
+            }
+
+            if (job.isPushToOrigin() && !job.isDryRun()) {
+                String refspec = job.getTargetBranch() + ":" + job.getTargetBranch();
+                int pushExitCode = gitOps.execute("push", "-u", "origin", refspec);
+                if (pushExitCode == 0) {
+                    log("Pushed dependent repo: " + depPath);
+                } else {
+                    throw new IOException("Git push failed for dependent repo: " + depPath);
+                }
+            }
+        }
+    }
+
+    /**
      * Formats a log message with the {@code "GitCommitHandler"} prefix and,
      * when available, the task ID from the associated job.
      *
