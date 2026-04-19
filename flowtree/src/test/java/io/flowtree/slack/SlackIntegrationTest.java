@@ -1519,8 +1519,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
                       "        token: \"ghp_one\"\n" +
                       "  - workspaceId: \"T222\"\n" +
                       "    name: \"workspace-two\"\n" +
-                      "    botToken: \"xoxb-two\"\n" +
-                      "    appToken: \"xapp-two\"\n" +
+                      "    tokensFile: \"/config/slack-tokens.json\"\n" +
                       "workstreams: []\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
@@ -1536,15 +1535,19 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         WorkstreamConfig.SlackWorkspaceEntry ws2 = config.getSlackWorkspaces().get(1);
         assertEquals("T222", ws2.getWorkspaceId());
-        assertEquals("xoxb-two", ws2.getBotToken());
+        assertEquals("/config/slack-tokens.json", ws2.getTokensFile());
     }
 
     @Test(timeout = 10000)
     public void testBackwardCompatNoSlackWorkspaces() throws IOException {
-        String yaml = "workstreams:\n" +
+        String yaml = "githubOrgs:\n" +
+                      "  my-org:\n" +
+                      "    token: \"ghp_token\"\n" +
+                      "workstreams:\n" +
                       "  - channelId: \"C0123456789\"\n" +
                       "    channelName: \"#project-agent\"\n" +
-                      "    defaultBranch: \"feature/work\"\n";
+                      "    defaultBranch: \"feature/work\"\n" +
+                      "    githubOrg: \"my-org\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
 
@@ -1552,9 +1555,13 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertNotNull(config.getSlackWorkspaces());
         assertEquals(0, config.getSlackWorkspaces().size());
 
-        // Regular workstreams still parse correctly
+        // Top-level githubOrgs still accessible in single-workspace mode
+        assertNotNull(config.getGithubOrgs().get("my-org"));
+
+        // Regular workstreams still parse correctly; no slackWorkspaceId assigned
         assertEquals(1, config.getWorkstreams().size());
         assertEquals("C0123456789", config.getWorkstreams().get(0).getChannelId());
+        assertNull(config.getWorkstreams().get(0).getSlackWorkspaceId());
     }
 
     @Test(timeout = 10000)
