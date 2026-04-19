@@ -1054,7 +1054,7 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 											Producer<PackedCollection> collection,
 											Producer<PackedCollection> index) {
 		DefaultTraversableExpressionComputation exp = new DefaultTraversableExpressionComputation("valueAtIndex", shape,
-				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
+				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx).toInt())),
 				collection, index);
 		if (shape.getTotalSize() == 1 && Countable.isFixedCount(index)) {
 			exp.setShortCircuit(args -> {
