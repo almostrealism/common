@@ -71,6 +71,80 @@ public class WorkstreamConfig {
     private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
     /** Ordered list of workstream configuration entries. */
     private List<WorkstreamEntry> workstreams = new ArrayList<>();
+    /** Per-workspace Slack configuration entries; empty list uses legacy single-token mode. */
+    private List<SlackWorkspaceEntry> slackWorkspaces = new ArrayList<>();
+
+    /**
+     * Configuration entry for a Slack workspace connection.
+     *
+     * <p>Each entry defines the bot/app token pair for one Slack team. Workstreams
+     * that reference this workspace by {@code slackWorkspaceId} are served by its
+     * connection. If the list is empty, the controller falls back to the legacy
+     * single-token resolution path via {@link SlackTokens#resolve(java.io.File)}.</p>
+     *
+     * <p>Tokens may be supplied inline ({@code botToken}/{@code appToken} fields) or
+     * via a JSON file ({@code tokensFile}). When {@code tokensFile} is set it takes
+     * priority over the inline fields.</p>
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class SlackWorkspaceEntry {
+        /** Slack team ID (T...) uniquely identifying this workspace. */
+        private String workspaceId;
+        /** Human-readable label for this workspace (used in logs and diagnostics). */
+        private String name;
+        /** Path to a JSON file with {@code botToken} and {@code appToken}. */
+        private String tokensFile;
+        /** Inline bot token (xoxb-...); used when {@code tokensFile} is absent. */
+        private String botToken;
+        /** Inline app token (xapp-...); used when {@code tokensFile} is absent. */
+        private String appToken;
+        /** Default Slack channel ID for fallback message delivery in this workspace. */
+        private String defaultChannel;
+        /** Slack user ID auto-invited to newly created channels in this workspace. */
+        private String channelOwnerUserId;
+        /** Per-organization GitHub tokens scoped to this workspace. */
+        private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
+
+        /** Returns the Slack team ID (T...). */
+        public String getWorkspaceId() { return workspaceId; }
+        /** Sets the Slack team ID. */
+        public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
+
+        /** Returns the human-readable workspace label. */
+        public String getName() { return name; }
+        /** Sets the human-readable workspace label. */
+        public void setName(String name) { this.name = name; }
+
+        /** Returns the path to the JSON tokens file, or {@code null} for inline tokens. */
+        public String getTokensFile() { return tokensFile; }
+        /** Sets the path to the JSON tokens file. */
+        public void setTokensFile(String tokensFile) { this.tokensFile = tokensFile; }
+
+        /** Returns the inline bot token (xoxb-...). */
+        public String getBotToken() { return botToken; }
+        /** Sets the inline bot token. */
+        public void setBotToken(String botToken) { this.botToken = botToken; }
+
+        /** Returns the inline app token (xapp-...). */
+        public String getAppToken() { return appToken; }
+        /** Sets the inline app token. */
+        public void setAppToken(String appToken) { this.appToken = appToken; }
+
+        /** Returns the default fallback channel ID for this workspace. */
+        public String getDefaultChannel() { return defaultChannel; }
+        /** Sets the default fallback channel ID. */
+        public void setDefaultChannel(String defaultChannel) { this.defaultChannel = defaultChannel; }
+
+        /** Returns the Slack user ID auto-invited to new channels in this workspace. */
+        public String getChannelOwnerUserId() { return channelOwnerUserId; }
+        /** Sets the Slack user ID for auto-invite on channel creation. */
+        public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
+
+        /** Returns the per-organization GitHub token map for this workspace. */
+        public Map<String, GitHubOrgEntry> getGithubOrgs() { return githubOrgs; }
+        /** Sets the per-organization GitHub token map. */
+        public void setGithubOrgs(Map<String, GitHubOrgEntry> githubOrgs) { this.githubOrgs = githubOrgs; }
+    }
 
     /**
      * Configuration entry for a single workstream.
@@ -115,6 +189,8 @@ public class WorkstreamConfig {
         private List<String> dependentRepos;
         /** Node labels that jobs submitted to this workstream must match by default. */
         private Map<String, String> requiredLabels;
+        /** The Slack workspace ID (team ID) this workstream is bound to. */
+        private String slackWorkspaceId;
 
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
@@ -220,6 +296,15 @@ public class WorkstreamConfig {
         public void setRequiredLabels(Map<String, String> requiredLabels) { this.requiredLabels = requiredLabels; }
 
         /**
+         * Returns the Slack workspace ID (team ID, e.g. "T0123456789") that this
+         * workstream is assigned to.  When absent, the workstream is assigned to the
+         * first (or only) workspace connection in the {@code slackWorkspaces} list.
+         */
+        public String getSlackWorkspaceId() { return slackWorkspaceId; }
+        /** Sets the Slack workspace ID for this workstream. */
+        public void setSlackWorkspaceId(String slackWorkspaceId) { this.slackWorkspaceId = slackWorkspaceId; }
+
+        /**
          * Converts this entry to a {@link Workstream} instance.
          *
          * <p>If a {@code workstreamId} is present, it is used as the persistent
@@ -250,6 +335,7 @@ public class WorkstreamConfig {
             ws.setGithubOrg(githubOrg);
             ws.setDependentRepos(dependentRepos);
             ws.setRequiredLabels(requiredLabels);
+            ws.setSlackWorkspaceId(slackWorkspaceId);
             return ws;
         }
     }
@@ -428,10 +514,56 @@ public class WorkstreamConfig {
     public Map<String, GitHubOrgEntry> getGithubOrgs() { return githubOrgs; }
     public void setGithubOrgs(Map<String, GitHubOrgEntry> githubOrgs) { this.githubOrgs = githubOrgs; }
 
+    /**
+     * Returns a merged map of GitHub org name to token, combining the global
+     * {@code githubOrgs} with per-workspace {@code githubOrgs} overrides. When
+     * the same org name appears in both, the per-workspace entry takes precedence
+     * (last write wins across workspaces). Only entries with non-null, non-empty
+     * tokens are included.
+     *
+     * @return merged org-name → token map, in insertion order
+     */
+    public Map<String, String> mergedGithubOrgTokens() {
+        Map<String, String> orgTokens = new LinkedHashMap<>();
+        if (githubOrgs != null) {
+            for (Map.Entry<String, GitHubOrgEntry> entry : githubOrgs.entrySet()) {
+                String token = entry.getValue().getToken();
+                if (token != null && !token.isEmpty()) {
+                    orgTokens.put(entry.getKey(), token);
+                }
+            }
+        }
+        if (slackWorkspaces != null) {
+            for (SlackWorkspaceEntry wsEntry : slackWorkspaces) {
+                if (wsEntry.getGithubOrgs() == null) continue;
+                for (Map.Entry<String, GitHubOrgEntry> entry : wsEntry.getGithubOrgs().entrySet()) {
+                    String token = entry.getValue().getToken();
+                    if (token != null && !token.isEmpty()) {
+                        orgTokens.put(entry.getKey(), token);
+                    }
+                }
+            }
+        }
+        return orgTokens;
+    }
+
     /** Returns the list of workstream configuration entries. */
     public List<WorkstreamEntry> getWorkstreams() { return workstreams; }
     /** Sets the list of workstream configuration entries. */
     public void setWorkstreams(List<WorkstreamEntry> workstreams) { this.workstreams = workstreams; }
+
+    /**
+     * Returns the list of Slack workspace connection entries.
+     *
+     * <p>When this list is non-empty the controller creates one Bolt {@code App} and
+     * {@code SocketModeApp} per entry. When empty the controller falls back to the
+     * legacy single-token resolution path.</p>
+     */
+    public List<SlackWorkspaceEntry> getSlackWorkspaces() { return slackWorkspaces; }
+    /** Sets the list of Slack workspace connection entries. */
+    public void setSlackWorkspaces(List<SlackWorkspaceEntry> slackWorkspaces) {
+        this.slackWorkspaces = slackWorkspaces != null ? slackWorkspaces : new ArrayList<>();
+    }
 
     /**
      * Loads configuration from a YAML file.
@@ -551,6 +683,7 @@ public class WorkstreamConfig {
         entry.setGithubOrg(ws.getGithubOrg());
         entry.setDependentRepos(ws.getDependentRepos());
         entry.setRequiredLabels(ws.getRequiredLabels());
+        entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
         workstreams.add(entry);
     }
 
@@ -585,6 +718,7 @@ public class WorkstreamConfig {
                     entry.setGithubOrg(ws.getGithubOrg());
                     entry.setDependentRepos(ws.getDependentRepos());
                     entry.setRequiredLabels(ws.getRequiredLabels());
+                    entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
                     found = true;
                     break;
                 }
