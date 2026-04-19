@@ -674,10 +674,11 @@ public class ClaudeCodeJob extends GitManagedJob {
      * tampering-detection path in {@link GitManagedJob} handles that case.</p>
      */
     private void runEnforcementRules() {
+        List<EnforcementRule> rules = buildActiveRules();
         boolean anyRuleCorrectionRan;
         do {
             anyRuleCorrectionRan = false;
-            for (EnforcementRule rule : buildActiveRules()) {
+            for (EnforcementRule rule : rules) {
                 if (!rule.isViolated(this)) {
                     log("Enforcement rule '" + rule.getName() + "': no violation");
                     continue;
@@ -1249,7 +1250,10 @@ public class ClaudeCodeJob extends GitManagedJob {
             String diff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             p.waitFor();
             extractMethodNamesFromDiff(diff, seen);
-        } catch (IOException | InterruptedException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn("Deduplication scan: failed to diff tracked Java files: " + e.getMessage());
+        } catch (IOException e) {
             warn("Deduplication scan: failed to diff tracked Java files: " + e.getMessage());
         }
 
@@ -1270,7 +1274,10 @@ public class ClaudeCodeJob extends GitManagedJob {
                     extractMethodNamesFromFile(rel, workDir, seen);
                 }
             }
-        } catch (IOException | InterruptedException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn("Deduplication scan: failed to list untracked Java files: " + e.getMessage());
+        } catch (IOException e) {
             warn("Deduplication scan: failed to list untracked Java files: " + e.getMessage());
         }
 
@@ -1307,7 +1314,10 @@ public class ClaudeCodeJob extends GitManagedJob {
                 String trimmed = path.trim();
                 if (!isExcludedPath(trimmed)) seen.add(trimmed);
             }
-        } catch (IOException | InterruptedException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn("Organizational placement scan: failed to diff tracked files: " + e.getMessage());
+        } catch (IOException e) {
             warn("Organizational placement scan: failed to diff tracked files: " + e.getMessage());
         }
 
@@ -1326,7 +1336,10 @@ public class ClaudeCodeJob extends GitManagedJob {
                 String trimmed = path.trim();
                 if (!isExcludedPath(trimmed)) seen.add(trimmed);
             }
-        } catch (IOException | InterruptedException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn("Organizational placement scan: failed to list untracked files: " + e.getMessage());
+        } catch (IOException e) {
             warn("Organizational placement scan: failed to list untracked files: " + e.getMessage());
         }
 
@@ -1345,7 +1358,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                 || path.startsWith("claude-output/")
                 || path.startsWith(".claude/")
                 || path.startsWith("target/")
-                || path.equals("commit.txt");
+                || path.equals("commit.txt")
+                || path.equals(".flowtree.lock")
+                || path.startsWith(".flowtree-locks/");
     }
 
     /**

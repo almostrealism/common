@@ -21,7 +21,6 @@ import io.flowtree.job.Job;
 import io.flowtree.job.JobFactory;
 import io.flowtree.node.Node;
 import io.flowtree.node.NodeGroup;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -73,7 +72,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @see NodeGroup
  * @see <a href="../docs/node-relay.md">Node Relay and Job Routing</a>
  */
-public class NodeRelaySimulationTest extends TestSuiteBase {
+public class NodeRelaySimulationTest extends ServerTestBase {
 
     /**
      * JVM-global latch registry shared across all {@link Server} instances in the
