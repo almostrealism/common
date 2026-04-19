@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.flowtree.job.Job;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.HostFingerprint;
@@ -98,6 +100,9 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /** File patterns that are always excluded from commits. */
     private static final Set<String> DEFAULT_EXCLUDED_PATTERNS = GitJobConfig.DEFAULT_EXCLUDED_PATTERNS;
+
+    /** Shared Jackson mapper used to build JSON payloads for workstream messaging. */
+    private static final ObjectMapper eventMapper = new ObjectMapper();
 
 
     /**
