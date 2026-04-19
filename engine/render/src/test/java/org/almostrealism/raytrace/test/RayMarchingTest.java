@@ -104,7 +104,7 @@ public class RayMarchingTest extends TestSuiteBase {
 					try {
 						return "marching" + format.valueToString(POWER) + ".jpg";
 					} catch (ParseException e) {
-						e.printStackTrace();
+						warn(e.getMessage(), e);
 						return null;
 					}
 				}
@@ -117,9 +117,9 @@ public class RayMarchingTest extends TestSuiteBase {
 						new File("test-march.jpeg"),
 						ImageCanvas.JPEGEncoding);
 			} catch (FileNotFoundException fnf) {
-				System.out.println("ERROR: Output file not found");
+				log("ERROR: Output file not found");
 			} catch (IOException ioe) {
-				System.out.println("IO ERROR");
+				log("IO ERROR");
 			}
 		}
 

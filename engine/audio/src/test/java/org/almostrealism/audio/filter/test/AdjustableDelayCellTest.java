@@ -115,7 +115,7 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 
 		AcceleratedTimeSeries buffer = delay.getBuffer();
 		TemporalScalar t = buffer.valueAt(delay.getDelay().get().evaluate().toDouble() * OutputLine.sampleRate);
-		System.out.println(t);
+		log(String.valueOf(t));
 		assertEquals(0.1, t.getValue());
 	}
 
@@ -139,11 +139,11 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		IntStream.range(0, SineWaveCellTest.DURATION_FRAMES).forEach(i -> {
 			push.run();
 			tick.run();
-			if ((i + 1) % 1000 == 0) System.out.println("AdjustableDelayCellTest: " + (i + 1) + " iterations");
+			if ((i + 1) % 1000 == 0) log("AdjustableDelayCellTest: " + (i + 1) + " iterations");
 		});
 
-		System.out.println("AdjustableDelayCellTest: Writing WAV...");
+		log("AdjustableDelayCellTest: Writing WAV...");
 		output.write().get().run();
-		System.out.println("AdjustableDelayCellTest: Done");
+		log("AdjustableDelayCellTest: Done");
 	}
 }

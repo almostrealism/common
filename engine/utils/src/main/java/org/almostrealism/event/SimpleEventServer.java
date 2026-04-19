@@ -65,6 +65,6 @@ public class SimpleEventServer implements ConsoleFeatures {
 		// Start the server
 		server.setExecutor(null);
 		server.start();
-		System.out.println("Server started on http://localhost:8080/test");
+		log("Server started on http://localhost:8080/test");
 	}
 }

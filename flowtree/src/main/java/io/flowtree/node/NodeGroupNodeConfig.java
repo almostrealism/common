@@ -19,6 +19,8 @@ package io.flowtree.node;
 import io.flowtree.Server;
 import io.flowtree.job.JobFactory;
 import io.flowtree.msg.Message;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -61,7 +63,7 @@ import java.util.Properties;
  * @author  Michael Murray
  * @see NodeGroup
  */
-public class NodeGroupNodeConfig {
+public class NodeGroupNodeConfig implements ConsoleFeatures {
 
 	/**
 	 * Result returned by {@link #setParam} when the key is not recognised.
@@ -157,7 +159,7 @@ public class NodeGroupNodeConfig {
 		}
 
 		if (msg != null) {
-			System.out.println("NodeGroup: " + msg);
+			log("NodeGroup: " + msg);
 			group.getStatusRenderer().addActivityMessage(msg);
 		}
 
@@ -289,7 +291,7 @@ public class NodeGroupNodeConfig {
 			for (Node n : nodes) {
 				n.setLabel("platform", platform);
 			}
-			System.out.println("NodeGroup: Auto-detected platform label: platform=" + platform);
+			Console.root().println("NodeGroup: Auto-detected platform label: platform=" + platform);
 		}
 	}
 
@@ -341,7 +343,7 @@ public class NodeGroupNodeConfig {
 	 */
 	static void initServerConnections(NodeGroup group, Properties p, int serverCount) {
 		if (isOfflineMode()) {
-			System.out.println("NodeGroup: Offline mode active — skipping all external server connections.");
+			Console.root().println("NodeGroup: Offline mode active — skipping all external server connections.");
 			return;
 		}
 
@@ -353,23 +355,23 @@ public class NodeGroupNodeConfig {
 			group.startPersistentHost(rootHost, Integer.parseInt(rootPort));
 		}
 
-		if (serverCount > 0) System.out.println("NodeGroup: Opening server connections...");
+		if (serverCount > 0) Console.root().println("NodeGroup: Opening server connections...");
 
 		for (int i = 0; i < serverCount; i++) {
 			String host = p.getProperty("servers." + i + ".host", "localhost");
 			int port = Integer.parseInt(p.getProperty("servers." + i + ".port", "7777"));
 
 			try {
-				System.out.println("NodeGroup: Connecting to server " + i + " (" + host + ":" + port + ")...");
+				Console.root().println("NodeGroup: Connecting to server " + i + " (" + host + ":" + port + ")...");
 				group.addServer(new Socket(host, port));
 			} catch (UnknownHostException uh) {
-				System.out.println("NodeGroup: Server " + i + " is unknown host");
+				Console.root().warn("NodeGroup: Server " + i + " is unknown host", null);
 			} catch (IOException ioe) {
-				System.out.println("NodeGroup: IO error while connecting to server " +
-						i + " -- " + ioe.getMessage());
+				Console.root().warn("NodeGroup: IO error while connecting to server " +
+						i + " -- " + ioe.getMessage(), ioe);
 			} catch (SecurityException se) {
-				System.out.println("NodeGroup: Security exception while connecting to server " + i +
-						" (" + se.getMessage() + ")");
+				Console.root().warn("NodeGroup: Security exception while connecting to server " + i +
+						" (" + se.getMessage() + ")", se);
 			}
 		}
 	}
@@ -426,13 +428,13 @@ public class NodeGroupNodeConfig {
 				j.set(key, value);
 			}
 		} catch (ClassNotFoundException cnf) {
-			System.out.println("NodeGroup: Class not found: " + className);
+			Console.root().warn("NodeGroup: Class not found: " + className, cnf);
 		} catch (ClassCastException cce) {
-			System.out.println("NodeGroup: Error casting " +
+			Console.root().warn("NodeGroup: Error casting " +
 					Optional.ofNullable(c).map(Class::getName).orElse(null) +
-					" to JobFactory");
+					" to JobFactory", cce);
 		} catch (Exception e) {
-			System.out.println("NodeGroup: " + e);
+			Console.root().warn("NodeGroup: " + e, e);
 		}
 
 		return j;

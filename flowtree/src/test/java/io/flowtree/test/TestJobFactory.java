@@ -19,6 +19,7 @@ package io.flowtree.test;
 import io.flowtree.Server;
 import io.flowtree.job.Job;
 import io.flowtree.job.JobFactory;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -29,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
  *
  * @author Mike Murray
  */
-public class TestJobFactory implements JobFactory {
+public class TestJobFactory implements JobFactory, ConsoleFeatures {
 	private double pri;
 	private int jobs;
 	private int sleep = 5000;
@@ -39,7 +40,7 @@ public class TestJobFactory implements JobFactory {
 	/**
 	 * A simple test job that sleeps for a configurable duration.
 	 */
-	public static class TestJob implements Job {
+	public static class TestJob implements Job, ConsoleFeatures {
 		private String id = "-1";
 		private int i = -1;
 		private int sleep = 5000;
@@ -57,10 +58,10 @@ public class TestJobFactory implements JobFactory {
 		public void run() {
 			try {
 				Thread.sleep(this.sleep);
-				System.out.println("TestJob: Slept " + this.sleep + " (i = " + this.i + ")");
+				log("TestJob: Slept " + this.sleep + " (i = " + this.i + ")");
 				future.complete(null);
 			} catch (InterruptedException ie) {
-				System.out.println("TestJob: Sleep interrupted.");
+				log("TestJob: Sleep interrupted.");
 				future.completeExceptionally(ie);
 			}
 		}

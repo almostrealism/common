@@ -21,6 +21,7 @@ import io.flowtree.Server;
 import io.flowtree.node.Client;
 import io.flowtree.node.NodeGroup;
 import io.flowtree.node.Proxy;
+import org.almostrealism.io.ConsoleFeatures;
 
 import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;
@@ -89,7 +90,7 @@ import java.util.List;
  * @see Connection
  * @see io.flowtree.node.NodeGroup
  */
-public class NodeProxy implements Proxy, Runnable {
+public class NodeProxy implements Proxy, Runnable, ConsoleFeatures {
 	/**
 	 * Milliseconds the reader thread sleeps between successive checks for incoming
 	 * data. Reducing this value increases responsiveness at the cost of CPU usage.
@@ -1128,9 +1129,9 @@ public class NodeProxy implements Proxy, Runnable {
 						
 						NodeProxy.this.println("Finished sending status.", true);
 					} catch (IOException e) {
-						System.out.println("NodeProxy (" + this +
+						NodeProxy.this.warn("NodeProxy (" + NodeProxy.this +
 											"): IO error sending status (" +
-											e.getMessage() + ")");
+											e.getMessage() + ")", e);
 					}
 					
 					NodeProxy.this.lastPing = 1;
@@ -1293,7 +1294,7 @@ public class NodeProxy implements Proxy, Runnable {
 				}
 			} catch (ArrayIndexOutOfBoundsException oob) {
 				this.println("Strange exception... " + oob);
-				oob.printStackTrace(System.out);
+				warn(oob.getMessage(), oob);
 			} catch (InterruptedException ie) {
 				this.println("Thread sleep interrupted");
 			} catch (EOFException eof) {
@@ -1310,7 +1311,7 @@ public class NodeProxy implements Proxy, Runnable {
 			} catch (OptionalDataException ode) {
 				this.println("Option Data Exception (eof = " +
 							ode.eof + " len = " + ode.length + ")");
-				ode.printStackTrace(System.out);
+				warn(ode.getMessage(), ode);
 			} catch (UTFDataFormatException utfe) {
 				if (h)
 					this.println("Error reading message header.");
@@ -1323,7 +1324,7 @@ public class NodeProxy implements Proxy, Runnable {
 			} catch (ClassNotFoundException cnf) {
 				this.println(cnf.toString());
 			} catch (Exception e) {
-				System.err.println("NodeProxy (" + this + "): Unexpected error in reader loop: " + e);
+				warn("NodeProxy (" + this + "): Unexpected error in reader loop: " + e, e);
 			}
 		}
 		
@@ -1333,7 +1334,7 @@ public class NodeProxy implements Proxy, Runnable {
 			if (this.soc != null) this.soc.close();
 		} catch (Exception e) { }
 			
-		System.out.println("NodeProxy: Thread ended");
+		log("NodeProxy: Thread ended");
 	}
 
 	/**
@@ -1343,7 +1344,7 @@ public class NodeProxy implements Proxy, Runnable {
 	 * @param msg  The message to print.
 	 */
 	public void print(String msg) {
-		System.out.print("NodeProxy (" + this + "): " + msg);
+		log("NodeProxy (" + this + "): " + msg);
 	}
 
 	/**
@@ -1356,7 +1357,7 @@ public class NodeProxy implements Proxy, Runnable {
 	 */
 	public void print(String msg, boolean verbose) {
 		if (!verbose || Message.verbose)
-			System.out.print("NodeProxy (" + this + "): " + msg);
+			log("NodeProxy (" + this + "): " + msg);
 	}
 
 	/**
@@ -1366,7 +1367,7 @@ public class NodeProxy implements Proxy, Runnable {
 	 * @param msg  The message to print.
 	 */
 	public void println(String msg) {
-		System.out.println("NodeProxy (" + this + "): " + msg);
+		log("NodeProxy (" + this + "): " + msg);
 	}
 
 	/**
@@ -1379,7 +1380,7 @@ public class NodeProxy implements Proxy, Runnable {
 	 */
 	public void println(String msg, boolean verbose) {
 		if (!verbose || Message.verbose)
-			System.out.println("NodeProxy (" + this + "): " + msg);
+			log("NodeProxy (" + this + "): " + msg);
 	}
 
 	/**
@@ -1398,7 +1399,7 @@ public class NodeProxy implements Proxy, Runnable {
 		if (ident) {
 			this.println(msg, verbose);
 		} else if (!verbose || Message.verbose) {
-			System.out.println(msg);
+			log(msg);
 		}
 	}
 	

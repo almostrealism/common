@@ -19,6 +19,8 @@ package org.almostrealism.ml.llama2;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.BPE;
@@ -46,7 +48,7 @@ import java.util.function.Consumer;
  * @see Llama2Weights
  * @see AutoregressiveModel
  */
-public class Llama2 implements AttentionFeatures {
+public class Llama2 implements AttentionFeatures, ConsoleFeatures {
 	static {
 		System.setProperty("AR_HARDWARE_OFF_HEAP_SIZE", "0");
 		System.setProperty("AR_EXPRESSION_WARNINGS", "disabled");
@@ -87,15 +89,12 @@ public class Llama2 implements AttentionFeatures {
 		llama.setTemperature(0.0);
 
 		long duration = llama.run(steps, prompt,
-				token -> {
-					System.out.printf("%s", token);
-					System.out.flush();
-				});
+				token -> Console.root().println(String.valueOf(token)));
 
-		System.out.printf("\ntokens per second: %f\n", (steps - 1) / (double) duration * 1000);
+		Console.root().println("\ntokens per second: " + ((steps - 1) / (double) duration * 1000));
 		llama.getProfile().print();
 
-		System.out.println("Done");
+		Console.root().println("Done");
 	}
 
 	/**
@@ -125,7 +124,7 @@ public class Llama2 implements AttentionFeatures {
 
 			config = new Llama2Config(bb);
 			weights = new Llama2Weights(config, bb.asFloatBuffer());
-			System.out.println("Loaded weights in " + (System.currentTimeMillis() - start) + "ms");
+			log("Loaded weights in " + (System.currentTimeMillis() - start) + "ms");
 		}
 
 		// Load the tokenizer

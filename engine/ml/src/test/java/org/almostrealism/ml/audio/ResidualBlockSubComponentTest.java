@@ -216,7 +216,7 @@ public class ResidualBlockSubComponentTest extends OobleckValidationBase {
 	 */
 	private void runFullResidualBlockTest(String resBlock, String prefix) throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -272,7 +272,7 @@ public class ResidualBlockSubComponentTest extends OobleckValidationBase {
 	@Test(timeout = 60000)
 	public void testComposedRes0ThenRes1() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -393,7 +393,7 @@ public class ResidualBlockSubComponentTest extends OobleckValidationBase {
 	private void runSubComponentTest(String resBlock, String component, String prefix,
 									 BlockBuilder blockBuilder) throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 

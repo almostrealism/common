@@ -1,5 +1,6 @@
 package io.flowtree.job;
 
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
 
 import java.io.IOException;
@@ -29,7 +30,7 @@ import java.util.function.Function;
  * @see JobOutput
  * @see Job#setOutputConsumer(java.util.function.Consumer)
  */
-public class Output implements Function<JobOutput, Boolean> {
+public class Output implements Function<JobOutput, Boolean>, ConsoleFeatures {
 	/**
 	 * When {@code true}, diagnostic messages about socket connections and write
 	 * operations are printed to standard output. Defaults to {@code false}.
@@ -78,10 +79,10 @@ public class Output implements Function<JobOutput, Boolean> {
 				 ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
 
 				if (verbose)
-					System.out.println("Output: Opened socket " + s);
+					log("Output: Opened socket " + s);
 
 				if (verbose)
-					System.out.println("Output: Writing " + o + "...");
+					log("Output: Writing " + o + "...");
 				out.writeUTF(o.getClass().getName());
 				o.writeExternal(out);
 
@@ -92,24 +93,23 @@ public class Output implements Function<JobOutput, Boolean> {
 				return true;
 			} catch (ConnectException ce) {
 				if (i >= 4) {
-					System.out.println("Output: Error connection to output host - giving up");
+					warn("Output: Error connection to output host - giving up");
 					return false;
 				} else {
-					System.out.println("Output: Error connecting to output host - retry in " + sleep + " sec.");
+					warn("Output: Error connecting to output host - retry in " + sleep + " sec.");
 					try { Thread.sleep(sleep * 1000); } catch (InterruptedException ie) {}
 				}
 			} catch (UnknownHostException uh) {
-				System.out.println("Output: Output host (" + this.outputHost + ":"+ this.outputPort + ") not found.");
+				warn("Output: Output host (" + this.outputHost + ":"+ this.outputPort + ") not found.");
 				return false;
 			} catch (IOException ioe) {
-				System.out.println("Output: " + ioe);
-				ioe.printStackTrace(System.out);
+				warn("Output: " + ioe.getMessage(), ioe);
 				return false;
 			} catch (Exception e) {
 				if (done)
-					System.out.println("Client.writeOutput: " + e);
+					warn("Client.writeOutput: " + e.getMessage(), e);
 				else
-					System.out.println("Client.writeOutput: Ended prematurely due to " + e);
+					warn("Client.writeOutput: Ended prematurely due to " + e.getMessage(), e);
 			}
 		}
 

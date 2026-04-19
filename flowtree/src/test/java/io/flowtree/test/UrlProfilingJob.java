@@ -18,6 +18,7 @@ package io.flowtree.test;
 
 import io.flowtree.job.Job;
 import io.flowtree.job.JobFactory;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.io.OutputHandler;
 
@@ -36,7 +37,7 @@ import java.util.concurrent.CompletableFuture;
  *
  * @author Michael Murray
  */
-public class UrlProfilingJob implements Job {
+public class UrlProfilingJob implements Job, ConsoleFeatures {
 
 	/**
 	 * Output handler that writes URL profiling results to a timestamped file.
@@ -158,7 +159,7 @@ public class UrlProfilingJob implements Job {
 			b.append(JobFactory.ENTRY_SEPARATOR);
 
 			this.lastOutput = new JobOutput(this.id, "", "", b.toString());
-			System.out.println("UrlProfilingJob result: " + b);
+			log("UrlProfilingJob result: " + b);
 			future.complete(null);
 		} catch (Exception e) {
 			future.completeExceptionally(e);

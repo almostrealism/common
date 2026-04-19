@@ -30,6 +30,7 @@ import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
 import io.flowtree.msg.Message;
 import io.flowtree.msg.NodeProxy;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.io.OutputHandler;
 
@@ -67,7 +68,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public class ResourceDistributionTask extends AbstractJobFactory implements OutputHandler, QueryHandler,
 													NodeProxy.EventListener, Server.ResourceProvider,
-													Graph<Resource> {
+													Graph<Resource>, ConsoleFeatures {
 	/**
 	 * When {@code true}, diagnostic messages about resource operations such as
 	 * directory creation, deletion, and peer notifications are printed to
@@ -124,7 +125,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 * from a piped input stream, allowing callers to stream data into the
 	 * distributed file system asynchronously.
 	 */
-	private static class Loader implements Runnable {
+	private static class Loader implements Runnable, ConsoleFeatures {
 
 		/** The resource that will receive the streamed data. */
 		DistributedResource res;
@@ -152,18 +153,18 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		@Override
 		public void run() {
 			if (DistributedResource.ioVerbose) {
-				System.out.println("ResourceDistributionTask.Loader (" +
+				log("ResourceDistributionTask.Loader (" +
 									this.res + "): Started");
 			}
-			
+
 			try {
 				this.res.loadFromStream(in);
 			} catch (IOException e) {
-				System.out.println("ResourceDistributionTask.Loader: " + e);
+				warn(String.valueOf(e));
 			}
-			
+
 			if (DistributedResource.ioVerbose) {
-				System.out.println("ResourceDistributionTask.Loader (" +
+				log("ResourceDistributionTask.Loader (" +
 									this.res + "): Ended");
 			}
 		}
@@ -176,7 +177,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 * duplication count is incremented atomically so that the next selection
 	 * picks a different chunk.
 	 */
-	private static class CustomResultHandler implements Query.ResultHandler {
+	private static class CustomResultHandler implements Query.ResultHandler, ConsoleFeatures {
 
 		/** Tracks the minimum duplication count seen so far. */
 		private int fewest = Integer.MAX_VALUE;
@@ -203,7 +204,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 			}
 			
 			if (ResourceDistributionTask.queryVerbose)
-				System.out.println("ResourceDistributionTask.CustomResultHandler: "
+				log("ResourceDistributionTask.CustomResultHandler: "
 									+ key + " " + value);
 		}
 		
@@ -216,8 +217,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		 */
 		@Override
 		public void handleResult(String key, byte[] value) {
-			System.out.println("ResourceDistributionTask.CustomResultHandler: " +
-								"Recieved bytes when string was expected.");
+			warn("ResourceDistributionTask.CustomResultHandler: Recieved bytes when string was expected.");
 		}
 
 		/**
@@ -247,7 +247,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 * <p>The job is never marked complete — it sleeps for a configured duration
 	 * after each run and then marks itself available for reuse.
 	 */
-	protected static class ResourceDistributionJob implements Job {
+	protected static class ResourceDistributionJob implements Job, ConsoleFeatures {
 
 		/** Unique job identifier. */
 		private String id;
@@ -331,7 +331,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 			if (this.task == null) return null;
 			
 			if (!this.task.loadJob(this)) {
-				System.out.println("ResourceDistributionJob: No data available.");
+				log("ResourceDistributionJob: No data available.");
 				return null;
 			}
 			
@@ -460,7 +460,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	protected void initDefaultResourceTypes() {
 		ResourceDistributionTask.addResourceClass(
 				new ConcatenatedResource.ConcatenatedResourceHeaderParser());
-		System.out.println("ResourceDistributionTask: Added ConcatenatedResource type.");
+		log("ResourceDistributionTask: Added ConcatenatedResource type.");
 	}
 	
 	/**
@@ -477,7 +477,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		
 		this.server = server;
 		
-		System.out.println("ResourceDistributionTask: Loading file list from local DB.");
+		log("ResourceDistributionTask: Loading file list from local DB.");
 		
 		DatabaseConnection db = this.server.getDatabaseConnection();
 		
@@ -488,24 +488,23 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 			@Override
 			public void handleResult(String key, String value) {
 				if (value == null) {
-					System.out.println("WARN: Null value for key " + key);
+					ResourceDistributionTask.this.warn("WARN: Null value for key " + key);
 					return;
 				}
 
 				if (!ResourceDistributionTask.this.items.containsKey(value)) {
 					DistributedResource res = DistributedResource.createDistributedResource(value);
 					ResourceDistributionTask.this.items.put(value, res);
-					
+
 					if (ResourceDistributionTask.verbose)
-						System.out.println("ResourceDistributionTask: Loaded " + value +
+						ResourceDistributionTask.this.log("ResourceDistributionTask: Loaded " + value +
 											" from local DB.");
 				}
 			}
 
 			@Override
 			public void handleResult(String key, byte[] value) {
-					System.out.println("ResourceDistributionTask: Received bytes " +
-										"when String was expected.");
+				ResourceDistributionTask.this.warn("ResourceDistributionTask: Received bytes when String was expected.");
 			}
 		});
 		
@@ -596,7 +595,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		res.uri = uri;
 		
 		if (ResourceDistributionTask.verbose)
-			System.out.println("ResourceDistributionTask: Create dir " + uri);
+			log("ResourceDistributionTask: Create dir " + uri);
 		
 		this.items.put(uri, res);
 		return uri;
@@ -618,8 +617,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		if (this.isDirectory(dir)) o = this.items.get(dir);
 		
 		if (!(o instanceof Directory)) {
-			System.out.println("ResourceDistributionTask.setResourceProvider: " + dir +
-								" is not a directory.");
+			warn("ResourceDistributionTask.setResourceProvider: " + dir + " is not a directory.");
 			return false;
 		}
 		
@@ -647,7 +645,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		this.removeFromLocalDB(uri);
 		
 		if (ResourceDistributionTask.verbose)
-			System.out.println("ResourceDistributionTask: Deleted " + uri);
+			log("ResourceDistributionTask: Deleted " + uri);
 		
 		return true;
 	}
@@ -724,7 +722,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		}
 		
 		if (ResourceDistributionTask.verbose)
-			System.out.println("ResourceDistributionTask: Got " + names.size() + " children " + uri);
+			log("ResourceDistributionTask: Got " + names.size() + " children " + uri);
 		
 		return (String[]) names.toArray(new String[0]);
 	}
@@ -750,7 +748,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 */
 	public synchronized boolean isDirectory(String uri) {
 		if (ResourceDistributionTask.verbose)
-			System.out.println("ResourceDistributionTask: Is dir? " + uri);
+			log("ResourceDistributionTask: Is dir? " + uri);
 		
 		if (uri.equals("/")) return true;
 		if (!uri.endsWith("/")) uri = uri + "/";
@@ -849,8 +847,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		OutputServer s = OutputServer.getCurrentServer();
 		
 		if (s == null) {
-			System.out.println("ResourceDistributionTask: Unable to remove " +
-								uri + " (No local DB)");
+			warn("ResourceDistributionTask: Unable to remove " + uri + " (No local DB)");
 			return;
 		}
 		
@@ -885,7 +882,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	 */
 	public synchronized DistributedResource getResource(String uri, String exclude) {
 		if (ResourceDistributionTask.verbose)
-			System.out.println("ResourceDistributionTask: Get " + uri);
+			log("ResourceDistributionTask: Get " + uri);
 		
 		if (!uri.startsWith("/")) uri = "/" + uri;
 		
@@ -900,7 +897,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		if (res instanceof DistributedResource)
 			dres = (DistributedResource) res;
 		else if (res instanceof Resource) {
-			System.out.println("ResourceDistributionTask: Item cache contained " + res.getClass());
+			log("ResourceDistributionTask: Item cache contained " + res.getClass());
 			dres = new DistributedResource((Resource) res);
 		} else
 			return null;
@@ -973,8 +970,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 		}
 		
 		if (Message.verbose)
-			System.out.println("ResourceDistributionTask: Notified " + tot +
-								" peers of " + uri);
+			log("ResourceDistributionTask: Notified " + tot + " peers of " + uri);
 		
 		return tot;
 	}
@@ -992,17 +988,17 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 	protected boolean notifyPeer(String uri, int type, NodeProxy np) {
 		try {
 			if (Message.verbose)
-				System.out.println("ResourceDistributionTask: Notifing " + np + " of " + uri);
-			
+				log("ResourceDistributionTask: Notifing " + np + " of " + uri);
+
 			Message m = new Message(type, -3, np);
 			m.setQueueBypass(true);
 			m.setString(uri);
 			m.send(-3);
-			
+
 			return true;
 		} catch (IOException ioe) {
-			System.out.println("ResourceDistributionTask: IO error notifing " +
-								np + " of " + uri + " (" + ioe.getMessage() + ")");
+			warn("ResourceDistributionTask: IO error notifing " +
+								np + " of " + uri + " (" + ioe.getMessage() + ")", ioe);
 			return false;
 		}
 	}
@@ -1281,29 +1277,29 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 			Object o = this.items.remove(uri);
 			
 			if (o != null) {
-				System.out.println("ResourceDistributionTask: " + o + " was invalidated.");
+				log("ResourceDistributionTask: " + o + " was invalidated.");
 				this.notifyPeers(uri, Message.DistributedResourceInvalidate);
 				this.removeFromLocalDB(uri);
 			}
 		} else if (this.items.containsKey(uri)) {
 			if (DistributedResource.verbose)
-				System.out.println("ResourceDistributionTask: " + uri + " exists.");
-			
+				log("ResourceDistributionTask: " + uri + " exists.");
+
 			DistributedResource cr = (DistributedResource) this.items.get(uri);
-			
+
 			if (size >= 0 && cr.getSize() != size)
-				System.out.println("ResourceDistributionTask: Size disagreement for " + cr +
+				warn("ResourceDistributionTask: Size disagreement for " + cr +
 									" (" + cr.getSize() + " != " + size + ")");
 		} else {
 			DistributedResource r = null;
-			
+
 			if (size < 0)
 				r = DistributedResource.createDistributedResource(uri);
 			else
 				r = DistributedResource.createDistributedResource(uri, size);
-			
+
 			this.items.put(uri, r);
-			System.out.println("ResourceDistributionTask: Added " + r);
+			log("ResourceDistributionTask: Added " + r);
 			this.notifyPeers(uri, Message.DistributedResourceUri);
 		}
 		

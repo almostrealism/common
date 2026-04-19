@@ -445,7 +445,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			Expression m1 = ExpressionFeatures.getInstance().e(constant + 1);
 			return Product.of(Mod.of(arg, m0, false), m1);
 		} else {
-			System.out.println("WARN: Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
+			warn("Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
 			return null;
 		}
 	}

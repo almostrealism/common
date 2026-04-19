@@ -40,7 +40,7 @@ public class ExpressionDelegationTest extends TestSuiteBase {
 			Evaluable<PackedCollection> ev = r(temporal(p(a), p(b))).get();
 
 			PackedCollection s = ev.evaluate();
-			System.out.println(s);
+			log(String.valueOf(s));
 			assertEquals(2.0, s);
 		});
 	}
@@ -57,7 +57,7 @@ public class ExpressionDelegationTest extends TestSuiteBase {
 		AcceleratedComputationOperation op = (AcceleratedComputationOperation) l.get();
 
 		op.run();
-		System.out.println(r.toDouble(0));
+		log(String.valueOf(r.toDouble(0)));
 		assertEquals(2.0, r);
 	}
 }

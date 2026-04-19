@@ -24,6 +24,7 @@ import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 /**
@@ -77,7 +78,7 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
  * @author Michael Murray
  */
 public class HighlightShader extends ShaderSet<ShaderContext> implements
-		Shader<ShaderContext>, RGBFeatures, RayFeatures {
+		Shader<ShaderContext>, RGBFeatures, RayFeatures, ConsoleFeatures {
   /** The color of the specular highlight. */
   private Producer<PackedCollection> highlightColor;
 
@@ -110,7 +111,7 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 		try {
 			point = new Ray(p.getIntersection().get(0).get().evaluate(), 0).getOrigin();
 		} catch (Exception ex) {
-			ex.printStackTrace();
+			warn(ex.getMessage(), ex);
 			return null;
 		}
 		
@@ -121,7 +122,7 @@ public class HighlightShader extends ShaderSet<ShaderContext> implements
 		try {
 			n = direction(normals.iterator().next());
 		} catch (Exception e) {
-			e.printStackTrace();
+			warn(e.getMessage(), e);
 			return null;
 		}
 		

@@ -19,6 +19,7 @@ package org.almostrealism.studio.generative;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.music.notes.FileNoteSource;
 import org.almostrealism.audio.notes.NoteAudioProvider;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.ProcessFeatures;
 
 import java.io.File;
@@ -27,7 +28,7 @@ import java.io.File;
  * File-system-backed implementation of {@link GenerationResourceManager} that stores
  * model files and generated audio in local directories.
  */
-public class LocalResourceManager implements GenerationResourceManager, ProcessFeatures {
+public class LocalResourceManager implements GenerationResourceManager, ProcessFeatures, ConsoleFeatures {
 	/** Directory containing persisted model files. */
 	private final File models;
 
@@ -49,13 +50,13 @@ public class LocalResourceManager implements GenerationResourceManager, ProcessF
 	public void storeModel(String id, String vers, File file) {
 		run("mv", file.getAbsolutePath(), models.getAbsolutePath() + "/" + id);
 		run("touch", models.getAbsolutePath() + "/" + vers);
-		System.out.println("LocalResourceManager: Saved model " + id);
+		log("Saved model " + id);
 	}
 
 	@Override
 	public void loadModel(String id, File dest) {
 		run("cp", models.getAbsolutePath() + "/" + id, dest.getAbsolutePath());
-		System.out.println("LocalResourceManager: Loaded model " + id);
+		log("Loaded model " + id);
 	}
 
 	@Override
@@ -70,14 +71,14 @@ public class LocalResourceManager implements GenerationResourceManager, ProcessF
 
 	@Override
 	public NoteAudioProvider storeAudio(String id, File file) {
-		System.out.println("LocalResourceManager: Storing audio " + id);
+		log("Storing audio " + id);
 		run("mv", file.getAbsolutePath(), audio.getAbsolutePath() + "/" + id);
 		return (NoteAudioProvider) new FileNoteSource(audio.getAbsolutePath() + "/" + id).getNotes().get(0);
 	}
 
 	@Override
 	public NoteAudioProvider storeAudio(String id, WaveData waveData) {
-		System.out.println("LocalResourceManager: Storing audio " + id);
+		log("Storing audio " + id);
 		waveData.save(new File(audio.getAbsolutePath() + "/" + id));
 		return (NoteAudioProvider) new FileNoteSource(audio.getAbsolutePath() + "/" + id).getNotes().get(0);
 	}

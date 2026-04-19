@@ -213,7 +213,7 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 	public void maxRepeat() {
 		PackedCollection in = new PackedCollection(8, 4).randFill();
 		in.traverse(1).print();
-		System.out.println("--");
+		log("--");
 
 		PackedCollection o = cp(in).traverse(1).max().repeat(3).get().evaluate();
 		o.traverse(1).print();

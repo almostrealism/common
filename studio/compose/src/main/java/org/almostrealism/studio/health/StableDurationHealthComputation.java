@@ -156,7 +156,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 				Thread.sleep(timeoutInterval + 100);
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
-				System.err.println("StableDurationHealthComputation: " + e.getMessage());
+				warn(e.getMessage(), e);
 			}
 		}
 
@@ -170,7 +170,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 					Thread.sleep(timeoutInterval);
 				} catch (InterruptedException e) {
 					Thread.currentThread().interrupt();
-					System.err.println("StableDurationHealthComputation: " + e.getMessage());
+					warn(e.getMessage(), e);
 					endTimeoutTrigger = true;
 				}
 
@@ -266,7 +266,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 						((OperationProfileNode) profile).save(name);
 						log("Saved profile to " + name);
 					} catch (IOException e) {
-						System.err.println("StableDurationHealthComputation: " + e.getMessage());
+						warn(e.getMessage(), e);
 					}
 				}
 

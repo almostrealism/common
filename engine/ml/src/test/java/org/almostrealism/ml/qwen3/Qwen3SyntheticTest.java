@@ -38,8 +38,8 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 
-		System.out.println("Creating random weights for config: " + config);
-		System.out.println("  kvDim: " + kvDim);
+		log("Creating random weights for config: " + config);
+		log("  kvDim: " + kvDim);
 
 		// Token embeddings
 		weights.put("model.embed_tokens.weight",
@@ -108,7 +108,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 
 	@Test(timeout = 120000)
 	public void testTinyModelConstruction() {
-		System.out.println("\n=== Test 1: Tiny Model Construction ===");
+		log("\n=== Test 1: Tiny Model Construction ===");
 
 		// Create a very small config
 		// NOTE: Using heads==kvHeads because GQA is not yet fully implemented
@@ -124,11 +124,11 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 				10000.0
 		);
 
-		System.out.println("Config: " + config);
+		log("Config: " + config);
 
 		try {
 			config.validate();
-			System.out.println("[OK] Config validation passed");
+			log("[OK] Config validation passed");
 		} catch (Exception e) {
 			fail("Config validation failed: " + e.getMessage());
 		}
@@ -137,7 +137,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		StateDictionary stateDict;
 		try {
 			stateDict = createRandomWeights(config, 12345L);
-			System.out.println("[OK] Random weights created");
+			log("[OK] Random weights created");
 		} catch (Exception e) {
 			fail("Failed to create random weights: " + e.getMessage());
 			return;
@@ -145,24 +145,24 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 
 		// Create tokenizer
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
-		System.out.println("[OK] Test tokenizer created");
+		log("[OK] Test tokenizer created");
 
 		// Try to create model
 		try {
 			Qwen3 model = new Qwen3(config, stateDict, tokenizer);
-			System.out.println("[OK] Model instance created");
+			log("[OK] Model instance created");
 			assertNotNull("Model should not be null", model);
 		} catch (Exception e) {
-			e.printStackTrace();
+			warn(e.getMessage(), e);
 			fail("Model construction failed: " + e.getMessage());
 		}
 
-		System.out.println("[OK] All construction tests passed!\n");
+		log("[OK] All construction tests passed!\n");
 	}
 
 	@Test(timeout = 120000)
 	public void testModelCompilation() {
-		System.out.println("\n=== Test 2: Model Compilation ===");
+		log("\n=== Test 2: Model Compilation ===");
 
 		// NOTE: Using heads==kvHeads because GQA is not yet fully implemented
 		Qwen3Config config = new Qwen3Config(
@@ -174,26 +174,26 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 
 		try {
 			new Qwen3(config, stateDict, tokenizer);
-			System.out.println("[OK] Model created");
+			log("[OK] Model created");
 
 			// The model should compile when we try to run it
 			// We won't actually run it yet, just create it
-			System.out.println("[OK] Model ready for compilation (happens on first run)");
+			log("[OK] Model ready for compilation (happens on first run)");
 
 		} catch (Exception e) {
-			e.printStackTrace();
+			warn(e.getMessage(), e);
 			fail("Model compilation setup failed: " + e.getMessage());
 		}
 
-		System.out.println("[OK] Compilation test passed!\n");
+		log("[OK] Compilation test passed!\n");
 	}
 
 	@Test(timeout = 120000)
 	public void testWeightShapes() {
-		System.out.println("\n=== Test 3: Weight Shape Verification ===");
+		log("\n=== Test 3: Weight Shape Verification ===");
 
 		Qwen3Config config = Qwen3Config.qwen3_test();
-		System.out.println("Using test config: " + config);
+		log("Using test config: " + config);
 
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 
@@ -231,23 +231,23 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 				config.kvHeadCount * config.headSize,
 				qkNormK.getShape().getTotalSize());
 
-		System.out.println("[OK] All weight shapes correct");
-		System.out.println("  Token embeddings: " + embeddings.getShape());
-		System.out.println("  Query weights (layer 0): " + wq.getShape());
-		System.out.println("  Key weights (layer 0, GQA): " + wk.getShape());
-		System.out.println("  QK-Norm Q (layer 0): " + qkNormQ.getShape());
-		System.out.println("  QK-Norm K (layer 0): " + qkNormK.getShape());
-		System.out.println("[OK] Shape verification passed!\n");
+		log("[OK] All weight shapes correct");
+		log("  Token embeddings: " + embeddings.getShape());
+		log("  Query weights (layer 0): " + wq.getShape());
+		log("  Key weights (layer 0, GQA): " + wk.getShape());
+		log("  QK-Norm Q (layer 0): " + qkNormQ.getShape());
+		log("  QK-Norm K (layer 0): " + qkNormK.getShape());
+		log("[OK] Shape verification passed!\n");
 	}
 
 	/**
 	 * Main method for running tests without JUnit.
 	 */
 	public static void main(String[] args) {
-		System.out.println("+============================================================+");
-		System.out.println("|  Qwen3 Synthetic Test - Random Weights                    |");
-		System.out.println("|  Purpose: Verify model doesn't crash with valid shapes    |");
-		System.out.println("+============================================================+");
+		log("+============================================================+");
+		log("|  Qwen3 Synthetic Test - Random Weights                    |");
+		log("|  Purpose: Verify model doesn't crash with valid shapes    |");
+		log("+============================================================+");
 
 		Qwen3SyntheticTest test = new Qwen3SyntheticTest();
 		int passed = 0;
@@ -258,8 +258,8 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 			test.testTinyModelConstruction();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			System.err.println("[FAIL] Test 1 FAILED: " + e.getMessage());
-			e.printStackTrace();
+			warn("[FAIL] Test 1 FAILED: " + e.getMessage());
+			warn(e.getMessage(), e);
 			failed++;
 		}
 
@@ -268,8 +268,8 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 			test.testModelCompilation();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			System.err.println("[FAIL] Test 2 FAILED: " + e.getMessage());
-			e.printStackTrace();
+			warn("[FAIL] Test 2 FAILED: " + e.getMessage());
+			warn(e.getMessage(), e);
 			failed++;
 		}
 
@@ -278,17 +278,17 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 			test.testWeightShapes();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			System.err.println("[FAIL] Test 3 FAILED: " + e.getMessage());
-			e.printStackTrace();
+			warn("[FAIL] Test 3 FAILED: " + e.getMessage());
+			warn(e.getMessage(), e);
 			failed++;
 		}
 
-		System.out.println("\n+============================================================+");
-		System.out.println("|  Test Results                                              |");
-		System.out.println("+------------------------------------------------------------+");
-		System.out.printf("|  Passed: %d                                                  |%n", passed);
-		System.out.printf("|  Failed: %d                                                  |%n", failed);
-		System.out.println("+============================================================+");
+		log("\n+============================================================+");
+		log("|  Test Results                                              |");
+		log("+------------------------------------------------------------+");
+		log(String.format("|  Passed: %d                                                  |%n", passed));
+		log(String.format("|  Failed: %d                                                  |%n", failed));
+		log("+============================================================+");
 
 		if (failed > 0) {
 			System.exit(1);

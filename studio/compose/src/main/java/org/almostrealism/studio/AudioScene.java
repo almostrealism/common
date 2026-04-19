@@ -1442,7 +1442,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 						AudioSceneLoader.Settings.class), libraryProvider, progress);
 				return;
 			} catch (Exception e) {
-				System.err.println("AudioScene: " + e.getMessage());
+				warn(e.getMessage(), e);
 			}
 		}
 

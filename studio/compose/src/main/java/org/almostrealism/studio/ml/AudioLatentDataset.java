@@ -24,6 +24,7 @@ import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -167,7 +168,7 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 		int segmentSamples = (int) (segmentSeconds * sampleRate);
 
 		// Build encoder model
-		System.out.println("Building encoder model...");
+		Console.root().println("Building encoder model...");
 		int batchSize = 1;
 		OobleckEncoder encoder = new OobleckEncoder(autoencoderWeights, batchSize, segmentSamples);
 		int encoderOutputLength = encoder.getOutputLength();
@@ -180,21 +181,21 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 		encoderModel.add(bottleneck.getBottleneck());
 		CompiledModel compiledEncoder = encoderModel.compile(false);
 
-		System.out.println("Encoder built. Output shape: (1, 64, " + encoderOutputLength + ")");
+		Console.root().println("Encoder built. Output shape: (1, 64, " + encoderOutputLength + ")");
 
 		// Process audio files
 		List<PackedCollection> latents = new ArrayList<>();
 
 		try {
 			for (Path audioFile : audioFiles) {
-				System.out.println("Processing: " + audioFile.getFileName());
+				Console.root().println("Processing: " + audioFile.getFileName());
 				try {
 					List<PackedCollection> fileLatents = encodeAudioFile(
 							audioFile, compiledEncoder, segmentSamples);
 					latents.addAll(fileLatents);
-					System.out.println("  Encoded " + fileLatents.size() + " segments");
+					Console.root().println("Encoded " + fileLatents.size() + " segments");
 				} catch (Exception e) {
-					System.err.println("  Failed to process: " + e.getMessage());
+					Console.root().warn("Failed to process: " + e.getMessage(), e);
 				}
 			}
 		} finally {
@@ -203,7 +204,7 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 			encoderModel.destroy();
 		}
 
-		System.out.println("Total latents: " + latents.size());
+		Console.root().println("Total latents: " + latents.size());
 
 		return new AudioLatentDataset(latents, 64, encoderOutputLength);
 	}

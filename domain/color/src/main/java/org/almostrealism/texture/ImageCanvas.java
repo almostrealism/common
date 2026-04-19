@@ -19,6 +19,7 @@ package org.almostrealism.texture;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.color.RGB;
+import org.almostrealism.io.ConsoleFeatures;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -37,7 +38,7 @@ import java.io.OutputStream;
  * 
  * @author  Michael Murray
  */
-public class ImageCanvas extends JPanel {
+public class ImageCanvas extends JPanel implements ConsoleFeatures {
   /** The width of the canvas in pixels. */
   private final int screenX;
 
@@ -181,7 +182,7 @@ public class ImageCanvas extends JPanel {
 			ImageCanvas.encodeImageFile(new Provider<>(this.image),
 							new File(file), ImageCanvas.JPEGEncoding);
 		} catch (Exception e) {
-			System.err.println(e.getMessage());
+			warn(e.getMessage(), e);
 		}
 	}
 	

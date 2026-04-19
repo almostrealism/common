@@ -418,7 +418,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 					int size = root.getMemLength() * provider.getNumberSize();
 
 					if (enableVerboseLog)
-						System.out.println("Hardware[" + getHardwareName() + "]: Reallocating " + size + " bytes");
+						log("Hardware[" + getHardwareName() + "]: Reallocating " + size + " bytes");
 
 					root.reallocate(supported.get(0));
 				}), false);

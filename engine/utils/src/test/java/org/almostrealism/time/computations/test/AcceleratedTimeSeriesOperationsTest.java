@@ -157,7 +157,7 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 	public void allOperationsTest() {
 		init();
 		IntStream.range(0, 25).forEach(this::runAllOperations);
-		System.out.println(cursors);
+		log(String.valueOf(cursors));
 	}
 
 	protected OperationList operationList(boolean enableCompilation) {

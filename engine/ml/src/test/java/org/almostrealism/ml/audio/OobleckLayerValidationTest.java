@@ -50,7 +50,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testFirstWNConv1dOnly() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -151,7 +151,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testFirstWNConvTranspose1dOnly() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -261,7 +261,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testFirstConvPlusSnake() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -341,7 +341,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testThroughFirstDecoderBlock() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -450,7 +450,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testSingleResidualBlock() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -593,7 +593,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testTwoResidualBlocks() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -738,7 +738,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testCompleteFirstDecoderBlock() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -878,7 +878,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testDecoderBlocks1And2() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -1017,7 +1017,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testDecoderBlocks1To3() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -1157,7 +1157,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testAllBlocksWithoutOutputProj() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -1308,7 +1308,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	@Test(timeout = 120000)
 	public void testOutputProjectionIsolation() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 

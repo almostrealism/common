@@ -352,7 +352,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		// Load reference data
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -435,12 +435,12 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 				double expected = q0 * fcr - q1 * fci;
 				double actual = out.valueAt(h, i, 0);
-				System.out.println("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
+				log("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 
 				expected = q0 * fci + q1 * fcr;
 				actual = out.valueAt(h, i, 1);
-				System.out.println("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
+				log("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 			}
 		}

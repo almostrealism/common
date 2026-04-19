@@ -33,6 +33,7 @@ import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.graph.KdTree;
 import org.almostrealism.graph.mesh.TriangleFeatures;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -50,7 +51,7 @@ import java.util.List;
  * @author  Michael Murray
  * @author  Dan Chivers
  */
-public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
+public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, ConsoleFeatures {
 	/** Default white color assigned to triangles that do not have an explicit color set. */
 	private static final RGB white = new RGB(1.0, 1.0, 1.0);
 	
@@ -860,7 +861,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 			}
 		}
 
-		if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
+		if (b > 0) log("Removed " + b + " back faces.");
 	}
 	
 	/**

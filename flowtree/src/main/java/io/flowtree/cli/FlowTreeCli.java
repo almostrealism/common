@@ -30,6 +30,8 @@ import org.jboss.aesh.terminal.Color;
 import org.jboss.aesh.terminal.TerminalColor;
 import org.jboss.aesh.terminal.TerminalString;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
@@ -49,7 +51,7 @@ import java.net.UnknownHostException;
  *
  * @author  Michael Murray
  */
-public class FlowTreeCli {
+public class FlowTreeCli implements ConsoleFeatures {
 
 	/**
 	 * When {@code true}, the console is stopped when an EOF action is received
@@ -109,7 +111,7 @@ public class FlowTreeCli {
 		try {
 			return InetAddress.getLocalHost().getHostAddress();
 		} catch (UnknownHostException e) {
-			e.printStackTrace();
+			warn(e.getMessage(), e);
 			return "localhost";
 		}
 	}

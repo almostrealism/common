@@ -28,6 +28,7 @@ import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.audio.similarity.SimilarityNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.algorithm.GraphFeatures;
+import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
@@ -675,9 +676,9 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		}
 
 		if (dataPrefix == null) {
-			System.err.println("ERROR: No data prefix specified.");
-			System.err.println("Use --data PREFIX to specify the library protobuf file prefix.");
-			System.err.println();
+			Console.root().warn("ERROR: No data prefix specified.");
+			Console.root().warn("Use --data PREFIX to specify the library protobuf file prefix.");
+			Console.root().println("");
 			printUsage();
 			System.exit(1);
 		}
@@ -685,10 +686,10 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		// Verify at least one data file exists
 		File firstFile = new File(dataPrefix + "_0.bin");
 		if (!firstFile.exists()) {
-			System.err.println("ERROR: Library data file not found:");
-			System.err.println("       " + firstFile.getAbsolutePath());
-			System.err.println();
-			System.err.println("Expected files: " + dataPrefix + "_0.bin, " + dataPrefix + "_1.bin, ...");
+			Console.root().warn("ERROR: Library data file not found:");
+			Console.root().warn("       " + firstFile.getAbsolutePath());
+			Console.root().println("");
+			Console.root().warn("Expected files: " + dataPrefix + "_0.bin, " + dataPrefix + "_1.bin, ...");
 			System.exit(1);
 		}
 
@@ -698,26 +699,26 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 	/** Prints usage information for the CLI entry point. */
 	private static void printUsage() {
-		System.out.println("Prototype Discovery - Find representative samples from pre-computed library data");
-		System.out.println();
-		System.out.println("Usage: PrototypeDiscovery [options]");
-		System.out.println();
-		System.out.println("Options:");
-		System.out.println("  --data PREFIX     Path prefix for protobuf library files (required)");
-		System.out.println("                    Files are expected at PREFIX_0.bin, PREFIX_1.bin, etc.");
-		System.out.println("  --samples DIR     Path to audio samples directory (optional)");
-		System.out.println("                    Required to display file paths instead of identifiers");
-		System.out.println("  --clusters N      Number of clusters to show (default: 10)");
-		System.out.println("  --reveal          Open prototype files in Finder/Explorer (requires --samples)");
-		System.out.println("  --help            Show this help message");
-		System.out.println();
-		System.out.println("Examples:");
-		System.out.println("  # Show prototypes with file paths:");
-		System.out.println("  java -cp ... org.almostrealism.studio.discovery.PrototypeDiscovery \\");
-		System.out.println("    --data ~/.almostrealism/library --samples ~/Music/Samples --clusters 5");
-		System.out.println();
-		System.out.println("  # Show prototypes without file paths (identifiers only):");
-		System.out.println("  java -cp ... org.almostrealism.studio.discovery.PrototypeDiscovery \\");
-		System.out.println("    --data ~/.almostrealism/library --clusters 5");
+		Console.root().println("Prototype Discovery - Find representative samples from pre-computed library data");
+		Console.root().println("");
+		Console.root().println("Usage: PrototypeDiscovery [options]");
+		Console.root().println("");
+		Console.root().println("Options:");
+		Console.root().println("  --data PREFIX     Path prefix for protobuf library files (required)");
+		Console.root().println("                    Files are expected at PREFIX_0.bin, PREFIX_1.bin, etc.");
+		Console.root().println("  --samples DIR     Path to audio samples directory (optional)");
+		Console.root().println("                    Required to display file paths instead of identifiers");
+		Console.root().println("  --clusters N      Number of clusters to show (default: 10)");
+		Console.root().println("  --reveal          Open prototype files in Finder/Explorer (requires --samples)");
+		Console.root().println("  --help            Show this help message");
+		Console.root().println("");
+		Console.root().println("Examples:");
+		Console.root().println("  # Show prototypes with file paths:");
+		Console.root().println("  java -cp ... org.almostrealism.studio.discovery.PrototypeDiscovery \\");
+		Console.root().println("    --data ~/.almostrealism/library --samples ~/Music/Samples --clusters 5");
+		Console.root().println("");
+		Console.root().println("  # Show prototypes without file paths (identifiers only):");
+		Console.root().println("  java -cp ... org.almostrealism.studio.discovery.PrototypeDiscovery \\");
+		Console.root().println("    --data ~/.almostrealism/library --clusters 5");
 	}
 }

@@ -22,6 +22,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.geometry.RayFeatures;
+import org.almostrealism.io.ConsoleFeatures;
 
 /**
  * Provides stylized shading by blending between two colors based on lighting intensity.
@@ -68,7 +69,7 @@ import org.almostrealism.geometry.RayFeatures;
  * @see Shader
  * @author Michael Murray
  */
-public class BlendingShader implements Shader<LightingContext>, RGBFeatures, RayFeatures {
+public class BlendingShader implements Shader<LightingContext>, RGBFeatures, RayFeatures, ConsoleFeatures {
   /** The color applied to fully-lit areas (where N dot L is maximum). */
   private Producer<PackedCollection> hotColor;
 
@@ -107,7 +108,7 @@ public class BlendingShader implements Shader<LightingContext>, RGBFeatures, Ray
 		try {
 			n = normals.iterator().next();
 		} catch (Exception e) {
-			e.printStackTrace();
+			warn(e.getMessage(), e);
 			return null;
 		}
 		

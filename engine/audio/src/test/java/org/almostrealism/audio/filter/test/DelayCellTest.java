@@ -200,12 +200,12 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		OperationProfile hardwareProfile = new OperationProfile("HardwareOperator");
 		HardwareOperator.timingListener = hardwareProfile.getTimingListener();
 
-		System.out.println("Running native loop...");
+		log("Running native loop...");
 		((OperationList) r).get(profiles).run();
 		profiles.print();
-		System.out.println();
+		log("");
 		hardwareProfile.print();
-		System.out.println("\n-----\n");
+		log("\n-----\n");
 
 		r =
 				iter(w(0, getTestWavPath())
@@ -218,12 +218,12 @@ public class DelayCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		hardwareProfile = new OperationProfile("HardwareOperator");
 		HardwareOperator.timingListener = hardwareProfile.getTimingListener();
 
-		System.out.println("Running Java loop...");
+		log("Running Java loop...");
 		((OperationList) r).get(profiles).run();
 		profiles.print();
-		System.out.println();
+		log("");
 		hardwareProfile.print();
-		System.out.println();
+		log("");
 
 		WaveData wavA = WaveData.load(new File("results/filter-loop-comparison-a.wav"));
 		saveRgb("results/filter-loop-comparison-a-spectrogram.png", cp(wavA.spectrogram(0))).get().run();

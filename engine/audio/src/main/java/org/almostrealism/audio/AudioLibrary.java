@@ -854,7 +854,7 @@ public class AudioLibrary implements ConsoleFeatures {
 					Optional.ofNullable(e.getMessage()).orElse(e.getClass().getSimpleName()) + ")");
 			if (!(e.getCause() instanceof IOException) || !(provider instanceof FileWaveDataProvider)) {
 				if (getErrorListener() == null) {
-					e.printStackTrace();
+					warn(e.getMessage(), e);
 				} else {
 					getErrorListener().accept(e);
 				}

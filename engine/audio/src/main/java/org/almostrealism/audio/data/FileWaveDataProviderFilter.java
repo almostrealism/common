@@ -19,6 +19,7 @@ package org.almostrealism.audio.data;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Optional;
+import org.almostrealism.io.ConsoleFeatures;
 
 /**
  * Filter for selecting audio files based on path or name patterns.
@@ -47,7 +48,7 @@ import java.util.Optional;
  * @see FileWaveDataProviderTree
  * @see FileWaveDataProvider
  */
-public class FileWaveDataProviderFilter {
+public class FileWaveDataProviderFilter implements ConsoleFeatures {
 	/** Common word-boundary separator characters used when padding join operations. */
 	public static final String[] SEPARATORS = {" ", "-", "_", "."};
 
@@ -137,8 +138,7 @@ public class FileWaveDataProviderFilter {
 	public Path coerceToMatch(Path relativePath) {
 		String selected = getFilterOn().select(relativePath);
 		String result = coerceToMatch(selected, getFilterOn() == FilterOn.PATH);
-		System.out.println("FileWaveDataProviderFilter[" + relativePath +
-				"]: Coerced " + selected + " to " + result);
+		log("Coerced " + selected + " to " + result);
 
 		if (getFilterOn() == FilterOn.PATH) {
 			return new File(result).toPath()

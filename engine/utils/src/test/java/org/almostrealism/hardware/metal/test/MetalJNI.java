@@ -28,7 +28,7 @@ public class MetalJNI extends TestSuiteBase {
 
 		multiplyVectorWithMatrix(vector, matrix, result, 4);
 
-		System.out.println("Result: " + result[0] + ", " + result[1] + ", " + result[2] + ", " + result[3]);
+		log("Result: " + result[0] + ", " + result[1] + ", " + result[2] + ", " + result[3]);
 	}
 
 	public static void multiplyVectorWithMatrix(float[] vector, float[] matrix, float[] result, int numElements) throws IOException {
@@ -45,13 +45,13 @@ public class MetalJNI extends TestSuiteBase {
 
 		long device = MTL.createSystemDefaultDevice();
 
-		System.out.println("Loaded device: " + device);
+		log("Loaded device: " + device);
 
 		long function = MTL.createFunction(device, "vectorMatrixMultiply", functionSource.toString());
 
 		// Create a compute pipeline
 		long pipeline = MTL.createComputePipelineState(device, function);
-		System.out.println("Created pipeline: " + pipeline);
+		log("Created pipeline: " + pipeline);
 
 		long commandQueue = MTL.createCommandQueue(device);
 		long commandBuffer;
@@ -77,7 +77,7 @@ public class MetalJNI extends TestSuiteBase {
 
 			MTL.commitCommandBuffer(commandBuffer);
 			MTL.waitUntilCompleted(commandBuffer);
-			System.out.println("Time: " + (System.nanoTime() - start));
+			log("Time: " + (System.nanoTime() - start));
 
 			ByteBuffer resultBufferByte = ByteBuffer.allocateDirect(result.length * 4).order(ByteOrder.nativeOrder());
 			FloatBuffer resultBufferFloat = resultBufferByte.asFloatBuffer();

@@ -23,6 +23,8 @@ import org.jboss.aesh.console.command.CommandException;
 import org.jboss.aesh.console.command.CommandResult;
 import org.jboss.aesh.console.command.invocation.CommandInvocation;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import java.io.IOException;
 import java.util.List;
 
@@ -46,7 +48,7 @@ import java.util.List;
  * @author  Michael Murray
  */
 @CommandDefinition(name="install", description = "Install a repository on the underlying system.")
-public class InstallRepository implements Command {
+public class InstallRepository implements Command, ConsoleFeatures {
 
 	/** Positional arguments provided to the {@code install} command. */
 	@Arguments
@@ -85,7 +87,7 @@ public class InstallRepository implements Command {
 			Process p = Runtime.getRuntime().exec(command);
 			p.waitFor();
 		} catch (IOException ioe) {
-			ioe.printStackTrace();
+			warn(ioe.getMessage(), ioe);
 			return CommandResult.FAILURE;
 		}
 
