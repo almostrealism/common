@@ -222,10 +222,12 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     private FileChannel workspaceLockChannel;
 
     /**
-     * Exclusive OS-level lock on the workspace directory's {@code .flowtree.lock} file.
-     * Prevents two {@link GitManagedJob} instances — whether in the same JVM or in
-     * sibling containers sharing a bind-mounted host path — from concurrently operating
-     * on the same working directory.
+     * Exclusive OS-level lock on {@code <parent>/.flowtree-locks/<repoName>.lock}.
+     * Placed outside the git working tree so that {@code git stash
+     * --include-untracked} cannot unlink the lock file mid-job (see
+     * {@code FLOWTREE_COLLISIONS.md}). Prevents concurrent {@link GitManagedJob}
+     * instances — same JVM or sibling containers sharing the filesystem —
+     * from operating on the same working directory.
      */
     private FileLock workspaceLock;
 
@@ -630,28 +632,36 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
-     * Acquires an exclusive OS-level lock on {@code <workspacePath>/.flowtree.lock},
-     * scoped to the git repository directory itself.
+     * Acquires an exclusive OS-level lock on
+     * {@code <parent>/.flowtree-locks/<repoName>.lock}. The lock file is
+     * placed outside the git working tree so {@code git stash
+     * --include-untracked} cannot unlink it mid-job — POSIX advisory locks
+     * ({@link FileLock}) are per-inode, and unlink-recreate breaks them
+     * silently (see {@code FLOWTREE_COLLISIONS.md}). On shared filesystems
+     * the lock serialises sibling containers targeting the same repository.
+     * Blocks until available; failures are logged but do not abort the job.
      *
-     * <p>{@link FileLock} uses the host kernel's advisory locking. When the repository
-     * directory lives on a filesystem shared between agent containers (e.g. a
-     * bind-mounted host path), the lock is visible to all containers and serialises
-     * concurrent jobs that target the same repository. The call blocks until the lock
-     * is available.</p>
-     *
-     * <p>Lock failures are logged as warnings but do not abort the job.</p>
-     *
-     * @param workspacePath the git repository root in which the lock file is created
+     * @param workspacePath the git repository root
      */
     private void acquireWorkspaceLock(String workspacePath) {
         try {
-            Path lockFile = Paths.get(workspacePath, ".flowtree.lock");
-            Files.createDirectories(lockFile.getParent());
+            Path repoRoot = Paths.get(workspacePath);
+            Path parentDir = repoRoot.getParent();
+            if (parentDir == null) {
+                warn("Cannot resolve parent of workspace " + workspacePath
+                        + " -- workspace lock skipped");
+                return;
+            }
+            Path repoNamePath = repoRoot.getFileName();
+            String repoName = repoNamePath != null ? repoNamePath.toString() : "unknown";
+            Path lockDir = parentDir.resolve(".flowtree-locks");
+            Files.createDirectories(lockDir);
+            Path lockFile = lockDir.resolve(repoName + ".lock");
             workspaceLockChannel = FileChannel.open(lockFile,
                     StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             String host = hostname();
             log("[" + host + "] Acquiring workspace lock: " + lockFile
-                    + " (job=" + taskId + ", repo=" + new File(workspacePath).getName() + ")");
+                    + " (job=" + taskId + ", repo=" + repoName + ")");
             workspaceLock = workspaceLockChannel.lock();
             log("[" + host + "] Workspace lock acquired: " + lockFile);
         } catch (IOException e) {

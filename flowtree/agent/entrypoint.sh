@@ -19,6 +19,75 @@
 
 set -euo pipefail
 
+# ── Writable-volume guard (refuse to start if any volume is writable) ──
+#
+# Writable shared volumes caused the April 2026 cross-workstream collision
+# documented in FLOWTREE_COLLISIONS.md: two agent containers mounting the
+# same `flowtree_workspaces` volume wrote to the same git working tree
+# concurrently, and the advisory file lock failed because git stash
+# unlinked the lock file mid-job. Per the original flowtree spec,
+# agents must run with NO writable volumes. Read-only bind mounts (ssh
+# keys, models, samples) are fine.
+#
+# System mounts managed by Docker (overlay rootfs, proc, sys, dev, run,
+# /etc/hostname, /etc/hosts, /etc/resolv.conf) are exempt — these are
+# not operator-controlled and are unavoidably writable.
+_flowtree_check_mount_writability() {
+    local violations
+    violations=$(awk '
+        {
+            mp = $5
+            opts = $6
+            # Skip kernel/pseudo filesystems and Docker-managed /etc files.
+            if (mp == "/" \
+                || mp == "/proc" || index(mp, "/proc/") == 1 \
+                || mp == "/sys"  || index(mp, "/sys/")  == 1 \
+                || mp == "/dev"  || index(mp, "/dev/")  == 1 \
+                || mp == "/run"  || index(mp, "/run/")  == 1 \
+                || mp == "/etc/hostname" \
+                || mp == "/etc/hosts" \
+                || mp == "/etc/resolv.conf") {
+                next
+            }
+            # Mount options (field 6) begin with rw or ro.
+            split(opts, flags, ",")
+            if (flags[1] == "rw") print mp
+        }
+    ' /proc/self/mountinfo | sort -u)
+
+    if [ -n "${violations}" ]; then
+        cat >&2 <<EOF
+ERROR: FlowTree Agent refuses to start -- writable volumes are attached.
+
+Writable mounts detected:
+$(printf '  %s\n' ${violations})
+
+Per the original FlowTree spec, agents must run with NO writable
+volumes. Read-only bind mounts (ssh keys, models, samples) are fine.
+
+This guard exists because writable shared volumes caused the April 2026
+cross-workstream collision documented in FLOWTREE_COLLISIONS.md: two
+agent containers mounting the same volume at /workspace/project wrote
+to the same git working tree simultaneously, and the in-repo advisory
+file lock failed because 'git stash --include-untracked' unlinked the
+lock file mid-job.
+
+To fix the misconfiguration:
+  * Remove every 'volumes: - <path>' and 'volumes: - <src>:<dst>'
+    entry from your compose file (or '-v' flag from 'docker run')
+    that is not marked ':ro'.
+  * Each agent container must clone the repository onto its own
+    overlay filesystem. Expect a cold 'git clone' on every start --
+    this is deliberate: it is the only way to guarantee isolation.
+  * Read-only reference mounts (ssh keys, models, samples) are fine
+    and should continue to be passed as ':ro' binds.
+EOF
+        exit 1
+    fi
+}
+
+_flowtree_check_mount_writability
+
 # ── Defaults ────────────────────────────────────────────────────────
 
 export FLOWTREE_ROOT_HOST="${FLOWTREE_ROOT_HOST:?FLOWTREE_ROOT_HOST is required}"
