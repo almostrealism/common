@@ -482,67 +482,93 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 			}
 		}
 
-		// cos/sin relative index maps within a position's frequency row
-		CollectionProducer cosRelIndexMap = mod(integers(0, totalHeadFreq), c(freqDim)).multiply(c(2.0));
-		CollectionProducer sinRelIndexMap = cosRelIndexMap.add(c(1.0));
+		// cos/sin relative index maps: cosRelIndexMap[h*freqDim+f] = f*2, sinRelIndexMap[...] = f*2+1
+		// Materialized as PackedCollection to avoid inlining arithmetic expressions into the kernel.
+		PackedCollection cosRelIndexMap = new PackedCollection(shape(totalHeadFreq));
+		PackedCollection sinRelIndexMap = new PackedCollection(shape(totalHeadFreq));
+		for (int h = 0; h < totalHeads; h++) {
+			for (int f = 0; f < freqDim; f++) {
+				int idx = h * freqDim + f;
+				cosRelIndexMap.setMem(idx, f * 2);
+				sinRelIndexMap.setMem(idx, f * 2 + 1);
+			}
+		}
 
 		// Input index maps: element i maps to i*2 (x1) and i*2+1 (x2)
-		CollectionProducer x1IndexMap = integers(0, totalHeadFreq).multiply(c(2.0));
-		CollectionProducer x2IndexMap = x1IndexMap.add(c(1.0));
+		PackedCollection x1IndexMap = new PackedCollection(shape(totalHeadFreq));
+		PackedCollection x2IndexMap = new PackedCollection(shape(totalHeadFreq));
+		for (int i = 0; i < totalHeadFreq; i++) {
+			x1IndexMap.setMem(i, i * 2);
+			x2IndexMap.setMem(i, i * 2 + 1);
+		}
 
 		// Output interleaving maps
 		int outputSize = totalHeads * freqDim * 2;
-		CollectionProducer outputSourceMap = floor(divide(integers(0, outputSize), c(2.0)));
-		CollectionProducer componentMap = mod(integers(0, outputSize), c(2.0));
+		PackedCollection outputSourceMap = new PackedCollection(shape(outputSize));
+		PackedCollection componentMap = new PackedCollection(shape(outputSize));
+		for (int i = 0; i < outputSize; i++) {
+			outputSourceMap.setMem(i, i / 2);
+			componentMap.setMem(i, i % 2);
+		}
 
-		// Per-group masks for position routing: mask_g[i] = 1.0 if head i belongs to group g
+		// Per-group masks: mask_g[i] = 1.0 if element i belongs to group g, else 0.0
 		int[] headOffsets = new int[numGroups + 1];
 		for (int g = 0; g < numGroups; g++) {
 			headOffsets[g + 1] = headOffsets[g] + headsInGroup[g];
 		}
-		CollectionProducer indices = integers(0, totalHeadFreq);
-		CollectionProducer[] groupMasks = new CollectionProducer[numGroups];
+		PackedCollection[] groupMasks = new PackedCollection[numGroups];
 		for (int g = 0; g < numGroups; g++) {
 			final int maskStart = headOffsets[g] * freqDim;
 			final int maskEnd = headOffsets[g + 1] * freqDim;
-			groupMasks[g] = indices.greaterThanOrEqual(c((double) maskStart))
-					.multiply(indices.lessThan(c((double) maskEnd)));
+			groupMasks[g] = new PackedCollection(shape(totalHeadFreq));
+			for (int i = 0; i < totalHeadFreq; i++) {
+				groupMasks[g].setMem(i, (i >= maskStart && i < maskEnd) ? 1.0 : 0.0);
+			}
 		}
 
 		List<PackedCollection> captured = new ArrayList<>();
 		captured.add(groupBaseOffsets);
+		captured.add(cosRelIndexMap);
+		captured.add(sinRelIndexMap);
+		captured.add(x1IndexMap);
+		captured.add(x2IndexMap);
+		captured.add(outputSourceMap);
+		captured.add(componentMap);
+		for (PackedCollection mask : groupMasks) {
+			captured.add(mask);
+		}
 
 		return layer("mraRopeRotation", inputShape, inputShape, input -> {
 			// Build per-head position by summing group-masked position scalars
 			CollectionProducer perHeadPos = null;
 			for (int g = 0; g < numGroups; g++) {
 				CollectionProducer groupPos = c(headGroups[g].position);
-				CollectionProducer masked = groupMasks[g].multiply(groupPos);
+				CollectionProducer masked = c(p(groupMasks[g])).multiply(groupPos);
 				perHeadPos = (perHeadPos == null) ? masked : perHeadPos.add(masked);
 			}
 
 			CollectionProducer posOffset = perHeadPos.multiply(c(weightsFreqSize));
 
 			// Absolute indices into combinedFreqCis
-			CollectionProducer cosIdx = c(p(groupBaseOffsets)).add(posOffset).add(cosRelIndexMap);
-			CollectionProducer sinIdx = c(p(groupBaseOffsets)).add(posOffset).add(sinRelIndexMap);
+			CollectionProducer cosIdx = c(p(groupBaseOffsets)).add(posOffset).add(c(p(cosRelIndexMap)));
+			CollectionProducer sinIdx = c(p(groupBaseOffsets)).add(posOffset).add(c(p(sinRelIndexMap)));
 
 			// Gather cos and sin values from combined frequency table
 			CollectionProducer cos = c(shape(totalHeadFreq), combinedFreqCis, cosIdx);
 			CollectionProducer sin = c(shape(totalHeadFreq), combinedFreqCis, sinIdx);
 
 			// Gather x1 and x2 from input
-			CollectionProducer x1 = c(shape(totalHeadFreq), input, x1IndexMap);
-			CollectionProducer x2 = c(shape(totalHeadFreq), input, x2IndexMap);
+			CollectionProducer x1 = c(shape(totalHeadFreq), input, p(x1IndexMap));
+			CollectionProducer x2 = c(shape(totalHeadFreq), input, p(x2IndexMap));
 
 			// Apply split-half rotation
 			CollectionProducer out1 = x1.multiply(cos).subtract(x2.multiply(sin));
 			CollectionProducer out2 = x2.multiply(cos).add(x1.multiply(sin));
 
 			// Interleave out1 and out2 to recreate (totalHeads, freqDim, 2) layout
-			CollectionProducer out1Vals = c(shape(outputSize), out1, outputSourceMap);
-			CollectionProducer out2Vals = c(shape(outputSize), out2, outputSourceMap);
-			CollectionProducer result = greaterThan(componentMap, c(0.5), out2Vals, out1Vals, true);
+			CollectionProducer out1Vals = c(shape(outputSize), out1, p(outputSourceMap));
+			CollectionProducer out2Vals = c(shape(outputSize), out2, p(outputSourceMap));
+			CollectionProducer result = greaterThan(c(p(componentMap)), c(0.5), out2Vals, out1Vals, true);
 
 			return result.reshape(inputShape);
 		}, captured, requirements);
