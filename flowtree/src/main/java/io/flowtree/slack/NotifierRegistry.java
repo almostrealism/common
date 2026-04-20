@@ -74,7 +74,7 @@ final class NotifierRegistry {
 
     /** Returns the live notifiers keyed by workspace ID (unmodifiable view). */
     Map<String, SlackNotifier> notifiersByWorkspace() {
-        return byWorkspace;
+        return java.util.Collections.unmodifiableMap(byWorkspace);
     }
 
     /**
@@ -130,6 +130,22 @@ final class NotifierRegistry {
             merged.putAll(n.getWorkstreams());
         }
         return merged;
+    }
+
+    /**
+     * Returns the workstream ID that owns the given job, searching all
+     * notifiers. Returns {@code null} if no workstream claims this job.
+     */
+    String findWorkstreamIdForJob(String jobId) {
+        if (jobId == null) return null;
+        if (!byWorkspace.isEmpty()) {
+            for (SlackNotifier n : byWorkspace.values()) {
+                String wsId = n.getWorkstreamIdForJob(jobId);
+                if (wsId != null) return wsId;
+            }
+            return null;
+        }
+        return primary != null ? primary.getWorkstreamIdForJob(jobId) : null;
     }
 
     /**

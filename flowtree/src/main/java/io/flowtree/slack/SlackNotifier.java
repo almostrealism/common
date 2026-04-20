@@ -717,6 +717,23 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Returns the workstream ID that owns the given job, by searching the
+     * in-memory job history. Returns {@code null} if not found.
+     *
+     * @param jobId the job identifier
+     * @return the workstream ID, or {@code null}
+     */
+    public String getWorkstreamIdForJob(String jobId) {
+        if (jobId == null) return null;
+        for (Map.Entry<String, Map<String, JobCompletionEvent>> entry : jobHistory.entrySet()) {
+            if (entry.getValue().containsKey(jobId)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Returns a specific job event by its job ID, across all workstreams.
      * Checks the persistent store first (when available), then falls back
      * to the in-memory cache.

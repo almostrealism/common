@@ -705,27 +705,28 @@ def _workspace_for_workstream(workstream_id: str) -> Optional[str]:
     """Return the Slack workspace ID that owns ``workstream_id``, or None
     if the workstream is unknown or has no workspace assignment.
 
-    Uses a short-lived cache to avoid refetching on every call. When the
-    workstream is missing from the cache, the cache is refreshed once
-    before giving up (handles just-registered workstreams).
+    Uses a short-lived cache to avoid refetching on every call. The lock
+    is held only during cache reads and writes — the network fetch happens
+    outside the lock so that concurrent lookups do not serialize behind a
+    slow I/O operation (double-checked locking pattern).
     """
     if not workstream_id:
         return None
     now = time.monotonic()
+    # Fast path: check the cache without performing any network I/O.
     with _workspace_map_lock:
         mapping = _workspace_map_cache.get("map")
         fetched = _workspace_map_cache.get("fetched", 0.0)
-        if mapping is None or (now - fetched) > WORKSPACE_CACHE_TTL:
-            mapping = _refresh_workspace_map()
-            _workspace_map_cache["map"] = mapping
-            _workspace_map_cache["fetched"] = now
-        if workstream_id in mapping:
-            return mapping[workstream_id]
-        # Unknown workstream — refresh once in case it was just registered.
-        mapping = _refresh_workspace_map()
-        _workspace_map_cache["map"] = mapping
-        _workspace_map_cache["fetched"] = now
-        return mapping.get(workstream_id)
+        cache_fresh = mapping is not None and (now - fetched) <= WORKSPACE_CACHE_TTL
+    if cache_fresh and workstream_id in mapping:
+        return mapping[workstream_id]
+    # Slow path: fetch outside the lock so other threads are not blocked.
+    new_mapping = _refresh_workspace_map()
+    new_fetched = time.monotonic()
+    with _workspace_map_lock:
+        _workspace_map_cache["map"] = new_mapping
+        _workspace_map_cache["fetched"] = new_fetched
+    return new_mapping.get(workstream_id)
 
 
 def _require_workstream_in_scope(workstream_id: str) -> None:
@@ -1236,10 +1237,10 @@ def workstream_register(
             Also accepts a JSON array string. Dependent repos follow the same
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
         slack_workspace_id: Slack workspace (team) ID to register this
-            workstream under. When omitted, the controller derives the target
-            workspace from the GitHub org in ``repo_url``. Tokens scoped to
-            specific workspaces must either pass this parameter explicitly
-            or supply a ``repo_url`` whose org maps to an in-scope workspace.
+            workstream under. When omitted, unscoped (superadmin) tokens
+            allow the controller to derive the target workspace from the
+            GitHub org in ``repo_url``. Callers using tokens scoped to
+            specific workspaces must pass this parameter explicitly.
 
     Returns:
         Dictionary with workstreamId and channel info on success.

@@ -1378,12 +1378,27 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return JSON object string
      */
     private String jobEventToJson(JobCompletionEvent event) {
+        return jobEventToJson(event, null);
+    }
+
+    /**
+     * Serialises a {@link JobCompletionEvent} to a JSON object string,
+     * optionally including the owning workstream identifier.
+     *
+     * @param event         the event to serialise
+     * @param workstreamId  the workstream that owns this job, or {@code null}
+     * @return JSON object string
+     */
+    private String jobEventToJson(JobCompletionEvent event, String workstreamId) {
         StringBuilder j = new StringBuilder();
         j.append("{");
         j.append("\"jobId\":\"").append(escapeJson(event.getJobId())).append("\"");
         j.append(",\"status\":\"").append(event.getStatus().name()).append("\"");
         j.append(",\"description\":\"").append(escapeJson(event.getDescription())).append("\"");
         j.append(",\"timestamp\":\"").append(event.getTimestamp().toString()).append("\"");
+        if (workstreamId != null) {
+            j.append(",\"workstreamId\":\"").append(escapeJson(workstreamId)).append("\"");
+        }
         if (event.getTargetBranch() != null) {
             j.append(",\"targetBranch\":\"").append(escapeJson(event.getTargetBranch())).append("\"");
         }
@@ -1441,8 +1456,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return newFixedLengthResponse(Response.Status.NOT_FOUND,
                     "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
         }
+        String workstreamId = notifiers.findWorkstreamIdForJob(jobId);
         return newFixedLengthResponse(Response.Status.OK,
-                "application/json", jobEventToJson(event));
+                "application/json", jobEventToJson(event, workstreamId));
     }
 
     /**
