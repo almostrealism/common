@@ -200,17 +200,23 @@ class TestApplyMigration(unittest.TestCase):
         org_map = {"my-org": "T111", "other-org": "T222"}
         result = migrate.apply_migration(config, self._two_workspace_entries(), org_map, "T111")
         ws_list = result["workstreams"]
-        alpha = next(w for w in ws_list if w["channelId"] == "C0000001")
-        beta = next(w for w in ws_list if w["channelId"] == "C0000002")
+        # alpha stays in fallback workspace T111 — keeps its original channelId.
+        alpha = next(w for w in ws_list if w.get("channelName") == "#alpha")
         self.assertEqual("T111", alpha["slackWorkspaceId"])
+        self.assertEqual("C0000001", alpha.get("channelId"))
+        # beta moves to T222 — channelId wiped because it was scoped to T111.
+        beta = next(w for w in ws_list if w.get("channelName") == "#beta")
         self.assertEqual("T222", beta["slackWorkspaceId"])
+        self.assertNotIn("channelId", beta)
 
     def test_workstream_without_githubOrg_gets_default(self):
         config = yaml.safe_load(SINGLE_WORKSPACE_YAML)
         org_map = {"my-org": "T111", "other-org": "T222"}
         result = migrate.apply_migration(config, self._two_workspace_entries(), org_map, "T111")
-        gamma = next(w for w in result["workstreams"] if w["channelId"] == "C0000003")
+        gamma = next(w for w in result["workstreams"] if w.get("channelName") == "#gamma")
+        # No githubOrg resolved — falls back to T111, channelId preserved.
         self.assertEqual("T111", gamma["slackWorkspaceId"])
+        self.assertEqual("C0000003", gamma.get("channelId"))
 
     def test_existing_slackWorkspaceId_not_overwritten(self):
         config = yaml.safe_load(SINGLE_WORKSPACE_YAML)
@@ -219,6 +225,30 @@ class TestApplyMigration(unittest.TestCase):
         entries = self._two_workspace_entries()
         result = migrate.apply_migration(config, entries, org_map, "T111")
         self.assertEqual("T_EXISTING", result["workstreams"][0]["slackWorkspaceId"])
+
+    def test_channelId_preserved_when_workspace_is_fallback(self):
+        # A workstream whose resolved workspace equals the fallback keeps its
+        # channelId — that channel still lives in the original (fallback)
+        # workspace after migration.
+        config = yaml.safe_load(SINGLE_WORKSPACE_YAML)
+        org_map = {"my-org": "T111", "other-org": "T222"}
+        result = migrate.apply_migration(config, self._two_workspace_entries(), org_map, "T111")
+        alpha = next(w for w in result["workstreams"] if w.get("channelName") == "#alpha")
+        self.assertEqual("T111", alpha["slackWorkspaceId"])
+        self.assertEqual("C0000001", alpha.get("channelId"))
+
+    def test_channelId_wiped_when_workspace_changes(self):
+        # A workstream whose resolved workspace differs from the fallback has
+        # its channelId wiped — the old ID is scoped to the fallback workspace
+        # and will not resolve in the new one. channelName is preserved so the
+        # controller's runtime auto-resolution can re-discover the channel.
+        config = yaml.safe_load(SINGLE_WORKSPACE_YAML)
+        org_map = {"my-org": "T111", "other-org": "T222"}
+        result = migrate.apply_migration(config, self._two_workspace_entries(), org_map, "T111")
+        beta = next(w for w in result["workstreams"] if w.get("channelName") == "#beta")
+        self.assertEqual("T222", beta["slackWorkspaceId"])
+        self.assertNotIn("channelId", beta)
+        self.assertEqual("#beta", beta.get("channelName"))
 
     def test_original_config_not_mutated(self):
         config = yaml.safe_load(SINGLE_WORKSPACE_YAML)
