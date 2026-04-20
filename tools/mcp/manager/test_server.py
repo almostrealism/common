@@ -1444,5 +1444,243 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         )
 
 
+# -----------------------------------------------------------------------
+# Workspace scope enforcement
+# -----------------------------------------------------------------------
+
+
+def _set_workspaces(*workspace_ids):
+    """Mark the current request as scoped to the given workspace IDs."""
+    server._set_workspace_scopes(list(workspace_ids) if workspace_ids else None)
+
+
+def _clear_workspaces():
+    server._request_workspace_scopes.set(None)
+    if hasattr(server._thread_local, "workspace_scopes"):
+        del server._thread_local.workspace_scopes
+
+
+def _reset_workspace_cache():
+    server._workspace_map_cache["map"] = None
+    server._workspace_map_cache["fetched"] = 0.0
+
+
+class TestWorkspaceScopeHelpers(unittest.TestCase):
+
+    def setUp(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def test_unscoped_allows_any_workspace(self):
+        self.assertTrue(server._is_workspace_allowed("TAAA"))
+        self.assertTrue(server._is_workspace_allowed(None))
+
+    def test_scoped_allows_listed_workspace(self):
+        _set_workspaces("TAAA")
+        self.assertTrue(server._is_workspace_allowed("TAAA"))
+
+    def test_scoped_denies_other_workspace(self):
+        _set_workspaces("TAAA")
+        self.assertFalse(server._is_workspace_allowed("TBBB"))
+
+    def test_scoped_denies_unknown_workspace(self):
+        _set_workspaces("TAAA")
+        self.assertFalse(server._is_workspace_allowed(None))
+        self.assertFalse(server._is_workspace_allowed(""))
+
+    def test_require_workspace_raises_on_mismatch(self):
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server._require_workspace("TBBB")
+
+    def test_require_workspace_noop_when_unscoped(self):
+        server._require_workspace("TANYTHING")  # does not raise
+
+
+class TestWorkspaceCacheAndFilter(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_get")
+    def test_workspace_for_workstream_resolves_and_caches(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "ws-1", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "ws-2", "slackWorkspaceId": "TBBB"},
+        ]
+        self.assertEqual("TAAA", server._workspace_for_workstream("ws-1"))
+        self.assertEqual("TBBB", server._workspace_for_workstream("ws-2"))
+        self.assertEqual(1, mock_get.call_count)  # cache hit on second call
+
+    @patch.object(server, "_controller_get")
+    def test_workspace_for_workstream_returns_none_for_unknown(self, mock_get):
+        mock_get.return_value = [{"workstreamId": "ws-1", "slackWorkspaceId": "TAAA"}]
+        self.assertIsNone(server._workspace_for_workstream("ws-missing"))
+
+    def test_filter_workstreams_passthrough_unscoped(self):
+        entries = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "b", "slackWorkspaceId": "TBBB"},
+        ]
+        self.assertEqual(entries, server._filter_workstreams_by_scope(entries))
+
+    def test_filter_workstreams_restricts_to_scope(self):
+        _set_workspaces("TAAA")
+        entries = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "b", "slackWorkspaceId": "TBBB"},
+            {"workstreamId": "c", "slackWorkspaceId": "TAAA"},
+        ]
+        filtered = server._filter_workstreams_by_scope(entries)
+        self.assertEqual(["a", "c"], [e["workstreamId"] for e in filtered])
+
+
+class TestWorkstreamListFiltering(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_get")
+    def test_unscoped_sees_everything(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "b", "slackWorkspaceId": "TBBB"},
+        ]
+        result = server.workstream_list()
+        self.assertEqual(2, result["count"])
+        self.assertEqual({"a", "b"}, {w["workstreamId"] for w in result["workstreams"]})
+
+    @patch.object(server, "_controller_get")
+    def test_scoped_sees_only_in_scope(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "b", "slackWorkspaceId": "TBBB"},
+        ]
+        _set_workspaces("TBBB")
+        result = server.workstream_list()
+        self.assertEqual(1, result["count"])
+        self.assertEqual(["b"], [w["workstreamId"] for w in result["workstreams"]])
+
+
+class TestWorkstreamWriteEnforcement(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_submit_rejected_for_out_of_scope(self, mock_post, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+        ]
+        _set_workspaces("TBBB")
+        with self.assertRaises(PermissionError):
+            server.workstream_submit_task(workstream_id="a", prompt="hi")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_submit_allowed_when_in_scope(self, mock_post, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+        ]
+        mock_post.return_value = {"ok": True, "jobId": "j-1"}
+        _set_workspaces("TAAA")
+        result = server.workstream_submit_task(workstream_id="a", prompt="hi")
+        self.assertTrue(result["ok"])
+
+    def test_controller_update_config_rejected_for_scoped_token(self):
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server.controller_update_config(accept_automated_jobs="true")
+
+
+class TestWorkstreamRegisterScope(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_post")
+    def test_scoped_requires_slack_workspace_id(self, mock_post):
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server.workstream_register(default_branch="feature/x")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    def test_scoped_rejects_out_of_scope_workspace(self, mock_post):
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server.workstream_register(
+                default_branch="feature/x", slack_workspace_id="TBBB")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    def test_scoped_passes_slack_workspace_to_controller(self, mock_post):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        _set_workspaces("TAAA")
+        server.workstream_register(
+            default_branch="feature/x", slack_workspace_id="TAAA")
+        args, _ = mock_post.call_args
+        self.assertEqual("/api/workstreams", args[0])
+        self.assertEqual("TAAA", args[1]["slackWorkspaceId"])
+
+    @patch.object(server, "_controller_post")
+    def test_unscoped_need_not_pass_slack_workspace(self, mock_post):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        # No workspace scope set — rely on controller-side derivation.
+        result = server.workstream_register(
+            default_branch="feature/x",
+            repo_url="git@github.com:almostrealism/common.git")
+        self.assertTrue(result["ok"])
+        args, _ = mock_post.call_args
+        self.assertNotIn("slackWorkspaceId", args[1])
+
+
+class TestBearerAuthWorkspaceScopes(unittest.TestCase):
+
+    def test_empty_workspace_scopes_treated_as_unscoped(self):
+        tokens = [{"value": "tok", "label": "t", "scopes": ["read"],
+                   "workspaceScopes": []}]
+        middleware = server.BearerAuthMiddleware(app=None, tokens=tokens)
+        # The fourth field is workspace_scopes — empty list must normalise to None.
+        entry = middleware.token_entries[0]
+        self.assertIsNone(entry[3])
+
+    def test_populated_workspace_scopes_retained(self):
+        tokens = [{"value": "tok", "label": "t", "scopes": ["read"],
+                   "workspaceScopes": ["TAAA", "TBBB"]}]
+        middleware = server.BearerAuthMiddleware(app=None, tokens=tokens)
+        self.assertEqual(["TAAA", "TBBB"], middleware.token_entries[0][3])
+
+
 if __name__ == "__main__":
     unittest.main()

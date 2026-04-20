@@ -547,6 +547,31 @@ public class WorkstreamConfig {
         return orgTokens;
     }
 
+    /**
+     * Returns a map from GitHub org name to the Slack workspace ID that owns it.
+     * Only orgs that are declared inside a workspace's {@code githubOrgs} section
+     * produce a mapping; globally-declared orgs (top-level {@code githubOrgs})
+     * are excluded because the multi-workspace schema treats top-level orgs as
+     * unscoped fallbacks.
+     *
+     * <p>When the same org is declared under multiple workspaces the last
+     * workspace wins, matching the merge order of {@link #mergedGithubOrgTokens()}.</p>
+     *
+     * @return org-name → workspace-ID map, in insertion order
+     */
+    public Map<String, String> orgToWorkspaceId() {
+        Map<String, String> mapping = new LinkedHashMap<>();
+        if (slackWorkspaces != null) {
+            for (SlackWorkspaceEntry wsEntry : slackWorkspaces) {
+                if (wsEntry.getGithubOrgs() == null) continue;
+                for (String org : wsEntry.getGithubOrgs().keySet()) {
+                    mapping.put(org, wsEntry.getWorkspaceId());
+                }
+            }
+        }
+        return mapping;
+    }
+
     /** Returns the list of workstream configuration entries. */
     public List<WorkstreamEntry> getWorkstreams() { return workstreams; }
     /** Sets the list of workstream configuration entries. */

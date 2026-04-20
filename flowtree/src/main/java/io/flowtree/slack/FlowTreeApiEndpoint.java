@@ -41,6 +41,7 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -120,12 +121,28 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit|/update)?"
     );
 
-    /** Slack notifier used to send job-status messages to Slack channels. */
-    private final SlackNotifier notifier;
+    /**
+     * Aggregation over every configured per-workspace {@link SlackNotifier}.
+     * Handlers resolve the owning notifier for a workstream (or the primary
+     * notifier when there is no workspace context) by going through the
+     * registry. In single-workspace mode the registry wraps a single primary
+     * notifier; in multi-workspace mode it carries one notifier per Slack
+     * team ID plus the primary for operations with no workspace context yet.
+     */
+    private final NotifierRegistry notifiers;
+
     /** Maps tool names to the local filesystem paths of their definition files. */
     private final Map<String, Path> toolFiles = new HashMap<>();
     /** Maps GitHub organisation names to their API access tokens. */
     private Map<String, String> githubOrgTokens = new HashMap<>();
+
+    /**
+     * Maps GitHub organisation names to the Slack workspace ID that owns them,
+     * as derived from {@code slackWorkspaces[].githubOrgs} in the YAML config.
+     * Used to route newly-registered workstreams to the correct workspace when
+     * the caller does not supply an explicit {@code slackWorkspaceId}.
+     */
+    private Map<String, String> orgToWorkspaceId = new HashMap<>();
 
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
@@ -159,14 +176,33 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private String arManagerUrl;
 
     /**
-     * Creates a new API endpoint on the specified port.
+     * Creates a new API endpoint on the specified port, using a single
+     * primary notifier (legacy single-workspace mode).
      *
      * @param port     the port to listen on
      * @param notifier the notifier to delegate message operations to
      */
     public FlowTreeApiEndpoint(int port, SlackNotifier notifier) {
+        this(port, notifier, null);
+    }
+
+    /**
+     * Creates a new API endpoint on the specified port with explicit
+     * per-workspace notifiers. Handlers resolve the owning workspace for
+     * each workstream ID and route operations to the matching notifier;
+     * list operations aggregate across every workspace.
+     *
+     * @param port                 the port to listen on
+     * @param primaryNotifier      the notifier used when a workstream has no
+     *                             known workspace (e.g. during registration
+     *                             before a workspace has been chosen)
+     * @param notifiersByWorkspace Slack team ID to notifier, or {@code null}
+     *                             / empty for single-workspace mode
+     */
+    public FlowTreeApiEndpoint(int port, SlackNotifier primaryNotifier,
+            Map<String, SlackNotifier> notifiersByWorkspace) {
         super(port);
-        this.notifier = notifier;
+        this.notifiers = new NotifierRegistry(primaryNotifier, notifiersByWorkspace);
         this.githubProxyHandler = new GitHubProxyHandler(githubOrgTokens);
     }
 
@@ -200,6 +236,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     public void setGithubOrgTokens(Map<String, String> githubOrgTokens) {
         this.githubOrgTokens = githubOrgTokens != null ? githubOrgTokens : new HashMap<>();
         githubProxyHandler.setGithubOrgTokens(this.githubOrgTokens);
+    }
+
+    /**
+     * Sets the GitHub-org → Slack-workspace mapping used by
+     * {@link #handleRegisterWorkstream} to derive the target workspace from
+     * the submitted {@code repoUrl} when no explicit {@code slackWorkspaceId}
+     * is provided.
+     *
+     * @param orgToWorkspaceId map of org name to Slack workspace ID
+     */
+    public void setOrgToWorkspaceId(Map<String, String> orgToWorkspaceId) {
+        this.orgToWorkspaceId = orgToWorkspaceId != null
+                ? new HashMap<>(orgToWorkspaceId) : new HashMap<>();
     }
 
     /**
@@ -404,7 +453,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Missing required field: text");
         }
 
-        Workstream workstream = notifier.getWorkstream(workstreamId);
+        SlackNotifier targetNotifier = notifiers.notifierFor(workstreamId);
+        Workstream workstream = targetNotifier != null
+                ? targetNotifier.getWorkstream(workstreamId) : null;
         if (workstream == null) {
             return errorResponse("Unknown workstream: " + workstreamId);
         }
@@ -427,12 +478,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         // Secondary: forward to notification channel (best-effort)
-        String threadTs = jobId != null ? notifier.getThreadTs(jobId) : null;
+        String threadTs = jobId != null ? targetNotifier.getThreadTs(jobId) : null;
         String resultTs;
         if (threadTs != null) {
-            resultTs = notifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
+            resultTs = targetNotifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
         } else {
-            resultTs = notifier.postMessage(workstream.getChannelId(), text);
+            resultTs = targetNotifier.postMessage(workstream.getChannelId(), text);
         }
 
         if (resultTs == null) {
@@ -564,11 +615,40 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String repoUrl = extractJsonField(body, "repoUrl");
         String planningDocument = extractJsonField(body, "planningDocument");
         String channelName = extractJsonField(body, "channelName");
+        String explicitWorkspaceId = extractJsonField(body, "slackWorkspaceId");
         Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
         List<String> dependentRepos = extractJsonArrayField(body, "dependentRepos");
 
+        // Resolve the target Slack workspace: explicit slackWorkspaceId wins,
+        // then a workspace derived from the repoUrl's GitHub org, then (in
+        // legacy single-workspace mode) null / the primary notifier. In
+        // multi-workspace mode failing to resolve a workspace is a 400 — the
+        // alternative is silently placing the workstream in the wrong Slack.
+        String targetWorkspaceId = explicitWorkspaceId;
+        if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty()) && repoUrl != null) {
+            String org = GitHubProxyHandler.extractOrgFromRepoUrl(repoUrl);
+            if (org != null) {
+                targetWorkspaceId = orgToWorkspaceId.get(org);
+            }
+        }
+        if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty())
+                && notifiers.isMultiWorkspace()) {
+            return errorResponse("Could not determine target Slack workspace. Supply"
+                    + " slackWorkspaceId in the request body, or a repoUrl whose"
+                    + " GitHub org matches a workspace in the controller config.");
+        }
+        if (targetWorkspaceId != null && !targetWorkspaceId.isEmpty()
+                && notifiers.isMultiWorkspace()
+                && !notifiers.notifiersByWorkspace().containsKey(targetWorkspaceId)) {
+            return errorResponse("Unknown Slack workspace: " + targetWorkspaceId);
+        }
+
+        SlackNotifier targetNotifier = notifiers.notifierForWorkspace(targetWorkspaceId);
+
         // Check for an existing workstream with the same branch and repo
-        Workstream existing = notifier.findWorkstreamByBranchAndRepo(defaultBranch, repoUrl);
+        // across every workspace so callers don't race-create duplicates if
+        // the workspace derivation ever differs between calls.
+        Workstream existing = notifiers.findByBranchAndRepo(defaultBranch, repoUrl);
         if (existing != null) {
             log("Workstream already exists for branch " + defaultBranch
                 + ": " + existing.getWorkstreamId() + " — returning existing");
@@ -582,10 +662,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     "application/json", json.toString());
         }
 
-        // Auto-create Slack channel if a name is provided
+        // Auto-create Slack channel if a name is provided — must be created
+        // on the target workspace's notifier so the channel lives in the
+        // right Slack.
         String channelId = null;
         if (channelName != null && !channelName.isEmpty()) {
-            channelId = notifier.createChannel(channelName);
+            channelId = targetNotifier.createChannel(channelName);
         }
 
         Workstream workstream;
@@ -619,10 +701,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         workstream.setPushToOrigin(true);
 
+        // Stamp the workspace assignment so listener.registerWorkstream()
+        // routes to the correct per-workspace notifier and so subsequent
+        // API calls can identify the owning workspace.
+        if (targetWorkspaceId != null && !targetWorkspaceId.isEmpty()) {
+            workstream.setSlackWorkspaceId(targetWorkspaceId);
+        }
+
         if (listener != null) {
             listener.registerAndPersistWorkstream(workstream);
         } else {
-            notifier.registerWorkstream(workstream);
+            targetNotifier.registerWorkstream(workstream);
         }
 
         log("Registered workstream via API: " + workstream.getWorkstreamId()
@@ -660,7 +749,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Failed to read request body");
         }
 
-        Workstream workstream = notifier.getWorkstream(workstreamId);
+        SlackNotifier ownerNotifier = notifiers.notifierFor(workstreamId);
+        Workstream workstream = ownerNotifier != null
+                ? ownerNotifier.getWorkstream(workstreamId) : null;
         if (workstream == null) {
             return errorResponse("Unknown workstream: " + workstreamId);
         }
@@ -773,7 +864,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String resolvedWorkstreamId = pathWorkstreamId;
 
         if (bodyWorkstreamId != null && !bodyWorkstreamId.isEmpty()) {
-            workstream = notifier.getWorkstream(bodyWorkstreamId);
+            SlackNotifier n = notifiers.notifierFor(bodyWorkstreamId);
+            workstream = n != null ? n.getWorkstream(bodyWorkstreamId) : null;
             if (workstream != null) {
                 resolvedWorkstreamId = bodyWorkstreamId;
                 log("Workstream resolved from request body: " + resolvedWorkstreamId);
@@ -781,7 +873,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (workstream == null && targetBranch != null && !targetBranch.isEmpty()) {
-            Workstream branchMatch = notifier.findWorkstreamByBranch(targetBranch);
+            Workstream branchMatch = notifiers.findByBranch(targetBranch);
             if (branchMatch != null) {
                 workstream = branchMatch;
                 resolvedWorkstreamId = branchMatch.getWorkstreamId();
@@ -791,7 +883,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (workstream == null && pathWorkstreamId != null) {
-            workstream = notifier.getWorkstream(pathWorkstreamId);
+            SlackNotifier n = notifiers.notifierFor(pathWorkstreamId);
+            workstream = n != null ? n.getWorkstream(pathWorkstreamId) : null;
         }
 
         if (workstream == null) {
@@ -824,7 +917,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 name = name.substring(1);
             }
             log("Workstream " + workstreamId + " has no channel ID; retrying channel creation for " + name);
-            String channelId = notifier.createChannel(name);
+            String channelId = notifiers.notifierFor(workstreamId).createChannel(name);
             if (channelId != null) {
                 workstream.setChannelId(channelId);
                 log("Channel resolved for workstream " + workstreamId + ": " + channelId);
@@ -845,7 +938,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (startedAfterStr != null && !startedAfterStr.isEmpty()) {
             try {
                 long startedAfter = Long.parseLong(startedAfterStr);
-                if (notifier.hasJobStartedAfter(workstreamId, startedAfter)) {
+                if (notifiers.notifierFor(workstreamId).hasJobStartedAfter(workstreamId, startedAfter)) {
                     log("Skipping job submission — newer job exists on workstream "
                         + workstreamId + " (startedAfter=" + startedAfter + ")");
                     String json = "{\"ok\":true,\"skipped\":true,"
@@ -995,7 +1088,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             ? jobDescription : ClaudeCodeJob.summarizePrompt(prompt);
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
-        notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent);
+        notifiers.notifierFor(workstream.getWorkstreamId()).onJobSubmitted(workstream.getWorkstreamId(), startEvent);
 
         // Queue locally — the NodeGroup relay mechanism distributes
         // the job to a Node whose labels match the job's requirements
@@ -1129,10 +1222,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             autoCreatePrJobs.remove(jobId);
         }
 
+        SlackNotifier targetNotifier = notifiers.notifierFor(workstreamId);
         if (eventStatus == JobCompletionEvent.Status.STARTED) {
-            notifier.onJobStarted(workstreamId, event);
+            targetNotifier.onJobStarted(workstreamId, event);
         } else {
-            notifier.onJobCompleted(workstreamId, event);
+            targetNotifier.onJobCompleted(workstreamId, event);
         }
 
         return newFixedLengthResponse(Response.Status.OK,
@@ -1318,7 +1412,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return JSON array of job events
      */
     private Response handleListJobs(String workstreamId, int limit) {
-        List<JobCompletionEvent> page = notifier.getRecentJobs(workstreamId, limit);
+        SlackNotifier n = notifiers.notifierFor(workstreamId);
+        List<JobCompletionEvent> page = n != null
+                ? n.getRecentJobs(workstreamId, limit) : new ArrayList<>();
 
         StringBuilder json = new StringBuilder("[");
         boolean first = true;
@@ -1340,7 +1436,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return JSON object for the job event, or 404 if not found
      */
     private Response handleGetJob(String jobId) {
-        JobCompletionEvent event = notifier.getJob(jobId);
+        JobCompletionEvent event = notifiers.findJob(jobId);
         if (event == null) {
             return newFixedLengthResponse(Response.Status.NOT_FOUND,
                     "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
@@ -1356,7 +1452,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return an HTTP 200 response containing a JSON array of workstream objects
      */
     private Response handleListWorkstreams() {
-        Map<String, Workstream> workstreams = notifier.getWorkstreams();
+        Map<String, Workstream> workstreams = notifiers.allWorkstreams();
 
         StringBuilder json = new StringBuilder("[");
         boolean first = true;

@@ -202,6 +202,57 @@ _request_job_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "_request_job_id", default=None
 )
 
+# Per-request workspace scope. A value of None (or an empty list) means the
+# caller is unscoped — it may see and act on every workstream in every Slack
+# workspace. A non-empty list of workspace IDs restricts the caller to those
+# workspaces only.
+_request_workspace_scopes: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar(
+    "_request_workspace_scopes", default=None
+)
+
+
+def _get_workspace_scopes() -> Optional[list]:
+    """Return the list of workspace IDs this request is allowed to touch,
+    or None if unscoped (allowed everywhere)."""
+    ws = _request_workspace_scopes.get(None)
+    if ws is not None:
+        return ws
+    return getattr(_thread_local, "workspace_scopes", None)
+
+
+def _set_workspace_scopes(workspace_scopes: Optional[list]) -> None:
+    """Store the workspace scope list for the current request. Pass None to
+    mark the caller as unscoped (superadmin)."""
+    _request_workspace_scopes.set(workspace_scopes)
+    _thread_local.workspace_scopes = workspace_scopes
+
+
+def _is_workspace_allowed(workspace_id: Optional[str]) -> bool:
+    """Return True if the current request's workspace scope permits
+    operating on the given workspace ID.
+
+    Unscoped callers always pass. Scoped callers only pass when their
+    list contains the workspace ID. A workstream with no resolvable
+    workspace ID (single-workspace mode or unregistered) is permitted
+    only for unscoped callers, since we cannot verify its assignment.
+    """
+    scopes = _get_workspace_scopes()
+    if not scopes:
+        return True
+    if workspace_id is None or workspace_id == "":
+        return False
+    return workspace_id in scopes
+
+
+def _require_workspace(workspace_id: Optional[str]) -> None:
+    """Raise PermissionError if the current request is not scoped to the
+    given workspace. No-op for unscoped tokens."""
+    if not _is_workspace_allowed(workspace_id):
+        raise PermissionError(
+            "Token is not scoped to workspace "
+            + (workspace_id if workspace_id else "<unknown>")
+        )
+
 def _get_token_workstream_id() -> Optional[str]:
     ws = _request_workstream_id.get(None)
     if ws is not None:
@@ -373,14 +424,23 @@ class BearerAuthMiddleware:
 
     def __init__(self, app, tokens: list):
         self.app = app
-        # Build a lookup: token value -> (scopes, label)
+        # Build a lookup: token value -> (scopes, label, workspace_scopes).
+        # workspace_scopes is None for unscoped (superadmin) tokens or a list
+        # of Slack workspace IDs for narrower tokens. An empty list in the
+        # config is normalised to None so callers can write either "no field"
+        # or "workspaceScopes: []" to mean unscoped.
         self.token_entries = []
         for t in tokens:
             value = t.get("value", "")
             scopes = t.get("scopes", [])
             label = t.get("label", "unlabeled")
+            ws_scopes_raw = t.get("workspaceScopes")
+            if isinstance(ws_scopes_raw, list) and ws_scopes_raw:
+                ws_scopes: Optional[list] = [str(w) for w in ws_scopes_raw]
+            else:
+                ws_scopes = None
             if value:
-                self.token_entries.append((value, scopes, label))
+                self.token_entries.append((value, scopes, label, ws_scopes))
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
@@ -399,25 +459,34 @@ class BearerAuthMiddleware:
                 # timing side-channels that reveal token existence
                 matched_scopes = None
                 matched_label = None
-                for stored_value, scopes, label in self.token_entries:
+                matched_workspace_scopes = None
+                matched = False
+                for stored_value, scopes, label, ws_scopes in self.token_entries:
                     if hmac.compare_digest(
                         token_value.encode("utf-8"),
                         stored_value.encode("utf-8"),
                     ):
                         matched_scopes = scopes
                         matched_label = label
+                        matched_workspace_scopes = ws_scopes
+                        matched = True
                         break
 
-                if matched_scopes is not None:
+                if matched:
                     _set_scopes(matched_scopes, matched_label)
+                    _set_workspace_scopes(matched_workspace_scopes)
                     await self.app(scope, receive, send)
                     return
 
-                # Try HMAC temporary token
+                # Try HMAC temporary token. Temp tokens are issued by the
+                # controller against a specific workstream, so their workspace
+                # scope (if any) is derived later at call time from the
+                # workstream → workspace mapping rather than embedded here.
                 temp_result = _validate_temp_token(token_value)
                 if temp_result is not None:
                     scopes, label, ws_id, job_id = temp_result
                     _set_scopes(scopes, label)
+                    _set_workspace_scopes(None)
                     _set_token_context(ws_id, job_id)
                     await self.app(scope, receive, send)
                     return
@@ -602,6 +671,91 @@ def _controller_post(path: str, payload: dict, timeout: int = 15) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Workspace scope resolution
+# ---------------------------------------------------------------------------
+
+# Short-lived cache of the workstream → workspace mapping. Each entry holds
+# the mapping plus its fetch timestamp. Refreshed whenever the last fetch is
+# older than WORKSPACE_CACHE_TTL seconds. Controller is local so hitting
+# /api/workstreams is cheap, but refetching on every tool invocation adds
+# avoidable latency to short read tools.
+_workspace_map_cache: dict = {"map": None, "fetched": 0.0}
+_workspace_map_lock = threading.Lock()
+WORKSPACE_CACHE_TTL = 30.0
+
+
+def _refresh_workspace_map() -> dict:
+    """Fetch the workstream list from the controller and return a fresh
+    ``{workstream_id: slackWorkspaceId}`` mapping. Workstreams with no
+    slackWorkspaceId are included with a value of ``None``.
+    """
+    result = _controller_get("/api/workstreams")
+    mapping: dict = {}
+    entries = result if isinstance(result, list) else result.get("workstreams", [])
+    if isinstance(entries, list):
+        for ws in entries:
+            if isinstance(ws, dict):
+                wid = ws.get("workstreamId")
+                if wid:
+                    mapping[wid] = ws.get("slackWorkspaceId")
+    return mapping
+
+
+def _workspace_for_workstream(workstream_id: str) -> Optional[str]:
+    """Return the Slack workspace ID that owns ``workstream_id``, or None
+    if the workstream is unknown or has no workspace assignment.
+
+    Uses a short-lived cache to avoid refetching on every call. When the
+    workstream is missing from the cache, the cache is refreshed once
+    before giving up (handles just-registered workstreams).
+    """
+    if not workstream_id:
+        return None
+    now = time.monotonic()
+    with _workspace_map_lock:
+        mapping = _workspace_map_cache.get("map")
+        fetched = _workspace_map_cache.get("fetched", 0.0)
+        if mapping is None or (now - fetched) > WORKSPACE_CACHE_TTL:
+            mapping = _refresh_workspace_map()
+            _workspace_map_cache["map"] = mapping
+            _workspace_map_cache["fetched"] = now
+        if workstream_id in mapping:
+            return mapping[workstream_id]
+        # Unknown workstream — refresh once in case it was just registered.
+        mapping = _refresh_workspace_map()
+        _workspace_map_cache["map"] = mapping
+        _workspace_map_cache["fetched"] = now
+        return mapping.get(workstream_id)
+
+
+def _require_workstream_in_scope(workstream_id: str) -> None:
+    """Resolve the workspace owning ``workstream_id`` and raise
+    PermissionError if the current request's token does not permit it.
+    No-op when the caller's token is unscoped.
+    """
+    if not _get_workspace_scopes():
+        return
+    ws_id = _workspace_for_workstream(workstream_id)
+    _require_workspace(ws_id)
+
+
+def _filter_workstreams_by_scope(entries: list) -> list:
+    """Return only those workstream-dict entries whose slackWorkspaceId is
+    permitted by the current request's workspace scope. Unscoped callers
+    see everything; scoped callers see only in-scope workstreams.
+    """
+    scopes = _get_workspace_scopes()
+    if not scopes:
+        return entries
+    filtered = []
+    for ws in entries:
+        if isinstance(ws, dict):
+            if ws.get("slackWorkspaceId") in scopes:
+                filtered.append(ws)
+    return filtered
+
+
+# ---------------------------------------------------------------------------
 # GitHub API helpers — delegated to github_api.py to reduce file size
 # ---------------------------------------------------------------------------
 
@@ -643,13 +797,21 @@ def _pipeline_error(workstream_id: str, missing: str) -> dict:
 def _find_workstream(workstream_id: str) -> Optional[dict]:
     """Fetch a specific workstream from the controller's list.
 
+    Enforces the current request's workspace scope as a side effect: a
+    scoped caller looking up a workstream in an out-of-scope workspace
+    receives None (the lookup appears to fail, rather than leaking
+    existence or 403'ing from every call site independently).
+
     Returns:
-        The workstream dict, or None if not found.
+        The workstream dict, or None if not found or not in scope.
     """
     result = _controller_get("/api/workstreams")
     if isinstance(result, list):
         for ws in result:
             if ws.get("workstreamId") == workstream_id:
+                if _get_workspace_scopes() and not _is_workspace_allowed(
+                        ws.get("slackWorkspaceId")):
+                    return None
                 return ws
     return None
 
@@ -717,6 +879,12 @@ def controller_update_config(
         Dictionary with the current ``acceptAutomatedJobs`` setting.
     """
     _require_scope("write")
+    # Global controller config is superadmin-only: workspace-scoped tokens
+    # cannot flip this switch because its effect is global across workspaces.
+    if _get_workspace_scopes():
+        raise PermissionError(
+            "controller_update_config requires an unscoped (superadmin) token"
+        )
     _audit("controller_update_config", accept_automated_jobs=accept_automated_jobs)
 
     if accept_automated_jobs:
@@ -761,10 +929,11 @@ def workstream_list() -> dict:
     result = _controller_get("/api/workstreams")
 
     if isinstance(result, list):
+        entries = _filter_workstreams_by_scope(result)
         return {
             "ok": True,
-            "workstreams": result,
-            "count": len(result),
+            "workstreams": entries,
+            "count": len(entries),
             "next_steps": [
                 "Use workstream_get_status with a workstreamId to see job statistics",
                 "Use workstream_submit_task to submit a coding task to an agent",
@@ -799,6 +968,7 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
     if err:
         return err
     _audit("workstream_get_status", workstream_id=workstream_id)
+    _require_workstream_in_scope(workstream_id)
     params = urlencode({"workstream": workstream_id, "period": period})
     result = _controller_get(f"/api/stats?{params}")
     result["workstream_id"] = workstream_id
@@ -843,6 +1013,7 @@ def workstream_list_jobs(
     if err:
         return err
     _audit("workstream_list_jobs", workstream_id=workstream_id)
+    _require_workstream_in_scope(workstream_id)
     params = urlencode({"limit": limit})
     result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?{params}")
     if isinstance(result, list):
@@ -870,7 +1041,17 @@ def workstream_get_job(job_id: str) -> dict:
     if err:
         return err
     _audit("workstream_get_job", job_id=job_id)
-    return _controller_get(f"/api/jobs/{job_id}")
+    result = _controller_get(f"/api/jobs/{job_id}")
+    # Scope check: a scoped token may only see jobs belonging to a workstream
+    # in its workspace scope. The job event does not itself carry a workspace
+    # ID, so we resolve via the workstream → workspace mapping. Unknown jobs
+    # are returned unchanged for unscoped callers and suppressed as 404 for
+    # scoped callers to avoid leaking existence.
+    if _get_workspace_scopes():
+        ws_id = result.get("workstreamId") if isinstance(result, dict) else None
+        if not ws_id or not _is_workspace_allowed(_workspace_for_workstream(ws_id)):
+            return {"ok": False, "error": "Job not found"}
+    return result
 
 
 def _parse_required_labels(required_labels: str) -> dict:
@@ -972,6 +1153,7 @@ def workstream_submit_task(
     )
     if err:
         return err
+    _require_workstream_in_scope(workstream_id)
     _audit("workstream_submit_task", workstream_id=workstream_id,
            target_branch=target_branch, prompt_len=len(prompt))
 
@@ -1027,6 +1209,7 @@ def workstream_register(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
+    slack_workspace_id: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1052,6 +1235,11 @@ def workstream_register(
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
             Also accepts a JSON array string. Dependent repos follow the same
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
+        slack_workspace_id: Slack workspace (team) ID to register this
+            workstream under. When omitted, the controller derives the target
+            workspace from the GitHub org in ``repo_url``. Tokens scoped to
+            specific workspaces must either pass this parameter explicitly
+            or supply a ``repo_url`` whose org maps to an in-scope workspace.
 
     Returns:
         Dictionary with workstreamId and channel info on success.
@@ -1060,11 +1248,26 @@ def workstream_register(
     err = _check_short_strings(
         default_branch=default_branch, base_branch=base_branch,
         repo_url=repo_url, planning_document=planning_document,
-        channel_name=channel_name,
+        channel_name=channel_name, slack_workspace_id=slack_workspace_id,
     )
     if err:
         return err
-    _audit("workstream_register", default_branch=default_branch)
+    # Scope enforcement: scoped callers must name a workspace they own.
+    # An explicit slack_workspace_id wins. Otherwise we refuse rather than
+    # rely on the controller's repoUrl-derivation path, because allowing
+    # the caller to rely on controller-side derivation would open a
+    # scope-bypass if repoUrl is omitted or spoofed.
+    if _get_workspace_scopes():
+        if slack_workspace_id:
+            _require_workspace(slack_workspace_id)
+        else:
+            raise PermissionError(
+                "Scoped tokens must pass slack_workspace_id when registering "
+                "a workstream — repoUrl-based derivation is only available "
+                "to unscoped (superadmin) tokens."
+            )
+    _audit("workstream_register", default_branch=default_branch,
+           slack_workspace_id=slack_workspace_id)
 
     payload = {"defaultBranch": default_branch}
     if base_branch:
@@ -1075,6 +1278,8 @@ def workstream_register(
         payload["planningDocument"] = planning_document
     if channel_name:
         payload["channelName"] = channel_name
+    if slack_workspace_id:
+        payload["slackWorkspaceId"] = slack_workspace_id
     if required_labels:
         labels_map = _parse_required_labels(required_labels)
         if labels_map:
@@ -1151,6 +1356,7 @@ def workstream_update_config(
     )
     if err:
         return err
+    _require_workstream_in_scope(workstream_id)
     _audit("workstream_update_config", workstream_id=workstream_id)
 
     payload = {}
@@ -1250,6 +1456,7 @@ def project_create_branch(
         err = _check_length(plan_content, "plan_content", MAX_CONTENT_LEN)
         if err:
             return err
+    _require_workstream_in_scope(workstream_id)
     _audit("project_create_branch", workstream_id=workstream_id,
            repo_url=repo_url, plan_title=plan_title)
 
@@ -1339,6 +1546,7 @@ def project_verify_branch(
     )
     if err:
         return err
+    _require_workstream_in_scope(workstream_id)
     _audit("project_verify_branch", workstream_id=workstream_id, branch=branch)
 
     ws = _find_workstream(workstream_id)
@@ -1441,6 +1649,7 @@ def project_commit_plan(
     )
     if err:
         return err
+    _require_workstream_in_scope(workstream_id)
     _audit("project_commit_plan", workstream_id=workstream_id, path=path, branch=branch)
 
     ws = _find_workstream(workstream_id)
@@ -1578,6 +1787,7 @@ def project_read_plan(
     )
     if err:
         return err
+    _require_workstream_in_scope(workstream_id)
     _audit("project_read_plan", workstream_id=workstream_id, path=path, branch=branch)
 
     ws = _find_workstream(workstream_id)
@@ -2200,6 +2410,7 @@ def send_message(
     if not effective_ws:
         return {"ok": False, "error": "workstream_id is required (pass explicitly or use a job token)"}
 
+    _require_workstream_in_scope(effective_ws)
     _audit("send_message", workstream_id=effective_ws, job_id=effective_job,
            text=text[:80])
 

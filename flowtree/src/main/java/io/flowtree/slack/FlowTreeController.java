@@ -1015,7 +1015,15 @@ public class FlowTreeController implements ConsoleFeatures {
         SignalWireDeliveryProvider.attachDefault();
 
         try {
-            apiEndpoint = new FlowTreeApiEndpoint(apiPort, primaryNotifier);
+            // Build the workspace-ID → notifier map for the endpoint so every
+            // workstream-aware handler can resolve the correct notifier. Empty
+            // in single-workspace (legacy) mode.
+            Map<String, SlackNotifier> notifiersByWorkspace = new LinkedHashMap<>();
+            for (Map.Entry<String, WorkspaceConnection> e : workspaceConnections.entrySet()) {
+                notifiersByWorkspace.put(e.getKey(), e.getValue().notifier);
+            }
+
+            apiEndpoint = new FlowTreeApiEndpoint(apiPort, primaryNotifier, notifiersByWorkspace);
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
@@ -1027,6 +1035,13 @@ public class FlowTreeController implements ConsoleFeatures {
                 if (!orgTokens.isEmpty()) {
                     apiEndpoint.setGithubOrgTokens(orgTokens);
                     log("Loaded GitHub tokens for " + orgTokens.size() + " org(s)");
+                }
+                // Org → workspace mapping lets registration derive the owning
+                // workspace from repoUrl when the caller doesn't specify one.
+                Map<String, String> orgToWorkspace = loadedConfig.orgToWorkspaceId();
+                if (!orgToWorkspace.isEmpty()) {
+                    apiEndpoint.setOrgToWorkspaceId(orgToWorkspace);
+                    log("Loaded workspace mapping for " + orgToWorkspace.size() + " org(s)");
                 }
             }
 
