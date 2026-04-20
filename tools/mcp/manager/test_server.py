@@ -151,22 +151,31 @@ class TestWorkstreamGetStatus(unittest.TestCase):
     @patch.object(server, "_controller_get")
     def test_returns_stats(self, mock_get):
         _grant_all_scopes()
-        mock_get.return_value = {"thisWeek": {"jobs": 5}, "lastWeek": {"jobs": 3}}
+        # workstream_get_status fetches stats AND recent jobs as a convenience;
+        # both calls are expected.
+        mock_get.side_effect = [
+            {"thisWeek": {"jobs": 5}, "lastWeek": {"jobs": 3}},
+            [],  # recent jobs list
+        ]
         result = server.workstream_get_status(workstream_id="ws-test")
-        mock_get.assert_called_once()
-        call_path = mock_get.call_args[0][0]
-        self.assertIn("workstream=ws-test", call_path)
-        self.assertIn("period=weekly", call_path)
+        paths = [c.args[0] for c in mock_get.call_args_list]
+        self.assertTrue(
+            any("workstream=ws-test" in p and "period=weekly" in p for p in paths),
+            f"Expected a stats call; got {paths}")
+        self.assertTrue(
+            any("/api/workstreams/ws-test/jobs" in p for p in paths),
+            f"Expected a recent-jobs call; got {paths}")
         self.assertEqual(result["workstream_id"], "ws-test")
         self.assertIn("next_steps", result)
 
     @patch.object(server, "_controller_get")
     def test_custom_period(self, mock_get):
         _grant_all_scopes()
-        mock_get.return_value = {}
+        mock_get.side_effect = [{}, []]
         server.workstream_get_status(workstream_id="ws-test", period="daily")
-        call_path = mock_get.call_args[0][0]
-        self.assertIn("period=daily", call_path)
+        paths = [c.args[0] for c in mock_get.call_args_list]
+        self.assertTrue(any("period=daily" in p for p in paths),
+                        f"Expected a daily-period stats call; got {paths}")
 
     def test_rejects_long_workstream_id(self):
         _grant_all_scopes()
@@ -646,10 +655,12 @@ class TestMemoryRecall(unittest.TestCase):
              "tags": ["test"], "created_at": "2026-01-01", "repo_url": "", "branch": ""},
         ]
         mock_client_fn.return_value = client
-        result = server.memory_recall(query="test query")
+        # scope="all" bypasses repo_url resolution — the test just verifies
+        # that a bare query plumbs through to client.search.
+        result = server.memory_recall(query="test query", scope="all")
         client.search.assert_called_once()
         self.assertTrue(result["ok"])
-        self.assertEqual(result["count"], 1)
+        self.assertEqual(len(result["memories"]), 1)
         self.assertEqual(result["memories"][0]["content"], "Found something")
 
     @patch.object(server, "_get_memory_client", return_value=None)
@@ -666,7 +677,7 @@ class TestMemoryRecall(unittest.TestCase):
         client = MagicMock()
         client.search.return_value = []
         mock_client_fn.return_value = client
-        result = server.memory_recall(query="nothing")
+        result = server.memory_recall(query="nothing", scope="all")
         self.assertTrue(result["ok"])
         self.assertEqual(len(result["memories"]), 0)
 
@@ -681,7 +692,7 @@ class TestMemoryRecall(unittest.TestCase):
         ]
         mock_client_fn.return_value = client
         result = server.memory_recall(
-            query="test", include_messages=True)
+            query="test", include_messages=True, scope="all")
         self.assertEqual(client.search.call_count, 2)
         second_call = client.search.call_args_list[1]
         self.assertEqual(second_call[1]["namespace"], "messages")
@@ -1680,6 +1691,130 @@ class TestBearerAuthWorkspaceScopes(unittest.TestCase):
                    "workspaceScopes": ["TAAA", "TBBB"]}]
         middleware = server.BearerAuthMiddleware(app=None, tokens=tokens)
         self.assertEqual(["TAAA", "TBBB"], middleware.token_entries[0][3])
+
+
+# -----------------------------------------------------------------------
+# workstream_register plan follow-up (plan_content / plan_instructions)
+# -----------------------------------------------------------------------
+
+
+class TestWorkstreamRegisterPlanFollowup(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def test_rejects_both_plan_content_and_plan_instructions(self):
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_content="# Plan",
+            plan_instructions="Write a plan about X",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("mutually exclusive", result["error"])
+
+    @patch.object(server, "project_commit_plan")
+    @patch.object(server, "_controller_post")
+    def test_plan_content_committed_successfully(self, mock_post, mock_commit):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_commit.return_value = {
+            "ok": True, "path": "docs/plans/x.md",
+            "branch": "feature/x", "commit_sha": "abc123",
+            "repo": "almostrealism/common",
+        }
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_content="# Plan for X",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual("committed", result["plan"]["mode"])
+        self.assertEqual("docs/plans/x.md", result["plan"]["path"])
+        self.assertEqual("abc123", result["plan"]["commit_sha"])
+
+    @patch.object(server, "project_commit_plan")
+    @patch.object(server, "_controller_post")
+    def test_plan_content_commit_rejected_still_registers(self, mock_post, mock_commit):
+        # GitHub rejects the direct commit (e.g. missing contents:write).
+        # Registration itself must still succeed.
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_commit.return_value = {
+            "ok": False,
+            "error": "403: Resource not accessible by personal access token",
+        }
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_content="# Plan",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual("w-1", result["workstreamId"])
+        self.assertEqual("failed", result["plan"]["mode"])
+        self.assertEqual("commit_rejected", result["plan"]["reason"])
+        self.assertIn("403", result["plan"]["error"])
+        self.assertIn("fallback_instructions", result["plan"])
+
+    @patch.object(server, "project_commit_plan")
+    @patch.object(server, "_controller_post")
+    def test_plan_content_permission_error_still_registers(self, mock_post, mock_commit):
+        # Plan commit requires the 'pipeline' scope. A token without it
+        # raises PermissionError inside project_commit_plan. Register must
+        # still succeed and the response must explain the fallback.
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_commit.side_effect = PermissionError(
+            "Token does not have required scope: pipeline")
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_content="# Plan",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual("failed", result["plan"]["mode"])
+        self.assertEqual("insufficient_scope", result["plan"]["reason"])
+        self.assertIn("pipeline", result["plan"]["error"])
+
+    @patch.object(server, "workstream_submit_task")
+    @patch.object(server, "_controller_post")
+    def test_plan_instructions_submits_job(self, mock_post, mock_submit):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_submit.return_value = {"ok": True, "jobId": "j-42"}
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_instructions="Describe how we will refactor the foo subsystem.",
+            plan_path="docs/plans/foo.md",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual("submitted", result["plan"]["mode"])
+        self.assertEqual("j-42", result["plan"]["job_id"])
+        # The prompt passed to submit_task must embed the instructions and the
+        # target path so the agent knows where to write.
+        submit_kwargs = mock_submit.call_args.kwargs
+        self.assertEqual("w-1", submit_kwargs["workstream_id"])
+        self.assertIn("docs/plans/foo.md", submit_kwargs["prompt"])
+        self.assertIn("refactor the foo subsystem", submit_kwargs["prompt"])
+
+    @patch.object(server, "workstream_submit_task")
+    @patch.object(server, "_controller_post")
+    def test_plan_instructions_submit_rejected_still_registers(self, mock_post, mock_submit):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_submit.return_value = {"ok": False, "error": "No agents connected"}
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_instructions="Describe the plan.",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual("failed", result["plan"]["mode"])
+        self.assertEqual("submit_rejected", result["plan"]["reason"])
+        self.assertIn("No agents", result["plan"]["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_no_plan_fields_leaves_plan_absent(self, mock_post):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        result = server.workstream_register(default_branch="feature/x")
+        self.assertTrue(result["ok"])
+        self.assertNotIn("plan", result)
 
 
 if __name__ == "__main__":

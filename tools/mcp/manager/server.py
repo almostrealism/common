@@ -1211,6 +1211,10 @@ def workstream_register(
     required_labels: str = "",
     dependent_repos: str = "",
     slack_workspace_id: str = "",
+    plan_content: str = "",
+    plan_instructions: str = "",
+    plan_path: str = "",
+    plan_commit_message: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1241,16 +1245,56 @@ def workstream_register(
             allow the controller to derive the target workspace from the
             GitHub org in ``repo_url``. Callers using tokens scoped to
             specific workspaces must pass this parameter explicitly.
+        plan_content: Literal markdown content of a planning document to
+            commit directly to the new workstream's branch immediately after
+            registration. Mutually exclusive with ``plan_instructions``.
+            Attempts a direct commit via the GitHub Contents API; if the
+            commit fails (permissions, protected branch, etc.) the workstream
+            registration itself still succeeds and the response's ``plan``
+            field contains ``mode="failed"`` with ``fallback_instructions``.
+        plan_instructions: Natural-language specification of what the plan
+            document should describe. When provided, a coding job is
+            submitted to the newly-registered workstream with a prompt that
+            asks the agent to write and commit the plan document. Mutually
+            exclusive with ``plan_content``.
+        plan_path: File path for the plan document in the repo. Optional —
+            if omitted, the controller auto-generates a path under
+            ``docs/plans/``. Used by both the direct-commit and job-submit
+            paths.
+        plan_commit_message: Git commit message for the direct-commit path.
+            Ignored when ``plan_instructions`` is used. Auto-generated if
+            omitted.
 
     Returns:
-        Dictionary with workstreamId and channel info on success.
+        Dictionary with workstreamId and channel info on success. When
+        ``plan_content`` or ``plan_instructions`` is supplied, also includes
+        a ``plan`` field with:
+        - ``mode``: ``"committed"``, ``"submitted"``, or ``"failed"``.
+        - ``path``: the plan document path (when available).
+        - ``commit_sha``: only when ``mode=="committed"``.
+        - ``job_id``: only when ``mode=="submitted"``.
+        - ``error`` and ``fallback_instructions``: only when ``mode=="failed"``.
     """
     _require_scope("write")
     err = _check_short_strings(
         default_branch=default_branch, base_branch=base_branch,
         repo_url=repo_url, planning_document=planning_document,
         channel_name=channel_name, slack_workspace_id=slack_workspace_id,
+        plan_path=plan_path, plan_commit_message=plan_commit_message,
     )
+    if err:
+        return err
+    # plan_content and plan_instructions describe two different follow-up
+    # actions; the caller must pick one. Reject ambiguous requests up front.
+    if plan_content and plan_instructions:
+        return {
+            "ok": False,
+            "error": "plan_content and plan_instructions are mutually exclusive",
+        }
+    err = _check_length(plan_content, "plan_content", MAX_CONTENT_LEN)
+    if err:
+        return err
+    err = _check_length(plan_instructions, "plan_instructions", MAX_CONTENT_LEN)
     if err:
         return err
     # Scope enforcement: scoped callers must name a workspace they own.
@@ -1296,13 +1340,39 @@ def workstream_register(
         ws_id = result.get("workstreamId", "")
         steps = [
             f"Workstream '{ws_id}' is ready",
-            "Use workstream_submit_task to send a coding task to this workstream",
         ]
         if not repo_url:
             steps.append(
                 "Consider using workstream_update_config to set repo_url "
                 "for pipeline capabilities"
             )
+
+        # Follow-up: plan_content → direct commit, plan_instructions → submit a job.
+        # Registration success is already locked in above; any failure below is
+        # surfaced in result["plan"] without rolling back the registration, so
+        # the caller can decide whether to retry or fall back.
+        if plan_content:
+            result["plan"] = _attempt_plan_commit(
+                ws_id, plan_content, plan_path, plan_commit_message)
+            if result["plan"].get("mode") == "committed":
+                steps.append(
+                    f"Plan committed at {result['plan'].get('path')}")
+            else:
+                steps.append(
+                    "Plan commit failed — see result.plan.fallback_instructions")
+        elif plan_instructions:
+            result["plan"] = _attempt_plan_writing_job(
+                ws_id, plan_instructions, plan_path)
+            if result["plan"].get("mode") == "submitted":
+                steps.append(
+                    f"Plan-writing job submitted: {result['plan'].get('job_id')}")
+            else:
+                steps.append(
+                    "Plan job submission failed — see result.plan.fallback_instructions")
+        else:
+            steps.append(
+                "Use workstream_submit_task to send a coding task to this workstream")
+
         result["next_steps"] = steps
     else:
         result.setdefault("next_steps", [
@@ -1310,6 +1380,119 @@ def workstream_register(
         ])
 
     return result
+
+
+def _attempt_plan_commit(workstream_id: str, content: str, path: str,
+                         commit_message: str) -> dict:
+    """Attempt an immediate plan-document commit for a just-registered
+    workstream via the existing :func:`project_commit_plan` tool.
+
+    Wraps the call in a try-block so any failure (missing pipeline scope,
+    GitHub permission denied, branch protection, network) is reported
+    structurally via the ``mode="failed"`` shape. Registration itself
+    remains successful in the caller regardless.
+    """
+    try:
+        commit_result = project_commit_plan(
+            workstream_id=workstream_id,
+            content=content,
+            path=path or "",
+            branch="",
+            commit_message=commit_message or "",
+        )
+    except PermissionError as e:
+        return _plan_failed("insufficient_scope", str(e),
+                            "Direct plan commits require the 'pipeline' scope. "
+                            "Use workstream_submit_task with a prompt asking the "
+                            "agent to write the plan document, or ask the operator "
+                            "for a token with pipeline scope.")
+    except Exception as e:  # defensive — any unexpected error
+        return _plan_failed("internal_error", str(e),
+                            "An unexpected error occurred. The workstream is "
+                            "registered; retry via project_commit_plan or "
+                            "workstream_submit_task.")
+
+    if commit_result.get("ok"):
+        return {
+            "mode": "committed",
+            "path": commit_result.get("path"),
+            "branch": commit_result.get("branch"),
+            "commit_sha": commit_result.get("commit_sha"),
+            "repo": commit_result.get("repo"),
+        }
+
+    return _plan_failed(
+        "commit_rejected",
+        commit_result.get("error", "Unknown commit failure"),
+        "The GitHub API rejected the direct commit — most commonly this means "
+        "the token does not have 'contents:write' on this repo, the branch is "
+        "protected, or the repo_url is misconfigured. The workstream is "
+        "registered; call workstream_submit_task with a prompt asking the agent "
+        "to write and commit the plan document instead.")
+
+
+def _attempt_plan_writing_job(workstream_id: str, instructions: str,
+                              path: str) -> dict:
+    """Attempt to submit a job that writes a plan document based on natural-
+    language instructions, for a just-registered workstream.
+
+    The prompt nudges the agent toward committing the plan file at a known
+    path so downstream tools (like ``project_read_plan``) can find it
+    without additional configuration.
+    """
+    target_path = path or "docs/plans/<slug>.md (choose an appropriate filename)"
+    prompt = (
+        "Write a planning document for this workstream and commit it to the "
+        "target branch. Path: " + target_path + "\n\n"
+        "The document should describe, in the style of other documents under "
+        "docs/plans/, the following intent supplied by the operator:\n\n"
+        "--- BEGIN INSTRUCTIONS ---\n"
+        + instructions +
+        "\n--- END INSTRUCTIONS ---\n\n"
+        "Leave the commit uncommitted — the harness will commit it. Do not "
+        "make any other code changes in this session."
+    )
+    try:
+        submit_result = workstream_submit_task(
+            workstream_id=workstream_id,
+            prompt=prompt,
+            description="Write planning document",
+        )
+    except PermissionError as e:
+        return _plan_failed("insufficient_scope", str(e),
+                            "Submitting a plan-writing job requires the 'write' "
+                            "scope. Ask the operator for a token with write scope.")
+    except Exception as e:  # defensive
+        return _plan_failed("internal_error", str(e),
+                            "An unexpected error occurred while submitting the "
+                            "plan-writing job. The workstream is registered; "
+                            "retry via workstream_submit_task.")
+
+    if submit_result.get("ok"):
+        return {
+            "mode": "submitted",
+            "job_id": submit_result.get("jobId"),
+            "path_hint": path or None,
+        }
+
+    return _plan_failed(
+        "submit_rejected",
+        submit_result.get("error", "Unknown submit failure"),
+        "The controller rejected the task submission — usually because no "
+        "agents are connected. The workstream is registered; retry "
+        "workstream_submit_task once an agent is available.")
+
+
+def _plan_failed(reason: str, error: str, fallback_instructions: str) -> dict:
+    """Build the structured failure payload attached to
+    :func:`workstream_register`'s ``plan`` field. Kept as a helper so the
+    two follow-up paths return the same shape."""
+    return {
+        "mode": "failed",
+        "reason": reason,
+        "error": error,
+        "fallback_instructions": fallback_instructions,
+    }
 
 
 @mcp.tool()

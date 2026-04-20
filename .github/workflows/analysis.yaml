@@ -565,6 +565,45 @@ jobs:
             echo "Run \`mvn checkstyle:check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # ─── Python Unit Tests ─────────────────────────────────────────────
+  # Runs the unittest suites that live alongside Python code under tools/.
+  # Currently covers:
+  #   - tools/mcp/manager/test_server.py (ar-manager MCP tools)
+  #   - tools/tests/test_migrate_workstreams.py (workstreams migration tool)
+  # These are pure Python — no Maven build needed, so this job only depends
+  # on `changes` and runs in parallel with build/checkstyle. Fails the PR
+  # when any test fails.
+  python-tests:
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          cache-dependency-path: tools/mcp/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          # ar-manager server.py imports mcp.server.fastmcp at module load;
+          # test_migrate_workstreams.py needs pyyaml.
+          python3 -m pip install -r tools/mcp/requirements.txt pyyaml
+
+      - name: Run ar-manager MCP tests
+        run: python3 -m unittest discover -v -s tools/mcp/manager -p "test_*.py"
+
+      - name: Run migration tool tests
+        run: python3 -m unittest discover -v -s tools/tests -p "test_*.py"
+
   # ─── Flowtree Tests ────────────────────────────────────────────────
   # Runs in parallel with the test matrix after the validation gates.
   # Extracted from `build` so that slow flowtree tests do not block the
