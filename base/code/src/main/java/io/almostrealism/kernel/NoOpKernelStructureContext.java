@@ -35,11 +35,29 @@ public class NoOpKernelStructureContext implements KernelStructureContext {
 	public NoOpKernelStructureContext() { this.kernelMaximum = OptionalLong.empty(); }
 
 	/**
-	 * Creates a {@link NoOpKernelStructureContext} with the given kernel maximum.
+	 * Creates a {@link NoOpKernelStructureContext} reporting the given kernel
+	 * iteration count from {@link #getKernelMaximum()}.
 	 *
-	 * @param kernelMaximum the maximum valid kernel index
+	 * @param kernelMaximum the kernel iteration count; must be {@code > 0}.
+	 *                      See {@link KernelStructureContext#getKernelMaximum()}
+	 *                      for why {@code 0} is forbidden — a zero-iteration
+	 *                      kernel does not exist, and propagating that lie
+	 *                      crashes downstream scope compilers. If the bound is
+	 *                      genuinely unknown, use the no-arg constructor
+	 *                      instead so {@code getKernelMaximum()} returns
+	 *                      {@link OptionalLong#empty()}.
+	 * @throws IllegalArgumentException if {@code kernelMaximum <= 0}
 	 */
-	public NoOpKernelStructureContext(long kernelMaximum) { this.kernelMaximum = OptionalLong.of(kernelMaximum); }
+	public NoOpKernelStructureContext(long kernelMaximum) {
+		if (kernelMaximum <= 0) {
+			throw new IllegalArgumentException(
+					"NoOpKernelStructureContext requires kernelMaximum > 0 (got "
+					+ kernelMaximum + "). A zero-iteration kernel does not "
+					+ "exist — use the no-arg constructor for an unbounded "
+					+ "context. See KernelStructureContext#getKernelMaximum().");
+		}
+		this.kernelMaximum = OptionalLong.of(kernelMaximum);
+	}
 
 	/** {@inheritDoc} */
 	@Override

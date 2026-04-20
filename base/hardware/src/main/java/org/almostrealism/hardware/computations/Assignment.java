@@ -268,9 +268,23 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 * <p>Creates assignment statements for each element based on the memory length,
 	 * adapting to kernel context when {@code enableAdaptiveMemLength} is true.</p>
 	 *
+	 * <p><strong>Contract on {@link KernelStructureContext#getKernelMaximum()}:</strong>
+	 * if it returns {@code isPresent()}, the value MUST be a positive count of
+	 * kernel iterations — it is the loop bound {@code N} in
+	 * {@code for (long i = 0; i < N; i++)}. A value of {@code 0} is nonsense: a
+	 * kernel with zero iterations does not exist and cannot compile. Callers that
+	 * do not know the bound must return {@link OptionalLong#empty()}, not a
+	 * fictitious zero. If this method sees a present zero, the caller that
+	 * provided the {@link KernelStructureContext} lied about the kernel size and
+	 * the whole compilation is invalid — there is no sane fallback, so we fail
+	 * loudly.</p>
+	 *
 	 * @param context the kernel structure context for index generation
 	 * @return a scope containing the assignment statements
-	 * @throws UnsupportedOperationException if count mismatch cannot be resolved
+	 * @throws IllegalStateException if {@code context.getKernelMaximum()} is
+	 *         present but zero, indicating a broken producer of kernel context
+	 * @throws UnsupportedOperationException if the kernel count does not evenly
+	 *         divide this assignment's element count
 	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
@@ -279,11 +293,23 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		int len = memLength;
 		OptionalLong contextCount = context.getKernelMaximum();
 
-		if (contextCount.isPresent() && contextCount.getAsLong() != getCountLong()) {
-			if (enableAdaptiveMemLength && getCountLong() % contextCount.getAsLong() == 0) {
-				len = Math.toIntExact(getCountLong() / contextCount.getAsLong());
-			} else {
-				throw new UnsupportedOperationException();
+		if (contextCount.isPresent()) {
+			long ctx = contextCount.getAsLong();
+			if (ctx <= 0) {
+				throw new IllegalStateException(
+						"KernelStructureContext reported a kernel maximum of "
+						+ ctx + " for " + context + ". A kernel with " + ctx
+						+ " iterations cannot exist. If the caller does not know "
+						+ "the kernel bound, it MUST return OptionalLong.empty() "
+						+ "from getKernelMaximum() — NEVER a present zero. "
+						+ "Fix the KernelStructureContext, not this call site.");
+			}
+			if (ctx != getCountLong()) {
+				if (enableAdaptiveMemLength && getCountLong() % ctx == 0) {
+					len = Math.toIntExact(getCountLong() / ctx);
+				} else {
+					throw new UnsupportedOperationException();
+				}
 			}
 		}
 
