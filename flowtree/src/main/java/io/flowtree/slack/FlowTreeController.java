@@ -278,9 +278,11 @@ public class FlowTreeController implements ConsoleFeatures {
         // Apply global notifier settings to the active notifier (single-workspace fallback)
         SlackNotifier activeNotifier = getNotifier();
         if (activeNotifier != null) {
-            // Pass channel owner user ID to notifier for auto-inviting to new channels
-            if (config.getChannelOwnerUserId() != null) {
-                activeNotifier.setChannelOwnerUserId(config.getChannelOwnerUserId());
+            // Pass channel owner user IDs to notifier for auto-inviting to new channels.
+            // The effective list honours the plural channelOwnerUserIds field when set,
+            // falling back to the legacy singular channelOwnerUserId for old configs.
+            if (!config.effectiveChannelOwnerUserIds().isEmpty()) {
+                activeNotifier.setChannelOwnerUserIds(config.effectiveChannelOwnerUserIds());
             }
 
             // Pass default channel to notifier for fallback message delivery
@@ -527,8 +529,9 @@ public class FlowTreeController implements ConsoleFeatures {
                 SlackTokens tokens = SlackTokens.from(wsEntry);
                 WorkspaceConnection conn = new WorkspaceConnection(
                         wsEntry.getWorkspaceId(), tokens.getBotToken(), tokens.getAppToken());
-                if (wsEntry.getChannelOwnerUserId() != null) {
-                    conn.notifier.setChannelOwnerUserId(wsEntry.getChannelOwnerUserId());
+                // Apply the effective invite list (plural wins, singular for legacy).
+                if (!wsEntry.effectiveChannelOwnerUserIds().isEmpty()) {
+                    conn.notifier.setChannelOwnerUserIds(wsEntry.effectiveChannelOwnerUserIds());
                 }
                 if (wsEntry.getDefaultChannel() != null) {
                     conn.notifier.setDefaultChannelId(wsEntry.getDefaultChannel());

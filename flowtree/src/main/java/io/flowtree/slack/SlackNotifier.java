@@ -74,8 +74,13 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private Consumer<String> messageCallback;
     /** Persistent store for per-job timing and throughput statistics. */
     private JobStatsStore statsStore;
-    /** Slack user ID of the channel owner, used to filter direct messages. */
-    private String channelOwnerUserId;
+    /**
+     * Slack user IDs automatically invited to every private channel created
+     * by {@link #createChannel(String)}. Empty when no auto-invite is
+     * configured. Ordering is preserved so callers can rely on the first
+     * element being treated as the primary "owner" if needed in the future.
+     */
+    private List<String> channelOwnerUserIds = List.of();
     /** Default Slack channel ID used when no workstream-specific channel is configured. */
     private String defaultChannelId;
 
@@ -167,8 +172,8 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 String channelId = response.getChannel().getId();
                 log("Created private Slack channel " + name + " (" + channelId + ")");
 
-                if (channelOwnerUserId != null && !channelOwnerUserId.isEmpty()) {
-                    inviteUserToChannel(channelId, channelOwnerUserId);
+                if (!channelOwnerUserIds.isEmpty()) {
+                    inviteUsersToChannel(channelId, channelOwnerUserIds);
                 }
 
                 return channelId;
@@ -239,26 +244,28 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Invites a user to a Slack channel.
+     * Invites a list of users to a Slack channel in a single API call.
+     * No-op when the list is empty.
      *
-     * @param channelId the channel to invite the user to
-     * @param userId    the Slack user ID to invite
+     * @param channelId the channel to invite the users to
+     * @param userIds   the Slack user IDs to invite
      */
-    private void inviteUserToChannel(String channelId, String userId) {
+    private void inviteUsersToChannel(String channelId, List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) return;
         try {
             ConversationsInviteResponse response = client.conversationsInvite(req -> req
                 .channel(channelId)
-                .users(Collections.singletonList(userId))
+                .users(userIds)
             );
 
             if (response.isOk()) {
-                log("Invited user " + userId + " to channel " + channelId);
+                log("Invited users " + userIds + " to channel " + channelId);
             } else {
-                warn("Failed to invite user " + userId + " to channel "
+                warn("Failed to invite users " + userIds + " to channel "
                     + channelId + ": " + response.getError());
             }
         } catch (IOException | SlackApiException e) {
-            warn("Error inviting user to channel: " + e.getMessage());
+            warn("Error inviting users to channel: " + e.getMessage());
         }
     }
 
@@ -300,24 +307,45 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Sets the Slack user ID to be automatically invited to newly created channels.
+     * Sets a single Slack user ID to be automatically invited to newly
+     * created channels. Equivalent to {@code setChannelOwnerUserIds(List.of(userId))}
+     * when {@code userId} is non-null and non-empty; clears the invite list
+     * otherwise. Retained for backwards compatibility with callers that
+     * configure a single invitee.
      *
-     * <p>When set, {@link #createChannel(String)} will invite this user to every
-     * private channel it creates. Typically set from the {@code SLACK_CHANNEL_OWNER}
-     * environment variable during controller startup.</p>
-     *
-     * @param userId the Slack user ID (e.g., "U0123456789")
+     * @param userId the Slack user ID (e.g., "U0123456789"), or {@code null}
      */
     public void setChannelOwnerUserId(String userId) {
-        this.channelOwnerUserId = userId;
+        this.channelOwnerUserIds = (userId == null || userId.isEmpty())
+                ? List.of() : List.of(userId);
     }
 
     /**
-     * Returns the Slack user ID that is automatically invited to newly created channels,
-     * or {@code null} if not configured.
+     * Sets the list of Slack user IDs to be automatically invited to newly
+     * created channels. A null or empty list disables auto-invite.
+     *
+     * @param userIds the list of Slack user IDs, or {@code null}
+     */
+    public void setChannelOwnerUserIds(List<String> userIds) {
+        this.channelOwnerUserIds = (userIds == null || userIds.isEmpty())
+                ? List.of() : List.copyOf(userIds);
+    }
+
+    /**
+     * Returns the first configured Slack user ID, or {@code null} if none is
+     * configured. Retained for backwards compatibility; prefer
+     * {@link #getChannelOwnerUserIds()}.
      */
     public String getChannelOwnerUserId() {
-        return channelOwnerUserId;
+        return channelOwnerUserIds.isEmpty() ? null : channelOwnerUserIds.get(0);
+    }
+
+    /**
+     * Returns the full list of Slack user IDs invited on channel creation.
+     * Never {@code null}; empty when no auto-invite is configured.
+     */
+    public List<String> getChannelOwnerUserIds() {
+        return channelOwnerUserIds;
     }
 
     /**

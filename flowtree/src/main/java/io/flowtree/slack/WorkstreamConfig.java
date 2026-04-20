@@ -59,8 +59,18 @@ public class WorkstreamConfig {
 
     /** Global default path for repo checkouts; used when no workingDirectory is set. */
     private String defaultWorkspacePath;
-    /** Slack user ID automatically invited to newly created workstream channels. */
+    /**
+     * Legacy single Slack user ID automatically invited to newly created
+     * workstream channels. Superseded by {@link #channelOwnerUserIds} when
+     * that list is non-empty; retained for backwards compatibility with
+     * configs that predate multi-user invites.
+     */
     private String channelOwnerUserId;
+    /**
+     * Slack user IDs automatically invited to newly created workstream
+     * channels. When set, takes precedence over {@link #channelOwnerUserId}.
+     */
+    private List<String> channelOwnerUserIds;
     /** Fallback Slack channel ID used when a workstream has no channel or posting fails. */
     private String defaultChannel;
     /** Named centralized MCP server entries (legacy; ar-manager supersedes these). */
@@ -100,8 +110,18 @@ public class WorkstreamConfig {
         private String appToken;
         /** Default Slack channel ID for fallback message delivery in this workspace. */
         private String defaultChannel;
-        /** Slack user ID auto-invited to newly created channels in this workspace. */
+        /**
+         * Single Slack user ID auto-invited to newly created channels in this
+         * workspace. Superseded by {@link #channelOwnerUserIds} when that list
+         * is non-empty; retained for backwards compatibility with configs that
+         * predate multi-user invites.
+         */
         private String channelOwnerUserId;
+        /**
+         * Slack user IDs auto-invited to newly created channels in this
+         * workspace. When set, takes precedence over {@link #channelOwnerUserId}.
+         */
+        private List<String> channelOwnerUserIds;
         /** Per-organization GitHub tokens scoped to this workspace. */
         private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
 
@@ -135,10 +155,37 @@ public class WorkstreamConfig {
         /** Sets the default fallback channel ID. */
         public void setDefaultChannel(String defaultChannel) { this.defaultChannel = defaultChannel; }
 
-        /** Returns the Slack user ID auto-invited to new channels in this workspace. */
+        /** Returns the legacy single Slack user ID auto-invited to new channels in this workspace. */
         public String getChannelOwnerUserId() { return channelOwnerUserId; }
-        /** Sets the Slack user ID for auto-invite on channel creation. */
+        /** Sets the legacy single Slack user ID for auto-invite on channel creation. */
         public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
+
+        /** Returns the list of Slack user IDs auto-invited to new channels (nullable). */
+        public List<String> getChannelOwnerUserIds() { return channelOwnerUserIds; }
+        /** Sets the list of Slack user IDs for auto-invite on channel creation. */
+        public void setChannelOwnerUserIds(List<String> channelOwnerUserIds) {
+            this.channelOwnerUserIds = channelOwnerUserIds;
+        }
+
+        /**
+         * Returns the effective list of Slack user IDs to auto-invite when a
+         * new channel is created in this workspace. Resolves the legacy single
+         * {@code channelOwnerUserId} field and the plural
+         * {@code channelOwnerUserIds} list into one canonical list: the plural
+         * list wins when non-empty; otherwise the singular value becomes a
+         * one-element list; otherwise an empty list is returned.
+         *
+         * @return never {@code null}; empty when no auto-invite is configured
+         */
+        public List<String> effectiveChannelOwnerUserIds() {
+            if (channelOwnerUserIds != null && !channelOwnerUserIds.isEmpty()) {
+                return channelOwnerUserIds;
+            }
+            if (channelOwnerUserId != null && !channelOwnerUserId.isEmpty()) {
+                return List.of(channelOwnerUserId);
+            }
+            return List.of();
+        }
 
         /** Returns the per-organization GitHub token map for this workspace. */
         public Map<String, GitHubOrgEntry> getGithubOrgs() { return githubOrgs; }
@@ -489,6 +536,32 @@ public class WorkstreamConfig {
      */
     public String getChannelOwnerUserId() { return channelOwnerUserId; }
     public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
+
+    /** Returns the list of Slack user IDs auto-invited to new channels (nullable). */
+    public List<String> getChannelOwnerUserIds() { return channelOwnerUserIds; }
+    /** Sets the list of Slack user IDs for auto-invite on channel creation. */
+    public void setChannelOwnerUserIds(List<String> channelOwnerUserIds) {
+        this.channelOwnerUserIds = channelOwnerUserIds;
+    }
+
+    /**
+     * Returns the effective list of Slack user IDs to auto-invite on new
+     * channel creation. Resolves the legacy single {@link #channelOwnerUserId}
+     * and the plural {@link #channelOwnerUserIds} into one canonical list:
+     * the plural list wins when non-empty; otherwise the singular value
+     * becomes a one-element list; otherwise an empty list is returned.
+     *
+     * @return never {@code null}; empty when no auto-invite is configured
+     */
+    public List<String> effectiveChannelOwnerUserIds() {
+        if (channelOwnerUserIds != null && !channelOwnerUserIds.isEmpty()) {
+            return channelOwnerUserIds;
+        }
+        if (channelOwnerUserId != null && !channelOwnerUserId.isEmpty()) {
+            return List.of(channelOwnerUserId);
+        }
+        return List.of();
+    }
 
     /**
      * Returns the default Slack channel ID to use as a fallback when a
