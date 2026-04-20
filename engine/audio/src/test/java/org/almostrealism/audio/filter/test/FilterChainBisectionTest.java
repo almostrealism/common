@@ -15,6 +15,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.function.Supplier;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
@@ -1430,14 +1431,13 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 
 		PackedCollection frameIndex = new PackedCollection(1);
 
-		@SuppressWarnings("unchecked")
-		Producer<PackedCollection>[] allWaves = new Producer[numSources];
+		ArrayList<Producer<PackedCollection>> allWavesList = new ArrayList<>(numSources);
 		for (int s = 0; s < numSources; s++) {
-			allWaves[s] = cp(buffers[s]);
+			allWavesList.add(cp(buffers[s]));
 		}
 		CellList sources = w(
 				PolymorphicAudioData.supply(PackedCollection.factory()),
-				bufSize, cp(frameIndex), allWaves);
+				bufSize, cp(frameIndex), allWavesList.toArray(new Producer[0]));
 
 		AudioPassFilter[] filters = new AudioPassFilter[numSources];
 

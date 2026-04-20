@@ -29,9 +29,15 @@ import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.notes.TreeNoteSource;
 import org.almostrealism.music.pattern.NoteAudioChoiceList;
+import org.almostrealism.music.pattern.PatternLayerManager;
+import org.almostrealism.studio.arrange.EfxManager;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
+import org.almostrealism.studio.health.SilenceDurationHealthComputation;
+import org.almostrealism.studio.health.StableDurationHealthComputation;
+import org.almostrealism.studio.optimize.AudioPopulationOptimizer;
 import org.almostrealism.studio.optimize.AudioSceneOptimizer;
+import org.almostrealism.music.pattern.PatternElementFactory;
 import org.almostrealism.studio.persistence.MigrationClassLoader;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
@@ -81,15 +87,6 @@ import java.util.List;
  */
 public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 
-	private static final String DEFAULT_LIBRARY = "Library";
-
-	private static String library() {
-		String env = System.getenv("AR_RINGS_LIBRARY");
-		if (env != null) return env;
-		String arg = System.getProperty("AR_RINGS_LIBRARY");
-		return arg != null ? arg : DEFAULT_LIBRARY;
-	}
-
 	private static File patternFactoryFile() {
 		File app = new File(SystemUtils.getLocalDestination("pattern-factory.json"));
 		if (app.exists()) return app;
@@ -123,7 +120,7 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 		Assume.assumeTrue("pattern-factory.json required at " + patternFactory.getAbsolutePath(),
 				patternFactory.exists());
 
-		File libDir = new File(library());
+		File libDir = new File(AudioSceneOptimizer.LIBRARY);
 		Assume.assumeTrue("Library directory required at " + libDir.getAbsolutePath(),
 				libDir.exists() && libDir.isDirectory());
 
@@ -219,7 +216,7 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 		Assume.assumeTrue("pattern-factory.json required",
 				patternFactory.exists());
 
-		File libDir = new File(library());
+		File libDir = new File(AudioSceneOptimizer.LIBRARY);
 		Assume.assumeTrue("Library directory required",
 				libDir.exists() && libDir.isDirectory());
 
@@ -267,8 +264,14 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 
 		int bufferSize = OutputLine.sampleRate / 2;
 
-		WaveOutput output = new WaveOutput(() -> new File("results/optimizer-scene-diagnostic.wav"),
-				24, true);
+		File outputFile = new File("results/optimizer-scene-diagnostic.wav");
+		File outputDirectory = outputFile.getParentFile();
+		if (outputDirectory != null && !outputDirectory.exists()
+				&& !outputDirectory.mkdirs() && !outputDirectory.exists()) {
+			throw new IOException("Unable to create output directory");
+		}
+
+		WaveOutput output = new WaveOutput(() -> outputFile, 24, true);
 		TemporalCellular runner = scene.runnerRealTime(
 				new MultiChannelAudioOutput(output), bufferSize);
 
@@ -282,7 +285,7 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 
 		int frameCount = output.getFrameCount();
 		log("WaveOutput cursor after " + numBuffers + " buffers: " + frameCount
-				+ " (expected " + (numBuffers * bufferSize) + ")");
+				+ " (expected " + (numBuffers * bufferSize - 1) + ")");
 
 		output.write().get().run();
 		log("WAV written to results/optimizer-scene-diagnostic.wav");
@@ -330,7 +333,7 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 		File patternFactory = patternFactoryFile();
 		Assume.assumeTrue("pattern-factory.json required", patternFactory.exists());
 
-		File libDir = new File(library());
+		File libDir = new File(AudioSceneOptimizer.LIBRARY);
 		Assume.assumeTrue("Library directory required", libDir.exists());
 
 		int sourceCount = AudioScene.DEFAULT_SOURCE_COUNT;
@@ -356,7 +359,7 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 		int silentChannels = 0;
 		int audibleChannels = 0;
 
-		for (var plm : scene.getPatternManager().getPatterns()) {
+		for (PatternLayerManager plm : scene.getPatternManager().getPatterns()) {
 			ChannelInfo channel = new ChannelInfo(plm.getChannel(),
 					ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
 			AudioSceneContext ctx = scene.getContext(channel);
@@ -367,7 +370,7 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 			int elemCount = plm.getAllElements(0.0, plm.getDuration()).size();
 			if (elemCount == 0) continue;
 
-			dest.setMem(0, new double[frames], 0, frames);
+			dest.clear();
 
 			plm.sum(() -> ctx,
 					ChannelInfo.Voicing.MAIN,
@@ -419,7 +422,7 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 		File patternFactory = patternFactoryFile();
 		Assume.assumeTrue("pattern-factory.json required", patternFactory.exists());
 
-		File libDir = new File(library());
+		File libDir = new File(AudioSceneOptimizer.LIBRARY);
 		Assume.assumeTrue("Library directory required", libDir.exists());
 
 		int sourceCount = AudioScene.DEFAULT_SOURCE_COUNT;
@@ -468,7 +471,8 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 		log("Consolidated render buffer: maxAbs=" + String.format("%.6f", consolidatedMax)
 				+ ", nonZero=" + consolidatedNonZero + "/" + consolidatedSampled
 				+ ", totalFrames=" + consolidated.getMemLength());
-		log("WaveOutput cursor: " + waveFrames + " (expected " + bufferSize + ")");
+		int expectedWaveFrames = bufferSize - 1;
+		log("WaveOutput cursor: " + waveFrames + " (expected " + expectedWaveFrames + ")");
 
 		PackedCollection channelData = output.getChannelData(0).get().evaluate();
 		double channelMax = 0;
@@ -646,12 +650,29 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 300_000)
 	public void optimizerSetFeatureLevel7ProducesAudio() throws IOException {
-		File libDir = new File(library());
+		File libDir = new File(AudioSceneOptimizer.LIBRARY);
 		Assume.assumeTrue("Library directory required", libDir.exists());
 		Assume.assumeTrue("pattern-factory.json required",
 				new File(SystemUtils.getLocalDestination("pattern-factory.json")).exists());
 
 		String savedLibrary = AudioSceneOptimizer.LIBRARY;
+		boolean savedEnableVolumeEnvelope = PatternElementFactory.enableVolumeEnvelope;
+		boolean savedEnableFilterEnvelope = PatternElementFactory.enableFilterEnvelope;
+		boolean savedDisableClean = MixdownManager.disableClean;
+		boolean savedEnableSourcesOnly = MixdownManager.enableSourcesOnly;
+		boolean savedEfxManagerEnableEfx = EfxManager.enableEfx;
+		boolean savedMixdownEnableEfx = MixdownManager.enableEfx;
+		boolean savedMixdownEnableEfxFilters = MixdownManager.enableEfxFilters;
+		boolean savedMixdownEnableTransmission = MixdownManager.enableTransmission;
+		boolean savedMixdownEnableMainFilterUp = MixdownManager.enableMainFilterUp;
+		boolean savedMixdownEnableAutomationManager = MixdownManager.enableAutomationManager;
+		boolean savedMixdownEnableWetInAdjustment = MixdownManager.enableWetInAdjustment;
+		boolean savedMixdownEnableMasterFilterDown = MixdownManager.enableMasterFilterDown;
+		boolean savedMixdownEnableReverb = MixdownManager.enableReverb;
+		boolean savedEnableTimeout = StableDurationHealthComputation.enableTimeout;
+		boolean savedEnableSilenceCheck = SilenceDurationHealthComputation.enableSilenceCheck;
+		boolean savedEnableStemOutput = AudioPopulationOptimizer.enableStemOutput;
+
 		AudioSceneOptimizer.LIBRARY = libDir.getAbsolutePath();
 		File wavFile = new File("results/optimizer-feature-level-7.wav");
 		wavFile.getParentFile().mkdirs();
@@ -709,6 +730,22 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 			}
 		} finally {
 			AudioSceneOptimizer.LIBRARY = savedLibrary;
+			PatternElementFactory.enableVolumeEnvelope = savedEnableVolumeEnvelope;
+			PatternElementFactory.enableFilterEnvelope = savedEnableFilterEnvelope;
+			MixdownManager.disableClean = savedDisableClean;
+			MixdownManager.enableSourcesOnly = savedEnableSourcesOnly;
+			EfxManager.enableEfx = savedEfxManagerEnableEfx;
+			MixdownManager.enableEfx = savedMixdownEnableEfx;
+			MixdownManager.enableEfxFilters = savedMixdownEnableEfxFilters;
+			MixdownManager.enableTransmission = savedMixdownEnableTransmission;
+			MixdownManager.enableMainFilterUp = savedMixdownEnableMainFilterUp;
+			MixdownManager.enableAutomationManager = savedMixdownEnableAutomationManager;
+			MixdownManager.enableWetInAdjustment = savedMixdownEnableWetInAdjustment;
+			MixdownManager.enableMasterFilterDown = savedMixdownEnableMasterFilterDown;
+			MixdownManager.enableReverb = savedMixdownEnableReverb;
+			StableDurationHealthComputation.enableTimeout = savedEnableTimeout;
+			SilenceDurationHealthComputation.enableSilenceCheck = savedEnableSilenceCheck;
+			AudioPopulationOptimizer.enableStemOutput = savedEnableStemOutput;
 		}
 	}
 
