@@ -955,6 +955,93 @@ the work is not done.
 
 ---
 
+## Part 11: MixdownManager PDSL Migration
+
+### What Was Achieved
+
+`mixdown_channel.pdsl` (added in `engine/ml/src/main/resources/pdsl/audio/`) expresses
+the per-channel signal path from `MixdownManager.createCells()` using existing PDSL
+primitives. Two layers are defined:
+
+**`mixdown_main`** — The three-stage main path:
+```pdsl
+layer mixdown_main(signal_size: int, hp_cutoff: scalar, volume: scalar,
+                   lp_cutoff: scalar, sample_rate: scalar,
+                   filter_order: scalar) -> [1, signal_size] {
+    highpass(hp_cutoff, sample_rate, filter_order)
+    scale(volume)
+    lowpass(lp_cutoff, sample_rate, filter_order)
+}
+```
+
+**`mixdown_channel`** — The full per-channel path with wet/dry delay mix:
+```pdsl
+layer mixdown_channel(signal_size: int, hp_cutoff: scalar, volume: scalar,
+                      lp_cutoff: scalar, sample_rate: scalar, filter_order: scalar,
+                      wet_filter_coeffs: weight, wet_level: scalar,
+                      delay_samples: int) -> [1, signal_size] {
+    highpass(hp_cutoff, sample_rate, filter_order)
+    scale(volume)
+    accum_blocks(
+        { identity() },
+        { fir(wet_filter_coeffs); scale(wet_level); delay(delay_samples, buffer, head) }
+    )
+    lowpass(lp_cutoff, sample_rate, filter_order)
+}
+```
+
+The `mixdown_delay_state` state block provides the delay buffer and head pointer.
+Tests in `MixdownChannelPdslTest` (studio/compose) verify:
+1. Both layers parse and build without errors.
+2. `mixdown_main` attenuates below HP cutoff and above LP cutoff (energy assertions).
+3. `mixdown_channel` wet delay path adds echo contribution (diff-energy assertion).
+4. WAV files are written to `results/pdsl-audio-dsp/` for human review.
+
+### What Remains as Gaps
+
+**IIR vs FIR:** `MixdownManager` uses `AudioPassFilter` (IIR biquad) via
+`CellFeatures.hp()`/`lp()`. The PDSL `highpass`/`lowpass` primitives use
+`MultiOrderFilter` (FIR, sinc-windowed Hamming). The frequency responses differ near
+the cutoff — IIR has sharper rolloff with phase distortion; FIR has linear phase
+with a wider transition band. A direct sample-level comparison between the two
+pipelines is therefore not meaningful. Correctness is validated by energy-level
+assertions rather than exact sample match.
+
+**Cross-channel transmission:** `MixdownManager.createEfx()` routes delay sends
+between channels via `mself(fi(), transmission, fc(wetOut.valueAt(0)))`. This is a
+true multi-channel operation — channel N's delayed signal feeds into channel M's
+delay input. PDSL has no multi-channel routing construct. This must remain at the
+Java `CellList` level.
+
+**Reverb path:** `DelayNetwork` is a multi-tap feedback network assembled from Java
+cell graph primitives. No PDSL equivalent for multi-tap feedback exists. The reverb
+path remains Java-only.
+
+**Automation envelopes:** `AutomationManager.getAggregatedValue()` computes
+time-varying Producer values based on clock state and sine/power envelopes. These
+are passed as `scalar` parameters in the PDSL layers — the caller computes the current
+value and supplies it. This is the correct design (PDSL parameters are `Producer`
+inputs, not internal state), but it means the envelope computation itself stays in Java.
+
+### Path Forward for Full Migration
+
+1. **Immediate:** Use `mixdown_channel.pdsl` layers in place of the main-path cells
+   in `MixdownManager.createCells()`. Call `block.getForward()` on the PDSL-compiled
+   block and add it to the `CellList` at the same position as the existing
+   `hp()`/`scale(v)`/`lp()` chain (see Part 10B for the adapter pattern).
+
+2. **Medium term:** Implement a `biquad_hp` / `biquad_lp` PDSL primitive that accepts
+   cutoff and resonance and internally computes biquad coefficients. This would make
+   the PDSL filters frequency-equivalent to the IIR filters in MixdownManager. The
+   `biquad` primitive already exists in PDSL; wrapping it with coefficient computation
+   requires adding a new helper layer definition.
+
+3. **Long term:** Multi-channel routing in PDSL (for cross-channel transmission) requires
+   either a new `route(matrix, inputs...)` primitive or a higher-level `model` definition
+   that iterates over channels. This is a PDSL language extension, not a filter primitive.
+
+---
+
 ## Appendix A: Current PDSL Files Reference
 
 | File | What it defines |
@@ -963,6 +1050,7 @@ the work is not done.
 | `pdsl/gru_block.pdsl` | GRU block with data slice definitions |
 | `pdsl/midi/skytnt_block.pdsl` | LLaMA-style transformer block (attention + SwiGLU FFN) |
 | `pdsl/audio/efx_channel.pdsl` | EFX channel FIR filter + scale layers (Phase A complete) |
+| `pdsl/audio/mixdown_channel.pdsl` | Mixdown main path and full channel with wet delay (Part 11) |
 
 The GRU block is the closest analog to stateful audio DSP: hidden state is passed
 explicitly, gates control information flow. The main difference is that GRU state is

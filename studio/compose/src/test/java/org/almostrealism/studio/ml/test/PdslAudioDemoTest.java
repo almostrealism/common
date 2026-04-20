@@ -134,13 +134,9 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 				new File(outputDir, "pdsl_lowpass_multitone.wav").length() > 0);
 
 		// LP output must have less energy than dry (12 kHz content attenuated)
-		double dryEnergy = 0.0;
-		double lpEnergy = 0.0;
 		int skipEdge = FILTER_ORDER / 2;
-		for (int i = skipEdge; i < totalSamples - skipEdge; i++) {
-			dryEnergy += drySignal[i] * drySignal[i];
-			lpEnergy += lpSignal[i] * lpSignal[i];
-		}
+		double dryEnergy = energy(floatToDouble(drySignal), skipEdge);
+		double lpEnergy = energy(floatToDouble(lpSignal), skipEdge);
 		Assert.assertTrue("LP output must have less energy than dry (LP attenuates 12 kHz)",
 				lpEnergy < dryEnergy * 0.9);
 
@@ -271,7 +267,7 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 	 * @param sampleRate the audio sample rate in Hz
 	 * @throws IOException if the file cannot be written
 	 */
-	private static void writeDemoWav(File file, float[] samples, int sampleRate) throws IOException {
+	static void writeDemoWav(File file, float[] samples, int sampleRate) throws IOException {
 		double[] data = new double[samples.length];
 		for (int i = 0; i < samples.length; i++) {
 			data[i] = samples[i];
