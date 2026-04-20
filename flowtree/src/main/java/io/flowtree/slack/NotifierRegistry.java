@@ -18,6 +18,7 @@ package io.flowtree.slack;
 
 import io.flowtree.jobs.JobCompletionEvent;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -74,7 +75,7 @@ final class NotifierRegistry {
 
     /** Returns the live notifiers keyed by workspace ID (unmodifiable view). */
     Map<String, SlackNotifier> notifiersByWorkspace() {
-        return java.util.Collections.unmodifiableMap(byWorkspace);
+        return Collections.unmodifiableMap(byWorkspace);
     }
 
     /**
