@@ -847,6 +847,145 @@ class TestMemoryBranchContext(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertNotIn("commits", result)
 
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_get_memory_client")
+    def test_jobs_timeline_compact(self, mock_client_fn, mock_controller_get, mock_gh):
+        # memory_branch_context must include a compact jobs timeline when a
+        # workstream is provided — just enough fields to situate memories,
+        # NOT the operational payload (no costUsd, no targetBranch).
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        # _find_workstream() is invoked twice inside memory_branch_context
+        # (once via _resolve_branch_context, once in the commit block),
+        # followed by the jobs fetch. Return the workstream list for the
+        # first two calls and the jobs list for the third.
+        ws_list = [{"workstreamId": "w-1",
+                    "repoUrl": "https://github.com/org/repo",
+                    "defaultBranch": "feature/x",
+                    "baseBranch": "master"}]
+        jobs_list = [
+            {"jobId": "j-1", "timestamp": "2026-04-20T10:00:00Z",
+             "status": "SUCCESS", "description": "Fix bug",
+             "commitHash": "abc1234567890def",
+             "pullRequestUrl": "https://github.com/org/repo/pull/7",
+             "targetBranch": "feature/x", "costUsd": 4.50},
+            {"jobId": "j-2", "timestamp": "2026-04-20T09:00:00Z",
+             "status": "FAILURE", "description": "Attempt",
+             "errorMessage": "Git push failed",
+             "costUsd": 1.20},
+        ]
+        def controller_side_effect(path, timeout=10):
+            if "/jobs" in path:
+                return jobs_list
+            return ws_list
+        mock_controller_get.side_effect = controller_side_effect
+        result = server.memory_branch_context(workstream_id="w-1")
+        self.assertTrue(result["ok"])
+        self.assertIn("jobs", result)
+        self.assertEqual(2, len(result["jobs"]))
+        j1, j2 = result["jobs"]
+        # Compact fields present
+        self.assertEqual("j-1", j1["jobId"])
+        self.assertEqual("SUCCESS", j1["status"])
+        self.assertEqual("Fix bug", j1["description"])
+        self.assertEqual("abc1234567", j1["commitHash"])  # truncated to 10
+        self.assertEqual("https://github.com/org/repo/pull/7", j1["pullRequestUrl"])
+        # Operational fields absent
+        self.assertNotIn("costUsd", j1)
+        self.assertNotIn("targetBranch", j1)
+        # Failure job includes errorMessage
+        self.assertEqual("Git push failed", j2["errorMessage"])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_get_memory_client")
+    def test_jobs_field_present_even_when_empty(self, mock_client_fn, mock_controller_get, mock_gh):
+        # When a workstream is provided and job_limit > 0, the "jobs" key
+        # must appear in the response even if the workstream has no jobs —
+        # an empty list is a meaningful signal distinct from omission.
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        ws_list = [{"workstreamId": "w-1",
+                    "repoUrl": "https://github.com/org/repo",
+                    "defaultBranch": "feature/x"}]
+
+        def controller_side_effect(path, timeout=10):
+            if "/jobs" in path:
+                return []
+            return ws_list
+        mock_controller_get.side_effect = controller_side_effect
+        result = server.memory_branch_context(workstream_id="w-1")
+        self.assertTrue(result["ok"])
+        self.assertIn("jobs", result)
+        self.assertEqual([], result["jobs"])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_get_memory_client")
+    def test_job_limit_coerced_and_query_encoded(self, mock_client_fn, mock_controller_get, mock_gh):
+        # Negative/garbage job_limit must not produce a malformed controller URL.
+        # A negative int coerces to 0 (jobs fetch is skipped); a stringified
+        # number coerces to the int value and is sent via urlencode.
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        ws_list = [{"workstreamId": "w-1",
+                    "repoUrl": "https://github.com/org/repo",
+                    "defaultBranch": "feature/x"}]
+        calls = []
+
+        def controller_side_effect(path, timeout=10):
+            calls.append(path)
+            if "/jobs" in path:
+                return []
+            return ws_list
+
+        # Negative → no jobs fetch, no /jobs path seen, jobs field omitted.
+        mock_controller_get.side_effect = controller_side_effect
+        result = server.memory_branch_context(workstream_id="w-1", job_limit=-5)
+        self.assertNotIn("jobs", result)
+        self.assertFalse(any("/jobs" in p for p in calls))
+
+        # Stringified int → coerced, urlencoded query string.
+        calls.clear()
+        mock_controller_get.side_effect = controller_side_effect
+        server.memory_branch_context(workstream_id="w-1", job_limit="3")
+        jobs_paths = [p for p in calls if "/jobs" in p]
+        self.assertEqual(1, len(jobs_paths))
+        self.assertIn("limit=3", jobs_paths[0])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_get_memory_client")
+    def test_jobs_timeline_omitted_when_job_limit_zero(self, mock_client_fn, mock_controller_get, mock_gh):
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        ws_list = [
+            {"workstreamId": "w-1",
+             "repoUrl": "https://github.com/org/repo",
+             "defaultBranch": "feature/x"},
+        ]
+        def controller_side_effect(path, timeout=10):
+            if "/jobs" in path:
+                self.fail("jobs endpoint must not be called when job_limit=0")
+            return ws_list
+        mock_controller_get.side_effect = controller_side_effect
+        result = server.memory_branch_context(workstream_id="w-1", job_limit=0)
+        self.assertTrue(result["ok"])
+        self.assertNotIn("jobs", result)
+
 
 class TestMemoryStore(unittest.TestCase):
 
@@ -1370,21 +1509,31 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
 
     @patch.object(server, "_github_request")
     def test_request_copilot_review_helper_success(self, mock_gh):
-        mock_gh.return_value = {"number": 10, "html_url": "https://github.com/x/y/pull/10"}
+        # Success requires the bot's login to appear in requested_reviewers.
+        mock_gh.return_value = {
+            "number": 10,
+            "html_url": "https://github.com/x/y/pull/10",
+            "requested_reviewers": [{"login": server.COPILOT_REVIEWER_LOGIN}],
+        }
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertTrue(result["ok"])
+        # Payload uses the documented `reviewers` field, not the fictional
+        # `app_reviewers` field the tool used to send.
         mock_gh.assert_called_once_with(
             "POST",
             "/repos/owner/repo/pulls/10/requested_reviewers",
-            {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
+            {"reviewers": [server.COPILOT_REVIEWER_LOGIN]},
         )
 
     @patch.object(server, "_github_request")
-    def test_request_copilot_review_helper_empty_body_success(self, mock_gh):
-        """An empty-body 200 response (ok=True, status=200) should be treated as success."""
-        mock_gh.return_value = {"ok": True, "status": 200}
+    def test_request_copilot_review_helper_2xx_without_bot_is_failure(self, mock_gh):
+        # A 2xx response that omits the bot from requested_reviewers means
+        # the request silently no-op'd (e.g. unknown field ignored, feature
+        # not enabled, bot unavailable). Must NOT claim success.
+        mock_gh.return_value = {"number": 10, "requested_reviewers": []}
         result = server._request_copilot_review("owner", "repo", 10)
-        self.assertTrue(result["ok"])
+        self.assertFalse(result["ok"])
+        self.assertIn("was not added", result["error"])
 
     @patch.object(server, "_github_request")
     def test_request_copilot_review_helper_github_error(self, mock_gh):
@@ -1399,7 +1548,8 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         """When the initial request fails, dismisses the prior review and retries."""
         mock_gh.side_effect = [
             {"ok": False, "error": "Review cannot be requested at this time."},
-            {"number": 10},
+            {"number": 10,
+             "requested_reviewers": [{"login": server.COPILOT_REVIEWER_LOGIN}]},
         ]
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertTrue(result["ok"])
