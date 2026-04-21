@@ -6,7 +6,9 @@
       "Bash(mvn clean compile:*)",
       "Bash(mvn install:*)",
       "Bash(mvn test:*)",
-      "Bash(export AR_HARDWARE_LIBS=/home/developer/.libs/)"
+      "Bash(export AR_HARDWARE_LIBS=/home/developer/.libs/)",
+      "mcp__ar-manager",
+      "mcp__ar-consultant"
     ],
     "deny": [],
     "ask": []

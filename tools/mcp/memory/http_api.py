@@ -157,7 +157,12 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 status_code=400,
             )
 
+        # Default is the "default" namespace for backwards compatibility, but
+        # callers can pass ``None`` / ``""`` to get memories across every
+        # namespace sorted by recency.
         namespace = body.get("namespace", "default")
+        if namespace == "":
+            namespace = None
         limit = body.get("limit", 20)
 
         results = store.search_by_branch(

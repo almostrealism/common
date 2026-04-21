@@ -516,6 +516,9 @@ public class Workstream {
         if (githubOrg != null) {
             json.append(",\"githubOrg\":\"").append(escapeForJson(githubOrg)).append("\"");
         }
+        if (slackWorkspaceId != null) {
+            json.append(",\"slackWorkspaceId\":\"").append(escapeForJson(slackWorkspaceId)).append("\"");
+        }
         if (planningDocument != null && !planningDocument.isEmpty()) {
             json.append(",\"planningDocument\":\"").append(escapeForJson(planningDocument)).append("\"");
         }
