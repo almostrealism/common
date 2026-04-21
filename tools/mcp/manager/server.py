@@ -1071,11 +1071,19 @@ def workstream_list() -> dict:
 
 @mcp.tool()
 def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
-    """Get job statistics and recent jobs for a workstream.
+    """**Operational analytics.** Returns platform-health metrics for a
+    workstream — job counts, total time, cost, turns, plus the 3 most
+    recent job events.
 
-    Shows job counts, total time, cost, and turns for this week and last week,
-    plus the 3 most recent job events so you can see what the workstream has
-    been doing without a separate workstream_list_jobs call.
+    Use this for DevOps / monitoring tasks: watching spend, confirming
+    the platform is processing jobs, diagnosing whether a workstream is
+    making forward progress. It tells you how FlowTree is doing, not
+    what the agents on this branch were working on.
+
+    For the narrative — what agents reported, what they decided, the
+    timeline of jobs, the commit history — call
+    ``memory_branch_context`` instead. That is the object-level tool;
+    this is a meta tool.
 
     Args:
         workstream_id: The workstream identifier (from workstream_list).
@@ -1114,11 +1122,19 @@ def workstream_list_jobs(
     workstream_id: str,
     limit: int = 10,
 ) -> dict:
-    """List recent jobs for a workstream, newest first.
+    """**Operational analytics.** Full per-job detail for a workstream,
+    newest first — status, timestamps, cost, target branch, commit,
+    PR URL, error messages.
 
-    Returns the most recent job events tracked by the FlowTree controller for
-    the specified workstream. Each entry includes status, description,
-    timestamps, and any error details.
+    Use this when you need the complete operational record of the
+    platform running jobs: cost accounting, debugging a specific
+    failure, auditing how long a job took. It is not where to look
+    for what the agents on this branch were actually thinking or
+    trying to accomplish.
+
+    For the narrative (memories, messages, a compact jobs timeline,
+    commits) call ``memory_branch_context``. That is the object-level
+    tool; this is a meta tool intended for DevOps.
 
     Args:
         workstream_id: The workstream identifier (from workstream_list).
@@ -1144,10 +1160,15 @@ def workstream_list_jobs(
 
 @mcp.tool()
 def workstream_get_job(job_id: str) -> dict:
-    """Look up a specific job event by its job ID.
+    """**Operational analytics.** Look up a specific job event by its
+    job ID — the most recent status event, with cost, duration, PR URL,
+    error message, etc.
 
-    Returns the most recent status event for the given job ID. Useful for
-    checking whether a previously submitted job succeeded or failed.
+    Use this when you submitted a job yourself and want to confirm it
+    succeeded or inspect its failure detail. It is not a narrative tool
+    — for the context around a job (why it was submitted, what the
+    agent reported, what other jobs ran on the same branch) call
+    ``memory_branch_context``.
 
     Args:
         job_id: The job identifier returned by workstream_submit_task.
@@ -2428,43 +2449,57 @@ def memory_branch_context(
     include_messages: bool = True,
     include_commits: bool = True,
     commit_limit: int = 30,
+    job_limit: int = 20,
 ) -> dict:
-    """Get all memories and optionally the commit history for a branch.
+    """Reconstruct the narrative of a workstream — what agents have been
+    thinking about and doing on a branch. This is the primary tool for
+    orienting yourself when picking up a workstream, coordinating with
+    other agents working on the same branch, or deciding what to do next.
 
-    Returns memories ordered by creation time (newest first). Can resolve
-    repo_url/branch from workstream_id if provided. When ``include_commits``
-    is True, fetches the branch's commit list via the GitHub Compare API
-    relative to the base branch (default ``master``).
+    Returns up to four streams:
+      - **memories**: agent-authored notes across every namespace
+        (``feedback``, ``project``, ``bugs``, ``messages``, …), sorted
+        newest-first. This is the substantive content — what was
+        reported, decided, discovered. Always present.
+      - **commits**: the commit history of the branch relative to its
+        base branch, via the GitHub Compare API. Present when
+        ``include_commits`` is true and the repo can be resolved.
+      - **jobs**: a compact timeline of job runs on this workstream
+        (timestamp, status, description, commit, PR, error). Not the
+        full operational record — just enough to situate memories in
+        time. For the full per-job detail use ``workstream_list_jobs``.
+        Present (possibly as an empty list) whenever ``workstream_id``
+        is supplied and ``job_limit > 0``; omitted otherwise.
+      - **metadata**: resolved repo_url, branch, namespace. Always present.
+
+    Prefer this tool over ``workstream_get_status`` for
+    doing-real-work tasks. ``workstream_get_status`` is an operational-
+    analytics tool (platform health, cost, turn counts); this one is
+    the actual narrative.
 
     By default (``namespace=""``), memories are returned across every
-    namespace on the branch, sorted newest-first — this surfaces whatever
-    the agent actually stored (``feedback``, ``project``, ``bugs``,
-    ``messages``, etc.) without requiring the caller to know which
-    namespaces were used. Supply an explicit ``namespace`` to filter to
-    one namespace instead.
+    namespace on the branch, sorted newest-first. Supply an explicit
+    ``namespace`` to filter to one namespace instead.
 
     Args:
-        workstream_id: Workstream to resolve repo/branch from.
-        repo_url: Repository URL to match.
-        branch: Branch name to match.
-        namespace: Memory namespace to filter to. Defaults to empty, which
-            returns entries from every namespace. Pass e.g. ``"feedback"``
-            or ``"messages"`` to narrow.
-        limit: Maximum number of entries.
+        workstream_id: Workstream to resolve repo/branch/jobs from.
+        repo_url: Repository URL to match (when no workstream supplied).
+        branch: Branch name to match (when no workstream supplied).
+        namespace: Memory namespace to filter to. Defaults to empty,
+            which returns entries from every namespace.
+        limit: Maximum number of memory entries.
         include_messages: Kept for backwards compatibility. Only takes
             effect when ``namespace`` is explicitly set to a value other
-            than ``"messages"`` — in that case messages are merged in as
-            a second stream. Ignored in the default (all-namespace) mode
-            because messages are already included.
-        include_commits: If true (default), include the list of commits on
-            the branch relative to its base branch.
+            than ``"messages"``. Ignored in the default all-namespace
+            mode because messages are already included.
+        include_commits: If true (default), include the commit list.
         commit_limit: Maximum number of commits to include (default 30).
+        job_limit: Maximum number of jobs to include in the timeline
+            (default 20). Set to 0 to omit the jobs field entirely.
 
     Returns:
-        Dictionary with branch memories and optionally commits.  When
-        commits are included, the response also contains ``total_commits``
-        (the full number of commits on the branch) and ``initial_commit_sha``
-        (the first commit on the branch relative to the base).
+        Dictionary with memories, jobs (compact timeline), and — when
+        commits are available — commits, total_commits, initial_commit_sha.
     """
     _require_scope("memory")
     err = _check_short_strings(
@@ -2584,13 +2619,43 @@ def memory_branch_context(
         else:
             commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
 
-    # Fetch last 3 jobs for this workstream from the controller
-    recent_jobs = []
-    if workstream_id:
+    # Compact jobs timeline: enough fields to situate memories in time and
+    # link them to the commits/PR flow, nothing more. Operational detail
+    # (cost, duration, full target branch, etc.) lives in
+    # workstream_list_jobs, which is the operational-analytics tool.
+    #
+    # Coerce job_limit defensively. MCP tool inputs are not runtime-type-
+    # enforced, so a caller could pass a string, a float, or a negative
+    # integer. Interpolating that directly into a URL would produce a
+    # malformed query; use a validated int and urlencode the query string.
+    try:
+        safe_job_limit = max(0, int(job_limit))
+    except (TypeError, ValueError):
+        safe_job_limit = 0
+    jobs_timeline = []
+    jobs_included = bool(workstream_id) and safe_job_limit > 0
+    if jobs_included:
         try:
-            jobs_result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?limit=3")
+            params = urlencode({"limit": safe_job_limit})
+            jobs_result = _controller_get(
+                f"/api/workstreams/{quote(workstream_id, safe='')}/jobs?{params}")
             if isinstance(jobs_result, list):
-                recent_jobs = jobs_result
+                for job in jobs_result:
+                    if not isinstance(job, dict):
+                        continue
+                    compact = {
+                        "jobId": job.get("jobId"),
+                        "timestamp": job.get("timestamp"),
+                        "status": job.get("status"),
+                        "description": job.get("description"),
+                    }
+                    if job.get("commitHash"):
+                        compact["commitHash"] = job["commitHash"][:10]
+                    if job.get("pullRequestUrl"):
+                        compact["pullRequestUrl"] = job["pullRequestUrl"]
+                    if job.get("errorMessage"):
+                        compact["errorMessage"] = job["errorMessage"]
+                    jobs_timeline.append(compact)
         except Exception:
             pass  # Non-critical: proceed without job history
 
@@ -2604,8 +2669,15 @@ def memory_branch_context(
         "next_steps": [
             "Use memory_recall for semantic search within these memories",
             "Use memory_store to add a new memory for this branch",
+            "Use project_read_plan to read the planning document",
         ],
     }
+    # Expose the jobs key unconditionally when the caller requested it —
+    # an empty list is a meaningful signal (no jobs on this branch yet),
+    # distinct from "the caller opted out with job_limit=0 or passed no
+    # workstream_id".
+    if jobs_included:
+        result["jobs"] = jobs_timeline
     if commits is not None:
         result["commits"] = commits
         result["commit_count"] = len(commits)
@@ -2614,8 +2686,6 @@ def memory_branch_context(
             result["initial_commit_sha"] = all_commits[0].get("sha", "")[:10]
     if commit_error is not None:
         result["commit_error"] = commit_error
-    if recent_jobs:
-        result["recent_jobs"] = recent_jobs
 
     return result
 
@@ -3165,13 +3235,47 @@ def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     return {"ok": False, "error": str(result)}
 
 
+COPILOT_REVIEWER_LOGIN = "copilot-pull-request-reviewer"
+
+
+def _copilot_is_requested(pr_response: dict) -> bool:
+    """True when the PR response's ``requested_reviewers`` array lists the
+    Copilot bot. The GitHub API accepts an empty-looking payload silently
+    (ignoring unknown fields), so we can't trust a 2xx status alone — we
+    verify the reviewer was actually added."""
+    if not isinstance(pr_response, dict):
+        return False
+    reviewers = pr_response.get("requested_reviewers") or []
+    for r in reviewers:
+        if isinstance(r, dict) and r.get("login") == COPILOT_REVIEWER_LOGIN:
+            return True
+    return False
+
+
+def _post_copilot_review_request(owner: str, repo: str, pr_number: int) -> dict:
+    """POST the Copilot reviewer request. Returns the raw response dict so
+    callers can check success via :func:`_copilot_is_requested` and handle
+    fallback/retry on actual failure."""
+    return _github_request(
+        "POST",
+        f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
+        {"reviewers": [COPILOT_REVIEWER_LOGIN]},
+    )
+
+
 def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     """Request a GitHub Copilot review on a pull request.
 
-    Copilot reviews are triggered by requesting a review from the
-    'copilot-pull-request-reviewer' app. If Copilot has already reviewed
-    the PR, the most recent dismissible review is dismissed and the request
-    is retried, making this call idempotent.
+    Copilot reviews are triggered by adding the
+    ``copilot-pull-request-reviewer`` bot as a regular reviewer via the
+    standard ``requested_reviewers`` endpoint. If Copilot has already
+    reviewed the PR, the most recent dismissible review is dismissed and
+    the request is retried, making this call idempotent.
+
+    Verifies success by checking that the returned PR's
+    ``requested_reviewers`` array actually contains the bot — the GitHub
+    API silently drops unknown body fields and returns 2xx on no-op
+    requests, so a successful-looking status code alone cannot be trusted.
 
     Args:
         owner: Repository owner.
@@ -3181,35 +3285,39 @@ def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     Returns:
         dict with ok=True on success or ok=False with error details.
     """
-    result = _github_request(
-        "POST",
-        f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
-        {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
-    )
+    result = _post_copilot_review_request(owner, repo, pr_number)
 
-    if isinstance(result, dict) and result.get("number"):
+    if _copilot_is_requested(result):
         return {"ok": True}
-    # _github_request returns {"ok": True, "status": ...} for empty-body 200 responses.
-    if isinstance(result, dict) and result.get("ok"):
-        return {"ok": True}
+
+    # If the POST itself reported failure, try dismissing any existing
+    # Copilot review and retrying — Copilot rejects duplicate requests.
     if isinstance(result, dict) and result.get("ok") is False:
-        # Request failed — Copilot may have already reviewed. Try dismiss + retry.
         dismiss = _dismiss_copilot_review(owner, repo, pr_number)
         if not dismiss.get("ok"):
-            return {"ok": False, "error": f"Review request failed: {result.get('error', '')}"}
-        retry = _github_request(
-            "POST",
-            f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
-            {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
-        )
-        if isinstance(retry, dict) and retry.get("number"):
-            return {"ok": True}
-        if isinstance(retry, dict) and retry.get("ok"):
+            return {"ok": False,
+                    "error": f"Review request failed: {result.get('error', '')}"}
+        retry = _post_copilot_review_request(owner, repo, pr_number)
+        if _copilot_is_requested(retry):
             return {"ok": True}
         if isinstance(retry, dict) and "ok" in retry:
             return retry
-        return {"ok": False, "error": str(retry)}
-    return {"ok": False, "error": str(result)}
+        return {
+            "ok": False,
+            "error": (
+                f"Retry did not add Copilot as a reviewer. Response: {retry}"),
+        }
+
+    # POST reported 2xx but the bot is not in requested_reviewers — something
+    # silently no-op'd the request. Surface this rather than claiming success.
+    return {
+        "ok": False,
+        "error": (
+            "Copilot was not added as a reviewer. The API returned a 2xx "
+            "response but the requested_reviewers array does not include "
+            f"'{COPILOT_REVIEWER_LOGIN}'. Check that the Copilot code review "
+            "feature is enabled for this repository."),
+    }
 
 
 @mcp.tool()
