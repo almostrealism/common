@@ -1,10 +1,14 @@
 """Self-contained GitHub API helpers for the AR Manager MCP server.
 
-This module provides low-level GitHub request plumbing (proxy + direct
-fallback), a GraphQL helper, and repo resolution utilities. It is
-intentionally free of any imports from ``server.py`` to avoid circular
-dependencies — all configuration (URLs, tokens) is passed in via
-module-level ``configure()`` or as function arguments.
+This module provides low-level GitHub request plumbing (proxy-only), a
+GraphQL helper, and repo resolution utilities. It is intentionally free of
+any imports from ``server.py`` to avoid circular dependencies — all
+configuration (URLs, callbacks) is passed in via module-level
+``configure()`` or as function arguments.
+
+ar-manager does not hold a GitHub token. Every GitHub API call routes
+through the controller's ``/api/github/proxy`` endpoint, which resolves
+the per-org PAT from ``workstreams.yaml``.
 
 Extracted from ``server.py`` to keep individual modules manageable.
 """
@@ -24,24 +28,22 @@ from urllib.request import Request, urlopen
 # ---------------------------------------------------------------------------
 
 _controller_url: str = ""
-_github_token: str = ""
 
 # Callbacks into server.py — set by configure() to avoid import-time coupling
 _find_workstream_fn = None
 _get_token_workstream_id_fn = None
 
 
-def configure(controller_url: str, github_token: str,
+def configure(controller_url: str,
               find_workstream, get_token_workstream_id) -> None:
     """Initialise module-level configuration.
 
     Called once by ``server.py`` after its own globals are ready.
     This avoids circular imports — no ``from server import ...`` needed.
     """
-    global _controller_url, _github_token
+    global _controller_url
     global _find_workstream_fn, _get_token_workstream_id_fn
     _controller_url = controller_url
-    _github_token = github_token
     _find_workstream_fn = find_workstream
     _get_token_workstream_id_fn = get_token_workstream_id
 
@@ -62,11 +64,14 @@ def _github_request(method: str, path: str, payload: dict = None,
     """Make a GitHub API request via the controller's proxy endpoint.
 
     The controller resolves the GitHub token from its per-organization
-    token map (``githubOrgs`` in ``workstreams.yaml``), falling back to
-    its instance-level token and then the ``GITHUB_TOKEN`` env var.
+    token map (``githubOrgs`` in ``workstreams.yaml``) using the ``org``
+    query parameter derived from the caller's context
+    (:data:`_current_github_org`).
 
-    If the controller proxy is unreachable and a local ``GITHUB_TOKEN``
-    is available, falls back to a direct API call.
+    There is no direct-to-GitHub fallback. If the controller proxy is
+    unreachable this returns an error dict — ar-manager deliberately does
+    not hold a GitHub credential of its own, so every request must flow
+    through the controller.
 
     Args:
         method: HTTP method (GET, POST, PUT).
@@ -79,26 +84,18 @@ def _github_request(method: str, path: str, payload: dict = None,
     """
     org = _current_github_org.get()
 
-    # Try controller proxy first
     result = _github_proxy_request(method, path, payload, org, timeout)
     if result is not None:
         return result
 
-    # Fallback to direct API call if a local token is available
-    if not _github_token:
-        return {
-            "ok": False,
-            "error": (
-                "GitHub API unavailable: controller proxy unreachable "
-                "and no local GITHUB_TOKEN configured."
-            ),
-            "next_steps": [
-                "Ensure the FlowTree controller is running and reachable",
-                "Or set AR_MANAGER_GITHUB_TOKEN / GITHUB_TOKEN as fallback",
-            ],
-        }
-
-    return _github_direct_request(method, path, payload, timeout)
+    return {
+        "ok": False,
+        "error": "GitHub API unavailable: controller proxy unreachable.",
+        "next_steps": [
+            "Ensure the FlowTree controller is running and reachable",
+            "Check controller_health to verify connectivity",
+        ],
+    }
 
 
 def _github_proxy_request(method: str, path: str, payload: dict = None,
@@ -158,55 +155,8 @@ def _github_proxy_request(method: str, path: str, payload: dict = None,
         return None
 
 
-def _github_direct_request(method: str, path: str, payload: dict = None,
-                           timeout: int = 15) -> dict:
-    """Direct GitHub API call using local GITHUB_TOKEN (fallback only).
-
-    Args:
-        method: HTTP method (GET, POST, PUT).
-        path: GitHub API path.
-        payload: Optional request body.
-        timeout: Request timeout in seconds.
-
-    Returns:
-        Parsed JSON response.
-    """
-    url = f"https://api.github.com{path}"
-    data = json.dumps(payload).encode("utf-8") if payload else None
-    req = Request(url, data=data, method=method)
-    req.add_header("Authorization", f"Bearer {_github_token}")
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    if data:
-        req.add_header("Content-Type", "application/json")
-
-    print(f"ar-manager: {method} {url} (direct fallback)", file=sys.stderr)
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            if not body:
-                return {"ok": True, "status": resp.status}
-            return json.loads(body)
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        logging.getLogger("ar-manager").error(
-            "GitHub %s %s: HTTP %d: %s", method, path, e.code, body[:500])
-        try:
-            err = json.loads(body)
-            return {"ok": False, "error": f"GitHub returned HTTP {e.code}: {err.get('message', '')}"}
-        except json.JSONDecodeError:
-            return {"ok": False, "error": f"GitHub returned HTTP {e.code}"}
-    except URLError as e:
-        return {"ok": False, "error": f"GitHub API unreachable: {e.reason}"}
-    except Exception as e:
-        logging.getLogger("ar-manager").error("GitHub %s %s: %s", method, path, e)
-        return {"ok": False, "error": "Internal error contacting GitHub API"}
-
-
 def _github_graphql_request(query: str, variables: dict) -> dict:
-    """Execute a GitHub GraphQL query.
-
-    Tries the controller proxy first, falls back to a direct API call.
+    """Execute a GitHub GraphQL query via the controller proxy.
 
     Args:
         query: The GraphQL query string.
@@ -301,15 +251,41 @@ def _detect_local_github_repo() -> Optional[tuple[str, str, str]]:
         return None
 
 
-def _resolve_github_repo(workstream_id: str = "", branch: str = "") -> tuple[str, str, str, Optional[dict]]:
-    """Resolve GitHub owner, repo, and branch from workstream context.
+def _resolve_github_repo(workstream_id: str = "", branch: str = "",
+                         owner: str = "", repo: str = "") -> tuple[str, str, str, Optional[dict]]:
+    """Resolve GitHub owner, repo, and branch with the following precedence:
 
-    Falls back to the local git working directory when no workstream is
-    configured or when the caller supplies a *branch* hint that belongs
-    to a different repository than the workstream's ``repoUrl``.
+    1. Explicit ``owner`` and ``repo`` (both must be set). The caller
+       provided them out-of-band; ar-manager must enforce the workspace
+       scope gate via :func:`_require_org_in_scope` *before* calling this
+       resolver. The org is recorded in :data:`_current_github_org` so
+       subsequent :func:`_github_request` calls route the proxy correctly.
+    2. Workstream context — either the explicit ``workstream_id``
+       argument or the one embedded in a temporary job token. When set,
+       the workstream's ``repoUrl`` supplies (owner, repo) and the
+       default branch feeds ``branch``. A caller-supplied ``branch`` that
+       points to a *different* local checkout takes over via local-git
+       detection (preserves the dev-mode workflow).
+    3. Local-git detection. Intended for interactive sessions where the
+       MCP server runs directly against the developer's checkout. Not
+       relevant inside the ar-manager HTTP deployment (which has no
+       meaningful working tree), but useful in a local REPL.
+    4. Error.
 
     Returns (owner, repo, branch, error_dict_or_None).
     """
+    # 1. Explicit owner/repo wins — scope has already been checked upstream.
+    if owner and repo:
+        _current_github_org.set(owner)
+        return owner, repo, branch, None
+    if owner or repo:
+        # Partial input is ambiguous — neither the workstream path nor the
+        # local-git path can compensate for a missing half.
+        return "", "", branch, {
+            "ok": False,
+            "error": "org and repo must be supplied together",
+        }
+
     effective_ws = workstream_id or (_get_token_workstream_id_fn() if _get_token_workstream_id_fn else "") or ""
 
     ws = _find_workstream_fn(effective_ws) if (_find_workstream_fn and effective_ws) else None
@@ -319,17 +295,17 @@ def _resolve_github_repo(workstream_id: str = "", branch: str = "") -> tuple[str
         parsed = _parse_github_remote(repo_url) if repo_url else None
 
         if parsed:
-            owner, repo = parsed
+            ws_owner, ws_repo = parsed
             effective_branch = branch or ws.get("defaultBranch", "")
 
             if branch:
                 local = _detect_local_github_repo()
-                if local and (local[0], local[1]) != (owner, repo):
+                if local and (local[0], local[1]) != (ws_owner, ws_repo):
                     _current_github_org.set(local[0])
                     return local[0], local[1], branch, None
 
             _set_github_org(ws)
-            return owner, repo, effective_branch, None
+            return ws_owner, ws_repo, effective_branch, None
 
     # Workstream lookup failed or has no repoUrl — try local git
     local = _detect_local_github_repo()
@@ -339,6 +315,9 @@ def _resolve_github_repo(workstream_id: str = "", branch: str = "") -> tuple[str
         return local[0], local[1], effective_branch, None
 
     if not effective_ws:
-        return "", "", branch, {"ok": False, "error": "workstream_id is required and no local git repo detected"}
+        return "", "", branch, {"ok": False,
+                                "error": ("workstream_id is required, or pass an explicit"
+                                          " owner and repo; no local git repo detected")}
 
-    return "", "", branch, {"ok": False, "error": f"Workstream '{effective_ws}' not found and no local git repo detected"}
+    return "", "", branch, {"ok": False,
+                            "error": f"Workstream '{effective_ws}' not found and no local git repo detected"}

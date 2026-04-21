@@ -300,4 +300,71 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             assertEquals("T111", ws.getSlackWorkspaceId());
         }
     }
+
+    @Test(timeout = 10000)
+    public void testEffectiveChannelOwnerUserIdsResolvesFromSingular() throws IOException {
+        // Legacy config shape: only the singular channelOwnerUserId is set.
+        // effectiveChannelOwnerUserIds() must treat it as a one-element list.
+        WorkstreamConfig top = WorkstreamConfig.loadFromYamlString(
+                "channelOwnerUserId: U0111\n");
+        assertEquals(List.of("U0111"), top.effectiveChannelOwnerUserIds());
+
+        String yaml = "slackWorkspaces:\n"
+                + "- workspaceId: T1\n"
+                + "  tokensFile: /t.json\n"
+                + "  channelOwnerUserId: U0222\n";
+        WorkstreamConfig cfg = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.SlackWorkspaceEntry ws = cfg.getSlackWorkspaces().get(0);
+        assertEquals(List.of("U0222"), ws.effectiveChannelOwnerUserIds());
+    }
+
+    @Test(timeout = 10000)
+    public void testEffectiveChannelOwnerUserIdsResolvesFromPlural() throws IOException {
+        // When both the plural list and the legacy singular are set, the
+        // plural list wins — preserving forward-compat once configs migrate.
+        String yaml = "channelOwnerUserId: U0111\n"
+                + "channelOwnerUserIds:\n"
+                + "- U0222\n"
+                + "- U0333\n";
+        WorkstreamConfig top = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals(List.of("U0222", "U0333"), top.effectiveChannelOwnerUserIds());
+
+        String wsYaml = "slackWorkspaces:\n"
+                + "- workspaceId: T1\n"
+                + "  tokensFile: /t.json\n"
+                + "  channelOwnerUserId: U0AAA\n"
+                + "  channelOwnerUserIds:\n"
+                + "  - U0BBB\n"
+                + "  - U0CCC\n";
+        WorkstreamConfig cfg = WorkstreamConfig.loadFromYamlString(wsYaml);
+        WorkstreamConfig.SlackWorkspaceEntry ws = cfg.getSlackWorkspaces().get(0);
+        assertEquals(List.of("U0BBB", "U0CCC"), ws.effectiveChannelOwnerUserIds());
+    }
+
+    @Test(timeout = 10000)
+    public void testEffectiveChannelOwnerUserIdsEmptyWhenUnset() throws IOException {
+        WorkstreamConfig cfg = WorkstreamConfig.loadFromYamlString("workstreams: []\n");
+        assertTrue(cfg.effectiveChannelOwnerUserIds().isEmpty());
+    }
+
+    @Test(timeout = 10000)
+    public void testSlackNotifierPreservesBackwardCompatSetter() {
+        // The legacy setChannelOwnerUserId(String) must still behave as a
+        // one-element list internally and round-trip through the legacy
+        // getter — existing callers (e.g. older plugins) continue to work.
+        SlackNotifier n = new SlackNotifier(null);
+        n.setChannelOwnerUserId("U0123");
+        assertEquals("U0123", n.getChannelOwnerUserId());
+        assertEquals(List.of("U0123"), n.getChannelOwnerUserIds());
+
+        // The plural setter supersedes the legacy singular value.
+        n.setChannelOwnerUserIds(List.of("U0A", "U0B"));
+        assertEquals(List.of("U0A", "U0B"), n.getChannelOwnerUserIds());
+        assertEquals("U0A", n.getChannelOwnerUserId());
+
+        // Clearing via null or empty removes all invitees.
+        n.setChannelOwnerUserIds(null);
+        assertTrue(n.getChannelOwnerUserIds().isEmpty());
+        assertNull(n.getChannelOwnerUserId());
+    }
 }
