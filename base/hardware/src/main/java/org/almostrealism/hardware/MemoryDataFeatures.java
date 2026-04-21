@@ -150,7 +150,7 @@ public interface MemoryDataFeatures {
 	 * a compile-time switch, not a runtime one. Flipping it requires a
 	 * rebuild.</p>
 	 */
-	boolean enableAssignmentCopy = true;
+	boolean enableAssignmentCopy = false;
 
 	/**
 	 * Creates an {@link Assignment} operation that assigns the value producer's output to the result producer.
@@ -235,7 +235,7 @@ public interface MemoryDataFeatures {
 		if (enableAssignmentCopy) {
 			return new Assignment(length, target, source);
 		} else {
-			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);
+			return new MemoryDataCopy(name, source, target, length);
 		}
 	}
 }
