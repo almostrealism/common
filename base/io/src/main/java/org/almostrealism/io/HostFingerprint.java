@@ -44,7 +44,7 @@ public final class HostFingerprint {
      * and its host. Safe to call at any time and never throws; fields
      * that cannot be resolved render as {@code unknown}.
      *
-     * <p>The output is intentionally terse — five short lines with no
+     * <p>The output is intentionally terse — four short lines with no
      * banners or field labels. When embedded in a message payload, the
      * message itself already provides the framing; a decorated block
      * would just be visual noise.</p>

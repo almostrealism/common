@@ -477,14 +477,37 @@ class BearerAuthMiddleware:
                     return
 
                 # Try HMAC temporary token. Temp tokens are issued by the
-                # controller against a specific workstream, so their workspace
-                # scope (if any) is derived later at call time from the
-                # workstream → workspace mapping rather than embedded here.
+                # controller for a specific (workstream, job) pair; the
+                # token itself doesn't carry a workspace ID, so we resolve
+                # the workstream's owning workspace here and scope the
+                # request to it. In legacy (single-workspace) mode no
+                # workspace IDs exist at all — leave the scope None so
+                # behaviour matches static tokens in that deployment.
                 temp_result = _validate_temp_token(token_value)
                 if temp_result is not None:
                     scopes, label, ws_id, job_id = temp_result
+                    workspace_id = _workspace_for_workstream(ws_id)
+                    if workspace_id is None and _is_multi_workspace_mode():
+                        # Multi-workspace deployment but the bound workstream
+                        # has no resolvable workspace — either it was removed
+                        # since the token was minted, or the config is
+                        # inconsistent. Fail closed rather than silently
+                        # granting superadmin.
+                        await send({
+                            "type": "http.response.start",
+                            "status": 401,
+                            "headers": [
+                                [b"content-type", b"application/json"],
+                                [b"www-authenticate", b'Bearer realm="ar-manager"'],
+                            ],
+                        })
+                        await send({
+                            "type": "http.response.body",
+                            "body": b'{"error":"Unauthorized: workspace for temp-token workstream could not be resolved"}',
+                        })
+                        return
                     _set_scopes(scopes, label)
-                    _set_workspace_scopes(None)
+                    _set_workspace_scopes([workspace_id] if workspace_id else None)
                     _set_token_context(ws_id, job_id)
                     await self.app(scope, receive, send)
                     return
@@ -683,12 +706,13 @@ WORKSPACE_CACHE_TTL = 30.0
 
 
 def _build_maps_from_workstreams(entries: list) -> tuple:
-    """Build ``(workstream_id → workspace_id, org_name → workspace_id)``
+    """Build ``(workstream_id → workspace_id, org_name → set(workspace_ids))``
     from a workstream list. Workstreams whose ``repoUrl`` cannot be parsed
-    as a GitHub URL contribute nothing to the org map. When multiple
-    workstreams under different workspaces share an org, the first
-    encountered wins — matches the ``orgToWorkspaceId`` convention on the
-    controller side.
+    as a GitHub URL contribute nothing to the org map. An org may appear
+    in multiple workspaces; the org map tracks the full set so ambiguity
+    can be detected by :func:`_require_org_in_scope` rather than silently
+    resolved (either first-wins or last-wins would mis-authorise a scoped
+    token if the same org is shared across workspaces).
     """
     ws_map: dict = {}
     org_map: dict = {}
@@ -702,8 +726,8 @@ def _build_maps_from_workstreams(entries: list) -> tuple:
         if wid:
             ws_map[wid] = workspace_id
         org = _extract_owner_repo(ws.get("repoUrl") or "")
-        if org and workspace_id and org[0] not in org_map:
-            org_map[org[0]] = workspace_id
+        if org and workspace_id:
+            org_map.setdefault(org[0], set()).add(workspace_id)
     return ws_map, org_map
 
 
@@ -759,15 +783,27 @@ def _workspace_for_workstream(workstream_id: str) -> Optional[str]:
     return ws_map.get(workstream_id)
 
 
-def _workspace_for_org(org: str) -> Optional[str]:
-    """Return the Slack workspace ID that owns ``org`` (by virtue of
-    containing at least one workstream whose ``repoUrl`` is on that org),
-    or None when no registered workstream ties that org to any workspace.
+def _is_multi_workspace_mode() -> bool:
+    """Return True when the controller is running in multi-workspace mode —
+    i.e., at least one registered workstream has a non-null
+    ``slackWorkspaceId``. Used by the temp-token validator to decide
+    whether a workstream whose workspace cannot be resolved should be
+    rejected (multi-workspace mode) or accepted as unscoped (legacy
+    single-workspace mode).
+    """
+    ws_map, _ = _get_cached_maps()
+    return any(v for v in ws_map.values())
+
+
+def _workspaces_for_org(org: str) -> set:
+    """Return the set of Slack workspace IDs that declare at least one
+    workstream on the given GitHub org (i.e., a ``repoUrl`` on that org).
+    Empty when no registered workstream ties that org to any workspace.
     """
     if not org:
-        return None
+        return set()
     _, org_map = _get_cached_maps(org=org)
-    return org_map.get(org)
+    return set(org_map.get(org, set()))
 
 
 def _require_org_in_scope(org: str) -> None:
@@ -778,21 +814,37 @@ def _require_org_in_scope(org: str) -> None:
     controller holds a PAT for, and the controller will reject unknown
     orgs itself.
 
-    Scoped callers are permitted only when ``org`` maps to a workspace
-    the token lists in its ``workspaceScopes``. An org that has no
-    registered workstream in any of the caller's workspaces fails the
-    check even if the controller could theoretically serve it — this is
-    the security boundary ar-manager enforces on behalf of the controller.
+    Scoped callers are accepted only when the org is unambiguously owned
+    by a single workspace in their scope. An org that:
+      - has no registered workstream anywhere → denied.
+      - appears under multiple workspaces → denied (the controller's
+        per-org PAT map is last-wins, so even if the caller is in ONE of
+        the owning workspaces, a direct-org proxy call may end up using
+        a token issued for a different workspace's workstreams).
+      - appears under one workspace that is not in the caller's scope →
+        denied.
+
+    The scoped caller's fallback in the multi-workspace case is to pass a
+    workstream_id, which disambiguates the target workspace (and therefore
+    the PAT) unambiguously.
     """
     if not _get_workspace_scopes():
         return
-    ws_id = _workspace_for_org(org)
-    if ws_id is None:
+    owners = _workspaces_for_org(org)
+    if not owners:
         raise PermissionError(
             f"Token is not scoped to any workspace containing GitHub org '{org}'. "
             "Either pass a workstream_id that belongs to your scope, or ask "
             "the operator to link the org to a workspace via workstreams.yaml.")
-    _require_workspace(ws_id)
+    if len(owners) > 1:
+        raise PermissionError(
+            f"GitHub org '{org}' is registered under multiple Slack workspaces "
+            f"({sorted(owners)}). Direct-org addressing is ambiguous for scoped "
+            "tokens because the controller's per-org PAT is last-wins; pass a "
+            "workstream_id instead so the workspace (and therefore the PAT) is "
+            "uniquely determined.")
+    (only_workspace,) = owners
+    _require_workspace(only_workspace)
 
 
 def _require_workstream_in_scope(workstream_id: str) -> None:
@@ -1510,15 +1562,16 @@ def _attempt_plan_writing_job(workstream_id: str, instructions: str,
     """
     target_path = path or "docs/plans/<slug>.md (choose an appropriate filename)"
     prompt = (
-        "Write a planning document for this workstream and commit it to the "
-        "target branch. Path: " + target_path + "\n\n"
+        "Write a planning document for this workstream at the target path. "
+        "Path: " + target_path + "\n\n"
         "The document should describe, in the style of other documents under "
         "docs/plans/, the following intent supplied by the operator:\n\n"
         "--- BEGIN INSTRUCTIONS ---\n"
         + instructions +
         "\n--- END INSTRUCTIONS ---\n\n"
-        "Leave the commit uncommitted — the harness will commit it. Do not "
-        "make any other code changes in this session."
+        "Write the file and leave it uncommitted — the harness will commit it "
+        "after you finish. Do not run `git commit` yourself, and do not make "
+        "any other code changes in this session."
     )
     try:
         submit_result = workstream_submit_task(
@@ -3188,6 +3241,21 @@ def github_request_copilot_review(
     _require_scope("write")
     if org and repo:
         _require_org_in_scope(org)
+    # Direct addressing (org+repo) supplies no branch of its own. When the
+    # caller also omits pr_number we'd fall through to a PR lookup with an
+    # empty head filter, producing a misleading "No open PR found for
+    # branch ''" error. Require an explicit branch (or pr_number) in that
+    # case before even resolving the repo.
+    if (org and repo) and not pr_number and not branch:
+        return {
+            "ok": False,
+            "error": ("branch is required when using direct org/repo addressing "
+                      "without a pr_number"),
+            "next_steps": [
+                "Pass branch=<feature-branch> so the open PR can be looked up",
+                "Or pass pr_number=<number> to address the PR directly",
+            ],
+        }
     owner, repo, effective_branch, err = _resolve_github_repo(
         workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
     if err:
@@ -3195,6 +3263,15 @@ def github_request_copilot_review(
 
     effective_pr = pr_number
     if not effective_pr:
+        if not effective_branch:
+            return {
+                "ok": False,
+                "error": "no branch available to locate an open PR",
+                "next_steps": [
+                    "Pass pr_number explicitly, or supply a branch / workstream_id "
+                    "with a defaultBranch so the open PR can be looked up",
+                ],
+            }
         # Look up the open PR for the branch.
         head = f"{owner}:{effective_branch}"
         pr_list = _github_request("GET", f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open")
