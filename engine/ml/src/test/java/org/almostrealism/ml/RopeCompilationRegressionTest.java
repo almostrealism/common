@@ -134,6 +134,85 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 	}
 
 	/**
+	 * Narrow reproducer of the RoPE compile explosion that breaks
+	 * {@code MoonbeamMidiTest}, {@code MidiTrainingTest}, and {@code SkyTntMidiTest}
+	 * (all three funnel through {@link RotationFeatures#ropeRotation}/{@code mraRopeRotation}
+	 * with a lazy {@link CollectionProducer} {@code freqCis}).
+	 *
+	 * <p><strong>What this test proves.</strong> {@code computeRopeFreqs} returns a lazy
+	 * graph (integers &rarr; exp &rarr; matmul(positions, invFreq) &rarr; cos/sin
+	 * &rarr; concat). When that lazy graph is passed as the gather-target
+	 * {@code weights} argument to {@code ropeRotation}/{@code mraRopeRotation}, every
+	 * index into {@code weights} inlines the entire freqCis graph. With the real
+	 * Moonbeam shape, this produces a kernel expression so large that simplification
+	 * either runs out of memory, bails out with "Large expression not improved by
+	 * simplification" (surfaced as "Cannot compile greaterThan/subset"), or &mdash;
+	 * if simplification completes &mdash; makes the native C compiler ({@code cc1}
+	 * on Linux, {@code clang -cc1} on macOS) OOM on a single-line C expression
+	 * tens of megabytes long. Observed concretely: at {@code seqLen=16} with
+	 * {@code AR_HARDWARE_DRIVER=native}, the generated C file contains a single
+	 * 44&nbsp;MB expression on one line and {@code clang -cc1} climbs past 2&nbsp;GB
+	 * RSS before failing. On the CI Linux runner this surfaces as
+	 * {@code "Killed" / "gcc: fatal error: Killed signal terminated program cc1" /
+	 * Hardware Native compiler failure (1)}.</p>
+	 *
+	 * <p><strong>Why the existing regression tests above miss it.</strong> They use
+	 * {@code seqLen=4} and at most 2 groups &mdash; under that scale the inlined
+	 * expression stays small enough to compile. Any fix that passes them while
+	 * leaving the exponential-inlining structure intact is a false fix; this is
+	 * why this regression has been "declared fixed" more than once while
+	 * {@code MoonbeamMidiTest.testTransformerForwardPass} still dies.</p>
+	 *
+	 * <p><strong>Dimensions.</strong> {@code headDim=8} and six head groups exactly
+	 * match {@code MoonbeamConfig.testConfig()}. {@code seqLen=16} is a deliberate
+	 * reduction from the real {@code maxSeqLen=128}: at 128 the Java-side
+	 * simplifier itself OOM-kills the forked JVM without surfacing a stack
+	 * trace, which makes the failure undiagnosable. {@code seqLen=16} is still
+	 * 4&times; the passing toy tests and reliably triggers the native-compile
+	 * OOM or the {@code @Test(timeout=60000)} guard.</p>
+	 *
+	 * <p><strong>How this test should eventually pass.</strong> Fix the producer:
+	 * either materialise {@code freqCis} before handing it to the gather, or
+	 * restructure {@code ropeRotation}/{@code mraRopeRotation} so the gather from
+	 * {@code freqCis} is issued against a compact expression (not inlined at
+	 * every index site).</p>
+	 */
+	@Test(timeout = 60000)
+	public void mraRopeRotationAtMoonbeamScale() {
+		int headDim = 8;
+		int freqDim = headDim / 2;
+		int maxSeqLen = 16;
+		int[] headsPerGroup = { 1, 1, 1, 1, 1, 1 };
+		double[] thetas = { 199999, 1031, 19, 20, 199999, 131 };
+		int totalHeads = 0;
+		for (int h : headsPerGroup) totalHeads += h;
+
+		PackedCollection attrPositions = new PackedCollection(thetas.length);
+		Producer<PackedCollection>[] positions = new Producer[thetas.length];
+		for (int g = 0; g < thetas.length; g++) {
+			attrPositions.setMem(g, 0.0);
+			positions[g] = cp(attrPositions).subset(shape(1), g);
+		}
+
+		HeadGroupConfig[] headGroups = HeadGroupConfig.fromParams(
+				thetas, headDim, maxSeqLen, headsPerGroup, positions);
+
+		PackedCollection input =
+				new PackedCollection(shape(totalHeads, freqDim, 2)).randFill();
+
+		Model model = new Model(shape(totalHeads, freqDim, 2));
+		model.sequential().add(
+				mraRopeRotation(totalHeads, headDim, headsPerGroup, headGroups)
+		);
+
+		CompiledModel compiled = model.compile(false);
+		PackedCollection output = compiled.forward(input);
+		assertNotNull("mraRopeRotation forward pass should produce output", output);
+		assertEquals("Output element count", totalHeads * freqDim * 2,
+				output.getShape().getTotalSize());
+	}
+
+	/**
 	 * Verify numerical correctness of {@link RotationFeatures#ropeRotation} with
 	 * a lazy {@code freqCis}: the output must match the result obtained when
 	 * {@code freqCis} is evaluated to a {@link PackedCollection} before use.

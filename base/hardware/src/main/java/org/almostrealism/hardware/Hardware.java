@@ -23,6 +23,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.compute.CascadingOptimizationStrategy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.ExpansionWidthTargetOptimization;
 import io.almostrealism.compute.ParallelismDiversityOptimization;
 import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.compute.ProcessContextBase;
@@ -555,6 +556,7 @@ public final class Hardware implements ConsoleFeatures {
 
 		ProcessContextBase.setDefaultOptimizationStrategy(new CascadingOptimizationStrategy(
 				new ParallelismDiversityOptimization(),
+				new ExpansionWidthTargetOptimization(),
 				new TraversableDepthTargetOptimization(),
 				new ParallelismTargetOptimization()
 		));

@@ -212,6 +212,62 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	/**
+	 * Returns the factor by which inlining this process's emitted expression
+	 * multiplies the consumer's expression size per use-site.
+	 *
+	 * <p>For most element-wise producers the emitted expression is a single
+	 * pointwise formula and this factor is {@code 1}. For producers whose
+	 * {@code getValueAt} emits a structure that carries multiple alternatives
+	 * or iterations in the expression tree, this factor should reflect the
+	 * branching or unrolling width:</p>
+	 *
+	 * <ul>
+	 *   <li>{@code concat(a, b, ...)} &rarr; number of concatenated pieces,
+	 *       because the emitted {@code Conditional} retains each branch.</li>
+	 *   <li>{@code greaterThan} / {@code lessThan} &rarr; {@code 2} (both
+	 *       ternary branches materialise in the expression).</li>
+	 *   <li>Reductions (matmul, dot-product, sum) &rarr; the reduction width,
+	 *       because fully inlined they emit one term per inner-dim position.</li>
+	 *   <li>Buffer references &rarr; {@code 1}.</li>
+	 * </ul>
+	 *
+	 * <p>Optimization strategies use this value together with depth and
+	 * parallelism accumulators to decide when isolating a subtree would
+	 * prevent a catastrophic expression blow-up at compile time.</p>
+	 *
+	 * <p>The default returns {@code 1} (no expansion). Subclasses whose
+	 * emitted expression has per-use-site width greater than one <strong>must</strong>
+	 * override this method with a value that approximates the emitted
+	 * width. The value does not have to be exact &mdash; a conservative
+	 * upper bound is acceptable.</p>
+	 *
+	 * @return the expansion width of this process, at least {@code 1}
+	 */
+	default long getExpansionWidth() {
+		return 1;
+	}
+
+	/**
+	 * Extracts the expansion width from an arbitrary object.
+	 *
+	 * <p>Returns the object's {@link #getExpansionWidth()} value if it is a
+	 * {@link Process}, otherwise {@code 1}. Used during context propagation
+	 * when the surrounding code may hold a bare {@link Supplier} rather than
+	 * a {@code Process}.</p>
+	 *
+	 * @param <T> the type of the object
+	 * @param c   the object to inspect
+	 * @return the expansion width of {@code c} if it is a process, else {@code 1}
+	 */
+	static <T> long expansionWidth(T c) {
+		if (c instanceof Process) {
+			return Math.max(1L, ((Process<?, ?>) c).getExpansionWidth());
+		}
+
+		return 1;
+	}
+
+	/**
 	 * Extracts the output size from an arbitrary object.
 	 *
 	 * <p>This utility method safely extracts output size from any object:</p>
