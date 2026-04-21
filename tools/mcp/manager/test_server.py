@@ -782,7 +782,10 @@ class TestMemoryBranchContext(unittest.TestCase):
 
     @patch.object(server, "_github_request")
     @patch.object(server, "_get_memory_client")
-    def test_include_messages_merge(self, mock_client_fn, mock_gh):
+    def test_include_messages_merge_with_explicit_namespace(self, mock_client_fn, mock_gh):
+        # Back-compat path: when the caller narrows to a specific namespace,
+        # include_messages=True still performs a second fetch against
+        # "messages" and merges the two streams.
         _grant_all_scopes()
         client = MagicMock()
         client.search_by_branch.side_effect = [
@@ -794,10 +797,41 @@ class TestMemoryBranchContext(unittest.TestCase):
         result = server.memory_branch_context(
             repo_url="https://github.com/org/repo",
             branch="feature/x",
+            namespace="default",
             include_messages=True,
         )
         self.assertTrue(result["ok"])
         self.assertEqual(result["count"], 2)
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_get_memory_client")
+    def test_default_returns_all_namespaces_single_fetch(self, mock_client_fn, mock_gh):
+        # Default behaviour: namespace is empty → server returns a merged
+        # newest-first stream across every namespace in one call.
+        # include_messages is a no-op in this mode.
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = [
+            {"id": "m1", "namespace": "feedback", "content": "fb",
+             "created_at": "2026-01-03"},
+            {"id": "m2", "namespace": "messages", "content": "msg",
+             "created_at": "2026-01-02"},
+            {"id": "m3", "namespace": "project", "content": "proj",
+             "created_at": "2026-01-01"},
+        ]
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        result = server.memory_branch_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 3)
+        # Exactly one fetch — no per-namespace double-query.
+        self.assertEqual(client.search_by_branch.call_count, 1)
+        # The call must forward a None namespace (wildcard) to the client.
+        call_kwargs = client.search_by_branch.call_args.kwargs
+        self.assertIsNone(call_kwargs["namespace"])
 
     @patch.object(server, "_get_memory_client")
     def test_skip_commits(self, mock_client_fn):

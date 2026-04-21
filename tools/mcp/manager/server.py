@@ -2370,7 +2370,7 @@ def memory_branch_context(
     workstream_id: str = "",
     repo_url: str = "",
     branch: str = "",
-    namespace: str = "default",
+    namespace: str = "",
     limit: int = 20,
     include_messages: bool = True,
     include_commits: bool = True,
@@ -2383,14 +2383,26 @@ def memory_branch_context(
     is True, fetches the branch's commit list via the GitHub Compare API
     relative to the base branch (default ``master``).
 
+    By default (``namespace=""``), memories are returned across every
+    namespace on the branch, sorted newest-first — this surfaces whatever
+    the agent actually stored (``feedback``, ``project``, ``bugs``,
+    ``messages``, etc.) without requiring the caller to know which
+    namespaces were used. Supply an explicit ``namespace`` to filter to
+    one namespace instead.
+
     Args:
         workstream_id: Workstream to resolve repo/branch from.
         repo_url: Repository URL to match.
         branch: Branch name to match.
-        namespace: Memory namespace to search.
+        namespace: Memory namespace to filter to. Defaults to empty, which
+            returns entries from every namespace. Pass e.g. ``"feedback"``
+            or ``"messages"`` to narrow.
         limit: Maximum number of entries.
-        include_messages: If true (default), also include memories from the
-            "messages" namespace. Set to false to exclude Slack messages.
+        include_messages: Kept for backwards compatibility. Only takes
+            effect when ``namespace`` is explicitly set to a value other
+            than ``"messages"`` — in that case messages are merged in as
+            a second stream. Ignored in the default (all-namespace) mode
+            because messages are already included.
         include_commits: If true (default), include the list of commits on
             the branch relative to its base branch.
         commit_limit: Maximum number of commits to include (default 30).
@@ -2426,22 +2438,26 @@ def memory_branch_context(
             ],
         }
 
+    # ``namespace=""`` (the default) means "all namespaces, newest first".
+    # The underlying client+server contract treats an empty/None namespace
+    # as a wildcard, so messages are already interleaved with every other
+    # namespace by recency — the include_messages flag becomes a no-op
+    # in that mode.
+    lookup_namespace = namespace if namespace else None
     try:
         memories = client.search_by_branch(
             repo_url=effective_repo,
             branch=effective_branch,
-            namespace=namespace,
+            namespace=lookup_namespace,
             limit=limit,
         )
     except ConnectionError as e:
         return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
 
-    # Merge results from the "messages" namespace if requested.
-    # Messages are appended AFTER the primary namespace results so that
-    # the caller always receives up to ``limit`` memories from the
-    # requested namespace.  Messages are capped at ``limit`` as well and
-    # interleaved by recency, but they never displace primary memories.
-    if include_messages and namespace != "messages":
+    # When the caller narrowed to a specific namespace and also asked for
+    # messages, merge in a second stream. Messages are capped at ``limit``
+    # and re-sorted by recency; primary memories are not displaced.
+    if namespace and include_messages and namespace != "messages":
         try:
             msg_memories = client.search_by_branch(
                 repo_url=effective_repo,
