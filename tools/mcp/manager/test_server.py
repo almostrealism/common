@@ -1376,7 +1376,7 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         mock_gh.assert_called_once_with(
             "POST",
             "/repos/owner/repo/pulls/10/requested_reviewers",
-            {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
+            {"reviewers": ["copilot"]},
         )
 
     @patch.object(server, "_github_request")

@@ -3123,9 +3123,9 @@ def github_create_pr(
 def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     """Dismiss the most recent dismissible Copilot review on a pull request.
 
-    Looks for reviews from the copilot-pull-request-reviewer bot and dismisses
-    the most recent one that is in APPROVED or CHANGES_REQUESTED state, which
-    allows a fresh review to be requested.
+    Looks for reviews from the copilot bot (login contains 'copilot') and
+    dismisses the most recent one that is in APPROVED or CHANGES_REQUESTED
+    state, which allows a fresh review to be requested.
 
     Args:
         owner: Repository owner.
@@ -3168,10 +3168,9 @@ def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
 def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     """Request a GitHub Copilot review on a pull request.
 
-    Copilot reviews are triggered by requesting a review from the
-    'copilot-pull-request-reviewer' app. If Copilot has already reviewed
-    the PR, the most recent dismissible review is dismissed and the request
-    is retried, making this call idempotent.
+    Copilot reviews are triggered by requesting a review from the 'copilot'
+    user. If Copilot has already reviewed the PR, the most recent dismissible
+    review is dismissed and the request is retried, making this call idempotent.
 
     Args:
         owner: Repository owner.
@@ -3184,7 +3183,7 @@ def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     result = _github_request(
         "POST",
         f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
-        {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
+        {"reviewers": ["copilot"]},
     )
 
     if isinstance(result, dict) and result.get("number"):
@@ -3200,7 +3199,7 @@ def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
         retry = _github_request(
             "POST",
             f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
-            {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
+            {"reviewers": ["copilot"]},
         )
         if isinstance(retry, dict) and retry.get("number"):
             return {"ok": True}
@@ -3222,8 +3221,8 @@ def github_request_copilot_review(
 ) -> dict:
     """Request a GitHub Copilot automated code review on a pull request.
 
-    Copilot reviews are triggered by requesting a review from the
-    'copilot-pull-request-reviewer' app via the GitHub API.
+    Copilot reviews are triggered by requesting a review from the 'copilot'
+    user via the GitHub API.
 
     Args:
         pr_number: Pull request number. If omitted, the open PR for the
