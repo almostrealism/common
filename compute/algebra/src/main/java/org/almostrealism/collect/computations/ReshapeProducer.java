@@ -24,8 +24,10 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.ParallelProcessContext;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.compute.ProcessOptimizationStrategy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -440,6 +442,20 @@ public class ReshapeProducer
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>> optimize(ProcessContext ctx) {
+		ProcessOptimizationStrategy strategy = ctx.getOptimizationStrategy();
+
+		if (strategy != null && producer instanceof Process) {
+			ParallelProcessContext context = createContext(ctx);
+			List<Process<?, ?>> optimizedChildren = List.of(
+					(Process<?, ?>) optimize(context, (Process) producer));
+			Process<?, ?> strategyResult = strategy.optimize(context, this, optimizedChildren,
+					c -> processChildren(c).map(p -> (Process<?, ?>) p));
+			if (strategyResult != null) {
+				return (ParallelProcess) strategyResult;
+			}
+			return generateReplacement(optimizedChildren);
+		}
+
 		if (producer instanceof Process) {
 			return generateReplacement(List.of(optimize(ctx, ((Process) producer))));
 		}
