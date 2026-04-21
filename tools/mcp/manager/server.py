@@ -2456,18 +2456,21 @@ def memory_branch_context(
     orienting yourself when picking up a workstream, coordinating with
     other agents working on the same branch, or deciding what to do next.
 
-    Returns four streams:
+    Returns up to four streams:
       - **memories**: agent-authored notes across every namespace
         (``feedback``, ``project``, ``bugs``, ``messages``, …), sorted
         newest-first. This is the substantive content — what was
-        reported, decided, discovered.
+        reported, decided, discovered. Always present.
       - **commits**: the commit history of the branch relative to its
-        base branch, via the GitHub Compare API.
+        base branch, via the GitHub Compare API. Present when
+        ``include_commits`` is true and the repo can be resolved.
       - **jobs**: a compact timeline of job runs on this workstream
         (timestamp, status, description, commit, PR, error). Not the
         full operational record — just enough to situate memories in
         time. For the full per-job detail use ``workstream_list_jobs``.
-      - **metadata**: resolved repo_url, branch, namespace.
+        Present (possibly as an empty list) whenever ``workstream_id``
+        is supplied and ``job_limit > 0``; omitted otherwise.
+      - **metadata**: resolved repo_url, branch, namespace. Always present.
 
     Prefer this tool over ``workstream_get_status`` for
     doing-real-work tasks. ``workstream_get_status`` is an operational-
@@ -2620,11 +2623,22 @@ def memory_branch_context(
     # link them to the commits/PR flow, nothing more. Operational detail
     # (cost, duration, full target branch, etc.) lives in
     # workstream_list_jobs, which is the operational-analytics tool.
+    #
+    # Coerce job_limit defensively. MCP tool inputs are not runtime-type-
+    # enforced, so a caller could pass a string, a float, or a negative
+    # integer. Interpolating that directly into a URL would produce a
+    # malformed query; use a validated int and urlencode the query string.
+    try:
+        safe_job_limit = max(0, int(job_limit))
+    except (TypeError, ValueError):
+        safe_job_limit = 0
     jobs_timeline = []
-    if workstream_id and job_limit > 0:
+    jobs_included = bool(workstream_id) and safe_job_limit > 0
+    if jobs_included:
         try:
+            params = urlencode({"limit": safe_job_limit})
             jobs_result = _controller_get(
-                f"/api/workstreams/{workstream_id}/jobs?limit={job_limit}")
+                f"/api/workstreams/{quote(workstream_id, safe='')}/jobs?{params}")
             if isinstance(jobs_result, list):
                 for job in jobs_result:
                     if not isinstance(job, dict):
@@ -2658,7 +2672,11 @@ def memory_branch_context(
             "Use project_read_plan to read the planning document",
         ],
     }
-    if jobs_timeline:
+    # Expose the jobs key unconditionally when the caller requested it —
+    # an empty list is a meaningful signal (no jobs on this branch yet),
+    # distinct from "the caller opted out with job_limit=0 or passed no
+    # workstream_id".
+    if jobs_included:
         result["jobs"] = jobs_timeline
     if commits is not None:
         result["commits"] = commits
@@ -3217,13 +3235,47 @@ def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     return {"ok": False, "error": str(result)}
 
 
+COPILOT_REVIEWER_LOGIN = "copilot-pull-request-reviewer"
+
+
+def _copilot_is_requested(pr_response: dict) -> bool:
+    """True when the PR response's ``requested_reviewers`` array lists the
+    Copilot bot. The GitHub API accepts an empty-looking payload silently
+    (ignoring unknown fields), so we can't trust a 2xx status alone — we
+    verify the reviewer was actually added."""
+    if not isinstance(pr_response, dict):
+        return False
+    reviewers = pr_response.get("requested_reviewers") or []
+    for r in reviewers:
+        if isinstance(r, dict) and r.get("login") == COPILOT_REVIEWER_LOGIN:
+            return True
+    return False
+
+
+def _post_copilot_review_request(owner: str, repo: str, pr_number: int) -> dict:
+    """POST the Copilot reviewer request. Returns the raw response dict so
+    callers can check success via :func:`_copilot_is_requested` and handle
+    fallback/retry on actual failure."""
+    return _github_request(
+        "POST",
+        f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
+        {"reviewers": [COPILOT_REVIEWER_LOGIN]},
+    )
+
+
 def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     """Request a GitHub Copilot review on a pull request.
 
-    Copilot reviews are triggered by requesting a review from the
-    'copilot-pull-request-reviewer' app. If Copilot has already reviewed
-    the PR, the most recent dismissible review is dismissed and the request
-    is retried, making this call idempotent.
+    Copilot reviews are triggered by adding the
+    ``copilot-pull-request-reviewer`` bot as a regular reviewer via the
+    standard ``requested_reviewers`` endpoint. If Copilot has already
+    reviewed the PR, the most recent dismissible review is dismissed and
+    the request is retried, making this call idempotent.
+
+    Verifies success by checking that the returned PR's
+    ``requested_reviewers`` array actually contains the bot — the GitHub
+    API silently drops unknown body fields and returns 2xx on no-op
+    requests, so a successful-looking status code alone cannot be trusted.
 
     Args:
         owner: Repository owner.
@@ -3233,35 +3285,39 @@ def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     Returns:
         dict with ok=True on success or ok=False with error details.
     """
-    result = _github_request(
-        "POST",
-        f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
-        {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
-    )
+    result = _post_copilot_review_request(owner, repo, pr_number)
 
-    if isinstance(result, dict) and result.get("number"):
+    if _copilot_is_requested(result):
         return {"ok": True}
-    # _github_request returns {"ok": True, "status": ...} for empty-body 200 responses.
-    if isinstance(result, dict) and result.get("ok"):
-        return {"ok": True}
+
+    # If the POST itself reported failure, try dismissing any existing
+    # Copilot review and retrying — Copilot rejects duplicate requests.
     if isinstance(result, dict) and result.get("ok") is False:
-        # Request failed — Copilot may have already reviewed. Try dismiss + retry.
         dismiss = _dismiss_copilot_review(owner, repo, pr_number)
         if not dismiss.get("ok"):
-            return {"ok": False, "error": f"Review request failed: {result.get('error', '')}"}
-        retry = _github_request(
-            "POST",
-            f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
-            {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
-        )
-        if isinstance(retry, dict) and retry.get("number"):
-            return {"ok": True}
-        if isinstance(retry, dict) and retry.get("ok"):
+            return {"ok": False,
+                    "error": f"Review request failed: {result.get('error', '')}"}
+        retry = _post_copilot_review_request(owner, repo, pr_number)
+        if _copilot_is_requested(retry):
             return {"ok": True}
         if isinstance(retry, dict) and "ok" in retry:
             return retry
-        return {"ok": False, "error": str(retry)}
-    return {"ok": False, "error": str(result)}
+        return {
+            "ok": False,
+            "error": (
+                f"Retry did not add Copilot as a reviewer. Response: {retry}"),
+        }
+
+    # POST reported 2xx but the bot is not in requested_reviewers — something
+    # silently no-op'd the request. Surface this rather than claiming success.
+    return {
+        "ok": False,
+        "error": (
+            "Copilot was not added as a reviewer. The API returned a 2xx "
+            "response but the requested_reviewers array does not include "
+            f"'{COPILOT_REVIEWER_LOGIN}'. Check that the Copilot code review "
+            "feature is enabled for this repository."),
+    }
 
 
 @mcp.tool()
