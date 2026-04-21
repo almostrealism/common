@@ -17,11 +17,8 @@
 package org.almostrealism.io;
 
 import java.io.File;
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 
 /**
  * Captures an identifying fingerprint of the JVM and host the current
@@ -43,51 +40,39 @@ public final class HostFingerprint {
     }
 
     /**
-     * Returns a multi-line, human-readable fingerprint describing the
-     * current JVM and its host environment. Safe to call at any time.
-     * Never throws; fields that cannot be resolved render as
-     * {@code unknown} / {@code <unset>}.
+     * Returns a compact, human-readable fingerprint of the current JVM
+     * and its host. Safe to call at any time and never throws; fields
+     * that cannot be resolved render as {@code unknown}.
+     *
+     * <p>The output is intentionally terse — five short lines with no
+     * banners or field labels. When embedded in a message payload, the
+     * message itself already provides the framing; a decorated block
+     * would just be visual noise.</p>
      *
      * @return the fingerprint text, ready for logging or message posting
      */
     public static String describe() {
         StringBuilder sb = new StringBuilder();
-        sb.append("==== HOST FINGERPRINT ====\n");
-
-        sb.append("  hostname:            ").append(hostname()).append('\n');
-        sb.append("  localAddress:        ").append(hostAddress()).append('\n');
-        sb.append("  pid:                 ").append(ProcessHandle.current().pid()).append('\n');
-        sb.append("  parentPid:           ").append(parentPid()).append('\n');
-        sb.append("  user:                ").append(sysProp("user.name")).append('\n');
-        sb.append("  cwd:                 ").append(sysProp("user.dir")).append('\n');
-        sb.append("  javaVersion:         ").append(sysProp("java.version")).append('\n');
-        sb.append("  javaVendor:          ").append(sysProp("java.vendor")).append('\n');
-        sb.append("  osName:              ").append(sysProp("os.name")).append('\n');
-        sb.append("  osArch:              ").append(sysProp("os.arch")).append('\n');
-
-        sb.append("  insideDocker:        ").append(new File("/.dockerenv").exists()).append('\n');
-        String selfCgroup = readFileOneLine("/proc/self/cgroup", 240);
-        if (selfCgroup != null) {
-            sb.append("  /proc/self/cgroup:   ").append(selfCgroup).append('\n');
-        }
-        String etcHostname = readFileOneLine("/etc/hostname", 120);
-        if (etcHostname != null) {
-            sb.append("  /etc/hostname:       ").append(etcHostname).append('\n');
-        }
-
-        sb.append("  javaProcessCount:    ").append(countJavaProcesses()).append('\n');
-
-        sb.append("  env.FLOWTREE_ROOT_HOST:    ").append(env("FLOWTREE_ROOT_HOST")).append('\n');
-        sb.append("  env.FLOWTREE_ROOT_PORT:    ").append(env("FLOWTREE_ROOT_PORT")).append('\n');
-        sb.append("  env.FLOWTREE_WORKING_DIR:  ").append(env("FLOWTREE_WORKING_DIR")).append('\n');
-        sb.append("  env.FLOWTREE_NODE_LABELS:  ").append(env("FLOWTREE_NODE_LABELS")).append('\n');
-        sb.append("  env.FLOWTREE_NODE_ID:      ").append(env("FLOWTREE_NODE_ID")).append('\n');
-        sb.append("  env.CLAUDE_CODE_OAUTH_TOKEN: ").append(envPresence("CLAUDE_CODE_OAUTH_TOKEN"))
-                .append('\n');
-        sb.append("  env.ANTHROPIC_API_KEY:     ").append(envPresence("ANTHROPIC_API_KEY")).append('\n');
-
-        sb.append("==========================");
+        sb.append(hostname()).append(" (").append(hostAddress()).append(") | ")
+          .append(osName()).append(" on ").append(sysProp("os.arch"))
+          .append(new File("/.dockerenv").exists() ? " (docker)" : " (no docker)").append('\n');
+        sb.append(sysProp("user.name")).append(":[")
+          .append(sysProp("user.dir")).append("]\n");
+        sb.append("java ").append(sysProp("java.version"))
+          .append(" (").append(sysProp("java.vendor")).append(")\n");
+        sb.append("process ID ").append(ProcessHandle.current().pid())
+          .append(" / ").append(parentPid());
         return sb.toString();
+    }
+
+    /** Returns a normalised OS name — Linux/macOS/Windows, falling through to the raw property otherwise. */
+    private static String osName() {
+        String raw = System.getProperty("os.name", "");
+        String lower = raw.toLowerCase();
+        if (lower.startsWith("mac")) return "macOS";
+        if (lower.startsWith("linux")) return "Linux";
+        if (lower.startsWith("windows")) return "Windows";
+        return raw.isEmpty() ? "unknown" : raw;
     }
 
     /** Returns the local hostname, or {@code "unknown"} if it cannot be resolved. */
@@ -120,56 +105,9 @@ public final class HostFingerprint {
         }
     }
 
-    /** Returns the system property value or {@code <unset>} when null. */
+    /** Returns the system property value or {@code unknown} when null. */
     private static String sysProp(String key) {
         String v = System.getProperty(key);
-        return v == null ? "<unset>" : v;
-    }
-
-    /** Returns the environment variable value or {@code <unset>} when null. */
-    private static String env(String key) {
-        String v = System.getenv(key);
-        return v == null ? "<unset>" : v;
-    }
-
-    /** Returns {@code <set>} or {@code <unset>} without disclosing the value. */
-    private static String envPresence(String key) {
-        return System.getenv(key) != null ? "<set>" : "<unset>";
-    }
-
-    /**
-     * Reads a file, collapses newlines to {@code |}, trims, and clamps to
-     * {@code limit} characters. Returns {@code null} on any I/O failure.
-     */
-    private static String readFileOneLine(String path, int limit) {
-        try {
-            String s = Files.readString(Paths.get(path));
-            s = s.replace('\n', '|').trim();
-            if (s.length() > limit) {
-                s = s.substring(0, limit) + "...";
-            }
-            return s;
-        } catch (IOException | SecurityException e) {
-            return null;
-        }
-    }
-
-    /**
-     * Counts OS processes whose command path looks like a Java launcher.
-     * Returns {@code -1} if the host OS or security manager forbids
-     * process enumeration.
-     */
-    private static long countJavaProcesses() {
-        try {
-            return ProcessHandle.allProcesses()
-                    .filter(p -> p.info().command()
-                            .map(cmd -> cmd.endsWith("/java")
-                                    || cmd.endsWith("java")
-                                    || cmd.contains("/java "))
-                            .orElse(false))
-                    .count();
-        } catch (SecurityException | UnsupportedOperationException e) {
-            return -1L;
-        }
+        return v == null ? "unknown" : v;
     }
 }
