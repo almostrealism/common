@@ -501,3 +501,143 @@ so that the strategy gets a chance to fire on the `ReshapeProducer` node
 before the custom single-child recursion proceeds. Until this is fixed,
 `ExpansionWidthTargetOptimization` cannot protect any computation that
 passes through a `reshape` / `traverse` on its way to the kernel.
+
+---
+
+## Post-ReshapeProducer-fix Diagnosis of mraRopeRotationAtMoonbeamScale
+
+Run date: 2026-04-21. The `ReshapeProducer.optimize` fix from commit `cfdd25e10` is
+in place. The two minimal strategy tests pass. This section documents what happens
+when the full reproducer is run with the JUnit timeout raised to 600 s.
+
+### How the investigation was run
+
+- `RopeCompilationRegressionTest.mraRopeRotationAtMoonbeamScale` was run with
+  `@Test(timeout = 600000)` (10 minutes) via the MCP test runner
+  (`engine/ml`, profile `pipeline`).
+- `HardwareOperator.enableLargeInstructionSetMonitoring = true` and
+  `instructionSetOutputDir = "/tmp/ar-moonbeam-kernels"` were set in the test
+  to capture generated C files > 50 KB.
+- An attempt was made to enable `ExpansionWidthTargetOptimization.enableDiagnostics`
+  via reflection (the class is in `ar-code` which is not on `engine/ml`'s compile
+  classpath). The reflection threw `ClassNotFoundException` at runtime:
+  `io.almostrealism.compute.ExpansionWidthTargetOptimization` is not on the
+  forked test JVM's runtime classpath from the `engine/ml` module. Diagnostics
+  could not be enabled for this run.
+- Test and diagnostic flags were restored to their original state (timeout = 60 s,
+  monitoring disabled) after the run.
+
+### Strategy invocation count and sites
+
+**Could not be determined from this run** — the `ClassNotFoundException` prevented
+the `enableDiagnostics` flag from being set. Based on the prior run (2026-04-20,
+before the ReshapeProducer fix, documented above) and code analysis:
+
+- Before the fix: exactly **1** strategy invocation, at the outer `OperationList`
+  (`depth=1`, `ew=1`, `belowFloor=3`). The strategy did not fire.
+- After the fix: the strategy is now also invoked on the `ReshapeProducer` node
+  (because `ReshapeProducer.optimize(ctx)` now calls the strategy). However, at
+  the `ReshapeProducer` level the accumulated context has `depth ≈ 3` and
+  `ew ≈ 1` (no high-expansion-width ancestors above it). Both conditions of the
+  strategy fail: `depth > 12` is false, and `ew > 2` is false (the
+  `GreaterThanCollection` with `ew=2` is BELOW the `ReshapeProducer`, not above
+  it — it has not yet been encountered walking top-down). The strategy does not
+  fire. The kernel is not isolated.
+
+### Generated C kernel count and largest kernel size
+
+- **Total generated `.c` files**: 6 (4 tiny utility kernels + 2 computation kernels)
+  - `org.almostrealism.c.Free.c` — 247 bytes
+  - `org.almostrealism.c.Malloc.c` — 267 bytes
+  - `org.almostrealism.c.NativeRead.c` — 497 bytes
+  - `org.almostrealism.c.NativeWrite.c` — 480 bytes
+  - `org.almostrealism.generated.GeneratedOperation0.c` — **980 bytes** (trivial)
+  - `org.almostrealism.generated.GeneratedOperation1.c` — **46,416,371 bytes (44.3 MB)**
+- **Longest line in GeneratedOperation1.c**: **44,386,601 characters (44.3 MB)** —
+  the entire kernel expression is on a single line.
+- This is **identical to the pre-fix measurement** from 2026-04-20 (the planning
+  doc records "a 44,386,601-character expression on one line"). The
+  `ReshapeProducer.optimize` fix had zero effect on the generated kernel size.
+
+### Whether `cc1` completes or is OOM-killed
+
+`cc1` was **OOM-killed** (exit code 1) after approximately **155 seconds** of
+native compilation. Observed memory growth:
+
+- At ~91 s total run time: `cc1` RSS = 3,065 MB (3.1 GB)
+- At ~128 s total run time: `cc1` RSS = 3,638 MB (3.7 GB)
+- At ~167 s total run time: `cc1` was killed
+
+The test method ran for **184.748 seconds** before failing with:
+
+```
+HardwareException: Native compiler failure (1) on org.almostrealism.generated.GeneratedOperation1
+```
+
+The failure originates at `CompiledModel.forward()` (lazy kernel compilation), not
+at `model.compile(false)`. The `optimize()` cascade runs during `compile()` —
+the kernel C code is generated and passed to `cc1` lazily on the first `forward()`
+invocation.
+
+**The `@Test(timeout=60000)` was masking the real failure mode.** With the old
+60-second timeout, JUnit killed the test thread before `cc1` finished dying. The
+reported failure was `TestTimedOut` (a timeout exception). With the timeout raised
+to 600 s, the true failure is `HardwareException: Native compiler failure (1)` —
+the OOM kill of `cc1`.
+
+### Root cause of why the fix is insufficient
+
+The `ReshapeProducer.optimize` fix is necessary but not sufficient. The strategy is
+now invoked at one additional node, but it still never fires because:
+
+1. **The depth threshold (`limit = 12`) is not met at any relevant node.** The call
+   path from root to `ReshapeProducer` has depth ≈ 3–4. `depth > 12` is always
+   false at the nodes that matter.
+
+2. **The accumulated expansion width at those depths is ≈ 1.** Expansion width
+   accumulates top-down: starting from the `OperationList` root (ew=1) through
+   `Assignment` (ew=1) to `ReshapeProducer` (ew=1). The `GreaterThanCollection`
+   (own ew=2) is a child of `ReshapeProducer`; it is encountered only when the
+   cascade recurses INTO the children. By the time the cascade reaches a node
+   where ew has grown to 2, depth is still only ≈ 4, nowhere near 12.
+
+3. **The firing condition requires BOTH `ew > 2` AND `depth > 12` simultaneously.**
+   In this computation graph those two conditions are never simultaneously true. The
+   high-expansion-width nodes sit at shallow depth, and by the time the cascade
+   reaches deep enough, the accumulated ew has not grown further (the gather and
+   matmul nodes below do not carry high expansion widths in the accumulated context).
+
+### Proposed next step
+
+The evidence points to a **threshold mismatch**: the strategy's depth floor is
+calibrated for much deeper process trees than what `mraRopeRotation` produces.
+There are two viable paths:
+
+**Option A — Lower the depth limit.** Reduce `ExpansionWidthTargetOptimization.limit`
+from `12` to a value small enough (e.g. `2`) that the strategy fires at the
+`ReshapeProducer` depth. This alone is not enough: the accumulated `ew` at depth 2
+is still ≈ 1, so `ew > EXPANSION_THRESHOLD` (= `ew > 2`) also fails. Both the
+depth floor and the threshold need adjustment together.
+
+**Option B — Add a child-own-ew check (recommended).** Augment the firing condition
+to also trigger when any child's `getExpansionWidth()` exceeds a threshold,
+independent of the accumulated context `ew`. Specifically: if any direct child of
+the current node returns `getExpansionWidth() > 1`, isolate that child. This would
+fire at the `ReshapeProducer` level because its child (`GreaterThanCollection`)
+returns `getExpansionWidth() = 2`. This is the most targeted fix: "if you are about
+to inline a branching or aggregating producer into the parent's kernel, isolate it
+first regardless of how deep you are."
+
+**Option C — Diagnose from `engine/utils` instead of `engine/ml`.** The
+`ExpansionWidthTargetOptimization` class is on the `engine/utils` classpath (that
+is where `ExpansionWidthTests` live). A diagnostic test in `engine/utils` that
+replicates the `mraRopeRotationAtMoonbeamScale` reproducer would be able to set
+`enableDiagnostics = true` directly, enabling a clean observation of invocation
+count, depths, and expansion widths without reflection. This should be done before
+implementing any threshold change so the exact invocation profile is known.
+
+**Recommendation:** Implement Option C first (move the reproducer or add a
+cross-module diagnostic test in `engine/utils`) to get the actual strategy
+invocation profile with diagnostics enabled. Then implement Option B as the primary
+fix. Option A alone is insufficient and may cause excessive isolation of cheap
+conditionals.
