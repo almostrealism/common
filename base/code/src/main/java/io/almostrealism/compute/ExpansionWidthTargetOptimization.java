@@ -82,7 +82,7 @@ public class ExpansionWidthTargetOptimization implements ProcessOptimizationStra
 	 * of {@code 64} after accounting for how few producers ever fed a
 	 * nontrivial value into the old context field.</p>
 	 */
-	public static long EXPANSION_THRESHOLD = 2;
+	public static long EXPANSION_THRESHOLD = 32;
 
 	/**
 	 * Minimum per-child parallelism required for this strategy to fire.
@@ -165,12 +165,25 @@ public class ExpansionWidthTargetOptimization implements ProcessOptimizationStra
 				&& pctx.getDepth() > limit;
 
 		if (enableDiagnostics) {
+			StringBuilder childSummary = new StringBuilder();
+			int shown = 0;
+			for (P c : children) {
+				if (shown > 0) childSummary.append(',');
+				childSummary.append(c == null ? "null" : c.getClass().getSimpleName());
+				childSummary.append('(')
+						.append(c instanceof ParallelProcess ? "PP" : "P")
+						.append(",par=").append(ParallelProcess.parallelism(c))
+						.append(",ew=").append(Process.expansionWidth(c))
+						.append(')');
+				if (++shown >= 8) { childSummary.append(",…"); break; }
+			}
 			writeDiagnostic("[EW] parent=" + parent.getClass().getSimpleName()
 					+ " depth=" + pctx.getDepth()
 					+ " ew=" + pctx.getExpansionWidth()
 					+ " belowFloor=" + belowFloor
 					+ " ownEw=" + Process.expansionWidth(parent)
-					+ " fire=" + fire);
+					+ " fire=" + fire
+					+ " children=[" + childSummary + "]");
 		}
 
 		if (fire) {

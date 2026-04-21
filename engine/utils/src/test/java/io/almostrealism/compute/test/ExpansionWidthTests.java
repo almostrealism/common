@@ -43,17 +43,21 @@ import org.junit.Test;
 public class ExpansionWidthTests extends TestSuiteBase {
 
 	/**
-	 * The default expansion width for any {@link Process} that does not override the
-	 * hook is {@code 1}: its {@code getValueAt} emits a single-branch, element-wise
-	 * expression with no amplification per use-site.
+	 * A multi-operand pointwise operation like {@code multiply(x, y)} emits
+	 * the concatenation of both operands' full expressions (as {@code x · y}),
+	 * so its expansion width is the operand count &mdash; {@code 2} for a
+	 * binary multiply. This test documents that corrected semantic; earlier
+	 * (pre-faithful-ew) iterations expected the default {@code 1}, which
+	 * under-measured the fan-out.
 	 */
 	@Test(timeout = 15000)
-	public void elementwiseProducerReportsWidthOne() {
+	public void binaryMultiplyReportsWidthTwo() {
 		PackedCollection input = new PackedCollection(shape(8)).randFill();
 		CollectionProducer producer = cp(input).multiply(c(2.0));
 
 		long width = Process.expansionWidth(producer);
-		assertEquals("element-wise multiply must have expansion width 1", 1L, width);
+		assertEquals("binary multiply emits x · y — two operand emissions",
+				2L, width);
 	}
 
 	/**
@@ -170,12 +174,13 @@ public class ExpansionWidthTests extends TestSuiteBase {
 	}
 
 	/**
-	 * A single-child parent preserves the parent context untouched: propagation
-	 * does not introduce a spurious bump in the expansion width when the child
-	 * adds no branching.
+	 * Product-semantic propagation compounds each ancestor's expansion width
+	 * into the child context. With faithful per-node widths, a binary multiply
+	 * (ew 2) nested inside a greater-than (ew 2) yields accumulated width 4 at
+	 * the multiply's level.
 	 */
 	@Test(timeout = 15000)
-	public void singleChildPassesThroughContext() {
+	public void multiplyNestedUnderGreaterThanCompoundsToFour() {
 		boolean prior = ParallelProcessContext.enableProductExpansionWidth;
 		ParallelProcessContext.enableProductExpansionWidth = true;
 		try {
@@ -183,7 +188,7 @@ public class ExpansionWidthTests extends TestSuiteBase {
 			PackedCollection b = new PackedCollection(shape(8)).randFill();
 			PackedCollection f = new PackedCollection(shape(8)).randFill();
 
-			// outer is a 2-branch conditional; the child "inner" is element-wise
+			// outer: 2-branch conditional; inner: binary multiply (ew 2)
 			Producer<PackedCollection> inner = cp(a).multiply(c(2.0));
 			Producer<PackedCollection> outer = greaterThan(cp(a), cp(b), (CollectionProducer) inner, cp(f));
 
@@ -192,9 +197,8 @@ public class ExpansionWidthTests extends TestSuiteBase {
 			assertEquals(2L, outerCtx.getExpansionWidth());
 
 			ParallelProcessContext innerCtx = ParallelProcessContext.of(outerCtx, (ParallelProcess) inner);
-			// the element-wise child carries width 1; product with inherited 2 = 2
-			assertEquals("element-wise child does not amplify product of ancestors",
-					2L, innerCtx.getExpansionWidth());
+			assertEquals("binary multiply (ew 2) under greaterThan (ew 2) = 4",
+					4L, innerCtx.getExpansionWidth());
 		} finally {
 			ParallelProcessContext.enableProductExpansionWidth = prior;
 		}

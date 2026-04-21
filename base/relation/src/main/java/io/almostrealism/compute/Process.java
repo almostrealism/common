@@ -23,8 +23,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * The fundamental abstraction for composable, optimizable computational work.
@@ -289,11 +293,35 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	/**
+	 * Logger used by {@link #of(Supplier)} to warn when a non-{@link Process} supplier
+	 * is wrapped. The resulting wrapper has an empty child list and a default
+	 * {@link #optimize(ProcessContext)}, so its subtree is invisible to the
+	 * optimization cascade &mdash; a routine source of silent coverage gaps.
+	 */
+	Logger processOfLogger = Logger.getLogger(Process.class.getName());
+
+	/**
+	 * Tracks supplier classes we've already warned about, so each distinct class
+	 * produces at most one log entry per JVM regardless of how many times
+	 * {@link #of(Supplier)} wraps an instance of that class.
+	 */
+	Set<String> processOfWarnedSupplierClasses = ConcurrentHashMap.newKeySet();
+
+	/**
 	 * Creates a process wrapper around a supplier.
 	 *
 	 * <p>This factory method creates an anonymous process that delegates to the
 	 * given supplier. If the supplier is itself a process, its children and
 	 * output size are preserved.</p>
+	 *
+	 * <p>When the supplier is <em>not</em> a {@link Process}, the resulting wrapper
+	 * has no children visible to the optimization cascade and its
+	 * {@link #optimize(ProcessContext)} is the default no-op. That hides any
+	 * internal structure of the supplier from strategies like
+	 * {@link ProcessOptimizationStrategy}. A warning is emitted the first time a
+	 * given supplier class is seen in that state, so these invisibility boundaries
+	 * can be audited and (where necessary) removed by arranging for the supplier
+	 * to implement {@code Process}.</p>
 	 *
 	 * @param <P>      the type of child processes
 	 * @param <T>      the result type
@@ -301,6 +329,19 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	 * @return a process that delegates to the supplier
 	 */
 	static <P extends Process<?, ?>, T> Process<P, T> of(Supplier<T> supplier) {
+		if (!(supplier instanceof Process)) {
+			String key = supplier == null ? "null" : supplier.getClass().getName();
+			if (processOfWarnedSupplierClasses.add(key)) {
+				processOfLogger.log(Level.WARNING,
+						"Process.of() wrapping non-Process supplier of class {0}. "
+								+ "The resulting wrapper has no visible children and "
+								+ "a no-op optimize(), so this subtree is invisible "
+								+ "to the optimization cascade. Make the supplier "
+								+ "implement Process (ideally ParallelProcess) if its "
+								+ "contents should be reachable by strategies.",
+						key);
+			}
+		}
 		return new Process<>() {
 			@Override
 			public Collection<P> getChildren() {

@@ -22,6 +22,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -179,36 +180,63 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 	 */
 	@Test(timeout = 60000)
 	public void mraRopeRotationAtMoonbeamScale() {
-		int headDim = 8;
-		int freqDim = headDim / 2;
-		int maxSeqLen = 16;
-		int[] headsPerGroup = { 1, 1, 1, 1, 1, 1 };
-		double[] thetas = { 199999, 1031, 19, 20, 199999, 131 };
-		int totalHeads = 0;
-		for (int h : headsPerGroup) totalHeads += h;
-
-		PackedCollection attrPositions = new PackedCollection(thetas.length);
-		Producer<PackedCollection>[] positions = new Producer[thetas.length];
-		for (int g = 0; g < thetas.length; g++) {
-			attrPositions.setMem(g, 0.0);
-			positions[g] = cp(attrPositions).subset(shape(1), g);
-		}
-
-		HeadGroupConfig[] headGroups = HeadGroupConfig.fromParams(
-				thetas, headDim, maxSeqLen, headsPerGroup, positions);
-
+		MoonbeamScaleFixture fixture = moonbeamScaleFixture();
 		PackedCollection input =
-				new PackedCollection(shape(totalHeads, freqDim, 2)).randFill();
+				new PackedCollection(shape(fixture.totalHeads, fixture.freqDim, 2)).randFill();
 
-		Model model = new Model(shape(totalHeads, freqDim, 2));
+		Model model = new Model(shape(fixture.totalHeads, fixture.freqDim, 2));
 		model.sequential().add(
-				mraRopeRotation(totalHeads, headDim, headsPerGroup, headGroups)
+				mraRopeRotation(fixture.totalHeads, fixture.headDim,
+						fixture.headsPerGroup, fixture.headGroups)
 		);
 
 		CompiledModel compiled = model.compile(false);
 		PackedCollection output = compiled.forward(input);
 		assertNotNull("mraRopeRotation forward pass should produce output", output);
-		assertEquals("Output element count", totalHeads * freqDim * 2,
+		assertEquals("Output element count", fixture.totalHeads * fixture.freqDim * 2,
+				output.getShape().getTotalSize());
+	}
+
+	/**
+	 * Reproduces the RoPE compile explosion as it appears in the actual production
+	 * transformer: a Q-projection (dense layer with a square weight matrix of
+	 * size {@code hiddenSize = totalHeads * headDim}) followed by
+	 * {@link RotationFeatures#mraRopeRotation}. This is the composition that ships
+	 * in {@code MoonbeamMidi.buildTransformer()}; the standalone
+	 * {@link #mraRopeRotationAtMoonbeamScale} test is merely the floor-case
+	 * reproducer. The actual transformer wraps RoPE after a matmul whose output
+	 * feeds the rotation layer.
+	 *
+	 * <p>This matters for threshold calibration of any {@code ExpansionWidthTargetOptimization}
+	 * or similar isolation strategy: the ew accumulation along the path from the
+	 * root of the forward pass down to the pad inside {@code freqCis} passes
+	 * through additional non-trivial producers here (the matmul and its downstream
+	 * reshape) that are absent from the standalone test. A threshold that catches
+	 * only the standalone shape may under- or over-fire in this composed shape.</p>
+	 */
+	@Test(timeout = 60000)
+	public void mraRopeRotationAfterQProjectionAtMoonbeamScale() {
+		MoonbeamScaleFixture fixture = moonbeamScaleFixture();
+		int hiddenSize = fixture.totalHeads * fixture.headDim;
+
+		// Q-projection weights: (hiddenSize, hiddenSize). Single-position input; the
+		// dense output has the same leading shape and is reshaped into
+		// (totalHeads, freqDim, 2) for RoPE.
+		PackedCollection wq = new PackedCollection(shape(hiddenSize, hiddenSize)).randFill();
+		PackedCollection input = new PackedCollection(shape(1, hiddenSize)).randFill();
+
+		Model model = new Model(shape(1, hiddenSize));
+		SequentialBlock seq = model.sequential();
+		seq.add(dense(shape(1, hiddenSize), wq, null, false));
+		seq.add(reshape(shape(1, hiddenSize),
+				shape(fixture.totalHeads, fixture.freqDim, 2)));
+		seq.add(mraRopeRotation(fixture.totalHeads, fixture.headDim,
+				fixture.headsPerGroup, fixture.headGroups));
+
+		CompiledModel compiled = model.compile(false);
+		PackedCollection output = compiled.forward(input);
+		assertNotNull("matmul + mraRopeRotation forward pass should produce output", output);
+		assertEquals("Output element count", fixture.totalHeads * fixture.freqDim * 2,
 				output.getShape().getTotalSize());
 	}
 
@@ -252,5 +280,50 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 		double diff = compare(outputA, outputB);
 		log("ropeRotation lazy vs evaluated diff: " + diff);
 		assertTrue("Lazy and evaluated freqCis must produce identical results", diff < 1e-5);
+	}
+
+	/**
+	 * Bundle of shape parameters and {@link HeadGroupConfig}s matching
+	 * {@code MoonbeamConfig.testConfig()} &mdash; used by both the standalone
+	 * and Q-projection-composed reproducers so the two tests exercise the exact
+	 * same RoPE shape.
+	 */
+	private static final class MoonbeamScaleFixture {
+		final int headDim = 8;
+		final int freqDim = headDim / 2;
+		final int[] headsPerGroup = { 1, 1, 1, 1, 1, 1 };
+		final int totalHeads;
+		final HeadGroupConfig[] headGroups;
+
+		MoonbeamScaleFixture(HeadGroupConfig[] headGroups, int totalHeads) {
+			this.totalHeads = totalHeads;
+			this.headGroups = headGroups;
+		}
+	}
+
+	/**
+	 * Build a {@link MoonbeamScaleFixture} with freshly-allocated attribute
+	 * positions and {@link HeadGroupConfig}s. Allocated per-test so the
+	 * underlying {@link PackedCollection}s are isolated between tests.
+	 */
+	private MoonbeamScaleFixture moonbeamScaleFixture() {
+		int headDim = 8;
+		int maxSeqLen = 16;
+		int[] headsPerGroup = { 1, 1, 1, 1, 1, 1 };
+		double[] thetas = { 199999, 1031, 19, 20, 199999, 131 };
+		int totalHeads = 0;
+		for (int h : headsPerGroup) totalHeads += h;
+
+		PackedCollection attrPositions = new PackedCollection(thetas.length);
+		Producer<PackedCollection>[] positions = new Producer[thetas.length];
+		for (int g = 0; g < thetas.length; g++) {
+			attrPositions.setMem(g, 0.0);
+			positions[g] = cp(attrPositions).subset(shape(1), g);
+		}
+
+		HeadGroupConfig[] headGroups = HeadGroupConfig.fromParams(
+				thetas, headDim, maxSeqLen, headsPerGroup, positions);
+
+		return new MoonbeamScaleFixture(headGroups, totalHeads);
 	}
 }

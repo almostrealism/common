@@ -136,11 +136,21 @@ import java.util.function.Supplier;
  */
 public interface MemoryDataFeatures {
 	/**
-	 * Controls whether {@link #copy} methods use {@link Assignment} (true) or {@link MemoryDataCopy} (false).
+	 * Controls whether {@link #copy} methods use {@link Assignment} (true) or
+	 * {@link MemoryDataCopy} (false).
 	 *
-	 * <p>Default: false (uses MemoryDataCopy for direct memory operations)</p>
+	 * <p>Default: {@code true}. {@link Assignment} is a {@link ParallelProcess}
+	 * and therefore participates in the optimization cascade, whereas
+	 * {@link MemoryDataCopy} is a plain {@link Process} whose internal
+	 * producer tree is invisible to strategies. Routing {@link #copy} through
+	 * {@code Assignment} is a prerequisite for any isolation strategy that
+	 * needs to see the producer tree being copied into a destination.</p>
+	 *
+	 * <p>As an interface field this is {@code public static final} and therefore
+	 * a compile-time switch, not a runtime one. Flipping it requires a
+	 * rebuild.</p>
 	 */
-	boolean enableAssignmentCopy = false;
+	boolean enableAssignmentCopy = true;
 
 	/**
 	 * Creates an {@link Assignment} operation that assigns the value producer's output to the result producer.

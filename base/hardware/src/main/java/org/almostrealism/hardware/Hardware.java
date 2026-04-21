@@ -554,9 +554,13 @@ public final class Hardware implements ConsoleFeatures {
 			location = Location.DELEGATE;
 		}
 
+		// ExpansionWidthTargetOptimization intentionally left out of the cascade
+		// for now. The switch from MemoryDataCopy to Assignment in
+		// MemoryDataFeatures.copy(...) is being evaluated in isolation first;
+		// once its behaviour is validated in CI, the expansion-width strategy
+		// can be reinstated here without touching its implementation.
 		ProcessContextBase.setDefaultOptimizationStrategy(new CascadingOptimizationStrategy(
 				new ParallelismDiversityOptimization(),
-				new ExpansionWidthTargetOptimization(),
 				new TraversableDepthTargetOptimization(),
 				new ParallelismTargetOptimization()
 		));
