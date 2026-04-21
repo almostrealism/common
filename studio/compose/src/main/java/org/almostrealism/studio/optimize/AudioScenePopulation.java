@@ -18,14 +18,12 @@ package org.almostrealism.studio.optimize;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
@@ -116,7 +114,8 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	public void init(Genome<PackedCollection> templateGenome,
 					 MultiChannelAudioOutput output, List<Integer> channels) {
 		enableGenome(templateGenome);
-		this.temporal = scene.runner(output, channels);
+		this.temporal = scene.runnerRealTime(output, channels,
+				AudioScene.DEFAULT_REALTIME_BUFFER_SIZE);
 		disableGenome();
 	}
 
@@ -218,9 +217,10 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 
 			init(getGenomes().get(0), new MultiChannelAudioOutput(out), List.of(channel));
 
-			OperationProfile profile = new OperationProfile("AudioScenePopulation");
-
-			Runnable gen = null;
+			int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+			int bufferCount = (frames + bufferSize - 1) / bufferSize;
+			Runnable setup = null;
+			Runnable tick = null;
 
 			for (int i = 0; i < getGenomes().size(); i++) {
 				TemporalCellular cells = null;
@@ -230,18 +230,16 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 					outputPath = null;
 					cells = enableGenome(i);
 
-					if (gen == null) {
-						Supplier<Runnable> op = cells.iter(frames, false);
-
-						if (op instanceof OperationList) {
-							gen = ((OperationList) op).get(profile);
-						} else {
-							gen = op.get();
-						}
+					if (tick == null) {
+						setup = cells.setup().get();
+						tick = cells.tick().get();
 					}
 
 					log("Starting generation for genome " + i + " of " + getGenomes().size());
-					gen.run();
+					setup.run();
+					for (int b = 0; b < bufferCount; b++) {
+						tick.run();
+					}
 				} finally {
 					long generationTime = System.currentTimeMillis() - start;
 					StableDurationHealthComputation.recordGenerationTime(frames, generationTime);
