@@ -401,3 +401,58 @@ before being landed; neither is tackled in this pass.
   (defaults), `24e20910` (product semantics + threshold 2), `6db86339`
   (+ parallelism floor lowered to 16), `9882159a` / `83cd2c75`
   (instrumented). All timed out at the same cc1-hang point.
+
+## Where the Process Tree Is Broken (2026-04-21)
+
+Catalogues every identified site where either (a) a bare `Supplier<Runnable>`
+(non-`Process`) enters an `OperationList`, or (b) the cascade enters a `Process`
+node but the `ProcessOptimizationStrategy` is never invoked on it or its
+descendants. This is the structural reason the `ExpansionWidthTargetOptimization`
+fires only once and never reaches the `GreaterThanCollection` / gather nodes that
+cause the kernel blow-up.
+
+### Sites that add bare `Supplier<Runnable>` to an OperationList
+
+| File:Line | Description | Judgment |
+|---|---|---|
+| `base/hardware/.../OperationList.java:969–975` | `getChildren()` maps each entry via `o instanceof Process ? (Process<?,?>) o : Process.of(o)`. Bare lambdas become `Process.of(supplier)` wrappers — not `ParallelProcess`, so `optimize(ctx)` is the default no-op and cascade halts. | Legitimate hub design: `OperationList` was meant to hold arbitrary `Supplier<Runnable>`. The fix requires either making `Process.of()` preserve `ParallelProcess`-ness when its input is a `ParallelProcess`, or pre-optimising producers before converting them to `Runnable` suppliers. |
+| `domain/graph/.../Cell.java:335–362` | `Cell.of(Factor func).push(in)` returns `r.push(func.getResultant(protein))`; if the operator returns a plain `Supplier<Runnable>` lambda it is not a `Process` and becomes `Process.of()` in the parent list. | Legitimate cell abstraction. Any cell whose operator lambda does not return a `Process` loses optimisation context at that boundary. |
+| `domain/graph/.../Cell.java:377–404` | `Cell.of(Function<T, Supplier<Runnable>> func).push(in)` — same pattern. | Same judgment as above. |
+| `engine/audio/.../CellList.java:926` | `tick()` adds `r.push(c(0.0))` for each root cell to a `CellList Tick` OperationList; whether the result is a `Process` depends on the concrete cell type. | Not in the mraRopeRotation reproducer's path; same structural pattern applies to the audio tick path. |
+| `domain/graph/.../CompiledModel.java:299` | `forward.add(cells.get(i).push(in.get(i).get()))` — each layer's push result is added to the forward `OperationList`. For `DefaultCellularLayer` the result is itself an `OperationList` (which IS a `Process`), but other cell implementations may return plain lambdas. | Mixed: `DefaultCellularLayer`'s path is fine (returns `OperationList`); the risk is other cell types. |
+
+### Sites where the cascade enters a Process but the strategy is skipped
+
+| File:Line | Description | Judgment |
+|---|---|---|
+| `compute/algebra/.../ReshapeProducer.java:441–448` | `ReshapeProducer.optimize(ctx)` is a custom override that calls `optimize(ctx, innerProducer)` directly but does **not** call `ParallelProcess.super.optimize(ctx)`. The `CascadingOptimizationStrategy` is never invoked for the `ReshapeProducer` node itself. | Bug: the override was likely written to avoid creating a child context for a single-input reshape, but it also silently skips the strategy. This is the specific chokepoint that prevents `GreaterThanCollection` and gather nodes inside `mraRopeRotation` from ever being seen by `ExpansionWidthTargetOptimization`. |
+| `base/hardware/.../MemoryDataCopy.java:141` | `MemoryDataCopy` implements `Process` but not `ParallelProcess`. Its `optimize(ctx)` inherits the default no-op on `Process` and returns `this`. It appears as a sibling to `Assignment` in the flattened forward pass. | Legitimate leaf: `MemoryDataCopy` is a single kernel call with no sub-expression tree to optimise. Halting the cascade here is correct. |
+
+### Specific call path for `mraRopeRotationAtMoonbeamScale` reproducer
+
+1. `CompiledModel.compile()` (`domain/graph/.../CompiledModel.java:296–302`)
+   calls `forward.flatten().optimize()` — cascade fires once on the outer
+   `OperationList`.
+2. `forward` contains `[Assignment, MemoryDataCopy]` after `flatten()`.
+   `MemoryDataCopy` is a leaf (no-op on optimize). `Assignment` IS a
+   `ComputableParallelProcess` — cascade recurses into it.
+3. `Assignment.getChildren()` (via `ComputationBase.getChildren()`) returns
+   `[destination, traverse(axis, result)]`. The destination is typically
+   a `p(output)` reference; `traverse(axis, result)` returns a
+   `ReshapeProducer`.
+4. **`ReshapeProducer.optimize(ctx)` (lines 441–448) is the chokepoint.**
+   It calls `optimize(ctx, innerProducer)` for the single inner child but
+   does NOT call `ParallelProcess.super.optimize(ctx)`, so the strategy is
+   never invoked on `ReshapeProducer`. The inner producer is visited, but
+   any strategy decision for the `ReshapeProducer` level is skipped.
+5. Below the `ReshapeProducer` the computation tree contains the
+   `GreaterThanCollection` (expansion width = 2) and the gather operations
+   over the lazy `freqCis` producer. These nodes are never presented to
+   `ExpansionWidthTargetOptimization`.
+
+**Fix required:** `ReshapeProducer.optimize(ctx)` must call
+`ParallelProcess.super.optimize(ctx)` (or invoke the strategy explicitly)
+so that the strategy gets a chance to fire on the `ReshapeProducer` node
+before the custom single-child recursion proceeds. Until this is fixed,
+`ExpansionWidthTargetOptimization` cannot protect any computation that
+passes through a `reshape` / `traverse` on its way to the kernel.

@@ -159,6 +159,13 @@ public class GreaterThanCollection extends CollectionComparisonComputation {
 		super("greaterThan", shape,  left, right, trueValue, falseValue);
 		this.includeEqual = includeEqual;
 		init();
+		long count = getCountLong();
+		if (count <= 0) {
+			throw new IllegalStateException(
+				"GreaterThanCollection constructed with shape " + shape +
+				" (count=" + count + "); at least one of left/right/trueValue/falseValue " +
+				"has a zero-sized shape — check the operand producers");
+		}
 	}
 
 	/**
