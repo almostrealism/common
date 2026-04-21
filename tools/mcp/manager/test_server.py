@@ -151,27 +151,19 @@ class TestWorkstreamGetStatus(unittest.TestCase):
     @patch.object(server, "_controller_get")
     def test_returns_stats(self, mock_get):
         _grant_all_scopes()
-        # workstream_get_status fetches stats AND recent jobs as a convenience;
-        # both calls are expected.
-        mock_get.side_effect = [
-            {"thisWeek": {"jobs": 5}, "lastWeek": {"jobs": 3}},
-            [],  # recent jobs list
-        ]
+        mock_get.return_value = {"thisWeek": {"jobs": 5}, "lastWeek": {"jobs": 3}}
         result = server.workstream_get_status(workstream_id="ws-test")
         paths = [c.args[0] for c in mock_get.call_args_list]
         self.assertTrue(
             any("workstream=ws-test" in p and "period=weekly" in p for p in paths),
             f"Expected a stats call; got {paths}")
-        self.assertTrue(
-            any("/api/workstreams/ws-test/jobs" in p for p in paths),
-            f"Expected a recent-jobs call; got {paths}")
         self.assertEqual(result["workstream_id"], "ws-test")
         self.assertIn("next_steps", result)
 
     @patch.object(server, "_controller_get")
     def test_custom_period(self, mock_get):
         _grant_all_scopes()
-        mock_get.side_effect = [{}, []]
+        mock_get.return_value = {}
         server.workstream_get_status(workstream_id="ws-test", period="daily")
         paths = [c.args[0] for c in mock_get.call_args_list]
         self.assertTrue(any("period=daily" in p for p in paths),
@@ -757,7 +749,7 @@ class TestMemoryBranchContext(unittest.TestCase):
                     "message": "Fix bug\nDetails"}},
             ]
         }
-        result = server.memory_branch_context(
+        result = server.workstream_context(
             repo_url="https://github.com/org/repo",
             branch="feature/x",
             include_messages=False,
@@ -771,13 +763,13 @@ class TestMemoryBranchContext(unittest.TestCase):
     @patch.object(server, "_get_memory_client", return_value=None)
     def test_memory_unavailable(self, _):
         _grant_all_scopes()
-        result = server.memory_branch_context(
+        result = server.workstream_context(
             repo_url="https://github.com/org/repo", branch="feature/x")
         self.assertFalse(result["ok"])
 
     def test_requires_repo_or_workstream(self):
         _grant_all_scopes()
-        result = server.memory_branch_context()
+        result = server.workstream_context()
         self.assertFalse(result["ok"])
 
     @patch.object(server, "_github_request")
@@ -794,7 +786,7 @@ class TestMemoryBranchContext(unittest.TestCase):
         ]
         mock_client_fn.return_value = client
         mock_gh.return_value = {"ok": False, "error": "not found"}
-        result = server.memory_branch_context(
+        result = server.workstream_context(
             repo_url="https://github.com/org/repo",
             branch="feature/x",
             namespace="default",
@@ -821,7 +813,7 @@ class TestMemoryBranchContext(unittest.TestCase):
         ]
         mock_client_fn.return_value = client
         mock_gh.return_value = {"ok": False, "error": "not found"}
-        result = server.memory_branch_context(
+        result = server.workstream_context(
             repo_url="https://github.com/org/repo",
             branch="feature/x",
         )
@@ -839,7 +831,7 @@ class TestMemoryBranchContext(unittest.TestCase):
         client = MagicMock()
         client.search_by_branch.return_value = []
         mock_client_fn.return_value = client
-        result = server.memory_branch_context(
+        result = server.workstream_context(
             repo_url="https://github.com/org/repo",
             branch="feature/x",
             include_commits=False,
@@ -1124,7 +1116,6 @@ class TestToolRegistration(unittest.TestCase):
             "controller_update_config",
             "workstream_list",
             "workstream_get_status",
-            "workstream_list_jobs",
             "workstream_get_job",
             "workstream_submit_task",
             "workstream_register",
@@ -1134,7 +1125,7 @@ class TestToolRegistration(unittest.TestCase):
             "project_commit_plan",
             "project_read_plan",
             "memory_recall",
-            "memory_branch_context",
+            "workstream_context",
             "memory_store",
             "send_message",
             "github_pr_find",

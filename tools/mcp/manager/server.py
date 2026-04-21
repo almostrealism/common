@@ -1074,7 +1074,7 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
     """Get aggregate job statistics for a workstream.
 
     Shows job counts, total time, cost, and turns for this week and last week.
-    For per-job details use workstream_list_jobs.
+    For per-job details use workstream_context.
 
     Args:
         workstream_id: The workstream identifier (from workstream_list).
@@ -1096,41 +1096,8 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
 
     result.setdefault("next_steps", [
         "Use workstream_submit_task to submit a new coding task",
-        "Use workstream_list_jobs to see the full job history",
+        "Use workstream_context to see branch memories and job history",
     ])
-    return result
-
-
-@mcp.tool()
-def workstream_list_jobs(
-    workstream_id: str,
-    limit: int = 10,
-) -> dict:
-    """List recent jobs for a workstream, newest first.
-
-    Returns the most recent job events tracked by the FlowTree controller for
-    the specified workstream. Each entry includes status, description,
-    timestamps, and any error details.
-
-    Args:
-        workstream_id: The workstream identifier (from workstream_list).
-        limit: Maximum number of jobs to return (default: 10).
-
-    Returns:
-        Dictionary with a ``jobs`` list, each entry containing jobId, status,
-        description, timestamp, and optional fields such as targetBranch,
-        commitHash, pullRequestUrl, errorMessage, and costUsd.
-    """
-    _require_scope("read")
-    err = _check_short_strings(workstream_id=workstream_id)
-    if err:
-        return err
-    _audit("workstream_list_jobs", workstream_id=workstream_id)
-    _require_workstream_in_scope(workstream_id)
-    params = urlencode({"limit": limit})
-    result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?{params}")
-    if isinstance(result, list):
-        return {"ok": True, "workstream_id": workstream_id, "jobs": result}
     return result
 
 
@@ -2399,7 +2366,7 @@ def memory_recall(
         ],
         "count": len(memories),
         "next_steps": [
-            "Use memory_branch_context for a full branch history",
+            "Use workstream_context for a full branch history",
             "Use memory_store to add new memories",
         ],
     }
@@ -2411,7 +2378,7 @@ def memory_recall(
 
 
 @mcp.tool()
-def memory_branch_context(
+def workstream_context(
     workstream_id: str = "",
     repo_url: str = "",
     branch: str = "",
@@ -2420,13 +2387,17 @@ def memory_branch_context(
     include_messages: bool = True,
     include_commits: bool = True,
     commit_limit: int = 30,
+    job_limit: int = 20,
 ) -> dict:
-    """Get all memories and optionally the commit history for a branch.
+    """Get the full narrative context for a workstream: memories, commits, and jobs.
 
-    Returns memories ordered by creation time (newest first). Can resolve
-    repo_url/branch from workstream_id if provided. When ``include_commits``
-    is True, fetches the branch's commit list via the GitHub Compare API
-    relative to the base branch (default ``master``).
+    This is the canonical tool for answering "what's going on with this
+    workstream?" — it returns everything needed to orient an agent picking
+    up a workstream for the first time or checking on in-progress work.
+
+    Returns memories ordered by creation time (newest first), optionally the
+    branch commit history relative to the base branch, and a compact job
+    timeline. Can resolve repo_url/branch/jobs from workstream_id if provided.
 
     By default (``namespace=""``), memories are returned across every
     namespace on the branch, sorted newest-first — this surfaces whatever
@@ -2436,13 +2407,13 @@ def memory_branch_context(
     one namespace instead.
 
     Args:
-        workstream_id: Workstream to resolve repo/branch from.
+        workstream_id: Workstream to resolve repo/branch/jobs from.
         repo_url: Repository URL to match.
         branch: Branch name to match.
         namespace: Memory namespace to filter to. Defaults to empty, which
             returns entries from every namespace. Pass e.g. ``"feedback"``
             or ``"messages"`` to narrow.
-        limit: Maximum number of entries.
+        limit: Maximum number of memory entries.
         include_messages: Kept for backwards compatibility. Only takes
             effect when ``namespace`` is explicitly set to a value other
             than ``"messages"`` — in that case messages are merged in as
@@ -2451,12 +2422,15 @@ def memory_branch_context(
         include_commits: If true (default), include the list of commits on
             the branch relative to its base branch.
         commit_limit: Maximum number of commits to include (default 30).
+        job_limit: Maximum number of jobs to include in the timeline
+            (default 20). Pass 0 to omit jobs entirely.
 
     Returns:
-        Dictionary with branch memories and optionally commits.  When
-        commits are included, the response also contains ``total_commits``
-        (the full number of commits on the branch) and ``initial_commit_sha``
-        (the first commit on the branch relative to the base).
+        Dictionary with branch memories, optionally commits, and optionally
+        a compact jobs timeline. When commits are included, the response also
+        contains ``total_commits`` (the full number of commits on the branch)
+        and ``initial_commit_sha`` (the first commit on the branch relative
+        to the base).
     """
     _require_scope("memory")
     err = _check_short_strings(
@@ -2465,7 +2439,7 @@ def memory_branch_context(
     )
     if err:
         return err
-    _audit("memory_branch_context", workstream_id=workstream_id, branch=branch)
+    _audit("workstream_context", workstream_id=workstream_id, branch=branch)
 
     effective_repo, effective_branch, err = _resolve_branch_context(
         workstream_id=workstream_id, repo_url=repo_url, branch=branch,
@@ -2576,11 +2550,12 @@ def memory_branch_context(
         else:
             commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
 
-    # Fetch last 3 jobs for this workstream from the controller
+    # Fetch recent jobs for this workstream from the controller
     recent_jobs = []
-    if workstream_id:
+    if workstream_id and job_limit > 0:
         try:
-            jobs_result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?limit=3")
+            jobs_result = _controller_get(
+                f"/api/workstreams/{workstream_id}/jobs?limit={job_limit}")
             if isinstance(jobs_result, list):
                 recent_jobs = jobs_result
         except Exception:
@@ -2682,7 +2657,7 @@ def memory_store(
     entry["ok"] = True
     entry["next_steps"] = [
         "Use memory_recall to search for this and other memories",
-        "Use memory_branch_context to see all memories for this branch",
+        "Use workstream_context to see all memories for this branch",
     ]
     return entry
 

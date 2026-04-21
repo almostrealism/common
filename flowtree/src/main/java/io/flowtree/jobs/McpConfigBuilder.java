@@ -55,7 +55,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
         "mcp__ar-manager__send_message," +
         "mcp__ar-manager__memory_recall," +
         "mcp__ar-manager__memory_store," +
-        "mcp__ar-manager__memory_branch_context," +
+        "mcp__ar-manager__workstream_context," +
         "mcp__ar-manager__github_pr_find," +
         "mcp__ar-manager__github_pr_review_comments," +
         "mcp__ar-manager__github_pr_conversation," +

@@ -575,10 +575,10 @@ public class InstructionPromptBuilder {
             sb.append("treat them as intentional progress, not as problems to undo.\n\n");
 
             sb.append("### Catching Up on Prior Work\n");
-            sb.append("Before making any changes, you MUST use the memory_branch_context tool ");
+            sb.append("Before making any changes, you MUST use the workstream_context tool ");
             sb.append("to understand what has already been done on this branch:\n");
             sb.append("```\n");
-            sb.append("memory_branch_context branch:\"").append(targetBranch).append("\"\n");
+            sb.append("workstream_context branch:\"").append(targetBranch).append("\"\n");
             sb.append("```\n");
             sb.append("This will show you memories from prior agent sessions and the ");
             sb.append("commit timeline.\n\n");
@@ -604,7 +604,7 @@ public class InstructionPromptBuilder {
             sb.append("This is NEVER the right approach. If CI fails after your changes:\n");
             sb.append("- **DO NOT** simply revert the changes. That undoes prior agent work.\n");
             sb.append("- **DO** investigate the actual failure and fix it properly.\n");
-            sb.append("- **DO** check `memory_branch_context` to see if this same pattern ");
+            sb.append("- **DO** check `workstream_context` to see if this same pattern ");
             sb.append("has already occurred in prior sessions.\n");
             sb.append("- **DO** store a memory describing the CI failure and your ");
             sb.append("analysis so the next session doesn't repeat the same mistake.\n");
