@@ -27,7 +27,10 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
 /**
  * Minimal tests demonstrating the bug in
@@ -67,9 +70,14 @@ public class ReshapeProducerStrategyTests extends TestSuiteBase {
 		List<String> visited = new ArrayList<>();
 		ProcessOptimizationStrategy priorStrategy = ProcessContext.base().getOptimizationStrategy();
 		ProcessContextBase.setDefaultOptimizationStrategy(
-				(ctx, parent, children, childProcessor) -> {
-					visited.add(parent.getClass().getSimpleName());
-					return parent;
+				new ProcessOptimizationStrategy() {
+					@Override
+					public <P extends Process<?, ?>, T> Process<P, T> optimize(
+							ProcessContext ctx, Process<P, T> parent, Collection<P> children,
+							Function<Collection<P>, Stream<P>> childProcessor) {
+						visited.add(parent.getClass().getSimpleName());
+						return parent;
+					}
 				});
 
 		try {
@@ -102,14 +110,19 @@ public class ReshapeProducerStrategyTests extends TestSuiteBase {
 		List<String> visited = new ArrayList<>();
 		ProcessOptimizationStrategy priorStrategy = ProcessContext.base().getOptimizationStrategy();
 		ProcessContextBase.setDefaultOptimizationStrategy(
-				(ctx, parent, children, childProcessor) -> {
-					visited.add(parent.getClass().getSimpleName());
-					return parent;
+				new ProcessOptimizationStrategy() {
+					@Override
+					public <P extends Process<?, ?>, T> Process<P, T> optimize(
+							ProcessContext ctx, Process<P, T> parent, Collection<P> children,
+							Function<Collection<P>, Stream<P>> childProcessor) {
+						visited.add(parent.getClass().getSimpleName());
+						return parent;
+					}
 				});
 
 		try {
 			Producer<PackedCollection> gt = greaterThan(cp(a), cp(b), cp(t), cp(f));
-			CollectionProducer<?> reshaped = traverse(1, gt);
+			CollectionProducer reshaped = traverse(1, gt);
 			((Process<?, ?>) reshaped).optimize(ProcessContext.base());
 
 			assertTrue("after fix: strategy cascade must be invoked on the ReshapeProducer node",

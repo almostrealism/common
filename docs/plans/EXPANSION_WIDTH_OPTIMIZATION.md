@@ -294,6 +294,51 @@ context propagator directly.
   assume no such isolation happens. Mitigation: gradual rollout, watch
   kernel counts and latencies in the broader test run.
 
+## Status (2026-04-21) — ReshapeProducer.optimize fix working, all tests pass
+
+### Compilation error introduced and fixed (2026-04-21)
+
+The commit `cfdd25e10` (Fix ReshapeProducer.optimize Strategy Skip) broke compilation in
+`engine/utils/src/test/java/io/almostrealism/compute/test/ReshapeProducerStrategyTests.java`
+with three errors:
+
+1. **Lines 70 & 105 — "incompatible types: invalid functional descriptor for lambda expression"**
+   `ProcessOptimizationStrategy.optimize()` is a generic method (`<P extends Process<?, ?>, T>`).
+   Java prohibits lambdas from implementing interfaces whose single abstract method has type
+   parameters. The test used lambda syntax to create the strategy; fixed by replacing both
+   lambdas with explicit anonymous class instances that override the generic method with the
+   correct signature.
+
+2. **Line 112 — "type CollectionProducer does not take parameters"**
+   `CollectionProducer` is a raw interface (no type parameter declared). `CollectionProducer<?>`
+   is not valid Java; fixed by changing the declaration to the raw type `CollectionProducer`.
+
+After applying the fix, all modules affected by the prior commit compile cleanly:
+`ar-code`, `ar-relation`, `ar-hardware`, `ar-algebra`, `ar-utils`, `ar-ml`.
+
+### ReshapeProducer.optimize fix status: WORKING
+
+The fix to `ReshapeProducer.optimize(ProcessContext)` introduced in commit `cfdd25e10` is
+correct and all associated tests pass. The override now:
+1. Creates a `ParallelProcessContext` via `createContext(ctx)`.
+2. Recursively optimizes the single child (`innerProducer`) within that context.
+3. Invokes `strategy.optimize(context, this, optimizedChildren, ...)` — the step that
+   was previously missing — so the strategy cascade fires on the `ReshapeProducer` node itself.
+4. Falls back to `generateReplacement(optimizedChildren)` when the strategy returns `null`.
+
+### Test results (2026-04-21) — all pass
+
+- `ReshapeProducerStrategyTests.strategyInvokedOnGreaterThanDirectly` — **PASS**
+  (baseline: strategy fires on GreaterThanCollection when it is the direct entry point)
+- `ReshapeProducerStrategyTests.strategyReachesReshapeProducerAfterFix` — **PASS**
+  (regression guard: strategy is now invoked on ReshapeProducer node when it wraps a
+  GreaterThanCollection)
+- `ExpansionWidthTests` (all 7) — **PASS**
+
+Total: 9 tests, 0 failures, 0 errors.
+
+---
+
 ## Status (2026-04-20)
 
 - Reproducer `mraRopeRotationAtMoonbeamScale` present in
