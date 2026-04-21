@@ -16,14 +16,20 @@ Architecture:
 Configuration via environment variables:
     AR_CONTROLLER_URL       - FlowTree controller base URL
                               (default: http://localhost:7780)
-    AR_MANAGER_GITHUB_TOKEN - GitHub PAT for Tier 2 operations
-                              (falls back to GITHUB_TOKEN)
     AR_MANAGER_TOKEN_FILE   - Path to bearer token config file
                               (default: ~/.config/ar/manager-tokens.json)
     AR_MANAGER_TOKENS       - JSON string of token config (overrides file)
     AR_MEMORY_URL           - ar-memory HTTP server URL (auto-discovered if not set)
     MCP_TRANSPORT           - Transport: stdio (default), http, or sse
     MCP_PORT                - Port for http/sse transport (default: 8010)
+
+GitHub authentication: ar-manager never holds a GitHub token itself. Every
+GitHub API call routes through the FlowTree controller's ``/api/github/proxy``
+endpoint, which resolves the per-org PAT from ``workstreams.yaml``. The
+controller is reachable only on the private network and trusts ar-manager's
+assertion of which org to use; ar-manager enforces the security model by
+verifying the caller's ar-manager token is authorised for that org before
+forwarding the request.
 """
 
 import base64
@@ -47,10 +53,6 @@ from urllib.request import Request, urlopen
 # ---------------------------------------------------------------------------
 
 CONTROLLER_URL = os.environ.get("AR_CONTROLLER_URL", "http://localhost:7780")
-GITHUB_TOKEN = (
-    os.environ.get("AR_MANAGER_GITHUB_TOKEN", "").strip()
-    or os.environ.get("GITHUB_TOKEN", "").strip()
-)
 TOKEN_FILE = os.environ.get(
     "AR_MANAGER_TOKEN_FILE",
     os.path.expanduser("~/.config/ar/manager-tokens.json"),
@@ -148,10 +150,6 @@ def _get_llm():
 
 # Log startup configuration to stderr for diagnostics
 print(f"ar-manager: AR_CONTROLLER_URL={CONTROLLER_URL}", file=sys.stderr)
-print(
-    f"ar-manager: GITHUB_TOKEN={'<set>' if GITHUB_TOKEN else '<not set>'}",
-    file=sys.stderr,
-)
 print(f"ar-manager: AR_MANAGER_SHARED_SECRET={'<set>' if SHARED_SECRET else '<not set>'}",
       file=sys.stderr)
 
@@ -679,54 +677,122 @@ def _controller_post(path: str, payload: dict, timeout: int = 15) -> dict:
 # older than WORKSPACE_CACHE_TTL seconds. Controller is local so hitting
 # /api/workstreams is cheap, but refetching on every tool invocation adds
 # avoidable latency to short read tools.
-_workspace_map_cache: dict = {"map": None, "fetched": 0.0}
+_workspace_map_cache: dict = {"map": None, "org_map": None, "fetched": 0.0}
 _workspace_map_lock = threading.Lock()
 WORKSPACE_CACHE_TTL = 30.0
 
 
-def _refresh_workspace_map() -> dict:
-    """Fetch the workstream list from the controller and return a fresh
-    ``{workstream_id: slackWorkspaceId}`` mapping. Workstreams with no
-    slackWorkspaceId are included with a value of ``None``.
+def _build_maps_from_workstreams(entries: list) -> tuple:
+    """Build ``(workstream_id → workspace_id, org_name → workspace_id)``
+    from a workstream list. Workstreams whose ``repoUrl`` cannot be parsed
+    as a GitHub URL contribute nothing to the org map. When multiple
+    workstreams under different workspaces share an org, the first
+    encountered wins — matches the ``orgToWorkspaceId`` convention on the
+    controller side.
+    """
+    ws_map: dict = {}
+    org_map: dict = {}
+    if not isinstance(entries, list):
+        return ws_map, org_map
+    for ws in entries:
+        if not isinstance(ws, dict):
+            continue
+        wid = ws.get("workstreamId")
+        workspace_id = ws.get("slackWorkspaceId")
+        if wid:
+            ws_map[wid] = workspace_id
+        org = _extract_owner_repo(ws.get("repoUrl") or "")
+        if org and workspace_id and org[0] not in org_map:
+            org_map[org[0]] = workspace_id
+    return ws_map, org_map
+
+
+def _refresh_workspace_map() -> tuple:
+    """Fetch the workstream list from the controller and return fresh
+    ``(workstream_id → workspace_id, org_name → workspace_id)`` maps.
     """
     result = _controller_get("/api/workstreams")
-    mapping: dict = {}
     entries = result if isinstance(result, list) else result.get("workstreams", [])
-    if isinstance(entries, list):
-        for ws in entries:
-            if isinstance(ws, dict):
-                wid = ws.get("workstreamId")
-                if wid:
-                    mapping[wid] = ws.get("slackWorkspaceId")
-    return mapping
+    return _build_maps_from_workstreams(entries)
+
+
+def _get_cached_maps(workstream_id: str = "", org: str = "") -> tuple:
+    """Return ``(workstream_map, org_map)`` from the cache, refreshing if
+    the cache is older than ``WORKSPACE_CACHE_TTL`` or if an expected key
+    is missing (handles a just-registered workstream or just-added org).
+
+    The lock is held only around cache reads and writes; the network
+    fetch happens outside the lock so concurrent callers do not serialize
+    behind a single slow I/O. Double-checked-locking pattern.
+    """
+    now = time.monotonic()
+    with _workspace_map_lock:
+        ws_map = _workspace_map_cache.get("map")
+        org_map = _workspace_map_cache.get("org_map")
+        fetched = _workspace_map_cache.get("fetched", 0.0)
+        fresh = (ws_map is not None and org_map is not None
+                 and (now - fetched) <= WORKSPACE_CACHE_TTL)
+    needs_refresh = not fresh
+    if fresh:
+        if workstream_id and workstream_id not in ws_map:
+            needs_refresh = True
+        elif org and org not in org_map:
+            needs_refresh = True
+    if not needs_refresh:
+        return ws_map, org_map
+    new_ws_map, new_org_map = _refresh_workspace_map()
+    new_fetched = time.monotonic()
+    with _workspace_map_lock:
+        _workspace_map_cache["map"] = new_ws_map
+        _workspace_map_cache["org_map"] = new_org_map
+        _workspace_map_cache["fetched"] = new_fetched
+    return new_ws_map, new_org_map
 
 
 def _workspace_for_workstream(workstream_id: str) -> Optional[str]:
     """Return the Slack workspace ID that owns ``workstream_id``, or None
     if the workstream is unknown or has no workspace assignment.
-
-    Uses a short-lived cache to avoid refetching on every call. The lock
-    is held only during cache reads and writes — the network fetch happens
-    outside the lock so that concurrent lookups do not serialize behind a
-    slow I/O operation (double-checked locking pattern).
     """
     if not workstream_id:
         return None
-    now = time.monotonic()
-    # Fast path: check the cache without performing any network I/O.
-    with _workspace_map_lock:
-        mapping = _workspace_map_cache.get("map")
-        fetched = _workspace_map_cache.get("fetched", 0.0)
-        cache_fresh = mapping is not None and (now - fetched) <= WORKSPACE_CACHE_TTL
-    if cache_fresh and workstream_id in mapping:
-        return mapping[workstream_id]
-    # Slow path: fetch outside the lock so other threads are not blocked.
-    new_mapping = _refresh_workspace_map()
-    new_fetched = time.monotonic()
-    with _workspace_map_lock:
-        _workspace_map_cache["map"] = new_mapping
-        _workspace_map_cache["fetched"] = new_fetched
-    return new_mapping.get(workstream_id)
+    ws_map, _ = _get_cached_maps(workstream_id=workstream_id)
+    return ws_map.get(workstream_id)
+
+
+def _workspace_for_org(org: str) -> Optional[str]:
+    """Return the Slack workspace ID that owns ``org`` (by virtue of
+    containing at least one workstream whose ``repoUrl`` is on that org),
+    or None when no registered workstream ties that org to any workspace.
+    """
+    if not org:
+        return None
+    _, org_map = _get_cached_maps(org=org)
+    return org_map.get(org)
+
+
+def _require_org_in_scope(org: str) -> None:
+    """Raise :class:`PermissionError` if the current request's workspace
+    scope does not permit operating on the given GitHub org.
+
+    Unscoped callers always pass — they're trusted to name any org the
+    controller holds a PAT for, and the controller will reject unknown
+    orgs itself.
+
+    Scoped callers are permitted only when ``org`` maps to a workspace
+    the token lists in its ``workspaceScopes``. An org that has no
+    registered workstream in any of the caller's workspaces fails the
+    check even if the controller could theoretically serve it — this is
+    the security boundary ar-manager enforces on behalf of the controller.
+    """
+    if not _get_workspace_scopes():
+        return
+    ws_id = _workspace_for_org(org)
+    if ws_id is None:
+        raise PermissionError(
+            f"Token is not scoped to any workspace containing GitHub org '{org}'. "
+            "Either pass a workstream_id that belongs to your scope, or ask "
+            "the operator to link the org to a workspace via workstreams.yaml.")
+    _require_workspace(ws_id)
 
 
 def _require_workstream_in_scope(workstream_id: str) -> None:
@@ -817,10 +883,12 @@ def _find_workstream(workstream_id: str) -> Optional[dict]:
     return None
 
 
-# Now that _find_workstream is defined, configure the GitHub API module
+# Now that _find_workstream is defined, configure the GitHub API module.
+# ar-manager deliberately does not hold a GitHub token; all requests route
+# through the controller's proxy, which resolves the per-org PAT from
+# workstreams.yaml.
 github_api.configure(
     controller_url=CONTROLLER_URL,
-    github_token=GITHUB_TOKEN,
     find_workstream=_find_workstream,
     get_token_workstream_id=_get_token_workstream_id,
 )
@@ -2620,18 +2688,28 @@ def send_message(
 def github_pr_find(
     workstream_id: str = "",
     branch: str = "",
+    org: str = "",
+    repo: str = "",
 ) -> dict:
     """Find an open pull request for a branch.
 
     Args:
         workstream_id: Workstream to resolve repo from. Defaults to token context.
         branch: Branch to search for. Defaults to workstream's defaultBranch.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. When set, bypasses workstream resolution — useful
+            when no workstream exists for the repo. Scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
 
     Returns:
         PR details if found, or error.
     """
     _require_scope("read")
-    owner, repo, effective_branch, err = _resolve_github_repo(workstream_id, branch)
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, effective_branch, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
     if err:
         return err
 
@@ -2661,6 +2739,8 @@ def github_pr_review_comments(
     pr_number: int,
     workstream_id: str = "",
     branch: str = "",
+    org: str = "",
+    repo: str = "",
 ) -> dict:
     """Get code review comments on a pull request.
 
@@ -2668,12 +2748,19 @@ def github_pr_review_comments(
         pr_number: The PR number.
         workstream_id: Workstream to resolve repo from. Defaults to token context.
         branch: Branch hint (used for repo resolution if needed).
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
 
     Returns:
         List of review comments.
     """
     _require_scope("read")
-    owner, repo, _, err = _resolve_github_repo(workstream_id, branch)
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, _, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
     if err:
         return err
 
@@ -2753,6 +2840,8 @@ def github_pr_conversation(
     pr_number: int,
     workstream_id: str = "",
     branch: str = "",
+    org: str = "",
+    repo: str = "",
 ) -> dict:
     """Get the conversation (issue comments) on a pull request.
 
@@ -2760,12 +2849,19 @@ def github_pr_conversation(
         pr_number: The PR number.
         workstream_id: Workstream to resolve repo from. Defaults to token context.
         branch: Branch hint (used for repo resolution if needed).
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
 
     Returns:
         List of conversation comments.
     """
     _require_scope("read")
-    owner, repo, _, err = _resolve_github_repo(workstream_id, branch)
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, _, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
     if err:
         return err
 
@@ -2792,6 +2888,8 @@ def github_pr_reply(
     pr_number: int,
     workstream_id: str = "",
     branch: str = "",
+    org: str = "",
+    repo: str = "",
 ) -> dict:
     """Reply to a pull request review comment.
 
@@ -2801,12 +2899,19 @@ def github_pr_reply(
         pr_number: The PR number.
         workstream_id: Workstream to resolve repo from. Defaults to token context.
         branch: Branch hint.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
 
     Returns:
         The created reply.
     """
     _require_scope("write")
-    owner, repo, _, err = _resolve_github_repo(workstream_id, branch)
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, _, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
     if err:
         return err
 
@@ -2826,18 +2931,27 @@ def github_pr_reply(
 def github_list_open_prs(
     workstream_id: str = "",
     base: str = "",
+    org: str = "",
+    repo: str = "",
 ) -> dict:
     """List open pull requests.
 
     Args:
         workstream_id: Workstream to resolve repo from. Defaults to token context.
         base: Filter by base branch (e.g., "master"). If empty, lists all open PRs.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
 
     Returns:
         List of open PRs.
     """
     _require_scope("read")
-    owner, repo, _, err = _resolve_github_repo(workstream_id)
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, _, err = _resolve_github_repo(
+        workstream_id=workstream_id, owner=org, repo=repo)
     if err:
         return err
 
@@ -2872,6 +2986,8 @@ def github_create_pr(
     base: str = "",
     head: str = "",
     request_copilot_review: bool = False,
+    org: str = "",
+    repo: str = "",
 ) -> dict:
     """Create a pull request.
 
@@ -2883,12 +2999,19 @@ def github_create_pr(
         head: Head branch (default: workstream's defaultBranch).
         request_copilot_review: If true, automatically request a Copilot review
             after creating the PR.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
 
     Returns:
         The created PR details, including copilot_review_requested if applicable.
     """
     _require_scope("write")
-    owner, repo, default_branch, err = _resolve_github_repo(workstream_id)
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, default_branch, err = _resolve_github_repo(
+        workstream_id=workstream_id, owner=org, repo=repo)
     if err:
         return err
 
@@ -3025,6 +3148,8 @@ def github_request_copilot_review(
     pr_number: int = 0,
     workstream_id: str = "",
     branch: str = "",
+    org: str = "",
+    repo: str = "",
 ) -> dict:
     """Request a GitHub Copilot automated code review on a pull request.
 
@@ -3036,12 +3161,19 @@ def github_request_copilot_review(
             workstream/branch is looked up automatically.
         workstream_id: Workstream to resolve repo from. Defaults to token context.
         branch: Branch hint used to find the PR when pr_number is not given.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
 
     Returns:
         dict with ok=True on success or ok=False with error details.
     """
     _require_scope("write")
-    owner, repo, effective_branch, err = _resolve_github_repo(workstream_id, branch)
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, effective_branch, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
     if err:
         return err
 

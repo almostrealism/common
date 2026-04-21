@@ -1817,5 +1817,141 @@ class TestWorkstreamRegisterPlanFollowup(unittest.TestCase):
         self.assertNotIn("plan", result)
 
 
+# -----------------------------------------------------------------------
+# ar-manager no longer holds a GitHub token — proxy-only GitHub access
+# -----------------------------------------------------------------------
+
+
+class TestNoDirectGithubPath(unittest.TestCase):
+
+    def test_server_module_has_no_github_token_symbol(self):
+        # The legacy GITHUB_TOKEN / AR_MANAGER_GITHUB_TOKEN plumbing is gone;
+        # nothing in the module should reference a local token anymore.
+        self.assertFalse(hasattr(server, "GITHUB_TOKEN"))
+
+    def test_github_api_module_has_no_direct_request(self):
+        from tools.mcp.manager import github_api
+        self.assertFalse(hasattr(github_api, "_github_direct_request"))
+        self.assertFalse(hasattr(github_api, "_github_token"))
+
+
+class TestOrgScopeGate(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_get")
+    def test_org_map_derived_from_workstream_list(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+            {"workstreamId": "w-2", "slackWorkspaceId": "TBBB",
+             "repoUrl": "https://github.com/Plytrix/plytrix-platform.git"},
+        ]
+        self.assertEqual("TAAA", server._workspace_for_org("almostrealism"))
+        self.assertEqual("TBBB", server._workspace_for_org("Plytrix"))
+        self.assertIsNone(server._workspace_for_org("other-org"))
+
+    @patch.object(server, "_controller_get")
+    def test_require_org_in_scope_unscoped_passes(self, mock_get):
+        mock_get.return_value = []
+        server._require_org_in_scope("any-org")  # no raise
+
+    @patch.object(server, "_controller_get")
+    def test_require_org_in_scope_scoped_accepts_in_scope(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+        ]
+        _set_workspaces("TAAA")
+        server._require_org_in_scope("almostrealism")  # no raise
+
+    @patch.object(server, "_controller_get")
+    def test_require_org_in_scope_scoped_rejects_out_of_scope(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+            {"workstreamId": "w-2", "slackWorkspaceId": "TBBB",
+             "repoUrl": "https://github.com/Plytrix/plytrix-platform.git"},
+        ]
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server._require_org_in_scope("Plytrix")
+
+    @patch.object(server, "_controller_get")
+    def test_require_org_in_scope_scoped_rejects_unknown_org(self, mock_get):
+        # An org with no workstream on any workspace is treated as unknown
+        # and therefore out-of-scope for scoped tokens.
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+        ]
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server._require_org_in_scope("some-untracked-org")
+
+
+class TestGithubToolsDirectAddressing(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    def test_pr_find_with_explicit_org_repo_bypasses_workstream(
+            self, mock_get, mock_gh):
+        # The workstream list is empty; without direct addressing this would
+        # fall through to the error path. With org+repo it should succeed.
+        mock_get.return_value = []
+        mock_gh.return_value = [
+            {"number": 1, "title": "t", "html_url": "u", "state": "open"},
+        ]
+        result = server.github_pr_find(
+            branch="feature/x", org="almostrealism", repo="common")
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["found"])
+        # The proxy call path should include almostrealism/common
+        called_path = mock_gh.call_args.args[1]
+        self.assertIn("/repos/almostrealism/common/pulls", called_path)
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    def test_pr_find_rejects_half_addressing(self, mock_get, mock_gh):
+        # Supplying only org (no repo) is ambiguous; the resolver must error
+        # before any HTTP is attempted.
+        mock_get.return_value = []
+        result = server.github_pr_find(org="almostrealism")
+        self.assertFalse(result["ok"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    def test_pr_find_scoped_token_rejects_out_of_scope_org(
+            self, mock_get, mock_gh):
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+            {"workstreamId": "w-2", "slackWorkspaceId": "TBBB",
+             "repoUrl": "https://github.com/Plytrix/plytrix-platform.git"},
+        ]
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server.github_pr_find(org="Plytrix", repo="plytrix-platform",
+                                  branch="feature/x")
+        mock_gh.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
