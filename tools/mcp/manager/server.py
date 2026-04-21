@@ -1071,18 +1071,18 @@ def workstream_list() -> dict:
 
 @mcp.tool()
 def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
-    """Get job statistics and recent jobs for a workstream.
+    """Get aggregate job statistics for a workstream.
 
-    Shows job counts, total time, cost, and turns for this week and last week,
-    plus the 3 most recent job events so you can see what the workstream has
-    been doing without a separate workstream_list_jobs call.
+    Shows job counts, total time, cost, and turns for this week and last week.
+    For per-job details use workstream_list_jobs.
 
     Args:
         workstream_id: The workstream identifier (from workstream_list).
         period: Reporting period (default: "weekly").
 
     Returns:
-        Dictionary with thisWeek and lastWeek stats, plus recent_jobs list.
+        Dictionary with thisWeek and lastWeek aggregate stats (jobCount,
+        successCount, failedCount, totalCostUsd, totalTurns, etc.).
     """
     _require_scope("read")
     err = _check_short_strings(workstream_id=workstream_id, period=period)
@@ -1093,14 +1093,6 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
     params = urlencode({"workstream": workstream_id, "period": period})
     result = _controller_get(f"/api/stats?{params}")
     result["workstream_id"] = workstream_id
-
-    # Fetch recent jobs the same way memory_branch_context does
-    try:
-        jobs_result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?limit=3")
-        if isinstance(jobs_result, list) and jobs_result:
-            result["recent_jobs"] = jobs_result
-    except Exception:
-        pass  # Non-critical: proceed without job history
 
     result.setdefault("next_steps", [
         "Use workstream_submit_task to submit a new coding task",
