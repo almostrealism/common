@@ -33,6 +33,9 @@
     "ar-manager": {
       "command": "python3",
       "args": ["tools/mcp/manager/server.py"],
+      "env": {
+        "AR_CONTROLLER_URL": "http://mac-studio:7780"
+      },
       "description": "Internet-facing endpoint for managing workstreams and triggering project workflows"
     },
     "onyx": {
