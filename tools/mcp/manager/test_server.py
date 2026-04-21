@@ -847,6 +847,82 @@ class TestMemoryBranchContext(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertNotIn("commits", result)
 
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_get_memory_client")
+    def test_jobs_timeline_compact(self, mock_client_fn, mock_controller_get, mock_gh):
+        # memory_branch_context must include a compact jobs timeline when a
+        # workstream is provided — just enough fields to situate memories,
+        # NOT the operational payload (no costUsd, no targetBranch).
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        # _find_workstream() is invoked twice inside memory_branch_context
+        # (once via _resolve_branch_context, once in the commit block),
+        # followed by the jobs fetch. Return the workstream list for the
+        # first two calls and the jobs list for the third.
+        ws_list = [{"workstreamId": "w-1",
+                    "repoUrl": "https://github.com/org/repo",
+                    "defaultBranch": "feature/x",
+                    "baseBranch": "master"}]
+        jobs_list = [
+            {"jobId": "j-1", "timestamp": "2026-04-20T10:00:00Z",
+             "status": "SUCCESS", "description": "Fix bug",
+             "commitHash": "abc1234567890def",
+             "pullRequestUrl": "https://github.com/org/repo/pull/7",
+             "targetBranch": "feature/x", "costUsd": 4.50},
+            {"jobId": "j-2", "timestamp": "2026-04-20T09:00:00Z",
+             "status": "FAILURE", "description": "Attempt",
+             "errorMessage": "Git push failed",
+             "costUsd": 1.20},
+        ]
+        def controller_side_effect(path, timeout=10):
+            if "/jobs" in path:
+                return jobs_list
+            return ws_list
+        mock_controller_get.side_effect = controller_side_effect
+        result = server.memory_branch_context(workstream_id="w-1")
+        self.assertTrue(result["ok"])
+        self.assertIn("jobs", result)
+        self.assertEqual(2, len(result["jobs"]))
+        j1, j2 = result["jobs"]
+        # Compact fields present
+        self.assertEqual("j-1", j1["jobId"])
+        self.assertEqual("SUCCESS", j1["status"])
+        self.assertEqual("Fix bug", j1["description"])
+        self.assertEqual("abc1234567", j1["commitHash"])  # truncated to 10
+        self.assertEqual("https://github.com/org/repo/pull/7", j1["pullRequestUrl"])
+        # Operational fields absent
+        self.assertNotIn("costUsd", j1)
+        self.assertNotIn("targetBranch", j1)
+        # Failure job includes errorMessage
+        self.assertEqual("Git push failed", j2["errorMessage"])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_get_memory_client")
+    def test_jobs_timeline_omitted_when_job_limit_zero(self, mock_client_fn, mock_controller_get, mock_gh):
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        ws_list = [
+            {"workstreamId": "w-1",
+             "repoUrl": "https://github.com/org/repo",
+             "defaultBranch": "feature/x"},
+        ]
+        def controller_side_effect(path, timeout=10):
+            if "/jobs" in path:
+                self.fail("jobs endpoint must not be called when job_limit=0")
+            return ws_list
+        mock_controller_get.side_effect = controller_side_effect
+        result = server.memory_branch_context(workstream_id="w-1", job_limit=0)
+        self.assertTrue(result["ok"])
+        self.assertNotIn("jobs", result)
+
 
 class TestMemoryStore(unittest.TestCase):
 

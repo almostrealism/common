@@ -1071,11 +1071,19 @@ def workstream_list() -> dict:
 
 @mcp.tool()
 def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
-    """Get job statistics and recent jobs for a workstream.
+    """**Operational analytics.** Returns platform-health metrics for a
+    workstream — job counts, total time, cost, turns, plus the 3 most
+    recent job events.
 
-    Shows job counts, total time, cost, and turns for this week and last week,
-    plus the 3 most recent job events so you can see what the workstream has
-    been doing without a separate workstream_list_jobs call.
+    Use this for DevOps / monitoring tasks: watching spend, confirming
+    the platform is processing jobs, diagnosing whether a workstream is
+    making forward progress. It tells you how FlowTree is doing, not
+    what the agents on this branch were working on.
+
+    For the narrative — what agents reported, what they decided, the
+    timeline of jobs, the commit history — call
+    ``memory_branch_context`` instead. That is the object-level tool;
+    this is a meta tool.
 
     Args:
         workstream_id: The workstream identifier (from workstream_list).
@@ -1114,11 +1122,19 @@ def workstream_list_jobs(
     workstream_id: str,
     limit: int = 10,
 ) -> dict:
-    """List recent jobs for a workstream, newest first.
+    """**Operational analytics.** Full per-job detail for a workstream,
+    newest first — status, timestamps, cost, target branch, commit,
+    PR URL, error messages.
 
-    Returns the most recent job events tracked by the FlowTree controller for
-    the specified workstream. Each entry includes status, description,
-    timestamps, and any error details.
+    Use this when you need the complete operational record of the
+    platform running jobs: cost accounting, debugging a specific
+    failure, auditing how long a job took. It is not where to look
+    for what the agents on this branch were actually thinking or
+    trying to accomplish.
+
+    For the narrative (memories, messages, a compact jobs timeline,
+    commits) call ``memory_branch_context``. That is the object-level
+    tool; this is a meta tool intended for DevOps.
 
     Args:
         workstream_id: The workstream identifier (from workstream_list).
@@ -1144,10 +1160,15 @@ def workstream_list_jobs(
 
 @mcp.tool()
 def workstream_get_job(job_id: str) -> dict:
-    """Look up a specific job event by its job ID.
+    """**Operational analytics.** Look up a specific job event by its
+    job ID — the most recent status event, with cost, duration, PR URL,
+    error message, etc.
 
-    Returns the most recent status event for the given job ID. Useful for
-    checking whether a previously submitted job succeeded or failed.
+    Use this when you submitted a job yourself and want to confirm it
+    succeeded or inspect its failure detail. It is not a narrative tool
+    — for the context around a job (why it was submitted, what the
+    agent reported, what other jobs ran on the same branch) call
+    ``memory_branch_context``.
 
     Args:
         job_id: The job identifier returned by workstream_submit_task.
@@ -2428,43 +2449,54 @@ def memory_branch_context(
     include_messages: bool = True,
     include_commits: bool = True,
     commit_limit: int = 30,
+    job_limit: int = 20,
 ) -> dict:
-    """Get all memories and optionally the commit history for a branch.
+    """Reconstruct the narrative of a workstream — what agents have been
+    thinking about and doing on a branch. This is the primary tool for
+    orienting yourself when picking up a workstream, coordinating with
+    other agents working on the same branch, or deciding what to do next.
 
-    Returns memories ordered by creation time (newest first). Can resolve
-    repo_url/branch from workstream_id if provided. When ``include_commits``
-    is True, fetches the branch's commit list via the GitHub Compare API
-    relative to the base branch (default ``master``).
+    Returns four streams:
+      - **memories**: agent-authored notes across every namespace
+        (``feedback``, ``project``, ``bugs``, ``messages``, …), sorted
+        newest-first. This is the substantive content — what was
+        reported, decided, discovered.
+      - **commits**: the commit history of the branch relative to its
+        base branch, via the GitHub Compare API.
+      - **jobs**: a compact timeline of job runs on this workstream
+        (timestamp, status, description, commit, PR, error). Not the
+        full operational record — just enough to situate memories in
+        time. For the full per-job detail use ``workstream_list_jobs``.
+      - **metadata**: resolved repo_url, branch, namespace.
+
+    Prefer this tool over ``workstream_get_status`` for
+    doing-real-work tasks. ``workstream_get_status`` is an operational-
+    analytics tool (platform health, cost, turn counts); this one is
+    the actual narrative.
 
     By default (``namespace=""``), memories are returned across every
-    namespace on the branch, sorted newest-first — this surfaces whatever
-    the agent actually stored (``feedback``, ``project``, ``bugs``,
-    ``messages``, etc.) without requiring the caller to know which
-    namespaces were used. Supply an explicit ``namespace`` to filter to
-    one namespace instead.
+    namespace on the branch, sorted newest-first. Supply an explicit
+    ``namespace`` to filter to one namespace instead.
 
     Args:
-        workstream_id: Workstream to resolve repo/branch from.
-        repo_url: Repository URL to match.
-        branch: Branch name to match.
-        namespace: Memory namespace to filter to. Defaults to empty, which
-            returns entries from every namespace. Pass e.g. ``"feedback"``
-            or ``"messages"`` to narrow.
-        limit: Maximum number of entries.
+        workstream_id: Workstream to resolve repo/branch/jobs from.
+        repo_url: Repository URL to match (when no workstream supplied).
+        branch: Branch name to match (when no workstream supplied).
+        namespace: Memory namespace to filter to. Defaults to empty,
+            which returns entries from every namespace.
+        limit: Maximum number of memory entries.
         include_messages: Kept for backwards compatibility. Only takes
             effect when ``namespace`` is explicitly set to a value other
-            than ``"messages"`` — in that case messages are merged in as
-            a second stream. Ignored in the default (all-namespace) mode
-            because messages are already included.
-        include_commits: If true (default), include the list of commits on
-            the branch relative to its base branch.
+            than ``"messages"``. Ignored in the default all-namespace
+            mode because messages are already included.
+        include_commits: If true (default), include the commit list.
         commit_limit: Maximum number of commits to include (default 30).
+        job_limit: Maximum number of jobs to include in the timeline
+            (default 20). Set to 0 to omit the jobs field entirely.
 
     Returns:
-        Dictionary with branch memories and optionally commits.  When
-        commits are included, the response also contains ``total_commits``
-        (the full number of commits on the branch) and ``initial_commit_sha``
-        (the first commit on the branch relative to the base).
+        Dictionary with memories, jobs (compact timeline), and — when
+        commits are available — commits, total_commits, initial_commit_sha.
     """
     _require_scope("memory")
     err = _check_short_strings(
@@ -2584,13 +2616,32 @@ def memory_branch_context(
         else:
             commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
 
-    # Fetch last 3 jobs for this workstream from the controller
-    recent_jobs = []
-    if workstream_id:
+    # Compact jobs timeline: enough fields to situate memories in time and
+    # link them to the commits/PR flow, nothing more. Operational detail
+    # (cost, duration, full target branch, etc.) lives in
+    # workstream_list_jobs, which is the operational-analytics tool.
+    jobs_timeline = []
+    if workstream_id and job_limit > 0:
         try:
-            jobs_result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?limit=3")
+            jobs_result = _controller_get(
+                f"/api/workstreams/{workstream_id}/jobs?limit={job_limit}")
             if isinstance(jobs_result, list):
-                recent_jobs = jobs_result
+                for job in jobs_result:
+                    if not isinstance(job, dict):
+                        continue
+                    compact = {
+                        "jobId": job.get("jobId"),
+                        "timestamp": job.get("timestamp"),
+                        "status": job.get("status"),
+                        "description": job.get("description"),
+                    }
+                    if job.get("commitHash"):
+                        compact["commitHash"] = job["commitHash"][:10]
+                    if job.get("pullRequestUrl"):
+                        compact["pullRequestUrl"] = job["pullRequestUrl"]
+                    if job.get("errorMessage"):
+                        compact["errorMessage"] = job["errorMessage"]
+                    jobs_timeline.append(compact)
         except Exception:
             pass  # Non-critical: proceed without job history
 
@@ -2604,8 +2655,11 @@ def memory_branch_context(
         "next_steps": [
             "Use memory_recall for semantic search within these memories",
             "Use memory_store to add a new memory for this branch",
+            "Use project_read_plan to read the planning document",
         ],
     }
+    if jobs_timeline:
+        result["jobs"] = jobs_timeline
     if commits is not None:
         result["commits"] = commits
         result["commit_count"] = len(commits)
@@ -2614,8 +2668,6 @@ def memory_branch_context(
             result["initial_commit_sha"] = all_commits[0].get("sha", "")[:10]
     if commit_error is not None:
         result["commit_error"] = commit_error
-    if recent_jobs:
-        result["recent_jobs"] = recent_jobs
 
     return result
 
