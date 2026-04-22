@@ -278,9 +278,11 @@ public class FlowTreeController implements ConsoleFeatures {
         // Apply global notifier settings to the active notifier (single-workspace fallback)
         SlackNotifier activeNotifier = getNotifier();
         if (activeNotifier != null) {
-            // Pass channel owner user ID to notifier for auto-inviting to new channels
-            if (config.getChannelOwnerUserId() != null) {
-                activeNotifier.setChannelOwnerUserId(config.getChannelOwnerUserId());
+            // Pass channel owner user IDs to notifier for auto-inviting to new channels.
+            // The effective list honours the plural channelOwnerUserIds field when set,
+            // falling back to the legacy singular channelOwnerUserId for old configs.
+            if (!config.effectiveChannelOwnerUserIds().isEmpty()) {
+                activeNotifier.setChannelOwnerUserIds(config.effectiveChannelOwnerUserIds());
             }
 
             // Pass default channel to notifier for fallback message delivery
@@ -527,8 +529,9 @@ public class FlowTreeController implements ConsoleFeatures {
                 SlackTokens tokens = SlackTokens.from(wsEntry);
                 WorkspaceConnection conn = new WorkspaceConnection(
                         wsEntry.getWorkspaceId(), tokens.getBotToken(), tokens.getAppToken());
-                if (wsEntry.getChannelOwnerUserId() != null) {
-                    conn.notifier.setChannelOwnerUserId(wsEntry.getChannelOwnerUserId());
+                // Apply the effective invite list (plural wins, singular for legacy).
+                if (!wsEntry.effectiveChannelOwnerUserIds().isEmpty()) {
+                    conn.notifier.setChannelOwnerUserIds(wsEntry.effectiveChannelOwnerUserIds());
                 }
                 if (wsEntry.getDefaultChannel() != null) {
                     conn.notifier.setDefaultChannelId(wsEntry.getDefaultChannel());
@@ -1015,7 +1018,15 @@ public class FlowTreeController implements ConsoleFeatures {
         SignalWireDeliveryProvider.attachDefault();
 
         try {
-            apiEndpoint = new FlowTreeApiEndpoint(apiPort, primaryNotifier);
+            // Build the workspace-ID → notifier map for the endpoint so every
+            // workstream-aware handler can resolve the correct notifier. Empty
+            // in single-workspace (legacy) mode.
+            Map<String, SlackNotifier> notifiersByWorkspace = new LinkedHashMap<>();
+            for (Map.Entry<String, WorkspaceConnection> e : workspaceConnections.entrySet()) {
+                notifiersByWorkspace.put(e.getKey(), e.getValue().notifier);
+            }
+
+            apiEndpoint = new FlowTreeApiEndpoint(apiPort, primaryNotifier, notifiersByWorkspace);
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
@@ -1027,6 +1038,13 @@ public class FlowTreeController implements ConsoleFeatures {
                 if (!orgTokens.isEmpty()) {
                     apiEndpoint.setGithubOrgTokens(orgTokens);
                     log("Loaded GitHub tokens for " + orgTokens.size() + " org(s)");
+                }
+                // Org → workspace mapping lets registration derive the owning
+                // workspace from repoUrl when the caller doesn't specify one.
+                Map<String, String> orgToWorkspace = loadedConfig.orgToWorkspaceId();
+                if (!orgToWorkspace.isEmpty()) {
+                    apiEndpoint.setOrgToWorkspaceId(orgToWorkspace);
+                    log("Loaded workspace mapping for " + orgToWorkspace.size() + " org(s)");
                 }
             }
 

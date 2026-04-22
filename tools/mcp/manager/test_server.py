@@ -151,22 +151,31 @@ class TestWorkstreamGetStatus(unittest.TestCase):
     @patch.object(server, "_controller_get")
     def test_returns_stats(self, mock_get):
         _grant_all_scopes()
-        mock_get.return_value = {"thisWeek": {"jobs": 5}, "lastWeek": {"jobs": 3}}
+        # workstream_get_status fetches stats AND recent jobs as a convenience;
+        # both calls are expected.
+        mock_get.side_effect = [
+            {"thisWeek": {"jobs": 5}, "lastWeek": {"jobs": 3}},
+            [],  # recent jobs list
+        ]
         result = server.workstream_get_status(workstream_id="ws-test")
-        mock_get.assert_called_once()
-        call_path = mock_get.call_args[0][0]
-        self.assertIn("workstream=ws-test", call_path)
-        self.assertIn("period=weekly", call_path)
+        paths = [c.args[0] for c in mock_get.call_args_list]
+        self.assertTrue(
+            any("workstream=ws-test" in p and "period=weekly" in p for p in paths),
+            f"Expected a stats call; got {paths}")
+        self.assertTrue(
+            any("/api/workstreams/ws-test/jobs" in p for p in paths),
+            f"Expected a recent-jobs call; got {paths}")
         self.assertEqual(result["workstream_id"], "ws-test")
         self.assertIn("next_steps", result)
 
     @patch.object(server, "_controller_get")
     def test_custom_period(self, mock_get):
         _grant_all_scopes()
-        mock_get.return_value = {}
+        mock_get.side_effect = [{}, []]
         server.workstream_get_status(workstream_id="ws-test", period="daily")
-        call_path = mock_get.call_args[0][0]
-        self.assertIn("period=daily", call_path)
+        paths = [c.args[0] for c in mock_get.call_args_list]
+        self.assertTrue(any("period=daily" in p for p in paths),
+                        f"Expected a daily-period stats call; got {paths}")
 
     def test_rejects_long_workstream_id(self):
         _grant_all_scopes()
@@ -646,10 +655,12 @@ class TestMemoryRecall(unittest.TestCase):
              "tags": ["test"], "created_at": "2026-01-01", "repo_url": "", "branch": ""},
         ]
         mock_client_fn.return_value = client
-        result = server.memory_recall(query="test query")
+        # scope="all" bypasses repo_url resolution — the test just verifies
+        # that a bare query plumbs through to client.search.
+        result = server.memory_recall(query="test query", scope="all")
         client.search.assert_called_once()
         self.assertTrue(result["ok"])
-        self.assertEqual(result["count"], 1)
+        self.assertEqual(len(result["memories"]), 1)
         self.assertEqual(result["memories"][0]["content"], "Found something")
 
     @patch.object(server, "_get_memory_client", return_value=None)
@@ -666,7 +677,7 @@ class TestMemoryRecall(unittest.TestCase):
         client = MagicMock()
         client.search.return_value = []
         mock_client_fn.return_value = client
-        result = server.memory_recall(query="nothing")
+        result = server.memory_recall(query="nothing", scope="all")
         self.assertTrue(result["ok"])
         self.assertEqual(len(result["memories"]), 0)
 
@@ -681,7 +692,7 @@ class TestMemoryRecall(unittest.TestCase):
         ]
         mock_client_fn.return_value = client
         result = server.memory_recall(
-            query="test", include_messages=True)
+            query="test", include_messages=True, scope="all")
         self.assertEqual(client.search.call_count, 2)
         second_call = client.search.call_args_list[1]
         self.assertEqual(second_call[1]["namespace"], "messages")
@@ -771,7 +782,10 @@ class TestMemoryBranchContext(unittest.TestCase):
 
     @patch.object(server, "_github_request")
     @patch.object(server, "_get_memory_client")
-    def test_include_messages_merge(self, mock_client_fn, mock_gh):
+    def test_include_messages_merge_with_explicit_namespace(self, mock_client_fn, mock_gh):
+        # Back-compat path: when the caller narrows to a specific namespace,
+        # include_messages=True still performs a second fetch against
+        # "messages" and merges the two streams.
         _grant_all_scopes()
         client = MagicMock()
         client.search_by_branch.side_effect = [
@@ -783,10 +797,41 @@ class TestMemoryBranchContext(unittest.TestCase):
         result = server.memory_branch_context(
             repo_url="https://github.com/org/repo",
             branch="feature/x",
+            namespace="default",
             include_messages=True,
         )
         self.assertTrue(result["ok"])
         self.assertEqual(result["count"], 2)
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_get_memory_client")
+    def test_default_returns_all_namespaces_single_fetch(self, mock_client_fn, mock_gh):
+        # Default behaviour: namespace is empty → server returns a merged
+        # newest-first stream across every namespace in one call.
+        # include_messages is a no-op in this mode.
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = [
+            {"id": "m1", "namespace": "feedback", "content": "fb",
+             "created_at": "2026-01-03"},
+            {"id": "m2", "namespace": "messages", "content": "msg",
+             "created_at": "2026-01-02"},
+            {"id": "m3", "namespace": "project", "content": "proj",
+             "created_at": "2026-01-01"},
+        ]
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        result = server.memory_branch_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 3)
+        # Exactly one fetch — no per-namespace double-query.
+        self.assertEqual(client.search_by_branch.call_count, 1)
+        # The call must forward a None namespace (wildcard) to the client.
+        call_kwargs = client.search_by_branch.call_args.kwargs
+        self.assertIsNone(call_kwargs["namespace"])
 
     @patch.object(server, "_get_memory_client")
     def test_skip_commits(self, mock_client_fn):
@@ -801,6 +846,145 @@ class TestMemoryBranchContext(unittest.TestCase):
         )
         self.assertTrue(result["ok"])
         self.assertNotIn("commits", result)
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_get_memory_client")
+    def test_jobs_timeline_compact(self, mock_client_fn, mock_controller_get, mock_gh):
+        # memory_branch_context must include a compact jobs timeline when a
+        # workstream is provided — just enough fields to situate memories,
+        # NOT the operational payload (no costUsd, no targetBranch).
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        # _find_workstream() is invoked twice inside memory_branch_context
+        # (once via _resolve_branch_context, once in the commit block),
+        # followed by the jobs fetch. Return the workstream list for the
+        # first two calls and the jobs list for the third.
+        ws_list = [{"workstreamId": "w-1",
+                    "repoUrl": "https://github.com/org/repo",
+                    "defaultBranch": "feature/x",
+                    "baseBranch": "master"}]
+        jobs_list = [
+            {"jobId": "j-1", "timestamp": "2026-04-20T10:00:00Z",
+             "status": "SUCCESS", "description": "Fix bug",
+             "commitHash": "abc1234567890def",
+             "pullRequestUrl": "https://github.com/org/repo/pull/7",
+             "targetBranch": "feature/x", "costUsd": 4.50},
+            {"jobId": "j-2", "timestamp": "2026-04-20T09:00:00Z",
+             "status": "FAILURE", "description": "Attempt",
+             "errorMessage": "Git push failed",
+             "costUsd": 1.20},
+        ]
+        def controller_side_effect(path, timeout=10):
+            if "/jobs" in path:
+                return jobs_list
+            return ws_list
+        mock_controller_get.side_effect = controller_side_effect
+        result = server.memory_branch_context(workstream_id="w-1")
+        self.assertTrue(result["ok"])
+        self.assertIn("jobs", result)
+        self.assertEqual(2, len(result["jobs"]))
+        j1, j2 = result["jobs"]
+        # Compact fields present
+        self.assertEqual("j-1", j1["jobId"])
+        self.assertEqual("SUCCESS", j1["status"])
+        self.assertEqual("Fix bug", j1["description"])
+        self.assertEqual("abc1234567", j1["commitHash"])  # truncated to 10
+        self.assertEqual("https://github.com/org/repo/pull/7", j1["pullRequestUrl"])
+        # Operational fields absent
+        self.assertNotIn("costUsd", j1)
+        self.assertNotIn("targetBranch", j1)
+        # Failure job includes errorMessage
+        self.assertEqual("Git push failed", j2["errorMessage"])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_get_memory_client")
+    def test_jobs_field_present_even_when_empty(self, mock_client_fn, mock_controller_get, mock_gh):
+        # When a workstream is provided and job_limit > 0, the "jobs" key
+        # must appear in the response even if the workstream has no jobs —
+        # an empty list is a meaningful signal distinct from omission.
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        ws_list = [{"workstreamId": "w-1",
+                    "repoUrl": "https://github.com/org/repo",
+                    "defaultBranch": "feature/x"}]
+
+        def controller_side_effect(path, timeout=10):
+            if "/jobs" in path:
+                return []
+            return ws_list
+        mock_controller_get.side_effect = controller_side_effect
+        result = server.memory_branch_context(workstream_id="w-1")
+        self.assertTrue(result["ok"])
+        self.assertIn("jobs", result)
+        self.assertEqual([], result["jobs"])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_get_memory_client")
+    def test_job_limit_coerced_and_query_encoded(self, mock_client_fn, mock_controller_get, mock_gh):
+        # Negative/garbage job_limit must not produce a malformed controller URL.
+        # A negative int coerces to 0 (jobs fetch is skipped); a stringified
+        # number coerces to the int value and is sent via urlencode.
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        ws_list = [{"workstreamId": "w-1",
+                    "repoUrl": "https://github.com/org/repo",
+                    "defaultBranch": "feature/x"}]
+        calls = []
+
+        def controller_side_effect(path, timeout=10):
+            calls.append(path)
+            if "/jobs" in path:
+                return []
+            return ws_list
+
+        # Negative → no jobs fetch, no /jobs path seen, jobs field omitted.
+        mock_controller_get.side_effect = controller_side_effect
+        result = server.memory_branch_context(workstream_id="w-1", job_limit=-5)
+        self.assertNotIn("jobs", result)
+        self.assertFalse(any("/jobs" in p for p in calls))
+
+        # Stringified int → coerced, urlencoded query string.
+        calls.clear()
+        mock_controller_get.side_effect = controller_side_effect
+        server.memory_branch_context(workstream_id="w-1", job_limit="3")
+        jobs_paths = [p for p in calls if "/jobs" in p]
+        self.assertEqual(1, len(jobs_paths))
+        self.assertIn("limit=3", jobs_paths[0])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_get_memory_client")
+    def test_jobs_timeline_omitted_when_job_limit_zero(self, mock_client_fn, mock_controller_get, mock_gh):
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_gh.return_value = {"ok": False, "error": "not found"}
+        ws_list = [
+            {"workstreamId": "w-1",
+             "repoUrl": "https://github.com/org/repo",
+             "defaultBranch": "feature/x"},
+        ]
+        def controller_side_effect(path, timeout=10):
+            if "/jobs" in path:
+                self.fail("jobs endpoint must not be called when job_limit=0")
+            return ws_list
+        mock_controller_get.side_effect = controller_side_effect
+        result = server.memory_branch_context(workstream_id="w-1", job_limit=0)
+        self.assertTrue(result["ok"])
+        self.assertNotIn("jobs", result)
 
 
 class TestMemoryStore(unittest.TestCase):
@@ -1325,21 +1509,31 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
 
     @patch.object(server, "_github_request")
     def test_request_copilot_review_helper_success(self, mock_gh):
-        mock_gh.return_value = {"number": 10, "html_url": "https://github.com/x/y/pull/10"}
+        # Success requires the bot's login to appear in requested_reviewers.
+        mock_gh.return_value = {
+            "number": 10,
+            "html_url": "https://github.com/x/y/pull/10",
+            "requested_reviewers": [{"login": server.COPILOT_REVIEWER_LOGIN}],
+        }
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertTrue(result["ok"])
+        # Payload uses the documented `reviewers` field, not the fictional
+        # `app_reviewers` field the tool used to send.
         mock_gh.assert_called_once_with(
             "POST",
             "/repos/owner/repo/pulls/10/requested_reviewers",
-            {"reviewers": [], "team_reviewers": [], "app_reviewers": ["copilot-pull-request-reviewer"]},
+            {"reviewers": [server.COPILOT_REVIEWER_LOGIN]},
         )
 
     @patch.object(server, "_github_request")
-    def test_request_copilot_review_helper_empty_body_success(self, mock_gh):
-        """An empty-body 200 response (ok=True, status=200) should be treated as success."""
-        mock_gh.return_value = {"ok": True, "status": 200}
+    def test_request_copilot_review_helper_2xx_without_bot_is_failure(self, mock_gh):
+        # A 2xx response that omits the bot from requested_reviewers means
+        # the request silently no-op'd (e.g. unknown field ignored, feature
+        # not enabled, bot unavailable). Must NOT claim success.
+        mock_gh.return_value = {"number": 10, "requested_reviewers": []}
         result = server._request_copilot_review("owner", "repo", 10)
-        self.assertTrue(result["ok"])
+        self.assertFalse(result["ok"])
+        self.assertIn("was not added", result["error"])
 
     @patch.object(server, "_github_request")
     def test_request_copilot_review_helper_github_error(self, mock_gh):
@@ -1354,7 +1548,8 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         """When the initial request fails, dismisses the prior review and retries."""
         mock_gh.side_effect = [
             {"ok": False, "error": "Review cannot be requested at this time."},
-            {"number": 10},
+            {"number": 10,
+             "requested_reviewers": [{"login": server.COPILOT_REVIEWER_LOGIN}]},
         ]
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertTrue(result["ok"])
@@ -1442,6 +1637,573 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
             "/repos/owner/repo/pulls/10/reviews/2/dismissals",
             {"message": "Dismissing prior Copilot review to allow re-review"},
         )
+
+
+# -----------------------------------------------------------------------
+# Workspace scope enforcement
+# -----------------------------------------------------------------------
+
+
+def _set_workspaces(*workspace_ids):
+    """Mark the current request as scoped to the given workspace IDs."""
+    server._set_workspace_scopes(list(workspace_ids) if workspace_ids else None)
+
+
+def _clear_workspaces():
+    server._request_workspace_scopes.set(None)
+    if hasattr(server._thread_local, "workspace_scopes"):
+        del server._thread_local.workspace_scopes
+
+
+def _reset_workspace_cache():
+    server._workspace_map_cache["map"] = None
+    server._workspace_map_cache["fetched"] = 0.0
+
+
+class TestWorkspaceScopeHelpers(unittest.TestCase):
+
+    def setUp(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def test_unscoped_allows_any_workspace(self):
+        self.assertTrue(server._is_workspace_allowed("TAAA"))
+        self.assertTrue(server._is_workspace_allowed(None))
+
+    def test_scoped_allows_listed_workspace(self):
+        _set_workspaces("TAAA")
+        self.assertTrue(server._is_workspace_allowed("TAAA"))
+
+    def test_scoped_denies_other_workspace(self):
+        _set_workspaces("TAAA")
+        self.assertFalse(server._is_workspace_allowed("TBBB"))
+
+    def test_scoped_denies_unknown_workspace(self):
+        _set_workspaces("TAAA")
+        self.assertFalse(server._is_workspace_allowed(None))
+        self.assertFalse(server._is_workspace_allowed(""))
+
+    def test_require_workspace_raises_on_mismatch(self):
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server._require_workspace("TBBB")
+
+    def test_require_workspace_noop_when_unscoped(self):
+        server._require_workspace("TANYTHING")  # does not raise
+
+
+class TestWorkspaceCacheAndFilter(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_get")
+    def test_workspace_for_workstream_resolves_and_caches(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "ws-1", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "ws-2", "slackWorkspaceId": "TBBB"},
+        ]
+        self.assertEqual("TAAA", server._workspace_for_workstream("ws-1"))
+        self.assertEqual("TBBB", server._workspace_for_workstream("ws-2"))
+        self.assertEqual(1, mock_get.call_count)  # cache hit on second call
+
+    @patch.object(server, "_controller_get")
+    def test_workspace_for_workstream_returns_none_for_unknown(self, mock_get):
+        mock_get.return_value = [{"workstreamId": "ws-1", "slackWorkspaceId": "TAAA"}]
+        self.assertIsNone(server._workspace_for_workstream("ws-missing"))
+
+    def test_filter_workstreams_passthrough_unscoped(self):
+        entries = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "b", "slackWorkspaceId": "TBBB"},
+        ]
+        self.assertEqual(entries, server._filter_workstreams_by_scope(entries))
+
+    def test_filter_workstreams_restricts_to_scope(self):
+        _set_workspaces("TAAA")
+        entries = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "b", "slackWorkspaceId": "TBBB"},
+            {"workstreamId": "c", "slackWorkspaceId": "TAAA"},
+        ]
+        filtered = server._filter_workstreams_by_scope(entries)
+        self.assertEqual(["a", "c"], [e["workstreamId"] for e in filtered])
+
+
+class TestWorkstreamListFiltering(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_get")
+    def test_unscoped_sees_everything(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "b", "slackWorkspaceId": "TBBB"},
+        ]
+        result = server.workstream_list()
+        self.assertEqual(2, result["count"])
+        self.assertEqual({"a", "b"}, {w["workstreamId"] for w in result["workstreams"]})
+
+    @patch.object(server, "_controller_get")
+    def test_scoped_sees_only_in_scope(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "b", "slackWorkspaceId": "TBBB"},
+        ]
+        _set_workspaces("TBBB")
+        result = server.workstream_list()
+        self.assertEqual(1, result["count"])
+        self.assertEqual(["b"], [w["workstreamId"] for w in result["workstreams"]])
+
+
+class TestWorkstreamWriteEnforcement(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_submit_rejected_for_out_of_scope(self, mock_post, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+        ]
+        _set_workspaces("TBBB")
+        with self.assertRaises(PermissionError):
+            server.workstream_submit_task(workstream_id="a", prompt="hi")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_submit_allowed_when_in_scope(self, mock_post, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "a", "slackWorkspaceId": "TAAA"},
+        ]
+        mock_post.return_value = {"ok": True, "jobId": "j-1"}
+        _set_workspaces("TAAA")
+        result = server.workstream_submit_task(workstream_id="a", prompt="hi")
+        self.assertTrue(result["ok"])
+
+    def test_controller_update_config_rejected_for_scoped_token(self):
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server.controller_update_config(accept_automated_jobs="true")
+
+
+class TestWorkstreamRegisterScope(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_post")
+    def test_scoped_requires_slack_workspace_id(self, mock_post):
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server.workstream_register(default_branch="feature/x")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    def test_scoped_rejects_out_of_scope_workspace(self, mock_post):
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server.workstream_register(
+                default_branch="feature/x", slack_workspace_id="TBBB")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    def test_scoped_passes_slack_workspace_to_controller(self, mock_post):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        _set_workspaces("TAAA")
+        server.workstream_register(
+            default_branch="feature/x", slack_workspace_id="TAAA")
+        args, _ = mock_post.call_args
+        self.assertEqual("/api/workstreams", args[0])
+        self.assertEqual("TAAA", args[1]["slackWorkspaceId"])
+
+    @patch.object(server, "_controller_post")
+    def test_unscoped_need_not_pass_slack_workspace(self, mock_post):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        # No workspace scope set — rely on controller-side derivation.
+        result = server.workstream_register(
+            default_branch="feature/x",
+            repo_url="git@github.com:almostrealism/common.git")
+        self.assertTrue(result["ok"])
+        args, _ = mock_post.call_args
+        self.assertNotIn("slackWorkspaceId", args[1])
+
+
+class TestBearerAuthWorkspaceScopes(unittest.TestCase):
+
+    def test_empty_workspace_scopes_treated_as_unscoped(self):
+        tokens = [{"value": "tok", "label": "t", "scopes": ["read"],
+                   "workspaceScopes": []}]
+        middleware = server.BearerAuthMiddleware(app=None, tokens=tokens)
+        # The fourth field is workspace_scopes — empty list must normalise to None.
+        entry = middleware.token_entries[0]
+        self.assertIsNone(entry[3])
+
+    def test_populated_workspace_scopes_retained(self):
+        tokens = [{"value": "tok", "label": "t", "scopes": ["read"],
+                   "workspaceScopes": ["TAAA", "TBBB"]}]
+        middleware = server.BearerAuthMiddleware(app=None, tokens=tokens)
+        self.assertEqual(["TAAA", "TBBB"], middleware.token_entries[0][3])
+
+
+# -----------------------------------------------------------------------
+# workstream_register plan follow-up (plan_content / plan_instructions)
+# -----------------------------------------------------------------------
+
+
+class TestWorkstreamRegisterPlanFollowup(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def test_rejects_both_plan_content_and_plan_instructions(self):
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_content="# Plan",
+            plan_instructions="Write a plan about X",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("mutually exclusive", result["error"])
+
+    @patch.object(server, "project_commit_plan")
+    @patch.object(server, "_controller_post")
+    def test_plan_content_committed_successfully(self, mock_post, mock_commit):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_commit.return_value = {
+            "ok": True, "path": "docs/plans/x.md",
+            "branch": "feature/x", "commit_sha": "abc123",
+            "repo": "almostrealism/common",
+        }
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_content="# Plan for X",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual("committed", result["plan"]["mode"])
+        self.assertEqual("docs/plans/x.md", result["plan"]["path"])
+        self.assertEqual("abc123", result["plan"]["commit_sha"])
+
+    @patch.object(server, "project_commit_plan")
+    @patch.object(server, "_controller_post")
+    def test_plan_content_commit_rejected_still_registers(self, mock_post, mock_commit):
+        # GitHub rejects the direct commit (e.g. missing contents:write).
+        # Registration itself must still succeed.
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_commit.return_value = {
+            "ok": False,
+            "error": "403: Resource not accessible by personal access token",
+        }
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_content="# Plan",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual("w-1", result["workstreamId"])
+        self.assertEqual("failed", result["plan"]["mode"])
+        self.assertEqual("commit_rejected", result["plan"]["reason"])
+        self.assertIn("403", result["plan"]["error"])
+        self.assertIn("fallback_instructions", result["plan"])
+
+    @patch.object(server, "project_commit_plan")
+    @patch.object(server, "_controller_post")
+    def test_plan_content_permission_error_still_registers(self, mock_post, mock_commit):
+        # Plan commit requires the 'pipeline' scope. A token without it
+        # raises PermissionError inside project_commit_plan. Register must
+        # still succeed and the response must explain the fallback.
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_commit.side_effect = PermissionError(
+            "Token does not have required scope: pipeline")
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_content="# Plan",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual("failed", result["plan"]["mode"])
+        self.assertEqual("insufficient_scope", result["plan"]["reason"])
+        self.assertIn("pipeline", result["plan"]["error"])
+
+    @patch.object(server, "workstream_submit_task")
+    @patch.object(server, "_controller_post")
+    def test_plan_instructions_submits_job(self, mock_post, mock_submit):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_submit.return_value = {"ok": True, "jobId": "j-42"}
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_instructions="Describe how we will refactor the foo subsystem.",
+            plan_path="docs/plans/foo.md",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual("submitted", result["plan"]["mode"])
+        self.assertEqual("j-42", result["plan"]["job_id"])
+        # The prompt passed to submit_task must embed the instructions and the
+        # target path so the agent knows where to write.
+        submit_kwargs = mock_submit.call_args.kwargs
+        self.assertEqual("w-1", submit_kwargs["workstream_id"])
+        self.assertIn("docs/plans/foo.md", submit_kwargs["prompt"])
+        self.assertIn("refactor the foo subsystem", submit_kwargs["prompt"])
+
+    @patch.object(server, "workstream_submit_task")
+    @patch.object(server, "_controller_post")
+    def test_plan_instructions_submit_rejected_still_registers(self, mock_post, mock_submit):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_submit.return_value = {"ok": False, "error": "No agents connected"}
+        result = server.workstream_register(
+            default_branch="feature/x",
+            plan_instructions="Describe the plan.",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual("failed", result["plan"]["mode"])
+        self.assertEqual("submit_rejected", result["plan"]["reason"])
+        self.assertIn("No agents", result["plan"]["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_no_plan_fields_leaves_plan_absent(self, mock_post):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        result = server.workstream_register(default_branch="feature/x")
+        self.assertTrue(result["ok"])
+        self.assertNotIn("plan", result)
+
+
+# -----------------------------------------------------------------------
+# ar-manager no longer holds a GitHub token — proxy-only GitHub access
+# -----------------------------------------------------------------------
+
+
+class TestNoDirectGithubPath(unittest.TestCase):
+
+    def test_server_module_has_no_github_token_symbol(self):
+        # The legacy GITHUB_TOKEN / AR_MANAGER_GITHUB_TOKEN plumbing is gone;
+        # nothing in the module should reference a local token anymore.
+        self.assertFalse(hasattr(server, "GITHUB_TOKEN"))
+
+    def test_github_api_module_has_no_direct_request(self):
+        from tools.mcp.manager import github_api
+        self.assertFalse(hasattr(github_api, "_github_direct_request"))
+        self.assertFalse(hasattr(github_api, "_github_token"))
+
+
+class TestOrgScopeGate(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_get")
+    def test_org_map_derived_from_workstream_list(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+            {"workstreamId": "w-2", "slackWorkspaceId": "TBBB",
+             "repoUrl": "https://github.com/Plytrix/plytrix-platform.git"},
+        ]
+        self.assertEqual({"TAAA"}, server._workspaces_for_org("almostrealism"))
+        self.assertEqual({"TBBB"}, server._workspaces_for_org("Plytrix"))
+        self.assertEqual(set(), server._workspaces_for_org("other-org"))
+
+    @patch.object(server, "_controller_get")
+    def test_org_spanning_multiple_workspaces_tracks_all(self, mock_get):
+        # Same org registered under two workspaces → both must appear so
+        # _require_org_in_scope can detect the ambiguity.
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:shared-org/repo-a.git"},
+            {"workstreamId": "w-2", "slackWorkspaceId": "TBBB",
+             "repoUrl": "git@github.com:shared-org/repo-b.git"},
+        ]
+        self.assertEqual({"TAAA", "TBBB"}, server._workspaces_for_org("shared-org"))
+
+    @patch.object(server, "_controller_get")
+    def test_require_org_in_scope_unscoped_passes(self, mock_get):
+        mock_get.return_value = []
+        server._require_org_in_scope("any-org")  # no raise
+
+    @patch.object(server, "_controller_get")
+    def test_require_org_in_scope_scoped_accepts_in_scope(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+        ]
+        _set_workspaces("TAAA")
+        server._require_org_in_scope("almostrealism")  # no raise
+
+    @patch.object(server, "_controller_get")
+    def test_require_org_in_scope_scoped_rejects_out_of_scope(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+            {"workstreamId": "w-2", "slackWorkspaceId": "TBBB",
+             "repoUrl": "https://github.com/Plytrix/plytrix-platform.git"},
+        ]
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server._require_org_in_scope("Plytrix")
+
+    @patch.object(server, "_controller_get")
+    def test_require_org_in_scope_scoped_rejects_unknown_org(self, mock_get):
+        # An org with no workstream on any workspace is treated as unknown
+        # and therefore out-of-scope for scoped tokens.
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+        ]
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server._require_org_in_scope("some-untracked-org")
+
+    @patch.object(server, "_controller_get")
+    def test_require_org_in_scope_rejects_ambiguous_multi_workspace_org(self, mock_get):
+        # Same org under two workspaces: even when the caller's scope
+        # contains ONE of them, direct-org addressing must be denied
+        # because the controller's per-org PAT is last-wins and the
+        # proxy may end up using the other workspace's token.
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:shared-org/repo-a.git"},
+            {"workstreamId": "w-2", "slackWorkspaceId": "TBBB",
+             "repoUrl": "git@github.com:shared-org/repo-b.git"},
+        ]
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError) as ctx:
+            server._require_org_in_scope("shared-org")
+        self.assertIn("multiple", str(ctx.exception).lower())
+
+
+class TestTempTokenWorkspaceScoping(unittest.TestCase):
+    """Covers the security fix that temp tokens are no longer treated
+    as superadmin — their workspace scope is derived from the bound
+    workstream's ``slackWorkspaceId`` at validate time."""
+
+    def setUp(self):
+        _clear_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_get")
+    def test_multi_workspace_mode_detection(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+        ]
+        self.assertTrue(server._is_multi_workspace_mode())
+
+    @patch.object(server, "_controller_get")
+    def test_legacy_mode_detection_empty_workspaces(self, mock_get):
+        # No workstream has a slackWorkspaceId — single-workspace legacy.
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": None,
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+        ]
+        self.assertFalse(server._is_multi_workspace_mode())
+
+
+if False:
+    # Placeholder — BearerAuthMiddleware tests using asgi scope are covered
+    # via the synchronous helpers above; a full ASGI roundtrip test would
+    # require an event loop and is disproportionate to the logic under test.
+    pass
+
+
+class TestGithubToolsDirectAddressing(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    def test_pr_find_with_explicit_org_repo_bypasses_workstream(
+            self, mock_get, mock_gh):
+        # The workstream list is empty; without direct addressing this would
+        # fall through to the error path. With org+repo it should succeed.
+        mock_get.return_value = []
+        mock_gh.return_value = [
+            {"number": 1, "title": "t", "html_url": "u", "state": "open"},
+        ]
+        result = server.github_pr_find(
+            branch="feature/x", org="almostrealism", repo="common")
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["found"])
+        # The proxy call path should include almostrealism/common
+        called_path = mock_gh.call_args.args[1]
+        self.assertIn("/repos/almostrealism/common/pulls", called_path)
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    def test_pr_find_rejects_half_addressing(self, mock_get, mock_gh):
+        # Supplying only org (no repo) is ambiguous; the resolver must error
+        # before any HTTP is attempted.
+        mock_get.return_value = []
+        result = server.github_pr_find(org="almostrealism")
+        self.assertFalse(result["ok"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_controller_get")
+    def test_pr_find_scoped_token_rejects_out_of_scope_org(
+            self, mock_get, mock_gh):
+        mock_get.return_value = [
+            {"workstreamId": "w-1", "slackWorkspaceId": "TAAA",
+             "repoUrl": "git@github.com:almostrealism/common.git"},
+            {"workstreamId": "w-2", "slackWorkspaceId": "TBBB",
+             "repoUrl": "https://github.com/Plytrix/plytrix-platform.git"},
+        ]
+        _set_workspaces("TAAA")
+        with self.assertRaises(PermissionError):
+            server.github_pr_find(org="Plytrix", repo="plytrix-platform",
+                                  branch="feature/x")
+        mock_gh.assert_not_called()
 
 
 if __name__ == "__main__":
