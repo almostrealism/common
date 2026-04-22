@@ -641,3 +641,235 @@ cross-module diagnostic test in `engine/utils`) to get the actual strategy
 invocation profile with diagnostics enabled. Then implement Option B as the primary
 fix. Option A alone is insufficient and may cause excessive isolation of cheap
 conditionals.
+
+---
+
+## Diagnosis: SkyTntMidiTest.testGenerationFromBos Subset Failure
+
+Run date: 2026-04-22. This section documents the investigation of the remaining
+`HardwareException: Cannot compile subset` failure in
+`SkyTntMidiTest.testGenerationFromBos` after commits `503a4e365c`
+(MemoryDataCopy compatible with Process optimization) and `6162fa1e60`
+(CodeFeatures MemoryDataCopy fix).
+
+### Actual error and stack trace
+
+Reproduced by running `testGenerationFromBos` via the test runner (profile
+`pipeline`, module `studio/compose`). The test fails in 1.4 s with:
+
+```
+org.almostrealism.hardware.HardwareException: Cannot compile subset
+    at org.almostrealism.hardware.instructions.ComputationScopeCompiler.compile(ComputationScopeCompiler.java:441)
+    at org.almostrealism.hardware.AcceleratedComputationOperation.lambda$compile$0(AcceleratedComputationOperation.java:572)
+    at io.almostrealism.scope.ExpressionCache.use(ExpressionCache.java:240)
+    at org.almostrealism.hardware.AcceleratedComputationOperation.compile(AcceleratedComputationOperation.java:570)
+    at org.almostrealism.hardware.AcceleratedComputationOperation.getScope(AcceleratedComputationOperation.java:537)
+    at org.almostrealism.hardware.instructions.ScopeInstructionsManager.getOperator(ScopeInstructionsManager.java:364)
+    at org.almostrealism.hardware.AcceleratedOperation.load(AcceleratedOperation.java:379)
+    at org.almostrealism.collect.CollectionProducerComputation.get(CollectionProducerComputation.java:225)
+    at org.almostrealism.collect.computations.CollectionProducerComputationBase.getEvaluable(CollectionProducerComputationBase.java:645)
+    at org.almostrealism.hardware.computations.HardwareEvaluable.evaluate(HardwareEvaluable.java:328)
+    at org.almostrealism.collect.computations.ReshapeProducer.lambda$get$1(ReshapeProducer.java:619)
+    at org.almostrealism.hardware.computations.HardwareEvaluable.evaluate(HardwareEvaluable.java:328)
+    at io.almostrealism.relation.Producer.evaluate(Producer.java:134)
+    at org.almostrealism.studio.midi.SkyTntMidi.embedAndSumNet(SkyTntMidi.java:488)
+    at org.almostrealism.studio.midi.SkyTntMidi.generate(SkyTntMidi.java:264)
+    at org.almostrealism.studio.midi.test.SkyTntMidiTest.testGenerationFromBos(SkyTntMidiTest.java:264)
+Caused by: java.lang.IllegalArgumentException
+    at io.almostrealism.collect.TraversalPolicy.index(TraversalPolicy.java:488)
+    at io.almostrealism.collect.TraversalPolicy.subset(TraversalPolicy.java:629)
+    at org.almostrealism.collect.computations.PackedCollectionSubset.projectIndex(PackedCollectionSubset.java:299)
+    at org.almostrealism.collect.computations.IndexProjectionProducerComputation.projectIndex(IndexProjectionProducerComputation.java:251)
+    at org.almostrealism.collect.computations.IndexProjectionProducerComputation.lambda$getExpression$0(IndexProjectionProducerComputation.java:238)
+    at io.almostrealism.collect.IndexProjectionExpression.getValueAt(IndexProjectionExpression.java:55)
+    at org.almostrealism.collect.computations.TraversableExpressionComputation.getValueAt(TraversableExpressionComputation.java:274)
+    at org.almostrealism.collect.computations.CollectionProducerComputationAdapter.getScope(CollectionProducerComputationAdapter.java:326)
+    at org.almostrealism.hardware.instructions.ComputationScopeCompiler.compile(ComputationScopeCompiler.java:423)
+```
+
+**This is NOT the cc1 OOM / kernel-explosion failure described in earlier
+sections of this document.** The failure occurs in 1.4 s (not 155 s), the
+underlying cause is an `IllegalArgumentException` thrown during expression-graph
+compilation (`scope.simplify` → `getScope` → `projectIndex`), and no C code is
+ever generated.
+
+### The producer graph leading into the failing subset
+
+The failure path enters at `SkyTntMidi.generate(SkyTntMidi.java:264)`:
+
+```java
+lastHidden = netCompiledModel.forward(embedAndSumNet(sequence.get(pos)));
+```
+
+`embedAndSumNet` builds a chain of `PackedCollectionSubset` producers at
+`SkyTntMidi.java:478–488`:
+
+```java
+CollectionProducer sum = cp(netEmbedTokens)
+        .subset(shape(config.hiddenSize), tokenRow[0] * config.hiddenSize);
+
+for (int j = 1; j < config.maxTokenSeq; j++) {
+    if (tokenRow[j] != config.padId) {
+        sum = sum.add(cp(netEmbedTokens)
+                .subset(shape(config.hiddenSize), tokenRow[j] * config.hiddenSize));
+    }
+}
+
+return sum.reshape(shape(1, config.hiddenSize)).evaluate();
+```
+
+Concrete values from the test run (BOS prompt, first prefill step):
+- `netEmbedTokens` shape: `[3406, 32]` (2D — `VOCAB_SIZE=3406`, `DIM=32`)
+- `tokenRow`: `[bosId=1, padId=0, padId=0, …]` (length `maxTokenSeq=8`)
+- First subset: `cp(netEmbedTokens).subset(shape(32), 1 * 32)` — i.e. `subset(shape(32), 32)`
+- Loop body: only `j=0` fires (all subsequent tokens are `padId`); no `.add()` calls
+
+The `PackedCollectionSubset` is constructed with:
+- output shape: `shape(32)` → `[32]` (1D, 1 dimension)
+- source producer: `cp(netEmbedTokens)` → shape `[3406, 32]` (2D, **2 dimensions**)
+- pos array: `[IntegerConstant(32)]` (1 element)
+
+### Generated C kernel size
+
+**Not applicable.** The failure occurs inside `PackedCollectionSubset.projectIndex`
+during expression-graph compilation, before the expression is passed to the C code
+generator. `ComputationScopeCompiler.compile` calls `c.getScope(this)` then
+`scope.simplify(this)` (line 436); the exception is thrown from inside `getScope`
+at `CollectionProducerComputationAdapter.getScope:326` →
+`TraversableExpressionComputation.getValueAt:274` →
+`IndexProjectionExpression.getValueAt:55` →
+`IndexProjectionProducerComputation.lambda$getExpression$0:238` →
+`PackedCollectionSubset.projectIndex:299` →
+`TraversalPolicy.subset:629` →
+`TraversalPolicy.index:488`.
+
+No C file is ever written. The `instruction_set_output_dir` for this run
+contains no generated files.
+
+### Whether the expansion-width strategy fires anywhere relevant
+
+The expansion-width strategy (`ExpansionWidthTargetOptimization`) fires during
+`model.compile()`, which runs during
+`SkyTntMidi.buildTransformerModel(...).compile(false)`. Both model builds succeed
+— the exception is not thrown there. The failure occurs later, during
+`embedAndSumNet().evaluate()`, which is a pipeline-boundary evaluation that
+happens entirely outside the compiled model forward pass and entirely outside the
+optimization cascade.
+
+**The expansion-width strategy is not involved in this failure and firing it would
+not help.** This is a different code path.
+
+### Structural cause
+
+`TraversalPolicy.index(Expression... pos)` at line 487 enforces:
+
+```java
+if (pos.length != getDimensions()) {
+    throw new IllegalArgumentException();
+}
+```
+
+The source collection `netEmbedTokens` has shape `[3406, 32]` → `getDimensions() = 2`.
+`PackedCollectionSubset.projectIndex` is called with `this.pos = [IntegerConstant(32)]`
+(1 element). Inside `projectIndex`, the path taken (line 307) is:
+
+```java
+p = inputShape.subset(getShape(), index, pos);
+```
+
+where `pos` has 1 element. `TraversalPolicy.subset` at line 622 computes
+`shape.position(index)` on the 1D output shape `[32]`, yielding a 1-element
+position array. It adds `loc[0]` (the single `pos` element) to `pos[0]` (line
+625–627), leaving a 1-element array. It then calls `index(pos)` on the 2D source
+shape, where `pos.length = 1 != getDimensions() = 2` → `IllegalArgumentException`.
+
+### Git history of the introducing commit
+
+**The bug was introduced in commit `6d49b97e8` (2026-04-15), titled "Corrected
+policy violations in SkyTntMidi and added an exemption."**
+
+The original implementation of `embedAndSumNet` (commit `964fb0556`, 2026-04-04)
+used `setMem` directly:
+
+```java
+// ORIGINAL — pre-6d49b97e8 — worked but violated the "no tight setMem loops" policy
+private PackedCollection embedAndSumNet(int[] tokenRow) {
+    PackedCollection result = new PackedCollection(new TraversalPolicy(1, config.hiddenSize));
+    result.setMem(0, netEmbedTokens, tokenRow[0] * config.hiddenSize, config.hiddenSize);
+    for (int j = 1; j < config.maxTokenSeq; j++) {
+        if (tokenRow[j] != config.padId) {
+            addEmbedding(netEmbedTokens, tokenRow[j], result);  // in-place setMem accumulate
+        }
+    }
+    return result;
+}
+```
+
+`PackedCollection.setMem(int offset, MemoryData src, int srcOffset, int length)`
+accepts a flat byte offset and works correctly for a 2D source because it treats
+the underlying buffer as 1D storage — this is the flat-offset API of `MemoryData`.
+
+Commit `6d49b97e8` rewrote `embedAndSumNet` to use the Producer pattern (removing
+a code-policy violation for tight `setMem` loops). The rewrite used the wrong API:
+it passed the flat linear offset `tokenRow[j] * config.hiddenSize` as a single
+integer to `PackedCollectionSubset`, which interprets it as a **dimensional
+position** (not a flat byte offset). For a 2D source this requires 2 coordinates,
+so providing 1 violates the invariant `pos.length == getDimensions()`.
+
+Commits `503a4e365c` and `6162fa1e60` are **completely unrelated** to this bug.
+They change how `MemoryDataCopy` exposes its producer trees to the optimization
+cascade and how `CodeFeatures` creates copy operations. Neither touches
+`embedAndSumNet` or the subset-based embedding lookup.
+
+`testGenerationFromBos` previously skipped this code path because `skipLongTests`
+was true. After `6d49b97e8`, once the test was run without the `pipeline` profile
+guard, the `IllegalArgumentException` surfaces immediately (1.4 s, not 155 s).
+The 60-second timeout on the test annotation was irrelevant — this is not a
+compilation hang.
+
+### Proposed next step
+
+**Fix `embedAndSumNet` to use 2D coordinates for the 2D source.**
+
+The source `netEmbedTokens` has shape `[VOCAB_SIZE, hiddenSize]`. Each row `j`
+is the embedding vector for token `j`. The correct subset call for row `tokenId`
+is `cp(netEmbedTokens).subset(shape(1, config.hiddenSize), tokenId, 0)`, which
+provides 2 coordinates matching the source dimensionality. After this `1×hiddenSize`
+slice, the result is reshaped to `[hiddenSize]` before summing.
+
+Rewritten `embedAndSumNet`:
+
+```java
+// CORRECTED — 2D coordinates for a 2D source
+private PackedCollection embedAndSumNet(int[] tokenRow) {
+    CollectionProducer sum = cp(netEmbedTokens)
+            .subset(shape(1, config.hiddenSize), tokenRow[0], 0)
+            .reshape(shape(config.hiddenSize));
+
+    for (int j = 1; j < config.maxTokenSeq; j++) {
+        if (tokenRow[j] != config.padId) {
+            sum = sum.add(cp(netEmbedTokens)
+                    .subset(shape(1, config.hiddenSize), tokenRow[j], 0)
+                    .reshape(shape(config.hiddenSize)));
+        }
+    }
+
+    return sum.reshape(shape(1, config.hiddenSize)).evaluate();
+}
+```
+
+The `(tokenId, 0)` pair gives row `tokenId`, column 0 — i.e. the full embedding
+row. `TraversalPolicy.subset` will compute `shape([1, DIM]).position(index)` →
+2-element position array `[row_in_subset, col_in_subset]`, add the offsets `[tokenId, 0]`,
+and call `inputShape.index([tokenId + row_in_subset, 0 + col_in_subset])` — a
+2-element call on a 2D source, which satisfies `pos.length == getDimensions()`.
+
+The exemption added to `ProducerPatternDetector.EVALUATE_ALLOWED_METHODS` for
+`"embedAndSumNet"` in commit `6d49b97e8` remains correct: the `.evaluate()` at
+line 488 of `SkyTntMidi.java` is a legitimate pipeline-boundary evaluation (it
+materializes the embedding before the compiled model forward pass).
+
+This fix is independent of the expansion-width work and should be done as a
+separate commit targeting `SkyTntMidi.java` only. No changes to
+`ExpansionWidthTargetOptimization`, `MemoryDataCopy`, or any strategy class are
+needed.
