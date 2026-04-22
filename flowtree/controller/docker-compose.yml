@@ -91,7 +91,6 @@ services:
     environment:
       - AR_CONTROLLER_URL=http://flowtree-controller:7780
       - AR_MEMORY_URL=http://ar-memory:8020
-      - AR_MANAGER_GITHUB_TOKEN=${AR_MANAGER_GITHUB_TOKEN:-}
       - AR_MANAGER_TOKEN_FILE=/config/manager-tokens.json
       - AR_MANAGER_ISSUER_URL=${AR_MANAGER_ISSUER_URL:-}
       - AR_MANAGER_SHARED_SECRET_FILE=/secrets/shared-secret
