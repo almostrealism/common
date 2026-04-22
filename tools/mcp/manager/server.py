@@ -3197,11 +3197,23 @@ COPILOT_REVIEWER_LOGIN = "copilot"
 def _is_copilot_login(login: str) -> bool:
     """Returns True if ``login`` identifies a GitHub Copilot account.
 
-    GitHub returns Copilot's login in several forms depending on the
-    endpoint and account type (``copilot``, ``copilot-pull-request-reviewer``,
-    ``copilot[bot]``, etc.).  Match all of these using the same
-    case-insensitive substring rule that ``_dismiss_copilot_review`` uses
-    so identification is consistent across request and dismiss paths.
+    GitHub exposes Copilot under multiple login strings depending on the
+    endpoint, empirically observed on this repo:
+
+    - ``"copilot"`` — the slug accepted by ``POST /pulls/N/requested_reviewers``
+      (see the commit message on 6a2269f79: sending
+      ``copilot-pull-request-reviewer`` returns HTTP 422).
+    - ``"copilot-pull-request-reviewer[bot]"`` — the ``user.login`` on
+      review objects returned by ``GET /pulls/N/reviews``.
+    - ``"Copilot"`` — the ``user.login`` on review-comment objects
+      returned by ``GET /pulls/N/comments``.
+
+    Matching all three with a case-insensitive substring check on
+    ``"copilot"`` is safe because it does not collide with any real user
+    or team slug that could legitimately request a review (GitHub reserves
+    the ``copilot`` name). Used by both ``_copilot_is_requested`` (request
+    verification) and ``_dismiss_copilot_review`` (review lookup) so the
+    two paths cannot disagree about what counts as Copilot.
     """
     if not isinstance(login, str):
         return False
@@ -3214,10 +3226,8 @@ def _copilot_is_requested(pr_response: dict) -> bool:
     (ignoring unknown fields), so we can't trust a 2xx status alone — we
     verify the reviewer was actually added.
 
-    Uses the same case-insensitive substring match on the login as
-    ``_dismiss_copilot_review`` to avoid false negatives when GitHub
-    returns a bot-style login (e.g. ``copilot-pull-request-reviewer``)
-    that does not exactly equal :data:`COPILOT_REVIEWER_LOGIN`.
+    Delegates the login comparison to :func:`_is_copilot_login` so request
+    verification, review lookup, and dismissal all use the same rule.
     """
     if not isinstance(pr_response, dict):
         return False

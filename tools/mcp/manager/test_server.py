@@ -1527,19 +1527,34 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         self.assertIn("was not added", result["error"])
 
     @patch.object(server, "_github_request")
-    def test_request_copilot_review_helper_bot_login_variant(self, mock_gh):
-        # GitHub may return the Copilot reviewer under a bot-style login like
-        # ``copilot-pull-request-reviewer[bot]`` that does not equal the plain
-        # ``copilot`` constant. Identification must use the same
-        # case-insensitive substring rule as ``_dismiss_copilot_review``.
-        mock_gh.return_value = {
-            "number": 10,
-            "requested_reviewers": [
-                {"login": "Copilot-Pull-Request-Reviewer[bot]"},
-            ],
-        }
-        result = server._request_copilot_review("owner", "repo", 10)
-        self.assertTrue(result["ok"])
+    def test_request_copilot_review_helper_recognises_all_observed_logins(self, mock_gh):
+        # GitHub exposes Copilot under different login strings on different
+        # endpoints (verified on live PRs against github.com):
+        #   - ``copilot``                              (POST /requested_reviewers slug)
+        #   - ``Copilot``                              (GET /pulls/N/comments user.login)
+        #   - ``copilot-pull-request-reviewer[bot]``   (GET /pulls/N/reviews user.login)
+        # The verification helper must accept all three so success is
+        # detected regardless of which form appears in the response.
+        for login in ("copilot", "Copilot", "copilot-pull-request-reviewer[bot]"):
+            mock_gh.reset_mock()
+            mock_gh.return_value = {
+                "number": 10,
+                "requested_reviewers": [{"login": login}],
+            }
+            result = server._request_copilot_review("owner", "repo", 10)
+            self.assertTrue(result["ok"],
+                            f"Expected ok=True for login={login!r}, got {result}")
+
+    def test_is_copilot_login_rejects_unrelated_users(self):
+        # Sanity-check the helper directly: only logins whose lowercase form
+        # contains "copilot" count. Non-Copilot users must not be recognised.
+        self.assertFalse(server._is_copilot_login("ashesfall"))
+        self.assertFalse(server._is_copilot_login("dependabot[bot]"))
+        self.assertFalse(server._is_copilot_login(""))
+        self.assertFalse(server._is_copilot_login(None))  # type: ignore[arg-type]
+        self.assertTrue(server._is_copilot_login("copilot"))
+        self.assertTrue(server._is_copilot_login("Copilot"))
+        self.assertTrue(server._is_copilot_login("copilot-pull-request-reviewer[bot]"))
 
     @patch.object(server, "_github_request")
     def test_request_copilot_review_helper_github_error(self, mock_gh):
