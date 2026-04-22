@@ -315,6 +315,31 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         with self.assertRaises(PermissionError):
             server.workstream_submit_task(prompt="Task")
 
+    @patch.object(server, "_controller_post")
+    def test_submit_includes_model_and_effort(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-me"}
+        server.workstream_submit_task(
+            prompt="Task", model="opus", effort="high")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["model"], "opus")
+        self.assertEqual(payload["effort"], "high")
+
+    @patch.object(server, "_controller_post")
+    def test_submit_omits_model_and_effort_when_unset(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-me-2"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("model", payload)
+        self.assertNotIn("effort", payload)
+
+    def test_submit_rejects_invalid_effort(self):
+        _grant_all_scopes()
+        result = server.workstream_submit_task(prompt="Task", effort="nuclear")
+        self.assertFalse(result["ok"])
+        self.assertIn("Invalid effort", result["error"])
+
 
 class TestWorkstreamRegister(unittest.TestCase):
 
@@ -354,6 +379,23 @@ class TestWorkstreamRegister(unittest.TestCase):
         steps_text = " ".join(result["next_steps"])
         self.assertIn("repo_url", steps_text)
 
+    @patch.object(server, "_controller_post")
+    def test_register_includes_model_and_effort(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-me"}
+        server.workstream_register(
+            default_branch="feature/me", model="sonnet", effort="medium")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["model"], "sonnet")
+        self.assertEqual(payload["effort"], "medium")
+
+    def test_register_rejects_invalid_effort(self):
+        _grant_all_scopes()
+        result = server.workstream_register(
+            default_branch="feature/me", effort="extreme")
+        self.assertFalse(result["ok"])
+        self.assertIn("Invalid effort", result["error"])
+
 
 class TestWorkstreamUpdateConfig(unittest.TestCase):
 
@@ -390,6 +432,23 @@ class TestWorkstreamUpdateConfig(unittest.TestCase):
         )
         steps_text = " ".join(result["next_steps"])
         self.assertIn("pipeline", steps_text)
+
+    @patch.object(server, "_controller_post")
+    def test_update_includes_model_and_effort(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workstream_update_config(
+            workstream_id="ws-test", model="haiku", effort="low")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["model"], "haiku")
+        self.assertEqual(payload["effort"], "low")
+
+    def test_update_rejects_invalid_effort(self):
+        _grant_all_scopes()
+        result = server.workstream_update_config(
+            workstream_id="ws-test", effort="bogus")
+        self.assertFalse(result["ok"])
+        self.assertIn("Invalid effort", result["error"])
 
 
 # -----------------------------------------------------------------------
