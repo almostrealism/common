@@ -59,7 +59,7 @@ ar-compose
 ### Execution Flow
 
 ```
-AudioScene.getCells(output)
+AudioScene.runnerRealTime(output, bufferSize)
     |
     +-- [1] setup phase (OperationList)
     |       +-- AutomationManager.setup()
@@ -69,7 +69,7 @@ AudioScene.getCells(output)
     |
     +-- [2] getPatternCells()
     |       +-- getPatternChannel() for each channel
-    |           +-- PatternSystemManager.sum()  <-- RENDERS ALL PATTERNS
+    |           +-- PatternSystemManager.sum()  <-- INCREMENTAL PER BUFFER
     |           +-- ChannelSection.process()
     |       +-- MixdownManager.cells()  <-- Creates CellList
     |
@@ -271,26 +271,15 @@ scene.setLibraryRoot(new FileWaveDataProviderNode(new File("samples/")));
 ### Rendering Audio
 
 ```java
-// Get cells for output
-Cells cells = scene.getCells(output);
+// Build the realtime runner. One tick advances exactly bufferSize frames.
+int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+TemporalCellular runner = scene.runnerRealTime(output, bufferSize);
 
-// Create temporal runner
-TemporalCellular runner = scene.runner(output);
-
-// Execute setup + initial processing
 runner.setup().get().run();
-runner.tick().get().run();
-```
-
-### Buffered Playback
-
-```java
-// Buffer to output line
-CellList cells = scene.getCells(output);
-BufferedOutputScheduler scheduler = cells.buffer(outputLine);
-
-// Start real-time playback
-scheduler.start();
+Runnable tick = runner.tick().get();
+for (int i = 0; i < bufferCount; i++) {
+    tick.run();
+}
 ```
 
 ## Configuration
@@ -302,39 +291,34 @@ scheduler.start();
 MixdownManager.enableMixdown = false;      // Enable mixdown processing
 MixdownManager.enableReverb = true;        // Enable reverb effect
 MixdownManager.enableTransmission = true;  // Enable delay transmission
-
-// TemporalRunner
-TemporalRunner.enableOptimization = false; // Apply hardware optimization
-TemporalRunner.enableFlatten = true;       // Flatten operation lists
 ```
 
 ## AudioScene and Runner Lifecycle
 
 The `AudioScene` class is the central orchestration class for audio generation, managing patterns, effects, timing, and the audio cell pipeline.
 
-### AudioScene.runner() Method
+### AudioScene.runnerRealTime() Method
 
-The `runner()` method creates a `TemporalCellular` that wraps the audio generation pipeline for iterative execution.
+The `runnerRealTime()` method creates a `TemporalCellular` whose `tick()` runnable advances the pipeline by exactly `bufferSize` frames per call. Pattern audio is rendered incrementally per buffer.
 
 ```java
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.heredity.TemporalCellular;
 
-// Create AudioScene
-AudioScene scene = new AudioScene(animation, bpm, sampleRate);
+AudioScene<?> scene = new AudioScene<>(120.0, 6, 3, 44100);
 scene.loadSettings(settingsFile);
 
-// Create runner from the scene
-TemporalCellular runner = scene.runner(audioOutput);
+int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+TemporalCellular runner = scene.runnerRealTime(audioOutput, bufferSize);
 
-// The runner provides setup() and tick() methods
 // Setup: initializes patterns, effects, timing - runs ONCE
 runner.setup().get().run();
 
-// Tick: advances the audio pipeline by one frame
-// Call repeatedly for continuous audio generation
-for (int frame = 0; frame < totalFrames; frame++) {
-    runner.tick().get().run();
+// Tick: advances the audio pipeline by `bufferSize` frames
+Runnable tick = runner.tick().get();
+int bufferCount = (totalFrames + bufferSize - 1) / bufferSize;
+for (int i = 0; i < bufferCount; i++) {
+    tick.run();
 }
 
 // Reset: resets the temporal state for another run
@@ -346,15 +330,15 @@ runner.reset();
 ```java
 // Run only specific channels (e.g., drums and bass)
 List<Integer> channels = List.of(0, 1);
-TemporalCellular runner = scene.runner(audioOutput, channels);
+TemporalCellular runner = scene.runnerRealTime(audioOutput, channels, bufferSize);
 ```
 
 ### Runner Lifecycle Flow
 
 ```
-AudioScene.runner()
+AudioScene.runnerRealTime(output, bufferSize)
     │
-    ├── getCells(output) → Cells
+    ├── getCells(output, channels, bufferSize, frameSupplier, waveCellFrame) → Cells
     │       │
     │       ├── AudioScene.setup (OperationList)
     │       │       ├── AutomationManager.setup()
@@ -367,21 +351,17 @@ AudioScene.runner()
     │
     └── Returns TemporalCellular
             │
-            ├── setup() → OperationList (flattened)
-            │       ├── AudioScene setup ops
-            │       └── Cells setup ops
+            ├── setup() → cells.setup()
             │
-            ├── tick() → Cells.tick()
+            ├── tick() → prepareBatch + compiled per-frame loop + advance
             │
-            └── reset() → Cells.reset()
+            └── reset() → frame=0; cells.reset()
 ```
 
 ### Memory Considerations
 
-The runner allocates pattern destination buffers on first use:
-- One `PackedCollection` per channel per voicing (MAIN/WET) per stereo channel
-- Size: `min(standardDurationFrames, totalSamples)` frames
-- Destroyed when `AudioScene.destroy()` is called or duration changes
+Pattern destination buffers (`PatternAudioBuffer`) are sized to `bufferSize` frames
+each and are reused across ticks. Destroyed when `AudioScene.destroy()` is called.
 
 ## Audio Scene Optimization
 
@@ -466,7 +446,7 @@ System.out.println("Stable duration: " + score.getScore());
 ```
 
 The health computation:
-1. Runs the temporal cellular in incremental batches via `TemporalRunner`
+1. Runs the temporal cellular by repeatedly calling `target.tick()` (each call advances `getBatchSize()` frames)
 2. Monitors for audio clipping (values > 1.0)
 3. Monitors for silence (sustained zero output)
 4. Returns a score based on stable playback duration
@@ -489,7 +469,7 @@ AudioSceneOptimizer
     │
     └── StableDurationHealthComputation (fitness evaluation)
             │
-            └── TemporalRunner (incremental execution)
+            └── target.tick() loop (one call per batch)
                     │
                     └── AudioHealthScore (fitness result)
 ```
@@ -508,23 +488,14 @@ optimizer.setHealthListener((signature, score) ->
 Genome<PackedCollection> best = optimizer.getBestGenome();
 ```
 
-## Real-Time Audio Considerations
+## Real-Time Audio
 
-### Current Architecture Limitations
-
-The current architecture has a significant limitation for real-time audio:
-
-1. **Pattern Pre-rendering**: `PatternSystemManager.sum()` renders the entire arrangement during the setup phase
-2. **Fixed Destination Buffers**: Pattern destinations are pre-allocated for the full duration
-3. **No Incremental Rendering**: Patterns cannot be rendered incrementally
-
-### Path to Real-Time
-
-See `REALTIME_AUDIO_SCENE.md` for the proposed solution involving:
-
-1. Buffer-aware pattern rendering
-2. Moving pattern sum to tick phase
-3. N-frame batch processing in cells
+`runnerRealTime(output, channels, bufferSize)` is the only audio rendering path. Each
+tick of the returned `TemporalCellular` calls `PatternAudioBuffer.prepareBatch()` to
+render the next `bufferSize` frames of pattern audio, then runs the compiled per-frame
+effects loop, then advances the global frame position. There is no separate offline
+path — health evaluation, optimizer rendering, and tests all drive the same realtime
+runner, sized so that one tick equals one batch.
 
 ## Testing
 
@@ -542,6 +513,5 @@ mcp__ar-test-runner__start_test_run
 - [ar-music README](../music/README.md) - Pattern and note management
 - [ar-audio README](../../engine/audio/README.md) - Cell infrastructure
 - [Audio Library Documentation](../../engine/audio/docs/AUDIO_LIBRARY.md)
-- [REALTIME_AUDIO_SCENE.md](./REALTIME_AUDIO_SCENE.md) - Real-time proposal
 - [AR-Optimize Module](../../engine/optimize/README.md) - Generic optimization framework
-- [AR-Time Module](../../compute/time/README.md) - TemporalRunner and temporal operations
+- [AR-Time Module](../../compute/time/README.md) - Temporal operations

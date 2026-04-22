@@ -22,12 +22,14 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.optimize.AudioSceneOptimizer;
 import org.almostrealism.heredity.ProjectedGenome;
+import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
-import java.util.function.Supplier;
+
+import static org.junit.Assert.assertTrue;
 
 public class AudioSceneTest extends TestSuiteBase {
 	@Test(timeout = 600_000)
@@ -35,33 +37,37 @@ public class AudioSceneTest extends TestSuiteBase {
 		File samplesDir = new File(AudioSceneOptimizer.LIBRARY);
 		Assume.assumeTrue("Library directory required", samplesDir.exists());
 
-		// Settings for the scene
 		double bpm = 120.0;
 		int sourceCount = 4;
 		int delayLayerCount = 3;
 		int sampleRate = 44100;
+		int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+		int totalFrames = 30 * sampleRate;
 
-		// Create the scene
-		AudioScene scene = new AudioScene<>(bpm, sourceCount, delayLayerCount, sampleRate);
-
-		// Load a library of material to use for creating notes to use
-		// in the patterns that make up the arrangement
+		AudioScene<?> scene = new AudioScene<>(bpm, sourceCount, delayLayerCount, sampleRate);
 		scene.setLibrary(new AudioLibrary(samplesDir, sampleRate));
 
-		// Create a random parameterization of the scene
 		ProjectedGenome random = scene.getGenome().random();
 		scene.assignGenome(random);
 
-		// Create a destination for the output audio
-		WaveOutput output = new WaveOutput(() -> new File("scene.wav"), 24, sampleRate, -1, false);
+		File outputFile = new File("results/scene.wav");
+		outputFile.getParentFile().mkdirs();
+		WaveOutput output = new WaveOutput(() -> outputFile, 24, sampleRate, -1, false);
 
-		// Generate the media pipeline
-		Supplier<Runnable> process = scene.runner(new MultiChannelAudioOutput(output)).iter(30 * sampleRate);
+		TemporalCellular runner = scene.runnerRealTime(
+				new MultiChannelAudioOutput(output), bufferSize);
+		runner.setup().get().run();
 
-		// Compile and run the pipeline
-		process.get().run();
+		Runnable tick = runner.tick().get();
+		int bufferCount = (totalFrames + bufferSize - 1) / bufferSize;
+		for (int i = 0; i < bufferCount; i++) {
+			tick.run();
+		}
 
-		// Save the resulting audio
 		output.write().get().run();
+
+		assertTrue("Output WAV should exist", outputFile.exists());
+		assertTrue("Output WAV should not be empty (header is 44 bytes)",
+				outputFile.length() > 1024);
 	}
 }

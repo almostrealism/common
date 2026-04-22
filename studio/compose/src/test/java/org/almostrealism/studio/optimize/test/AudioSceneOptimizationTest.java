@@ -19,7 +19,6 @@ package org.almostrealism.studio.optimize.test;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
-import org.almostrealism.audio.Cells;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.music.data.ChannelInfo;
@@ -30,8 +29,8 @@ import org.almostrealism.studio.optimize.AudioSceneOptimizer;
 import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.io.SystemUtils;
-import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
@@ -40,7 +39,8 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.stream.IntStream;
+
+import static org.junit.Assert.assertTrue;
 
 public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFeatures {
 	public static final boolean enableDelay = true;
@@ -102,7 +102,7 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 
 	@Test(timeout = 300_000)
 	public void pattern() {
-		AudioScene pattern = pattern(2, 2, true);
+		AudioScene<?> pattern = pattern(2, 2, true);
 		pattern.assignGenome(pattern.getGenome().random());
 
 		OperationList setup = new OperationList();
@@ -110,12 +110,27 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 
 		CellList cells = pattern.getPatternChannel(new ChannelInfo(0, ChannelInfo.Voicing.MAIN, null), pattern.getTotalSamples(), () -> 0, setup);
 		cells.addSetup(() -> setup);
-		cells.o(i -> new File("results/pattern-test.wav")).sec(20).get().run();
+		File outFile = new File("results/pattern-test.wav");
+		outFile.getParentFile().mkdirs();
+		cells.o(i -> outFile).sec(20).get().run();
+
+		assertTrue("Pattern channel WAV should exist", outFile.exists());
+		assertTrue("Pattern channel WAV should not be empty", outFile.length() > 1024);
 	}
 
-	public Cells randomOrgan(AudioScene<?> scene, MultiChannelAudioOutput output) {
+	public TemporalCellular randomOrgan(AudioScene<?> scene, MultiChannelAudioOutput output, int bufferSize) {
 		scene.assignGenome(scene.getGenome().random());
-		return scene.getCells(output);
+		return scene.runnerRealTime(output, bufferSize);
+	}
+
+	private static void render(TemporalCellular runner, int bufferSize, double seconds) {
+		runner.setup().get().run();
+		Runnable tick = runner.tick().get();
+		int totalFrames = (int) (seconds * OutputLine.sampleRate);
+		int bufferCount = (totalFrames + bufferSize - 1) / bufferSize;
+		for (int i = 0; i < bufferCount; i++) {
+			tick.run();
+		}
 	}
 
 	@Test(timeout = 180_000)
@@ -125,36 +140,54 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 		MixdownManager.enableEfxFilters = false;
 		MixdownManager.enableEfx = false;
 
-		WaveOutput output = new WaveOutput(new File("results/genetic-factory-test.wav"));
-		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(output));
-		organ.sec(6).get().run();
+		File outFile = new File("results/genetic-factory-test.wav");
+		outFile.getParentFile().mkdirs();
+		WaveOutput output = new WaveOutput(outFile);
+		int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+		TemporalCellular runner = randomOrgan(pattern(2, 2),
+				new MultiChannelAudioOutput(output), bufferSize);
+		render(runner, bufferSize, 6.0);
 		output.write().get().run();
+
+		assertTrue("Output WAV should exist", outFile.exists());
+		assertTrue("Output WAV should not be empty", outFile.length() > 1024);
 	}
 
 	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void many() {
-		WaveOutput out = new WaveOutput(new File("results/organ-factory-many-test.wav"));
-		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));
+		File outFile = new File("results/organ-factory-many-test.wav");
+		outFile.getParentFile().mkdirs();
+		WaveOutput out = new WaveOutput(outFile);
+		int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+		TemporalCellular runner = randomOrgan(pattern(2, 2),
+				new MultiChannelAudioOutput(out), bufferSize);
 
-		Runnable run = new TemporalRunner(organ, 8 * OutputLine.sampleRate).get();
-
-		IntStream.range(0, 10).forEach(i -> {
-			run.run();
+		for (int i = 0; i < 10; i++) {
+			render(runner, bufferSize, 8.0);
 			out.write().get().run();
-			organ.reset();
-		});
+			runner.reset();
+		}
+
+		assertTrue("Output WAV should exist after multiple renders", outFile.exists());
+		assertTrue("Output WAV should not be empty", outFile.length() > 1024);
 	}
 
 	@Test(timeout = 180_000)
 	@TestDepth(1)
 	public void random() {
-		WaveOutput out = new WaveOutput(new File("factory-rand-test.wav"));
-		Cells organ = randomOrgan(pattern(2, 2), new MultiChannelAudioOutput(out));
-		organ.reset();
+		File outFile = new File("results/factory-rand-test.wav");
+		outFile.getParentFile().mkdirs();
+		WaveOutput out = new WaveOutput(outFile);
+		int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+		TemporalCellular runner = randomOrgan(pattern(2, 2),
+				new MultiChannelAudioOutput(out), bufferSize);
+		runner.reset();
 
-		Runnable organRun = new TemporalRunner(organ, 8 * OutputLine.sampleRate).get();
-		organRun.run();
+		render(runner, bufferSize, 8.0);
 		out.write().get().run();
+
+		assertTrue("Output WAV should exist", outFile.exists());
+		assertTrue("Output WAV should not be empty", outFile.length() > 1024);
 	}
 }

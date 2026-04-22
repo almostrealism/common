@@ -17,19 +17,15 @@
 package org.almostrealism.studio.optimize.test;
 
 import org.almostrealism.studio.AudioScene;
-import org.almostrealism.audio.CellList;
-import org.almostrealism.audio.Cells;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.HealthComputationAdapter;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.health.SilenceDurationHealthComputation;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
-import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.studio.optimize.AudioSceneOptimizer;
 import org.almostrealism.studio.optimize.AudioScenePopulation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.CellAdapter;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
@@ -59,34 +55,6 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 	}
 
 	@Test(timeout = 600_000)
-	public void cells() {
-		WaveOutput output1 = new WaveOutput(new File("results/health-test-firstcell.wav"));
-		WaveOutput output2 = new WaveOutput(new File("results/health-test-lastcell.wav"));
-		// WaveOutput output3 = new WaveOutput(new File("results/health-test-firstcell-processed.wav"));
-		// WaveOutput output4 = new WaveOutput(new File("results/health-test-lastcell-processed.wav"));
-
-		CellList cells = (CellList) randomOrgan(pattern(2, 2), new MultiChannelAudioOutput());
-		((CellAdapter) cells.get(0)).setMeter(output1.getWriter(0));
-		((CellAdapter) cells.get(1)).setMeter(output2.getWriter(0));
-
-		cells.setup().get().run();
-
-		Runnable tick = cells.tick().get();
-
-		IntStream.range(0, 5 * OutputLine.sampleRate).forEach(i -> {
-			tick.run();
-			if ((i + 1) % 1000 == 0) log("StableDurationHealthComputationTest: " + (i + 1) + " iterations");
-		});
-
-		log("StableDurationHealthComputationTest: Writing WAVs...");
-		output1.write().get().run();
-		output2.write().get().run();
-		// output3.write().get().run();
-		// output4.write().get().run();
-		log("Done");
-	}
-
-	@Test(timeout = 600_000)
 	@TestDepth(1)
 	public void cellsPatternDataContext() {
 		AtomicInteger index = new AtomicInteger();
@@ -96,7 +64,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 			health.setMaxDuration(8);
 			health.setOutputFile(() -> "results/cells-pattern-dc-test" + index.incrementAndGet() + ".wav");
 
-			Cells organ = randomOrgan(pattern(2, 2), health.getOutput());
+			TemporalCellular organ = randomOrgan(pattern(2, 2), health.getOutput(), health.getBatchSize());
 			organ.reset();
 			health.setTarget(organ);
 			health.computeHealth();
@@ -125,7 +93,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		AudioScene<?> pattern = pattern(channels, 2, true);
 		pattern.assignGenome(pattern.getGenome().random());
 
-		Cells organ = randomOrgan(pattern, health.getOutput());
+		TemporalCellular organ = randomOrgan(pattern, health.getOutput(), health.getBatchSize());
 
 		health.setTarget(organ);
 		health.computeHealth();
@@ -140,7 +108,7 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		StableDurationHealthComputation health = new StableDurationHealthComputation(5, false);
 		health.setOutputFile("results/small-cells-pattern-test.wav");
 
-		Cells cells = randomOrgan(pattern(5, 3), health.getOutput());
+		TemporalCellular cells = randomOrgan(pattern(5, 3), health.getOutput(), health.getBatchSize());
 
 		cells.reset();
 		health.setTarget(cells);
