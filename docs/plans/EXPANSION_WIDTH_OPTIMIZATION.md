@@ -873,3 +873,237 @@ This fix is independent of the expansion-width work and should be done as a
 separate commit targeting `SkyTntMidi.java` only. No changes to
 `ExpansionWidthTargetOptimization`, `MemoryDataCopy`, or any strategy class are
 needed.
+
+---
+
+## Diagnosis: MoonbeamComponent + MoonbeamFineTuning Timeouts
+
+Run date: 2026-04-22. Investigation of two CI test failures reported as
+`TestTimedOut`. Investigation method: temporarily raised both test timeouts
+(10 s → 120 s; 600 s → 1800 s), re-ran both tests via the MCP test runner,
+captured output, then restored original timeout values before committing.
+
+---
+
+### Test 1: `MoonbeamComponentTest.testSingleCompoundEmbedding` (line 119)
+
+**Original timeout:** `@Test(timeout = 10_000)` (10 seconds)
+
+#### What the test does
+
+Creates a `CompoundMidiEmbedding` at real model dimensions (`REAL_CONFIG` =
+`MoonbeamConfig.defaultConfig()`: `hiddenSize=1920`, `embeddingDim=320`) with
+zero-initialized weights, then calls `embedding.embed(token).evaluate()` on a
+single `MidiCompoundToken`. The `embed()` call builds 6 parallel FME
+(`FundamentalMusicEmbedding`) producers — one per token attribute — and
+concatenates them with `concat(attrEmbs).reshape(shape(1920))`. The
+`.evaluate()` call triggers lazy kernel compilation and execution.
+
+#### Stack trace / thread state at timeout
+
+Not captured from CI (JUnit cuts the thread at 10 s before any error can be
+reported). The test runner terminates with `TestTimedOut`.
+
+#### Does it complete with a raised timeout?
+
+**Yes.** With `@Test(timeout = 120_000)` and runner timeout 5 minutes, the
+test completed successfully:
+
+- `testSingleFmeEmbed` (single FME at dim=320): **1155 ms** (compute: 1154 ms)
+- `testSingleCompoundEmbedding` (6 FME concat at hidden=1920): **6178 ms** (compute: 5963 ms)
+
+Both completed with exit code 0, 0 failures.
+
+#### Git history — when was the timeout set?
+
+Commit `eef6afaa2` ("Rewrite MoonbeamComponentTest to use real model
+dimensions with random weights") changed the test in two ways simultaneously:
+
+1. Changed `CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config)`
+   (synthetic `testConfig()` dims) → `new CompoundMidiEmbedding(REAL_CONFIG)`
+   (real dims: hiddenSize=1920)
+2. Changed `@Test(timeout = 30_000)` → `@Test(timeout = 10_000)` — the timeout
+   was **LOWERED from 30 s to 10 s** at the same moment the computation was
+   scaled up to real dimensions.
+
+The timeout of 10 s was set with real-dimension computation in mind but was
+apparently too optimistic for CI hardware. On the sandbox machine (ARM aarch64
+Ubuntu 22.04 Linux 6.12) the test takes ~6.2 s. On the CI runner (which may
+have slower CPUs or more resource contention) it exceeds 10 s.
+
+#### Why does compound embedding take 6 s vs 1.2 s for a single FME?
+
+`FundamentalMusicEmbedding.computeInvFreqs()` returns a **lazy**
+`CollectionProducer`:
+```java
+return integers(0, dim / 2)
+        .multiply(-2.0 * Math.log(base) / dim)
+        .exp();
+```
+
+This was restored from a simpler `c(shape, double[])` constant by commit
+`c892f0e95` ("Restored CollectionProducer use after misbehavior from coding
+agent") with an explicit comment forbidding reversion.
+
+Each `FundamentalMusicEmbedding.encodeSinusoidal(value)` builds:
+```
+concat(1, sin(invFreqs*biasedValue), cos(invFreqs*biasedValue)).reshape(dim)
+```
+where `invFreqs` is the lazy chain above. This 2-way `concat` is then used as
+the input to `matmul(linearWeight, sincos)` — a (320×320)×(320) matmul. When
+compiled, the matmul kernel inlines `sincos[j]` at each of the 320 inner
+reduction positions, emitting a conditional ternary (`j < 160 ? sin(...) :
+cos(...)`) containing `exp(j * factor)` for each j. This produces 320 unique
+`exp`+`sin`/`cos` call sites in the kernel expression.
+
+For 6 FME embeddings concatenated with `concat(attrEmbs)`, the outer concat
+also generates conditional branching. The net result is a more complex kernel
+expression than a single FME — which explains the ~5× ratio (6178 / 1155 ≈ 5.3).
+
+**This is not an explosive blow-up like the RoPE case (no megabyte-scale
+kernel generated). The kernel compiles successfully, just slowly — ~6 s of
+compilation overhead on the investigation machine.**
+
+#### Judgment
+
+**Flaky timeout — genuinely completes, but the timeout (10 s) is too tight for
+CI hardware.** The test takes ~6.2 s on the investigation machine (~62% of the
+budget). CI hardware running more slowly can push this past 10 s. The test was
+completing at the original 30 s limit before `eef6afaa2` lowered it.
+
+The lazy `invFreqs` computation contributes real compilation overhead but does
+NOT cause a cc1 OOM-kill or infinite hang. Raising the timeout back to 30 s
+(or 60 s for safety) would eliminate the flakiness.
+
+#### Proposed next step
+
+Raise `@Test(timeout = 10_000)` back to `@Test(timeout = 30_000)` on
+`testSingleCompoundEmbedding`, restoring the value that existed before
+`eef6afaa2`. This is a one-line change. No production code changes are needed.
+The `invFreqs` lazy computation is intentional (per `c892f0e95`) and should
+not be reverted.
+
+---
+
+### Test 2: `MoonbeamFineTuningTest.testTransformerTrainingWithMSE` (line 284)
+
+**Original timeout:** `@Test(timeout = 600000)` (10 minutes)
+
+#### What the test does
+
+Uses `MoonbeamConfig.testConfig()` (tiny dims: `hiddenSize=48`,
+`intermediateSize=144`, `numLayers=2`, `headDim=8`, `maxSeqLen=128`). Builds a
+2-layer transformer via `buildTrainableTransformer()` using `HeadGroupConfig`
+with 6 `ropeThetas` values. Compiles the model. Runs `compiled.forward()` to
+get an initial loss value (line 279), then calls `optimizer.optimize(2)` for
+2 training epochs (line 284).
+
+#### Actual stack trace at failure
+
+With `@Test(timeout = 1800000)` (30 minutes), the test fails after
+**200.824 seconds** (3.35 minutes) with:
+
+```
+gcc: fatal error: Killed signal terminated program cc1
+
+org.almostrealism.hardware.HardwareException: Native compiler failure (1)
+  on org.almostrealism.generated.GeneratedOperation35
+    at NativeCompiler.lambda$runner$0(NativeCompiler.java:506)
+    at NativeCompiler.compile(NativeCompiler.java:441)
+    at NativeComputeContext.deliver(NativeComputeContext.java:171)
+    at ScopeInstructionsManager.getInstructionSet(ScopeInstructionsManager.java:347)
+    at AcceleratedOperation.load(AcceleratedOperation.java:379)
+    at AcceleratedComputationOperation.load(AcceleratedComputationOperation.java:504)
+    at CollectionProducerComputation.get(CollectionProducerComputation.java:225)
+    at HardwareEvaluable.evaluate(HardwareEvaluable.java:328)
+    at ReshapeProducer.lambda$get$3(ReshapeProducer.java:635)
+    at HardwareEvaluable.evaluate(HardwareEvaluable.java:328)
+    at MemoryDataCopy.lambda$get$2(MemoryDataCopy.java:235)
+    at OperationList$Runner.run(OperationList.java:1285)
+    at CompiledModel.forward(CompiledModel.java:196)
+    at MoonbeamFineTuningTest.testTransformerTrainingWithMSE(MoonbeamFineTuningTest.java:279)
+```
+
+**The failure is at line 279** — `PackedCollection firstOutput = compiled.forward(firstInput)` —
+the very first forward pass, BEFORE training even starts. The training loop
+at line 284 (`optimizer.optimize(2)`) is never reached.
+
+#### Does it complete with a raised timeout?
+
+**No.** Even with a 30-minute timeout, the test fails in 3.35 minutes. `cc1`
+is OOM-killed while compiling `GeneratedOperation35`. No amount of additional
+time will allow the test to pass — the kernel itself is too large to compile.
+
+#### Root cause
+
+`buildTrainableTransformer` (lines 456–499) calls `transformer(...)` for each
+of 2 layers, passing `HeadGroupConfig` instances that are constructed from
+`config.ropeThetas` (6 theta values, one per head group). Each `HeadGroupConfig`
+holds a reference to a `freqCis` producer computed by
+`RotationFeatures.computeRopeFreqs(theta, headDim, maxSeqLen)`.
+
+Since commit `99bc5d0b8` ("Adjusted RotationFeatures methods to return
+CollectionProducer"), `computeRopeFreqs` returns a **lazy** `CollectionProducer`:
+```
+concat_dim2(
+    reshape(cos(matmul(positions, invFreq))),
+    reshape(sin(matmul(positions, invFreq))))
+```
+
+When the transformer attention layer uses these 6 lazy `freqCis` producers as
+the collection argument of a gather (`c(shape, freqCis, cosIdx)` /
+`c(shape, freqCis, sinIdx)`), each gather inlines the full lazy `freqCis`
+expression at every output element. Wrapped in `mraRopeRotation`'s
+`greaterThan` mask and summed over 6 head groups, this produces a kernel whose
+expression size grows combinatorially. The generated `GeneratedOperation35.c`
+contains an expression of the same class as the 44 MB single-line kernel
+documented in the §Root Cause section above — and `cc1` is OOM-killed while
+compiling it.
+
+This is **identical to the `mraRopeRotationAtMoonbeamScale` reproducer
+failure** documented in §"Post-ReshapeProducer-fix Diagnosis". The
+`testTransformerTrainingWithMSE` test exercises the same code path at test
+dimensions — the fact that testConfig() uses small dims (headDim=8 rather than
+160) reduces the SHAPE of `freqCis` but does not change the STRUCTURE of the
+expression graph, which is what drives the kernel size.
+
+**The 10-minute timeout was masking this failure.** In prior CI runs, JUnit
+killed the test thread at 10 minutes. With the timeout raised, the underlying
+`HardwareException` surfaces instead. The reports of `TestTimedOut` for this
+test were misleading — the real failure mode is `Native compiler failure (1)`.
+
+#### Git history — what recent changes could explain new slowness?
+
+Commits `503a4e365c` (MemoryDataCopy compatible with Process optimization) and
+`6162fa1e60` (CodeFeatures MemoryDataCopy fix) appear in the stack trace path
+(`MemoryDataCopy.lambda$get$2` at line 235). These commits changed how
+`MemoryDataCopy` exposes its producer trees to the optimization cascade. They
+are not the root cause of the kernel explosion (which originates from
+`computeRopeFreqs` returning a lazy producer since `99bc5d0b8`), but they may
+affect which path the cascade takes and thus which kernel gets compiled first
+on the initial forward pass.
+
+#### Judgment
+
+**Masked failure — the test is NOT completing and NEVER will under the current
+codebase.** The real failure is `HardwareException: Native compiler failure (1)
+on GeneratedOperation35` caused by the same lazy-freqCis → gather → cc1-OOM
+pattern described throughout this document. The 10-minute timeout fires first
+in CI, giving a misleading `TestTimedOut` report. With the timeout raised to
+30 minutes, the test still fails in 3.35 minutes.
+
+This test is blocked by the same root cause as `mraRopeRotationAtMoonbeamScale`
+and `SkyTntMidiTest.testGenerationFromBos`. The fix path is one of:
+- Option B from the §"Post-ReshapeProducer-fix Diagnosis" section (add
+  child-own-ew check to `ExpansionWidthTargetOptimization`)
+- Or materialise `freqCis` to a `PackedCollection` buffer before it enters the
+  gather, as the `mraRopeRotation` workaround does
+
+#### Proposed next step
+
+No timeout adjustment will help. The required work is the expansion-width
+strategy fix described in §"Proposed next step" (Option B). Specifically:
+`ExpansionWidthTargetOptimization` must be extended to trigger when any direct
+child's `getExpansionWidth() > 1`, independently of the accumulated context
+`ew` and `depth` thresholds. Until that is done, any transformer test that
+uses `mraRopeRotation` with lazy `freqCis` will fail with cc1 OOM-kill.
