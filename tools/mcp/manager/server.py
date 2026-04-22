@@ -1152,18 +1152,17 @@ def workstream_get_job(job_id: str) -> dict:
 
 
 VALID_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
-"""Effort/thinking levels accepted by the Claude Code ``--effort`` flag.
-
-Mirrors :class:`io.flowtree.jobs.ClaudeCodeJob#VALID_EFFORT_LEVELS`. Kept
-in sync manually; the Java side is the source of truth and rejects unknown
-values, but pre-validating here gives the caller a clearer error and keeps
-us from issuing a doomed HTTP request.
-"""
 
 
 def _check_effort(effort: str) -> Optional[dict]:
     """Return an error dict if ``effort`` is non-empty and not a recognised
     Claude Code effort level, or ``None`` when valid (or empty).
+
+    Accepted values mirror
+    :class:`io.flowtree.jobs.ClaudeCodeJob#VALID_EFFORT_LEVELS`. This list is
+    kept in sync manually; the Java side is the source of truth and rejects
+    unknown values, but pre-validating here gives the caller a clearer error
+    and avoids issuing a doomed HTTP request.
     """
     if effort and effort not in VALID_EFFORT_LEVELS:
         return {
