@@ -151,31 +151,23 @@ class TestWorkstreamGetStatus(unittest.TestCase):
     @patch.object(server, "_controller_get")
     def test_returns_stats(self, mock_get):
         _grant_all_scopes()
-        # workstream_get_status fetches stats AND recent jobs as a convenience;
-        # both calls are expected.
-        mock_get.side_effect = [
-            {"thisWeek": {"jobs": 5}, "lastWeek": {"jobs": 3}},
-            [],  # recent jobs list
-        ]
+        mock_get.return_value = {"thisWeek": {"jobs": 5}, "lastWeek": {"jobs": 3}}
         result = server.workstream_get_status(workstream_id="ws-test")
         paths = [c.args[0] for c in mock_get.call_args_list]
         self.assertTrue(
             any("workstream=ws-test" in p and "period=weekly" in p for p in paths),
             f"Expected a stats call; got {paths}")
-        self.assertTrue(
-            any("/api/workstreams/ws-test/jobs" in p for p in paths),
-            f"Expected a recent-jobs call; got {paths}")
         self.assertEqual(result["workstream_id"], "ws-test")
         self.assertIn("next_steps", result)
 
     @patch.object(server, "_controller_get")
-    def test_custom_period(self, mock_get):
+    def test_rejects_unsupported_period(self, mock_get):
         _grant_all_scopes()
-        mock_get.side_effect = [{}, []]
-        server.workstream_get_status(workstream_id="ws-test", period="daily")
-        paths = [c.args[0] for c in mock_get.call_args_list]
-        self.assertTrue(any("period=daily" in p for p in paths),
-                        f"Expected a daily-period stats call; got {paths}")
+        result = server.workstream_get_status(
+            workstream_id="ws-test", period="daily")
+        self.assertFalse(result.get("ok"))
+        self.assertIn("weekly", result.get("error", ""))
+        mock_get.assert_not_called()
 
     def test_rejects_long_workstream_id(self):
         _grant_all_scopes()
@@ -757,7 +749,7 @@ class TestMemoryBranchContext(unittest.TestCase):
                     "message": "Fix bug\nDetails"}},
             ]
         }
-        result = server.memory_branch_context(
+        result = server.workstream_context(
             repo_url="https://github.com/org/repo",
             branch="feature/x",
             include_messages=False,
@@ -771,13 +763,13 @@ class TestMemoryBranchContext(unittest.TestCase):
     @patch.object(server, "_get_memory_client", return_value=None)
     def test_memory_unavailable(self, _):
         _grant_all_scopes()
-        result = server.memory_branch_context(
+        result = server.workstream_context(
             repo_url="https://github.com/org/repo", branch="feature/x")
         self.assertFalse(result["ok"])
 
     def test_requires_repo_or_workstream(self):
         _grant_all_scopes()
-        result = server.memory_branch_context()
+        result = server.workstream_context()
         self.assertFalse(result["ok"])
 
     @patch.object(server, "_github_request")
@@ -794,7 +786,7 @@ class TestMemoryBranchContext(unittest.TestCase):
         ]
         mock_client_fn.return_value = client
         mock_gh.return_value = {"ok": False, "error": "not found"}
-        result = server.memory_branch_context(
+        result = server.workstream_context(
             repo_url="https://github.com/org/repo",
             branch="feature/x",
             namespace="default",
@@ -821,7 +813,7 @@ class TestMemoryBranchContext(unittest.TestCase):
         ]
         mock_client_fn.return_value = client
         mock_gh.return_value = {"ok": False, "error": "not found"}
-        result = server.memory_branch_context(
+        result = server.workstream_context(
             repo_url="https://github.com/org/repo",
             branch="feature/x",
         )
@@ -839,7 +831,7 @@ class TestMemoryBranchContext(unittest.TestCase):
         client = MagicMock()
         client.search_by_branch.return_value = []
         mock_client_fn.return_value = client
-        result = server.memory_branch_context(
+        result = server.workstream_context(
             repo_url="https://github.com/org/repo",
             branch="feature/x",
             include_commits=False,
@@ -851,7 +843,7 @@ class TestMemoryBranchContext(unittest.TestCase):
     @patch.object(server, "_controller_get")
     @patch.object(server, "_get_memory_client")
     def test_jobs_timeline_compact(self, mock_client_fn, mock_controller_get, mock_gh):
-        # memory_branch_context must include a compact jobs timeline when a
+        # workstream_context must include a compact jobs timeline when a
         # workstream is provided — just enough fields to situate memories,
         # NOT the operational payload (no costUsd, no targetBranch).
         _grant_all_scopes()
@@ -859,7 +851,7 @@ class TestMemoryBranchContext(unittest.TestCase):
         client.search_by_branch.return_value = []
         mock_client_fn.return_value = client
         mock_gh.return_value = {"ok": False, "error": "not found"}
-        # _find_workstream() is invoked twice inside memory_branch_context
+        # _find_workstream() is invoked twice inside workstream_context
         # (once via _resolve_branch_context, once in the commit block),
         # followed by the jobs fetch. Return the workstream list for the
         # first two calls and the jobs list for the third.
@@ -883,7 +875,7 @@ class TestMemoryBranchContext(unittest.TestCase):
                 return jobs_list
             return ws_list
         mock_controller_get.side_effect = controller_side_effect
-        result = server.memory_branch_context(workstream_id="w-1")
+        result = server.workstream_context(workstream_id="w-1")
         self.assertTrue(result["ok"])
         self.assertIn("jobs", result)
         self.assertEqual(2, len(result["jobs"]))
@@ -921,7 +913,7 @@ class TestMemoryBranchContext(unittest.TestCase):
                 return []
             return ws_list
         mock_controller_get.side_effect = controller_side_effect
-        result = server.memory_branch_context(workstream_id="w-1")
+        result = server.workstream_context(workstream_id="w-1")
         self.assertTrue(result["ok"])
         self.assertIn("jobs", result)
         self.assertEqual([], result["jobs"])
@@ -951,14 +943,14 @@ class TestMemoryBranchContext(unittest.TestCase):
 
         # Negative → no jobs fetch, no /jobs path seen, jobs field omitted.
         mock_controller_get.side_effect = controller_side_effect
-        result = server.memory_branch_context(workstream_id="w-1", job_limit=-5)
+        result = server.workstream_context(workstream_id="w-1", job_limit=-5)
         self.assertNotIn("jobs", result)
         self.assertFalse(any("/jobs" in p for p in calls))
 
         # Stringified int → coerced, urlencoded query string.
         calls.clear()
         mock_controller_get.side_effect = controller_side_effect
-        server.memory_branch_context(workstream_id="w-1", job_limit="3")
+        server.workstream_context(workstream_id="w-1", job_limit="3")
         jobs_paths = [p for p in calls if "/jobs" in p]
         self.assertEqual(1, len(jobs_paths))
         self.assertIn("limit=3", jobs_paths[0])
@@ -982,7 +974,7 @@ class TestMemoryBranchContext(unittest.TestCase):
                 self.fail("jobs endpoint must not be called when job_limit=0")
             return ws_list
         mock_controller_get.side_effect = controller_side_effect
-        result = server.memory_branch_context(workstream_id="w-1", job_limit=0)
+        result = server.workstream_context(workstream_id="w-1", job_limit=0)
         self.assertTrue(result["ok"])
         self.assertNotIn("jobs", result)
 
@@ -1263,7 +1255,6 @@ class TestToolRegistration(unittest.TestCase):
             "controller_update_config",
             "workstream_list",
             "workstream_get_status",
-            "workstream_list_jobs",
             "workstream_get_job",
             "workstream_submit_task",
             "workstream_register",
@@ -1273,7 +1264,7 @@ class TestToolRegistration(unittest.TestCase):
             "project_commit_plan",
             "project_read_plan",
             "memory_recall",
-            "memory_branch_context",
+            "workstream_context",
             "memory_store",
             "send_message",
             "github_pr_find",
@@ -1534,6 +1525,21 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertFalse(result["ok"])
         self.assertIn("was not added", result["error"])
+
+    @patch.object(server, "_github_request")
+    def test_request_copilot_review_helper_bot_login_variant(self, mock_gh):
+        # GitHub may return the Copilot reviewer under a bot-style login like
+        # ``copilot-pull-request-reviewer[bot]`` that does not equal the plain
+        # ``copilot`` constant. Identification must use the same
+        # case-insensitive substring rule as ``_dismiss_copilot_review``.
+        mock_gh.return_value = {
+            "number": 10,
+            "requested_reviewers": [
+                {"login": "Copilot-Pull-Request-Reviewer[bot]"},
+            ],
+        }
+        result = server._request_copilot_review("owner", "repo", 10)
+        self.assertTrue(result["ok"])
 
     @patch.object(server, "_github_request")
     def test_request_copilot_review_helper_github_error(self, mock_gh):

@@ -63,7 +63,7 @@
 #
 # When these are set, every submitted job receives a temporary auth
 # token valid for 12 hours that grants access to ar-manager's tools:
-#   send_message, memory_recall, memory_store, memory_branch_context,
+#   send_message, memory_recall, memory_store, workstream_context,
 #   github_pr_find, github_pr_review_comments, github_pr_conversation,
 #   github_pr_reply, github_list_open_prs, github_create_pr,
 #   workstream_get_status, controller_health
