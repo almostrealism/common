@@ -216,33 +216,32 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	/**
-	 * Returns the factor by which inlining this process's emitted expression
-	 * multiplies the consumer's expression size per use-site.
+	 * Returns the factor by which inlining this process into a consumer
+	 * multiplies the total output per use-site.
 	 *
-	 * <p>For most element-wise producers the emitted expression is a single
-	 * pointwise formula and this factor is {@code 1}. For producers whose
-	 * {@code getValueAt} emits a structure that carries multiple alternatives
-	 * or iterations in the expression tree, this factor should reflect the
-	 * branching or unrolling width:</p>
+	 * <p>For most element-wise processes the per-use-site contribution is a
+	 * single pointwise value and this factor is {@code 1}. For processes whose
+	 * output carries multiple alternatives or repeated terms, this factor
+	 * should reflect the branching or unrolling width:</p>
 	 *
 	 * <ul>
 	 *   <li>{@code concat(a, b, ...)} &rarr; number of concatenated pieces,
-	 *       because the emitted {@code Conditional} retains each branch.</li>
+	 *       because both branches are retained at each use-site.</li>
 	 *   <li>{@code greaterThan} / {@code lessThan} &rarr; {@code 2} (both
-	 *       ternary branches materialise in the expression).</li>
+	 *       branches materialise at each use-site).</li>
 	 *   <li>Reductions (matmul, dot-product, sum) &rarr; the reduction width,
-	 *       because fully inlined they emit one term per inner-dim position.</li>
+	 *       because fully inlined they contribute one term per inner-dim position.</li>
 	 *   <li>Buffer references &rarr; {@code 1}.</li>
 	 * </ul>
 	 *
 	 * <p>Optimization strategies use this value together with depth and
 	 * parallelism accumulators to decide when isolating a subtree would
-	 * prevent a catastrophic expression blow-up at compile time.</p>
+	 * prevent catastrophic output size growth at compile time.</p>
 	 *
 	 * <p>The default returns {@code 1} (no expansion). Subclasses whose
-	 * emitted expression has per-use-site width greater than one <strong>must</strong>
-	 * override this method with a value that approximates the emitted
-	 * width. The value does not have to be exact &mdash; a conservative
+	 * per-use-site expansion width is greater than one <strong>must</strong>
+	 * override this method with a value that approximates the width.
+	 * The value does not have to be exact &mdash; a conservative
 	 * upper bound is acceptable.</p>
 	 *
 	 * @return the expansion width of this process, at least {@code 1}
