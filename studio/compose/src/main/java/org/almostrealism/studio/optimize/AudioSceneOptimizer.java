@@ -147,7 +147,8 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 						hc.setWaveDetailsProcessor(detailsProcessor);
 
 						if (enableVerbose) log("Initializing AudioScenePopulation");
-						population.init(population.getGenomes().get(0), hc.getOutput());
+						population.init(population.getGenomes().get(0), hc.getOutput(),
+								null, ((StableDurationHealthComputation) hc).getBatchSize());
 
 						if (enableVerbose) {
 							log("AudioScenePopulation initialized (getCells duration = " +

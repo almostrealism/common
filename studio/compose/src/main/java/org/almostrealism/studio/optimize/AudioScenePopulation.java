@@ -100,12 +100,13 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 */
 	public void init(Genome<PackedCollection> templateGenome,
 					 MultiChannelAudioOutput output) {
-		init(templateGenome, output, null);
+		init(templateGenome, output, null, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE);
 	}
 
 	/**
 	 * Initializes the temporal cell pipeline using the specified template genome, audio output,
-	 * and an optional list of channel indices to include in rendering.
+	 * and an optional list of channel indices to include in rendering. Uses the default
+	 * realtime buffer size.
 	 *
 	 * @param templateGenome the genome used to configure the scene during initialization
 	 * @param output         the multi-channel audio output that receives rendered audio
@@ -113,9 +114,25 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 */
 	public void init(Genome<PackedCollection> templateGenome,
 					 MultiChannelAudioOutput output, List<Integer> channels) {
+		init(templateGenome, output, channels, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE);
+	}
+
+	/**
+	 * Initializes the temporal cell pipeline using the specified template genome, audio output,
+	 * an optional list of channel indices, and an explicit per-tick buffer size. Each call to
+	 * {@code temporal.tick().get().run()} will advance exactly {@code bufferSize} frames, so
+	 * downstream consumers (e.g. {@code StableDurationHealthComputation}) must use this same
+	 * value as their iteration size.
+	 *
+	 * @param templateGenome the genome used to configure the scene during initialization
+	 * @param output         the multi-channel audio output that receives rendered audio
+	 * @param channels       the channel indices to include, or {@code null} for all channels
+	 * @param bufferSize     number of frames advanced per tick of the realtime runner
+	 */
+	public void init(Genome<PackedCollection> templateGenome,
+					 MultiChannelAudioOutput output, List<Integer> channels, int bufferSize) {
 		enableGenome(templateGenome);
-		this.temporal = scene.runnerRealTime(output, channels,
-				AudioScene.DEFAULT_REALTIME_BUFFER_SIZE);
+		this.temporal = scene.runnerRealTime(output, channels, bufferSize);
 		disableGenome();
 	}
 

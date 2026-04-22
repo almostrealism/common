@@ -163,17 +163,16 @@ This is used for genetic algorithm fitness evaluation.
 
 ```java
 StableDurationHealthComputation health = new StableDurationHealthComputation(6);
-health.setTarget(audioScene.runner(output));
+int batchSize = health.getBatchSize();
 
-// Run evaluation
-Runnable start = runner.get();  // Setup + initial ticks
-Runnable iterate = runner.getContinue();  // Tick only
+// The realtime runner must be configured so each tick advances exactly batchSize frames
+TemporalCellular target = audioScene.runnerRealTime(output, channels, batchSize);
+health.setTarget(target);
 
-for (long frame = 0; frame < maxFrames; frame += batchSize) {
-    (frame == 0 ? start : iterate).run();
-    checkForClipping();
-    checkForSilence();
-}
+// setTarget compiles target.setup() / target.tick() into runnables; computeHealth()
+// runs setup() once and then tick() per batch until the duration or a clipping/silence
+// condition is reached.
+AudioHealthScore score = health.computeHealth();
 ```
 
 ## Generation Package

@@ -28,7 +28,6 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.io.Console;
 import org.almostrealism.time.Temporal;
-import org.almostrealism.time.TemporalRunner;
 
 import java.io.File;
 import java.io.IOException;
@@ -77,8 +76,11 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	/** Flag set by the silence listener when excessive silence is detected. */
 	private boolean encounteredSilence;
 
-	/** Temporal runner that drives the evaluation loop efficiently. */
-	private TemporalRunner runner;
+	/** Compiled one-shot setup runnable for the target temporal pipeline. */
+	private Runnable targetSetup;
+
+	/** Compiled per-buffer tick runnable; one invocation advances {@link #iter} frames. */
+	private Runnable targetTick;
 
 	/** Background thread that monitors the wall-clock timeout. */
 	private Thread timeoutTrigger;
@@ -113,16 +115,30 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	public StableDurationHealthComputation(int channels, boolean stereo) {
 		super(channels, stereo, 6);
 		addSilenceListener(() -> encounteredSilence = true);
-		setBatchSize(TemporalRunner.enableOptimization ? 1 : (OutputLine.sampleRate / 2));
+		setBatchSize(OutputLine.sampleRate / 2);
 	}
 
 	/**
-	 * Sets the number of audio frames advanced per evaluation loop iteration.
+	 * Sets the number of audio frames advanced per evaluation loop iteration. The
+	 * temporal pipeline supplied to {@link #setTarget(TemporalCellular)} must already be
+	 * configured so that one invocation of its {@code tick()} runnable advances exactly
+	 * this many frames; the caller is responsible for keeping the two values in sync.
 	 *
 	 * @param iter frames per iteration
 	 */
 	public void setBatchSize(int iter) {
 		this.iter = iter;
+	}
+
+	/**
+	 * Returns the number of audio frames advanced per evaluation loop iteration. Callers
+	 * configuring the temporal pipeline (e.g. {@code AudioScene.runnerRealTime}) should
+	 * use this value as the buffer size so each tick advances exactly one batch.
+	 *
+	 * @return frames per iteration
+	 */
+	public int getBatchSize() {
+		return iter;
 	}
 
 	/**
@@ -139,8 +155,8 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 			super.setTarget(target);
 			this.abortFlag = new PackedCollection(1);
 			this.abortFlag.setMem(0, 0.0);
-			this.runner = new TemporalRunner(target, iter);
-			this.runner.setProfile(profile);
+			this.targetSetup = target.setup().get();
+			this.targetTick = target.tick().get();
 		} else if (getTarget() != target) {
 			throw new IllegalArgumentException("Health computation cannot be reused");
 		}
@@ -238,25 +254,21 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		double score = 0.0;
 		double errorMultiplier = 1.0;
 
-		Runnable start;
-		Runnable iterate;
-
 		long l = 0;
 		long generationTime = 0;
 
 		WaveDetails details = null;
 
 		try {
-			start = runner.get();
-			iterate = runner.getContinue();
-
 			startTime = System.currentTimeMillis();
 			iterStart = startTime;
 			if (enableTimeout) startTimeoutTrigger();
 
+			targetSetup.run();
+
 			l:
 			for (l = 0; l < max && !isTimeout(); l = l + iter) {
-				(l == 0 ? start : iterate).run();
+				targetTick.run();
 
 				if (enableProfileAutosave && profile instanceof OperationProfileNode
 						&& (l + iter) % (OutputLine.sampleRate * 60L) == 0) {
