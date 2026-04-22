@@ -161,13 +161,13 @@ class TestWorkstreamGetStatus(unittest.TestCase):
         self.assertIn("next_steps", result)
 
     @patch.object(server, "_controller_get")
-    def test_custom_period(self, mock_get):
+    def test_rejects_unsupported_period(self, mock_get):
         _grant_all_scopes()
-        mock_get.return_value = {}
-        server.workstream_get_status(workstream_id="ws-test", period="daily")
-        paths = [c.args[0] for c in mock_get.call_args_list]
-        self.assertTrue(any("period=daily" in p for p in paths),
-                        f"Expected a daily-period stats call; got {paths}")
+        result = server.workstream_get_status(
+            workstream_id="ws-test", period="daily")
+        self.assertFalse(result.get("ok"))
+        self.assertIn("weekly", result.get("error", ""))
+        mock_get.assert_not_called()
 
     def test_rejects_long_workstream_id(self):
         _grant_all_scopes()
@@ -1525,6 +1525,21 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertFalse(result["ok"])
         self.assertIn("was not added", result["error"])
+
+    @patch.object(server, "_github_request")
+    def test_request_copilot_review_helper_bot_login_variant(self, mock_gh):
+        # GitHub may return the Copilot reviewer under a bot-style login like
+        # ``copilot-pull-request-reviewer[bot]`` that does not equal the plain
+        # ``copilot`` constant. Identification must use the same
+        # case-insensitive substring rule as ``_dismiss_copilot_review``.
+        mock_gh.return_value = {
+            "number": 10,
+            "requested_reviewers": [
+                {"login": "Copilot-Pull-Request-Reviewer[bot]"},
+            ],
+        }
+        result = server._request_copilot_review("owner", "repo", 10)
+        self.assertTrue(result["ok"])
 
     @patch.object(server, "_github_request")
     def test_request_copilot_review_helper_github_error(self, mock_gh):

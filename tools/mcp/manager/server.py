@@ -1078,7 +1078,9 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
 
     Args:
         workstream_id: The workstream identifier (from workstream_list).
-        period: Reporting period (default: "weekly").
+        period: Reporting period. The controller currently supports only
+            ``"weekly"`` — any other value is rejected up front. Defaults
+            to ``"weekly"``.
 
     Returns:
         Dictionary with thisWeek and lastWeek aggregate stats (jobCount,
@@ -1088,6 +1090,16 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
     err = _check_short_strings(workstream_id=workstream_id, period=period)
     if err:
         return err
+    if period != "weekly":
+        return {
+            "ok": False,
+            "error": (f"Unsupported period '{period}'. The controller "
+                      "currently supports only 'weekly'."),
+            "next_steps": [
+                "Call workstream_get_status without the period argument",
+                "Or pass period='weekly' explicitly",
+            ],
+        }
     _audit("workstream_get_status", workstream_id=workstream_id)
     _require_workstream_in_scope(workstream_id)
     params = urlencode({"workstream": workstream_id, "period": period})
@@ -1111,7 +1123,7 @@ def workstream_get_job(job_id: str) -> dict:
     succeeded or inspect its failure detail. It is not a narrative tool
     — for the context around a job (why it was submitted, what the
     agent reported, what other jobs ran on the same branch) call
-    ``memory_branch_context``.
+    ``workstream_context``.
 
     Args:
         job_id: The job identifier returned by workstream_submit_task.
@@ -3158,7 +3170,7 @@ def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     dismissible = [
         r for r in reviews
         if isinstance(r.get("user"), dict)
-        and "copilot" in r.get("user", {}).get("login", "").lower()
+        and _is_copilot_login(r.get("user", {}).get("login", ""))
         and r.get("state") in ("APPROVED", "CHANGES_REQUESTED")
     ]
 
@@ -3182,16 +3194,36 @@ def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
 COPILOT_REVIEWER_LOGIN = "copilot"
 
 
+def _is_copilot_login(login: str) -> bool:
+    """Returns True if ``login`` identifies a GitHub Copilot account.
+
+    GitHub returns Copilot's login in several forms depending on the
+    endpoint and account type (``copilot``, ``copilot-pull-request-reviewer``,
+    ``copilot[bot]``, etc.).  Match all of these using the same
+    case-insensitive substring rule that ``_dismiss_copilot_review`` uses
+    so identification is consistent across request and dismiss paths.
+    """
+    if not isinstance(login, str):
+        return False
+    return COPILOT_REVIEWER_LOGIN in login.lower()
+
+
 def _copilot_is_requested(pr_response: dict) -> bool:
     """True when the PR response's ``requested_reviewers`` array lists the
     Copilot bot. The GitHub API accepts an empty-looking payload silently
     (ignoring unknown fields), so we can't trust a 2xx status alone — we
-    verify the reviewer was actually added."""
+    verify the reviewer was actually added.
+
+    Uses the same case-insensitive substring match on the login as
+    ``_dismiss_copilot_review`` to avoid false negatives when GitHub
+    returns a bot-style login (e.g. ``copilot-pull-request-reviewer``)
+    that does not exactly equal :data:`COPILOT_REVIEWER_LOGIN`.
+    """
     if not isinstance(pr_response, dict):
         return False
     reviewers = pr_response.get("requested_reviewers") or []
     for r in reviewers:
-        if isinstance(r, dict) and r.get("login") == COPILOT_REVIEWER_LOGIN:
+        if isinstance(r, dict) and _is_copilot_login(r.get("login", "")):
             return True
     return False
 

@@ -18,7 +18,6 @@ package io.flowtree.jobs;
 
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.job.Job;
-import org.almostrealism.io.JobOutput;
 import org.almostrealism.util.KeyUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -81,6 +80,10 @@ public class ClaudeCodeJob extends GitManagedJob {
     /** Default comma-separated list of tools permitted for Claude Code sessions. */
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
 
+    /** Valid values for the Claude Code {@code --effort} flag (thinking level). */
+    public static final List<String> VALID_EFFORT_LEVELS =
+            List.of("low", "medium", "high", "xhigh", "max");
+
     /**
      * Deduplication mode that runs an inline Claude Code session before the
      * commit is finalised.  The session receives an aggressive prompt listing
@@ -114,6 +117,10 @@ public class ClaudeCodeJob extends GitManagedJob {
     private int maxTurns;
     /** Maximum spend budget for this job in US dollars; negative disables the limit. */
     private double maxBudgetUsd;
+    /** Model alias or full name passed via {@code --model}; {@code null} uses the CLI default. */
+    private String model;
+    /** Effort/thinking level passed via {@code --effort}; {@code null} uses the CLI default. */
+    private String effort;
     /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
     private String arManagerUrl;
     /** Bearer token for authenticating against the ar-manager service. */
@@ -356,6 +363,38 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     public void setMaxBudgetUsd(double maxBudgetUsd) {
         this.maxBudgetUsd = maxBudgetUsd;
+    }
+
+    /** Returns the Claude Code model, or {@code null} to use the CLI default. */
+    public String getModel() { return model; }
+
+    /**
+     * Sets the Claude Code model (alias like {@code "sonnet"} or full name
+     * like {@code "claude-sonnet-4-6"}). {@code null} or empty leaves the
+     * {@code --model} flag off so the CLI chooses.
+     *
+     * @param model model alias, full identifier, or {@code null}
+     */
+    public void setModel(String model) {
+        this.model = (model == null || model.isEmpty()) ? null : model;
+    }
+
+    /** Returns the effort/thinking level, or {@code null} to use the CLI default. */
+    public String getEffort() { return effort; }
+
+    /**
+     * Sets the effort/thinking level. Fails loud for unknown values.
+     *
+     * @param effort one of {@link #VALID_EFFORT_LEVELS}, or {@code null}/empty
+     * @throws IllegalArgumentException if not a valid level
+     */
+    public void setEffort(String effort) {
+        if (effort == null || effort.isEmpty()) { this.effort = null; return; }
+        if (!VALID_EFFORT_LEVELS.contains(effort)) {
+            throw new IllegalArgumentException("Invalid effort level '" + effort
+                    + "'. Must be one of " + VALID_EFFORT_LEVELS);
+        }
+        this.effort = effort;
     }
 
     /** Returns the ar-manager HTTP URL. */
@@ -851,6 +890,16 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (maxBudgetUsd > 0) {
             command.add("--max-budget-usd");
             command.add(String.format("%.2f", maxBudgetUsd));
+        }
+
+        if (model != null) {
+            command.add("--model");
+            command.add(model);
+        }
+
+        if (effort != null) {
+            command.add("--effort");
+            command.add(effort);
         }
 
         log("Starting: " + getTaskString());
@@ -1437,6 +1486,12 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("::tools:=").append(base64Encode(allowedTools));
         sb.append("::maxTurns:=").append(maxTurns);
         sb.append("::maxBudget:=").append(maxBudgetUsd);
+        if (model != null) {
+            sb.append("::model:=").append(model);
+        }
+        if (effort != null) {
+            sb.append("::effort:=").append(effort);
+        }
         if (arManagerUrl != null) {
             sb.append("::arManagerUrl:=").append(base64Encode(arManagerUrl));
         }
@@ -1475,6 +1530,12 @@ public class ClaudeCodeJob extends GitManagedJob {
             case "maxBudget":
                 this.maxBudgetUsd = Double.parseDouble(value);
                 break;
+            case "model":
+                setModel(value);
+                break;
+            case "effort":
+                setEffort(value);
+                break;
             case "arManagerUrl":
                 this.arManagerUrl = base64Decode(value);
                 break;
@@ -1502,67 +1563,6 @@ public class ClaudeCodeJob extends GitManagedJob {
             default:
                 // Delegate to parent for git-related properties
                 super.set(key, value);
-        }
-    }
-
-    /**
-     * Output record produced by a completed {@link ClaudeCodeJob}.
-     */
-    public static class ClaudeCodeJobOutput extends JobOutput {
-        /** The prompt that was submitted to Claude Code for this job. */
-        private final String prompt;
-        /** The session identifier assigned by Claude Code. */
-        private final String sessionId;
-        /** The process exit code returned by the Claude Code process. */
-        private final int exitCode;
-
-        /**
-         * Constructs a new {@link ClaudeCodeJobOutput}.
-         *
-         * @param taskId     the task identifier
-         * @param prompt     the prompt submitted to Claude Code
-         * @param output     the raw text output produced by Claude Code
-         * @param sessionId  the Claude Code session identifier
-         * @param exitCode   the process exit code
-         */
-        public ClaudeCodeJobOutput(String taskId, String prompt, String output,
-                                   String sessionId, int exitCode) {
-            super(taskId, "", "", output);
-            this.prompt = prompt;
-            this.sessionId = sessionId;
-            this.exitCode = exitCode;
-        }
-
-        /**
-         * Returns the prompt that was submitted to Claude Code.
-         *
-         * @return the prompt string
-         */
-        public String getPrompt() { return prompt; }
-
-        /**
-         * Returns the Claude Code session identifier.
-         *
-         * @return the session ID
-         */
-        public String getSessionId() { return sessionId; }
-
-        /**
-         * Returns the process exit code returned by Claude Code.
-         *
-         * @return the exit code (0 typically indicates success)
-         */
-        public int getExitCode() { return exitCode; }
-
-        /**
-         * Returns a human-readable summary of this output record.
-         *
-         * @return a string including the task ID, exit code, and session ID
-         */
-        @Override
-        public String toString() {
-            return "ClaudeCodeJobOutput{taskId=" + getTaskId() + ", exitCode=" + exitCode +
-                   ", sessionId=" + sessionId + "}";
         }
     }
 
