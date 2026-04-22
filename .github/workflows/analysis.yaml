@@ -804,12 +804,14 @@ jobs:
           retention-days: 1
 
   test-media:
-    needs: [changes, build, test]
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # Layer gate: studio tests run when any layer is modified.
-    # Must tolerate test being skipped (no engine-layer changes).
     if: >-
       needs.build.result == 'success' &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
       (needs.changes.outputs.studio_changed == 'true' ||
        needs.changes.outputs.extern_changed == 'true' ||
        needs.changes.outputs.engine_changed == 'true' ||
@@ -978,12 +980,17 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
   test-media-mac:
-    needs: [changes, build, test-mac]
+    needs: [changes, build, test-media, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # Layer gate: studio tests run when any layer is modified.
-    # Must tolerate test-mac being skipped (no engine-layer changes).
+    # Depends on test-media (non-matrix, skipped status propagates correctly)
+    # rather than test-mac (matrix job whose skipped status does not propagate).
     if: >-
       needs.build.result == 'success' &&
-      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
       (needs.changes.outputs.studio_changed == 'true' ||
        needs.changes.outputs.extern_changed == 'true' ||
        needs.changes.outputs.engine_changed == 'true' ||
