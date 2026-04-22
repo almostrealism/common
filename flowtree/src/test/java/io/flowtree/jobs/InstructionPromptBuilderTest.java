@@ -97,8 +97,8 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.build();
 		assertTrue("Expected Branch Awareness section when target branch is set",
 			result.contains("Branch Awareness"));
-		assertTrue("Expected memory_branch_context reference",
-			result.contains("memory_branch_context"));
+		assertTrue("Expected workstream_context reference",
+			result.contains("workstream_context"));
 	}
 
 	@Test(timeout = 30000)

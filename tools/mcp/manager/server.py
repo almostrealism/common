@@ -1071,90 +1071,45 @@ def workstream_list() -> dict:
 
 @mcp.tool()
 def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
-    """**Operational analytics.** Returns platform-health metrics for a
-    workstream — job counts, total time, cost, turns, plus the 3 most
-    recent job events.
+    """Get aggregate job statistics for a workstream.
 
-    Use this for DevOps / monitoring tasks: watching spend, confirming
-    the platform is processing jobs, diagnosing whether a workstream is
-    making forward progress. It tells you how FlowTree is doing, not
-    what the agents on this branch were working on.
-
-    For the narrative — what agents reported, what they decided, the
-    timeline of jobs, the commit history — call
-    ``memory_branch_context`` instead. That is the object-level tool;
-    this is a meta tool.
+    Shows job counts, total time, cost, and turns for this week and last week.
+    For per-job details use workstream_context.
 
     Args:
         workstream_id: The workstream identifier (from workstream_list).
-        period: Reporting period (default: "weekly").
+        period: Reporting period. The controller currently supports only
+            ``"weekly"`` — any other value is rejected up front. Defaults
+            to ``"weekly"``.
 
     Returns:
-        Dictionary with thisWeek and lastWeek stats, plus recent_jobs list.
+        Dictionary with thisWeek and lastWeek aggregate stats (jobCount,
+        successCount, failedCount, totalCostUsd, totalTurns, etc.).
     """
     _require_scope("read")
     err = _check_short_strings(workstream_id=workstream_id, period=period)
     if err:
         return err
+    if period != "weekly":
+        return {
+            "ok": False,
+            "error": (f"Unsupported period '{period}'. The controller "
+                      "currently supports only 'weekly'."),
+            "next_steps": [
+                "Call workstream_get_status without the period argument",
+                "Or pass period='weekly' explicitly",
+            ],
+        }
     _audit("workstream_get_status", workstream_id=workstream_id)
     _require_workstream_in_scope(workstream_id)
     params = urlencode({"workstream": workstream_id, "period": period})
     result = _controller_get(f"/api/stats?{params}")
     result["workstream_id"] = workstream_id
 
-    # Fetch recent jobs the same way memory_branch_context does
-    try:
-        jobs_result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?limit=3")
-        if isinstance(jobs_result, list) and jobs_result:
-            result["recent_jobs"] = jobs_result
-    except Exception:
-        pass  # Non-critical: proceed without job history
-
     result.setdefault("next_steps", [
         "Use workstream_submit_task to submit a new coding task",
-        "Use workstream_list_jobs to see the full job history",
+        "Use workstream_context to see branch memories and job history",
     ])
-    return result
-
-
-@mcp.tool()
-def workstream_list_jobs(
-    workstream_id: str,
-    limit: int = 10,
-) -> dict:
-    """**Operational analytics.** Full per-job detail for a workstream,
-    newest first — status, timestamps, cost, target branch, commit,
-    PR URL, error messages.
-
-    Use this when you need the complete operational record of the
-    platform running jobs: cost accounting, debugging a specific
-    failure, auditing how long a job took. It is not where to look
-    for what the agents on this branch were actually thinking or
-    trying to accomplish.
-
-    For the narrative (memories, messages, a compact jobs timeline,
-    commits) call ``memory_branch_context``. That is the object-level
-    tool; this is a meta tool intended for DevOps.
-
-    Args:
-        workstream_id: The workstream identifier (from workstream_list).
-        limit: Maximum number of jobs to return (default: 10).
-
-    Returns:
-        Dictionary with a ``jobs`` list, each entry containing jobId, status,
-        description, timestamp, and optional fields such as targetBranch,
-        commitHash, pullRequestUrl, errorMessage, and costUsd.
-    """
-    _require_scope("read")
-    err = _check_short_strings(workstream_id=workstream_id)
-    if err:
-        return err
-    _audit("workstream_list_jobs", workstream_id=workstream_id)
-    _require_workstream_in_scope(workstream_id)
-    params = urlencode({"limit": limit})
-    result = _controller_get(f"/api/workstreams/{workstream_id}/jobs?{params}")
-    if isinstance(result, list):
-        return {"ok": True, "workstream_id": workstream_id, "jobs": result}
     return result
 
 
@@ -1168,7 +1123,7 @@ def workstream_get_job(job_id: str) -> dict:
     succeeded or inspect its failure detail. It is not a narrative tool
     — for the context around a job (why it was submitted, what the
     agent reported, what other jobs ran on the same branch) call
-    ``memory_branch_context``.
+    ``workstream_context``.
 
     Args:
         job_id: The job identifier returned by workstream_submit_task.
@@ -2428,7 +2383,7 @@ def memory_recall(
         ],
         "count": len(memories),
         "next_steps": [
-            "Use memory_branch_context for a full branch history",
+            "Use workstream_context for a full branch history",
             "Use memory_store to add new memories",
         ],
     }
@@ -2440,7 +2395,7 @@ def memory_recall(
 
 
 @mcp.tool()
-def memory_branch_context(
+def workstream_context(
     workstream_id: str = "",
     repo_url: str = "",
     branch: str = "",
@@ -2467,9 +2422,9 @@ def memory_branch_context(
       - **jobs**: a compact timeline of job runs on this workstream
         (timestamp, status, description, commit, PR, error). Not the
         full operational record — just enough to situate memories in
-        time. For the full per-job detail use ``workstream_list_jobs``.
-        Present (possibly as an empty list) whenever ``workstream_id``
-        is supplied and ``job_limit > 0``; omitted otherwise.
+        time. Present (possibly as an empty list) whenever
+        ``workstream_id`` is supplied and ``job_limit > 0``; omitted
+        otherwise.
       - **metadata**: resolved repo_url, branch, namespace. Always present.
 
     Prefer this tool over ``workstream_get_status`` for
@@ -2495,11 +2450,14 @@ def memory_branch_context(
         include_commits: If true (default), include the commit list.
         commit_limit: Maximum number of commits to include (default 30).
         job_limit: Maximum number of jobs to include in the timeline
-            (default 20). Set to 0 to omit the jobs field entirely.
+            (default 20). Pass 0 to omit jobs entirely.
 
     Returns:
-        Dictionary with memories, jobs (compact timeline), and — when
-        commits are available — commits, total_commits, initial_commit_sha.
+        Dictionary with branch memories, optionally commits, and optionally
+        a compact jobs timeline. When commits are included, the response also
+        contains ``total_commits`` (the full number of commits on the branch)
+        and ``initial_commit_sha`` (the first commit on the branch relative
+        to the base).
     """
     _require_scope("memory")
     err = _check_short_strings(
@@ -2508,7 +2466,7 @@ def memory_branch_context(
     )
     if err:
         return err
-    _audit("memory_branch_context", workstream_id=workstream_id, branch=branch)
+    _audit("workstream_context", workstream_id=workstream_id, branch=branch)
 
     effective_repo, effective_branch, err = _resolve_branch_context(
         workstream_id=workstream_id, repo_url=repo_url, branch=branch,
@@ -2620,9 +2578,7 @@ def memory_branch_context(
             commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
 
     # Compact jobs timeline: enough fields to situate memories in time and
-    # link them to the commits/PR flow, nothing more. Operational detail
-    # (cost, duration, full target branch, etc.) lives in
-    # workstream_list_jobs, which is the operational-analytics tool.
+    # link them to the commits/PR flow, nothing more.
     #
     # Coerce job_limit defensively. MCP tool inputs are not runtime-type-
     # enforced, so a caller could pass a string, a float, or a negative
@@ -2760,7 +2716,7 @@ def memory_store(
     entry["ok"] = True
     entry["next_steps"] = [
         "Use memory_recall to search for this and other memories",
-        "Use memory_branch_context to see all memories for this branch",
+        "Use workstream_context to see all memories for this branch",
     ]
     return entry
 
@@ -3193,9 +3149,9 @@ def github_create_pr(
 def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     """Dismiss the most recent dismissible Copilot review on a pull request.
 
-    Looks for reviews from the copilot-pull-request-reviewer bot and dismisses
-    the most recent one that is in APPROVED or CHANGES_REQUESTED state, which
-    allows a fresh review to be requested.
+    Looks for reviews from the copilot bot (login contains 'copilot') and
+    dismisses the most recent one that is in APPROVED or CHANGES_REQUESTED
+    state, which allows a fresh review to be requested.
 
     Args:
         owner: Repository owner.
@@ -3214,7 +3170,7 @@ def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     dismissible = [
         r for r in reviews
         if isinstance(r.get("user"), dict)
-        and "copilot" in r.get("user", {}).get("login", "").lower()
+        and _is_copilot_login(r.get("user", {}).get("login", ""))
         and r.get("state") in ("APPROVED", "CHANGES_REQUESTED")
     ]
 
@@ -3235,19 +3191,49 @@ def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     return {"ok": False, "error": str(result)}
 
 
-COPILOT_REVIEWER_LOGIN = "copilot-pull-request-reviewer"
+COPILOT_REVIEWER_LOGIN = "copilot"
+
+
+def _is_copilot_login(login: str) -> bool:
+    """Returns True if ``login`` identifies a GitHub Copilot account.
+
+    GitHub exposes Copilot under multiple login strings depending on the
+    endpoint, empirically observed on this repo:
+
+    - ``"copilot"`` — the slug accepted by ``POST /pulls/N/requested_reviewers``
+      (see the commit message on 6a2269f79: sending
+      ``copilot-pull-request-reviewer`` returns HTTP 422).
+    - ``"copilot-pull-request-reviewer[bot]"`` — the ``user.login`` on
+      review objects returned by ``GET /pulls/N/reviews``.
+    - ``"Copilot"`` — the ``user.login`` on review-comment objects
+      returned by ``GET /pulls/N/comments``.
+
+    Matching all three with a case-insensitive substring check on
+    ``"copilot"`` is safe because it does not collide with any real user
+    or team slug that could legitimately request a review (GitHub reserves
+    the ``copilot`` name). Used by both ``_copilot_is_requested`` (request
+    verification) and ``_dismiss_copilot_review`` (review lookup) so the
+    two paths cannot disagree about what counts as Copilot.
+    """
+    if not isinstance(login, str):
+        return False
+    return COPILOT_REVIEWER_LOGIN in login.lower()
 
 
 def _copilot_is_requested(pr_response: dict) -> bool:
     """True when the PR response's ``requested_reviewers`` array lists the
     Copilot bot. The GitHub API accepts an empty-looking payload silently
     (ignoring unknown fields), so we can't trust a 2xx status alone — we
-    verify the reviewer was actually added."""
+    verify the reviewer was actually added.
+
+    Delegates the login comparison to :func:`_is_copilot_login` so request
+    verification, review lookup, and dismissal all use the same rule.
+    """
     if not isinstance(pr_response, dict):
         return False
     reviewers = pr_response.get("requested_reviewers") or []
     for r in reviewers:
-        if isinstance(r, dict) and r.get("login") == COPILOT_REVIEWER_LOGIN:
+        if isinstance(r, dict) and _is_copilot_login(r.get("login", "")):
             return True
     return False
 
@@ -3266,11 +3252,10 @@ def _post_copilot_review_request(owner: str, repo: str, pr_number: int) -> dict:
 def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     """Request a GitHub Copilot review on a pull request.
 
-    Copilot reviews are triggered by adding the
-    ``copilot-pull-request-reviewer`` bot as a regular reviewer via the
-    standard ``requested_reviewers`` endpoint. If Copilot has already
-    reviewed the PR, the most recent dismissible review is dismissed and
-    the request is retried, making this call idempotent.
+    Copilot reviews are triggered by requesting a review from the 'copilot'
+    user via the standard ``requested_reviewers`` endpoint. If Copilot has
+    already reviewed the PR, the most recent dismissible review is dismissed
+    and the request is retried, making this call idempotent.
 
     Verifies success by checking that the returned PR's
     ``requested_reviewers`` array actually contains the bot — the GitHub
@@ -3330,8 +3315,8 @@ def github_request_copilot_review(
 ) -> dict:
     """Request a GitHub Copilot automated code review on a pull request.
 
-    Copilot reviews are triggered by requesting a review from the
-    'copilot-pull-request-reviewer' app via the GitHub API.
+    Copilot reviews are triggered by requesting a review from the 'copilot'
+    user via the GitHub API.
 
     Args:
         pr_number: Pull request number. If omitted, the open PR for the

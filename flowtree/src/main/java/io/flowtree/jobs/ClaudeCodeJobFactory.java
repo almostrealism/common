@@ -61,6 +61,21 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     /** Maximum spend budget per job in US dollars. */
     private double maxBudgetUsd = 10.0;
 
+    /**
+     * Model alias or full model name propagated to jobs created by this
+     * factory.  {@code null} leaves the Claude Code {@code --model} flag off
+     * so the CLI uses its own default.
+     */
+    private String model;
+
+    /**
+     * Effort/thinking level propagated to jobs created by this factory.
+     * {@code null} leaves the Claude Code {@code --effort} flag off so the
+     * CLI uses its own default.  Must be one of
+     * {@link ClaudeCodeJob#VALID_EFFORT_LEVELS} when set.
+     */
+    private String effort;
+
     /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
     private String arManagerUrl;
 
@@ -294,6 +309,63 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     public void setMaxBudgetUsd(double maxBudgetUsd) {
         this.maxBudgetUsd = maxBudgetUsd;
         set("maxBudget", String.valueOf(maxBudgetUsd));
+    }
+
+    /**
+     * Returns the Claude Code model for jobs created by this factory.
+     *
+     * @return the model alias or full name, or {@code null} to use the CLI default
+     */
+    public String getModel() {
+        return model;
+    }
+
+    /**
+     * Sets the Claude Code model for jobs created by this factory.  Passed to
+     * each created job via {@link ClaudeCodeJob#setModel(String)}.
+     *
+     * @param model a model alias (e.g. {@code "sonnet"}, {@code "opus"}) or
+     *              full identifier, or {@code null}/empty to use the CLI default
+     */
+    public void setModel(String model) {
+        String normalised = (model == null || model.isEmpty()) ? null : model;
+        this.model = normalised;
+        set("model", normalised);
+    }
+
+    /**
+     * Returns the effort/thinking level for jobs created by this factory.
+     *
+     * @return one of {@link ClaudeCodeJob#VALID_EFFORT_LEVELS}, or
+     *         {@code null} to use the CLI default
+     */
+    public String getEffort() {
+        return effort;
+    }
+
+    /**
+     * Sets the effort/thinking level for jobs created by this factory.  The
+     * value is validated immediately against
+     * {@link ClaudeCodeJob#VALID_EFFORT_LEVELS} so misconfiguration fails at
+     * the caller rather than silently at dispatch.
+     *
+     * @param effort one of {@link ClaudeCodeJob#VALID_EFFORT_LEVELS}, or
+     *               {@code null}/empty to use the CLI default
+     * @throws IllegalArgumentException if {@code effort} is not valid
+     */
+    public void setEffort(String effort) {
+        if (effort == null || effort.isEmpty()) {
+            this.effort = null;
+            set("effort", null);
+            return;
+        }
+        if (!ClaudeCodeJob.VALID_EFFORT_LEVELS.contains(effort)) {
+            throw new IllegalArgumentException(
+                    "Invalid effort level '" + effort + "'. Must be one of "
+                    + ClaudeCodeJob.VALID_EFFORT_LEVELS);
+        }
+        this.effort = effort;
+        set("effort", effort);
     }
 
     /**
@@ -655,6 +727,12 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setWorkingDirectory(workingDirectory);
         job.setMaxTurns(maxTurns);
         job.setMaxBudgetUsd(maxBudgetUsd);
+        if (model != null) {
+            job.setModel(model);
+        }
+        if (effort != null) {
+            job.setEffort(effort);
+        }
 
         String desc = getDescription();
         if (desc != null) {
@@ -768,6 +846,12 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 break;
             case "maxBudget":
                 this.maxBudgetUsd = Double.parseDouble(value);
+                break;
+            case "model":
+                this.model = (value == null || value.isEmpty()) ? null : value;
+                break;
+            case "effort":
+                this.effort = (value == null || value.isEmpty()) ? null : value;
                 break;
             case "arManagerUrl":
                 this.arManagerUrl = GitManagedJob.base64Decode(value);
