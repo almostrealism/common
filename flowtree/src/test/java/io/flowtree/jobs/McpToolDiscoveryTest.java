@@ -361,6 +361,24 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("prompt"));
 		assertTrue("workstream_submit_task must declare workstream_id in signature",
 			submitParams.contains("workstream_id"));
+		assertTrue("workstream_submit_task must declare model in signature",
+			submitParams.contains("model"));
+		assertTrue("workstream_submit_task must declare effort in signature",
+			submitParams.contains("effort"));
+
+		List<String> registerParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+		assertTrue("workstream_register must declare model in signature",
+			registerParams.contains("model"));
+		assertTrue("workstream_register must declare effort in signature",
+			registerParams.contains("effort"));
+
+		List<String> updateConfigParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+		assertTrue("workstream_update_config must declare model in signature",
+			updateConfigParams.contains("model"));
+		assertTrue("workstream_update_config must declare effort in signature",
+			updateConfigParams.contains("effort"));
 
 		List<String> memoryRecallParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "memory_recall");

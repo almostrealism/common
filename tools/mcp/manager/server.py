@@ -1151,6 +1151,29 @@ def workstream_get_job(job_id: str) -> dict:
     return result
 
 
+VALID_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+"""Effort/thinking levels accepted by the Claude Code ``--effort`` flag.
+
+Mirrors :class:`io.flowtree.jobs.ClaudeCodeJob#VALID_EFFORT_LEVELS`. Kept
+in sync manually; the Java side is the source of truth and rejects unknown
+values, but pre-validating here gives the caller a clearer error and keeps
+us from issuing a doomed HTTP request.
+"""
+
+
+def _check_effort(effort: str) -> Optional[dict]:
+    """Return an error dict if ``effort`` is non-empty and not a recognised
+    Claude Code effort level, or ``None`` when valid (or empty).
+    """
+    if effort and effort not in VALID_EFFORT_LEVELS:
+        return {
+            "ok": False,
+            "error": f"Invalid effort '{effort}'. Must be one of: "
+                     f"{', '.join(VALID_EFFORT_LEVELS)}",
+        }
+    return None
+
+
 def _parse_required_labels(required_labels: str) -> dict:
     """Parse a comma-separated key:value string into a labels dict.
 
@@ -1198,6 +1221,8 @@ def workstream_submit_task(
     started_after: str = "",
     required_labels: str = "",
     deduplication_mode: str = "",
+    model: str = "",
+    effort: str = "",
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1235,6 +1260,14 @@ def workstream_submit_task(
             spawned). Use "spawn" to submit a separate follow-up job to the
             same workstream after committing (requires workstream URL). Pass
             "none" to disable deduplication entirely.
+        model: Claude Code model alias (e.g. ``"sonnet"``, ``"opus"``,
+            ``"haiku"``) or full identifier (e.g. ``"claude-sonnet-4-6"``)
+            for this job. Empty string falls back to the workstream default,
+            which in turn falls back to the CLI default.
+        effort: Claude Code effort/thinking level for this job. Must be one
+            of ``"low"``, ``"medium"``, ``"high"``, ``"xhigh"``, ``"max"``.
+            Empty string falls back to the workstream default, which in turn
+            falls back to the CLI default.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -1247,7 +1280,11 @@ def workstream_submit_task(
         workstream_id=workstream_id, target_branch=target_branch,
         description=description, started_after=started_after,
         deduplication_mode=deduplication_mode,
+        model=model, effort=effort,
     )
+    if err:
+        return err
+    err = _check_effort(effort)
     if err:
         return err
     _require_workstream_in_scope(workstream_id)
@@ -1277,6 +1314,10 @@ def workstream_submit_task(
             payload["requiredLabels"] = labels_dict
     if deduplication_mode:
         payload["deduplicationMode"] = deduplication_mode
+    if model:
+        payload["model"] = model
+    if effort:
+        payload["effort"] = effort
 
     result = _controller_post("/api/submit", payload)
 
@@ -1311,6 +1352,8 @@ def workstream_register(
     plan_instructions: str = "",
     plan_path: str = "",
     plan_commit_message: str = "",
+    model: str = "",
+    effort: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1360,6 +1403,15 @@ def workstream_register(
         plan_commit_message: Git commit message for the direct-commit path.
             Ignored when ``plan_instructions`` is used. Auto-generated if
             omitted.
+        model: Default Claude Code model alias (e.g. ``"sonnet"``,
+            ``"opus"``, ``"haiku"``) or full identifier applied to every
+            job submitted to this workstream that does not specify its own
+            model. Empty string leaves the workstream with no default,
+            falling back to the CLI default.
+        effort: Default Claude Code effort/thinking level for the
+            workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
+            ``"xhigh"``, ``"max"``. Empty string leaves the workstream with
+            no default.
 
     Returns:
         Dictionary with workstreamId and channel info on success. When
@@ -1377,7 +1429,11 @@ def workstream_register(
         repo_url=repo_url, planning_document=planning_document,
         channel_name=channel_name, slack_workspace_id=slack_workspace_id,
         plan_path=plan_path, plan_commit_message=plan_commit_message,
+        model=model, effort=effort,
     )
+    if err:
+        return err
+    err = _check_effort(effort)
     if err:
         return err
     # plan_content and plan_instructions describe two different follow-up
@@ -1429,6 +1485,10 @@ def workstream_register(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
+    if model:
+        payload["model"] = model
+    if effort:
+        payload["effort"] = effort
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -1602,6 +1662,8 @@ def workstream_update_config(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
+    model: str = "",
+    effort: str = "",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -1625,6 +1687,12 @@ def workstream_update_config(
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
             Also accepts a JSON array string. Dependent repos follow the same
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
+        model: New default Claude Code model alias (e.g. ``"sonnet"``,
+            ``"opus"``, ``"haiku"``) or full identifier for the workstream.
+            Applied to jobs that do not specify their own model.
+        effort: New default Claude Code effort/thinking level for the
+            workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
+            ``"xhigh"``, ``"max"``.
 
     Returns:
         Dictionary confirming the update.
@@ -1634,7 +1702,11 @@ def workstream_update_config(
         workstream_id=workstream_id, default_branch=default_branch,
         base_branch=base_branch, repo_url=repo_url,
         planning_document=planning_document, channel_name=channel_name,
+        model=model, effort=effort,
     )
+    if err:
+        return err
+    err = _check_effort(effort)
     if err:
         return err
     _require_workstream_in_scope(workstream_id)
@@ -1659,6 +1731,10 @@ def workstream_update_config(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
+    if model:
+        payload["model"] = model
+    if effort:
+        payload["effort"] = effort
 
     if not payload:
         return {
@@ -1667,7 +1743,7 @@ def workstream_update_config(
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
                 "repo_url, planning_document, channel_name, required_labels, "
-                "or dependent_repos",
+                "dependent_repos, model, or effort",
             ],
         }
 

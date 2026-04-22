@@ -588,9 +588,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      *   "baseBranch": "master",
      *   "repoUrl": "https://github.com/org/repo.git",
      *   "planningDocument": "docs/plans/PLAN-20260223-foo.md",
-     *   "channelName": "project-plan-20260223-foo"
+     *   "channelName": "project-plan-20260223-foo",
+     *   "model": "sonnet",
+     *   "effort": "medium"
      * }
      * }</pre>
+     *
+     * <p>{@code model} and {@code effort} are workstream-level defaults
+     * applied when a job omits them; invalid {@code effort} → 400.</p>
      *
      * <p>If a {@code channelName} is provided and Slack is available, a new
      * channel is created automatically. If Slack is not available (simulation
@@ -616,6 +621,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String planningDocument = extractJsonField(body, "planningDocument");
         String channelName = extractJsonField(body, "channelName");
         String explicitWorkspaceId = extractJsonField(body, "slackWorkspaceId");
+        String model = extractJsonField(body, "model");
+        String effort = extractJsonField(body, "effort");
         Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
         List<String> dependentRepos = extractJsonArrayField(body, "dependentRepos");
 
@@ -698,6 +705,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (dependentRepos != null && !dependentRepos.isEmpty()) {
             workstream.setDependentRepos(dependentRepos);
         }
+        if (model != null && !model.isEmpty()) {
+            workstream.setModel(model);
+        }
+        if (effort != null && !effort.isEmpty()) {
+            try {
+                workstream.setEffort(effort);
+            } catch (IllegalArgumentException e) {
+                return errorResponse(e.getMessage());
+            }
+        }
 
         workstream.setPushToOrigin(true);
 
@@ -737,7 +754,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      *
      * <p>Supports updating any combination of: {@code channelId}, {@code channelName},
      * {@code defaultBranch}, {@code baseBranch}, {@code repoUrl},
-     * {@code planningDocument}.</p>
+     * {@code planningDocument}, {@code model}, {@code effort},
+     * {@code requiredLabels}, {@code dependentRepos}.</p>
+     *
+     * <p>{@code model} and {@code effort} are workstream-level defaults
+     * applied to jobs that do not specify their own values.  Invalid
+     * {@code effort} values produce a 400 response.</p>
      *
      * @param session      the HTTP session
      * @param workstreamId the workstream identifier from the URL path
@@ -762,6 +784,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String baseBranch = extractJsonField(body, "baseBranch");
         String repoUrl = extractJsonField(body, "repoUrl");
         String planningDocument = extractJsonField(body, "planningDocument");
+        String model = extractJsonField(body, "model");
+        String effort = extractJsonField(body, "effort");
         Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
         List<String> dependentRepos = extractJsonArrayField(body, "dependentRepos");
 
@@ -782,6 +806,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
         if (planningDocument != null && !planningDocument.isEmpty()) {
             workstream.setPlanningDocument(planningDocument);
+        }
+        if (model != null && !model.isEmpty()) {
+            workstream.setModel(model);
+        }
+        if (effort != null && !effort.isEmpty()) {
+            try {
+                workstream.setEffort(effort);
+            } catch (IllegalArgumentException e) {
+                return errorResponse(e.getMessage());
+            }
         }
         if (!requiredLabels.isEmpty()) {
             workstream.setRequiredLabels(requiredLabels);
@@ -812,9 +846,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      *   "baseBranch": "master",
      *   "workstreamId": "ws-rings",
      *   "maxTurns": 30,
-     *   "maxBudgetUsd": 5.0
+     *   "maxBudgetUsd": 5.0,
+     *   "model": "sonnet",
+     *   "effort": "high"
      * }
      * }</pre>
+     *
+     * <p>Both {@code model} and {@code effort} are optional per-job overrides
+     * of the workstream defaults.  The effective value is the request override
+     * when present, otherwise the workstream default, otherwise the CLI
+     * default.  Invalid {@code effort} values produce a 400 response.</p>
      *
      * <p><b>Workstream resolution order:</b></p>
      * <ol>
@@ -973,6 +1014,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         boolean enforceChanges = extractJsonBooleanField(body, "enforceChanges");
         String deduplicationMode = extractJsonField(body, "deduplicationMode");
         boolean autoCreatePr = extractJsonBooleanField(body, "autoCreatePr");
+        String requestModel = extractJsonField(body, "model");
+        String requestEffort = extractJsonField(body, "effort");
 
         // Create job factory with workstream defaults, overridden by request values
         ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
@@ -982,6 +1025,24 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         factory.setAllowedTools(workstream.getAllowedTools());
         factory.setMaxTurns(maxTurns > 0 ? maxTurns : workstream.getMaxTurns());
         factory.setMaxBudgetUsd(maxBudgetUsd > 0 ? maxBudgetUsd : workstream.getMaxBudgetUsd());
+
+        // Model and effort: per-request override beats workstream default,
+        // workstream default beats CLI default.  Effort is validated by the
+        // factory setter; surface the failure as a 400 instead of a 500.
+        String effectiveModel = (requestModel != null && !requestModel.isEmpty())
+                ? requestModel : workstream.getModel();
+        if (effectiveModel != null && !effectiveModel.isEmpty()) {
+            factory.setModel(effectiveModel);
+        }
+        String effectiveEffort = (requestEffort != null && !requestEffort.isEmpty())
+                ? requestEffort : workstream.getEffort();
+        if (effectiveEffort != null && !effectiveEffort.isEmpty()) {
+            try {
+                factory.setEffort(effectiveEffort);
+            } catch (IllegalArgumentException e) {
+                return errorResponse(e.getMessage());
+            }
+        }
 
         String effectiveBranch = targetBranch != null ? targetBranch : workstream.getDefaultBranch();
         if (effectiveBranch != null) {
