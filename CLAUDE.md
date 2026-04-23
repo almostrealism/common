@@ -213,6 +213,21 @@ Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. 
 Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
 
 
+## Rule 4: IF A MANDATORY TOOL IS MISSING, TELL THE USER FIRST
+
+If any MCP tool named as mandatory by these rules (ar-consultant, ar-manager, ar-build-validator, ar-test-runner, ar-jmx, ar-memory) is not surfaced in the current session's tool list, **stop and tell the user before proceeding**. Most of the time this indicates a config or harness problem the user can fix in one step; silently falling back to `Read`/`Grep` turns a 30-second fix into a session of degraded work.
+
+Say explicitly which tool is missing and what rule it was needed for. Example:
+
+> "I don't see `mcp__ar-consultant__consult` in my tool surface, so I can't follow Rule 1. Do you want to enable it, or should I proceed without it?"
+
+Then wait for the user's response.
+
+**The only exception:** when you can determine from the harness that no user is present (e.g. an autonomous FlowTree coding job with no interactive channel). In that case, proceed, note the limitation in your completion notes, and store a memory so the owner can fix the setup.
+
+Do not use this rule as a loophole: "I couldn't find the tool" is not a justification for skipping the consult if the tool actually is available. Only invoke this when the tool genuinely isn't in the surfaced list.
+
+
 ---
 
 # STRUCTURAL INVESTIGATION RULES
