@@ -6,7 +6,7 @@
 # soft guard — it never blocks, it prints a loud reminder pointing at the
 # specific lines and the fail-loud rule.
 #
-# Rule doc: .claude/rules/fail-loud.md
+# Rule doc: .claude/hooks/rules/fail-loud.md
 # Intended to catch my (the agent's) habit of adding `if (x > 0)` / `try { }
 # catch { /* ignore */ }` style guards to silence exceptions rather than
 # walk the stack back to the real producer of the bad value.
@@ -109,7 +109,7 @@ cat >&2 <<EOF
 ║    3. If you add this guard, what happens to every OTHER caller      ║
 ║       that hits the same producer with the same bad value?           ║
 ║                                                                      ║
-║  See: .claude/rules/fail-loud.md                                     ║
+║  See: .claude/hooks/rules/fail-loud.md                                     ║
 ║                                                                      ║
 ║  Matched lines:                                                      ║
 EOF
@@ -127,6 +127,16 @@ cat >&2 <<'EOF'
 ╚══════════════════════════════════════════════════════════════════════╝
 
 EOF
+
+# Inject the full rule doc so the agent has the reasoning in-context
+# WITHOUT paying for it in every session where nothing defensive was added.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RULE_DOC="$SCRIPT_DIR/rules/fail-loud.md"
+if [[ -f "$RULE_DOC" ]]; then
+    echo "── fail-loud.md (on-demand) ───────────────────────────────────────────" >&2
+    cat "$RULE_DOC" >&2
+    echo "── end fail-loud.md ───────────────────────────────────────────────────" >&2
+fi
 
 # Soft guard: always exit 0 so the edit proceeds. The reminder is visible
 # in the user-facing transcript and in the agent's own tool output.

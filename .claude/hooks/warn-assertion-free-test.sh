@@ -4,7 +4,7 @@
 # to stdout or inspects state without asserting cannot fail — it is a
 # demo, not a test.
 #
-# Rule doc: .claude/rules/fail-loud.md
+# Rule doc: .claude/hooks/rules/fail-loud.md
 # Intended to catch my (the agent's) habit of writing tests whose sole
 # contribution is a System.out.println that the reviewer is expected to
 # squint at. Those aren't tests.
@@ -120,7 +120,7 @@ done <<< "$BAD_METHODS"
 
 cat >&2 <<'EOF'
 ║                                                                      ║
-║  See: .claude/rules/fail-loud.md                                     ║
+║  See: .claude/hooks/rules/fail-loud.md                                     ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
 EOF
