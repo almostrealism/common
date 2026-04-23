@@ -68,15 +68,6 @@ public class MixdownMainPipelineTest extends TestSuiteBase implements FirFilterT
 	/** FIR filter order. */
 	private static final int FILTER_ORDER = 40;
 
-	/** High-pass cutoff frequency in Hz. */
-	private static final double HP_CUTOFF = 200.0;
-
-	/** Low-pass cutoff frequency in Hz. */
-	private static final double LP_CUTOFF = 8000.0;
-
-	/** Volume gain. */
-	private static final double VOLUME = 1.0;
-
 	// ---- Test 1: Parse -------------------------------------------------------------------
 
 	/**
@@ -155,8 +146,8 @@ public class MixdownMainPipelineTest extends TestSuiteBase implements FirFilterT
 		});
 
 		// Capture receptor: evaluates the pushed producer to retrieve the PackedCollection
-		PackedCollection<?>[] captured = {null};
-		Receptor<PackedCollection<?>> captureReceptor = protein -> {
+		PackedCollection[] captured = {null};
+		Receptor<PackedCollection> captureReceptor = protein -> {
 			captured[0] = protein.get().evaluate();
 			return new OperationList();
 		};
@@ -174,7 +165,7 @@ public class MixdownMainPipelineTest extends TestSuiteBase implements FirFilterT
 		Assert.assertNotNull("Captured pipeline output must not be null", captured[0]);
 
 		// Reference output via layer forward()
-		PackedCollection<?> refOutput = refCompiled.forward(inputSignal);
+		PackedCollection refOutput = refCompiled.forward(inputSignal);
 
 		// Compare outputs: same primitives should produce very close results
 		double[] pipelineOut = captured[0].toArray(0, SIGNAL_SIZE);
@@ -230,8 +221,8 @@ public class MixdownMainPipelineTest extends TestSuiteBase implements FirFilterT
 						+ 0.33 * Math.sin(2.0 * Math.PI * 12000.0 * t);
 			});
 
-			PackedCollection<?>[] captured = {null};
-			Receptor<PackedCollection<?>> captureReceptor = protein -> {
+			PackedCollection[] captured = {null};
+			Receptor<PackedCollection> captureReceptor = protein -> {
 				captured[0] = protein.get().evaluate();
 				return new OperationList();
 			};

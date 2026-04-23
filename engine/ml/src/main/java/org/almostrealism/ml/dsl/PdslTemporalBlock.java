@@ -31,7 +31,7 @@ import java.util.function.Supplier;
  *
  * <p>Implements both {@link Temporal} (primary path — for CellList integration via
  * {@link org.almostrealism.audio.CellList#addRequirement(Temporal)}) and
- * {@link Cell}{@code <PackedCollection<?>>} (secondary path — for the Block-to-CellList
+ * {@link Cell}{@code <PackedCollection>} (secondary path — for the Block-to-CellList
  * adapter pattern).</p>
  *
  * <h2>Temporal path (primary)</h2>
@@ -56,7 +56,7 @@ import java.util.function.Supplier;
  * @see org.almostrealism.time.Temporal
  * @see Cell
  */
-public class PdslTemporalBlock implements Temporal, Cell<PackedCollection<?>> {
+public class PdslTemporalBlock implements Temporal, Cell<PackedCollection> {
 
 	/** The compiled forward-pass kernel for this pipeline. */
 	private final CompiledModel compiledModel;
@@ -68,13 +68,13 @@ public class PdslTemporalBlock implements Temporal, Cell<PackedCollection<?>> {
 	private final String outputName;
 
 	/** Input buffer bound via {@link #attachInput(String, PackedCollection)}. */
-	private PackedCollection<?> inputBuffer;
+	private PackedCollection inputBuffer;
 
 	/** Output receptor bound via {@link #attachOutput(String, Receptor)}. */
-	private Receptor<PackedCollection<?>> outputReceptor;
+	private Receptor<PackedCollection> outputReceptor;
 
 	/** Downstream receptor for the Cell path, set via {@link #setReceptor(Receptor)}. */
-	private Receptor<PackedCollection<?>> downstreamReceptor;
+	private Receptor<PackedCollection> downstreamReceptor;
 
 	/**
 	 * Constructs a temporal block wrapping the given compiled model.
@@ -99,7 +99,7 @@ public class PdslTemporalBlock implements Temporal, Cell<PackedCollection<?>> {
 	 * @param buffer the source buffer; must not be null
 	 * @throws IllegalArgumentException if {@code name} does not match the declared input name
 	 */
-	public void attachInput(String name, PackedCollection<?> buffer) {
+	public void attachInput(String name, PackedCollection buffer) {
 		if (inputName != null && !inputName.equals(name)) {
 			throw new IllegalArgumentException(
 					"Pipeline input name mismatch: declared '" + inputName + "', got '" + name + "'");
@@ -116,7 +116,7 @@ public class PdslTemporalBlock implements Temporal, Cell<PackedCollection<?>> {
 	 * @param receptor the downstream receptor; must not be null
 	 * @throws IllegalArgumentException if {@code name} does not match the declared output name
 	 */
-	public void attachOutput(String name, Receptor<PackedCollection<?>> receptor) {
+	public void attachOutput(String name, Receptor<PackedCollection> receptor) {
 		if (outputName != null && !outputName.equals(name)) {
 			throw new IllegalArgumentException(
 					"Pipeline output name mismatch: declared '" + outputName + "', got '" + name + "'");
@@ -146,10 +146,10 @@ public class PdslTemporalBlock implements Temporal, Cell<PackedCollection<?>> {
 					"PdslTemporalBlock '" + outputName + "' output not attached — "
 							+ "call attachOutput() before adding to CellList");
 		}
-		PackedCollection<?> src = inputBuffer;
-		Receptor<PackedCollection<?>> dest = outputReceptor;
+		PackedCollection src = inputBuffer;
+		Receptor<PackedCollection> dest = outputReceptor;
 		return () -> () -> {
-			PackedCollection<?> result = compiledModel.forward(src);
+			PackedCollection result = compiledModel.forward(src);
 			dest.push(() -> args -> result).get().run();
 		};
 	}
@@ -166,27 +166,27 @@ public class PdslTemporalBlock implements Temporal, Cell<PackedCollection<?>> {
 	 * @return a supplier of the push operation
 	 */
 	@Override
-	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+	public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 		if (downstreamReceptor == null) {
 			return new OperationList();
 		}
-		Receptor<PackedCollection<?>> dest = downstreamReceptor;
+		Receptor<PackedCollection> dest = downstreamReceptor;
 		return () -> () -> {
-			PackedCollection<?> input = protein.get().evaluate();
-			PackedCollection<?> result = compiledModel.forward(input);
+			PackedCollection input = protein.get().evaluate();
+			PackedCollection result = compiledModel.forward(input);
 			dest.push(() -> args -> result).get().run();
 		};
 	}
 
 	/** {@inheritDoc} */
 	@Override
-	public void setReceptor(Receptor<PackedCollection<?>> r) {
+	public void setReceptor(Receptor<PackedCollection> r) {
 		this.downstreamReceptor = r;
 	}
 
 	/** {@inheritDoc} */
 	@Override
-	public Receptor<PackedCollection<?>> getReceptor() {
+	public Receptor<PackedCollection> getReceptor() {
 		return downstreamReceptor;
 	}
 

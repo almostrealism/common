@@ -91,7 +91,7 @@ public class PdslApproachDValidationTest extends TestSuiteBase implements FirFil
 
 		Temporal requirement = () -> {
 			tickCallCount.incrementAndGet();
-			return () -> {};
+			return () -> () -> {};
 		};
 
 		CellList list = new CellList();
@@ -156,7 +156,7 @@ public class PdslApproachDValidationTest extends TestSuiteBase implements FirFil
 		PackedCollection[] lastOutput = {null};
 
 		// First tick: wrap forward() as Temporal, run it
-		Temporal firstTick = () -> () -> lastOutput[0] = compiled.forward(signal1);
+		Temporal firstTick = () -> () -> () -> { lastOutput[0] = compiled.forward(signal1); };
 		firstTick.tick().get().run();
 
 		Assert.assertNotNull("First tick output must not be null", lastOutput[0]);
@@ -166,7 +166,7 @@ public class PdslApproachDValidationTest extends TestSuiteBase implements FirFil
 				0.0, lastOutput[0].toDouble(1), 1e-6);
 
 		// Second tick: state must carry over — the delay buffer now holds 1.0 values
-		Temporal secondTick = () -> () -> lastOutput[0] = compiled.forward(signal2);
+		Temporal secondTick = () -> () -> () -> { lastOutput[0] = compiled.forward(signal2); };
 		secondTick.tick().get().run();
 
 		Assert.assertNotNull("Second tick output must not be null", lastOutput[0]);
@@ -219,7 +219,7 @@ public class PdslApproachDValidationTest extends TestSuiteBase implements FirFil
 		PackedCollection[] output = {null};
 
 		// Minimal Temporal adapter — the core pattern for PdslTemporalBlock.tick()
-		Temporal adapter = () -> () -> output[0] = compiled.forward(input);
+		Temporal adapter = () -> () -> () -> { output[0] = compiled.forward(input); };
 		adapter.tick().get().run();
 
 		Assert.assertNotNull("Adapter output must not be null", output[0]);
