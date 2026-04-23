@@ -136,10 +136,13 @@ class GitRepositorySetup implements ConsoleFeatures {
 
             String stashMessage = "flowtree: interrupted job residue before "
                     + job.getTaskId() + " [" + fileList + "]";
-            if (job.executeGit("stash", "push", "--include-untracked", "-m", stashMessage) != 0) {
-                throw new RuntimeException("Failed to stash uncommitted changes: " + fileList);
+            if (job.executeGit("stash", "push", "--include-untracked", "-m", stashMessage) == 0) {
+                log("Working directory cleaned (changes stashed)");
+            } else {
+                warn("Failed to stash uncommitted changes (" + fileList
+                        + ") -- wiping working tree to allow new job to proceed");
+                wipeWorkingTree();
             }
-            log("Working directory cleaned (changes stashed)");
         }
 
         // 2. Fetch latest from origin.
@@ -342,6 +345,46 @@ class GitRepositorySetup implements ConsoleFeatures {
     }
 
     /**
+     * Discards all uncommitted changes in the primary working directory.
+     *
+     * <p>Used as a fallback when {@code git stash push} fails (for example,
+     * because a file is in a {@code needs merge} state from a previously
+     * aborted job).  Stashing is only a precaution to preserve residue for
+     * later inspection; allowing the new job to proceed takes priority.</p>
+     *
+     * <p>Aborts any in-progress merge, then resets the index and working
+     * tree to {@code HEAD} and removes untracked files and directories.</p>
+     */
+    private void wipeWorkingTree() throws IOException, InterruptedException {
+        job.executeGit("merge", "--abort");
+        if (job.executeGit("reset", "--hard", "HEAD") != 0) {
+            throw new RuntimeException("Failed to reset working tree after stash failure");
+        }
+        if (job.executeGit("clean", "-fd") != 0) {
+            throw new RuntimeException("Failed to clean working tree after stash failure");
+        }
+        log("Working tree wiped (stash fallback)");
+    }
+
+    /**
+     * Discards all uncommitted changes in a dependent repo working directory.
+     *
+     * <p>See {@link #wipeWorkingTree()} for the rationale.</p>
+     *
+     * @param gitOps the {@link GitOperations} instance bound to the dependent repo
+     */
+    private void wipeWorkingTree(GitOperations gitOps) throws IOException, InterruptedException {
+        gitOps.execute("merge", "--abort");
+        if (gitOps.execute("reset", "--hard", "HEAD") != 0) {
+            throw new IOException("Failed to reset working tree after stash failure");
+        }
+        if (gitOps.execute("clean", "-fd") != 0) {
+            throw new IOException("Failed to clean working tree after stash failure");
+        }
+        log("Working tree wiped (stash fallback)");
+    }
+
+    /**
      * Returns the resolved filesystem paths for dependent repos cloned during
      * {@link #prepareDependentRepos()}.
      *
@@ -409,7 +452,9 @@ class GitRepositorySetup implements ConsoleFeatures {
                 log("Stashing uncommitted changes in dependent repo: " + depPath);
                 int stashExit = gitOps.execute("stash", "push", "--include-untracked", "-m", stashMsg);
                 if (stashExit != 0) {
-                    throw new IOException("git stash push failed (exit " + stashExit + ") in " + depPath);
+                    warn("Failed to stash dependent repo " + depPath
+                            + " (exit " + stashExit + ") -- wiping working tree to allow new job to proceed");
+                    wipeWorkingTree(gitOps);
                 }
             }
 
