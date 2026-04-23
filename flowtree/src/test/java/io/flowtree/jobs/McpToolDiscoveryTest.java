@@ -394,6 +394,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(serverFile, "send_message");
 		assertTrue("send_message must declare text in signature",
 			sendMessageParams.contains("text"));
+		assertTrue("send_message must declare activity in signature",
+			sendMessageParams.contains("activity"));
+
+		List<String> workstreamContextParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_context");
+		assertTrue("workstream_context must declare include_activities in signature",
+			workstreamContextParams.contains("include_activities"));
 	}
 
 	@Test(timeout = 30000)

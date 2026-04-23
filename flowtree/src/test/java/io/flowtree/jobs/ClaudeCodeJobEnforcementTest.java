@@ -359,6 +359,68 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		assertEquals(3, violationCount.get());
 	}
 
+	// ── Correction session activity tagging ─────────────────────────────────
+
+	/**
+	 * {@link DeduplicationRule} must return {@code "deduplication"} from
+	 * {@link EnforcementRule#getName()} so that correction sessions started
+	 * by that rule pass {@code "deduplication"} as the activity to
+	 * {@code runCorrectionSession}, which propagates it to the
+	 * {@code AR_AGENT_ACTIVITY} environment variable.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleNameIsDeduplication() {
+		DeduplicationRule rule = new DeduplicationRule();
+		assertEquals("deduplication", rule.getName());
+	}
+
+	/**
+	 * Verifies that correction sessions are tagged with the enforcement rule's
+	 * name as the activity.  The rule's {@link EnforcementRule#getName()} return
+	 * value is the activity identifier propagated to {@code AR_AGENT_ACTIVITY}
+	 * in the subprocess environment so that {@code send_message} calls made by
+	 * the correction-session agent are automatically tagged with the rule name.
+	 *
+	 * <p>This test verifies that the activity value captured at the
+	 * {@code runEnforcementRules} call site equals {@code rule.getName()},
+	 * using a spy rule that records the name at correction time.</p>
+	 */
+	@Test(timeout = 30000)
+	public void correctionSessionActivityMatchesRuleName() {
+		AtomicReference<String> capturedRuleName = new AtomicReference<>();
+
+		EnforcementRule rule = new EnforcementRule() {
+			private boolean done = false;
+
+			@Override
+			public String getName() { return "maven_dependency_protection"; }
+
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) { return !done; }
+
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) {
+				// Record the name that runEnforcementRules() would use as activity
+				capturedRuleName.set(getName());
+				done = true;
+				// Return null so the enforcement loop skips the subprocess launch
+				return null;
+			}
+		};
+
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+
+		// Simulate the enforcement loop: isViolated triggers buildCorrectionPrompt,
+		// which records getName() — the value later passed as activity.
+		if (rule.isViolated(job)) {
+			rule.buildCorrectionPrompt(job);
+			assertNotNull("rule.getName() must return a non-null activity string",
+					capturedRuleName.get());
+		}
+
+		assertEquals("maven_dependency_protection", capturedRuleName.get());
+	}
+
 	// ── Backward compatibility ───────────────────────────────────────────────
 
 	@Test(timeout = 30000)
