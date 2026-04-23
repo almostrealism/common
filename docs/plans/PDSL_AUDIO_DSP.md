@@ -1042,6 +1042,491 @@ inputs, not internal state), but it means the envelope computation itself stays 
 
 ---
 
+## Part 12: Tick Semantics and Source-Driven Evaluation in PDSL
+
+### 12A: The Problem, Precisely Stated
+
+Part 10B established that `Block.getForward()` returns a `Cell<PackedCollection>`, making a
+PDSL-compiled block a drop-in node for any `CellList`. That handles the case where a PDSL
+block is **one passive node inside a larger, Java-wired CellList**. It does not answer a
+deeper structural question: *what does a fully PDSL-defined pipeline look like when it needs
+to self-drive the way a CellList does?*
+
+#### The tick model (CellList)
+
+`CellList.tick()` (engine/audio/.../CellList.java:923) returns a `Supplier<Runnable>`. When
+executed, it:
+
+1. Pushes `c(0.0)` to each root in `getAllRoots()` — roots are self-initializing sources
+   such as `WaveCell` (reads a file) or `PatternAudioBuffer` (holds pre-computed samples).
+2. Calls `getAllTemporals().tick()` — walks the parent/child hierarchy and ticks every
+   `Temporal` in order (parents before children, requirements last).
+
+`TimeCell` (domain/graph/.../TimeCell.java) is both a `Temporal` and a `Cell<PackedCollection>`.
+Its `tick()` increments an internal frame counter (with optional modulo wrap). Its `push()`
+forwards the current frame value to its downstream receptor. **No external caller provides
+the frame number** — `TimeCell` owns its own state. The entire tick graph is self-contained;
+the audio engine just calls `tick().get().run()` once per buffer.
+
+#### The forward model (CompiledModel)
+
+`CompiledModel.forward(PackedCollection input, PackedCollection... auxInputs)`
+(domain/graph/.../CompiledModel.java) is synchronous and pull-driven. The caller provides
+`input`. The compiled kernel reads it, runs the forward pass, writes to an output buffer,
+and returns. The caller decides when to invoke `forward()` and what to pass.
+
+#### Where the gap manifests
+
+The goal is to replace `MixdownManager` with a PDSL definition. `MixdownManager.cells()`
+(studio/compose/.../MixdownManager.java:457) produces a `CellList`. `AudioScene.getCells()`
+calls it and returns that CellList to the audio engine. The engine calls:
+
+```java
+Supplier<Runnable> tick = cells.tick();
+// ... once per audio buffer:
+tick.get().run();
+```
+
+Nobody calls `compiled.forward(buffer)` — the CellList is self-driving. If
+`mixdown_channel.pdsl` compiled to a `CompiledModel`, the question is: **who calls
+`compiled.forward(buffer)` and who provides `buffer`?** In the CellList world the push
+graph delivers data automatically. In the Model world there is no push graph.
+
+#### The granularity dimension
+
+`CellList.tick()` has a `tickLoopCount` that collapses per-sample iterations into a single
+native call (the hot audio loop). A PDSL block's `forward()` processes one whole buffer.
+These two granularities do not naturally align. Any solution must be explicit about
+whether a PDSL component fires once per sample or once per buffer, and how that maps to
+the CellList's temporal ordering.
+
+#### What Part 10B already gives us (and its limit)
+
+Part 10B's Block→CellList adapter is the right answer when:
+- A Java-written CellList wires up sources and clocks
+- The PDSL block is one stage in the pipeline, driven by the upstream push
+
+It does **not** give us a fully PDSL-defined pipeline because:
+- The source of the push signal (e.g., `PatternAudioBuffer`) is still Java-wired
+- The `TimeCell` clock is still Java-constructed and Java-inserted into the CellList
+- A reader of the PDSL file cannot see where data enters the pipeline
+
+---
+
+### 12B: Approach A — Source/Sink Declarations in PDSL
+
+The PDSL layer syntax gains new top-level declaration forms: `source` (named input binding)
+and `sink` (named output receptor). These make the PDSL file self-describing. The PDSL
+loader detects these declarations and produces a `PdslPipeline` — a new compilation target
+implementing `Temporal` — rather than a `Block`.
+
+**What `mixdown_channel.pdsl` looks like under this approach:**
+
+```pdsl
+// Sources and sinks declared at the top — runtime binds them at attach time
+source channel_input -> [1, signal_size]
+sink   master_output
+
+state mixdown_state {
+    hp_history: weight    // [x1, x2, y1, y2] for HP biquad
+    lp_history: weight    // [x1, x2, y1, y2] for LP biquad
+}
+
+layer mixdown_channel(hp_cutoff: scalar, volume: scalar,
+                      lp_cutoff: scalar, sample_rate: scalar,
+                      filter_order: scalar, s: mixdown_state) {
+    source channel_input
+    highpass(hp_cutoff, sample_rate, filter_order)
+    scale(volume)
+    lowpass(lp_cutoff, sample_rate, filter_order)
+    sink master_output
+}
+```
+
+The compiled `PdslPipeline.tick()` implementation:
+1. Reads from the bound `PackedCollection` (via `cp(sourceBuffer)`) as the pipeline input
+2. Runs the filter chain as a `CollectionProducer` graph (same as the existing forward pass)
+3. Pushes the output to the bound `Receptor<PackedCollection>`
+
+**Integration with AudioScene/MixdownManager:**
+
+```java
+// In MixdownManager.createCells():
+PdslPipeline mixdown = loader.buildPipeline("mixdown_channel.pdsl", args);
+mixdown.bindSource("channel_input", patternAudioBuffer.getBuffer());
+mixdown.bindSink("master_output", masterReceptor);
+cells.addRequirement(mixdown);   // Temporal — ticked once per buffer by CellList
+```
+
+`MixdownManager.createCells()` no longer calls `hp()`, `m()`, `lp()`, `d()` manually for
+the main path. It builds and attaches one `PdslPipeline` per channel.
+
+**New PDSL primitives/constructs required:**
+- `source <name> -> <shape>` declaration (parser + `PdslNode.SourceDecl` AST node)
+- `sink <name>` declaration (parser + `PdslNode.SinkDecl` AST node)
+- `PdslPipeline` class implementing `Temporal` + runtime source/sink binding
+- `PdslLoader.buildPipeline(...)` entry point alongside `buildLayer(...)`
+
+**What's appealing:**
+- The PDSL file shows the complete signal flow: where data enters (`source`), what happens
+  to it, and where it exits (`sink`). No Java required to understand the pipeline.
+- The `layer` syntax body is identical to the existing PDSL — only the file-level
+  declarations are new. Existing layer definitions are unaffected.
+- Source/sink binding is explicit and grep-able (`bindSource` calls in Java).
+
+**What's awkward:**
+- Introduces a runtime source registry concept and a new compilation target.
+- Source/sink names are stringly-typed; a typo in `bindSource("channel_ipnut", ...)` fails
+  at runtime, not compile time.
+- Multi-input topologies (wet path and dry path from different sources) require extending
+  the `source` declaration syntax further.
+- Mixes data-flow declarations (`source`/`sink`) with computational nodes in the layer body
+  — a slightly unusual grammar for the existing PDSL convention.
+
+**Scores against hard constraints:**
+- PDSL intuitive-as-flow: **4/5** — explicit sources and sinks; flow is clear at a glance
+- CellList-non-destructive: **3/5** — `addRequirement()` is new but CellList code untouched
+
+---
+
+### 12C: Approach B — PDSL Compiles to CellList
+
+The PDSL syntax is unchanged. A new compilation mode (`buildCellList`) in `PdslLoader`
+translates each PDSL primitive to its equivalent CellList fluent API call instead of to a
+`Block`. The result is an ordinary `CellList` — fully tickable, already understood by
+`AudioScene`, requiring no new interfaces.
+
+**What `mixdown_channel.pdsl` looks like under this approach (syntax unchanged):**
+
+```pdsl
+// Same file — the caller chooses the compilation mode
+
+layer mixdown_main(signal_size: int, hp_cutoff: scalar, volume: scalar,
+                   lp_cutoff: scalar, sample_rate: scalar, filter_order: scalar) {
+    highpass(hp_cutoff, sample_rate, filter_order)
+    scale(volume)
+    lowpass(lp_cutoff, sample_rate, filter_order)
+}
+```
+
+The loader generates, conceptually:
+
+```java
+// buildCellList() output — not visible in the PDSL file
+CellList cells = sources;                              // parent: already wired sources
+cells = cells.f(i -> hp(hpCutoff, sampleRate, order)); // highpass
+cells = cells.m(i -> c(volume));                       // scale
+cells = cells.f(i -> lp(lpCutoff, sampleRate, order)); // lowpass
+```
+
+**Integration with AudioScene/MixdownManager:**
+
+```java
+// In MixdownManager.createCells():
+CellList mixdownCells = loader.buildCellList("mixdown_channel.pdsl",
+    sources,   // parent CellList — the source input
+    args);
+cells = cells.and(mixdownCells);  // Merge into existing pipeline — standard CellList API
+```
+
+**New PDSL primitives/constructs required:**
+- `PdslLoader.buildCellList(String file, CellList sources, Object... args)` — new entry point
+- CellList translations for each audio primitive: `highpass→f(hp(...))`, `scale→m(c(...))`,
+  `lowpass→f(lp(...))`, `fir→f(fir(...))`, `accum_blocks→branch()/and()/sum()`
+- Every future PDSL primitive that needs CellList support requires a second implementation
+
+**What's appealing:**
+- The output is exactly what `AudioScene` already expects: a `CellList`. No new interfaces,
+  no new concepts, no new API on `AudioScene` or the audio engine.
+- Tick semantics are preserved perfectly — the result participates in CellList parent/child
+  hierarchy, temporal ordering, and `getAllTemporals()` collection.
+- Migration is incremental: replace one `CellList` method call with one `buildCellList()`.
+
+**What's awkward:**
+- Every PDSL primitive requires **two implementations** forever: a `Block` translation
+  (existing) and a `CellList` translation (new). ML-domain primitives (`dense`, `attention`,
+  `rmsnorm`) have no CellList analog — they are Block-only. This creates a hidden split
+  in the PDSL language where some primitives work in both modes and some only in one.
+- The compilation mode is invisible in the PDSL file. A reader cannot tell whether
+  `mixdown_channel.pdsl` will produce a `Block` or a `CellList`.
+- `accum_blocks` (two parallel sub-blocks accumulated) maps naturally to a `Block` (two
+  sub-blocks in a `BranchBlock`). Mapping it to a CellList requires `branch()`/`and()`/
+  `sum()` — a structurally different topology that is non-trivial to generate automatically.
+- Per-buffer (Block) vs per-sample (CellList) granularity is conflated — the PDSL file
+  does not express which granularity the compiled result will use.
+
+**Scores:**
+- PDSL intuitive-as-flow: **3/5** — same syntax, but the compilation target split is opaque
+- CellList-non-destructive: **5/5** — output is literally a CellList; zero new API
+
+---
+
+### 12D: Approach C — Block Adapter That Absorbs Sources
+
+PDSL syntax and compilation are completely unchanged. A thin Java shim wraps the compiled
+`Block`/`CompiledModel` and resolves the input from a registered source on each CellList
+tick. The adapter implements `Temporal` and is added to `cells.addRequirement(...)`.
+
+**What `mixdown_channel.pdsl` looks like under this approach:**
+
+```pdsl
+// Unchanged — identical to Part 11
+
+layer mixdown_channel(signal_size: int, hp_cutoff: scalar, volume: scalar,
+                      lp_cutoff: scalar, sample_rate: scalar, filter_order: scalar,
+                      wet_filter_coeffs: weight, wet_level: scalar,
+                      delay_samples: int) -> [1, signal_size] {
+    highpass(hp_cutoff, sample_rate, filter_order)
+    scale(volume)
+    accum_blocks(
+        { identity() },
+        { fir(wet_filter_coeffs); scale(wet_level) }
+    )
+    lowpass(lp_cutoff, sample_rate, filter_order)
+}
+```
+
+The adapter in Java:
+
+```java
+// PdslChannelAdapter — thin shim, ~40 lines
+public class PdslChannelAdapter implements Temporal {
+    private final CompiledModel model;
+    private final Supplier<PackedCollection> source;  // e.g., buffer::getInputBuffer
+    private final Receptor<PackedCollection> sink;
+
+    @Override
+    public Supplier<Runnable> tick() {
+        return () -> {
+            PackedCollection input = source.get();
+            PackedCollection output = model.forward(input);
+            sink.push(p(output)).get().run();
+        };
+    }
+}
+
+// In MixdownManager.createCells():
+CompiledModel mixdown = loader.buildLayer("mixdown_channel.pdsl", shape, args).compile(false);
+PdslChannelAdapter adapter = new PdslChannelAdapter(
+    mixdown,
+    patternAudioBuffer::getBuffer,
+    masterReceptor);
+cells.addRequirement(adapter);   // fires once per buffer, after per-sample cells
+```
+
+**Integration with AudioScene/MixdownManager:**
+
+Minimal. `MixdownManager.createCells()` replaces the main-path CellList fluent chain
+(`hp()`, `m()`, `lp()`) with one `PdslChannelAdapter` per channel. Everything else —
+the cross-channel transmission, reverb, `DelayNetwork` — remains unchanged Java CellList code.
+
+**New PDSL primitives/constructs required:**
+- None. No PDSL changes whatsoever.
+- Only new Java class: `PdslChannelAdapter` (or equivalent in `MixdownManager`).
+
+**What's appealing:**
+- Zero PDSL language changes — no parser changes, no new AST nodes, no new primitives.
+- The adapter is mechanical and easy to reason about: it is precisely a tick-to-forward
+  bridge.
+- Per-buffer semantics are correct: the adapter fires once per buffer via `requirements`,
+  after per-sample cells have run.
+- Incremental migration: replace one hand-written CellList cell chain with one adapter,
+  verify audio output, repeat.
+
+**What's awkward:**
+- The PDSL file shows nothing about where input comes from. A reader of
+  `mixdown_channel.pdsl` sees `layer mixdown_channel(...)` with scalar parameters but
+  has no idea that audio data arrives from a `PatternAudioBuffer`. The source binding lives
+  entirely in the Java adapter.
+- This directly violates the first hard constraint: *PDSL must remain intuitive to
+  understand as a "flow."* The adapter approach makes the flow invisible in PDSL.
+- At scale (16 channels, multiple PDSL-defined blocks per channel), the Java wiring code
+  grows proportionally. The PDSL definitions do not describe the whole system.
+- `CompiledModel.forward()` is per-buffer. If the CellList also runs with `tickLoopCount`
+  (per-sample batching), the adapter must be registered as a requirement (not as a cell)
+  to fire at buffer granularity — easy to get wrong during initial implementation.
+
+**Scores:**
+- PDSL intuitive-as-flow: **2/5** — source binding invisible in PDSL; violates the
+  declarative-readability constraint
+- CellList-non-destructive: **5/5** — no CellList code changes at all
+
+---
+
+### 12E: Approach D — `pipeline` Keyword (Tickable Block)
+
+A new `pipeline` top-level declaration joins `layer` and `model` in the PDSL grammar.
+A `pipeline` is like a `layer` but self-describing: it declares its own input source,
+output sink, and tick state. It compiles to a `PdslTemporalBlock` — an object implementing
+both `Temporal` (so it can be added to CellList requirements) and `Cell<PackedCollection>`
+(so it can also participate in the Part 10B Block→CellList path if needed).
+
+The `pipeline`/`layer` distinction mirrors the existing `CellList`/`Cell` distinction:
+a `layer` is a passive transformation node; a `pipeline` is a self-driving processing unit.
+
+**What `mixdown_channel.pdsl` looks like under this approach:**
+
+```pdsl
+// A pipeline is self-describing: source, state, signal path, and sink are all declared here.
+
+pipeline mixdown_channel(hp_cutoff: scalar, volume: scalar,
+                         lp_cutoff: scalar, sample_rate: scalar, filter_order: scalar) {
+
+    input  channel_audio -> [1, signal_size]   // reads from this named source each tick
+    output master_output                        // pushes result to this named receptor
+
+    state mixdown_state {
+        hp_history: weight    // [x1, x2, y1, y2] for HP biquad
+        lp_history: weight    // [x1, x2, y1, y2] for LP biquad
+    }
+
+    // Signal path — identical grammar to a layer body
+    highpass(hp_cutoff, sample_rate, filter_order)
+    scale(volume)
+    lowpass(lp_cutoff, sample_rate, filter_order)
+}
+```
+
+Compiled `PdslTemporalBlock.tick()` implementation:
+1. Reads `cp(attachedInputBuffer)` — the source bound via `attachInput()`
+2. Runs the filter chain as a `CollectionProducer` graph (same Producer machinery as today)
+3. Pushes the result to the attached output receptor
+
+**Integration with AudioScene/MixdownManager:**
+
+```java
+// In MixdownManager.createCells():
+PdslTemporalBlock mixdown = loader.buildPipeline("mixdown_channel.pdsl", stateArgs, params);
+mixdown.attachInput("channel_audio", patternAudioBuffer.getBuffer());
+mixdown.attachOutput("master_output", masterReceptor);
+cells.addRequirement(mixdown);   // Temporal — ticked once per buffer
+```
+
+`MixdownManager.createCells()` replaces its manual main-path construction with one
+`buildPipeline()` call per channel. Cross-channel transmission, reverb, and `DelayNetwork`
+remain as Java CellList code (see Part 11 — these are not expressible in PDSL today).
+
+**New PDSL primitives/constructs required:**
+- `pipeline` keyword (parser switch alongside `layer`, `model`)
+- `input <name> -> <shape>` declaration within a pipeline body
+- `output <name>` declaration within a pipeline body
+- `PdslNode.PipelineDef` AST node (structurally similar to `LayerDef`, adds input/output
+  fields alongside the state and layer body)
+- `PdslTemporalBlock` class implementing `Temporal + Cell<PackedCollection>` — new
+  compilation target in `PdslLoader`
+- `PdslLoader.buildPipeline(...)` entry point
+- `attachInput(String name, PackedCollection buffer)` and
+  `attachOutput(String name, Receptor<PackedCollection> receptor)` on `PdslTemporalBlock`
+
+**What's appealing:**
+- The PDSL file is fully self-describing. A reader sees: input source, state structure,
+  signal processing chain, output receptor — the complete flow at a glance.
+- The `pipeline` / `layer` distinction maps onto a mental model users already have from
+  the `CellList` / `Cell` analogy. The two-word vocabulary is learnable.
+- `layer` definitions (for ML, for Block→CellList adapter use) are completely unchanged.
+- The tick granularity is explicit: a `pipeline` fires once per buffer via `requirements`,
+  same as any other `Temporal` in the CellList hierarchy.
+- `state` blocks work identically in `pipeline` and `layer` — no new state mechanism.
+- `PdslTemporalBlock` implementing both `Temporal` and `Cell` means it can also be used
+  in the Part 10B path (`getForward()`), giving maximum flexibility.
+
+**What's awkward:**
+- Two top-level keywords (`layer` vs `pipeline`) add conceptual overhead. New PDSL authors
+  must learn when to use each.
+- `input`/`output` declarations are syntactically new — they do not exist in the current
+  PDSL grammar and require parser extension.
+- `attachInput()` / `attachOutput()` are stringly-typed (same risk as Approach A).
+- `PdslLoader.buildPipeline()` is a third entry point alongside `buildLayer()` and
+  `buildModel()` — the loader API grows wider.
+
+**Scores:**
+- PDSL intuitive-as-flow: **5/5** — explicit source, processing chain, sink; maximum
+  declarative clarity
+- CellList-non-destructive: **4/5** — `addRequirement()` is the only new CellList
+  interaction; all existing CellList/AudioScene/MixdownManager code is unchanged
+
+---
+
+### 12F: Side-by-Side Comparison
+
+| Dimension | A: Source/Sink Decls | B: PDSL→CellList | C: Block Adapter | D: Pipeline Keyword |
+|-----------|---------------------|------------------|-----------------|---------------------|
+| **PDSL intuitive-as-flow (1–5)** | 4 | 3 | 2 | **5** |
+| **CellList-non-destructive (1–5)** | 3 | **5** | **5** | 4 |
+| **Implementation cost** | Medium — new `PdslPipeline` class, source/sink AST nodes, binding | High — dual compilation path for every primitive, ongoing maintenance burden | **Low** — thin adapter class, zero PDSL changes | Medium-High — new `pipeline` keyword, `PdslTemporalBlock`, new loader entry point |
+| **Required PDSL extensions** | `source`/`sink` declarations, `PdslPipeline` compilation target | Second compilation target for every audio primitive | **None** | `pipeline` keyword, `input`/`output` declarations, `PdslTemporalBlock` |
+| **MixdownManager rewrite** | Replace `createCells()` body with `buildPipeline()` + source/sink bindings | Replace `createCells()` body with `buildCellList()` + pass sources as parent | Keep most of `createCells()`; replace leaf cell chains with `PdslChannelAdapter` | Replace `createCells()` main-path body with `buildPipeline()` + `attachInput()`/`attachOutput()` |
+| **Handles per-buffer granularity?** | Yes — `PdslPipeline` is `Temporal`, fires once per buffer via `requirements` | Partial — CellList translation conflates per-sample / per-buffer | Yes — adapter fires once per buffer as `requirement` | Yes — `PdslTemporalBlock` fires once per buffer as `requirement` |
+| **Blocking risks** | Runtime source registry adds failure mode; stringly-typed names | Dual compilation doubles maintenance; `accum_blocks` topology is hard to map to CellList API | Violates PDSL-as-flow constraint; source invisible in PDSL file | Two-keyword design adds cognitive overhead; `attachInput()` is stringly-typed |
+| **Best suited for** | Fully self-describing PDSL files with readable source/sink | Incremental CellList replacement with no new Java concepts | Immediate migration with zero PDSL risk | Long-term: fully PDSL-defined self-driving pipelines |
+
+---
+
+### 12G: Recommendation
+
+#### Phase 1 (now): Approach C as the migration vehicle
+
+The Block Adapter requires no PDSL changes and has the lowest risk. It allows
+`MixdownManager.createCells()` to migrate one cell chain at a time: replace a Java-defined
+`hp()`/`m()`/`lp()` chain with a `PdslChannelAdapter` wrapping the already-working
+`mixdown_channel.pdsl` `CompiledModel`. This delivers real audio output from PDSL-defined
+filters without any PDSL language work.
+
+The readability violation is acceptable at this phase because the PDSL files are already
+written (Part 11) and the signal path is already visible in the PDSL definition — the
+adapter's source binding is a narrow seam, not a structural opacity. The adapter is also
+the right prototype: before investing in `PdslTemporalBlock` infrastructure, verify that:
+
+1. `addRequirement(adapter)` fires at the correct granularity relative to the CellList's
+   per-buffer tick (not per-sample)
+2. The `state` block's `into()` write-back mechanism works correctly when the block is
+   invoked via a `Temporal` tick rather than a direct `forward()` call
+3. Audio output is correct end-to-end — listen to the WAV
+
+#### Phase 2 (after prototype validates): Approach D as the target architecture
+
+Approach D achieves both hard constraints simultaneously: PDSL files are fully
+self-describing (maximum readability), and integration is via `addRequirement()` which
+leaves all existing CellList code intact.
+
+The `pipeline` / `layer` distinction is worth the conceptual overhead because it mirrors
+an existing distinction in the codebase: a `CellList` is self-driving; a `Cell` is a
+passive node. The analogy teaches itself. A new PDSL author who knows the `Cell`/`CellList`
+model will immediately understand that a `pipeline` drives itself and a `layer` is driven
+by something else.
+
+Approach D is preferable to Approach A because the `pipeline` keyword makes the compilation
+target explicit from the first word of the definition — a reader knows immediately that
+this compiles to a `Temporal`, not a `Block`. Approach A (`source`/`sink` declarations
+inside a `layer`) provides the same information but requires reading deeper into the file.
+
+#### Why Approach B is excluded
+
+The dual compilation path maintenance burden is too high. Every future primitive that
+needs audio DSP support would require two implementations in perpetuity. The
+`accum_blocks` topology (two parallel branches accumulated) does not map cleanly to the
+CellList `branch()`/`and()`/`sum()` API — generating it automatically would require
+non-trivial graph topology reconstruction. The ongoing cost of maintaining two compilation
+paths outweighs the benefit of producing a literal `CellList` output.
+
+#### What the Approach C prototype should specifically test
+
+- **Granularity:** Add `PdslChannelAdapter` as a requirement to a `CellList` configured
+  with `setTickLoopCount(bufferSize)`. Confirm the adapter's `tick()` fires exactly once
+  per buffer, not once per sample.
+- **State persistence:** Run two consecutive buffer ticks. Confirm that biquad/delay state
+  (from `state` blocks, written back via `into()`) survives across the tick boundary and
+  produces the expected filter transient response (not a cold restart each buffer).
+- **Output correctness:** Compare WAV output from the `PdslChannelAdapter`-driven pipeline
+  against the existing Java-wired CellList pipeline on the same input signal. The frequency
+  response should match (modulo FIR vs IIR differences noted in Part 11).
+
+If all three conditions hold, `PdslTemporalBlock` (Approach D) is the adapter refactored
+to be self-describing — the execution model is identical, only the PDSL grammar extension
+is new work.
+
+---
+
 ## Appendix A: Current PDSL Files Reference
 
 | File | What it defines |
