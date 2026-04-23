@@ -23,7 +23,7 @@ ar-manager is the **single centralized MCP tool** for all agent jobs. It provide
 │  │              (port 8010, Docker service)               │   │
 │  │                                                       │   │
 │  │  Tools: send_message, memory_recall, memory_store,    │   │
-│  │         memory_branch_context, github_pr_find,        │   │
+│  │         workstream_context, github_pr_find,           │   │
 │  │         github_pr_review_comments, github_pr_reply,   │   │
 │  │         github_create_pr, workstream_get_status, ...  │   │
 │  └───┬──────────────┬──────────────┬─────────────────────┘   │
@@ -63,7 +63,7 @@ The controller generates a temporary HMAC token at job submission time:
 | `send_message` | Send a message (stored in memory, optionally notified via Slack) |
 | `memory_recall` | Semantic search across agent memories |
 | `memory_store` | Store a new memory entry |
-| `memory_branch_context` | Get all memories + commit history for a branch |
+| `workstream_context` | Get memories, commits, and jobs for a workstream branch |
 | `github_pr_find` | Find open PR for a branch |
 | `github_pr_review_comments` | Get code review comments on a PR |
 | `github_pr_conversation` | Get PR conversation (issue comments) |

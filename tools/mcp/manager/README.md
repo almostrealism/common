@@ -66,7 +66,7 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | Tool | Scope | Description |
 |------|-------|-------------|
 | `memory_recall` | memory | Semantic search with optional LLM synthesis |
-| `memory_branch_context` | memory | Get all memories for a specific branch |
+| `workstream_context` | memory | Get memories, commits, and jobs for a workstream branch |
 | `memory_store` | memory | Store a memory from an external client |
 
 Memory tools resolve `repo_url` and `branch` from a `workstream_id` when not

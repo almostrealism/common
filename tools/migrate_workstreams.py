@@ -38,6 +38,7 @@ Then restart the FlowTree controller. The controller validates the config on sta
 
 import argparse
 import copy
+import re
 import sys
 from typing import Dict, List, Optional, Tuple
 
@@ -61,6 +62,45 @@ def detect_format(config: dict) -> str:
 # Org collection
 # ---------------------------------------------------------------------------
 
+_GITHUB_URL_RE = re.compile(
+    r"""^(?:
+            git@github\.com:
+          | (?:ssh://)?git@github\.com/
+          | https?://(?:[^@/]+@)?github\.com/
+        )
+        (?P<org>[^/]+)/[^/]+?(?:\.git)?/?$
+    """,
+    re.VERBOSE,
+)
+
+
+def extract_github_org(repo_url: Optional[str]) -> Optional[str]:
+    """Return the org segment of a GitHub repo URL, or None if not a GitHub URL."""
+    if not repo_url:
+        return None
+    m = _GITHUB_URL_RE.match(repo_url.strip())
+    return m.group("org") if m else None
+
+
+def resolve_workstream_org(ws: dict, defined_orgs: List[str]) -> Optional[str]:
+    """
+    Resolve the GitHub org for a workstream.
+
+    Uses the explicit ``githubOrg`` field when present; otherwise derives the
+    org from ``repoUrl`` (GitHub URLs only). When the derived name matches a
+    defined org case-insensitively, the canonical (defined) casing is returned
+    so the mapping key matches the ``githubOrgs`` section.
+    """
+    explicit = ws.get("githubOrg")
+    if explicit:
+        return explicit
+    derived = extract_github_org(ws.get("repoUrl"))
+    if derived is None:
+        return None
+    lower_to_defined = {o.lower(): o for o in defined_orgs}
+    return lower_to_defined.get(derived.lower(), derived)
+
+
 def collect_defined_orgs(config: dict) -> List[str]:
     """Return org names from the top-level githubOrgs section, preserving order."""
     return list((config.get("githubOrgs") or {}).keys())
@@ -70,14 +110,17 @@ def collect_workstream_orgs(config: dict) -> Tuple[List[str], List[str]]:
     """
     Return (referenced_orgs, orphaned_orgs).
 
-    referenced_orgs: all org names seen in workstream githubOrg fields (ordered).
-    orphaned_orgs: orgs referenced by workstreams but absent from githubOrgs.
+    referenced_orgs: all org names resolved from workstreams, preserving order.
+    Resolution uses the explicit ``githubOrg`` field when present, falling back
+    to an org derived from ``repoUrl`` (GitHub URLs only).
+    orphaned_orgs: resolved orgs absent from the top-level ``githubOrgs`` section.
     """
-    defined = set((config.get("githubOrgs") or {}).keys())
+    defined_list = list((config.get("githubOrgs") or {}).keys())
+    defined = set(defined_list)
     referenced_ordered: List[str] = []
     seen: set = set()
     for ws in (config.get("workstreams") or []):
-        org = ws.get("githubOrg")
+        org = resolve_workstream_org(ws, defined_list)
         if org and org not in seen:
             referenced_ordered.append(org)
             seen.add(org)
@@ -135,13 +178,24 @@ def apply_migration(
     if not fallback and workspace_entries:
         fallback = workspace_entries[0].get("workspaceId")
 
-    # Assign slackWorkspaceId to each workstream.
+    # Assign slackWorkspaceId to each workstream. The org is taken from the
+    # explicit githubOrg field when set, otherwise derived from the repoUrl.
+    # Workstreams whose resolved workspace differs from the fallback (i.e. the
+    # workspace that owned them in the single-workspace world) have their
+    # channelId wiped — the existing ID is workspace-scoped and will not be
+    # valid in the new workspace. Leaving only channelName lets the controller
+    # auto-create / auto-resolve the channel in the correct workspace at
+    # runtime. channelName is preserved as the handle for that lookup.
+    defined_orgs_list = list(top_orgs.keys())
     for ws in (new_config.get("workstreams") or []):
         if ws.get("slackWorkspaceId"):
             continue
-        org = ws.get("githubOrg")
+        org = resolve_workstream_org(ws, defined_orgs_list)
         if org and org in org_to_workspace_id:
-            ws["slackWorkspaceId"] = org_to_workspace_id[org]
+            assigned = org_to_workspace_id[org]
+            ws["slackWorkspaceId"] = assigned
+            if fallback and assigned != fallback and ws.get("channelId"):
+                ws.pop("channelId", None)
         elif fallback:
             ws["slackWorkspaceId"] = fallback
 
@@ -361,14 +415,16 @@ def main():
             f"{', '.join(orphaned_orgs)}"
         )
 
-    # Workstreams with no githubOrg will fall back to the first workspace.
-    no_org_workstreams = [
-        ws for ws in (config.get("workstreams") or []) if not ws.get("githubOrg")
+    # Workstreams whose org cannot be resolved (neither explicit githubOrg nor
+    # a derivable org from repoUrl) will fall back to the first workspace.
+    unresolved_workstreams = [
+        ws for ws in (config.get("workstreams") or [])
+        if not resolve_workstream_org(ws, defined_orgs)
     ]
-    if no_org_workstreams:
-        labels = [ws.get("channelName") or ws.get("channelId") or "?" for ws in no_org_workstreams]
+    if unresolved_workstreams:
+        labels = [ws.get("channelName") or ws.get("channelId") or "?" for ws in unresolved_workstreams]
         print(
-            f"  Workstreams without githubOrg (assigned to first workspace): "
+            f"  Workstreams with no resolvable org (fall back to first workspace): "
             f"{', '.join(labels)}"
         )
 

@@ -23,11 +23,19 @@
 #
 # defaultWorkspacePath: /workspace/project
 
-# Channel owner (optional).
-# Slack user ID to auto-invite when creating new private workstream channels.
-# Get your user ID from your Slack profile > "..." menu > "Copy member ID".
+# Channel invitees (optional).
+# Slack user IDs to auto-invite when creating new private workstream channels.
+# Get a user ID from the Slack profile > "..." menu > "Copy member ID".
 #
+# Multi-user (preferred):
+# channelOwnerUserIds:
+#   - U0123456789
+#   - U0987654321
+#
+# Single-user (legacy, still supported):
 # channelOwnerUserId: U0123456789
+#
+# When both are provided, channelOwnerUserIds takes precedence.
 
 # Default channel (optional).
 # Slack channel ID to use as a fallback when a workstream has no channel
@@ -55,7 +63,7 @@
 #
 # When these are set, every submitted job receives a temporary auth
 # token valid for 12 hours that grants access to ar-manager's tools:
-#   send_message, memory_recall, memory_store, memory_branch_context,
+#   send_message, memory_recall, memory_store, workstream_context,
 #   github_pr_find, github_pr_review_comments, github_pr_conversation,
 #   github_pr_reply, github_list_open_prs, github_create_pr,
 #   workstream_get_status, controller_health

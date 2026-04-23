@@ -286,7 +286,6 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"controller_update_config",
 			"workstream_list",
 			"workstream_get_status",
-			"workstream_list_jobs",
 			"workstream_get_job",
 			"workstream_submit_task",
 			"workstream_register",
@@ -296,7 +295,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"project_commit_plan",
 			"project_read_plan",
 			"memory_recall",
-			"memory_branch_context",
+			"workstream_context",
 			"memory_store",
 			"send_message",
 			"github_pr_find",
@@ -362,6 +361,24 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("prompt"));
 		assertTrue("workstream_submit_task must declare workstream_id in signature",
 			submitParams.contains("workstream_id"));
+		assertTrue("workstream_submit_task must declare model in signature",
+			submitParams.contains("model"));
+		assertTrue("workstream_submit_task must declare effort in signature",
+			submitParams.contains("effort"));
+
+		List<String> registerParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+		assertTrue("workstream_register must declare model in signature",
+			registerParams.contains("model"));
+		assertTrue("workstream_register must declare effort in signature",
+			registerParams.contains("effort"));
+
+		List<String> updateConfigParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+		assertTrue("workstream_update_config must declare model in signature",
+			updateConfigParams.contains("model"));
+		assertTrue("workstream_update_config must declare effort in signature",
+			updateConfigParams.contains("effort"));
 
 		List<String> memoryRecallParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "memory_recall");

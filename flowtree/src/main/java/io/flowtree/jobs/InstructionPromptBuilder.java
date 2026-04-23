@@ -407,6 +407,31 @@ public class InstructionPromptBuilder {
             sb.append("Permission denials should never happen in this environment. ");
             sb.append("Reporting them is critical for diagnosing configuration issues.\n\n");
 
+            sb.append("## Using MCP Tools (ar-build-validator, ar-test-runner, ar-consultant, ...)\n");
+            sb.append("Every `mcp__*` tool listed in your allowed-tools list is a stdio MCP tool ");
+            sb.append("spawned as a local subprocess. None of them expose an HTTP endpoint. ");
+            sb.append("There is NO `http://localhost:<port>/api/build-validator/...`, ");
+            sb.append("`/api/test-runner/...`, or similar URL anywhere in this environment. ");
+            sb.append("Attempting to curl such a URL will either fail immediately or, if the port ");
+            sb.append("happens to be in use by another service, return junk that your code cannot parse.\n\n");
+
+            sb.append("Specifically: when an MCP tool like `mcp__ar-build-validator__start_validation` ");
+            sb.append("returns a `run_id`, poll for its completion by calling ");
+            sb.append("`mcp__ar-build-validator__get_validation_status` with that `run_id`. ");
+            sb.append("Do the same for `mcp__ar-test-runner__start_test_run` + ");
+            sb.append("`mcp__ar-test-runner__get_run_status`. NEVER shell out to `curl` to poll these ");
+            sb.append("services. NEVER write a bash `until` loop over curl to wait for a run to ");
+            sb.append("finish — it will never finish because the URL you invented does not exist, ");
+            sb.append("and your session will hang until the turn budget is exhausted. ");
+            sb.append("If the MCP status call reports `running`, call it again after a brief pause; ");
+            sb.append("call it directly, not through a shell loop.\n\n");
+
+            sb.append("More broadly: every capability you have is exposed through either the built-in ");
+            sb.append("tools (Read, Edit, Write, Bash, Glob, Grep) or the `mcp__*` tools in the list ");
+            sb.append("you were given. If you find yourself reaching for `curl` to talk to a service ");
+            sb.append("named in that list, stop — you are about to invent an API that does not exist. ");
+            sb.append("Use the MCP tool instead.\n\n");
+
             if (enforceChanges) {
                 // When changes are enforced, replace the permissive sections with
                 // a strict message that removes the "no changes needed" escape hatch.
@@ -444,6 +469,20 @@ public class InstructionPromptBuilder {
             sb.append("You can read and respond to GitHub PR review comments using ");
             sb.append("github_pr_find, github_pr_review_comments, github_pr_conversation, and github_pr_reply. ");
             sb.append("Use these to check for code review feedback and address it.\n\n");
+
+            sb.append("## When to Post PR Replies\n");
+            sb.append("Do NOT post a `github_pr_reply` claiming you have fixed a review comment ");
+            sb.append("until the fix is actually landed. 'Landed' means: the code change is on ");
+            sb.append("disk AND the relevant verification has succeeded (compile clean and, where ");
+            sb.append("applicable, the affected tests or the build validator passed). You will not ");
+            sb.append("see the commit or the push in your working copy — the harness performs both ");
+            sb.append("AFTER you exit — but your session will only lead to a real commit if you ");
+            sb.append("exit without the session hanging, crashing, or being killed. ");
+            sb.append("A reply that says 'I fixed X' that was posted while the claude process then ");
+            sb.append("got stuck in a polling loop is a lie to the reviewer: no commit is ever made.\n\n");
+            sb.append("Rule of thumb: edit first, verify second, reply LAST — immediately before ");
+            sb.append("you exit. If the verification fails, either fix it or reply honestly that the ");
+            sb.append("attempted fix did not pass checks. Never reply based on your intent alone.\n\n");
         }
 
         // Test integrity policy -only when protectTestFiles is enabled
@@ -536,10 +575,10 @@ public class InstructionPromptBuilder {
             sb.append("treat them as intentional progress, not as problems to undo.\n\n");
 
             sb.append("### Catching Up on Prior Work\n");
-            sb.append("Before making any changes, you MUST use the memory_branch_context tool ");
+            sb.append("Before making any changes, you MUST use the workstream_context tool ");
             sb.append("to understand what has already been done on this branch:\n");
             sb.append("```\n");
-            sb.append("memory_branch_context branch:\"").append(targetBranch).append("\"\n");
+            sb.append("workstream_context branch:\"").append(targetBranch).append("\"\n");
             sb.append("```\n");
             sb.append("This will show you memories from prior agent sessions and the ");
             sb.append("commit timeline.\n\n");
@@ -565,7 +604,7 @@ public class InstructionPromptBuilder {
             sb.append("This is NEVER the right approach. If CI fails after your changes:\n");
             sb.append("- **DO NOT** simply revert the changes. That undoes prior agent work.\n");
             sb.append("- **DO** investigate the actual failure and fix it properly.\n");
-            sb.append("- **DO** check `memory_branch_context` to see if this same pattern ");
+            sb.append("- **DO** check `workstream_context` to see if this same pattern ");
             sb.append("has already occurred in prior sessions.\n");
             sb.append("- **DO** store a memory describing the CI failure and your ");
             sb.append("analysis so the next session doesn't repeat the same mistake.\n");

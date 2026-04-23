@@ -319,7 +319,7 @@ class MemoryStore:
         self,
         repo_url: str,
         branch: str,
-        namespace: str = "default",
+        namespace: Optional[str] = "default",
         limit: int = 20,
     ) -> list[dict]:
         """List memory entries for a specific repo and branch, newest first.
@@ -331,19 +331,30 @@ class MemoryStore:
         Args:
             repo_url: Repository URL to match.
             branch: Branch name to match.
-            namespace: Namespace to search within.
+            namespace: Namespace to search within. Pass ``None`` or an
+                empty string to search across every namespace — useful when
+                the caller wants the full branch context without knowing
+                ahead of time which namespaces the memories were stored in.
             limit: Maximum number of entries to return.
 
         Returns:
             List of entry dicts ordered by creation time (newest first).
         """
         repo_url = _normalize_repo_url(repo_url)
-        rows = self._conn.execute(
-            "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
-            "FROM entries WHERE namespace = ? AND repo_url = ? AND branch = ? "
-            "ORDER BY created_at DESC LIMIT ?",
-            (namespace, repo_url, branch, limit),
-        ).fetchall()
+        if namespace:
+            rows = self._conn.execute(
+                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
+                "FROM entries WHERE namespace = ? AND repo_url = ? AND branch = ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (namespace, repo_url, branch, limit),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
+                "FROM entries WHERE repo_url = ? AND branch = ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (repo_url, branch, limit),
+            ).fetchall()
 
         results = []
         for row in rows:
