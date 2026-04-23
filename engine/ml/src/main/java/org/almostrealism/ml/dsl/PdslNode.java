@@ -242,6 +242,84 @@ public abstract class PdslNode {
 		public List<Statement> getBody() { return body; }
 	}
 
+	/**
+	 * A pipeline definition: a self-driving processing unit with named input source and output sink.
+	 *
+	 * <p>A pipeline compiles to {@link org.almostrealism.ml.dsl.PdslTemporalBlock}, which
+	 * implements {@link org.almostrealism.time.Temporal} for CellList integration and
+	 * {@link org.almostrealism.graph.Cell} for the Block-to-CellList adapter path.
+	 *
+	 * <p>The body grammar is identical to a {@link LayerDef} body. The distinguishing
+	 * feature is the {@code input <name> -> <shape>} and {@code output <name>} declarations
+	 * that appear at the start of the pipeline body before any statements.</p>
+	 *
+	 * <p>Example:
+	 * <pre>
+	 * pipeline mixdown_main(hp_cutoff: scalar, volume: scalar) {
+	 *     input  channel_audio -> [1, signal_size]
+	 *     output master_output
+	 *     highpass(hp_cutoff, sample_rate, filter_order)
+	 *     scale(volume)
+	 * }
+	 * </pre>
+	 * </p>
+	 */
+	public static class PipelineDef extends Definition {
+		/** Formal parameters accepted by this pipeline. */
+		private final List<Parameter> parameters;
+
+		/** Name of the declared input (from {@code input <name> -> <shape>}). */
+		private final String inputName;
+
+		/** Shape of the declared input. */
+		private final Expression inputShape;
+
+		/** Name of the declared output (from {@code output <name>}). */
+		private final String outputName;
+
+		/** Statements that build the pipeline's computation graph. */
+		private final List<Statement> body;
+
+		/**
+		 * Constructs a pipeline definition node.
+		 *
+		 * @param name        Pipeline name
+		 * @param parameters  Formal parameter declarations
+		 * @param inputName   Declared input name
+		 * @param inputShape  Declared input shape
+		 * @param outputName  Declared output name
+		 * @param body        Statements forming the pipeline body
+		 * @param line        Source line number
+		 * @param column      Source column number
+		 */
+		public PipelineDef(String name, List<Parameter> parameters,
+						   String inputName, Expression inputShape,
+						   String outputName, List<Statement> body,
+						   int line, int column) {
+			super(name, line, column);
+			this.parameters = parameters;
+			this.inputName = inputName;
+			this.inputShape = inputShape;
+			this.outputName = outputName;
+			this.body = body;
+		}
+
+		/** Returns the formal parameter list. */
+		public List<Parameter> getParameters() { return parameters; }
+
+		/** Returns the declared input name. */
+		public String getInputName() { return inputName; }
+
+		/** Returns the declared input shape expression. */
+		public Expression getInputShape() { return inputShape; }
+
+		/** Returns the declared output name. */
+		public String getOutputName() { return outputName; }
+
+		/** Returns the statements that form the pipeline body. */
+		public List<Statement> getBody() { return body; }
+	}
+
 	/** A model definition: top-level model builder. */
 	public static class ModelDef extends Definition {
 		/** Formal parameters accepted by this model. */

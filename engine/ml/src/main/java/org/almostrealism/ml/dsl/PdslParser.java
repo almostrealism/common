@@ -88,14 +88,62 @@ public class PdslParser {
 	private PdslNode.Definition parseDefinition() {
 		PdslToken token = peek();
 		switch (token.getType()) {
-			case CONFIG: return parseConfigDef();
-			case DATA:   return parseDataDef();
-			case STATE:  return parseStateDef();
-			case LAYER:  return parseLayerDef();
-			case MODEL:  return parseModelDef();
+			case CONFIG:    return parseConfigDef();
+			case DATA:      return parseDataDef();
+			case STATE:     return parseStateDef();
+			case PIPELINE:  return parsePipelineDef();
+			case LAYER:     return parseLayerDef();
+			case MODEL:     return parseModelDef();
 			default:
-				throw error("Expected 'config', 'data', 'state', 'layer', or 'model' but found " + token);
+				throw error("Expected 'config', 'data', 'state', 'pipeline', 'layer', or 'model' but found " + token);
 		}
+	}
+
+	// ---- Pipeline ----
+
+	/**
+	 * Parses a {@code pipeline Name(params) { input name -> shape; output name; body }} definition.
+	 *
+	 * <p>The pipeline body begins with optional {@code input <name> -> <shape>} and
+	 * {@code output <name>} declarations (each appearing at most once) before regular
+	 * body statements. Neither declaration is a reserved keyword — they are parsed by
+	 * checking for the literal identifier values {@code "input"} and {@code "output"}.</p>
+	 *
+	 * @return The parsed pipeline definition node
+	 */
+	private PdslNode.PipelineDef parsePipelineDef() {
+		PdslToken kw = consume(PdslToken.Type.PIPELINE);
+		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
+		consume(PdslToken.Type.LPAREN);
+		List<PdslNode.Parameter> params = parseParameterList();
+		consume(PdslToken.Type.RPAREN);
+		consume(PdslToken.Type.LBRACE);
+
+		String inputName = null;
+		PdslNode.Expression inputShape = null;
+		String outputName = null;
+
+		// input <name> -> <shape>
+		if (check(PdslToken.Type.IDENTIFIER) && "input".equals(peek().getValue())) {
+			advance(); // consume "input"
+			inputName = consume(PdslToken.Type.IDENTIFIER).getValue();
+			consume(PdslToken.Type.ARROW);
+			inputShape = parseShapeLiteral();
+			while (check(PdslToken.Type.SEMICOLON)) advance();
+		}
+
+		// output <name>
+		if (check(PdslToken.Type.IDENTIFIER) && "output".equals(peek().getValue())) {
+			advance(); // consume "output"
+			outputName = consume(PdslToken.Type.IDENTIFIER).getValue();
+			while (check(PdslToken.Type.SEMICOLON)) advance();
+		}
+
+		List<PdslNode.Statement> body = parseBody();
+		consume(PdslToken.Type.RBRACE);
+
+		return new PdslNode.PipelineDef(name, params, inputName, inputShape, outputName, body,
+				kw.getLine(), kw.getColumn());
 	}
 
 	// ---- Config ----

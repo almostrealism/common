@@ -400,7 +400,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 	/**
 	 * Returns the argument map for the {@code mixdown_main} layer using the test constants.
 	 */
-	private Map<String, Object> mainArgs() {
+	static Map<String, Object> mainArgs() {
 		Map<String, Object> args = new HashMap<>();
 		args.put("signal_size", SIGNAL_SIZE);
 		args.put("hp_cutoff", HP_CUTOFF);

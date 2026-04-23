@@ -109,6 +109,9 @@ public class PdslInterpreter {
 	/** State block definitions keyed by name, built from the parsed program. */
 	private final Map<String, PdslNode.StateDef> stateDefs;
 
+	/** Pipeline definitions keyed by name, built from the parsed program. */
+	private final Map<String, PdslNode.PipelineDef> pipelineDefs;
+
 	/**
 	 * Create an interpreter for the given parsed program.
 	 *
@@ -120,8 +123,11 @@ public class PdslInterpreter {
 		this.modelDefs = new HashMap<>();
 		this.dataDefs = new LinkedHashMap<>();
 		this.stateDefs = new LinkedHashMap<>();
+		this.pipelineDefs = new HashMap<>();
 		for (PdslNode.Definition def : program.getDefinitions()) {
-			if (def instanceof PdslNode.LayerDef) {
+			if (def instanceof PdslNode.PipelineDef) {
+				pipelineDefs.put(def.getName(), (PdslNode.PipelineDef) def);
+			} else if (def instanceof PdslNode.LayerDef) {
 				layerDefs.put(def.getName(), (PdslNode.LayerDef) def);
 			} else if (def instanceof PdslNode.ConfigDef) {
 				configDefs.put(def.getName(), (PdslNode.ConfigDef) def);
@@ -150,6 +156,40 @@ public class PdslInterpreter {
 
 	/** Returns the names of all state block definitions. */
 	public Set<String> getStateDefNames() { return stateDefs.keySet(); }
+
+	/** Returns the names of all pipeline definitions. */
+	public Set<String> getPipelineNames() { return pipelineDefs.keySet(); }
+
+	/**
+	 * Build a {@link PdslTemporalBlock} from a named pipeline definition.
+	 *
+	 * @param name       the pipeline name as defined in the PDSL source
+	 * @param inputShape the input tensor shape
+	 * @param args       parameter bindings (name to value)
+	 * @return the constructed PdslTemporalBlock
+	 */
+	public PdslTemporalBlock buildPipeline(String name, TraversalPolicy inputShape,
+										   Map<String, Object> args) {
+		PdslNode.PipelineDef def = pipelineDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("Pipeline '" + name + "' not found");
+		}
+		Environment env = new Environment(null);
+		populateDataDefs(args, env);
+		for (PdslNode.Parameter param : def.getParameters()) {
+			Object value = args.get(param.getName());
+			if (value == null && !args.containsKey(param.getName())) {
+				throw new PdslParseException(
+						"Missing argument '" + param.getName() + "' for pipeline '" + name + "'");
+			}
+			env.set(param.getName(), value);
+		}
+		SequentialBlock block = new SequentialBlock(inputShape);
+		interpretBody(def.getBody(), block, env);
+		Model model = new Model(inputShape);
+		model.add(block);
+		return new PdslTemporalBlock(model.compile(), def.getInputName(), def.getOutputName());
+	}
 
 	/**
 	 * Build a {@link Block} from a named layer definition.
@@ -245,10 +285,6 @@ public class PdslInterpreter {
 	 * Evaluate a named state block, binding external inputs from {@code args}
 	 * and computing all derived views in declaration order.
 	 *
-	 * <p>The logic is identical to {@link #evaluateDataDef} — bind parameter
-	 * references and evaluate range() derivations — applied to a state block
-	 * rather than a data block.</p>
-	 *
 	 * @param name the state block name
 	 * @param args external input values (name → value)
 	 * @return all state block entries (parameters + derivations) as a map
@@ -264,9 +300,6 @@ public class PdslInterpreter {
 	/**
 	 * Evaluates the entries of a data or state block definition by binding external inputs
 	 * from {@code args} and computing derived views in declaration order.
-	 *
-	 * <p>This is the shared implementation called by both {@link #evaluateDataDef} and
-	 * {@link #evaluateStateDef} to eliminate duplicate logic between the two paths.</p>
 	 *
 	 * @param def  the data or state block definition
 	 * @param args external input values (name → value)
@@ -298,10 +331,6 @@ public class PdslInterpreter {
 	 * Pre-populates an environment with all entries from every data block in this
 	 * program. External inputs are resolved from {@code args}; derived views are
 	 * computed in declaration order so that earlier entries are visible to later ones.
-	 *
-	 * <p>Called at the start of {@link #buildLayer} and {@link #buildModel} so that
-	 * layer bodies can reference data block entries without explicitly declaring them
-	 * as layer parameters.</p>
 	 *
 	 * @param args external input values
 	 * @param env  target environment (mutated in-place)
@@ -1105,9 +1134,6 @@ public class PdslInterpreter {
 	/**
 	 * Builds an identity (pass-through) block that forwards its input unchanged.
 	 *
-	 * <p>Used as the dry path inside {@code accum_blocks} to express a wet/dry mix:
-	 * {@code accum_blocks({ identity() }, { wet_chain; scale(wet_level) })}.</p>
-	 *
 	 * @param args no arguments
 	 * @return a factory that creates a pass-through block for any input shape
 	 */
@@ -1129,10 +1155,6 @@ public class PdslInterpreter {
 
 	/**
 	 * Builds a low-pass FIR filter block using Hamming-windowed sinc coefficients.
-	 *
-	 * <p>Generates filter coefficients at block-build time using {@code lowPassCoefficients()}
-	 * and wraps them in a {@link MultiOrderFilter} computation. The cutoff, sample rate,
-	 * and filter order are fixed when the block is created.</p>
 	 *
 	 * @param args three numeric arguments: cutoff frequency (Hz), sample rate (Hz), filter order
 	 * @return a factory that creates a low-pass FIR filter block for any input shape
