@@ -14,6 +14,17 @@
     "ask": []
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-tools.sh",
+            "description": "Emit paths and versions of common dev tools so the agent does not burn round-trips discovering them"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -81,7 +92,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/warn-defensive-guard.sh",
-            "description": "Warn on added defensive-tolerance patterns (see .claude/rules/fail-loud.md)"
+            "description": "Warn on added defensive-tolerance patterns (see .claude/hooks/rules/fail-loud.md)"
           },
           {
             "type": "command",
@@ -136,7 +147,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/warn-defensive-guard.sh",
-            "description": "Warn on added defensive-tolerance patterns (see .claude/rules/fail-loud.md)"
+            "description": "Warn on added defensive-tolerance patterns (see .claude/hooks/rules/fail-loud.md)"
           },
           {
             "type": "command",
@@ -158,7 +169,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/warn-assertion-free-test.sh",
-            "description": "Warn on @Test methods with no assertion (see .claude/rules/fail-loud.md)"
+            "description": "Warn on @Test methods with no assertion (see .claude/hooks/rules/fail-loud.md)"
           }
         ]
       },
@@ -173,7 +184,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/warn-assertion-free-test.sh",
-            "description": "Warn on @Test methods with no assertion (see .claude/rules/fail-loud.md)"
+            "description": "Warn on @Test methods with no assertion (see .claude/hooks/rules/fail-loud.md)"
           }
         ]
       },
