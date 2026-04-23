@@ -109,9 +109,6 @@ public class PdslInterpreter {
 	/** State block definitions keyed by name, built from the parsed program. */
 	private final Map<String, PdslNode.StateDef> stateDefs;
 
-	/** Pipeline definitions keyed by name, built from the parsed program. */
-	private final Map<String, PdslNode.PipelineDef> pipelineDefs;
-
 	/**
 	 * Create an interpreter for the given parsed program.
 	 *
@@ -123,11 +120,8 @@ public class PdslInterpreter {
 		this.modelDefs = new HashMap<>();
 		this.dataDefs = new LinkedHashMap<>();
 		this.stateDefs = new LinkedHashMap<>();
-		this.pipelineDefs = new HashMap<>();
 		for (PdslNode.Definition def : program.getDefinitions()) {
-			if (def instanceof PdslNode.PipelineDef) {
-				pipelineDefs.put(def.getName(), (PdslNode.PipelineDef) def);
-			} else if (def instanceof PdslNode.LayerDef) {
+			if (def instanceof PdslNode.LayerDef) {
 				layerDefs.put(def.getName(), (PdslNode.LayerDef) def);
 			} else if (def instanceof PdslNode.ConfigDef) {
 				configDefs.put(def.getName(), (PdslNode.ConfigDef) def);
@@ -156,40 +150,6 @@ public class PdslInterpreter {
 
 	/** Returns the names of all state block definitions. */
 	public Set<String> getStateDefNames() { return stateDefs.keySet(); }
-
-	/** Returns the names of all pipeline definitions. */
-	public Set<String> getPipelineNames() { return pipelineDefs.keySet(); }
-
-	/**
-	 * Build a {@link PdslTemporalBlock} from a named pipeline definition.
-	 *
-	 * @param name       the pipeline name as defined in the PDSL source
-	 * @param inputShape the input tensor shape
-	 * @param args       parameter bindings (name to value)
-	 * @return the constructed PdslTemporalBlock
-	 */
-	public PdslTemporalBlock buildPipeline(String name, TraversalPolicy inputShape,
-										   Map<String, Object> args) {
-		PdslNode.PipelineDef def = pipelineDefs.get(name);
-		if (def == null) {
-			throw new PdslParseException("Pipeline '" + name + "' not found");
-		}
-		Environment env = new Environment(null);
-		populateDataDefs(args, env);
-		for (PdslNode.Parameter param : def.getParameters()) {
-			Object value = args.get(param.getName());
-			if (value == null && !args.containsKey(param.getName())) {
-				throw new PdslParseException(
-						"Missing argument '" + param.getName() + "' for pipeline '" + name + "'");
-			}
-			env.set(param.getName(), value);
-		}
-		SequentialBlock block = new SequentialBlock(inputShape);
-		interpretBody(def.getBody(), block, env);
-		Model model = new Model(inputShape);
-		model.add(block);
-		return new PdslTemporalBlock(model.compile(), def.getInputName(), def.getOutputName());
-	}
 
 	/**
 	 * Build a {@link Block} from a named layer definition.
@@ -448,6 +408,8 @@ public class PdslInterpreter {
 			interpretAccumBlocks((PdslNode.AccumBlocksStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ConcatBlocksStatement) {
 			interpretConcatBlocks((PdslNode.ConcatBlocksStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.ForEachChannelStatement) {
+			interpretForEachChannel((PdslNode.ForEachChannelStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ForStatement) {
 			PdslNode.ForStatement forStmt = (PdslNode.ForStatement) stmt;
 			int start = toInt(evaluateExpression(forStmt.getStart(), env));
@@ -605,6 +567,18 @@ public class PdslInterpreter {
 			return evaluateFieldAccess((PdslNode.FieldAccess) expr, env);
 		} else if (expr instanceof PdslNode.WeightRef) {
 			return evaluateWeightRef((PdslNode.WeightRef) expr, env);
+		} else if (expr instanceof PdslNode.Subscript) {
+			PdslNode.Subscript subscript = (PdslNode.Subscript) expr;
+			Object obj = evaluateExpression(subscript.getObject(), env);
+			if (obj instanceof PackedCollection) {
+				PackedCollection coll = (PackedCollection) obj;
+				int index = toInt(evaluateExpression(subscript.getIndex(), env));
+				int channels = toInt(env.get("channels"));
+				int stride = coll.getShape().getSize() / channels;
+				return coll.range(FEATURES.shape(stride), index * stride);
+			}
+			throw new PdslParseException(
+					"Subscript not supported on " + (obj == null ? "null" : obj.getClass().getSimpleName()));
 		} else if (expr instanceof PdslNode.InlineBlock) {
 			return expr; // returned as-is for product args
 		} else {
@@ -665,6 +639,10 @@ public class PdslInterpreter {
 		for (PdslNode.Expression argExpr : call.getArguments()) {
 			args.add(evaluateExpression(argExpr, env));
 		}
+
+		if ("route".equals(name)) return callRoute(args, env);
+		if ("sum_channels".equals(name)) return callSumChannels(args, env);
+		if ("fan_out".equals(name)) return callFanOut(args, env);
 
 		// Try built-in functions first
 		Object builtinResult = tryCallBuiltin(name, args);
@@ -1340,6 +1318,54 @@ public class PdslInterpreter {
 				"lfo() expects 3 arguments (freqHz, sampleRate, phase), got " + args.size());
 	}
 
+	// ---- Multi-channel DSP primitives ----
+
+	/** Interprets {@code for each channel} by building per-channel sub-blocks and wrapping them. */
+	private void interpretForEachChannel(PdslNode.ForEachChannelStatement stmt,
+										  SequentialBlock block, Environment env) {
+		int channels = toInt(env.get("channels"));
+		TraversalPolicy currentShape = block.getOutputShape();
+		int signalSize = currentShape.getDimensions() >= 2
+				? currentShape.length(currentShape.getDimensions() - 1)
+				: currentShape.getSize() / channels;
+		TraversalPolicy singleChannelShape = FEATURES.shape(1, signalSize);
+		List<Block> channelBlocks = new ArrayList<>();
+		for (int i = 0; i < channels; i++) {
+			Environment channelEnv = new Environment(env);
+			channelEnv.set("channel", i);
+			SequentialBlock channelBlock = new SequentialBlock(singleChannelShape);
+			interpretBody(stmt.getBody(), channelBlock, channelEnv);
+			channelBlocks.add(channelBlock);
+		}
+		block.add(FEATURES.perChannelBlock(channelBlocks, channels, signalSize));
+	}
+
+	/** Validates and delegates to {@link MultiChannelDspFeatures#routeBlock}. */
+	private Block callRoute(List<Object> args, Environment env) {
+		if (args.size() != 1 || !(args.get(0) instanceof PackedCollection)) {
+			throw new PdslParseException(
+					"route() expects 1 weight argument (transmission matrix), got " + args.size());
+		}
+		return FEATURES.routeBlock((PackedCollection) args.get(0),
+				toInt(env.get("channels")), toInt(env.get("signal_size")));
+	}
+
+	/** Validates and delegates to {@link MultiChannelDspFeatures#sumChannelsBlock}. */
+	private Block callSumChannels(List<Object> args, Environment env) {
+		if (!args.isEmpty()) {
+			throw new PdslParseException("sum_channels() expects no arguments, got " + args.size());
+		}
+		return FEATURES.sumChannelsBlock(toInt(env.get("channels")), toInt(env.get("signal_size")));
+	}
+
+	/** Validates and delegates to {@link MultiChannelDspFeatures#fanOutBlock}. */
+	private Block callFanOut(List<Object> args, Environment env) {
+		if (args.size() != 1) {
+			throw new PdslParseException("fan_out() expects 1 argument (n channels), got " + args.size());
+		}
+		return FEATURES.fanOutBlock(toInt(args.get(0)), toInt(env.get("signal_size")));
+	}
+
 	// ---- User-defined layer calls ----
 
 	/**
@@ -1550,47 +1576,25 @@ public class PdslInterpreter {
 
 	// ---- Environment ----
 
-	/** Scoped variable environment with parent chain. */
+	/** Scoped variable environment with parent chain for PDSL layer interpretation. */
 	private static class Environment {
 		/** Variable bindings in the current scope. */
 		private final Map<String, Object> bindings = new HashMap<>();
-
 		/** Enclosing scope, or {@code null} for the top-level scope. */
 		private final Environment parent;
-
-		/**
-		 * Creates a new scope with the given parent.
-		 *
-		 * @param parent Enclosing scope, or {@code null} for the top-level scope
-		 */
-		Environment(Environment parent) {
-			this.parent = parent;
-		}
-
-		/**
-		 * Looks up a variable by name, walking the parent chain if not found locally.
-		 *
-		 * @param name Variable name
-		 * @return The bound value, or {@code null} if not defined
-		 */
+		/** Creates a new scope with the given enclosing scope. */
+		Environment(Environment parent) { this.parent = parent; }
+		/** Returns the value bound to {@code name}, walking the parent chain. */
 		Object get(String name) {
 			if (bindings.containsKey(name)) return bindings.get(name);
-			if (parent != null) return parent.get(name);
-			return null;
+			return parent != null ? parent.get(name) : null;
 		}
-
-		/**
-		 * Binds a variable name to a value in the current scope.
-		 *
-		 * @param name  Variable name
-		 * @param value Value to bind
-		 */
-		void set(String name, Object value) {
-			bindings.put(name, value);
-		}
+		/** Binds a name to a value in the current scope. */
+		void set(String name, Object value) { bindings.put(name, value); }
 	}
 
 	/** Mixin type providing access to all framework feature default methods. */
-	private static class Features implements AttentionFeatures, RotationFeatures, TemporalFeatures {
+	private static class Features implements AttentionFeatures, RotationFeatures,
+			TemporalFeatures, MultiChannelDspFeatures {
 	}
 }

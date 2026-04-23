@@ -36,9 +36,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Validation tests for Approach D ({@code pipeline} keyword + {@code PdslTemporalBlock}).
+ * Validation tests for PDSL audio DSP integration assumptions.
  *
- * <p>These three tests verify the assumptions that Approach D relies on before any
+ * <p>These three tests verify the assumptions that PDSL-based audio DSP relies on before any
  * production code is written. If a test fails it means a design assumption is wrong
  * and the plan must be revised before proceeding.</p>
  *
@@ -51,8 +51,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       state (delay buffer / write-head) survives across successive
  *       {@link Temporal#tick()} invocations when the block is wrapped as a Temporal.</li>
  *   <li><strong>Block→Temporal adapter forward flow</strong> — a minimal Temporal
- *       wrapping {@link CompiledModel#forward} channels input through to output,
- *       validating the pattern {@code PdslTemporalBlock.tick()} will use.</li>
+ *       wrapping {@link CompiledModel#forward} channels input through to output.</li>
  * </ol>
  *
  * @see org.almostrealism.ml.dsl.PdslLoader
@@ -77,7 +76,7 @@ public class PdslApproachDValidationTest extends TestSuiteBase implements FirFil
 	 * <p>{@link CellList#tick()} assembles the per-tick operation graph once and wraps
 	 * it in a compiled {@link org.almostrealism.hardware.computations.Loop}. Each
 	 * requirement's {@code tick()} method must be called exactly once during that
-	 * assembly — not N times. If it were called N times a {@code PdslTemporalBlock}
+	 * assembly — not N times. If it were called N times, a stateful PDSL block
 	 * would assemble N separate forward-pass graphs, which is not the intended
 	 * behaviour.</p>
 	 *
@@ -122,7 +121,7 @@ public class PdslApproachDValidationTest extends TestSuiteBase implements FirFil
 	 * (1.0), not the default zero — proving that delay state carried across the
 	 * tick boundary.</p>
 	 *
-	 * <p>This validates that {@code PdslTemporalBlock.tick()} can call
+	 * <p>This validates that a stateful PDSL block running tick() can call
 	 * {@link CompiledModel#forward} on successive invocations and rely on
 	 * state persisting between them.</p>
 	 */
@@ -187,7 +186,7 @@ public class PdslApproachDValidationTest extends TestSuiteBase implements FirFil
 	 * no state. With {@code dry_level=0.5} and an all-ones input, every output
 	 * sample must equal 0.5.</p>
 	 *
-	 * <p>This is the exact execution path that {@code PdslTemporalBlock.tick()} will
+	 * <p>This is the execution path that a PDSL-compiled Temporal adapter will
 	 * use. The test validates:
 	 * <ul>
 	 *   <li>The adapter compiles and executes without error.</li>
@@ -218,7 +217,7 @@ public class PdslApproachDValidationTest extends TestSuiteBase implements FirFil
 		PackedCollection input = createSignal(BUFFER_SIZE, i -> 1.0);
 		PackedCollection[] output = {null};
 
-		// Minimal Temporal adapter — the core pattern for PdslTemporalBlock.tick()
+		// Minimal Temporal adapter wrapping CompiledModel.forward()
 		Temporal adapter = () -> () -> () -> { output[0] = compiled.forward(input); };
 		adapter.tick().get().run();
 

@@ -24,8 +24,6 @@ public class PdslToken {
 
 	/** Token types for the Producer DSL lexer. */
 	public enum Type {
-		/** {@code pipeline} keyword introducing a pipeline definition. */
-		PIPELINE,
 		/** {@code layer} keyword introducing a layer definition. */
 		LAYER,
 		/** {@code model} keyword introducing a model definition. */

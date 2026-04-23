@@ -33,7 +33,6 @@ public class PdslLexer {
 	private static final Map<String, PdslToken.Type> KEYWORDS = new HashMap<>();
 
 	static {
-		KEYWORDS.put("pipeline", PdslToken.Type.PIPELINE);
 		KEYWORDS.put("layer", PdslToken.Type.LAYER);
 		KEYWORDS.put("model", PdslToken.Type.MODEL);
 		KEYWORDS.put("config", PdslToken.Type.CONFIG);

@@ -242,84 +242,6 @@ public abstract class PdslNode {
 		public List<Statement> getBody() { return body; }
 	}
 
-	/**
-	 * A pipeline definition: a self-driving processing unit with named input source and output sink.
-	 *
-	 * <p>A pipeline compiles to {@link org.almostrealism.ml.dsl.PdslTemporalBlock}, which
-	 * implements {@link org.almostrealism.time.Temporal} for CellList integration and
-	 * {@link org.almostrealism.graph.Cell} for the Block-to-CellList adapter path.
-	 *
-	 * <p>The body grammar is identical to a {@link LayerDef} body. The distinguishing
-	 * feature is the {@code input <name> -> <shape>} and {@code output <name>} declarations
-	 * that appear at the start of the pipeline body before any statements.</p>
-	 *
-	 * <p>Example:
-	 * <pre>
-	 * pipeline mixdown_main(hp_cutoff: scalar, volume: scalar) {
-	 *     input  channel_audio -> [1, signal_size]
-	 *     output master_output
-	 *     highpass(hp_cutoff, sample_rate, filter_order)
-	 *     scale(volume)
-	 * }
-	 * </pre>
-	 * </p>
-	 */
-	public static class PipelineDef extends Definition {
-		/** Formal parameters accepted by this pipeline. */
-		private final List<Parameter> parameters;
-
-		/** Name of the declared input (from {@code input <name> -> <shape>}). */
-		private final String inputName;
-
-		/** Shape of the declared input. */
-		private final Expression inputShape;
-
-		/** Name of the declared output (from {@code output <name>}). */
-		private final String outputName;
-
-		/** Statements that build the pipeline's computation graph. */
-		private final List<Statement> body;
-
-		/**
-		 * Constructs a pipeline definition node.
-		 *
-		 * @param name        Pipeline name
-		 * @param parameters  Formal parameter declarations
-		 * @param inputName   Declared input name
-		 * @param inputShape  Declared input shape
-		 * @param outputName  Declared output name
-		 * @param body        Statements forming the pipeline body
-		 * @param line        Source line number
-		 * @param column      Source column number
-		 */
-		public PipelineDef(String name, List<Parameter> parameters,
-						   String inputName, Expression inputShape,
-						   String outputName, List<Statement> body,
-						   int line, int column) {
-			super(name, line, column);
-			this.parameters = parameters;
-			this.inputName = inputName;
-			this.inputShape = inputShape;
-			this.outputName = outputName;
-			this.body = body;
-		}
-
-		/** Returns the formal parameter list. */
-		public List<Parameter> getParameters() { return parameters; }
-
-		/** Returns the declared input name. */
-		public String getInputName() { return inputName; }
-
-		/** Returns the declared input shape expression. */
-		public Expression getInputShape() { return inputShape; }
-
-		/** Returns the declared output name. */
-		public String getOutputName() { return outputName; }
-
-		/** Returns the statements that form the pipeline body. */
-		public List<Statement> getBody() { return body; }
-	}
-
 	/** A model definition: top-level model builder. */
 	public static class ModelDef extends Definition {
 		/** Formal parameters accepted by this model. */
@@ -640,6 +562,70 @@ public abstract class PdslNode {
 
 		/** Returns the loop body statements. */
 		public List<Statement> getBody() { return body; }
+	}
+
+	/**
+	 * For-each-channel statement: {@code for each channel { body }}.
+	 *
+	 * <p>Iterates over all channels declared on the enclosing layer (via the {@code channels: int}
+	 * parameter). The body is interpreted once per channel with the variable {@code channel}
+	 * bound to the current channel index (0-based). The resulting per-channel blocks are
+	 * dispatched in parallel: each receives a single-channel slice of the multi-channel input
+	 * and the outputs are concatenated.</p>
+	 */
+	public static class ForEachChannelStatement extends Statement {
+		/** Statements forming the per-channel body. */
+		private final List<Statement> body;
+
+		/**
+		 * Constructs a for-each-channel statement.
+		 *
+		 * @param body   Statements forming the per-channel body
+		 * @param line   Source line number
+		 * @param column Source column number
+		 */
+		public ForEachChannelStatement(List<Statement> body, int line, int column) {
+			super(line, column);
+			this.body = body;
+		}
+
+		/** Returns the statements forming the per-channel body. */
+		public List<Statement> getBody() { return body; }
+	}
+
+	/**
+	 * Subscript expression: {@code expr[index]}.
+	 *
+	 * <p>Indexes into a {@link org.almostrealism.collect.PackedCollection} by channel,
+	 * returning a zero-copy sub-view. The stride is inferred as {@code total / channels}
+	 * where {@code channels} is the current loop variable from {@code for each channel}.</p>
+	 */
+	public static class Subscript extends Expression {
+		/** The collection expression being indexed. */
+		private final Expression object;
+
+		/** The index expression. */
+		private final Expression index;
+
+		/**
+		 * Constructs a subscript expression.
+		 *
+		 * @param object The collection expression being indexed
+		 * @param index  The index expression
+		 * @param line   Source line number
+		 * @param column Source column number
+		 */
+		public Subscript(Expression object, Expression index, int line, int column) {
+			super(line, column);
+			this.object = object;
+			this.index = index;
+		}
+
+		/** Returns the subscripted collection expression. */
+		public Expression getObject() { return object; }
+
+		/** Returns the index expression. */
+		public Expression getIndex() { return index; }
 	}
 
 	/** An expression used as a statement (typically a function call that adds a block). */

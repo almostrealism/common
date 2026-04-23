@@ -97,34 +97,6 @@ public class PdslLoader {
 	}
 
 	/**
-	 * Build a {@link PdslTemporalBlock} from a named pipeline definition.
-	 *
-	 * <p>The pipeline body is interpreted identically to a layer body. The resulting
-	 * block implements {@link org.almostrealism.time.Temporal} for
-	 * {@link org.almostrealism.audio.CellList} integration and
-	 * {@link org.almostrealism.graph.Cell} for the Block-to-CellList adapter path.</p>
-	 *
-	 * <p>After calling this method, bind the pipeline's input and output before ticking:
-	 * <pre>{@code
-	 * PdslTemporalBlock pipeline = loader.buildPipeline(program, "mixdown_main", shape, args);
-	 * pipeline.attachInput("channel_audio", audioBuffer);
-	 * pipeline.attachOutput("master_output", masterReceptor);
-	 * cellList.addRequirement(pipeline);
-	 * }</pre>
-	 *
-	 * @param program      the parsed PDSL program
-	 * @param pipelineName the name of the pipeline to build
-	 * @param inputShape   the input tensor shape
-	 * @param args         parameter bindings (name to value)
-	 * @return the constructed PdslTemporalBlock
-	 */
-	public PdslTemporalBlock buildPipeline(PdslNode.Program program, String pipelineName,
-										   TraversalPolicy inputShape, Map<String, Object> args) {
-		PdslInterpreter interpreter = new PdslInterpreter(program);
-		return interpreter.buildPipeline(pipelineName, inputShape, args);
-	}
-
-	/**
 	 * Build a {@link Model} from a named model definition.
 	 *
 	 * @param program    the parsed PDSL program

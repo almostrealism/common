@@ -1,6 +1,6 @@
 # PDSL for Audio DSP Processing
 
-**Status:** Phase A (FIR primitives) complete. Phase B (`state` block syntax + stateful primitives) complete. `mixdown_channel.pdsl` complete. Approach D foundations (`pipeline` keyword + `PdslTemporalBlock`) starting now.
+**Status:** Phase A (FIR primitives) complete. Phase B (`state` block syntax + stateful primitives) complete. Phase C (multi-channel DSP constructs on `layer`) complete. `delay_feedback_bank.pdsl` demonstrates `fan_out` + `for each channel` + `route` + `sum_channels` with WAV output.
 **Related:** `docs/plans/AUDIO_SCENE_REDESIGN.md`
 
 ---
@@ -11,9 +11,9 @@ The AudioScene pipeline — `MixdownManager`, `EfxManager`, `AutomationManager` 
 
 If the same pipeline were defined **declaratively in PDSL**, the framework would have a structured description of the graph it could analyze, partition, and recompile. Per-channel kernel splitting, copy elimination, and silent channel skipping — the three main goals of the AudioScene redesign — all become tractable problems in a declarative graph model.
 
-The architecture is Approach D: a `pipeline` top-level PDSL keyword that compiles to `PdslTemporalBlock`, a class implementing both `Temporal` (for CellList integration) and `Cell<PackedCollection>` (for Block→CellList adapter use). This is being built incrementally: minimal single-channel pipeline first, multi-channel constructs next iteration.
+The chosen approach extends the existing `layer` keyword with multi-channel DSP constructs: `channels: N` header parameter, `for each channel { }` body construct, `fan_out(N)`, `route(matrix)`, and `sum_channels()`. A `layer` compiles to a `Block` — a static computation graph — and a sequence of PDSL layers compiles to a `Model` via `SequentialBlock`. This approach reuses the full existing PDSL infrastructure without a new compilation target.
 
-Approaches A (source/sink declarations), B (PDSL→CellList compilation), and C (PdslChannelAdapter Block-wrapper) were considered and rejected. A was structurally close to D but required reading past the keyword to understand the compilation target. B requires every primitive to have two implementations forever. C covers only the trivial single-channel path and cannot express cross-channel routing (`mself`, `route`) — the defining feature of `MixdownManager` — which would remain Java forever. Full design exploration is preserved in commit `4f436a74fa` if needed.
+Cross-channel routing (`route`), collapse (`sum_channels`), and per-channel iteration (`for each channel`) cover the core multi-channel vocabulary used by `MixdownManager`. The `delay_feedback_bank.pdsl` layer (see Appendix A) demonstrates all four constructs working together end-to-end.
 
 ---
 
@@ -127,12 +127,12 @@ data gru_weights {
 
 ### What PDSL Cannot Express Today
 
-1. **Self-driving pipelines:** No construct for "read input from a named source, run, push
-   output to a named receptor, fire once per buffer as a `Temporal`." This is the `pipeline`
-   keyword being built in Approach D.
-2. **Multi-channel iteration:** No `for each channel` or `fan_out(N)` construct.
-   Cross-channel operations like `mself` must remain Java CellList code.
-3. **Conditional execution:** No `gate` or `if` construct.
+1. **Temporal self-scheduling:** No construct that drives its own tick from a `CellList`
+   requirement. PDSL layers are called by their host (via `CompiledModel.forward()`); they
+   do not self-tick. A thin Java `Temporal` adapter wrapping `forward()` covers most cases.
+2. **Conditional execution:** No `gate` or `if` construct.
+3. **Variable channel count at runtime:** The `channels` parameter is fixed at build time.
+   Dynamic channel count (e.g., channel activation via gene) remains Java CellList code.
 
 ---
 
@@ -321,80 +321,84 @@ The Block equivalent is not expressible in static PDSL: the feedback creates a l
 dependency across tick boundaries at the cell level. No `accum_blocks` or `concat_blocks`
 nesting can represent this.
 
-### 6C: Proposed PDSL Syntax for Multi-Channel Composition
+### 6C: Implemented PDSL Syntax for Multi-Channel Composition
 
-Six constructs cover the multi-channel vocabulary. Each is shown with its CellList
-compilation target. These are scheduled for the second iteration of Approach D (after
-single-channel pipelines are working).
+Four constructs cover the core multi-channel vocabulary. All are implemented on `layer`
+definitions and compile to `DefaultBlock` instances via `MultiChannelDspFeatures`.
 
-**Construct 1: `channels: N` — Channel multiplicity declaration**
+**Construct 1: `channels: int` — Channel multiplicity parameter**
 
-Declares that a pipeline operates on N independent channels. Body operations apply
-per-channel unless explicitly marked as cross-channel.
+Declares that a layer operates on N independent channels. The `channels` parameter
+flows into the environment and is used by all multi-channel constructs in the body.
 
 ```pdsl
-pipeline delay_bank(channels: int, delay_time: scalar) {
-    input  channel_audio[channels] -> [1, signal_size]
-    output master_mix
-    // ...
+layer delay_feedback_bank(channels: int, signal_size: int, ...) -> [1, signal_size] {
+    // channels and signal_size are in scope throughout the body
 }
 ```
 
-Compiles to: `PdslTemporalBlock` that internally maintains a `channels`-element `CellList`.
+**Construct 2: `fan_out(N)` — Replicate 1 channel to N**
 
-**Construct 2: `for each channel { }` — Per-channel application**
+Takes a `[1, signal_size]` input and produces `[N, signal_size]` by concatenating N copies.
+Compiles to `MultiChannelDspFeatures.fanOutBlock(n, signalSize)`.
 
-Applies the body to each channel independently. State accessed inside is automatically
-indexed per channel: `delay_state.buffer[channel]`.
+```pdsl
+fan_out(channels)    // [1, signal_size] → [channels, signal_size]
+```
+
+**Construct 3: `for each channel { }` — Per-channel application**
+
+Applies the body to each channel independently. Inside the body, `channel` is bound to
+the current channel index (0 to N-1). State subscript `buffers[channel]` slices the
+shared state collection into per-channel views using `PackedCollection.range()`.
 
 ```pdsl
 for each channel {
-    fir(filter_coeffs)
-    delay(delay_time, delay_state.buffer[channel], delay_state.head[channel])
-    scale(wet_level)
+    delay(delay_samples, buffers[channel], heads[channel])
 }
 ```
 
-Compiles to: `sources.f(i -> fir(...)).d(i -> delay(i, ...)).m(i -> scale(...))`.
+Compiles to: one `SequentialBlock` per channel (built by interpreting the body N times with
+`channel` bound to i). All channel blocks are composed into a `perChannelBlock` via
+`MultiChannelDspFeatures.perChannelBlock(channelBlocks, channels, signalSize)`, which:
+1. Slices `[1, signalSize]` from the `[channels, signalSize]` input per channel.
+2. Pushes each slice through the corresponding channel block via `Cell.setReceptor` + `push`.
+3. Concatenates all channel outputs back to `[channels, signalSize]`.
 
-**Construct 3: `sum_channels()` — Collapse N channels to 1**
+**Construct 4: `route(matrix)` — Cross-channel routing**
 
-```pdsl
-for each channel { fir(filter_coeffs) }
-sum_channels()    // N-channel → 1-channel
-```
-
-Compiles to: `cellList.sum()` — the `SummationCell` pattern.
-
-**Construct 4: `fan_out(N)` — Replicate 1 channel to N**
-
-```pdsl
-fan_out(num_experts)
-for each channel { dense(expert_weights[channel]); silu() }
-sum_channels()
-```
-
-Compiles to: N-element `CellList` via `branch(f0, f1, ..., fN-1)` with N identical functions.
-
-**Construct 5: `route(matrix)` — Cross-channel routing via transmission matrix**
+Applies a `[channels, channels]` routing matrix. For each output channel `i`:
+`out[i] = sum_j(matrix[i,j] * in[j])`. Matrix values are extracted at build time.
+Compiles to `MultiChannelDspFeatures.routeBlock(matrix, channels, signalSize)`.
 
 ```pdsl
-route(delay_routing_gene)    // [N channels] × [N, M gene] → [M channels]
-route(transmission_gene)     // [M channels] × [M, M gene] → [M channels] (feedback)
+route(transmission)    // [channels, signal_size] → [channels, signal_size]
 ```
 
-Compiles to: `.m(fi(), destinations, gene)` for forward routing;
-`.mself(fi(), gene, passthrough)` for feedback. Feedback vs forward is inferred from whether
-input and output channel lists are the same.
+**Construct 5: `sum_channels()` — Collapse N channels to 1**
 
-**Construct 6: `tap(i)` — Select a single channel**
+Element-wise addition over all channel slices. Compiles to
+`MultiChannelDspFeatures.sumChannelsBlock(channels, signalSize)`.
 
 ```pdsl
-tap(0) { fir(treble_coeffs) }
-sum_channels()
+sum_channels()    // [channels, signal_size] → [1, signal_size]
 ```
 
-Compiles to: `branch()` pattern: `cells.branch(stemCell, passThroughCell)[1]`.
+**Complete example — `delay_feedback_bank`:**
+
+```pdsl
+layer delay_feedback_bank(channels: int, signal_size: int, delay_samples: int,
+                          transmission: weight) -> [1, signal_size] {
+    fan_out(channels)
+    for each channel {
+        delay(delay_samples, buffers[channel], heads[channel])
+    }
+    route(transmission)
+    sum_channels()
+}
+```
+
+Signal flow: `[1, S]` → fan_out → `[N, S]` → per-channel delay → `[N, S]` → route → `[N, S]` → sum → `[1, S]`.
 
 ### 6D: Why This Matters for ML Too
 
@@ -417,88 +421,7 @@ operating on sets of parallel signals.
 
 ---
 
-## 7. The Architecture: `pipeline` Keyword + `PdslTemporalBlock`
-
-### The Core Design
-
-A `pipeline` top-level declaration joins `layer` and `model` in the PDSL grammar.
-The `pipeline`/`layer` distinction mirrors the `CellList`/`Cell` distinction:
-- A `layer` is a passive transformation node, driven by its caller.
-- A `pipeline` is a self-driving processing unit, declaring its own input source and
-  output sink.
-
-```pdsl
-pipeline mixdown_main(hp_cutoff: scalar, volume: scalar,
-                      lp_cutoff: scalar, sample_rate: scalar,
-                      filter_order: scalar) {
-
-    input  channel_audio -> [1, signal_size]   // reads from this named source each tick
-    output master_output                        // pushes result to this receptor
-
-    // Signal path — identical grammar to a layer body
-    highpass(hp_cutoff, sample_rate, filter_order)
-    scale(volume)
-    lowpass(lp_cutoff, sample_rate, filter_order)
-}
-```
-
-A reader sees the complete flow at a glance: input source, processing chain, output receptor.
-
-### `PdslTemporalBlock`
-
-The compiled output of a `pipeline` definition. Implements:
-- `Temporal` — so it can be added to a `CellList` via `cells.addRequirement(pipeline)` and
-  will tick once per buffer alongside other temporals.
-- `Cell<PackedCollection>` — so it can also participate in the Block→CellList adapter path
-  (`getForward()`), giving maximum flexibility.
-
-`PdslTemporalBlock.tick()` implementation:
-1. Reads `cp(attachedInputBuffer)` — the source bound via `attachInput()`
-2. Runs the filter chain as a `CollectionProducer` graph (same Producer machinery as today)
-3. Pushes the result to the attached output receptor via `attachedOutput.push(...)`
-
-Integration in Java:
-
-```java
-// In MixdownManager.createCells() — replaces hp()/scale()/lp() chain
-PdslTemporalBlock mixdown = loader.buildPipeline(program, "mixdown_main", shape, args);
-mixdown.attachInput("channel_audio", patternAudioBuffer.getBuffer());
-mixdown.attachOutput("master_output", masterReceptor);
-cells.addRequirement(mixdown);   // fires once per buffer
-```
-
-### New Parser/AST Elements Required
-
-- `pipeline` keyword in `PdslToken.Type`, `PdslLexer`, and `PdslParser.parseDefinition()`
-- `input <name> -> <shape>` declaration inside a pipeline body
-- `output <name>` declaration inside a pipeline body
-- `PdslNode.PipelineDef` — structurally similar to `LayerDef`, adds `inputDecl` and
-  `outputDecl` fields alongside parameters and body
-- `PdslLoader.buildPipeline(PdslNode.Program, String, TraversalPolicy, Map<String, Object>)`
-
-### Tick Granularity
-
-`CellList.tick()` has a `tickLoopCount` that collapses per-sample iterations into a single
-native call. A `PdslTemporalBlock` fires once per buffer: it is added via `addRequirement()`
-which causes it to tick once at the end of each buffer cycle, after all per-sample cells
-have run. This is the correct granularity for per-buffer DSP (highpass → scale → lowpass).
-
-### First Iteration Scope
-
-- **No `channels: N` header parameter.** Single-channel pipelines only.
-- **No `for each channel { }`.** Pipelines are linear chains.
-- **No `route()`, `sum_channels()`, `fan_out()`, `tap()`.** Multi-channel constructs come
-  next iteration.
-- **No `state` block changes.** State blocks already work in `layer` definitions;
-  pipelines use them identically.
-
-The pipeline body grammar is initially identical to a `layer` body — same primitives, same
-composition. The difference is the file-level `input`/`output` declarations and the
-compilation target (`PdslTemporalBlock` instead of `Block`).
-
----
-
-## 8. CellList Integration
+## 7. CellList Integration
 
 ### Block → CellList Adapter (Available Today)
 
@@ -557,20 +480,21 @@ The PDSL `state` block and `into()` mechanism make PDSL Blocks structurally equi
 No changes to `AudioScene`, `EfxManager`, or `MixdownManager` are required for the
 first PDSL cells to appear in the audio pipeline.
 
-The migration path for **`PdslTemporalBlock`** pipelines:
+For multi-channel cases (delay feedback bank, cross-channel routing), build the layer with
+the `channels` parameter and the pre-allocated per-channel state collections, then add the
+compiled model's forward cell to the CellList:
 
 ```java
-// Replaces the hand-wired main path in MixdownManager.createCells()
-PdslTemporalBlock pipeline = loader.buildPipeline(program, "mixdown_main", shape, args);
-pipeline.attachInput("channel_audio", patternAudioBuffer.getBuffer());
-pipeline.attachOutput("master_output", masterReceptor);
-cells.addRequirement(pipeline);
-// Cross-channel transmission, reverb path, DelayNetwork remain as Java CellList code
+Block block = loader.buildLayer(program, "delay_feedback_bank", shape, args);
+CompiledModel compiled = new Model(shape).add(block).compile();
+// Wrap as Temporal: state (buffers, heads) persists between forward() calls
+Temporal temporal = () -> () -> () -> { compiled.forward(input); };
+cells.addRequirement(temporal);
 ```
 
 ---
 
-## 9. Status and Next Steps
+## 8. Status and Next Steps
 
 ### What Is Complete
 
@@ -582,10 +506,17 @@ cells.addRequirement(pipeline);
   operations, no `setMem()`/`toDouble()`.
 - **`mixdown_channel.pdsl`** — expresses `MixdownManager`'s main path (HP → scale → LP)
   and full per-channel path (with wet/delay) as PDSL layers.
+- **Multi-channel constructs** — `fan_out(N)`, `for each channel { }`, `route(matrix)`,
+  `sum_channels()` implemented in `PdslInterpreter`, `PdslParser`, `PdslNode`, and
+  `MultiChannelDspFeatures`. Subscript syntax `expr[index]` for per-channel state slicing.
+- **`delay_feedback_bank.pdsl`** — exercises all four multi-channel constructs end-to-end:
+  fan out → per-channel delay → cross-channel route → sum to mono.
+- **Approach D validation** — `PdslApproachDValidationTest` (3 tests) validates per-buffer
+  granularity, state persistence across `Temporal.tick`, and Block→Temporal adapter flow.
 - **Test coverage** — `PdslAudioDspTest` (13 tests), `MixdownChannelPdslTest` (8 tests),
-  `PdslAudioDemoTest` (2 tests including WAV output). All pass at depth 2.
+  `PdslAudioDemoTest` (2 tests), `DelayFeedbackBankPdslTest` (1 test). All pass at depth 2.
 - **WAV output** — `results/pdsl-audio-dsp/` contains dry multitone, lowpass-filtered,
-  delay-echo, and wet/dry mix WAV files from `PdslAudioDemoTest`.
+  delay-echo, wet/dry mix, and delay_feedback_bank WAV files.
 
 ### What Remains as Gaps in `mixdown_channel.pdsl`
 
@@ -594,51 +525,28 @@ cells.addRequirement(pipeline);
   `MultiOrderFilter` (FIR). Frequency responses differ near the cutoff — validated by
   energy-level assertions, not exact sample match.
 - **Cross-channel transmission:** `MixdownManager.createEfx()` uses `mself(fi(), transmission, ...)`.
-  This requires multi-channel PDSL constructs (Construct 5 in Section 6C) and remains Java.
+  Now expressible via `route(transmission)` in PDSL (Section 6C, Construct 4); migration
+  requires wiring the per-channel state collections from the genome.
 - **Reverb path:** `DelayNetwork` is multi-tap feedback assembled from Java cell primitives.
   No PDSL equivalent yet.
 - **Automation envelopes:** `AutomationManager.getAggregatedValue()` produces time-varying
   Producer values computed in Java. These are passed as `scalar` parameters — the caller
   computes the current value and supplies it. This is the correct design.
 
-### What's Next: Approach D Foundations
+### What's Next
 
-**Deliverable 1 (now):** This plan revision.
-
-**Deliverable 2 (validation tests):** Before writing production `pipeline` keyword code,
-validate the assumptions Approach D depends on:
-
-1. *Per-buffer granularity* — A `CellList` with `setTickLoopCount(N)` has a requirement
-   added via `addRequirement(temporal)`. Verify the requirement's `tick()` fires exactly
-   once per outer tick, not N times.
-2. *State persistence across `Temporal.tick`* — A stateful PDSL block (e.g., biquad) wrapped
-   as a `Temporal`. Tick twice with the same input; verify the second tick's output reflects
-   state from the first (not a cold-started filter).
-3. *Block→Temporal minimal adapter* — A minimal `Temporal` wrapper around a
-   `CompiledModel.forward()` call. Verify input flows in and output comes out, with state
-   surviving between ticks.
-
-**Deliverable 3 (minimal `pipeline` keyword):** Implement:
-- `pipeline` keyword in the parser alongside `layer` and `model`
-- `input <name> -> <shape>` and `output <name>` declarations inside a pipeline body
-- `PdslNode.PipelineDef` AST node
-- `PdslTemporalBlock` implementing `Temporal` and `Cell<PackedCollection>`
-- `PdslLoader.buildPipeline(...)` entry point
-- `attachInput(String name, PackedCollection buffer)` and
-  `attachOutput(String name, Receptor<PackedCollection> receptor)` on `PdslTemporalBlock`
-
-Validation: a `mixdown_main_pipeline.pdsl` file defining the HP/scale/LP path as a `pipeline`.
-Built via `loader.buildPipeline(...)`, ticked through a `CellList`, output matches the `layer`
-version's `forward()`. WAV file produced by a CI test.
-
-**After Approach D foundations:**
-- Add `channels: N` header + `for each channel { }` to enable multi-channel pipelines
-- Add `route()` and `sum_channels()` to cover the `mself`/`m` patterns
-- Migrate `MixdownManager.createEfx()` — the highest-value target once multi-channel lands
+- **`MixdownManager.createEfx()` migration** — now that `route(transmission)` and
+  `for each channel` are in PDSL, the cross-channel delay feedback loop in `createEfx()`
+  is the highest-value migration target. It requires wiring genome-driven per-channel state.
+- **Variable channel count** — today `channels` is fixed at build time. Supporting
+  gene-driven channel activation requires runtime branching, which is not yet in PDSL.
+- **Temporal integration wrapper** — a reusable Java adapter that wraps a `CompiledModel`
+  as a `Temporal` with automatic state collection management, reducing boilerplate at
+  `CellList` integration sites.
 
 ---
 
-## 10. Risks
+## 9. Risks
 
 ### Risk 1: IIR Filter Feedback (Medium Impact, Well-Understood)
 
@@ -658,12 +566,12 @@ Delay line length is genome-driven. Resolution: at block-build time, determine
 `PackedCollection` at that fixed maximum. Use a read pointer offset (stored in `head`)
 for variable delay. This is how hardware delay lines work.
 
-### Risk 3: Cross-Channel Transmission (Medium Impact, Solvable in Phase 2)
+### Risk 3: Cross-Channel Transmission (Medium Impact, Addressable)
 
 `MixdownManager`'s `transmission` chromosome routes audio between channels, preventing
-per-channel splitting from being fully independent. Resolution: keep transmission routing
-as a separate `mix_bus` phase running after all per-channel kernels complete. Expressible
-via `route(transmission_gene)` in Section 6C Construct 5 once multi-channel PDSL lands.
+per-channel splitting from being fully independent. Resolution: `route(transmission)`
+(Section 6C Construct 4) is now implemented. The remaining work is wiring genome-driven
+transmission values into the args map at scene initialization time.
 
 ### Risk 4: Real-Time Audio Constraints (Medium Impact, Design Question)
 
@@ -671,13 +579,6 @@ Real-time audio requires deterministic latency. PDSL compilation produces `Compi
 objects that, once compiled, run without Java allocation. Resolution: compile the PDSL
 model in a background thread during scene initialization; swap the compiled model into the
 audio path only when compilation completes (double-buffered model replacement).
-
-### Risk 5: `pipeline` Keyword Scope Creep (Low Impact, Manageable)
-
-The full multi-channel vocabulary (`channels`, `for each channel`, `route`, `sum_channels`,
-`fan_out`, `tap`) doubles the parser surface area. Resolution: this iteration implements
-only single-channel `pipeline` with `input`/`output` declarations. Multi-channel constructs
-are additive and do not change existing `layer` or `pipeline` definitions without `channels`.
 
 ---
 
@@ -690,6 +591,7 @@ are additive and do not change existing `layer` or `pipeline` definitions withou
 | `pdsl/midi/skytnt_block.pdsl` | LLaMA-style transformer block (attention + SwiGLU FFN) |
 | `pdsl/audio/efx_channel.pdsl` | EFX channel layers: `efx_wet_chain`, `efx_lowpass_wet`, `efx_highpass_wet`, `efx_dry_path`, `efx_delay`, `efx_wet_dry_mix` |
 | `pdsl/audio/mixdown_channel.pdsl` | Mixdown layers: `mixdown_main` (HP→scale→LP), `mixdown_channel` (full with wet/delay) |
+| `pdsl/audio/delay_feedback_bank.pdsl` | Multi-channel delay bank: `delay_feedback_bank` (fan_out → per-channel delay → route → sum_channels) |
 
 All PDSL files live in `engine/ml/src/main/resources/pdsl/` and its subdirectories.
 Test PDSL files live in `engine/ml/src/test/resources/pdsl/audio/`.
@@ -735,11 +637,10 @@ delay echo. Generated by `PdslAudioDemoTest.testPdslDspProducesAudio()`.
 Tests in `PdslAudioDspTest` verify biquad state persists across buffer boundaries
 (filter transient, not cold-start each call). Wet/dry mix demo in `PdslAudioDemoTest.testPdslMixDemo()`.
 
-**Phase C (`pipeline` keyword — Approach D Deliverable 3):**
-A WAV file produced by running `mixdown_main_pipeline` (a `pipeline` definition) through a
-`CellList.tick()` cycle. The file must be produced by a test that runs in CI. The pipeline
-must include at least the HP→scale→LP chain from `mixdown_main` and the output must be
-audibly different from the dry input.
+**Phase C (multi-channel DSP constructs — complete):**
+WAV file `results/pdsl-audio-dsp/delay_feedback_bank.wav` produced by `DelayFeedbackBankPdslTest`.
+The `delay_feedback_bank` PDSL layer fans a mono 440 Hz sine out to 3 parallel delay lines,
+mixes them via a routing matrix, and sums to mono. Output is audibly different from the dry input.
 
 ### How to Produce a .wav File
 

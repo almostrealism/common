@@ -91,59 +91,11 @@ public class PdslParser {
 			case CONFIG:    return parseConfigDef();
 			case DATA:      return parseDataDef();
 			case STATE:     return parseStateDef();
-			case PIPELINE:  return parsePipelineDef();
 			case LAYER:     return parseLayerDef();
 			case MODEL:     return parseModelDef();
 			default:
-				throw error("Expected 'config', 'data', 'state', 'pipeline', 'layer', or 'model' but found " + token);
+				throw error("Expected 'config', 'data', 'state', 'layer', or 'model' but found " + token);
 		}
-	}
-
-	// ---- Pipeline ----
-
-	/**
-	 * Parses a {@code pipeline Name(params) { input name -> shape; output name; body }} definition.
-	 *
-	 * <p>The pipeline body begins with optional {@code input <name> -> <shape>} and
-	 * {@code output <name>} declarations (each appearing at most once) before regular
-	 * body statements. Neither declaration is a reserved keyword — they are parsed by
-	 * checking for the literal identifier values {@code "input"} and {@code "output"}.</p>
-	 *
-	 * @return The parsed pipeline definition node
-	 */
-	private PdslNode.PipelineDef parsePipelineDef() {
-		PdslToken kw = consume(PdslToken.Type.PIPELINE);
-		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
-		consume(PdslToken.Type.LPAREN);
-		List<PdslNode.Parameter> params = parseParameterList();
-		consume(PdslToken.Type.RPAREN);
-		consume(PdslToken.Type.LBRACE);
-
-		String inputName = null;
-		PdslNode.Expression inputShape = null;
-		String outputName = null;
-
-		// input <name> -> <shape>
-		if (check(PdslToken.Type.IDENTIFIER) && "input".equals(peek().getValue())) {
-			advance(); // consume "input"
-			inputName = consume(PdslToken.Type.IDENTIFIER).getValue();
-			consume(PdslToken.Type.ARROW);
-			inputShape = parseShapeLiteral();
-			while (check(PdslToken.Type.SEMICOLON)) advance();
-		}
-
-		// output <name>
-		if (check(PdslToken.Type.IDENTIFIER) && "output".equals(peek().getValue())) {
-			advance(); // consume "output"
-			outputName = consume(PdslToken.Type.IDENTIFIER).getValue();
-			while (check(PdslToken.Type.SEMICOLON)) advance();
-		}
-
-		List<PdslNode.Statement> body = parseBody();
-		consume(PdslToken.Type.RBRACE);
-
-		return new PdslNode.PipelineDef(name, params, inputName, inputShape, outputName, body,
-				kw.getLine(), kw.getColumn());
 	}
 
 	// ---- Config ----
@@ -555,12 +507,26 @@ public class PdslParser {
 	}
 
 	/**
-	 * Parses a {@code for variable in start..end { body }} loop statement.
+	 * Parses a {@code for} statement, dispatching to either
+	 * {@code for each channel { body }} or the standard {@code for variable in start..end { body }}.
 	 *
-	 * @return The parsed for statement node
+	 * @return The parsed statement node
 	 */
-	private PdslNode.ForStatement parseForStatement() {
+	private PdslNode.Statement parseForStatement() {
 		PdslToken kw = consume(PdslToken.Type.FOR);
+		// Detect "for each channel { body }"
+		if (check(PdslToken.Type.IDENTIFIER) && "each".equals(peek().getValue())) {
+			advance(); // consume "each"
+			PdslToken channelTok = consume(PdslToken.Type.IDENTIFIER);
+			if (!"channel".equals(channelTok.getValue())) {
+				throw error("Expected 'channel' after 'each' but found " + channelTok);
+			}
+			consume(PdslToken.Type.LBRACE);
+			List<PdslNode.Statement> body = parseBody();
+			consume(PdslToken.Type.RBRACE);
+			return new PdslNode.ForEachChannelStatement(body, kw.getLine(), kw.getColumn());
+		}
+		// Standard range loop: for variable in start..end { body }
 		String variable = consume(PdslToken.Type.IDENTIFIER).getValue();
 		consume(PdslToken.Type.IN);
 		PdslNode.Expression start = parseExpression();
@@ -674,6 +640,12 @@ public class PdslParser {
 					expr = new PdslNode.FieldAccess(expr, field,
 							expr.getLine(), expr.getColumn());
 				}
+			} else if (check(PdslToken.Type.LBRACKET)) {
+				PdslToken bracket = consume(PdslToken.Type.LBRACKET);
+				PdslNode.Expression index = parseExpression();
+				consume(PdslToken.Type.RBRACKET);
+				expr = new PdslNode.Subscript(expr, index,
+						bracket.getLine(), bracket.getColumn());
 			} else {
 				break;
 			}
