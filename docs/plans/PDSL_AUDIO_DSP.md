@@ -1568,3 +1568,873 @@ Producer computation graph and cannot be hardware-accelerated.
 
 No changes to `PackedCollection`, `SequentialBlock`, `Model`, `CompiledModel`, or any
 hardware backend are needed.
+
+---
+
+## Part 13: Multi-Channel Composition: PDSL for Lists, Not Just Chains
+
+### 13A: What CellList Multi-Channel Composition Actually Does
+
+Part 12 treated PDSL integration as if CellList were a single-channel pipeline: one input,
+one output, one layer of stateful processing. This is not what CellList is. A CellList is
+a *list* of cells — at every layer there are typically N independent channels running in
+parallel, and the multi-channel operations create structured relationships between them.
+This is not a side feature. It is the core of what `MixdownManager`, `EfxManager`, and the
+full audio scene graph actually do.
+
+The following operations are the multi-channel vocabulary of CellList. Each entry lists
+the implementing method, its location, and at least one production call site.
+
+---
+
+#### Operation 1: `sum()` — Collapse N Channels to 1
+
+**Method:** `CellFeatures.sum(CellList cells)` — `engine/audio/.../CellFeatures.java:582`
+
+Creates a single `SummationCell`, wires every cell in the list as a receptor, and returns
+a new single-element CellList. Push-based: the `SummationCell` accumulates contributions
+from all N upstream cells as they push their values on each tick.
+
+**Production call sites:**
+- `MixdownManager.createCells():610` — `main = main.sum()` — collapses N pattern channels
+  into one mixed signal before the EFX chain
+- `MixdownManager.createEfx():667` — `.sum()` — collapses the N-element delay feedback
+  grid after cross-channel routing
+- `MixdownManager.createEfx():674` — `reverb.sum()` — collapses N reverb channels before
+  the `DelayNetwork`
+- `MixdownManager.createEfx():678` — `cells(efx, reverb).sum()` — merges efx and reverb
+  paths and sums
+- `EfxManager.apply():246` and `:248` — `wet...sum()` and `cells(wet, dry).sum()` — per-channel
+  wet/dry collapse
+
+---
+
+#### Operation 2: `branch(IntFunction<Cell>... dest)` — Fan Out from N to N×M
+
+**Method:** `CellFeatures.branch(CellList cells, IntFunction<Cell>... dest)` —
+`engine/audio/.../CellFeatures.java:229`
+
+Creates M new CellLists (one per destination function). Each cell i in the source is wired
+to send its output to ALL M destination cells simultaneously on every tick. From a source
+with N cells, `branch(f0, f1, f2)` produces three CellLists each with N cells. The source
+cells now have 3 receptors — every tick sends N values to all 3 × N destinations.
+
+**Production call sites:**
+- `MixdownManager.createCells():572-578` — `wetSources.branch(filterEfxFunc, reverbFunc)`
+  splits N wet channels into an EFX branch (with `wetFilter` applied) and a reverb branch
+  (with reverb factor applied), running in parallel from the same N sources
+- `MixdownManager.createCells():592-601` — `cells.branch(volumeFunc, efxFilterFunc, reverbFunc)`
+  creates main, efx, and reverb paths all from the same N channel cells simultaneously
+- `MixdownManager.createCells():605-606` — `main.branch(stemCell, passThroughCell)` taps
+  a stem output alongside the main path without interrupting it
+
+---
+
+#### Operation 3: `and(CellList)` / `cells(CellList...)` — Merge Parallel Paths
+
+**Method:** `CellList.and(CellList cells)` — `engine/audio/.../CellList.java:406`,
+delegating to `CellFeatures.cells(CellList...)` at line 183, which calls
+`CellFeatures.all(int, IntFunction<CellList>)` at line 194.
+
+Merges two or more CellLists into a combined list in which all parent CellLists tick before
+the combined list's cells. Used to unify parallel signal paths for a subsequent `sum()`.
+
+**Production call sites:**
+- `MixdownManager.createEfx():678` — `cells(efx, reverb).sum()` — combines the efx
+  CellList (N delay outputs) with the reverb CellList (1 reverb output) into a shared
+  pool before the final sum
+- `MixdownManager.createEfx():719` — `cells(main, riser).sum()` — adds a riser element
+  alongside main before summing
+- `EfxManager.apply():248` — `cells(wet, dry).sum()` — merges the wet delay path with
+  the dry bypass and sums
+
+---
+
+#### Operation 4: `m(adapter, destinations, transmission)` — Gene-Controlled Cross-Channel Routing
+
+**Method:** `CellFeatures.m(CellList cells, IntFunction<Cell> adapter,
+List<Cell> destinations, IntFunction<Gene> transmission)` —
+`engine/audio/.../CellFeatures.java:927`
+
+Routes each cell i through an adapter cell, then distributes the adapted signal to
+destinations j, scaled by `transmission.apply(i).valueAt(j)`. The transmission gene
+controls the routing weight matrix: how strongly channel i's signal flows into destination
+j. This is a fully general N×M cross-channel routing operation — the audio-domain analog
+of a linear routing layer in ML.
+
+**Production call site:**
+- `MixdownManager.createEfx():664` — `efx.m(fi(), delays, tg)` — routes each of N EFX
+  channels to each of M delay line cells (in `delays`) using the `tg` gene. The gene
+  controls which delay layers receive signal from each channel and at what level. The
+  identity adapter `fi()` means routing happens without signal transformation.
+
+---
+
+#### Operation 5: `mself(adapter, transmission, passthrough)` — Cross-Channel Feedback Grid
+
+**Method:** `CellFeatures.mself(CellList cells, IntFunction<Cell> adapter,
+IntFunction<Gene> transmission, IntFunction<Cell> passthrough)` —
+`engine/audio/.../CellFeatures.java:901`, delegating to `m(cells, adapter, cells,
+transmission, passthrough)`
+
+Identical to `m(...)` except the destinations ARE the source cells themselves (`cells`
+is passed as both source and destination). Creates a fully-connected feedback grid: the
+output of each cell i feeds into each cell j via the transmission matrix. The passthrough
+cell delivers the non-feedback signal alongside. This is the `mself` in the name: routes
+*into* self.
+
+**Production call sites:**
+- `MixdownManager.createEfx():665-666` — `.mself(fi(), transmission, fc(wetOut.valueAt(0)))`
+  — the cross-channel delay feedback network: each of the M delay cells feeds back into
+  all M delay cells according to the `transmission` chromosome (an [M×M] routing matrix),
+  while `wetOut.valueAt(0)` controls the direct wet-send level alongside the feedback
+- `EfxManager.apply():245` — `.mself(fi(), i -> g(delayLevels.valueAt(ch, 1)))` — single-
+  channel self-feedback: the delay cell feeds back into itself at a level controlled by
+  `delayLevels[ch][1]` (the feedback gene for this channel)
+
+---
+
+#### Operation 6: `gr(duration, segments, choices)` / `grid(...)` — Temporal Channel Selection
+
+**Methods:** `CellFeatures.gr(CellList, double, int, IntUnaryOperator)` at line 1061;
+`CellFeatures.grid(CellList, double, int, IntToDoubleFunction)` at line 1074;
+`CellFeatures.grid(CellList, double, int, IntFunction<Producer>)` at line 1090
+
+Selects one channel from the CellList for each time segment, using a `ValueSequenceCell`
+to cycle through choices on a schedule. This is temporal multiplexing — only one channel
+is active during each segment — rather than all-at-once multi-channel processing.
+
+Also: `CellList.poly(IntFunction<CollectionProducer> decision)` at line 428 creates a
+`PolymorphicAudioCell` for producer-driven dynamic channel selection (smooth interpolation
+rather than stepped segments).
+
+**Production use:** Used in AudioScene-level pattern routing to select which pattern
+source is active in each musical segment. The CellList contains one cell per available
+pattern; `gr` routes audio through the correct cell for each bar.
+
+---
+
+#### Operation 7: `CellList.collector()` / `all(count, cells)` — Assembly of N-Cell Lists
+
+**Methods:** `CellList.collector()` at line 1032; `CellFeatures.all(int, IntFunction<CellList>)`
+at line 194
+
+`collector()` is a `java.util.stream.Collector` that builds a CellList from a stream of
+cells. `all()` aggregates N CellLists into one flat container with all N as parents (tick-
+ordering preserved). These are the assembly primitives — how N-channel CellLists are built
+from per-channel streams.
+
+**Production call sites:**
+- `MixdownManager.createEfx():654-657` — `IntStream.range(0, delayLayers).mapToObj(...).collect(CellList.collector())` —
+  builds the M-element delay CellList from a stream of `AdjustableDelayCell` instances,
+  one per delay layer
+
+---
+
+### 13B: Why Block/Model Cannot Express These Cleanly Today
+
+The seven operations above have no clean Block/Model analogs. Here is why, operation by
+operation, followed by a side-by-side code comparison.
+
+#### The Structural Mismatch
+
+In the CellList model, N channels = N independent `Cell<PackedCollection>` instances. Each
+cell has its own state (`cachedValue`, `outValue`), its own delay buffers, its own receptor
+wiring. Operations like `sum()`, `branch()`, `m()`, and `mself()` define the *topology*
+of the graph — how signals flow between the N cells.
+
+In the Block/Model model, N channels would have to be represented as a batch dimension in a
+single `PackedCollection` tensor of shape `[N, signal_size]`. Operations on the tensor
+apply to all N channels simultaneously (vectorized), but cross-channel dependencies require
+explicit tensor contractions.
+
+The consequences:
+
+| Multi-channel operation | CellList | Block/Model |
+|------------------------|----------|-------------|
+| `sum()` — collapse N → 1 | `SummationCell` wired to N receptors | Need a reduce-sum over the batch dimension; no PDSL primitive exists |
+| `branch()` — fan out N → N×M | Wire each of N cells to M destination functions | Tensor replication: `tile([N, signal_size], M)` — not expressible in PDSL without new primitives |
+| `m(adapter, dests, gene)` — gene-controlled routing | Per-cell gene lookup at N×M granularity | Matrix multiply (dense) on channel dimension — feasible but loses per-cell gene structure |
+| `mself(adapter, gene)` — feedback grid | Direct wiring back into same cell array | Self-referential tensor op: output at step k is input at step k+1 — no static-graph expression |
+| Per-channel state | Each cell holds its own `CachedStateCell` state | Must index into a shared [N, state_size] tensor per channel — requires per-element subscripting |
+| `gr()/grid()` — temporal selection | `ValueSequenceCell` routes between cell instances | Conditional execution (if channel_idx == i) — not expressible without gating primitives |
+| Channel count flexibility | N is a Java integer; CellList grows dynamically | N must be fixed at PDSL compile time (tensor shapes are static) |
+
+#### Side-by-Side: 3-Channel Filter + Sum
+
+The simplest multi-channel pattern: apply a filter to each of 3 channels, then sum.
+
+**CellList (Java, used in production everywhere):**
+
+```java
+// Build a 3-element CellList from 3 source cells
+CellList sources = cells(ch0, ch1, ch2);
+
+// Apply HP filter to each channel independently — 3 separate FilteredCells
+CellList filtered = sources.f(i -> hp(c(500), scalar(0.1)));
+
+// Collapse 3 → 1 via SummationCell
+CellList summed = filtered.sum();
+// result: 1-element CellList whose single cell accumulates all 3 filtered signals
+```
+
+**The equivalent PDSL Block expression — today (with existing primitives):**
+
+```pdsl
+// Channels must be pre-interleaved as [3, signal_size] tensor
+// PDSL has no "apply this to each row" construct — must enumerate explicitly:
+accum_blocks(
+    { slice(0, signal_size); fir(hp_coeffs) },            // channel 0
+    { slice(signal_size, signal_size); fir(hp_coeffs) },  // channel 1
+    { slice(signal_size * 2, signal_size); fir(hp_coeffs) } // channel 2
+)
+// accum_blocks sums the 3 outputs — that IS the sum.
+// But: (a) channel count is hard-coded in the layer definition
+//      (b) each channel names its own slice offset explicitly
+//      (c) if filter is stateful (biquad), each needs its own state block declaration
+//      (d) for N=8, this is 8 explicit branches
+```
+
+This is already four times more verbose and structurally rigid. For the `mself` feedback
+grid (the most important multi-channel operation in `MixdownManager`), the Block form is
+not just verbose — it is inexpressible in static PDSL syntax:
+
+**CellList feedback grid (3 delay layers, `MixdownManager.createEfx():664-667`):**
+
+```java
+// N EFX channels routed to M delay lines, then feedback grid
+efx = efx
+    .m(fi(), delays, tg)                               // [N] → [M]: gene-routed
+    .mself(fi(), transmission, fc(wetOut.valueAt(0))) // [M] × [M]: feedback matrix
+    .sum();                                             // [M] → 1
+```
+
+**PDSL Block equivalent — not possible without new primitives.** The feedback (`mself`)
+creates a loop-carried dependency between cells at the CellList level. In a static computation
+graph (which PDSL compiles to), self-referential routing across tick boundaries cannot be
+expressed without explicit state tracking. The `mself` feedback is structurally equivalent
+to a recurrent connection — it is what PDSL *state* blocks handle for single-channel
+biquad/delay, but extended to N×N cross-channel routing. No amount of `accum_blocks` or
+`concat_blocks` nesting can express this.
+
+The readability gap is real: **the CellList form is the same 3-line chain regardless of
+channel count N. The Block form grows as O(N²) and requires O(N) separate state block
+declarations.** For the 8-channel, 3-delay-layer case in `MixdownManager`, the Block form
+would require 24 explicit branches and 8 separate state block declarations — 30+ lines of
+PDSL — to express what the CellList form says in 3 lines.
+
+---
+
+### 13C: Proposed PDSL Syntax for Multi-Channel Layer Composition
+
+The multi-channel vocabulary of CellList maps onto six PDSL constructs. Each is shown with
+the CellList operation it mirrors and the underlying compilation strategy.
+
+---
+
+#### Construct 1: `channels: N` — Channel Multiplicity Declaration
+
+Declares that a layer or pipeline operates on N independent channels. When present in a
+`pipeline` header, the pipeline's `input` and `output` declarations become N-element arrays.
+The body's operations apply per-channel unless explicitly marked as cross-channel.
+
+```pdsl
+pipeline delay_bank(channels: int, delay_time: scalar) {
+    input  channel_audio[channels] -> [1, signal_size]
+    output master_mix
+    // ...
+}
+```
+
+**Compiles to:** `PdslTemporalBlock` that internally maintains a `channels`-element
+`CellList`, constructed via `IntStream.range(0, channels).mapToObj(...).collect(CellList.collector())`.
+The `channels` value is passed as a Java integer parameter at `buildPipeline()` call time.
+
+---
+
+#### Construct 2: `for each channel { }` — Per-Channel Application
+
+Applies the body to each channel independently. The body must contain only single-channel
+primitives (no cross-channel operations). State accessed inside `for each channel` is
+automatically indexed per channel: `delay_state.buffer` becomes `delay_state.buffer[channel]`.
+
+```pdsl
+// Apply a filter + delay to all 6 channels independently
+for each channel {
+    fir(filter_coeffs)
+    delay(delay_time, delay_state.buffer[channel], delay_state.head[channel])
+    scale(wet_level)
+}
+```
+
+**Compiles to:** `sources.f(i -> fir(...)).d(i -> delay(i, ...)).m(i -> scale(...))` —
+the body becomes the argument lambda to CellList's per-cell methods. The `[channel]`
+indexing becomes `[i]` in the lambda.
+
+---
+
+#### Construct 3: `sum_channels()` — Collapse N Channels to 1
+
+Collapses all channels to a single output via element-wise summation across the channel
+dimension. The output has the same shape as one channel, with values equal to the sum of
+all channels at each position.
+
+```pdsl
+for each channel {
+    fir(filter_coeffs)
+}
+sum_channels()    // N-channel → 1-channel
+```
+
+**Compiles to:** `cellList.sum()` — the SummationCell pattern. Also useful: `mean_channels()`
+(divides by N), `max_channels()` (element-wise max across channels).
+
+---
+
+#### Construct 4: `fan_out(N)` — Replicate 1 Channel to N
+
+Replicates the single-channel input N times, producing a N-channel output. Each copy is
+independent from this point forward. This is the inverse of `sum_channels()`.
+
+```pdsl
+fan_out(num_experts)   // 1 → num_experts channels
+for each channel {
+    dense(expert_weights[channel])
+    silu()
+}
+sum_channels()
+```
+
+**Compiles to:** An N-element `CellList` constructed by creating N copies of the source
+cell's receptor (via `branch(f0, f1, ..., fN-1)` with N identical functions). The source
+feeds N downstream cells.
+
+---
+
+#### Construct 5: `route(matrix)` — Cross-Channel Routing via Transmission Matrix
+
+Applies a gene-controlled or weight-controlled routing matrix across the channel dimension.
+Each channel's output is distributed to destination channels with weights from `matrix`.
+The matrix may be a `weight` (fixed at build time) or a `gene` (genome-driven at runtime).
+
+```pdsl
+// Route N EFX channels to M delay lines using a transmission gene
+route(delay_routing_gene)         // [N channels] × [N, M gene] → [M channels]
+
+// Cross-channel feedback: each of M delay lines feeds all others
+route(transmission_gene)          // [M channels] × [M, M gene] → [M channels]
+```
+
+**Compiles to:** `.m(fi(), destinations, gene)` for routing to new destinations;
+`.mself(fi(), gene, passthrough)` when routing back into the same cell list.
+The distinction: if `route()` maps to a new set of channels it calls `.m()`; if it routes
+back into the same set (feedback) it calls `.mself()`. The feedback vs. forward direction
+is inferred from whether the input and output channel lists are the same.
+
+---
+
+#### Construct 6: `tap(i)` — Select a Single Channel
+
+Selects channel `i` from a multi-channel layer for separate single-channel processing. The
+remaining channels continue through the pipeline unchanged.
+
+```pdsl
+channels = 4
+
+for each channel {
+    fir(filter_coeffs)
+}
+
+tap(0) {
+    // Channel 0 only: additional high-frequency boost
+    fir(treble_coeffs)
+}
+
+sum_channels()
+```
+
+**Compiles to:** The `branch()` pattern: `cells.branch(stemCell, passThroughCell)[1]`
+taps channel i while the rest continue. Inside the `tap(i)` block, channel i is processed
+separately; the modified channel is rejoined via `and()/cells()` before `sum_channels()`.
+
+---
+
+#### Combined Example: MixdownManager-Style Delay Feedback Bank
+
+This exercises 5 of the 6 constructs above. It closely mirrors `MixdownManager.createEfx()`
+lines 648–667.
+
+```pdsl
+// MixdownManager delay feedback bank expressed in PDSL
+// Matches: efx.m(fi(), delays, tg).mself(fi(), transmission, fc(wetOut)).sum()
+
+state delay_bank_state(delay_layers: int) {
+    buffers: weight    // [delay_layers, max_delay_samples] — one buffer per delay line
+    heads: weight      // [delay_layers] — write pointers
+}
+
+pipeline delay_feedback_bank(n_efx: int, delay_layers: int,
+                              delay_times: weight, delay_dynamics: weight,
+                              transmission: gene, wet_out: scalar,
+                              s: delay_bank_state) {
+
+    input  efx_channels[n_efx] -> [1, signal_size]    // N independent EFX channels
+    output combined_mix                                 // single summed output
+
+    // Step 1: Route N EFX channels into M delay lines via transmission gene
+    //   CellList equivalent: efx.m(fi(), delays, tg)
+    route(delay_times)                                  // [n_efx] → [delay_layers]
+
+    // Step 2: Apply delay to each of the M delay lines independently
+    //   CellList equivalent: each AdjustableDelayCell in `delays`
+    for each channel {
+        delay(delay_times[channel], s.buffers[channel], s.heads[channel])
+    }
+
+    // Step 3: Cross-channel feedback grid via transmission chromosome
+    //   CellList equivalent: .mself(fi(), transmission, fc(wetOut.valueAt(0)))
+    route(transmission)                                 // [delay_layers] × [M, M] → [delay_layers]
+
+    // Step 4: Collapse M delay lines to 1 summed output
+    //   CellList equivalent: .sum()
+    sum_channels()
+}
+```
+
+The PDSL version says in 6 lines what `MixdownManager.createEfx()` says across 14 lines of
+Java — and unlike the Java, the PDSL makes the signal flow visible at a glance: fan in
+from N EFX channels → delay bank → feedback routing → collapse.
+
+---
+
+### 13D: Two Syntactic Styles for Multi-Channel Composition
+
+Two distinct styles are possible. Both are evaluated using the combined delay feedback bank
+example above.
+
+---
+
+#### Style 1: Channel-Arity as a Property of the Pipeline
+
+The `pipeline` header declares channel count explicitly. Operations inside the body are
+single-channel by default; cross-channel operations (`route`, `sum_channels`, `fan_out`)
+must be explicit. The `for each channel` block makes per-channel iteration explicit.
+
+```pdsl
+// Style 1: channel count is declared on the pipeline header
+pipeline delay_bank_style1(n_efx: int, delay_layers: int,
+                            delay_times: weight, transmission: gene,
+                            wet_out: scalar, s: delay_bank_state) {
+
+    input  efx_input[n_efx] -> [1, signal_size]    // N-element input array
+    output master_mix
+
+    route(delay_times)                              // N EFX → M delay lines
+
+    for each channel {                              // M independent delay operations
+        delay(delay_times[channel], s.buffers[channel], s.heads[channel])
+    }
+
+    route(transmission)                             // M×M feedback matrix
+    sum_channels()                                  // M → 1
+}
+```
+
+**What's clear:** The structure is a chain of single-channel and cross-channel operations,
+exactly mirroring the CellList fluent chain. A reader unfamiliar with the codebase sees the
+signal flow: N inputs → routing → per-channel delay → feedback → sum. The `for each channel`
+and `route` markers make the multi-channel steps explicit without requiring knowledge of the
+Java implementation.
+
+**What's harder:** The `n_efx` and `delay_layers` parameters must be known at `buildPipeline()`
+time. Variable channel count (e.g., determined by genome) is not expressible — the CellList
+fluent API handles this naturally because Java integers can be computed at runtime, but PDSL
+shape inference requires fixed sizes at compile time. Also, the `[n_efx]` multiplicity
+notation in `input` is new syntax.
+
+---
+
+#### Style 2: Channels as a Separate Sequence/Iteration Construct
+
+The pipeline header does not declare channel count. Multi-channel sections are enclosed in
+a `parallel` block that explicitly forks the single-channel flow into N copies. Outside
+`parallel` blocks, the pipeline is single-channel.
+
+```pdsl
+// Style 2: multi-channel sections are explicit blocks
+pipeline delay_bank_style2(n_efx: int, delay_layers: int,
+                            delay_times: weight, transmission: gene,
+                            s: delay_bank_state) {
+
+    input  efx_input -> [1, signal_size]    // single-channel input conceptually
+    output master_mix
+
+    // Explicit fork: expand 1 input into N parallel EFX paths
+    parallel(n_efx) {
+        // Each of the n_efx copies is treated as one channel here
+        // (Note: in practice, efx_input is already N-channel; this represents the topology)
+    }
+
+    route(delay_times)                      // N → M routing
+
+    parallel(delay_layers) {                // M parallel delay lines
+        delay(delay_time, buffer, head)
+    }
+
+    route(transmission)                     // M×M feedback
+    sum_channels()                          // M → 1
+}
+```
+
+**What's clear:** The `parallel(N) { }` block visually marks where the pipeline branches.
+A reader can see exactly where parallelism enters and exits the signal flow. The rest of the
+pipeline (outside `parallel` blocks) is clearly single-channel. This style is closer to how
+a programmer thinks about the architecture: single stream → fork into N → process in parallel
+→ merge.
+
+**What's harder:** The nesting is heavier. A pipeline with multiple parallel sections has
+multiple `parallel` blocks, and the relationship between them (does the output of `parallel(n_efx)`
+feed `route(delay_times)` directly?) requires reading the whole pipeline. Also, the channel
+index is implicit inside `parallel` — how does `delay_time` know which delay time to use?
+Needs explicit indexing: `delay(delay_times[channel], ...)`, same as Style 1, so the advantage
+of "not needing channel declarations" disappears.
+
+---
+
+#### Style Scores
+
+| Axis | Style 1: Channel-Arity as Property | Style 2: Channels as Iteration Construct |
+|------|------------------------------------|-----------------------------------------|
+| **Intuitive-as-flow (1–5)** | **4** — signal flow visible; `for each channel` and `route` are self-explanatory | **3** — `parallel(N)` block is clear, but nested structure is heavier; channel index is still needed inside |
+| **CellList-non-destructive (1–5)** | **5** — `PdslTemporalBlock` compiles to CellList operations internally; no CellList changes | **5** — same; both styles compile to identical CellList operations |
+| **Expressiveness for cross-channel routing (1–5)** | **5** — `route(gene)` maps directly to `.m(fi(), dests, gene)` and `.mself(fi(), gene, ...)`; the syntax mirrors the semantic | **4** — `route` works the same, but `parallel` nesting makes it less obvious that cross-channel routing applies at the inter-block level |
+| **Channel count flexibility** | Fixed at `buildPipeline()` time; N is a Java integer parameter | Same — N must be known at build time |
+| **State indexing** | `delay_state.buffer[channel]` — explicit | Same — no improvement |
+| **Learning curve** | New syntax: `for each channel`, `route`, `sum_channels` | New syntax: `parallel(N)`, `route`, `sum_channels` — similar learning curve, different shape |
+
+**Verdict: Style 1 is preferred.** The signal flow is more linear and readable. The
+`for each channel { }` block is semantically self-explanatory in a way that `parallel(N)
+{ }` is not — the former says "do this to every channel"; the latter says "run N copies"
+which is the same but less directly expressive. Both styles compile to identical CellList
+operations. Style 1 is recommended.
+
+---
+
+### 13E: ML Use Cases That Benefit from Multi-Channel Composition
+
+The user observed that ML models sometimes want the same multi-channel composition patterns
+and currently find them awkward to express. Three concrete cases follow.
+
+---
+
+#### ML Case 1: Multi-Head Attention Without `concat_blocks` Gymnastics
+
+Today, `skytnt_block.pdsl` expresses attention as:
+
+```pdsl
+attention(q_proj, k_proj, v_proj, o_proj, num_heads, head_dim)
+```
+
+This is a black-box primitive. It works, but the per-head computation is invisible. If you
+wanted to write a custom attention variant — e.g., adding ALiBi position bias, sparse
+attention, or per-head dropout — you currently have no way to decompose the `attention`
+primitive without writing a new Java primitive in `PdslInterpreter.java`.
+
+With multi-channel PDSL, attention can be decomposed as:
+
+```pdsl
+layer multi_head_attention_decomposed(q_proj: weight, k_proj: weight, v_proj: weight,
+                                       o_proj: weight, num_heads: int, head_dim: int) {
+
+    // Project to Q, K, V (single-channel output: [3 * num_heads * head_dim])
+    concat_blocks({ dense(q_proj) }, { dense(k_proj) }, { dense(v_proj) })
+
+    // Fan out: one channel per head, each carrying [3 * head_dim] (Q, K, V for that head)
+    fan_out(num_heads)
+
+    // Per-head: extract Q/K/V slices and compute attention
+    for each channel {
+        tap(channel * 3 * head_dim, head_dim)   // slice Q for this head
+        // (similarly K and V — actual syntax TBD per PDSL slice semantics)
+        scaled_dot_product(head_dim)             // within-head attention
+    }
+
+    // Concatenate heads, project to output dimension
+    concat_channels()                            // num_heads → 1 concatenated
+    dense(o_proj)
+}
+```
+
+This is significantly more readable than the current alternative for 8 heads:
+
+```pdsl
+// WITHOUT multi-channel — must enumerate all 8 heads in concat_blocks:
+concat_blocks(
+    { slice(0, head_dim); slice(num_heads * head_dim, head_dim); slice(2*num_heads*head_dim, head_dim);
+      scaled_dot_product(head_dim) },  // head 0
+    { slice(head_dim, head_dim); ... ; scaled_dot_product(head_dim) },  // head 1
+    { slice(2*head_dim, head_dim); ... ; scaled_dot_product(head_dim) }, // head 2
+    // ... 5 more head blocks ...
+)
+```
+
+For 8 heads, the `concat_blocks` version requires 8 explicit branches with manual slice
+index arithmetic. The `for each channel` version is the same 4 lines regardless of head count.
+Note: this also requires `concat_channels()` (not `sum_channels()`) for the head-merge step,
+which shows that the aggregation operation at the end can vary (sum, concat, mean, max).
+
+---
+
+#### ML Case 2: Mixture-of-Experts Without Branch Combinatorics
+
+A sparse mixture-of-experts layer routes each input to k of N expert feedforward networks
+and combines their outputs with learned gate weights. In standard PDSL today, N=4 experts
+requires:
+
+```pdsl
+// Today: 4 explicit experts via concat_blocks
+concat_blocks(
+    { dense(expert0_w1); silu(); dense(expert0_w2) },  // expert 0
+    { dense(expert1_w1); silu(); dense(expert1_w2) },  // expert 1
+    { dense(expert2_w1); silu(); dense(expert2_w2) },  // expert 2
+    { dense(expert3_w1); silu(); dense(expert3_w2) }   // expert 3
+)
+// Then weight by gate scores and sum... no existing primitive for this
+```
+
+With multi-channel PDSL and a `route(gate_weights)` aggregate:
+
+```pdsl
+layer mixture_of_experts(expert_w1: weight, expert_w2: weight, gate_weights: weight,
+                          num_experts: int) {
+
+    // Step 1: Compute gate distribution over experts
+    data gate { scores: weight }  // gate(gate_weights) produces per-expert weights
+
+    // Step 2: Fan out input to all experts
+    fan_out(num_experts)
+
+    // Step 3: Per-expert computation
+    for each channel {
+        dense(expert_w1[channel])    // per-expert weight slice
+        silu()
+        dense(expert_w2[channel])
+    }
+
+    // Step 4: Gate-weighted sum (transmission matrix = gate scores)
+    route(gate_scores)               // gate_scores: [1, num_experts] soft routing
+    sum_channels()                   // weighted combination
+}
+```
+
+The `route(gate_scores)` is the MoE routing — the same mechanism as `mself(transmission)`
+in the delay bank, now expressed at the ML layer level. This is the conceptual unification:
+audio cross-channel routing and ML expert gating are both instances of the same
+gene/weight-controlled routing operation.
+
+---
+
+#### ML Case 3: Parallel Residual Streams
+
+Some architectures (e.g., Mamba-style selective SSMs or multi-path transformers) run
+multiple independent streams through the same layer stack, then merge. In current PDSL:
+
+```pdsl
+// Two parallel residual streams — awkward with concat_blocks:
+accum_blocks(
+    { dense(w_stream0); relu() },    // stream 0 residual
+    { dense(w_stream1); relu() }     // stream 1 residual
+)
+// accum_blocks accumulates (sums) — correct for residual, but 2 streams hard-coded
+```
+
+With `fan_out`/`for each channel`/`sum_channels`:
+
+```pdsl
+layer dual_residual(stream_weights: weight, num_streams: int) {
+    fan_out(num_streams)
+    for each channel {
+        dense(stream_weights[channel])
+        relu()
+    }
+    sum_channels()   // mean_channels() for mean-pooling across streams
+}
+```
+
+Adding a third stream now requires only changing the `num_streams` parameter, not rewriting
+the layer definition.
+
+---
+
+### 13F: Re-evaluation of Approaches A through D in Light of Multi-Channel
+
+Part 12F scored Approaches A–D on two axes. The multi-channel question adds a third axis:
+
+- **Expressiveness for cross-channel routing (1–5):** Can the approach express
+  `m(adapter, destinations, gene)` and `mself(adapter, gene)` in PDSL, or must
+  these always remain Java CellList code?
+
+The revised table:
+
+| Dimension | A: Source/Sink Decls | B: PDSL→CellList | C: Block Adapter | D: Pipeline Keyword |
+|-----------|---------------------|------------------|-----------------|---------------------|
+| **PDSL intuitive-as-flow (1–5)** | 4 | 3 | 2 | **5** |
+| **CellList-non-destructive (1–5)** | 3 | **5** | **5** | 4 |
+| **Cross-channel routing expressiveness (1–5)** | 2 | **5** | 1 | **5** (with extensions) |
+| **Implementation cost** | Medium | High | **Low** | Medium-High |
+| **Multi-channel additions needed** | `channels` declaration, cross-channel syntax in `source`/`sink` | `for each channel` body, `route()` → `.m()`/`.mself()` compilation | Nothing — cross-channel cannot be expressed; must remain Java | `channels` header param, `for each channel { }`, `route()`, `sum_channels()` |
+
+**How multi-channel changes the recommendation:**
+
+**Approach B gains significantly on cross-channel routing expressiveness.** If PDSL compiles
+to CellList (Approach B), then `for each channel { }` body maps directly to the Java lambda
+arguments that CellList's `.f(i -> ...)`, `.d(i -> ...)`, `.m(i -> ...)` already expect.
+The `route(transmission_gene)` keyword maps directly to `.m(fi(), destinations, gene)`.
+The `sum_channels()` keyword maps directly to `.sum()`. This is the only approach where
+the PDSL multi-channel constructs have a *one-to-one* structural mapping to the CellList
+API — no intermediate `PdslTemporalBlock` needed, no new compilation target. The generated
+CellList is literally what a human would write.
+
+However, the maintenance burden identified in Part 12G remains: every future primitive
+needs two implementations (Block and CellList). The `accum_blocks` → `branch()/and()/sum()`
+topology mapping is non-trivial. These costs do not go away. Approach B remains the most
+technically direct path for multi-channel, but the ongoing maintenance burden and the
+topology-mapping problem make it impractical as the primary approach.
+
+**Approach C drops to effectively 0 for cross-channel routing.** The Block Adapter approach
+works by compiling PDSL to a `Block`/`CompiledModel` and wrapping it in a `Temporal` adapter.
+A Block operates on a single tensor — it cannot express "route channel i to channel j via a
+gene-controlled matrix" because that operation requires multiple independent Cell instances
+with separate tick ordering. The `mself(transmission)` feedback grid is fundamentally a
+per-Cell-level operation that has no equivalent tensor contraction. Any multi-channel audio
+pipeline that uses transmission routing cannot be expressed under Approach C. For
+`MixdownManager`, which is the primary migration target and which uses `mself(transmission)`
+as a central feature (lines 665-666), Approach C provides zero benefit on the multi-channel
+operations that matter most.
+
+**Approach D (Pipeline keyword) extends cleanly to multi-channel.** The `pipeline` keyword
+already introduces `input`/`output` declarations. Adding `channels: N` to the header and
+`for each channel { }` to the body grammar is a natural extension of the same syntax. The
+compiled `PdslTemporalBlock` would internally manage a CellList of N cells, with `route()`
+mapping to `.m()`/`.mself()` and `sum_channels()` mapping to `.sum()`. The extension is
+additive and does not change any existing `layer` or `pipeline` without `channels`.
+
+**Approach A (Source/Sink declarations) is neutral for multi-channel.** The `source`/`sink`
+declarations describe where data enters and exits the pipeline, not how channels relate
+internally. Adding `channels` support would require extending the `source name[N]` syntax
+— possible, but not architecturally cleaner than Approach D.
+
+**Does the recommendation change?** Not fundamentally. Approach D remains the correct
+Phase 2 target. But multi-channel considerations sharpen two conclusions:
+
+1. **Approach D must be designed with multi-channel in mind from day one.** If
+   `PdslTemporalBlock` is initially designed as single-channel only, retrofitting N-channel
+   support later is harder than building it in. The `channels` header parameter and
+   `for each channel` grammar should be included in the Approach D design specification
+   even if not implemented in the first iteration.
+
+2. **Approach C is more limited than Part 12 implied.** Part 12G described Approach C as
+   a valid Phase 1 migration vehicle that covers "most of MixdownManager." In light of
+   Part 13, it covers only the per-channel single-channel path (HP filter, volume, LP
+   filter). The cross-channel transmission routing — which is one of the two distinctive
+   features of `MixdownManager` — cannot be expressed in Approach C and must permanently
+   remain as Java CellList code. This is still acceptable for Phase 1, but Phase 1 is
+   more narrowly scoped than Part 12 suggested.
+
+---
+
+### 13G: Recommendation for the Multi-Channel Question
+
+#### The recommended syntax: Style 1 (Channel-Arity as Property), within Approach D
+
+The best PDSL syntax for multi-channel composition is Style 1 extended into the `pipeline`
+keyword of Approach D:
+
+```pdsl
+pipeline my_pipeline(channels: int, ...) {
+    input  source_channels[channels] -> [1, signal_size]
+    output master_out
+
+    state per_channel_state(channels: int) {
+        buffers: weight    // [channels, max_samples] — automatically per-channel
+        heads: weight      // [channels]
+    }
+
+    for each channel {         // per-channel operations
+        fir(coeffs)
+        delay(times[channel], s.buffers[channel], s.heads[channel])
+    }
+
+    route(routing_gene)        // cross-channel: .m(fi(), dests, gene)
+    sum_channels()             // final collapse
+}
+```
+
+This is readable, unambiguous as a signal flow, and maps to CellList operations in
+the obvious way.
+
+#### How this interacts with the Phase 1 (Approach C) prototype plan
+
+Part 12G recommends Approach C as the Phase 1 migration vehicle. Multi-channel awareness
+does not change this recommendation, but it sharpens the scope:
+
+**Phase 1 (Approach C) covers:**
+- Per-channel single-channel PDSL layers: `mixdown_main` and `mixdown_channel` (Part 11)
+- These layers express: `highpass → scale → accum_blocks(identity, wet+delay) → lowpass`
+- The `PdslChannelAdapter` wraps one `CompiledModel` per channel, fires once per buffer
+- This replaces the Java-wired HP/volume/LP chain in `MixdownManager.createCells()`
+
+**Phase 1 (Approach C) does NOT cover:**
+- Cross-channel transmission routing (`efx.m(fi(), delays, tg)` at line 664)
+- Cross-channel feedback grid (`.mself(fi(), transmission, ...)` at line 665-666)
+- `sum()` of multi-channel results — still done by Java CellList code
+- These must remain as Java CellList code in `MixdownManager.createEfx()`
+
+**Phase 2 (Approach D) covers everything**, including multi-channel constructs, once
+`PdslTemporalBlock` is extended with the `channels` header parameter and `for each channel`
+grammar.
+
+#### New multi-channel primitives needed (beyond Part 8's list)
+
+| Primitive | Description | Compiles to |
+|-----------|-------------|-------------|
+| `fan_out(N)` | Replicate 1 input to N channels | `branch(f0, f1, ..., fN-1)` with N identical functions |
+| `for each channel { }` | Per-channel body application | Lambda argument to `.f(i -> ...)`, `.d(i -> ...)`, etc. |
+| `route(gene_or_weight)` | Cross-channel routing matrix | `.m(fi(), dests, gene)` or `.mself(fi(), gene, ...)` |
+| `sum_channels()` | Collapse N channels to 1 via sum | `.sum()` — `SummationCell` |
+| `mean_channels()` | Collapse N channels to 1 via mean | `.sum()` then `scale(1.0/N)` |
+| `concat_channels()` | Concatenate N channels (for multi-head) | Tensor concat across channel dim |
+| `tap(i)` | Select channel i for separate processing | `branch(stemCell, passThroughCell)[1]` |
+
+#### Appendix to Part 12G: Revision in Light of Part 13
+
+*Part 12G recommended Approach C as Phase 1 and Approach D as Phase 2. These recommendations
+stand, with the following addenda:*
+
+**Addendum 1:** The Phase 1 Approach C prototype covers only the single-channel per-channel
+layers in `MixdownManager`. The cross-channel transmission routing (`mself(transmission)`)
+cannot be expressed in Approach C and must remain Java CellList code indefinitely under
+this approach. This is not a blocker for Phase 1 — the per-channel layers are valuable
+independently — but it means the PDSL migration of `MixdownManager` is inherently two-phase:
+per-channel layers first (Approach C), cross-channel routing second (Approach D with
+multi-channel extensions).
+
+**Addendum 2:** The `PdslTemporalBlock` design for Approach D should include the
+`channels` header parameter and `for each channel` grammar from the initial design, even if
+only a subset is implemented first. Designing it single-channel-only and retrofitting
+multi-channel later is unnecessary technical debt. The CellList compilation target naturally
+accommodates channels ≥ 1 without architectural change — N=1 is just a CellList with one cell.
+
+**Addendum 3:** Approach B's cross-channel routing score (`5/5`) shows that for
+multi-channel PDSL specifically, Approach B is the most direct path. If the dual-compilation
+maintenance burden and `accum_blocks` topology problem were resolved by a single shared
+compilation layer (e.g., PDSL→intermediate IR→CellList and PDSL→intermediate IR→Block),
+Approach B would be the winner. This is a design direction worth tracking as the PDSL
+interpreter matures, but it is not recommended for the current phase.
+
+**Addendum 4:** The ML multi-channel use cases (Part 13E) show that `for each channel`,
+`fan_out`, `route`, and `sum_channels` benefit ML definitions as well as audio DSP. These
+are not audio-specific primitives — they belong in the core PDSL grammar alongside `accum_blocks`
+and `concat_blocks`. The multi-channel question is therefore not an audio DSP edge case: it
+is a gap in the expressiveness of the PDSL language itself, relevant to any domain that
+operates on sets of parallel signals.
