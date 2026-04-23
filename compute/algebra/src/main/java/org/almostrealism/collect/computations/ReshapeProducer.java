@@ -439,9 +439,14 @@ public class ReshapeProducer
 	}
 
 	@Override
+	public long getExpansionWidth() {
+		return producer instanceof Process ? ((Process<?, ?>) producer).getExpansionWidth() : 1;
+	}
+
+	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>> optimize(ProcessContext ctx) {
 		if (producer instanceof Process) {
-			return generateReplacement(List.of(optimize(ctx, ((Process) producer))));
+			return CollectionProducerParallelProcess.super.optimize(ctx);
 		}
 
 		return this;

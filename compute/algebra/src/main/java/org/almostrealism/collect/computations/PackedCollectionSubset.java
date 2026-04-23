@@ -225,7 +225,15 @@ public class PackedCollectionSubset
 	 */
 	@Override
 	public long getCountLong() {
-		return getShape().traverseEach().getCountLong();
+		long count = getShape().traverseEach().getCountLong();
+		if (count <= 0) {
+			throw new IllegalStateException(
+				"PackedCollectionSubset reports count=" + count +
+				" for shape " + getShape() +
+				"; the source TraversalPolicy is zero-sized — " +
+				"check the collection producer's shape");
+		}
+		return count;
 	}
 
 	/**

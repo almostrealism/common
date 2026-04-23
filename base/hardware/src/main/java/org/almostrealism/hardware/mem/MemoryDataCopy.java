@@ -1,12 +1,15 @@
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -138,7 +141,7 @@ import java.util.function.Supplier;
  * @see MemoryReplacementManager
  * @see Process
  */
-public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, OperationInfo, ConsoleFeatures {
+public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Runnable>, OperationInfo, ConsoleFeatures {
 	/** If true, logs each copy operation to stdout including source, target, and length. */
 	public static boolean enableVerbose = false;
 
@@ -148,6 +151,16 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 	private Supplier<MemoryData> source;
 	/** Supplier for the target memory data to copy into. */
 	private Supplier<MemoryData> target;
+	/**
+	 * Producer reference for the source when constructed from a {@link Producer}.
+	 * When non-null, it is exposed as a child {@link Process} so that the
+	 * optimization cascade can see into the producer tree that supplies this
+	 * copy's source memory. When null, the source was provided as a raw
+	 * {@link Supplier} and has no producer-tree structure to expose.
+	 */
+	private Producer<? extends MemoryData> sourceProducer;
+	/** Producer reference for the target; see {@link #sourceProducer}. */
+	private Producer<? extends MemoryData> targetProducer;
 	/** Element offset within the source from which copying begins. */
 	private int sourcePosition;
 	/** Element offset within the target at which copying begins. */
@@ -221,12 +234,57 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 		this.length = length;
 	}
 
+	/**
+	 * Creates a copy operation from {@link Producer}-backed source and target.
+	 *
+	 * <p>Retaining the {@link Producer} references (rather than only their
+	 * resolved {@link MemoryData} suppliers) lets the optimization cascade
+	 * see into the producer trees through {@link #getChildren()}. Execution
+	 * still performs a physical {@code setMem} / {@code toArray} copy of the
+	 * bytes the producers emit — the producer trees are visible to the
+	 * optimizer but the copy semantics are unchanged.</p>
+	 *
+	 * @param name   Display name for this copy operation
+	 * @param source Producer that yields the source memory
+	 * @param target Producer that yields the target memory
+	 * @param length Number of elements to copy
+	 */
+	public MemoryDataCopy(String name, Producer<? extends MemoryData> source,
+						  Producer<? extends MemoryData> target, int length) {
+		this(name,
+				(Supplier<MemoryData>) () -> (MemoryData) source.get().evaluate(),
+				(Supplier<MemoryData>) () -> (MemoryData) target.get().evaluate(),
+				0, 0, length);
+		this.sourceProducer = source;
+		this.targetProducer = target;
+	}
+
 	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Exposes any {@link Producer}-backed source or target (in that order)
+	 * as child processes, so the optimization cascade can recurse into the
+	 * producer trees that supply this copy's memory. When constructed with
+	 * raw {@link Supplier}s, no producer structure is available and the
+	 * children collection is empty.</p>
+	 */
 	@Override
 	public Collection<Process<?, Runnable>> getChildren() {
-		return Collections.emptyList();
+		if (sourceProducer == null && targetProducer == null) {
+			return Collections.emptyList();
+		}
+
+		List<Process<?, Runnable>> children = new ArrayList<>(2);
+		if (sourceProducer instanceof Process) {
+			children.add((Process<?, Runnable>) (Process) sourceProducer);
+		}
+		if (targetProducer instanceof Process) {
+			children.add((Process<?, Runnable>) (Process) targetProducer);
+		}
+		return children;
 	}
 
 	@Override
@@ -253,10 +311,38 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 	public long getOutputSize() { return length; }
 
 	@Override
-	public Process<Process<?, Runnable>, Runnable> isolate() { return this; }
+	public long getCountLong() { return length; }
 
 	@Override
-	public Process<Process<?, Runnable>, Runnable> generate(List<Process<?, Runnable>> children) { return this; }
+	public boolean isFixedCount() { return true; }
+
+	@Override
+	public ParallelProcess<Process<?, Runnable>, Runnable> isolate() { return this; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When this copy exposes {@link Producer}-backed children (both source
+	 * and target were provided as Producers), rebuilds the copy with the
+	 * optimized children replacing those Producers. When the child count does
+	 * not match the exposed structure, returns {@code this} unchanged —
+	 * there is no sensible mapping from the children list back onto
+	 * Supplier-only construction.</p>
+	 */
+	@Override
+	public ParallelProcess<Process<?, Runnable>, Runnable> generate(List<Process<?, Runnable>> children) {
+		if (sourceProducer != null && targetProducer != null && children.size() == 2) {
+			MemoryDataCopy result = new MemoryDataCopy(
+					metadata.getDisplayName(),
+					(Producer<? extends MemoryData>) (Producer) children.get(0),
+					(Producer<? extends MemoryData>) (Producer) children.get(1),
+					length);
+			result.sourcePosition = sourcePosition;
+			result.targetPosition = targetPosition;
+			return result;
+		}
+		return this;
+	}
 
 	@Override
 	public String describe() {

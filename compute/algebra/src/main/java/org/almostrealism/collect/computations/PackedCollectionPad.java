@@ -224,6 +224,18 @@ public class PackedCollectionPad extends TraversableExpressionComputation {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A pad's emitted expression is a {@code Conditional(boundaryCheck, input[srcIdx], 0)}
+	 * whose two ternary branches both materialise in the generated expression tree.
+	 * The expansion width is therefore {@code 2}.</p>
+	 */
+	@Override
+	public long getExpansionWidth() {
+		return 2;
+	}
+
+	/**
 	 * Computes the gradient (delta) of the padding operation with respect to a target.
 	 * This method enables backpropagation through padding operations by creating a new
 	 * padding computation that operates on the gradient of the input.

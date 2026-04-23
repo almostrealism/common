@@ -218,6 +218,18 @@ public class LessThanCollection extends CollectionComparisonComputation {
 						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4), includeEqual);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The emitted expression is a ternary {@code Conditional(lhs < rhs, truePath, falsePath)}
+	 * &mdash; both branches materialise in the expression tree. The expansion width is
+	 * therefore {@code 2}.</p>
+	 */
+	@Override
+	public long getExpansionWidth() {
+		return 2;
+	}
+
 
 	@Override
 	public String signature() {
