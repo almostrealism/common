@@ -37,6 +37,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libsecret-1-0 libhyphen0 libmanette-0.2-0 libflite1 \
         libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
         libgstreamer-plugins-bad1.0-0 gstreamer1.0-libav \
+        # Firefox-specific dependencies (Chromium has ARM64/macOS-host
+        # Docker compatibility issues, so Firefox is the default browser).
+        libdbus-glib-1-2 libxt6 \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Maven ───────────────────────────────────────────────────────────
@@ -74,6 +77,15 @@ ENV PATH="/home/agent/.npm-global/bin:${PATH}"
 
 # ── Claude Code CLI ─────────────────────────────────────────────────
 RUN npm install -g @anthropic-ai/claude-code
+
+# ── Playwright MCP + Firefox browser ────────────────────────────────
+# Pre-install @playwright/mcp globally and download the Firefox browser
+# binary into /home/agent/.cache/ms-playwright/ so agents can drive a
+# headless browser without a cold `playwright install` on every run.
+# Firefox (not Chromium) because Chromium has known compatibility
+# issues on ARM64 Linux containers running on macOS hosts.
+RUN npm install -g @playwright/mcp@latest \
+    && npx --yes playwright@latest install firefox
 
 # ── Shell environment ──────────────────────────────────────────────
 RUN echo 'export PS1="\u@\h:\w$ "' >> ~/.bashrc && \
