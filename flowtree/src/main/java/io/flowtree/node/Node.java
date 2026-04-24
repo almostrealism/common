@@ -1490,7 +1490,14 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 			this.relaySum += r;
 			this.relayDiv++;
 
-			r: if ((isRelay ? js > 0 : js > this.minJobs) && Math.random() < r) {
+			// Worker nodes should only relay when currently executing a job
+			// (so they have a genuine backlog) or when the queue has more
+			// jobs than a single worker thread can immediately absorb (> 1).
+			// This prevents eager relay-back to the controller by idle workers
+			// that received a job before their worker thread had a chance to run.
+			boolean shouldRelay = isRelay ? js > 0
+					: (js > this.minJobs && (this.working || js > 1));
+			r: if (shouldRelay && Math.random() < r) {
 				Connection c;
 
 				if (Math.random() < this.parentalRelayP ||
