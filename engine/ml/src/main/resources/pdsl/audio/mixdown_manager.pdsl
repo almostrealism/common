@@ -1,0 +1,181 @@
+// Mixdown Manager — top-level multi-channel mixdown signal path expressed in PDSL.
+//
+// This file renders the structural shape of
+//   studio/compose/.../MixdownManager.createCells() + createEfx()
+// as a declarative multi-channel graph.  It is intentionally the
+// *fixed-parameter* rendition: every scalar parameter (volume, filter
+// cutoffs, delay time, wet level) is resolved to a constant at block-build
+// time.  The time-varying (automation- and gene-driven) parameter path is
+// PDSL-blocked and is documented in docs/plans/PDSL_AUDIO_DSP.md
+// Section 10 (MixdownManager Migration: Structural Plan).
+//
+// Signal flow:
+//
+//   [channels, signal_size] dry input
+//     ├── mixdown_main_bus
+//     │     └── for each channel {
+//     │           highpass(hp_cutoff, sample_rate, filter_order)   // per-channel HP
+//     │           scale(volume)                                    // per-channel volume
+//     │         }
+//     │     └── sum_channels()                                     // collapse N → 1
+//     │
+//     ├── mixdown_efx_bus (same input, parallel branch)
+//     │     └── for each channel {
+//     │           fir(wet_filter_coeffs[channel])                  // per-channel wet filter
+//     │           scale(wet_level)                                 // wet send level
+//     │           delay(delay_samples, buffers[channel], heads[channel])  // per-channel delay
+//     │         }
+//     │     └── route(transmission)                                // cross-channel feedback matrix
+//     │     └── sum_channels()                                     // collapse N → 1
+//     │
+//     └── accum_blocks(mixdown_main_bus, mixdown_efx_bus)          // main + efx mono bus
+//     └── lowpass(lp_cutoff, sample_rate, filter_order)            // master LP
+//     → [1, signal_size]
+//
+// Reference:
+//   - MixdownManager.createCells()  (studio/compose, lines 498-627)
+//   - MixdownManager.createEfx()    (studio/compose, lines 643-732)
+
+// ---------------------------------------------------------------------------
+// Per-channel delay state for the efx bus
+//
+// Each of the `channels` delay lines owns its own slice of `buffers` and
+// `heads`. `buffers` must have total size `channels * signal_size` and
+// `heads` must have total size `channels`; the subscript operator
+// (e.g., `buffers[channel]`) carves a per-channel view at build time.
+// ---------------------------------------------------------------------------
+state mixdown_efx_state {
+    buffers: weight
+    heads: weight
+}
+
+// ---------------------------------------------------------------------------
+// Main bus — multi-channel per-channel HP + volume, then sum to mono
+//
+// Renders rows 4, 5, and 14 of Section 10.1:
+//   * per-channel HP filter (fixed cutoff) — structural rendition of
+//     MixdownManager.createCells() line 504-521 (enableMainFilterUp),
+//   * per-channel volume (fixed scalar) — structural rendition of line 524-526,
+//   * sum to mono — line 610 (main = main.sum()).
+//
+// Input shape:  [channels, signal_size]
+// Output shape: [1, signal_size]
+//
+// Parameters:
+//   channels       Number of input channels
+//   signal_size    Samples per channel per forward pass
+//   hp_cutoff      High-pass cutoff in Hz (fixed; automation is PDSL-blocked)
+//   volume         Per-channel linear gain (fixed; gene-driven is PDSL-blocked)
+//   sample_rate    Audio sample rate in Hz
+//   filter_order   FIR filter order (40 typically)
+// ---------------------------------------------------------------------------
+layer mixdown_main_bus(channels: int, signal_size: int,
+                       hp_cutoff: scalar, volume: scalar,
+                       sample_rate: scalar, filter_order: scalar) -> [1, signal_size] {
+    for each channel {
+        highpass(hp_cutoff, sample_rate, filter_order)
+        scale(volume)
+    }
+    sum_channels()
+}
+
+// ---------------------------------------------------------------------------
+// EFX bus — multi-channel per-channel wet filter + scale + delay,
+// cross-channel routing (feedback), then sum to mono
+//
+// Renders rows 18, 21, 22 of Section 10.2:
+//   * per-channel wet FIR filter (fixed coefficients per channel) — structural
+//     rendition of FixedFilterChromosome-driven wet filter at line 574-595,
+//   * per-channel wet send level (fixed scalar) — wetFilter-wrapped factor,
+//   * per-channel delay (fixed sample count) — structural rendition of
+//     AdjustableDelayCell array at line 654-658 (dynamic delay is PDSL-blocked),
+//   * cross-channel transmission matrix (square N×N) — rendition of
+//     mself(fi(), transmission, ...) at line 665-666,
+//   * sum to mono — line 667 (.sum()).
+//
+// The N efx cells → M delay layers rectangular routing from `m(fi(), delays, tg)`
+// at line 664 is NOT rendered here; this bus uses M = N (square routing) as the
+// structural case that PDSL currently supports.  The rectangular case is
+// PDSL-blocked and covered by testMixdownManagerRectangularRoute.
+//
+// Input shape:  [channels, signal_size]
+// Output shape: [1, signal_size]
+//
+// Parameters:
+//   channels           Number of input (= delay) channels
+//   signal_size        Samples per channel per forward pass
+//   wet_filter_coeffs  Per-channel FIR coefficients, size = channels * (filter_order+1).
+//                      Subscripted as `wet_filter_coeffs[channel]` inside the
+//                      per-channel body to get one channel's coefficients.
+//   wet_level          Wet send level (fixed scalar)
+//   delay_samples      Integer delay samples (must be < signal_size)
+//   transmission       Cross-channel routing matrix, shape [channels, channels]
+//
+// Requires mixdown_efx_state populated with:
+//   buffers  PackedCollection of size channels * signal_size (zero-initialised)
+//   heads    PackedCollection of size channels (zero-initialised)
+// ---------------------------------------------------------------------------
+layer mixdown_efx_bus(channels: int, signal_size: int,
+                      wet_filter_coeffs: weight, wet_level: scalar,
+                      delay_samples: int, transmission: weight) -> [1, signal_size] {
+    for each channel {
+        fir(wet_filter_coeffs[channel])
+        scale(wet_level)
+        delay(delay_samples, buffers[channel], heads[channel])
+    }
+    route(transmission)
+    sum_channels()
+}
+
+// ---------------------------------------------------------------------------
+// Master — full fixed-parameter rendition of MixdownManager
+//
+// Signal flow:
+//   [channels, signal_size]
+//     → accum_blocks(
+//         { mixdown_main_bus body: for each channel { HP; scale }; sum_channels },
+//         { mixdown_efx_bus  body: for each channel { fir; scale; delay }; route; sum_channels }
+//       )
+//     → lowpass(lp_cutoff, sample_rate, filter_order)
+//     → [1, signal_size]
+//
+// Both arms of accum_blocks read the same [channels, signal_size] input and
+// each produces [1, signal_size]; accum sums them into a single mono bus,
+// which the master LP then rolls off.
+//
+// Input shape:  [channels, signal_size]
+// Output shape: [1, signal_size]
+//
+// Parameters: union of mixdown_main_bus and mixdown_efx_bus parameters, plus
+//   lp_cutoff      Master low-pass cutoff in Hz (fixed; automation is
+//                  PDSL-blocked — rendition of MixdownManager.createEfx()
+//                  line 707-714 enableMasterFilterDown).
+//
+// Requires mixdown_efx_state populated as in mixdown_efx_bus.
+// ---------------------------------------------------------------------------
+layer mixdown_master(channels: int, signal_size: int,
+                     hp_cutoff: scalar, volume: scalar,
+                     lp_cutoff: scalar,
+                     sample_rate: scalar, filter_order: scalar,
+                     wet_filter_coeffs: weight, wet_level: scalar,
+                     delay_samples: int, transmission: weight) -> [1, signal_size] {
+    accum_blocks(
+        {
+            for each channel {
+                highpass(hp_cutoff, sample_rate, filter_order)
+                scale(volume)
+            }
+            sum_channels()
+        },
+        {
+            for each channel {
+                fir(wet_filter_coeffs[channel])
+                scale(wet_level)
+                delay(delay_samples, buffers[channel], heads[channel])
+            }
+            route(transmission)
+            sum_channels()
+        }
+    )
+    lowpass(lp_cutoff, sample_rate, filter_order)
+}

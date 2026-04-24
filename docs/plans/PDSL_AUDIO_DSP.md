@@ -582,7 +582,243 @@ audio path only when compilation completes (double-buffered model replacement).
 
 ---
 
-## Appendix A: Current PDSL Files
+## 10. MixdownManager Migration: Structural Plan
+
+This section catalogs every statement in
+`studio/compose/src/main/java/org/almostrealism/studio/arrange/MixdownManager.java`
+that contributes to the signal flow and maps it to one of three statuses:
+
+- **PDSL-ready** — expressible today in the current vocabulary
+  (`layer` + existing primitives + multi-channel constructs). Covered by a
+  PDSL file and a passing test in this task.
+- **PDSL-blocked-by-X** — structurally expressible, but requires a
+  capability `X` that PDSL does not provide today. Covered by a `@Disabled`
+  test that describes the intended final state.
+- **Not in scope** — Java orchestration (genome/automation wiring, lifecycle,
+  output receptor routing, feature flags, dynamic resize). Stays in Java
+  and does not need a PDSL rendition.
+
+The PDSL rendition this plan produces is intentionally *structural*: it
+captures the shape of the pipeline (multi-channel fan-in, per-channel
+filtering, cross-channel routing, master bus summation, master low-pass)
+under the simplifying assumption that every parameter (volume, filter
+cutoffs, delay times, wet levels) is a *fixed scalar at build time*.
+All of the PDSL-blocked rows share the same underlying cause:
+`MixdownManager` wires genome-driven `Producer<PackedCollection>` values
+into the audio path, and PDSL does not yet have a `automation(scalar)`
+primitive that accepts a time-varying scalar producer as a layer argument.
+
+### 10.1 `createCells()` — top-level per-channel wiring
+
+| # | Line(s) | Method / statement | Status | Covered by |
+|---|---------|---------------------|--------|------------|
+| 1 | 504–513 | Per-channel HP filter with **automation-driven cutoff** (`enableAutomationManager` branch) | PDSL-blocked-by-automation | `testMixdownManagerAutomatedHighpass` (`@Disabled`) |
+| 2 | 514–521 | Per-channel HP filter with **gene-driven cutoff** (no automation, but still time-varying via `TemporalFactor`) | PDSL-blocked-by-automation | Same as #1 |
+| 3 | 524–526 | Per-channel volume `Factor` from `toAdjustmentGene(...).valueAt(0)` | PDSL-blocked-by-automation | `testMixdownManagerAutomatedVolume` (`@Disabled`) |
+| 4 | — | Per-channel HP filter with **fixed cutoff** (structural rendition of row 1/2) | PDSL-ready | `mixdown_main_bus` layer in `mixdown_manager.pdsl` |
+| 5 | — | Per-channel volume with **fixed scalar** (structural rendition of row 3) | PDSL-ready | `mixdown_main_bus` layer in `mixdown_manager.pdsl` |
+| 6 | 528–536 | `enableSourcesOnly` fast-path (skip effects, deliver directly to master) | Not in scope | Java feature flag / receptor wiring |
+| 7 | 538–539 | `cells.mixdown(mixdownDuration)` — offline-buffered pattern mixdown | Not in scope | CellList-level buffering pass |
+| 8 | 541–544 | `reverbActive` flag computation | Not in scope | Java feature flag |
+| 9 | 546–561 | `reverbFactor` gene / automation curve per reverb channel | PDSL-blocked-by-automation | Part of `testMixdownManagerReverbPath` (`@Disabled`) |
+| 10 | 567–576 | Wet-sources path: `wetSources.branch(v·wetFilter, reverbFactor)` — heterogeneous fan-out | PDSL-blocked-by-heterogeneous-fanout | `testMixdownManagerHeterogeneousBranch` (`@Disabled`) |
+| 11 | 591–602 | Main-sources path: `cells.branch(v, v·wetFilter, reverbFactor)` — 3-way heterogeneous fan-out | PDSL-blocked-by-heterogeneous-fanout | Same as #10 |
+| 12 | 580–589 | `!enableEfx` fast-path: main-only (no efx, no reverb) | PDSL-ready (as the `mixdown_main_bus` layer) | `mixdown_main_bus` layer |
+| 13 | 604–607 | Stems fan-out: `main.branch(StemReceptor, PassThroughCell)` | Not in scope | Output receptor routing |
+| 14 | 610     | `main = main.sum()` — collapse N channels to 1 | PDSL-ready | `sum_channels()` inside `mixdown_main_bus` |
+| 15 | 612–613 | `createEfx(main, efx, reverb, ...)` delegation | PDSL-ready (merge via `accum_blocks`) | `mixdown_master` layer |
+| 16 | 615–624 | Master-path delivery without EFX (receptor to `output.getMaster`) | Not in scope | Output receptor routing |
+
+### 10.2 `createEfx()` — effects bus, reverb, master LP
+
+| # | Line(s) | Method / statement | Status | Covered by |
+|---|---------|---------------------|--------|------------|
+| 17 | 654–658 | Delay-layer array of `AdjustableDelayCell` with **time-varying delay samples** from `delay` chromosome | PDSL-blocked-by-variable-delay | `testMixdownManagerVariableDelayTime` (`@Disabled`) |
+| 18 | — | Delay-layer array with **fixed delay samples** (structural rendition of row 17) | PDSL-ready | Per-channel `delay(...)` inside `mixdown_efx_bus` |
+| 19 | 660–662 | `delayGene` routing: N efx cells → M delay layers via **gene-driven rectangular matrix** | PDSL-blocked-by-rectangular-route | `testMixdownManagerRectangularRoute` (`@Disabled`) |
+| 20 | 664     | `efx.m(fi(), delays, tg)` — per-cell gene-routed fan-out | PDSL-blocked-by-rectangular-route | Same as #19 |
+| 21 | 665–666 | `.mself(fi(), transmission, fc(wetOut.valueAt(0)))` — cross-channel feedback matrix (square N×N case) | PDSL-ready | `route(transmission)` inside `mixdown_efx_bus` |
+| 22 | 667     | `.sum()` final collapse | PDSL-ready | `sum_channels()` inside `mixdown_efx_bus` |
+| 23 | 669     | `!enableTransmission`: `efx.sum()` only | PDSL-ready | `mixdown_efx_bus` with identity routing matrix |
+| 24 | 672–674 | Reverb path: `reverb.sum().map(DelayNetwork)` | PDSL-blocked-by-DelayNetwork | `testMixdownManagerReverbPath` (`@Disabled`) |
+| 25 | 676–683 | Reverb/efx merge: `cells(efx, reverb).sum()` | PDSL-ready (when reverb is available; `accum_blocks` semantics) | Part of `testMixdownManagerReverbPath` (`@Disabled`) |
+| 26 | 685–694 | `disableClean` alternate receptor wiring | Not in scope | Output receptor routing |
+| 27 | 696–705 | `efx.get(0).setReceptor(Receptor.to(main.get(0), ...))` — cell-level wiring | Not in scope | Java CellList wiring |
+| 28 | 707–714 | Per-channel master LP filter with **automation-driven cutoff** | PDSL-blocked-by-automation | `testMixdownManagerAutomatedLowpass` (`@Disabled`) |
+| 29 | — | Master LP filter with **fixed cutoff** (structural rendition of row 28) | PDSL-ready | `lowpass(...)` tail in `mixdown_master` |
+| 30 | 717–720 | Riser mixing: `cells(main, riser).sum()` | Not in scope | External input-channel merge; covered in future task |
+| 31 | 723–729 | Master output receptor (`master` + `measures[MAIN]`) wiring | Not in scope | Output receptor routing |
+| 32 | 731     | `return cells(main, efx)` — final wrapping | Not in scope | Java return wrapping |
+
+### 10.3 Non-signal-flow methods (Not in scope)
+
+| Method | Line(s) | Why not in scope |
+|--------|---------|------------------|
+| Constructor `MixdownManager(...)` | 227–280 | Chromosome allocation + scale collection init |
+| `initRanges(Configuration, int)` | 336–441 | Sets gene bounds on `ProjectedGene` |
+| `setup()` | 444–446 | Returns empty `OperationList` |
+| `cells(sources, output, audioChannel)` | 457–461 | Delegation to the full overload |
+| `cells(sources, wetSources, riser, ...)` | 476–484 | Tracks dependencies; wraps `createCells` |
+| `destroy()` | 734–739 | Lifecycle |
+| `factor(Factor)` | 749–751 | Temporal-detection workaround |
+| `delayGene(int, Gene)` | 759–770 | Builds a Gene (consumed by `m(...)`) |
+| `Configuration` (inner class) | 776–1005 | Range bounds data holder |
+| `setVolumeAdjustmentScale`, `setMainFilterUpAdjustmentScale`, `setMainFilterDownAdjustmentScale`, `setReverbAdjustmentScale` | 290–319 | Scale setters for adjustment collections |
+| `setReverbChannels` / `getReverbChannels` | 321–333 | Java-side list |
+
+### 10.4 PDSL files produced by this task
+
+| PDSL file | Layers defined | Signal flow |
+|-----------|----------------|-------------|
+| `pdsl/audio/mixdown_manager.pdsl` | `mixdown_main_bus`, `mixdown_efx_bus`, `mixdown_master` | Multi-channel mixdown: N inputs → per-channel HP+volume → sum; N inputs → per-channel wet-filter+scale+delay → route → sum; accumulate (main+efx) → master LP |
+
+The existing `mixdown_channel.pdsl` covers the single-channel case
+(`mixdown_main`, `mixdown_channel`); the existing `delay_feedback_bank.pdsl`
+covers the pure multi-channel delay/route/sum pattern. `mixdown_manager.pdsl`
+is the first PDSL file that renders the *top-level* shape of
+`MixdownManager.createCells()` in one declarative graph.
+
+### 10.5 Summary of blocking capabilities
+
+The `@Disabled` tests produced in this task are indexed in Section 11
+(“Current Limitations — Captured as Tests”) below. They cluster around
+four missing capabilities:
+
+1. **`automation(scalar)` primitive** — accepts a time-varying scalar
+   `Producer<PackedCollection>` as a layer argument. Covers rows 1–3, 9, 28.
+2. **Variable delay time** — a `delay(...)` primitive that accepts a
+   time-varying sample count rather than a compile-time int. Covers row 17.
+3. **Rectangular routing** — a `route(matrix)` primitive that accepts
+   `[rows, cols]` matrices where rows ≠ cols. Covers rows 19, 20.
+4. **Heterogeneous fan-out** — a `fan_out_with(block_a, block_b, ...)`
+   or equivalent primitive that applies a *different* sub-block to each
+   branch output. Covers rows 10, 11.
+5. **`delay_network(...)` primitive** — multi-tap feedback reverb
+   equivalent to `org.almostrealism.audio.filter.DelayNetwork`. Covers
+   rows 24, 25.
+
+Under these five capabilities, every row in the tables above becomes either
+PDSL-ready or is explicitly Not-in-scope. No row requires architectural
+changes to `layer`, `state`, or the existing multi-channel constructs.
+
+---
+
+## 11. Current Limitations — Captured as Tests
+
+This section is the index of the `@Disabled` tests produced alongside the
+`mixdown_manager.pdsl` rendition. Each entry names the test, the
+`MixdownManager` row it targets (see Section 10), the capability that is
+currently missing, and a rough size estimate for implementing it.
+
+### 11.1 Capability A — `automation(scalar)` primitive
+
+**What’s needed:** a PDSL primitive that accepts a
+`Producer<PackedCollection>` for a *time-varying* scalar parameter. Today,
+scalar parameters in PDSL are resolved to a fixed `double` at build time.
+`MixdownManager` uses `AutomationManager.getAggregatedValue(...)` and
+`toAdjustmentGene(...)` to produce scalar values that change on every
+sample; those are the only source of time variation inside its filters
+and scaling.
+
+**Sketch of the needed primitive:**
+
+```pdsl
+layer mixdown_main_automated(...) {
+    for each channel {
+        highpass(automation(hp_cutoff_producer), sample_rate, filter_order)
+        scale(automation(volume_producer))
+    }
+    sum_channels()
+}
+```
+
+The interpreter would treat `automation(id)` as a special argument form
+that looks up a `Producer<PackedCollection>` in the args map instead of a
+constant. `callHighpass` / `callScale` would need to accept either a
+literal or a `Producer`. Follows the same pattern as `fir(wet_filter_coeffs)`
+accepting a caller-supplied `PackedCollection`.
+
+**Size estimate:** small — days of work. Requires plumbing in
+`PdslInterpreter.callHighpass` / `callLowpass` / `callScale` to accept
+producers instead of constants.
+
+| Test class.method | Targets (Section 10 row) | Notes |
+|-------------------|--------------------------|-------|
+| `MixdownManagerPdslTest.testMixdownManagerAutomatedHighpass` | 1, 2 | Per-channel HP with time-varying cutoff |
+| `MixdownManagerPdslTest.testMixdownManagerAutomatedVolume` | 3, 5 | Per-channel volume with time-varying gain |
+| `MixdownManagerPdslTest.testMixdownManagerAutomatedLowpass` | 28 | Master LP with time-varying cutoff |
+
+### 11.2 Capability B — Variable delay time
+
+**What’s needed:** a `delay(...)` primitive that accepts a time-varying
+sample count (a `Producer<PackedCollection>`) rather than a compile-time
+integer. Equivalent to `AdjustableDelayCell`, which takes
+`Producer<PackedCollection>` for both delay time and dynamics.
+
+**Size estimate:** medium — probably days of work but touches the delay
+kernel. The current `delay` primitive uses a fixed `delay_samples` int
+in the read-pointer arithmetic; making it a Producer requires the read
+offset to be a `CollectionProducer` op rather than a build-time constant.
+
+| Test class.method | Targets | Notes |
+|-------------------|---------|-------|
+| `MixdownManagerPdslTest.testMixdownManagerVariableDelayTime` | 17 | Per-delay-layer delay time driven by a time-varying producer |
+
+### 11.3 Capability C — Rectangular routing
+
+**What’s needed:** a `route(matrix)` primitive that accepts
+`[rows, cols]` matrices where rows ≠ cols (fan in N channels to M ≠ N
+outputs). Today `MultiChannelDspFeatures.routeBlock` is square: its
+output shape is `[channels, signalSize]` with the same `channels` as
+the input.
+
+**Size estimate:** small — probably a day of work. The implementation is
+a straightforward generalization of the existing `routeBlock` loop
+nest.
+
+| Test class.method | Targets | Notes |
+|-------------------|---------|-------|
+| `MixdownManagerPdslTest.testMixdownManagerRectangularRoute` | 19, 20 | N efx channels fan-routed to M delay layers (M ≠ N) |
+
+### 11.4 Capability D — Heterogeneous fan-out
+
+**What’s needed:** a PDSL construct that takes N sub-blocks, applies them
+all to the same input, and produces N channels on output — one per
+sub-block. Equivalent to `CellList.branch(IntFunction<Cell>...)`.
+`concat_blocks` does this for tensor concatenation, but the output shape
+is `[sum_of_channels, signalSize]` rather than `[N, per-block-output]`.
+
+**Size estimate:** small — could reuse the `fanOutBlock` + `perChannelBlock`
+plumbing with a different set of sub-blocks per channel. Probably a day
+of work, possibly less.
+
+| Test class.method | Targets | Notes |
+|-------------------|---------|-------|
+| `MixdownManagerPdslTest.testMixdownManagerHeterogeneousBranch` | 10, 11 | 3-way branch `{main, main·wet_filter, reverb_factor}` |
+
+### 11.5 Capability E — `delay_network(...)` primitive
+
+**What’s needed:** a PDSL primitive equivalent to
+`org.almostrealism.audio.filter.DelayNetwork`: a multi-tap feedback reverb
+network with selectable tap counts, tap delays, and feedback gains.
+
+**Size estimate:** large — probably weeks of work. `DelayNetwork` is a
+composition of primitives, but it has its own per-tap state and
+feedback topology that doesn’t reduce cleanly to the existing
+`delay_feedback_bank` pattern (the tap-spacing pattern is irregular and
+the feedback-to-input path is internal, not exposed as a `route`
+matrix). Likely requires either (a) porting `DelayNetwork` to a
+compile-time expansion of `delay_feedback_bank` with irregular tap
+spacing, or (b) a dedicated `delay_network(num_taps, base_delay, feedback)`
+primitive.
+
+| Test class.method | Targets | Notes |
+|-------------------|---------|-------|
+| `MixdownManagerPdslTest.testMixdownManagerReverbPath` | 24, 25, 9 | Reverb bus + wet factor; depends on both Capability A (automation) and Capability E (delay_network) |
+
+---
+
+
 
 | File | What it defines |
 |------|-----------------|
