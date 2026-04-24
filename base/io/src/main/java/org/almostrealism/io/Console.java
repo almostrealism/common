@@ -131,14 +131,14 @@ public class Console {
 	 *
 	 * @param s the string to print
 	 */
-	public void print(String s) {
+	public synchronized void print(String s) {
 		String orig = s;
 		s = prep(s);
 		if (s == null) return;
-		
+
 		append(s);
 		lastLine.append(s);
-		
+
 		if (parent == null) {
 			if (systemOutEnabled) System.out.print(s);
 		} else {
@@ -152,35 +152,35 @@ public class Console {
 	 *
 	 * @param s the string to print
 	 */
-	public void println(String s) {
+	public synchronized void println(String s) {
 		String orig = s;
 		s = prep(s);
 		if (s == null) return;
 
 		append(s);
 		append("\n");
-		
+
 		lastLine.append(s);
 		resetLastLine = true;
-		
+
 		if (parent == null) {
 			if (systemOutEnabled) System.out.println(s);
 		} else {
 			parent.println(orig);
 		}
 	}
-	
+
 	/**
 	 * Prints a newline to the console.
 	 */
-	public void println() {
+	public synchronized void println() {
 		if (resetLastLine) {
 			lastLine = new StringBuilder();
 		}
-		
+
 		append("\n");
 		resetLastLine = true;
-		
+
 		if (parent == null) {
 			if (systemOutEnabled) System.out.println();
 		} else {
@@ -193,7 +193,7 @@ public class Console {
 	 *
 	 * @return the last line, without timestamp prefix
 	 */
-	public String lastLine() { return lastLine.toString(); }
+	public synchronized String lastLine() { return lastLine.toString(); }
 
 	/** Appends text to the console output and notifies all listeners. */
 	protected void append(String s) {

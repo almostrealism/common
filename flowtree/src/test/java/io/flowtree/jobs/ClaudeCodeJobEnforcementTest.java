@@ -359,6 +359,70 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		assertEquals(3, violationCount.get());
 	}
 
+	// ── Correction session activity tagging ─────────────────────────────────
+
+	/**
+	 * {@link DeduplicationRule} must return {@code "deduplication"} from
+	 * {@link EnforcementRule#getName()} so that correction sessions started
+	 * by that rule pass {@code "deduplication"} as the activity to
+	 * {@code runCorrectionSession}, which propagates it to the
+	 * {@code AR_AGENT_ACTIVITY} environment variable.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleNameIsDeduplication() {
+		DeduplicationRule rule = new DeduplicationRule();
+		assertEquals("deduplication", rule.getName());
+	}
+
+	/**
+	 * Verifies that {@link ClaudeCodeJob#runEnforcementRules()} passes
+	 * {@link EnforcementRule#getName()} as the {@code activity} parameter to
+	 * {@code runCorrectionSession}, which propagates it to {@code AR_AGENT_ACTIVITY}
+	 * in the subprocess environment.
+	 *
+	 * <p>A spy subclass overrides {@code runCorrectionSession} to capture the
+	 * {@code activity} argument without launching a real subprocess.  The test
+	 * calls {@code runEnforcementRules()} directly (package-private access) so
+	 * the full enforcement loop is exercised.</p>
+	 */
+	@Test(timeout = 30000)
+	public void correctionSessionActivityMatchesRuleName() {
+		AtomicReference<String> capturedActivity = new AtomicReference<>();
+
+		EnforcementRule rule = new EnforcementRule() {
+			private boolean done = false;
+
+			@Override
+			public String getName() { return "maven_dependency_protection"; }
+
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) { return !done; }
+
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) {
+				done = true;
+				return "correct the dependency violation";
+			}
+		};
+
+		// Spy subclass: capture the activity argument without launching a subprocess.
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test") {
+			@Override
+			protected void runCorrectionSession(String correctionPrompt, String activity) {
+				capturedActivity.set(activity);
+			}
+		};
+
+		// Disable built-in rules so only the spy rule fires.
+		job.setEnforceOrganizationalPlacement(false);
+		job.addEnforcementRule(rule);
+
+		// Exercise the real enforcement path.
+		job.runEnforcementRules();
+
+		assertEquals("maven_dependency_protection", capturedActivity.get());
+	}
+
 	// ── Backward compatibility ───────────────────────────────────────────────
 
 	@Test(timeout = 30000)
