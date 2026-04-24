@@ -512,7 +512,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return "workstream missing repoUrl or defaultBranch";
         }
         String tagsJson = (activity != null && !activity.isEmpty())
-            ? "[\"message\",\"activity:" + activity.replace("\"", "\\\"") + "\"]"
+            ? "[\"message\"," + escapeJsonValue("activity:" + activity) + "]"
             : "[\"message\"]";
 
         String url = memoryServerUrl.replaceAll("/+$", "") + "/api/memory/store";

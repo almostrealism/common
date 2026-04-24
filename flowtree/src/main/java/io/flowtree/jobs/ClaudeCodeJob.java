@@ -710,7 +710,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * <p>Exits early if the agent commits during a correction session — the
      * tampering-detection path in {@link GitManagedJob} handles that case.</p>
      */
-    private void runEnforcementRules() {
+    void runEnforcementRules() {
         List<EnforcementRule> rules = buildActiveRules();
         boolean anyRuleCorrectionRan;
         do {
@@ -766,7 +766,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * @param correctionPrompt prompt for this session
      * @param activity         rule name used as the activity tag
      */
-    private void runCorrectionSession(String correctionPrompt, String activity) {
+    protected void runCorrectionSession(String correctionPrompt, String activity) {
         String originalPrompt = this.prompt;
         String previousActivity = this.currentActivity;
         this.currentActivity = activity;

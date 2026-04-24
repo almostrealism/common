@@ -1219,7 +1219,7 @@ class TestWorkstreamContextActivityFilter(unittest.TestCase):
     @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
     @patch.object(server, "_get_memory_client")
     def test_specific_activity_filter(self, mock_client_fn, _gh):
-        """Requesting a specific activity returns only that activity's messages."""
+        """Requesting a specific activity returns that activity's messages plus primary/untagged messages."""
         _grant_all_scopes()
         client = MagicMock()
         client.search_by_branch.return_value = self._make_memories()

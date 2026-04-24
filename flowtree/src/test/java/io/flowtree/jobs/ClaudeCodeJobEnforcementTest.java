@@ -375,19 +375,19 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that correction sessions are tagged with the enforcement rule's
-	 * name as the activity.  The rule's {@link EnforcementRule#getName()} return
-	 * value is the activity identifier propagated to {@code AR_AGENT_ACTIVITY}
-	 * in the subprocess environment so that {@code send_message} calls made by
-	 * the correction-session agent are automatically tagged with the rule name.
+	 * Verifies that {@link ClaudeCodeJob#runEnforcementRules()} passes
+	 * {@link EnforcementRule#getName()} as the {@code activity} parameter to
+	 * {@code runCorrectionSession}, which propagates it to {@code AR_AGENT_ACTIVITY}
+	 * in the subprocess environment.
 	 *
-	 * <p>This test verifies that the activity value captured at the
-	 * {@code runEnforcementRules} call site equals {@code rule.getName()},
-	 * using a spy rule that records the name at correction time.</p>
+	 * <p>A spy subclass overrides {@code runCorrectionSession} to capture the
+	 * {@code activity} argument without launching a real subprocess.  The test
+	 * calls {@code runEnforcementRules()} directly (package-private access) so
+	 * the full enforcement loop is exercised.</p>
 	 */
 	@Test(timeout = 30000)
 	public void correctionSessionActivityMatchesRuleName() {
-		AtomicReference<String> capturedRuleName = new AtomicReference<>();
+		AtomicReference<String> capturedActivity = new AtomicReference<>();
 
 		EnforcementRule rule = new EnforcementRule() {
 			private boolean done = false;
@@ -400,25 +400,27 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 			@Override
 			public String buildCorrectionPrompt(ClaudeCodeJob job) {
-				// Record the name that runEnforcementRules() would use as activity
-				capturedRuleName.set(getName());
 				done = true;
-				// Return null so the enforcement loop skips the subprocess launch
-				return null;
+				return "correct the dependency violation";
 			}
 		};
 
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		// Spy subclass: capture the activity argument without launching a subprocess.
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test") {
+			@Override
+			protected void runCorrectionSession(String correctionPrompt, String activity) {
+				capturedActivity.set(activity);
+			}
+		};
 
-		// Simulate the enforcement loop: isViolated triggers buildCorrectionPrompt,
-		// which records getName() — the value later passed as activity.
-		if (rule.isViolated(job)) {
-			rule.buildCorrectionPrompt(job);
-			assertNotNull("rule.getName() must return a non-null activity string",
-					capturedRuleName.get());
-		}
+		// Disable built-in rules so only the spy rule fires.
+		job.setEnforceOrganizationalPlacement(false);
+		job.addEnforcementRule(rule);
 
-		assertEquals("maven_dependency_protection", capturedRuleName.get());
+		// Exercise the real enforcement path.
+		job.runEnforcementRules();
+
+		assertEquals("maven_dependency_protection", capturedActivity.get());
 	}
 
 	// ── Backward compatibility ───────────────────────────────────────────────
