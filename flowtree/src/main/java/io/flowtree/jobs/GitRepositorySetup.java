@@ -356,12 +356,18 @@ class GitRepositorySetup implements ConsoleFeatures {
      * tree to {@code HEAD} and removes untracked files and directories.</p>
      */
     private void wipeWorkingTree() throws IOException, InterruptedException {
-        job.executeGit("merge", "--abort");
-        if (job.executeGit("reset", "--hard", "HEAD") != 0) {
-            throw new RuntimeException("Failed to reset working tree after stash failure");
+        if (GitOperations.isMergeInProgress(job.getWorkingDirectory())) {
+            job.executeGit("merge", "--abort");
         }
-        if (job.executeGit("clean", "-fd") != 0) {
-            throw new RuntimeException("Failed to clean working tree after stash failure");
+        int resetExitCode = job.executeGit("reset", "--hard", "HEAD");
+        if (resetExitCode != 0) {
+            throw new IOException("Failed to reset working tree after stash failure"
+                    + " (exit " + resetExitCode + ")");
+        }
+        int cleanExitCode = job.executeGit("clean", "-fd");
+        if (cleanExitCode != 0) {
+            throw new IOException("Failed to clean working tree after stash failure"
+                    + " (exit " + cleanExitCode + ")");
         }
         log("Working tree wiped (stash fallback)");
     }
@@ -374,12 +380,18 @@ class GitRepositorySetup implements ConsoleFeatures {
      * @param gitOps the {@link GitOperations} instance bound to the dependent repo
      */
     private void wipeWorkingTree(GitOperations gitOps) throws IOException, InterruptedException {
-        gitOps.execute("merge", "--abort");
-        if (gitOps.execute("reset", "--hard", "HEAD") != 0) {
-            throw new IOException("Failed to reset working tree after stash failure");
+        if (gitOps.isMergeInProgress()) {
+            gitOps.execute("merge", "--abort");
         }
-        if (gitOps.execute("clean", "-fd") != 0) {
-            throw new IOException("Failed to clean working tree after stash failure");
+        int resetExitCode = gitOps.execute("reset", "--hard", "HEAD");
+        if (resetExitCode != 0) {
+            throw new IOException("Failed to reset working tree after stash failure"
+                    + " (exit " + resetExitCode + ")");
+        }
+        int cleanExitCode = gitOps.execute("clean", "-fd");
+        if (cleanExitCode != 0) {
+            throw new IOException("Failed to clean working tree after stash failure"
+                    + " (exit " + cleanExitCode + ")");
         }
         log("Working tree wiped (stash fallback)");
     }
