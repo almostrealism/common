@@ -20,15 +20,16 @@ import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.io.Console;
 import org.almostrealism.time.Temporal;
-import org.almostrealism.time.TemporalRunner;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,9 +44,16 @@ import java.util.stream.Collectors;
  *
  * @author  Michael Murray
  */
-public class StableDurationHealthComputation extends SilenceDurationHealthComputation implements CellFeatures {
+public class StableDurationHealthComputation extends SilenceDurationHealthComputation implements CellFeatures, RGBFeatures {
 	/** When {@code true}, rendered audio is written to disk after each evaluation. */
 	public static boolean enableOutput = true;
+
+	/**
+	 * When {@code true} (and {@link #enableOutput} is also true), a spectrogram PNG is
+	 * written next to each rendered WAV (master and stems). The PNG path is derived from
+	 * the WAV path by replacing the {@code .wav} suffix with {@code .spectrogram.png}.
+	 */
+	public static boolean enableSpectrogramOutput = true;
 
 	/** When {@code true}, evaluations are aborted if the timeout threshold is exceeded. */
 	public static boolean enableTimeout = false;
@@ -77,8 +85,11 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	/** Flag set by the silence listener when excessive silence is detected. */
 	private boolean encounteredSilence;
 
-	/** Temporal runner that drives the evaluation loop efficiently. */
-	private TemporalRunner runner;
+	/** Compiled one-shot setup runnable for the target temporal pipeline. */
+	private Runnable targetSetup;
+
+	/** Compiled per-buffer tick runnable; one invocation advances {@link #iter} frames. */
+	private Runnable targetTick;
 
 	/** Background thread that monitors the wall-clock timeout. */
 	private Thread timeoutTrigger;
@@ -113,16 +124,30 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	public StableDurationHealthComputation(int channels, boolean stereo) {
 		super(channels, stereo, 6);
 		addSilenceListener(() -> encounteredSilence = true);
-		setBatchSize(TemporalRunner.enableOptimization ? 1 : (OutputLine.sampleRate / 2));
+		setBatchSize(OutputLine.sampleRate / 2);
 	}
 
 	/**
-	 * Sets the number of audio frames advanced per evaluation loop iteration.
+	 * Sets the number of audio frames advanced per evaluation loop iteration. The
+	 * temporal pipeline supplied to {@link #setTarget(TemporalCellular)} must already be
+	 * configured so that one invocation of its {@code tick()} runnable advances exactly
+	 * this many frames; the caller is responsible for keeping the two values in sync.
 	 *
 	 * @param iter frames per iteration
 	 */
 	public void setBatchSize(int iter) {
 		this.iter = iter;
+	}
+
+	/**
+	 * Returns the number of audio frames advanced per evaluation loop iteration. Callers
+	 * configuring the temporal pipeline (e.g. {@code AudioScene.runnerRealTime}) should
+	 * use this value as the buffer size so each tick advances exactly one batch.
+	 *
+	 * @return frames per iteration
+	 */
+	public int getBatchSize() {
+		return iter;
 	}
 
 	/**
@@ -139,8 +164,8 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 			super.setTarget(target);
 			this.abortFlag = new PackedCollection(1);
 			this.abortFlag.setMem(0, 0.0);
-			this.runner = new TemporalRunner(target, iter);
-			this.runner.setProfile(profile);
+			this.targetSetup = target.setup().get();
+			this.targetTick = target.tick().get();
 		} else if (getTarget() != target) {
 			throw new IllegalArgumentException("Health computation cannot be reused");
 		}
@@ -238,25 +263,21 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		double score = 0.0;
 		double errorMultiplier = 1.0;
 
-		Runnable start;
-		Runnable iterate;
-
 		long l = 0;
 		long generationTime = 0;
 
 		WaveDetails details = null;
 
 		try {
-			start = runner.get();
-			iterate = runner.getContinue();
-
 			startTime = System.currentTimeMillis();
 			iterStart = startTime;
 			if (enableTimeout) startTimeoutTrigger();
 
+			targetSetup.run();
+
 			l:
 			for (l = 0; l < max && !isTimeout(); l = l + iter) {
-				(l == 0 ? start : iterate).run();
+				targetTick.run();
 
 				if (enableProfileAutosave && profile instanceof OperationProfileNode
 						&& (l + iter) % (OutputLine.sampleRate * 60L) == 0) {
@@ -330,6 +351,13 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 					getMaster().write().get().run();
 					if (getStems() != null) getStems().forEach(s -> s.write().get().run());
 
+					if (enableSpectrogramOutput) {
+						writeSpectrogram(getOutputFile());
+						if (getStemFiles() != null) {
+							getStemFiles().forEach(this::writeSpectrogram);
+						}
+					}
+
 					if (getWaveDetailsProcessor() != null) {
 						details = WaveDetailsFactory.getDefault()
 								.forFile(getOutputFile().getPath());
@@ -358,7 +386,36 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	}
 
 	@Override
-	public Console console() { return console; }
+	public Console console() { return CellFeatures.console; }
+
+	/**
+	 * Writes a spectrogram PNG next to the given WAV. The image is sized by the
+	 * spectrogram's bin/time-slice grid and is silently skipped (with a warning) on
+	 * any error so spectrogram failures never abort a health evaluation.
+	 *
+	 * @param wavFile the WAV to read; must end in {@code .wav}
+	 */
+	private void writeSpectrogram(File wavFile) {
+		if (wavFile == null) return;
+		if (!wavFile.exists()) return;
+
+		File pngFile = HealthComputationAdapter.getAuxFile(wavFile, "spectrogram.png");
+		if (pngFile == null) return;
+
+		WaveData waveData = null;
+		PackedCollection spectrogram = null;
+		try {
+			waveData = WaveData.load(wavFile);
+			spectrogram = waveData.spectrogram(0);
+			saveRgb(pngFile.getPath(), cp(spectrogram)).get().run();
+		} catch (Exception e) {
+			warn("Failed to write spectrogram for " + wavFile.getPath() +
+					": " + e.getMessage());
+		} finally {
+			if (spectrogram != null) spectrogram.destroy();
+			if (waveData != null) waveData.destroy();
+		}
+	}
 
 	/**
 	 * Accumulates generation statistics for throughput reporting.
