@@ -3532,6 +3532,327 @@ def github_request_copilot_review(
 
 
 # ---------------------------------------------------------------------------
+# GitHub file and pipeline tools
+# ---------------------------------------------------------------------------
+
+# Size limit for github_read_file — reject files over this threshold.
+_GITHUB_READ_FILE_SIZE_LIMIT = 1_048_576  # 1 MB
+
+
+@mcp.tool()
+def github_read_file(
+    path: str,
+    workstream_id: str = "",
+    repo_url: str = "",
+    branch: str = "",
+    ref: str = "",
+) -> dict:
+    """Read any file from a GitHub repository.
+
+    Fetches file content via the GitHub Contents API, routed through the
+    FlowTree controller proxy for authentication. The repository is
+    resolved from the workstream or supplied explicitly via ``repo_url``.
+
+    Returns the file content as text. Binary files that cannot be decoded
+    as UTF-8 are rejected with a clear error. Files larger than 1 MB are
+    rejected to prevent accidental large pulls — use grep tools or read
+    specific line ranges for large files.
+
+    Args:
+        path: File path within the repository (e.g. ``docs/README.md``).
+        workstream_id: Workstream to resolve the repository from. Either
+            this or ``repo_url`` must be provided.
+        repo_url: Explicit GitHub repository URL (e.g.
+            ``https://github.com/owner/repo``). Overrides workstream
+            resolution when provided.
+        branch: Branch to read from. Defaults to the workstream's
+            ``defaultBranch`` when available, otherwise the repo's
+            default branch. Ignored when ``ref`` is provided.
+        ref: Git ref to read at (branch, tag, or commit SHA). Takes
+            precedence over ``branch`` when both are provided.
+
+    Returns:
+        Dictionary with file content, path, ref, sha, and repo.
+    """
+    _require_scope("read")
+    err = _check_short_strings(
+        path=path, workstream_id=workstream_id, branch=branch, ref=ref,
+    )
+    if err:
+        return err
+    if not path:
+        return {"ok": False, "error": "path is required"}
+
+    _audit("github_read_file", path=path, workstream_id=workstream_id,
+           branch=branch, ref=ref)
+
+    # Resolve owner/repo
+    if repo_url:
+        owner_repo = _extract_owner_repo(repo_url)
+        if not owner_repo:
+            return {"ok": False, "error": f"Cannot parse owner/repo from: {repo_url}"}
+        owner, repo = owner_repo
+        _current_github_org.set(owner)
+        effective_branch = branch
+    else:
+        owner, repo, effective_branch, err = _resolve_github_repo(
+            workstream_id=workstream_id, branch=branch,
+        )
+        if err:
+            return err
+
+    effective_ref = ref or effective_branch
+    ref_suffix = f"?ref={quote(effective_ref, safe='')}" if effective_ref else ""
+
+    result = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/contents/{quote(path, safe='/')}{ref_suffix}",
+    )
+
+    if isinstance(result, dict) and result.get("ok") is False:
+        result.setdefault("next_steps", [
+            f"Verify the file exists at '{path}' on the specified ref/branch",
+            "Check the repo_url or workstream_id is correct",
+        ])
+        return result
+
+    if not isinstance(result, dict):
+        return {
+            "ok": False,
+            "error": "Unexpected response from GitHub Contents API",
+        }
+
+    # Enforce size limit before decoding
+    file_size = result.get("size", 0)
+    if file_size > _GITHUB_READ_FILE_SIZE_LIMIT:
+        return {
+            "ok": False,
+            "error": (
+                f"File '{path}' is {file_size:,} bytes, which exceeds the 1 MB "
+                "limit. Use grep tools or read specific line ranges instead."
+            ),
+            "size": file_size,
+            "repo": f"{owner}/{repo}",
+        }
+
+    # Decode content
+    content_b64 = result.get("content", "")
+    encoding = result.get("encoding", "")
+    if encoding == "base64" and content_b64:
+        # GitHub wraps base64 output in newlines; strip them before decoding.
+        raw_bytes = base64.b64decode(content_b64.replace("\n", ""))
+        try:
+            content = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return {
+                "ok": False,
+                "error": (
+                    f"File '{path}' appears to be binary and cannot be returned "
+                    "as text. Fetch it directly from the repository instead."
+                ),
+                "size": file_size,
+                "repo": f"{owner}/{repo}",
+            }
+    else:
+        content = content_b64
+
+    return {
+        "ok": True,
+        "path": result.get("path", path),
+        "repo": f"{owner}/{repo}",
+        "ref": effective_ref or "(default branch)",
+        "sha": result.get("sha", ""),
+        "size": file_size,
+        "content": content,
+    }
+
+
+@mcp.tool()
+def github_pr_check_status(
+    pr_number: int = 0,
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Check CI pipeline status for a pull request.
+
+    Fetches the PR's current HEAD commit SHA, then retrieves workflow runs
+    and check runs for that exact commit. This answers whether the CI
+    pipeline has run for the latest commit and whether it passed.
+
+    The ``pipeline_current`` flag in the response indicates whether at
+    least one workflow run targets the PR's HEAD commit SHA — if False,
+    the run results shown are for an older commit.
+
+    Args:
+        pr_number: Pull request number. If omitted, the open PR for the
+            workstream/branch is looked up automatically.
+        workstream_id: Workstream to resolve repo from. Defaults to token
+            context.
+        branch: Branch hint used to find the PR when pr_number is not
+            given. Defaults to the workstream's defaultBranch.
+        org: GitHub org (owner) to address directly. Must be passed
+            together with ``repo``. Bypasses workstream resolution;
+            scoped tokens are checked against this org via the workspace
+            scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        Dictionary with pr_number, head_sha, pipeline_current flag,
+        overall_status, workflow_runs list, and check_runs list. Failed
+        check runs include html_url and details_url for log access.
+    """
+    _require_scope("read")
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, effective_branch, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo,
+    )
+    if err:
+        return err
+
+    _audit("github_pr_check_status", pr_number=pr_number,
+           workstream_id=workstream_id, branch=effective_branch)
+
+    # Resolve PR number and head SHA
+    effective_pr = pr_number
+    head_sha = ""
+    pr_branch = effective_branch
+
+    if effective_pr:
+        pr_data = _github_request("GET", f"/repos/{owner}/{repo}/pulls/{effective_pr}")
+        if isinstance(pr_data, dict) and pr_data.get("ok") is False:
+            return pr_data
+        if isinstance(pr_data, dict):
+            head_sha = pr_data.get("head", {}).get("sha", "")
+            pr_branch = pr_data.get("head", {}).get("ref", effective_branch)
+    else:
+        if not effective_branch:
+            return {
+                "ok": False,
+                "error": "pr_number or branch is required to look up the PR",
+                "next_steps": [
+                    "Pass pr_number explicitly",
+                    "Or supply workstream_id/branch so the open PR can be found",
+                ],
+            }
+        head = f"{owner}:{effective_branch}"
+        pr_list = _github_request(
+            "GET",
+            f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open",
+        )
+        if not isinstance(pr_list, list) or not pr_list:
+            return {
+                "ok": False,
+                "error": f"No open PR found for branch '{effective_branch}'",
+                "next_steps": ["Pass pr_number explicitly if the PR is closed"],
+            }
+        effective_pr = pr_list[0]["number"]
+        head_sha = pr_list[0].get("head", {}).get("sha", "")
+        pr_branch = pr_list[0].get("head", {}).get("ref", effective_branch)
+
+    if not head_sha:
+        return {"ok": False, "error": "Could not determine PR head commit SHA"}
+
+    # Fetch workflow runs for the head SHA
+    runs_result = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/actions/runs?head_sha={quote(head_sha, safe='')}",
+    )
+
+    workflow_runs = []
+    pipeline_current = False
+
+    if isinstance(runs_result, dict) and runs_result.get("ok") is not False:
+        for run in runs_result.get("workflow_runs", []):
+            if run.get("head_sha") == head_sha:
+                pipeline_current = True
+            workflow_runs.append({
+                "run_id": run.get("id"),
+                "name": run.get("name", ""),
+                "status": run.get("status", ""),
+                "conclusion": run.get("conclusion"),
+                "head_sha": run.get("head_sha", ""),
+                "created_at": run.get("created_at", ""),
+                "updated_at": run.get("updated_at", ""),
+                "html_url": run.get("html_url", ""),
+            })
+
+    # Fetch check runs for the head SHA
+    check_result = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/commits/{head_sha}/check-runs",
+    )
+
+    check_runs = []
+    if isinstance(check_result, dict) and check_result.get("ok") is not False:
+        for check in check_result.get("check_runs", []):
+            check_info = {
+                "id": check.get("id"),
+                "name": check.get("name", ""),
+                "status": check.get("status", ""),
+                "conclusion": check.get("conclusion"),
+                "html_url": check.get("html_url", ""),
+                "started_at": check.get("started_at"),
+                "completed_at": check.get("completed_at"),
+            }
+            if check.get("conclusion") == "failure":
+                check_info["details_url"] = check.get("details_url", "")
+            check_runs.append(check_info)
+
+    # Derive overall status
+    if not workflow_runs and not check_runs:
+        overall = "no_runs"
+    elif workflow_runs and not pipeline_current:
+        overall = "stale"
+    else:
+        conclusions = [r["conclusion"] for r in check_runs if r.get("conclusion")]
+        if not conclusions:
+            overall = "pending"
+        elif any(c == "failure" for c in conclusions):
+            overall = "failure"
+        elif all(c in ("success", "skipped", "neutral") for c in conclusions):
+            overall = "success"
+        else:
+            overall = "mixed"
+
+    next_steps: list = []
+    if overall == "no_runs":
+        next_steps = [
+            "No workflow runs found; the pipeline may not be configured or "
+            "hasn't triggered yet",
+        ]
+    elif overall == "stale":
+        next_steps = [
+            "The latest workflow run targets an older commit; push a new "
+            "commit or manually re-run CI to update the status",
+        ]
+    elif overall == "failure":
+        next_steps = [
+            "Review failed check runs above for error details",
+            "Use the html_url or details_url links to view full logs",
+        ]
+    elif overall == "success":
+        next_steps = ["All checks passed; the PR is ready to review or merge"]
+    elif overall == "pending":
+        next_steps = ["CI is still running; check back later"]
+
+    return {
+        "ok": True,
+        "pr_number": effective_pr,
+        "repo": f"{owner}/{repo}",
+        "head_sha": head_sha,
+        "branch": pr_branch,
+        "pipeline_current": pipeline_current,
+        "overall_status": overall,
+        "workflow_runs": workflow_runs,
+        "check_runs": check_runs,
+        "next_steps": next_steps,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Server startup
 # ---------------------------------------------------------------------------
 

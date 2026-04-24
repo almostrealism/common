@@ -1446,6 +1446,312 @@ class TestExtractOwnerRepo(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------
+# github_read_file
+# -----------------------------------------------------------------------
+
+
+class TestGithubReadFile(unittest.TestCase):
+    """Tests for github_read_file."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _make_contents_response(self, path, content_text, size=None):
+        """Build a mock GitHub Contents API response for a text file."""
+        import base64 as _b64
+        encoded = _b64.b64encode(content_text.encode("utf-8")).decode("ascii")
+        return {
+            "path": path,
+            "sha": "abc123",
+            "size": size if size is not None else len(content_text.encode("utf-8")),
+            "content": encoded,
+            "encoding": "base64",
+        }
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_success(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._make_contents_response(
+            "docs/README.md", "# Hello World\n"
+        )
+        result = server.github_read_file(path="docs/README.md")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["content"], "# Hello World\n")
+        self.assertEqual(result["path"], "docs/README.md")
+        self.assertEqual(result["repo"], "owner/repo")
+        self.assertIn("sha", result)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_file_not_found(self, mock_gh, mock_repo):
+        mock_gh.return_value = {"ok": False, "error": "GitHub returned HTTP 404: Not Found"}
+        result = server.github_read_file(path="missing/file.py")
+        self.assertFalse(result["ok"])
+        self.assertIn("next_steps", result)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_binary_file_rejected(self, mock_gh, mock_repo):
+        # Craft a response whose base64 decodes to non-UTF-8 bytes.
+        import base64 as _b64
+        raw_binary = bytes([0x00, 0xFF, 0xFE, 0x80, 0x81])
+        encoded = _b64.b64encode(raw_binary).decode("ascii")
+        mock_gh.return_value = {
+            "path": "image.png",
+            "sha": "abc",
+            "size": len(raw_binary),
+            "content": encoded,
+            "encoding": "base64",
+        }
+        result = server.github_read_file(path="image.png")
+        self.assertFalse(result["ok"])
+        self.assertIn("binary", result["error"].lower())
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_oversized_file_rejected(self, mock_gh, mock_repo):
+        # Size field exceeds 1 MB limit — content should never be decoded.
+        import base64 as _b64
+        small_content = "x"
+        encoded = _b64.b64encode(small_content.encode()).decode("ascii")
+        mock_gh.return_value = {
+            "path": "big.bin",
+            "sha": "abc",
+            "size": 1_100_000,  # > 1 MB
+            "content": encoded,
+            "encoding": "base64",
+        }
+        result = server.github_read_file(path="big.bin")
+        self.assertFalse(result["ok"])
+        self.assertIn("1 MB", result["error"])
+        self.assertEqual(result["size"], 1_100_000)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_ref_used_in_request(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._make_contents_response(
+            "src/main.py", "print('hello')\n"
+        )
+        server.github_read_file(path="src/main.py", ref="v1.2.3")
+        call_args = mock_gh.call_args[0]
+        self.assertIn("v1.2.3", call_args[1])
+
+    @patch.object(server, "_github_request")
+    def test_explicit_repo_url(self, mock_gh):
+        mock_gh.return_value = self._make_contents_response(
+            "README.md", "content\n"
+        )
+        result = server.github_read_file(
+            path="README.md",
+            repo_url="https://github.com/myorg/myrepo",
+            branch="develop",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["repo"], "myorg/myrepo")
+        call_path = mock_gh.call_args[0][1]
+        self.assertIn("develop", call_path)
+
+    @patch.object(server, "_github_request")
+    def test_invalid_repo_url_returns_error(self, mock_gh):
+        result = server.github_read_file(
+            path="README.md",
+            repo_url="not-a-github-url",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("Cannot parse", result["error"])
+        mock_gh.assert_not_called()
+
+    def test_missing_path_returns_error(self):
+        result = server.github_read_file(path="")
+        self.assertFalse(result["ok"])
+        self.assertIn("path is required", result["error"])
+
+    def test_requires_read_scope(self):
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            server.github_read_file(path="README.md")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("", "", "", {"ok": False, "error": "not found"}))
+    def test_repo_resolution_error_propagates(self, mock_repo):
+        result = server.github_read_file(path="README.md", workstream_id="bad")
+        self.assertFalse(result["ok"])
+
+
+# -----------------------------------------------------------------------
+# github_pr_check_status
+# -----------------------------------------------------------------------
+
+
+class TestGithubPrCheckStatus(unittest.TestCase):
+    """Tests for github_pr_check_status."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _make_pr(self, number, sha="abc123", ref="feature/x"):
+        return {
+            "number": number,
+            "head": {"sha": sha, "ref": ref},
+            "html_url": f"https://github.com/owner/repo/pull/{number}",
+        }
+
+    def _make_runs(self, head_sha, runs_data):
+        """Build a mock workflow runs API response."""
+        return {"workflow_runs": [
+            {
+                "id": r.get("id", 1),
+                "name": r.get("name", "CI"),
+                "status": r.get("status", "completed"),
+                "conclusion": r.get("conclusion", "success"),
+                "head_sha": r.get("head_sha", head_sha),
+                "created_at": "2026-04-24T00:00:00Z",
+                "updated_at": "2026-04-24T00:01:00Z",
+                "html_url": "https://github.com/owner/repo/actions/runs/1",
+            }
+            for r in runs_data
+        ]}
+
+    def _make_checks(self, checks_data):
+        return {"check_runs": [
+            {
+                "id": c.get("id", 1),
+                "name": c.get("name", "test"),
+                "status": c.get("status", "completed"),
+                "conclusion": c.get("conclusion", "success"),
+                "html_url": "https://github.com/owner/repo/runs/1",
+                "started_at": "2026-04-24T00:00:00Z",
+                "completed_at": "2026-04-24T00:01:00Z",
+                "details_url": c.get("details_url", ""),
+            }
+            for c in checks_data
+        ]}
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_all_success(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            self._make_runs("abc123", [{"head_sha": "abc123", "conclusion": "success"}]),
+            self._make_checks([{"conclusion": "success"}, {"conclusion": "skipped"}]),
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overall_status"], "success")
+        self.assertTrue(result["pipeline_current"])
+        self.assertEqual(result["pr_number"], 42)
+        self.assertEqual(result["head_sha"], "abc123")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_partial_failure(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            self._make_runs("abc123", [{"head_sha": "abc123", "conclusion": "failure"}]),
+            self._make_checks([
+                {"name": "build", "conclusion": "success"},
+                {"name": "test", "conclusion": "failure", "details_url": "https://logs/123"},
+            ]),
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overall_status"], "failure")
+        failed_checks = [c for c in result["check_runs"] if c["conclusion"] == "failure"]
+        self.assertEqual(len(failed_checks), 1)
+        self.assertIn("details_url", failed_checks[0])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_no_workflow_runs(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            {"workflow_runs": []},
+            {"check_runs": []},
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overall_status"], "no_runs")
+        self.assertFalse(result["pipeline_current"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_stale_workflow_run(self, mock_gh, mock_repo):
+        # Workflow run exists but targets an older commit SHA
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="new_sha"),
+            self._make_runs("new_sha", [{"head_sha": "old_sha", "conclusion": "success"}]),
+            {"check_runs": []},
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overall_status"], "stale")
+        self.assertFalse(result["pipeline_current"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_lookup_pr_by_branch(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            [self._make_pr(7, sha="sha7")],  # PR list
+            self._make_runs("sha7", [{"head_sha": "sha7"}]),
+            {"check_runs": []},
+        ]
+        result = server.github_pr_check_status()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["pr_number"], 7)
+        self.assertEqual(result["head_sha"], "sha7")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request", return_value=[])
+    def test_no_open_pr_for_branch(self, mock_gh, mock_repo):
+        result = server.github_pr_check_status()
+        self.assertFalse(result["ok"])
+        self.assertIn("No open PR", result["error"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "", None))
+    def test_no_branch_and_no_pr_number(self, mock_repo):
+        result = server.github_pr_check_status()
+        self.assertFalse(result["ok"])
+        self.assertIn("pr_number or branch", result["error"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("", "", "", {"ok": False, "error": "bad repo"}))
+    def test_repo_resolution_error_propagates(self, mock_repo):
+        result = server.github_pr_check_status(pr_number=1)
+        self.assertFalse(result["ok"])
+
+    def test_requires_read_scope(self):
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            server.github_pr_check_status(pr_number=1)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_pending_checks(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            self._make_runs("abc123", [{"head_sha": "abc123", "conclusion": None,
+                                        "status": "in_progress"}]),
+            self._make_checks([{"status": "in_progress", "conclusion": None}]),
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overall_status"], "pending")
+
+
+# -----------------------------------------------------------------------
 # Tool registration (no duplicate names)
 # -----------------------------------------------------------------------
 
@@ -1492,6 +1798,8 @@ class TestToolRegistration(unittest.TestCase):
             "github_list_open_prs",
             "github_create_pr",
             "github_request_copilot_review",
+            "github_read_file",
+            "github_pr_check_status",
         }
         registered = set(tools.keys())
         missing = expected - registered
