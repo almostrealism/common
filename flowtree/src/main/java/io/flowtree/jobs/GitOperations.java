@@ -174,6 +174,34 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
+     * Returns whether a merge is currently in progress in this instance's
+     * working directory, detected by the presence of {@code .git/MERGE_HEAD}.
+     *
+     * <p>Use this before invoking {@code git merge --abort} to avoid the
+     * expected non-zero exit (and associated warning log) when no merge is
+     * active.</p>
+     *
+     * @return {@code true} if a merge is in progress, {@code false} otherwise
+     */
+    public boolean isMergeInProgress() {
+        return isMergeInProgress(workingDirectory);
+    }
+
+    /**
+     * Returns whether a merge is currently in progress in {@code workingDirectory},
+     * detected by the presence of {@code .git/MERGE_HEAD}.
+     *
+     * @param workingDirectory the repository working directory; {@code null}
+     *                         is treated as the JVM's current working directory
+     * @return {@code true} if a merge is in progress, {@code false} otherwise
+     */
+    public static boolean isMergeInProgress(String workingDirectory) {
+        File base = (workingDirectory == null || workingDirectory.isEmpty())
+                ? new File(".") : new File(workingDirectory);
+        return new File(base, ".git/MERGE_HEAD").exists();
+    }
+
+    /**
      * Executes a git command and returns the process exit code.
      *
      * <p>The command is constructed as {@code git <args>}. Standard error
