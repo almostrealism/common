@@ -346,6 +346,12 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 	 * @param profile the operation profile node for collecting timing data, or {@code null}
 	 */
 	public static void run(OperationProfileNode profile) {
+		// The realtime path no longer normalises mix levels (the offline
+		// auto-volume step required look-ahead which the realtime pipeline
+		// can't provide), so scale the summed master bus to give it
+		// headroom and stop the int16 WAV writer from clipping.
+		MixdownManager.masterBusGain = 0.2;
+
 		try {
 			AudioScene<?> scene = createScene();
 			AudioSceneOptimizer opt = build(scene, enableBreeding ? 5 : 1);

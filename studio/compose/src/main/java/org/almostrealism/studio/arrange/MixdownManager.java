@@ -162,6 +162,17 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	/** Audio sample rate for this mixdown. */
 	private final int sampleRate;
 
+	/**
+	 * Master gain applied to the summed main bus, after per-channel volume
+	 * scaling and before EFX/reverb routing. The realtime path has no
+	 * look-ahead normalisation, so when the per-channel
+	 * {@link #adjustment} envelopes saturate (and they're bounded to
+	 * {@code [0, 1]}), summing across channels routinely exceeds 1.0 and
+	 * clips at the WAV writer. A value below 1.0 here gives the sum the
+	 * headroom that the offline auto-volume step used to provide.
+	 */
+	public static double masterBusGain = 1.0;
+
 	/** Scale factor collection for per-frame volume adjustment. */
 	private final PackedCollection volumeAdjustmentScale;
 
@@ -717,6 +728,20 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		// TODO  Riser should actually feed into effects, if they are active
 		if (enableRiser) {
 			main = cells(main, riser).sum();
+		}
+
+		if (masterBusGain != 1.0) {
+			// Apply master headroom and a hard limiter right before main is
+			// wrapped in its receptor cell. The pre-gain signal can spike to
+			// extreme values (EFX feedback runaway can push peaks well past
+			// 1e5 in normalised units), so a pure ScaleFactor can't make the
+			// audio fit in [-1, 1] without making the body inaudibly quiet.
+			// We scale by masterBusGain for typical content level, then clip
+			// transients into [-1, 1] before they reach the int16 WAV writer.
+			final double gain = masterBusGain;
+			main = main.map(fc(i ->
+					(Factor<PackedCollection>) in ->
+							bound(multiply(in, c(gain)), -1.0, 1.0)));
 		}
 
 		// Deliver main to the output and measure #1
