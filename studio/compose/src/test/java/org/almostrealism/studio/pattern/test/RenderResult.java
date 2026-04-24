@@ -40,12 +40,11 @@ package org.almostrealism.studio.pattern.test;
  *
  * @param outputFile  path to the rendered WAV file
  * @param stats       audio statistics (null if file not readable)
- * @param timing      timing statistics (null for traditional render)
- * @param bufferCount number of buffers rendered (0 for traditional)
+ * @param timing      timing statistics
+ * @param bufferCount number of buffers rendered
  * @param frameCount  total frames rendered
  *
  * @see RealTimeTestHelper#renderRealTime
- * @see RealTimeTestHelper#renderTraditional
  */
 public record RenderResult(
 		String outputFile,

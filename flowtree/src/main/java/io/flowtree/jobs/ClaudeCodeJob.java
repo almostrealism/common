@@ -133,6 +133,8 @@ public class ClaudeCodeJob extends GitManagedJob {
     private boolean enforceChanges;
     /** Number of times enforcement has been re-attempted after an empty commit. */
     private int enforcementAttempt;
+    /** Enforcement rule name for the current correction session; {@code null} during primary runs. */
+    private String currentActivity;
     /** Description of a git-tampering rule violation detected during this job. */
     private String gitTamperingViolation;
     /**
@@ -708,7 +710,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * <p>Exits early if the agent commits during a correction session — the
      * tampering-detection path in {@link GitManagedJob} handles that case.</p>
      */
-    private void runEnforcementRules() {
+    void runEnforcementRules() {
         List<EnforcementRule> rules = buildActiveRules();
         boolean anyRuleCorrectionRan;
         do {
@@ -730,7 +732,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                             + "': correction attempt " + attempts);
                     String correctionPrompt = rule.buildCorrectionPrompt(this);
                     if (correctionPrompt != null) {
-                        runCorrectionSession(correctionPrompt);
+                        runCorrectionSession(correctionPrompt, rule.getName());
                     } else {
                         // Re-run with the existing prompt; the job's built-in instruction
                         // context (e.g., enforceChanges) already provides correction guidance.
@@ -758,21 +760,17 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Runs a correction session inline with the specified prompt replacing the
-     * primary job's prompt for the duration of the session.
+     * Runs a correction session tagged with {@code activity} (the rule name)
+     * via {@code AR_AGENT_ACTIVITY} so {@code send_message} calls are labelled.
      *
-     * <p>The original prompt is always restored in a {@code finally} block.
-     * Any commit message written by the primary agent is also saved and
-     * restored, preventing correction sessions from overwriting it.</p>
-     *
-     * @param correctionPrompt the prompt to use for the correction session
+     * @param correctionPrompt prompt for this session
+     * @param activity         rule name used as the activity tag
      */
-    private void runCorrectionSession(String correctionPrompt) {
+    protected void runCorrectionSession(String correctionPrompt, String activity) {
         String originalPrompt = this.prompt;
-
-        // Preserve the primary agent's commit.txt so the correction session cannot
-        // overwrite it.  executeSingleRun() deletes any stale commit.txt at startup,
-        // so we read the content now and write it back in finally.
+        String previousActivity = this.currentActivity;
+        this.currentActivity = activity;
+        // Preserve commit.txt so the correction session cannot overwrite it.
         Path commitFile = resolveWorkingPath("commit.txt");
         String savedCommitMessage = null;
         if (commitFile != null && Files.exists(commitFile)) {
@@ -788,7 +786,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             executeSingleRun();
         } finally {
             this.prompt = originalPrompt;
-
+            this.currentActivity = previousActivity;
             if (commitFile != null) {
                 try {
                     if (savedCommitMessage != null) {
@@ -935,6 +933,11 @@ public class ClaudeCodeJob extends GitManagedJob {
                 log("AR_WORKSTREAM_URL: " + wsUrl);
             }
 
+            if (currentActivity != null && !currentActivity.isEmpty()) {
+                pb.environment().put("AR_AGENT_ACTIVITY", currentActivity);
+            } else {
+                pb.environment().remove("AR_AGENT_ACTIVITY");
+            }
             GitOperations.augmentPath(pb);
 
             log("Command: " + String.join(" ", command));

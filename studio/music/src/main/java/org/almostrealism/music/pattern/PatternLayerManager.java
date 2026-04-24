@@ -31,6 +31,7 @@ import org.almostrealism.heredity.Chromosome;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.heredity.HeredityFeatures;
 import org.almostrealism.heredity.ProjectedChromosome;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
@@ -701,13 +702,13 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		int firstRepetition = Math.max(0, (int) Math.floor(startMeasure / duration));
 		int lastRepetition = Math.min(totalRepetitions, (int) Math.ceil(endMeasure / duration));
 
-		// Disable caching for full-arrangement renders (offline mode).
-		// When frameCount covers the entire arrangement, all notes are rendered
-		// in a single call and the cache would hold all evaluated audio
-		// simultaneously, causing excessive memory usage. Caching is only
-		// beneficial for real-time rendering where notes span multiple small
-		// buffers and can be reused across consecutive ticks.
-		NoteAudioCache effectiveCache = (frameCount < ctx.getFrames()) ? cache : null;
+		// Disable caching when (a) frameCount covers the entire arrangement
+		// (all notes rendered in one call — caching wastes memory) or (b) a
+		// Heap is active, because Heap.stage() frees evaluated audio after
+		// each note and cached references would point to freed memory.
+		NoteAudioCache effectiveCache =
+				(frameCount < ctx.getFrames() && Heap.getDefault() == null)
+						? cache : null;
 
 		IntStream.range(firstRepetition, lastRepetition).forEach(rep -> {
 			double repStart = rep * duration;

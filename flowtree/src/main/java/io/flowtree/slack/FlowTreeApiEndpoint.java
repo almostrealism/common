@@ -437,10 +437,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Handles POST to {@code /api/workstreams/{id}/messages} or
      * {@code /api/workstreams/{id}/jobs/{jobId}/messages}.
-     *
-     * <p>Posts a message to the workstream's channel. When a
-     * {@code jobId} is present, the controller can optionally thread the
-     * message under that job's thread.</p>
+     * An optional {@code activity} field in the body is stored as an
+     * {@code activity:<value>} tag for enforcement-phase filtering.
      */
     private Response handleMessage(IHTTPSession session, String workstreamId, String jobId) {
         String body = readBody(session);
@@ -453,6 +451,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Missing required field: text");
         }
 
+        String activity = extractJsonField(body, "activity");
         SlackNotifier targetNotifier = notifiers.notifierFor(workstreamId);
         Workstream workstream = targetNotifier != null
                 ? targetNotifier.getWorkstream(workstreamId) : null;
@@ -466,7 +465,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // warning if memory server is not configured at all (minimal deployment)
         String repoUrl = workstream.getRepoUrl();
         String branch = workstream.getDefaultBranch();
-        String storeError = storeMessageAsMemory(text, repoUrl, branch);
+        String storeError = storeMessageAsMemory(text, repoUrl, branch, activity);
         if (storeError != null) {
             if (memoryServerUrl != null && !memoryServerUrl.isEmpty()) {
                 // Memory server is configured but storage failed — hard error
@@ -500,28 +499,29 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /**
      * Stores a message in the ar-memory server's "messages" namespace.
+     * A non-empty {@code activity} is appended as an {@code activity:<value>} tag.
      *
-     * @param text    the message content
-     * @param repoUrl the repository URL for the memory entry
-     * @param branch  the branch name for the memory entry
+     * @param activity enforcement phase name, or null/empty for primary work
      * @return null on success, or an error description on failure
      */
-    private String storeMessageAsMemory(String text, String repoUrl, String branch) {
+    private String storeMessageAsMemory(String text, String repoUrl, String branch, String activity) {
         if (memoryServerUrl == null || memoryServerUrl.isEmpty()) {
             return "memory server URL not configured";
         }
         if (repoUrl == null || repoUrl.isEmpty() || branch == null || branch.isEmpty()) {
             return "workstream missing repoUrl or defaultBranch";
         }
+        String tagsJson = (activity != null && !activity.isEmpty())
+            ? "[\"message\"," + escapeJsonValue("activity:" + activity) + "]"
+            : "[\"message\"]";
 
         String url = memoryServerUrl.replaceAll("/+$", "") + "/api/memory/store";
         String payload = "{\"content\":" + escapeJsonValue(text)
             + ",\"repo_url\":" + escapeJsonValue(repoUrl)
             + ",\"branch\":" + escapeJsonValue(branch)
             + ",\"namespace\":\"messages\""
-            + ",\"tags\":[\"message\"]"
+            + ",\"tags\":" + tagsJson
             + ",\"source\":\"ar-messages\"}";
-
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setRequestMethod("POST");

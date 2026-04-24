@@ -1207,6 +1207,30 @@ def _parse_dependent_repos(dependent_repos: str) -> list:
     return [r.strip() for r in stripped.split(",") if r.strip()]
 
 
+def _parse_activities_param(include_activities) -> str:
+    """Normalize include_activities to a comma-separated string.
+
+    Accepts a native Python list, a JSON-array string, or a plain comma-separated
+    string.  Returns a normalised comma-separated string (e.g. ``"primary"``).
+    """
+    if isinstance(include_activities, list):
+        joined = ",".join(str(v).strip() for v in include_activities if str(v).strip())
+        return joined or "primary"
+    if not include_activities:
+        return "primary"
+    stripped = include_activities.strip()
+    if stripped.startswith("["):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+            if isinstance(parsed, list):
+                joined = ",".join(str(v).strip() for v in parsed if str(v).strip())
+                return joined or "primary"
+        except ValueError:
+            pass
+    return stripped or "primary"
+
+
 @mcp.tool()
 def workstream_submit_task(
     prompt: str,
@@ -2480,6 +2504,7 @@ def workstream_context(
     include_commits: bool = True,
     commit_limit: int = 30,
     job_limit: int = 20,
+    include_activities: "list[str] | str" = "primary",
 ) -> dict:
     """Reconstruct the narrative of a workstream — what agents have been
     thinking about and doing on a branch. This is the primary tool for
@@ -2526,6 +2551,15 @@ def workstream_context(
         commit_limit: Maximum number of commits to include (default 30).
         job_limit: Maximum number of jobs to include in the timeline
             (default 20). Pass 0 to omit jobs entirely.
+        include_activities: Activity filter — accepts a Python list of strings,
+            a JSON-array string (``["deduplication","primary"]``), or a plain
+            comma-separated string.  Defaults to ``"primary"``, which returns
+            only messages with no activity tag (primary work) or with the
+            explicit ``activity:primary`` tag — both are treated as primary.
+            Audit-phase messages (e.g. ``activity:deduplication``) are hidden
+            by default.  Pass ``"all"`` to see every message, or a specific
+            activity name (e.g. ``"deduplication"``) to see that phase plus
+            primary/untagged messages.
 
     Returns:
         Dictionary with branch memories, optionally commits, and optionally
@@ -2596,6 +2630,33 @@ def workstream_context(
                 memories = combined
         except ConnectionError:
             pass  # Non-critical: proceed without messages
+
+    # Filter memories by activity.  Each message may carry a tag of the
+    # form ``activity:<name>`` (e.g. ``activity:deduplication``).  Memories
+    # without any such tag are considered primary work.  The
+    # ``include_activities`` parameter controls which activities are shown.
+    #
+    # Special values:
+    #   "all"     — no filtering; return every memory regardless of activity
+    #   "primary" — (default) return only primary/untagged and activity:primary
+    #   any other — return memories whose activity tag matches that value,
+    #               plus primary/untagged memories
+    #
+    # Multiple values can be comma-separated, e.g. "primary,deduplication".
+    # Also accepts a Python list or a JSON-array string via _parse_activities_param.
+    effective_include = _parse_activities_param(include_activities)
+    if effective_include != "all":
+        allowed = {v.strip() for v in effective_include.split(",") if v.strip()}
+
+        def _activity_allowed(mem: dict) -> bool:
+            tags = mem.get("tags") or []
+            activity_tags = [t[len("activity:"):] for t in tags if t.startswith("activity:")]
+            if not activity_tags or "primary" in activity_tags:
+                # No activity tag or explicit activity:primary — primary work, always included
+                return True
+            return any(a in allowed for a in activity_tags)
+
+        memories = [m for m in memories if _activity_allowed(m)]
 
     # Fetch commit history from GitHub Compare API if requested
     commits = None
@@ -2806,6 +2867,7 @@ def send_message(
     text: str,
     workstream_id: str = "",
     job_id: str = "",
+    activity: str = "",
 ) -> dict:
     """Send a message for archival and optional notification.
 
@@ -2820,6 +2882,14 @@ def send_message(
             the workstream from the auth token when available.
         job_id: Job to thread the message under.  Defaults to the job
             from the auth token when available.
+        activity: Optional tag identifying the phase or activity this
+            message belongs to (e.g. ``"deduplication"``,
+            ``"organizational_placement"``,
+            ``"maven_dependency_protection"``).  Defaults to empty
+            (primary work).  When the environment variable
+            ``AR_AGENT_ACTIVITY`` is set and ``activity`` is not
+            supplied, the env var value is used automatically so that
+            correction-session agents do not need to pass it explicitly.
 
     Returns:
         Dictionary with ok=true on success or ok=false with error details.
@@ -2828,13 +2898,19 @@ def send_message(
 
     effective_ws = workstream_id or _get_token_workstream_id() or ""
     effective_job = job_id or _get_token_job_id() or ""
+    effective_activity = (activity or os.environ.get("AR_AGENT_ACTIVITY", "")).strip()
 
     if not effective_ws:
         return {"ok": False, "error": "workstream_id is required (pass explicitly or use a job token)"}
 
+    if effective_activity:
+        err = _check_length(effective_activity, "activity", MAX_SHORT_STRING_LEN)
+        if err:
+            return err
+
     _require_workstream_in_scope(effective_ws)
     _audit("send_message", workstream_id=effective_ws, job_id=effective_job,
-           text=text[:80])
+           activity=effective_activity, text=text[:80])
 
     err = _check_length(text, "text", MAX_CONTENT_LEN)
     if err:
@@ -2846,7 +2922,10 @@ def send_message(
         path += f"/jobs/{quote(effective_job, safe='')}"
     path += "/messages"
 
-    return _controller_post(path, {"text": text})
+    body: dict = {"text": text}
+    if effective_activity:
+        body["activity"] = effective_activity
+    return _controller_post(path, body)
 
 
 # ---------------------------------------------------------------------------

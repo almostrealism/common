@@ -135,36 +135,30 @@ public interface PatternFeatures extends CodeFeatures {
 										note.getProducer(-1);
 								fullResult[0] =
 										traverse(1, fullProducer).get().evaluate();
+								if (fullResult[0] != null) {
+									cache.put(noteStart, fullResult[0]);
+									sumToDestination(destination, fullResult[0], noteStart,
+											startFrame, endFrame, frameCount);
+								}
 							});
-							if (fullResult[0] != null) {
-								cache.put(noteStart, fullResult[0]);
-								sumToDestination(destination, fullResult[0], noteStart,
-										startFrame, endFrame, frameCount);
-							}
 						} catch (Exception e) {
 							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
 						}
 					} else {
-						// No cache (offline rendering): use an unbounded producer
-						// (frameCount <= 0 signals null offset in the factory) so
-						// all notes share the same computation signature regardless
-						// of duration, enabling kernel compilation reuse.  The
-						// output is clipped to the target range by sumToDestination.
 						if (note.getExpectedFrameCount() <= 0
 								&& endFrame - noteStart <= 0) {
 							return;
 						}
 
 						try {
-							PackedCollection[] evalResult = {null};
 							Heap.stage(() -> {
 								Producer<PackedCollection> producer = note.getProducer(-1);
-								evalResult[0] = traverse(1, producer).get().evaluate();
+								PackedCollection evalResult = traverse(1, producer).get().evaluate();
+								if (evalResult != null) {
+									sumToDestination(destination, evalResult, noteStart,
+											startFrame, endFrame, frameCount);
+								}
 							});
-							if (evalResult[0] != null) {
-								sumToDestination(destination, evalResult[0], noteStart,
-										startFrame, endFrame, frameCount);
-							}
 						} catch (Exception e) {
 							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
 						}
