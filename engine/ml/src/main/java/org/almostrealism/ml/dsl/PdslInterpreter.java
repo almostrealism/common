@@ -1112,11 +1112,6 @@ public class PdslInterpreter {
 	/**
 	 * Builds an identity (pass-through) block that forwards its input unchanged.
 	 *
-	 * <p>Delegates to {@link DefaultBlock} with a {@code null} forward cell, which
-	 * routes input directly to the downstream receptor — equivalent to
-	 * {@link org.almostrealism.graph.PassThroughCell} but packaged as a {@link Block}
-	 * factory for use in PDSL layer composition.</p>
-	 *
 	 * @param args no arguments
 	 * @return a factory that creates a pass-through block for any input shape
 	 */
@@ -1125,7 +1120,12 @@ public class PdslInterpreter {
 			throw new PdslParseException(
 					"identity() expects no arguments, got " + args.size());
 		}
-		return (Function<TraversalPolicy, Block>) (shape -> new DefaultBlock(shape, shape, null, null));
+		return (Function<TraversalPolicy, Block>) (shape -> {
+			Cell<PackedCollection> backward = Cell.of(
+					(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+							Supplier<Runnable>>) (in, next) -> new OperationList("identity-backward"));
+			return new DefaultBlock(shape, shape, null, backward);
+		});
 	}
 
 	/**

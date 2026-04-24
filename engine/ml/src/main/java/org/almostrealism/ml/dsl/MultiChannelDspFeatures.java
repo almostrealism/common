@@ -107,7 +107,7 @@ public interface MultiChannelDspFeatures extends CollectionFeatures {
 	default Block routeBlock(PackedCollection matrix, int channels, int signalSize) {
 		TraversalPolicy multiShape = shape(channels, signalSize);
 		TraversalPolicy sigShape = shape(1, signalSize);
-		TraversalPolicy elemShape = shape(1);
+		TraversalPolicy elemShape = shape(1, 1);
 		Cell<PackedCollection> forward = Cell.of(
 				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 						Supplier<Runnable>>) (in, next) -> {
