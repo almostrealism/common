@@ -315,11 +315,6 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		// Setup features
 		PopulationOptimizer.popSize = enableBreeding ? 10 : 6;
 		setFeatureLevel(7);
-		EfxManager.enableEfx = false;
-		MixdownManager.enableEfx = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableMainFilterUp = false;
-		PatternElementFactory.enableFilterEnvelope = false;
 
 		// Create computations before applying Heap
 		AudioProcessingUtils.init();

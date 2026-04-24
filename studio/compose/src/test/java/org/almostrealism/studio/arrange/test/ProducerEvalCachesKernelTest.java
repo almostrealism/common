@@ -16,14 +16,28 @@
 
 package org.almostrealism.studio.arrange.test;
 
+import io.almostrealism.code.ComputableBase;
+import io.almostrealism.code.Memory;
+import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.scope.ScopeSettings;
+import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.ProcessDetailsFactory;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.List;
 import java.util.function.Supplier;
 
 import static org.junit.Assert.assertEquals;
@@ -141,7 +155,197 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 	 * kernel it'll hold {@code 2 * initial} instead.
 	 */
 	@Test(timeout = 30_000)
-	public void preEvalFreezesAssignmentInsideLoop() {
+	public void preEvalFreezesAssignmentInsideLoop() throws IOException {
+		runLoopAssignmentScenario("preEvalFreezesAssignmentInsideLoop",
+				/* doPreEval */ true);
+	}
+
+	/**
+	 * Apples-to-apples control for {@link #preEvalFreezesAssignmentInsideLoop}:
+	 * same Loop body, same producer instance, same iteration count &mdash;
+	 * just no pre-loop {@code producer.get().evaluate()} call. Expected to
+	 * pass. The two profile XMLs (with and without the pre-eval) are the
+	 * primary diagnostic: comparing them tells us whether the bug is
+	 * (a) different generated code, (b) different argument layout, or
+	 * (c) same code &amp; args but different runtime behaviour of those args.
+	 */
+	@Test(timeout = 30_000)
+	public void assignmentReadsLiveBufferInsideLoopWithoutPreEval() throws IOException {
+		runLoopAssignmentScenario("assignmentReadsLiveBufferInsideLoopWithoutPreEval",
+				/* doPreEval */ false);
+	}
+
+	/**
+	 * Builds the scenario shared between
+	 * {@link #preEvalFreezesAssignmentInsideLoop} and
+	 * {@link #assignmentReadsLiveBufferInsideLoopWithoutPreEval}; saves a
+	 * profile XML for the run so the two compiled kernels can be compared
+	 * via the {@code ar-profile-analyzer} MCP tool.
+	 */
+	private void runLoopAssignmentScenario(String name, boolean doPreEval)
+			throws IOException {
+		PackedCollection buffer = new PackedCollection(1);
+		PackedCollection sink = new PackedCollection(1);
+		sink.setMem(0, Double.NaN);
+
+		Producer<PackedCollection> producer =
+				(Producer) cp(buffer).multiply((Producer) c(2.0));
+
+		buffer.setMem(0, 0.0);
+
+		log(name + ": [phase=after-construct] " + describe("buffer", buffer)
+				+ ", " + describe("sink", sink));
+
+		if (doPreEval) {
+			double preEval = producer.get().evaluate().toDouble(0);
+			log(name + ": pre-eval = " + preEval + " (expected 0.0)");
+			log(name + ": [phase=after-pre-eval] " + describe("buffer", buffer)
+					+ ", " + describe("sink", sink));
+		}
+
+		int iterations = 64;
+		OperationList body = new OperationList(name + " body");
+		body.add(a((Producer) cp(buffer),
+				(Producer) add((Producer) cp(buffer), (Producer) c(1.0))));
+		body.add(a(p(sink), producer));
+
+		OperationProfileNode profile = new OperationProfileNode(name);
+		Hardware.getLocalHardware().assignProfile(profile);
+		try {
+			new TemporalRunner((Supplier<Runnable>) new OperationList("setup"),
+					body, iterations, false).get().run();
+		} finally {
+			File profileFile = new File("results/" + name + ".profile.xml");
+			profileFile.getParentFile().mkdirs();
+			profile.save(profileFile.getPath());
+			Hardware.getLocalHardware().assignProfile(null);
+			log(name + ": profile saved to " + profileFile.getPath());
+		}
+
+		log(name + ": [phase=after-loop] " + describe("buffer", buffer)
+				+ ", " + describe("sink", sink));
+
+		double sinkValue = sink.toDouble(0);
+		double bufferValue = buffer.toDouble(0);
+		log(name + ": buffer=" + bufferValue + ", sink=" + sinkValue
+				+ " (expected 2*" + iterations + "=" + (2.0 * iterations) + ")");
+
+		assertEquals("buffer should have advanced to " + iterations,
+				(double) iterations, bufferValue, 1e-9);
+		assertEquals("Assignment inside compiled Loop must read the current "
+						+ "buffer value (expected 2 * " + iterations + ")",
+				2.0 * iterations, sinkValue, 1e-9);
+	}
+
+	/** Logs identity / memory-provider details for a {@link PackedCollection}. */
+	private static String describe(String label, PackedCollection coll) {
+		Memory mem = coll.getMem();
+		String providerName = mem == null ? "<null mem>"
+				: mem.getProvider() == null ? "<null provider>"
+				: mem.getProvider().getClass().getSimpleName();
+		return label + "{id=" + System.identityHashCode(coll)
+				+ ", mem=" + System.identityHashCode(mem)
+				+ ", provider=" + providerName
+				+ ", offset=" + coll.getOffset()
+				+ ", len=" + coll.getMemLength() + "}";
+	}
+
+	/**
+	 * Same as {@link #preEvalFreezesAssignmentInsideLoop} but runs with
+	 * {@link MemoryDataArgumentMap#enableArgumentAggregation} set to
+	 * {@code false}. If aggregation is what's allowing the read-side and
+	 * write-side of {@code buffer} to be merged into a single kernel arg in
+	 * the no-pre-eval case (and what's split apart by the pre-eval),
+	 * disabling it should make BOTH variants behave the same way: either
+	 * both pass (each gets its own arg, kernel reads live) or both fail
+	 * (each gets its own arg but the read side still reads a stale snapshot).
+	 */
+	@Test(timeout = 30_000)
+	public void preEvalWithAggregationDisabled() throws IOException {
+		boolean previous = MemoryDataArgumentMap.enableArgumentAggregation;
+		MemoryDataArgumentMap.enableArgumentAggregation = false;
+		try {
+			runLoopAssignmentScenario("preEvalWithAggregationDisabled",
+					/* doPreEval */ true);
+		} finally {
+			MemoryDataArgumentMap.enableArgumentAggregation = previous;
+		}
+	}
+
+	/**
+	 * Same as {@link #assignmentReadsLiveBufferInsideLoopWithoutPreEval} but
+	 * runs with aggregation disabled. Companion to
+	 * {@link #preEvalWithAggregationDisabled}.
+	 */
+	@Test(timeout = 30_000)
+	public void noPreEvalWithAggregationDisabled() throws IOException {
+		boolean previous = MemoryDataArgumentMap.enableArgumentAggregation;
+		MemoryDataArgumentMap.enableArgumentAggregation = false;
+		try {
+			runLoopAssignmentScenario("noPreEvalWithAggregationDisabled",
+					/* doPreEval */ false);
+		} finally {
+			MemoryDataArgumentMap.enableArgumentAggregation = previous;
+		}
+	}
+
+	/**
+	 * The same scenario as {@link #preEvalFreezesAssignmentInsideLoop} but
+	 * with {@link ProcessDetailsFactory#enableConstantCache} turned off. If
+	 * the constant-cache path is what allocates the snapshot collection that
+	 * the aggregation later picks up, this should pass.
+	 */
+	@Test(timeout = 30_000)
+	public void preEvalWithConstantCacheDisabled() throws IOException {
+		boolean previous = ProcessDetailsFactory.enableConstantCache;
+		ProcessDetailsFactory.enableConstantCache = false;
+		try {
+			runLoopAssignmentScenario("preEvalWithConstantCacheDisabled",
+					/* doPreEval */ true);
+		} finally {
+			ProcessDetailsFactory.enableConstantCache = previous;
+		}
+	}
+
+	/**
+	 * Tests whether {@link ScopeSettings#enableInstructionSetReuse} is the
+	 * mechanism that lets the pre-eval's compiled-kernel state leak into the
+	 * Loop body's compilation. With reuse on, the pre-eval registers an
+	 * instruction set under the producer's signature; the Loop body's
+	 * compilation finds the same signature and reuses the cached instruction
+	 * set (which was built with a destination collection from the pre-eval).
+	 */
+	@Test(timeout = 30_000)
+	public void preEvalWithInstructionSetReuseDisabled() throws IOException {
+		boolean previous = ScopeSettings.enableInstructionSetReuse;
+		ScopeSettings.enableInstructionSetReuse = false;
+		try {
+			runLoopAssignmentScenario("preEvalWithInstructionSetReuseDisabled",
+					/* doPreEval */ true);
+		} finally {
+			ScopeSettings.enableInstructionSetReuse = previous;
+		}
+	}
+
+	/**
+	 * Confirmation test for the cached-{@code ArrayVariable} hypothesis. Same
+	 * sequence as {@link #preEvalFreezesAssignmentInsideLoop} (pre-eval + loop
+	 * body that uses the same producer instance), but calls
+	 * {@link ScopeLifecycle#resetArguments()} on the producer in between, which
+	 * walks the input tree clearing each {@code ComputationBase}'s cached
+	 * {@code ArrayVariable} list. If the leak channel is the producer's
+	 * cached argument variables (populated by pre-eval, pinned to MDAM #1's
+	 * aggregate, and reused for MDAM #2's compilation because
+	 * {@code prepareArguments}/{@code prepareScope} early-return when
+	 * {@code getArgumentVariables() != null}), then this test should PASS
+	 * (sink == 2 * iterations) where {@link #preEvalFreezesAssignmentInsideLoop}
+	 * fails (sink == 0). If both still fail, the leak channel is somewhere
+	 * else.
+	 */
+	@Test(timeout = 30_000)
+	public void preEvalFollowedByResetArguments() throws IOException {
+		String name = "preEvalFollowedByResetArguments";
+
 		PackedCollection buffer = new PackedCollection(1);
 		PackedCollection sink = new PackedCollection(1);
 		sink.setMem(0, Double.NaN);
@@ -152,33 +356,118 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 		buffer.setMem(0, 0.0);
 
 		double preEval = producer.get().evaluate().toDouble(0);
-		log("preEvalFreezesAssignmentInsideLoop: pre-eval = " + preEval
-				+ " (expected 0.0)");
+		log(name + ": pre-eval = " + preEval + " (expected 0.0)");
+
+		// Clear the producer tree's cached ArrayVariables. This is the only
+		// difference vs. preEvalFreezesAssignmentInsideLoop.
+		((ScopeLifecycle) producer).resetArguments();
+		log(name + ": resetArguments() called on producer tree");
 
 		int iterations = 64;
-		OperationList body = new OperationList("preEvalFreezes Loop body");
-		// Increment buffer[0] by 1 inside the kernel.
+		OperationList body = new OperationList(name + " body");
 		body.add(a((Producer) cp(buffer),
 				(Producer) add((Producer) cp(buffer), (Producer) c(1.0))));
-		// Use the SAME producer instance that we pre-evaluated above.
 		body.add(a(p(sink), producer));
 
-		new TemporalRunner((Supplier<Runnable>) new OperationList("setup"),
-				body, iterations, false).get().run();
+		OperationProfileNode profile = new OperationProfileNode(name);
+		Hardware.getLocalHardware().assignProfile(profile);
+		try {
+			new TemporalRunner((Supplier<Runnable>) new OperationList("setup"),
+					body, iterations, false).get().run();
+		} finally {
+			File profileFile = new File("results/" + name + ".profile.xml");
+			profileFile.getParentFile().mkdirs();
+			profile.save(profileFile.getPath());
+			Hardware.getLocalHardware().assignProfile(null);
+			log(name + ": profile saved to " + profileFile.getPath());
+		}
 
 		double sinkValue = sink.toDouble(0);
 		double bufferValue = buffer.toDouble(0);
-		log("preEvalFreezesAssignmentInsideLoop: buffer=" + bufferValue
-				+ ", sink=" + sinkValue + " (expected 2*" + iterations + "="
-				+ (2.0 * iterations) + "; 0.0 means kernel cached from pre-eval)");
+		log(name + ": buffer=" + bufferValue + ", sink=" + sinkValue
+				+ " (expected 2*" + iterations + "=" + (2.0 * iterations) + ")");
 
 		assertEquals("buffer should have advanced to " + iterations,
 				(double) iterations, bufferValue, 1e-9);
-		assertEquals("Assignment inside compiled Loop must read the current "
-						+ "buffer value, not a cached value from the pre-loop "
-						+ "Java eval. If sink=" + preEval + " (the pre-eval "
-						+ "value) the producer's kernel was cached by the Java "
-						+ "eval and reused inside the Loop with stale data.",
+		assertEquals("If resetArguments() between pre-eval and loop "
+						+ "compilation makes sink correct, the leak channel "
+						+ "is the cached ArrayVariable list on ComputationBase.",
 				2.0 * iterations, sinkValue, 1e-9);
+	}
+
+	/**
+	 * Walks the input tree of {@code cp(buffer).multiply(c(2.0))} and dumps
+	 * each node's class plus, for any {@link Provider}-shaped leaf, the
+	 * identity of the {@link MemoryData} it wraps. Snapshots the tree
+	 * before, after, and again after pre-eval. If the leaf MemoryData
+	 * identity changes, that's the divergence the aggregation later picks up.
+	 */
+	@Test(timeout = 30_000)
+	public void leafMemoryDataIdentityBeforeAndAfterPreEval() {
+		PackedCollection buffer = new PackedCollection(1);
+		buffer.setMem(0, 5.0);
+
+		Producer<PackedCollection> producer =
+				(Producer) cp(buffer).multiply((Producer) c(2.0));
+
+		log("buffer initial identity: " + System.identityHashCode(buffer));
+
+		log("--- BEFORE pre-eval ---");
+		dumpProducerLeaves(producer, 0);
+
+		double v = producer.get().evaluate().toDouble(0);
+		log("--- pre-eval returned: " + v + " ---");
+
+		log("--- AFTER pre-eval ---");
+		dumpProducerLeaves(producer, 0);
+
+		// Mutate buffer; producer.get().evaluate() should now reflect the
+		// new value if the leaf is still 'buffer'. If pre-eval cached an
+		// independent destination collection somewhere, evaluating again
+		// might return the stale value.
+		buffer.setMem(0, 100.0);
+		double v2 = producer.get().evaluate().toDouble(0);
+		log("--- after buffer.setMem(0,100), eval returned: " + v2
+				+ " (expected 200.0; if 10.0 the producer's leaf points at "
+				+ "a snapshot rather than buffer) ---");
+
+		log("--- AFTER second eval ---");
+		dumpProducerLeaves(producer, 0);
+	}
+
+	@SuppressWarnings({"rawtypes", "unchecked"})
+	private void dumpProducerLeaves(Object node, int depth) {
+		String indent = "  ".repeat(depth);
+		String cls = node == null ? "null" : node.getClass().getName();
+		log(indent + "node: " + cls + " #" + System.identityHashCode(node));
+		if (node instanceof ComputableBase) {
+			List<?> inputs = ((ComputableBase<?, ?>) node).getInputs();
+			log(indent + "  ComputableBase has " + (inputs == null ? "null" : inputs.size()) + " inputs");
+			if (inputs != null) {
+				for (int i = 0; i < inputs.size(); i++) {
+					log(indent + "  input[" + i + "]:");
+					dumpProducerLeaves(inputs.get(i), depth + 2);
+				}
+			}
+		} else if (node instanceof Producer) {
+			Evaluable<?> ev = ((Producer<?>) node).get();
+			log(indent + "  -> get() returned " + (ev == null ? "null"
+					: ev.getClass().getName() + " #"
+							+ System.identityHashCode(ev)));
+			if (ev instanceof Provider) {
+				Object value = ((Provider<?>) ev).get();
+				if (value instanceof MemoryData) {
+					MemoryData md = (MemoryData) value;
+					log(indent + "  -> Provider wraps MemoryData "
+							+ md.getClass().getSimpleName()
+							+ " #" + System.identityHashCode(md)
+							+ " mem#" + System.identityHashCode(md.getMem())
+							+ " offset=" + md.getOffset()
+							+ " len=" + md.getMemLength());
+				} else {
+					log(indent + "  -> Provider wraps " + value);
+				}
+			}
+		}
 	}
 }
