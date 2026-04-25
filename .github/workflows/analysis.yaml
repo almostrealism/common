@@ -1169,6 +1169,10 @@ jobs:
     needs: [changes, build, test, test-flowtree, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     runs-on: [self-hosted, macos, ar-ci]
+    # Treated as a deployment to the `worker` environment so the pipeline
+    # pauses here until an authorized reviewer approves the run. Configure
+    # required reviewers under: Settings -> Environments -> worker.
+    environment: worker
     concurrency:
       group: auto-resolve-${{ github.ref }}
       cancel-in-progress: true
