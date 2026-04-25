@@ -511,8 +511,8 @@ cells.addRequirement(temporal);
   `MultiChannelDspFeatures`. Subscript syntax `expr[index]` for per-channel state slicing.
 - **`delay_feedback_bank.pdsl`** — exercises all four multi-channel constructs end-to-end:
   fan out → per-channel delay → cross-channel route → sum to mono.
-- **Approach D validation** — `PdslApproachDValidationTest` (3 tests) validates per-buffer
-  granularity, state persistence across `Temporal.tick`, and Block→Temporal adapter flow.
+- **PDSL/CellList integration** — `PdslLayerCellListIntegrationTest` (2 tests) validates
+  state persistence across `Temporal.tick` and Block→Temporal adapter flow.
 - **Test coverage** — `PdslAudioDspTest` (13 tests), `MixdownChannelPdslTest` (8 tests),
   `PdslAudioDemoTest` (2 tests), `DelayFeedbackBankPdslTest` (1 test). All pass at depth 2.
 - **WAV output** — `results/pdsl-audio-dsp/` contains dry multitone, lowpass-filtered,

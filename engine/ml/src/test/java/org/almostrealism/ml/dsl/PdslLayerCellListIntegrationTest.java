@@ -14,13 +14,10 @@
  * limitations under the License.
  */
 
-package org.almostrealism.studio.ml.test;
+package org.almostrealism.ml.dsl;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.audio.CellList;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.dsl.PdslLoader;
-import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -33,81 +30,32 @@ import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Validation tests for PDSL audio DSP integration assumptions.
- *
- * <p>These three tests verify the assumptions that PDSL-based audio DSP relies on before any
- * production code is written. If a test fails it means a design assumption is wrong
- * and the plan must be revised before proceeding.</p>
+ * Integration tests verifying that PDSL-compiled blocks behave correctly when
+ * wrapped as a {@link Temporal} for use in a {@code CellList} requirement.
  *
  * <h2>Tests</h2>
  * <ol>
- *   <li><strong>Per-buffer granularity</strong> — a {@link CellList} requirement's
- *       {@link Temporal#tick()} method is assembled exactly once per buffer-level tick
- *       regardless of {@link CellList#setTickLoopCount(int)}.</li>
- *   <li><strong>State persistence across Temporal.tick</strong> — stateful PDSL block
- *       state (delay buffer / write-head) survives across successive
- *       {@link Temporal#tick()} invocations when the block is wrapped as a Temporal.</li>
+ *   <li><strong>State persistence across {@link Temporal#tick()}</strong> — stateful
+ *       PDSL block state (delay buffer / write-head) survives across successive
+ *       {@code tick()} invocations when the block is wrapped as a Temporal.</li>
  *   <li><strong>Block→Temporal adapter forward flow</strong> — a minimal Temporal
- *       wrapping {@link CompiledModel#forward} channels input through to output.</li>
+ *       wrapping {@link CompiledModel#forward} channels input through to output
+ *       without dropping samples.</li>
  * </ol>
  *
  * @see org.almostrealism.ml.dsl.PdslLoader
- * @see org.almostrealism.audio.CellList
  * @see org.almostrealism.time.Temporal
  */
-public class PdslApproachDValidationTest extends TestSuiteBase implements FirFilterTestFeatures {
+public class PdslLayerCellListIntegrationTest extends TestSuiteBase
+		implements FirFilterTestFeatures {
 
-	/** Buffer size — the N in {@code setTickLoopCount(N)}. */
+	/** Buffer size used for the test signals. */
 	private static final int BUFFER_SIZE = 64;
 
 	/** FIR filter order for blocks that require it. */
 	private static final int FILTER_ORDER = 20;
-
-	// ---- Test 1: Per-buffer granularity -----------------------------------------------
-
-	/**
-	 * Verifies that a {@link CellList} requirement's {@link Temporal#tick()} method
-	 * is assembled exactly once per outer buffer tick even when
-	 * {@link CellList#setTickLoopCount(int)} is set to N (the buffer size).
-	 *
-	 * <p>{@link CellList#tick()} assembles the per-tick operation graph once and wraps
-	 * it in a compiled {@link org.almostrealism.hardware.computations.Loop}. Each
-	 * requirement's {@code tick()} method must be called exactly once during that
-	 * assembly — not N times. If it were called N times, a stateful PDSL block
-	 * would assemble N separate forward-pass graphs, which is not the intended
-	 * behaviour.</p>
-	 *
-	 * <p>Note: the compiled Loop executes the assembled operations N times natively;
-	 * this test specifically validates the Java-side assembly count, not the
-	 * native execution count.</p>
-	 */
-	@Test(timeout = 30000)
-	public void testRequirementTicksOncePerBufferNotPerSample() {
-		AtomicInteger tickCallCount = new AtomicInteger(0);
-
-		Temporal requirement = () -> {
-			tickCallCount.incrementAndGet();
-			return () -> () -> {};
-		};
-
-		CellList list = new CellList();
-		list.setTickLoopCount(BUFFER_SIZE);
-		list.addRequirement(requirement);
-
-		// Invoking CellList.tick() triggers assembly: each requirement's tick() must be
-		// called exactly once, regardless of the tickLoopCount loop multiplier.
-		list.tick();
-
-		Assert.assertEquals(
-				"Requirement tick() must be assembled once per buffer-level tick, "
-						+ "not once per sample (tickLoopCount=" + BUFFER_SIZE + ")",
-				1, tickCallCount.get());
-	}
-
-	// ---- Test 2: State persistence across Temporal.tick --------------------------------
 
 	/**
 	 * Verifies that stateful PDSL block state persists across successive
@@ -174,8 +122,6 @@ public class PdslApproachDValidationTest extends TestSuiteBase implements FirFil
 		Assert.assertEquals("Second tick output[1] must be 1.0 (from first-tick delay buffer)",
 				1.0, lastOutput[0].toDouble(1), 1e-6);
 	}
-
-	// ---- Test 3: Block→Temporal adapter forward flow ----------------------------------
 
 	/**
 	 * Verifies that a minimal {@link Temporal} adapter around

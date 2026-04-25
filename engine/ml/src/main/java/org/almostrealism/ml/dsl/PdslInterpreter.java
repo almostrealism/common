@@ -20,19 +20,13 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Cell;
-import org.almostrealism.graph.Receptor;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.model.Block;
-import org.almostrealism.model.DefaultBlock;
-import org.almostrealism.model.ForwardOnlyBlock;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.time.TemporalFeatures;
-import org.almostrealism.time.computations.MultiOrderFilter;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -40,9 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
  * Interprets a parsed PDSL program to construct {@link Block} and {@link Model}
@@ -94,6 +86,13 @@ public class PdslInterpreter {
 	 */
 	private static final Features FEATURES = new Features();
 
+	/**
+	 * Registry of primitive names to their argument-list dispatchers. Populated at
+	 * construction time from {@link AudioDspInterpreterFeatures#registerAudioPrimitives}
+	 * so that adding a new audio primitive does not require editing this class.
+	 */
+	private final Map<String, Function<List<Object>, Object>> primitiveDispatch;
+
 	/** Layer definitions keyed by name, built from the parsed program. */
 	private final Map<String, PdslNode.LayerDef> layerDefs;
 
@@ -120,6 +119,8 @@ public class PdslInterpreter {
 		this.modelDefs = new HashMap<>();
 		this.dataDefs = new LinkedHashMap<>();
 		this.stateDefs = new LinkedHashMap<>();
+		this.primitiveDispatch = new HashMap<>();
+		FEATURES.registerAudioPrimitives(primitiveDispatch);
 		for (PdslNode.Definition def : program.getDefinitions()) {
 			if (def instanceof PdslNode.LayerDef) {
 				layerDefs.put(def.getName(), (PdslNode.LayerDef) def);
@@ -640,9 +641,20 @@ public class PdslInterpreter {
 			args.add(evaluateExpression(argExpr, env));
 		}
 
-		if ("route".equals(name)) return callRoute(args, env);
-		if ("sum_channels".equals(name)) return callSumChannels(args, env);
-		if ("fan_out".equals(name)) return callFanOut(args, env);
+		if ("route".equals(name)) {
+			return FEATURES.callRoute(args,
+					AudioDspInterpreterFeatures.toInt(env.get("channels")),
+					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
+		}
+		if ("sum_channels".equals(name)) {
+			return FEATURES.callSumChannels(args,
+					AudioDspInterpreterFeatures.toInt(env.get("channels")),
+					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
+		}
+		if ("fan_out".equals(name)) {
+			return FEATURES.callFanOut(args,
+					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
+		}
 
 		// Try built-in functions first
 		Object builtinResult = tryCallBuiltin(name, args);
@@ -742,6 +754,8 @@ public class PdslInterpreter {
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
 	private Object tryCallBuiltin(String name, List<Object> args) {
+		Function<List<Object>, Object> dispatch = primitiveDispatch.get(name);
+		if (dispatch != null) return dispatch.apply(args);
 		switch (name) {
 			case "dense": return callDense(args);
 			case "rmsnorm": return callRmsnorm(args);
@@ -753,21 +767,13 @@ public class PdslInterpreter {
 			case "tanh_act": return callActivation("tanh_act");
 			case "slice": return callSlice(args);
 			case "lerp": return callLerp(args);
-				case "reshape": return callReshape(args);
+			case "reshape": return callReshape(args);
 			case "rope_rotation": return callRopeRotation(args);
 			case "attention": return callAttention(args);
 			case "transformer": return callTransformer(args);
 			case "feed_forward": return callFeedForward(args);
-				case "shape": return callShape(args);
+			case "shape": return callShape(args);
 			case "range": return callRange(args);
-			case "fir": return callFir(args);
-			case "scale": return callScale(args);
-			case "lowpass": return callLowpass(args);
-			case "highpass": return callHighpass(args);
-			case "biquad": return callBiquad(args);
-			case "delay": return callDelay(args);
-			case "lfo": return callLfo(args);
-			case "identity": return callIdentity(args);
 			default: return null;
 		}
 	}
@@ -1066,259 +1072,13 @@ public class PdslInterpreter {
 				"range() expects 3 arguments (source, shape, offset), got " + args.size());
 	}
 
-	/**
-	 * Returns a block factory that wraps the given FIR coefficients in a {@link MultiOrderFilter}.
-	 *
-	 * @param name         primitive name used as the layer label
-	 * @param coefficients pre-computed FIR coefficient producer
-	 * @return a factory that creates a FIR filter block for any input shape
-	 */
-	private Function<TraversalPolicy, Block> firFilterBlock(String name, CollectionProducer coefficients) {
-		return shape -> new ForwardOnlyBlock(FEATURES.layer(name, shape, shape,
-				input -> MultiOrderFilter.create(input, coefficients)));
-	}
-
-	/**
-	 * Builds a FIR (Finite Impulse Response) filter block that convolves the input signal
-	 * with the provided coefficient array.
-	 *
-	 * @param args one weight argument: the FIR coefficient array ({@code filterOrder+1} elements)
-	 * @return a factory that creates a FIR filter block for any input shape
-	 */
-	private Object callFir(List<Object> args) {
-		if (args.size() == 1 && args.get(0) instanceof PackedCollection) {
-			PackedCollection coefficients = (PackedCollection) args.get(0);
-			return firFilterBlock("fir", FEATURES.cp(coefficients));
-		}
-		throw new PdslParseException(
-				"fir() expects 1 weight argument (coefficients), got " + args.size());
-	}
-
-	/**
-	 * Builds a scalar scaling block that multiplies each input element by the given factor.
-	 *
-	 * @param args one numeric argument: the scale factor
-	 * @return a factory that creates a scale block for any input shape
-	 */
-	private Object callScale(List<Object> args) {
-		if (args.size() == 1) {
-			double factor = toDouble(args.get(0));
-			return FEATURES.scale(factor);
-		}
-		throw new PdslParseException(
-				"scale() expects 1 numeric argument (factor), got " + args.size());
-	}
-
-	/**
-	 * Builds an identity (pass-through) block that forwards its input unchanged.
-	 *
-	 * @param args no arguments
-	 * @return a factory that creates a pass-through block for any input shape
-	 */
-	private Object callIdentity(List<Object> args) {
-		if (!args.isEmpty()) {
-			throw new PdslParseException(
-					"identity() expects no arguments, got " + args.size());
-		}
-		return (Function<TraversalPolicy, Block>) (shape -> {
-			Cell<PackedCollection> backward = Cell.of(
-					(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-							Supplier<Runnable>>) (in, next) -> new OperationList("identity-backward"));
-			return new DefaultBlock(shape, shape, null, backward);
-		});
-	}
-
-	/**
-	 * Builds a low-pass FIR filter block using Hamming-windowed sinc coefficients.
-	 *
-	 * @param args three numeric arguments: cutoff frequency (Hz), sample rate (Hz), filter order
-	 * @return a factory that creates a low-pass FIR filter block for any input shape
-	 */
-	private Object callLowpass(List<Object> args) {
-		if (args.size() == 3) {
-			double cutoff = toDouble(args.get(0));
-			int sampleRate = toInt(args.get(1));
-			int order = toInt(args.get(2));
-			return firFilterBlock("lowpass",
-					FEATURES.lowPassCoefficients(FEATURES.c(cutoff), sampleRate, order));
-		}
-		throw new PdslParseException(
-				"lowpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());
-	}
-
-	/**
-	 * Builds a high-pass FIR filter block using spectral inversion of the Hamming-windowed sinc.
-	 *
-	 * <p>Generates filter coefficients at block-build time using {@code highPassCoefficients()}
-	 * and wraps them in a {@link MultiOrderFilter} computation. The cutoff, sample rate,
-	 * and filter order are fixed when the block is created.</p>
-	 *
-	 * @param args three numeric arguments: cutoff frequency (Hz), sample rate (Hz), filter order
-	 * @return a factory that creates a high-pass FIR filter block for any input shape
-	 */
-	private Object callHighpass(List<Object> args) {
-		if (args.size() == 3) {
-			double cutoff = toDouble(args.get(0));
-			int sampleRate = toInt(args.get(1));
-			int order = toInt(args.get(2));
-			return firFilterBlock("highpass",
-					FEATURES.highPassCoefficients(FEATURES.c(cutoff), sampleRate, order));
-		}
-		throw new PdslParseException(
-				"highpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());
-	}
-
-	/**
-	 * Builds a stateful biquad IIR filter block.
-	 *
-	 * <p>Applies the difference equation and updates the {@code history} collection
-	 * after each forward pass so that state persists across successive calls.</p>
-	 *
-	 * @param args six arguments: b0, b1, b2, a1, a2 (numeric), history (PackedCollection, size 4)
-	 * @return a factory that creates a stateful biquad filter block for any input shape
-	 */
-	private Object callBiquad(List<Object> args) {
-		if (args.size() == 6) {
-			double b0 = toDouble(args.get(0));
-			double b1 = toDouble(args.get(1));
-			double b2 = toDouble(args.get(2));
-			double a1 = toDouble(args.get(3));
-			double a2 = toDouble(args.get(4));
-			PackedCollection history = (PackedCollection) args.get(5);
-			return (Function<TraversalPolicy, Block>) (shape -> {
-				int n = shape.getSize();
-				Cell<PackedCollection> forward = Cell.of(
-						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-								Supplier<Runnable>>) (in, next) -> {
-							CollectionProducer hist = FEATURES.cp(history);
-							CollectionProducer h0 = FEATURES.subset(FEATURES.shape(1), hist, 0);
-							CollectionProducer h1 = FEATURES.subset(FEATURES.shape(1), hist, 1);
-							CollectionProducer h2 = FEATURES.subset(FEATURES.shape(1), hist, 2);
-							CollectionProducer h3 = FEATURES.subset(FEATURES.shape(1), hist, 3);
-							CollectionProducer output = FEATURES.multiply(b0, in)
-									.add(FEATURES.c(b1).multiply(h0))
-									.add(FEATURES.c(b2).multiply(h1))
-									.subtract(FEATURES.c(a1).multiply(h2))
-									.subtract(FEATURES.c(a2).multiply(h3));
-							CollectionProducer flatIn = FEATURES.c(in).reshape(FEATURES.shape(n));
-							CollectionProducer flatOut = output.reshape(FEATURES.shape(n));
-							CollectionProducer newH0 = FEATURES.subset(FEATURES.shape(1), flatIn, n - 1);
-							CollectionProducer newH1 = n >= 2
-									? FEATURES.subset(FEATURES.shape(1), flatIn, n - 2)
-									: FEATURES.subset(FEATURES.shape(1), FEATURES.cp(history), 0);
-							CollectionProducer newH2 = FEATURES.subset(FEATURES.shape(1), flatOut, n - 1);
-							CollectionProducer newH3 = n >= 2
-									? FEATURES.subset(FEATURES.shape(1), flatOut, n - 2)
-									: FEATURES.subset(FEATURES.shape(1), FEATURES.cp(history), 2);
-							OperationList ops = new OperationList("biquad");
-							ops.add(next.push(output));
-							ops.add(FEATURES.into("biquad-history",
-									FEATURES.concat(newH0, newH1, newH2, newH3),
-									FEATURES.cp(history), false));
-							return ops;
-						});
-				Cell<PackedCollection> backward = Cell.of(
-						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-								Supplier<Runnable>>) (in, next) -> new OperationList("biquad-backward"));
-				return new DefaultBlock(shape, shape, forward, backward);
-			});
-		}
-		throw new PdslParseException(
-				"biquad() expects 6 arguments (b0, b1, b2, a1, a2, history), got " + args.size());
-	}
-
-	/**
-	 * Builds a stateful integer-sample delay line block.
-	 *
-	 * <p>Reads delayed samples from the circular {@code buffer}, then writes the input
-	 * into the buffer and advances {@code head} so state persists across successive calls.</p>
-	 *
-	 * @param args three arguments: delaySamples (int), buffer (PackedCollection), head (PackedCollection, size 1)
-	 * @return a factory that creates a stateful delay-line block for any input shape
-	 */
-	private Object callDelay(List<Object> args) {
-		if (args.size() == 3) {
-			int delaySamples = toInt(args.get(0));
-			PackedCollection buffer = (PackedCollection) args.get(1);
-			PackedCollection head = (PackedCollection) args.get(2);
-			int bufSize = buffer.getShape().getSize();
-			return (Function<TraversalPolicy, Block>) (shape -> {
-				int n = shape.getSize();
-				Cell<PackedCollection> forward = Cell.of(
-						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-								Supplier<Runnable>>) (in, next) -> {
-							CollectionProducer readPositions = FEATURES.mod(
-									FEATURES.cp(head).add(FEATURES.integers(0, n))
-											.subtract(FEATURES.c(delaySamples))
-											.add(FEATURES.c(bufSize)),
-									FEATURES.c(bufSize));
-							CollectionProducer output =
-									FEATURES.c(FEATURES.cp(buffer), readPositions).reshape(shape);
-							CollectionProducer flatInput = FEATURES.c(in).reshape(FEATURES.shape(bufSize));
-							CollectionProducer newHead = FEATURES.cp(head)
-									.add(FEATURES.c((double) n))
-									.mod(FEATURES.c((double) bufSize));
-							OperationList ops = new OperationList("delay");
-							ops.add(next.push(output));
-							ops.add(FEATURES.into("delay-buffer-write", flatInput,
-									FEATURES.cp(buffer), false));
-							ops.add(FEATURES.into("delay-head-write", newHead,
-									FEATURES.cp(head), false));
-							return ops;
-						});
-				Cell<PackedCollection> backward = Cell.of(
-						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-								Supplier<Runnable>>) (in, next) -> new OperationList("delay-backward"));
-				return new DefaultBlock(shape, shape, forward, backward);
-			});
-		}
-		throw new PdslParseException(
-				"delay() expects 3 arguments (delaySamples, buffer, head), got " + args.size());
-	}
-
-	/**
-	 * Builds a stateful sinusoidal LFO block.
-	 *
-	 * <p>Produces sin values for the current phase window and advances {@code phase}
-	 * by {@code n * phaseIncrement} (mod 2π) so subsequent calls continue seamlessly.</p>
-	 *
-	 * @param args three arguments: freqHz (numeric), sampleRate (numeric), phase (PackedCollection, size 1)
-	 * @return a factory that creates a stateful LFO block for any input shape
-	 */
-	private Object callLfo(List<Object> args) {
-		if (args.size() == 3) {
-			double freqHz = toDouble(args.get(0));
-			double sampleRate = toDouble(args.get(1));
-			PackedCollection phase = (PackedCollection) args.get(2);
-			double phaseIncrement = 2.0 * Math.PI * freqHz / sampleRate;
-			return (Function<TraversalPolicy, Block>) (shape -> {
-				int n = shape.getSize();
-				Cell<PackedCollection> forward = Cell.of(
-						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-								Supplier<Runnable>>) (in, next) -> {
-							CollectionProducer phases = FEATURES.cp(phase)
-									.add(FEATURES.integers(0, n).multiply(FEATURES.c(phaseIncrement)));
-							CollectionProducer output = FEATURES.sin(phases).reshape(shape);
-							CollectionProducer newPhase = FEATURES.cp(phase)
-									.add(FEATURES.c((double) n * phaseIncrement))
-									.mod(FEATURES.c(2.0 * Math.PI));
-							OperationList ops = new OperationList("lfo");
-							ops.add(next.push(output));
-							ops.add(FEATURES.into("lfo-phase-update", newPhase,
-									FEATURES.cp(phase), false));
-							return ops;
-						});
-				Cell<PackedCollection> backward = Cell.of(
-						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-								Supplier<Runnable>>) (in, next) -> new OperationList("lfo-backward"));
-				return new DefaultBlock(shape, shape, forward, backward);
-			});
-		}
-		throw new PdslParseException(
-				"lfo() expects 3 arguments (freqHz, sampleRate, phase), got " + args.size());
-	}
-
-	// ---- Multi-channel DSP primitives ----
+	// ---- Multi-channel statement-level dispatch ----
+	//
+	// `for each channel { ... }` is a language-level statement (a PdslNode.Statement)
+	// rather than a primitive call. It uses interpretBody to recurse into the
+	// per-channel sub-block, so it stays here next to interpretBranch / interpretAccum
+	// rather than in AudioDspInterpreterFeatures (which only owns Block-returning
+	// expression-level primitives).
 
 	/** Interprets {@code for each channel} by building per-channel sub-blocks and wrapping them. */
 	private void interpretForEachChannel(PdslNode.ForEachChannelStatement stmt,
@@ -1338,32 +1098,6 @@ public class PdslInterpreter {
 			channelBlocks.add(channelBlock);
 		}
 		block.add(FEATURES.perChannelBlock(channelBlocks, channels, signalSize));
-	}
-
-	/** Validates and delegates to {@link MultiChannelDspFeatures#routeBlock}. */
-	private Block callRoute(List<Object> args, Environment env) {
-		if (args.size() != 1 || !(args.get(0) instanceof PackedCollection)) {
-			throw new PdslParseException(
-					"route() expects 1 weight argument (transmission matrix), got " + args.size());
-		}
-		return FEATURES.routeBlock((PackedCollection) args.get(0),
-				toInt(env.get("channels")), toInt(env.get("signal_size")));
-	}
-
-	/** Validates and delegates to {@link MultiChannelDspFeatures#sumChannelsBlock}. */
-	private Block callSumChannels(List<Object> args, Environment env) {
-		if (!args.isEmpty()) {
-			throw new PdslParseException("sum_channels() expects no arguments, got " + args.size());
-		}
-		return FEATURES.sumChannelsBlock(toInt(env.get("channels")), toInt(env.get("signal_size")));
-	}
-
-	/** Validates and delegates to {@link MultiChannelDspFeatures#fanOutBlock}. */
-	private Block callFanOut(List<Object> args, Environment env) {
-		if (args.size() != 1) {
-			throw new PdslParseException("fan_out() expects 1 argument (n channels), got " + args.size());
-		}
-		return FEATURES.fanOutBlock(toInt(args.get(0)), toInt(env.get("signal_size")));
 	}
 
 	// ---- User-defined layer calls ----
@@ -1595,6 +1329,6 @@ public class PdslInterpreter {
 
 	/** Mixin type providing access to all framework feature default methods. */
 	private static class Features implements AttentionFeatures, RotationFeatures,
-			TemporalFeatures, MultiChannelDspFeatures {
+			TemporalFeatures, AudioDspInterpreterFeatures {
 	}
 }
