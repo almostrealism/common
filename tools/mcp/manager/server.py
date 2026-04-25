@@ -2141,6 +2141,7 @@ def project_commit_plan(
 @mcp.tool()
 def project_read_plan(
     workstream_id: str,
+    path: str = "",
     branch: str = "",
 ) -> dict:
     """Read the planning document for a workstream (delegates to github_read_file).
@@ -2151,18 +2152,22 @@ def project_read_plan(
 
     Args:
         workstream_id: Workstream to read from (from workstream_list).
+        path: Override for the planning document path. When omitted, the
+            workstream's configured ``planningDocument`` path is used.
         branch: Branch to read from. Defaults to the workstream's
             ``defaultBranch``.
 
     Returns:
-        Dictionary with file content, path, sha, and repo.
+        Dictionary with file content, path, branch, sha, and repo.
     """
     _require_scope("read")
-    err = _check_short_strings(workstream_id=workstream_id, branch=branch)
+    err = _check_short_strings(
+        workstream_id=workstream_id, path=path, branch=branch,
+    )
     if err:
         return err
     _require_workstream_in_scope(workstream_id)
-    _audit("project_read_plan", workstream_id=workstream_id, branch=branch)
+    _audit("project_read_plan", workstream_id=workstream_id, path=path, branch=branch)
 
     ws = _find_workstream(workstream_id)
     if ws is None:
@@ -2172,33 +2177,55 @@ def project_read_plan(
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
 
-    planning_doc = ws.get("planningDocument", "")
-    if not planning_doc:
+    effective_path = path or ws.get("planningDocument", "")
+    if not effective_path:
         return {
             "ok": False,
             "error": "No planning document path configured for this workstream",
             "next_steps": [
+                "Provide the path parameter explicitly",
                 "Use workstream_update_config to set planning_document",
             ],
         }
 
     repo_url = ws.get("repoUrl", "")
+    if not repo_url:
+        return {
+            "ok": False,
+            "error": "No repository URL configured for this workstream",
+            "next_steps": [
+                "Use workstream_update_config to set repo_url",
+            ],
+        }
+
     effective_branch = branch or ws.get("defaultBranch", "")
+    if not effective_branch:
+        return {
+            "ok": False,
+            "error": "No branch configured for this workstream",
+            "next_steps": [
+                "Pass branch explicitly when calling project_read_plan",
+                "Use workstream_update_config to set default_branch",
+            ],
+        }
 
     result = github_read_file(
-        path=planning_doc,
+        path=effective_path,
         repo_url=repo_url,
         branch=effective_branch,
+        workstream_id=workstream_id,
     )
 
     if result.get("ok"):
+        # Expose branch alongside ref for backward compatibility
+        result.setdefault("branch", result.get("ref", effective_branch))
         result["next_steps"] = [
             "Use project_commit_plan to update this document",
             "Use workstream_submit_task to send an agent to work on the plan",
         ]
     else:
         result.setdefault("next_steps", [
-            f"Verify the file exists at '{planning_doc}'",
+            f"Verify the file exists at '{effective_path}'",
             "Use project_commit_plan to create the planning document first",
         ])
     return result

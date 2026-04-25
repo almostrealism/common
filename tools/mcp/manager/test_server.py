@@ -643,21 +643,22 @@ class TestProjectCommitPlan(unittest.TestCase):
 
 class TestProjectReadPlan(unittest.TestCase):
 
+    @patch.object(server, "github_read_file")
     @patch.object(server, "_find_workstream")
-    @patch.object(server, "_github_request")
-    def test_read_plan(self, mock_gh, mock_find):
+    def test_read_plan(self, mock_find, mock_read_file):
         _grant_all_scopes()
-        import base64
-        content_b64 = base64.b64encode(b"# My Plan").decode()
         mock_find.return_value = {
             "repoUrl": "https://github.com/org/repo",
             "defaultBranch": "feature/x",
             "planningDocument": "docs/plans/PLAN.md",
         }
-        mock_gh.return_value = {
-            "content": content_b64,
-            "encoding": "base64",
+        mock_read_file.return_value = {
+            "ok": True,
+            "path": "docs/plans/PLAN.md",
+            "content": "# My Plan",
             "sha": "abc123",
+            "ref": "feature/x",
+            "repo": "org/repo",
         }
         result = server.project_read_plan(workstream_id="ws-test")
         self.assertTrue(result["ok"])
@@ -686,6 +687,7 @@ class TestProjectReadPlan(unittest.TestCase):
             path="docs/plans/PLAN.md",
             repo_url="https://github.com/org/repo",
             branch="feature/x",
+            workstream_id="ws-test",
         )
         self.assertTrue(result["ok"])
         next_steps = result.get("next_steps", [])
@@ -716,6 +718,7 @@ class TestProjectReadPlan(unittest.TestCase):
             path="docs/plans/PLAN.md",
             repo_url="https://github.com/org/repo",
             branch="feature/x",
+            workstream_id="ws-test",
         )
 
     @patch.object(server, "_find_workstream")
