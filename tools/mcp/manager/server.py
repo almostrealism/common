@@ -33,6 +33,7 @@ forwarding the request.
 """
 
 import base64
+import binascii
 import contextvars
 import hmac
 import json
@@ -2933,6 +2934,34 @@ def send_message(
 # ---------------------------------------------------------------------------
 
 
+def _find_open_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
+    """Look up the first open pull request for ``branch`` on ``owner/repo``.
+
+    Returns a dict with ``ok=True`` and ``pr`` (the raw GitHub PR object)
+    on success, ``ok=True`` with ``found=False`` when no open PR exists
+    for the branch, or an ``ok=False`` error dict when the GitHub call
+    fails or returns an unexpected payload. Centralising this lookup
+    avoids drift between tools that need to resolve a PR by branch
+    (e.g. ``github_pr_find``, ``github_request_copilot_review``,
+    ``github_pr_check_status``).
+    """
+    head = f"{owner}:{branch}"
+    pr_list = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open",
+    )
+    if isinstance(pr_list, dict) and pr_list.get("ok") is False:
+        return pr_list
+    if not isinstance(pr_list, list):
+        return {
+            "ok": False,
+            "error": "Unexpected response listing pull requests",
+        }
+    if not pr_list:
+        return {"ok": True, "found": False, "branch": branch}
+    return {"ok": True, "found": True, "pr": pr_list[0], "branch": branch}
+
+
 @mcp.tool()
 def github_pr_find(
     workstream_id: str = "",
@@ -2964,23 +2993,21 @@ def github_pr_find(
 
     _audit("github_pr_find", workstream_id=workstream_id, branch=effective_branch)
 
-    head = f"{owner}:{effective_branch}"
-    result = _github_request("GET", f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open")
-
-    if isinstance(result, list):
-        if not result:
-            return {"ok": True, "found": False, "branch": effective_branch}
-        pr = result[0]
-        return {
-            "ok": True,
-            "found": True,
-            "number": pr.get("number"),
-            "title": pr.get("title"),
-            "url": pr.get("html_url"),
-            "state": pr.get("state"),
-            "branch": effective_branch,
-        }
-    return result  # error dict from _github_request
+    lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+    if not lookup.get("ok"):
+        return lookup
+    if not lookup.get("found"):
+        return {"ok": True, "found": False, "branch": effective_branch}
+    pr = lookup["pr"]
+    return {
+        "ok": True,
+        "found": True,
+        "number": pr.get("number"),
+        "title": pr.get("title"),
+        "url": pr.get("html_url"),
+        "state": pr.get("state"),
+        "branch": effective_branch,
+    }
 
 
 @mcp.tool()
@@ -3520,11 +3547,12 @@ def github_request_copilot_review(
                 ],
             }
         # Look up the open PR for the branch.
-        head = f"{owner}:{effective_branch}"
-        pr_list = _github_request("GET", f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open")
-        if not isinstance(pr_list, list) or not pr_list:
+        lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+        if not lookup.get("ok"):
+            return lookup
+        if not lookup.get("found"):
             return {"ok": False, "error": f"No open PR found for branch '{effective_branch}'"}
-        effective_pr = pr_list[0]["number"]
+        effective_pr = lookup["pr"].get("number")
 
     _audit("github_request_copilot_review", pr_number=effective_pr)
 
@@ -3560,11 +3588,14 @@ def github_read_file(
 
     Args:
         path: File path within the repository (e.g. ``docs/README.md``).
-        workstream_id: Workstream to resolve the repository from. Either
-            this or ``repo_url`` must be provided.
+        workstream_id: Workstream to resolve the repository from. When
+            both ``workstream_id`` and ``repo_url`` are empty, the
+            resolver falls back to local-git detection (useful when the
+            server runs against a developer checkout).
         repo_url: Explicit GitHub repository URL (e.g.
             ``https://github.com/owner/repo``). Overrides workstream
-            resolution when provided.
+            resolution when provided. Scoped tokens are checked against
+            the parsed owner via the workspace scope gate.
         branch: Branch to read from. Defaults to the workstream's
             ``defaultBranch`` when available, otherwise the repo's
             default branch. Ignored when ``ref`` is provided.
@@ -3592,6 +3623,7 @@ def github_read_file(
         if not owner_repo:
             return {"ok": False, "error": f"Cannot parse owner/repo from: {repo_url}"}
         owner, repo = owner_repo
+        _require_org_in_scope(owner)
         _current_github_org.set(owner)
         effective_branch = branch
     else:
@@ -3615,6 +3647,22 @@ def github_read_file(
             "Check the repo_url or workstream_id is correct",
         ])
         return result
+
+    # The GitHub Contents API returns a JSON array (not a dict) when the
+    # supplied path refers to a directory. Surface this explicitly rather
+    # than reporting a misleading "Unexpected response".
+    if isinstance(result, list):
+        return {
+            "ok": False,
+            "error": (
+                f"Path '{path}' refers to a directory, not a file"
+            ),
+            "repo": f"{owner}/{repo}",
+            "next_steps": [
+                "Pass a specific file path within the directory",
+                "Use git/grep tools to enumerate directory contents",
+            ],
+        }
 
     if not isinstance(result, dict):
         return {
@@ -3640,7 +3688,16 @@ def github_read_file(
     encoding = result.get("encoding", "")
     if encoding == "base64" and content_b64:
         # GitHub wraps base64 output in newlines; strip them before decoding.
-        raw_bytes = base64.b64decode(content_b64.replace("\n", ""))
+        try:
+            raw_bytes = base64.b64decode(content_b64.replace("\n", ""))
+        except (binascii.Error, ValueError) as exc:
+            return {
+                "ok": False,
+                "error": (
+                    f"Failed to decode base64 content for '{path}': {exc}"
+                ),
+                "repo": f"{owner}/{repo}",
+            }
         try:
             content = raw_bytes.decode("utf-8")
         except UnicodeDecodeError:
@@ -3737,20 +3794,19 @@ def github_pr_check_status(
                     "Or supply workstream_id/branch so the open PR can be found",
                 ],
             }
-        head = f"{owner}:{effective_branch}"
-        pr_list = _github_request(
-            "GET",
-            f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open",
-        )
-        if not isinstance(pr_list, list) or not pr_list:
+        lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+        if not lookup.get("ok"):
+            return lookup
+        if not lookup.get("found"):
             return {
                 "ok": False,
                 "error": f"No open PR found for branch '{effective_branch}'",
                 "next_steps": ["Pass pr_number explicitly if the PR is closed"],
             }
-        effective_pr = pr_list[0]["number"]
-        head_sha = pr_list[0].get("head", {}).get("sha", "")
-        pr_branch = pr_list[0].get("head", {}).get("ref", effective_branch)
+        pr = lookup["pr"]
+        effective_pr = pr.get("number")
+        head_sha = pr.get("head", {}).get("sha", "")
+        pr_branch = pr.get("head", {}).get("ref", effective_branch)
 
     if not head_sha:
         return {"ok": False, "error": "Could not determine PR head commit SHA"}
@@ -3761,10 +3817,13 @@ def github_pr_check_status(
         f"/repos/{owner}/{repo}/actions/runs?head_sha={quote(head_sha, safe='')}",
     )
 
+    if isinstance(runs_result, dict) and runs_result.get("ok") is False:
+        return runs_result
+
     workflow_runs = []
     pipeline_current = False
 
-    if isinstance(runs_result, dict) and runs_result.get("ok") is not False:
+    if isinstance(runs_result, dict):
         for run in runs_result.get("workflow_runs", []):
             if run.get("head_sha") == head_sha:
                 pipeline_current = True
@@ -3785,9 +3844,22 @@ def github_pr_check_status(
         f"/repos/{owner}/{repo}/commits/{head_sha}/check-runs",
     )
 
+    if isinstance(check_result, dict) and check_result.get("ok") is False:
+        return {
+            "ok": False,
+            "error": "Failed to fetch check runs",
+            "check_runs_error": check_result,
+        }
+
     check_runs = []
-    if isinstance(check_result, dict) and check_result.get("ok") is not False:
+    if isinstance(check_result, dict):
         for check in check_result.get("check_runs", []):
+            # check_runs are scoped to head_sha by the URL, so any returned
+            # entry is also evidence that the pipeline targets the current
+            # commit. workflow_runs and check_runs come from independent
+            # GitHub endpoints — relying on workflow_runs alone misses cases
+            # where check_runs is populated but workflow_runs is empty.
+            pipeline_current = True
             check_info = {
                 "id": check.get("id"),
                 "name": check.get("name", ""),
@@ -3807,8 +3879,16 @@ def github_pr_check_status(
     elif workflow_runs and not pipeline_current:
         overall = "stale"
     else:
+        # An in-progress check (status != "completed") means CI is still
+        # running even if other checks have already concluded — report
+        # "pending" rather than letting completed conclusions decide.
+        has_incomplete_checks = any(
+            r.get("status") != "completed" for r in check_runs
+        )
         conclusions = [r["conclusion"] for r in check_runs if r.get("conclusion")]
-        if not conclusions:
+        if has_incomplete_checks:
+            overall = "pending"
+        elif not conclusions:
             overall = "pending"
         elif any(c == "failure" for c in conclusions):
             overall = "failure"
