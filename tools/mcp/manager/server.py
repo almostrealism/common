@@ -2141,35 +2141,28 @@ def project_commit_plan(
 @mcp.tool()
 def project_read_plan(
     workstream_id: str,
-    path: str = "",
     branch: str = "",
 ) -> dict:
-    """Read the planning document for a workstream from GitHub.
+    """Read the planning document for a workstream (delegates to github_read_file).
 
-    Fetches the file content via the GitHub Contents API, routed through
-    the FlowTree controller's proxy for authentication. Only works for
-    repositories hosted on GitHub.
-
-    If no path is provided, uses the workstream's configured
-    ``planningDocument`` path.
+    Looks up the workstream's configured ``planningDocument`` path and
+    delegates to :func:`github_read_file` to fetch its content. The
+    planning document path must be set via ``workstream_update_config``.
 
     Args:
         workstream_id: Workstream to read from (from workstream_list).
-        path: File path in the repository. Defaults to the workstream's
-            configured planningDocument.
-        branch: Branch to read from (default: workstream's defaultBranch).
+        branch: Branch to read from. Defaults to the workstream's
+            ``defaultBranch``.
 
     Returns:
-        Dictionary with the file content, path, and branch.
+        Dictionary with file content, path, sha, and repo.
     """
     _require_scope("read")
-    err = _check_short_strings(
-        workstream_id=workstream_id, path=path, branch=branch,
-    )
+    err = _check_short_strings(workstream_id=workstream_id, branch=branch)
     if err:
         return err
     _require_workstream_in_scope(workstream_id)
-    _audit("project_read_plan", workstream_id=workstream_id, path=path, branch=branch)
+    _audit("project_read_plan", workstream_id=workstream_id, branch=branch)
 
     ws = _find_workstream(workstream_id)
     if ws is None:
@@ -2179,75 +2172,36 @@ def project_read_plan(
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
 
-    _set_github_org(ws)
-
-    repo_url = ws.get("repoUrl")
-    if not repo_url:
-        return _pipeline_error(workstream_id, "repo_url is not configured")
-
-    owner_repo = _extract_owner_repo(repo_url)
-    if not owner_repo:
-        return {
-            "ok": False,
-            "error": f"Cannot parse owner/repo from: {repo_url}",
-            "next_steps": ["Use workstream_update_config to fix repo_url"],
-        }
-
-    owner, repo = owner_repo
-    effective_branch = branch or ws.get("defaultBranch", "")
-    if not effective_branch:
-        return {
-            "ok": False,
-            "error": "No branch specified and workstream has no defaultBranch",
-            "next_steps": ["Provide the branch parameter explicitly"],
-        }
-
-    effective_path = path or ws.get("planningDocument", "")
-    if not effective_path:
+    planning_doc = ws.get("planningDocument", "")
+    if not planning_doc:
         return {
             "ok": False,
             "error": "No planning document path configured for this workstream",
             "next_steps": [
-                "Provide the path parameter explicitly",
-                "Or use workstream_update_config to set planning_document",
+                "Use workstream_update_config to set planning_document",
             ],
         }
 
-    ref_param = quote(effective_branch, safe="")
-    result = _github_request(
-        "GET",
-        f"/repos/{owner}/{repo}/contents/{quote(effective_path, safe='/')}?ref={ref_param}",
+    repo_url = ws.get("repoUrl", "")
+    effective_branch = branch or ws.get("defaultBranch", "")
+
+    result = github_read_file(
+        path=planning_doc,
+        repo_url=repo_url,
+        branch=effective_branch,
     )
 
-    if result.get("ok") is False:
-        result.setdefault("next_steps", [
-            f"Verify the file exists at '{effective_path}' on branch '{effective_branch}'",
-            "Use project_commit_plan to create the planning document first",
-        ])
-        return result
-
-    content_b64 = result.get("content", "")
-    encoding = result.get("encoding", "")
-    if encoding == "base64" and content_b64:
-        try:
-            content = base64.b64decode(content_b64).decode("utf-8")
-        except Exception:
-            content = content_b64
-    else:
-        content = content_b64
-
-    return {
-        "ok": True,
-        "path": effective_path,
-        "branch": effective_branch,
-        "repo": f"{owner}/{repo}",
-        "content": content,
-        "sha": result.get("sha", ""),
-        "next_steps": [
+    if result.get("ok"):
+        result["next_steps"] = [
             "Use project_commit_plan to update this document",
             "Use workstream_submit_task to send an agent to work on the plan",
-        ],
-    }
+        ]
+    else:
+        result.setdefault("next_steps", [
+            f"Verify the file exists at '{planning_doc}'",
+            "Use project_commit_plan to create the planning document first",
+        ])
+    return result
 
 
 # -- Tier 3: Memory tools ---------------------------------------------------
