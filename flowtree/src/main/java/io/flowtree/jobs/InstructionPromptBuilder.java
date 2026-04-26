@@ -106,6 +106,15 @@ public class InstructionPromptBuilder {
     private String gitTamperingViolation;
 
     /**
+     * Number of times the current job has had to relaunch the Claude
+     * subprocess after an inactivity-triggered kill.  When greater than zero,
+     * a warning is prepended explaining that the prior attempt produced no
+     * output for an extended period and was terminated; the agent is asked
+     * to avoid the polling pattern that hung the previous attempt.
+     */
+    private int inactivityRestartAttempt;
+
+    /**
      * Sets the user's request prompt.
      *
      * @param prompt the user's request text
@@ -313,6 +322,23 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Sets the number of times the current job has been relaunched after an
+     * inactivity-triggered kill of the Claude subprocess.
+     *
+     * <p>When non-zero, a warning is prepended to the prompt explaining that
+     * the prior attempt was terminated for producing no output for too long,
+     * and instructing the agent not to repeat the polling pattern that
+     * hung the previous attempt.</p>
+     *
+     * @param attempt the number of prior inactivity-triggered restarts
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setInactivityRestartAttempt(int attempt) {
+        this.inactivityRestartAttempt = attempt;
+        return this;
+    }
+
+    /**
      * Builds the full instruction prompt by assembling all configured
      * sections into a single string.
      *
@@ -361,6 +387,36 @@ public class InstructionPromptBuilder {
             sb.append("**Consequences:** This is your LAST chance. If you tamper with git ");
             sb.append("again, ALL your changes will be destroyed and this session will be ");
             sb.append("terminated with no further retries. Your work will be lost entirely.\n\n");
+            sb.append("---\n\n");
+        }
+
+        // Inactivity restart warning -- prepended when the prior Claude
+        // subprocess was killed for going too long without producing any
+        // stdout (typically because the agent invoked a bash polling loop
+        // that did not terminate).  The agent must avoid that pattern on
+        // the relaunch.
+        if (inactivityRestartAttempt > 0) {
+            sb.append("## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!\n\n");
+            sb.append("Your previous attempt was killed because the Claude process produced ");
+            sb.append("no output for an extended period.  This is attempt ");
+            sb.append(inactivityRestartAttempt + 1).append(".\n\n");
+            sb.append("**The most common cause** is a Bash tool call that polls in a `while` ");
+            sb.append("or `until` loop and never terminates.  In particular: `pgrep -f <pattern>` ");
+            sb.append("matches the polling command's own command line when the pattern appears ");
+            sb.append("anywhere in that command line, so the loop sees its own PID forever and ");
+            sb.append("never exits.  Curling an invented HTTP endpoint in a bash loop has the ");
+            sb.append("same effect.\n\n");
+            sb.append("**Do NOT** poll for completion via shell loops.  To wait on an MCP-managed ");
+            sb.append("run (build validator, test runner, profile analyzer), call the tool's ");
+            sb.append("`get_*_status` method directly and re-call it after a brief pause if ");
+            sb.append("the run is still in progress.  Do not wrap status polling in a bash ");
+            sb.append("`while`/`until`/`for` loop under any circumstances.\n\n");
+            sb.append("If you genuinely need to wait on a local subprocess, give the wait ");
+            sb.append("command a hard upper bound (e.g. `timeout 60 ...`), and never use ");
+            sb.append("`pgrep -f` with a pattern that appears in the command being executed.\n\n");
+            sb.append("Resume the user's task below.  Prior progress on this branch is ");
+            sb.append("preserved in the git history; check `workstream_context` to see what ");
+            sb.append("has already been done before duplicating work.\n\n");
             sb.append("---\n\n");
         }
 
