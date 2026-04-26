@@ -71,6 +71,36 @@ public interface AudioDspInterpreterFeatures
 	}
 
 	/**
+	 * Converts a scalar argument into a shape-{@code [1]} {@link CollectionProducer},
+	 * regardless of whether the argument arrived as a numeric literal (folded into
+	 * the compiled kernel as {@code c(value)}) or as a {@link Producer} of a
+	 * shape-{@code [1]} {@link PackedCollection} (read inside the kernel via
+	 * {@code subset(shape(1), producer, 0)}).
+	 *
+	 * <p>This is the shared dispatch helper used by every audio primitive that
+	 * accepts producer-valued scalars (currently {@code scale}, {@code biquad},
+	 * {@code delay}, {@code lfo}, {@code lowpass}, {@code highpass}). It centralizes
+	 * the literal-vs-producer branch so each primitive only has to call it for
+	 * each of its scalar arguments.</p>
+	 *
+	 * @param arg the scalar argument from the PDSL argument list
+	 * @return a shape-{@code [1]} {@link CollectionProducer} suitable for use in
+	 *         broadcast multiplication, addition, and subtraction inside a kernel
+	 * @throws PdslParseException if {@code arg} is neither a {@link Number} nor a {@link Producer}
+	 */
+	default CollectionProducer scalarProducer(Object arg) {
+		if (arg instanceof Number) {
+			return c(toDouble(arg));
+		}
+		if (arg instanceof Producer) {
+			return subset(shape(1), (Producer<PackedCollection>) arg, 0);
+		}
+		throw new PdslParseException(
+				"Expected numeric or Producer argument, got "
+						+ (arg == null ? "null" : arg.getClass().getSimpleName()));
+	}
+
+	/**
 	 * Registers each audio primitive name in {@code registry} mapped to its dispatch
 	 * method. {@link PdslInterpreter} calls this once at construction time so the
 	 * lookup table is built without the interpreter having to enumerate the
@@ -178,16 +208,28 @@ public interface AudioDspInterpreterFeatures
 	/**
 	 * Builds a low-pass FIR filter block using Hamming-windowed sinc coefficients.
 	 *
-	 * @param args three numeric arguments: cutoff frequency (Hz), sample rate (Hz), filter order
+	 * <p>The {@code cutoff} argument may be supplied as either a numeric literal
+	 * (folded into the FIR coefficient table at build time) or a {@link Producer}
+	 * of a shape-{@code [1]} {@link PackedCollection}. When a producer is supplied
+	 * the FIR coefficients become a producer expression that is re-evaluated each
+	 * time the filter kernel runs — so a render-time mutable cutoff slot or a
+	 * clock-driven cutoff envelope flows through the coefficients without the
+	 * filter having to be rebuilt. {@code sampleRate} and {@code filterOrder}
+	 * remain numeric: they participate in build-time shape arithmetic on the
+	 * coefficient index array.</p>
+	 *
+	 * @param args three arguments: cutoff frequency (Hz) as either a {@link Number}
+	 *             or a shape-{@code [1]} {@link Producer}, sample rate (numeric, Hz),
+	 *             filter order (numeric)
 	 * @return a factory that creates a low-pass FIR filter block for any input shape
 	 */
 	default Object callLowpass(List<Object> args) {
 		if (args.size() == 3) {
-			double cutoff = toDouble(args.get(0));
+			Producer<PackedCollection> cutoff = cutoffProducer(args.get(0), "lowpass");
 			int sampleRate = toInt(args.get(1));
 			int order = toInt(args.get(2));
 			return firFilterBlock("lowpass",
-					lowPassCoefficients(c(cutoff), sampleRate, order));
+					lowPassCoefficients(cutoff, sampleRate, order));
 		}
 		throw new PdslParseException(
 				"lowpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());
@@ -196,19 +238,51 @@ public interface AudioDspInterpreterFeatures
 	/**
 	 * Builds a high-pass FIR filter block using spectral inversion of the Hamming-windowed sinc.
 	 *
-	 * @param args three numeric arguments: cutoff frequency (Hz), sample rate (Hz), filter order
+	 * <p>The {@code cutoff} argument may be supplied as either a numeric literal
+	 * or a {@link Producer} of a shape-{@code [1]} {@link PackedCollection}; see
+	 * {@link #callLowpass(List)} for the full discussion of how the producer form
+	 * propagates through the coefficient table. {@code sampleRate} and
+	 * {@code filterOrder} remain numeric.</p>
+	 *
+	 * @param args three arguments: cutoff frequency (Hz) as either a {@link Number}
+	 *             or a shape-{@code [1]} {@link Producer}, sample rate (numeric, Hz),
+	 *             filter order (numeric)
 	 * @return a factory that creates a high-pass FIR filter block for any input shape
 	 */
 	default Object callHighpass(List<Object> args) {
 		if (args.size() == 3) {
-			double cutoff = toDouble(args.get(0));
+			Producer<PackedCollection> cutoff = cutoffProducer(args.get(0), "highpass");
 			int sampleRate = toInt(args.get(1));
 			int order = toInt(args.get(2));
 			return firFilterBlock("highpass",
-					highPassCoefficients(c(cutoff), sampleRate, order));
+					highPassCoefficients(cutoff, sampleRate, order));
 		}
 		throw new PdslParseException(
 				"highpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());
+	}
+
+	/**
+	 * Resolves the {@code cutoff} argument shared by {@link #callLowpass(List)} and
+	 * {@link #callHighpass(List)} into a {@link Producer} suitable for the
+	 * {@code lowPassCoefficients} / {@code highPassCoefficients} helpers. Both
+	 * helpers already accept a {@link Producer}, so a literal is wrapped via
+	 * {@code c(value)} and a producer is forwarded directly without an extra
+	 * {@code subset} (the helpers handle their own shape arithmetic).
+	 *
+	 * @param arg       the cutoff argument from the PDSL argument list
+	 * @param primitive primitive name used in the error message
+	 * @return the cutoff as a {@link Producer} of {@link PackedCollection}
+	 */
+	default Producer<PackedCollection> cutoffProducer(Object arg, String primitive) {
+		if (arg instanceof Number) {
+			return c(toDouble(arg));
+		}
+		if (arg instanceof Producer) {
+			return (Producer<PackedCollection>) arg;
+		}
+		throw new PdslParseException(primitive
+				+ "() cutoff must be numeric or Producer, got "
+				+ (arg == null ? "null" : arg.getClass().getSimpleName()));
 	}
 
 	/**
@@ -217,16 +291,25 @@ public interface AudioDspInterpreterFeatures
 	 * <p>Applies the difference equation and updates the {@code history} collection
 	 * after each forward pass so that state persists across successive calls.</p>
 	 *
-	 * @param args six arguments: b0, b1, b2, a1, a2 (numeric), history (PackedCollection, size 4)
+	 * <p>Each of the five coefficient arguments ({@code b0}, {@code b1}, {@code b2},
+	 * {@code a1}, {@code a2}) may be supplied as either a numeric literal (folded
+	 * into the compiled kernel as a constant) or a {@link Producer} of a
+	 * shape-{@code [1]} {@link PackedCollection} (read inside the kernel via
+	 * {@code subset(shape(1), producer, 0)}). The {@code history} argument is
+	 * always a 4-element {@link PackedCollection} that the kernel writes back
+	 * into between forward passes.</p>
+	 *
+	 * @param args six arguments: b0, b1, b2, a1, a2 (each {@link Number} or
+	 *             shape-{@code [1]} {@link Producer}), history ({@link PackedCollection}, size 4)
 	 * @return a factory that creates a stateful biquad filter block for any input shape
 	 */
 	default Object callBiquad(List<Object> args) {
 		if (args.size() == 6) {
-			double b0 = toDouble(args.get(0));
-			double b1 = toDouble(args.get(1));
-			double b2 = toDouble(args.get(2));
-			double a1 = toDouble(args.get(3));
-			double a2 = toDouble(args.get(4));
+			CollectionProducer b0p = scalarProducer(args.get(0));
+			CollectionProducer b1p = scalarProducer(args.get(1));
+			CollectionProducer b2p = scalarProducer(args.get(2));
+			CollectionProducer a1p = scalarProducer(args.get(3));
+			CollectionProducer a2p = scalarProducer(args.get(4));
 			PackedCollection history = (PackedCollection) args.get(5);
 			return (Function<TraversalPolicy, Block>) (shape -> {
 				int n = shape.getSize();
@@ -238,11 +321,11 @@ public interface AudioDspInterpreterFeatures
 							CollectionProducer h1 = subset(shape(1), hist, 1);
 							CollectionProducer h2 = subset(shape(1), hist, 2);
 							CollectionProducer h3 = subset(shape(1), hist, 3);
-							CollectionProducer output = multiply(b0, in)
-									.add(c(b1).multiply(h0))
-									.add(c(b2).multiply(h1))
-									.subtract(c(a1).multiply(h2))
-									.subtract(c(a2).multiply(h3));
+							CollectionProducer output = b0p.multiply(in)
+									.add(b1p.multiply(h0))
+									.add(b2p.multiply(h1))
+									.subtract(a1p.multiply(h2))
+									.subtract(a2p.multiply(h3));
 							CollectionProducer flatIn = c(in).reshape(shape(n));
 							CollectionProducer flatOut = output.reshape(shape(n));
 							CollectionProducer newH0 = subset(shape(1), flatIn, n - 1);
@@ -276,12 +359,23 @@ public interface AudioDspInterpreterFeatures
 	 * <p>Reads delayed samples from the circular {@code buffer}, then writes the input
 	 * into the buffer and advances {@code head} so state persists across successive calls.</p>
 	 *
-	 * @param args three arguments: delaySamples (int), buffer (PackedCollection), head (PackedCollection, size 1)
+	 * <p>The {@code delaySamples} argument may be supplied as either a numeric
+	 * literal (folded into the read-pointer arithmetic as a constant) or a
+	 * {@link Producer} of a shape-{@code [1]} {@link PackedCollection} (read inside
+	 * the kernel via {@code subset(shape(1), producer, 0)}). The producer form lets
+	 * a render-time mutable delay-time slot or a clock-driven delay envelope flow
+	 * into the read-position calculation. The buffer-size arithmetic still uses
+	 * the {@code buffer} argument's shape for its bound, so the maximum delay is
+	 * fixed by buffer allocation; a producer cannot exceed it.</p>
+	 *
+	 * @param args three arguments: delaySamples (either {@link Number} or
+	 *             shape-{@code [1]} {@link Producer}), buffer ({@link PackedCollection}),
+	 *             head ({@link PackedCollection}, size 1)
 	 * @return a factory that creates a stateful delay-line block for any input shape
 	 */
 	default Object callDelay(List<Object> args) {
 		if (args.size() == 3) {
-			int delaySamples = toInt(args.get(0));
+			CollectionProducer delaySamplesP = scalarProducer(args.get(0));
 			PackedCollection buffer = (PackedCollection) args.get(1);
 			PackedCollection head = (PackedCollection) args.get(2);
 			int bufSize = buffer.getShape().getSize();
@@ -292,7 +386,7 @@ public interface AudioDspInterpreterFeatures
 								Supplier<Runnable>>) (in, next) -> {
 							CollectionProducer readPositions = mod(
 									cp(head).add(integers(0, n))
-											.subtract(c(delaySamples))
+											.subtract(delaySamplesP)
 											.add(c(bufSize)),
 									c(bufSize));
 							CollectionProducer output =
@@ -325,25 +419,46 @@ public interface AudioDspInterpreterFeatures
 	 * <p>Produces sin values for the current phase window and advances {@code phase}
 	 * by {@code n * phaseIncrement} (mod 2π) so subsequent calls continue seamlessly.</p>
 	 *
-	 * @param args three arguments: freqHz (numeric), sampleRate (numeric), phase (PackedCollection, size 1)
+	 * <p>The {@code freqHz} argument may be supplied as either a numeric literal
+	 * (in which case {@code phaseIncrement = 2π * freqHz / sampleRate} is folded
+	 * into the kernel as a constant) or a {@link Producer} of a shape-{@code [1]}
+	 * {@link PackedCollection}. In the producer case {@code phaseIncrement}
+	 * becomes a producer expression {@code subset(shape(1), freq, 0) * (2π / sampleRate)}
+	 * that the kernel evaluates once per forward pass, so a frequency envelope
+	 * driving the LFO updates the increment used both inside the kernel and in
+	 * the post-pass phase update. {@code sampleRate} stays numeric: it is a
+	 * fixed property of the audio pipeline, not a per-sample value.</p>
+	 *
+	 * @param args three arguments: freqHz (either {@link Number} or shape-{@code [1]}
+	 *             {@link Producer}), sampleRate (numeric), phase ({@link PackedCollection}, size 1)
 	 * @return a factory that creates a stateful LFO block for any input shape
 	 */
 	default Object callLfo(List<Object> args) {
 		if (args.size() == 3) {
-			double freqHz = toDouble(args.get(0));
+			Object freqArg = args.get(0);
 			double sampleRate = toDouble(args.get(1));
 			PackedCollection phase = (PackedCollection) args.get(2);
-			double phaseIncrement = 2.0 * Math.PI * freqHz / sampleRate;
+			CollectionProducer phaseIncrement;
+			if (freqArg instanceof Number) {
+				phaseIncrement = c(2.0 * Math.PI * toDouble(freqArg) / sampleRate);
+			} else if (freqArg instanceof Producer) {
+				phaseIncrement = subset(shape(1), (Producer<PackedCollection>) freqArg, 0)
+						.multiply(c(2.0 * Math.PI / sampleRate));
+			} else {
+				throw new PdslParseException(
+						"lfo() freqHz must be numeric or Producer, got "
+								+ (freqArg == null ? "null" : freqArg.getClass().getSimpleName()));
+			}
 			return (Function<TraversalPolicy, Block>) (shape -> {
 				int n = shape.getSize();
 				Cell<PackedCollection> forward = Cell.of(
 						(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 								Supplier<Runnable>>) (in, next) -> {
 							CollectionProducer phases = cp(phase)
-									.add(integers(0, n).multiply(c(phaseIncrement)));
+									.add(integers(0, n).multiply(phaseIncrement));
 							CollectionProducer output = sin(phases).reshape(shape);
 							CollectionProducer newPhase = cp(phase)
-									.add(c((double) n * phaseIncrement))
+									.add(c((double) n).multiply(phaseIncrement))
 									.mod(c(2.0 * Math.PI));
 							OperationList ops = new OperationList("lfo");
 							ops.add(next.push(output));
