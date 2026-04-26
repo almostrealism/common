@@ -143,8 +143,9 @@ data gru_weights {
 2. **Conditional execution:** No `gate` or `if` construct.
 3. **Variable channel count at runtime:** The `channels` parameter is fixed at build time.
    Dynamic channel count (e.g., channel activation via gene) remains Java CellList code.
-4. **Time-varying parameters above tier 1:** All scalar parameters today are inlined as
-   `double` constants at build time. Gene-driven, clock-driven, and automation-driven
+4. **Producer-valued scalar parameters:** All scalar parameters today are inlined as
+   `double` constants at build time. PDSL has no way to accept a `Producer<PackedCollection>`
+   in place of a scalar literal, so gene-driven, clock-driven, and automation-driven
    parameters cannot be expressed as PDSL arguments. See Section 11.
 
 ---
@@ -526,7 +527,7 @@ cells.addRequirement(temporal);
   fan out → per-channel delay → cross-channel route → sum to mono.
 - **`mixdown_manager.pdsl`** — top-level structural rendition of `MixdownManager.createCells()`
   + `createEfx()` with three layers (`mixdown_main_bus`, `mixdown_efx_bus`, `mixdown_master`).
-  All scalar parameters fixed at build time (Tier 1 in Section 11).
+  All scalar parameters fixed at build time; producer-valued bindings are covered in Section 11.
 - **PDSL/CellList integration** — `PdslLayerCellListIntegrationTest` (2 tests) validates
   state persistence across `Temporal.tick` and Block→Temporal adapter flow.
 - **Test coverage** — `PdslAudioDspTest` (13 tests), `MixdownChannelPdslTest` (8 tests),
@@ -544,10 +545,10 @@ cells.addRequirement(temporal);
   energy-level assertions, not exact sample match.
 - **Reverb path:** `DelayNetwork` is multi-tap feedback assembled from Java cell primitives.
   No PDSL equivalent yet (Capability E in Section 12.5).
-- **Time-varying parameters:** All scalar parameters are inlined at build time. The
+- **Producer-valued parameters:** All scalar parameters are inlined at build time. The
   `MixdownManager` audio path is driven by gene-, clock-, and automation-derived
   Producers that PDSL cannot accept as layer arguments today. This is the single largest
-  gap and is decomposed into four tiers in Section 11.
+  gap; Section 11 spells the proposed `producer([shape])` argument form.
 
 ### What's Next
 
@@ -557,25 +558,23 @@ Listed roughly in priority order:
    (`mixdown_efx_bus`) is in place. Promoting it to a working drop-in replacement requires
    wiring genome-driven per-channel state and the time-varying parameter capabilities
    below.
-2. **Tier 4 sample-rate automation primitive — `automation(producer)`** (Section 11.3).
-   Allows `callHighpass` / `callLowpass` / `callScale` to accept a
-   `Producer<PackedCollection>` argument instead of a build-time `double`. Largest
-   single unlock for migrating live `MixdownManager` and `EfxManager` paths.
-3. **Tier 2 mutable scalars** (Section 11.3). Smallest possible step — make `scalar`
-   parameters refer to a 1-element `PackedCollection` slot mutable across renders, the
-   same way `weight` parameters already work. Useful as an interim step or as the
-   degenerate case of tier 4.
-4. **Rectangular routing** — generalize `route(matrix)` to accept `[rows, cols]` matrices
+2. **Producer-valued arguments for scalar parameters** (Section 11). Allow
+   `callHighpass` / `callLowpass` / `callScale` and the other scalar-taking
+   primitives to accept a `Producer<PackedCollection>` of declared shape instead
+   of a build-time `double`. Largest single unlock for migrating live
+   `MixdownManager` and `EfxManager` paths. Render-time mutable scalars and the
+   variable-delay-time case fall out of the same plumbing.
+3. **Rectangular routing** — generalize `route(matrix)` to accept `[rows, cols]` matrices
    where rows ≠ cols (Section 12.3). Required for the N efx → M delays fan in
    `createEfx()`.
-5. **Heterogeneous fan-out** — a construct that applies a *different* sub-block to each
+4. **Heterogeneous fan-out** — a construct that applies a *different* sub-block to each
    branch output (Section 12.4). Required for the wet/efx/reverb branch in
    `createCells()`.
-6. **`delay_network(...)` primitive** — PDSL equivalent of
+5. **`delay_network(...)` primitive** — PDSL equivalent of
    `org.almostrealism.audio.filter.DelayNetwork` (Section 12.5).
-7. **Variable channel count.** Today `channels` is fixed at build time. Supporting
+6. **Variable channel count.** Today `channels` is fixed at build time. Supporting
    gene-driven channel activation requires runtime branching.
-8. **Temporal integration wrapper.** A reusable Java adapter that wraps a `CompiledModel`
+7. **Temporal integration wrapper.** A reusable Java adapter that wraps a `CompiledModel`
    as a `Temporal` with automatic state collection management, reducing boilerplate at
    `CellList` integration sites.
 
@@ -641,22 +640,23 @@ cutoffs, delay times, wet levels) is a *fixed scalar at build time*.
 Most of the PDSL-blocked rows share the same underlying cause: `MixdownManager`
 wires gene-, clock-, and automation-derived `Producer<PackedCollection>` values
 into the audio path, and PDSL does not yet have a way to accept those as
-layer arguments. Section 11 below classifies what variation each parameter
-carries and what would be needed to express it in PDSL.
+layer arguments. Section 11 below proposes the `producer([shape])` argument
+form and lists, per parameter, the producer shape PDSL needs and where the
+value comes from in the live system.
 
 ### 10.1 `createCells()` — top-level per-channel wiring
 
 | # | Line(s) | Method / statement | Status | Covered by |
 |---|---------|---------------------|--------|------------|
-| 1 | 504–513 | Per-channel HP filter with **automation-driven cutoff** (`enableAutomationManager` branch) | PDSL-blocked-by-tier-4 | `testMixdownManagerAutomatedHighpass` (`@Disabled`) |
-| 2 | 514–521 | Per-channel HP filter with **gene-driven cutoff** (no automation, but still time-varying via `TemporalFactor`) | PDSL-blocked-by-tier-4 | Same as #1 |
-| 3 | 524–526 | Per-channel volume `Factor` from `toAdjustmentGene(...).valueAt(0)` | PDSL-blocked-by-tier-4 | `testMixdownManagerAutomatedVolume` (`@Disabled`) |
+| 1 | 504–513 | Per-channel HP filter with **automation-driven cutoff** (`enableAutomationManager` branch) | PDSL-blocked-by-producer-args | `testMixdownManagerAutomatedHighpass` (`@Disabled`) |
+| 2 | 514–521 | Per-channel HP filter with **gene-driven cutoff** (no automation, but still time-varying via `TemporalFactor`) | PDSL-blocked-by-producer-args | Same as #1 |
+| 3 | 524–526 | Per-channel volume `Factor` from `toAdjustmentGene(...).valueAt(0)` | PDSL-blocked-by-producer-args | `testMixdownManagerAutomatedVolume` (`@Disabled`) |
 | 4 | — | Per-channel HP filter with **fixed cutoff** (structural rendition of row 1/2) | PDSL-ready | `mixdown_main_bus` layer in `mixdown_manager.pdsl` |
 | 5 | — | Per-channel volume with **fixed scalar** (structural rendition of row 3) | PDSL-ready | `mixdown_main_bus` layer in `mixdown_manager.pdsl` |
 | 6 | 528–536 | `enableSourcesOnly` fast-path (skip effects, deliver directly to master) | Not in scope | Java feature flag / receptor wiring |
 | 7 | 538–539 | `cells.mixdown(mixdownDuration)` — offline-buffered pattern mixdown | Not in scope | CellList-level buffering pass |
 | 8 | 541–544 | `reverbActive` flag computation | Not in scope | Java feature flag |
-| 9 | 546–561 | `reverbFactor` gene / automation curve per reverb channel | PDSL-blocked-by-tier-4 | Part of `testMixdownManagerReverbPath` (`@Disabled`) |
+| 9 | 546–561 | `reverbFactor` gene / automation curve per reverb channel | PDSL-blocked-by-producer-args | Part of `testMixdownManagerReverbPath` (`@Disabled`) |
 | 10 | 567–576 | Wet-sources path: `wetSources.branch(v·wetFilter, reverbFactor)` — heterogeneous fan-out | PDSL-blocked-by-heterogeneous-fanout | `testMixdownManagerHeterogeneousBranch` (`@Disabled`) |
 | 11 | 591–602 | Main-sources path: `cells.branch(v, v·wetFilter, reverbFactor)` — 3-way heterogeneous fan-out | PDSL-blocked-by-heterogeneous-fanout | Same as #10 |
 | 12 | 580–589 | `!enableEfx` fast-path: main-only (no efx, no reverb) | PDSL-ready (as the `mixdown_main_bus` layer) | `mixdown_main_bus` layer |
@@ -669,7 +669,7 @@ carries and what would be needed to express it in PDSL.
 
 | # | Line(s) | Method / statement | Status | Covered by |
 |---|---------|---------------------|--------|------------|
-| 17 | 654–658 | Delay-layer array of `AdjustableDelayCell` with **time-varying delay samples** from `delay` chromosome | PDSL-blocked-by-tier-4-delay | `testMixdownManagerVariableDelayTime` (`@Disabled`) |
+| 17 | 654–658 | Delay-layer array of `AdjustableDelayCell` with **time-varying delay samples** from `delay` chromosome | PDSL-blocked-by-producer-args | `testMixdownManagerVariableDelayTime` (`@Disabled`) |
 | 18 | — | Delay-layer array with **fixed delay samples** (structural rendition of row 17) | PDSL-ready | Per-channel `delay(...)` inside `mixdown_efx_bus` |
 | 19 | 660–662 | `delayGene` routing: N efx cells → M delay layers via **gene-driven rectangular matrix** | PDSL-blocked-by-rectangular-route | `testMixdownManagerRectangularRoute` (`@Disabled`) |
 | 20 | 664     | `efx.m(fi(), delays, tg)` — per-cell gene-routed fan-out | PDSL-blocked-by-rectangular-route | Same as #19 |
@@ -680,7 +680,7 @@ carries and what would be needed to express it in PDSL.
 | 25 | 676–683 | Reverb/efx merge: `cells(efx, reverb).sum()` | PDSL-ready (when reverb is available; `accum_blocks` semantics) | Part of `testMixdownManagerReverbPath` (`@Disabled`) |
 | 26 | 685–694 | `disableClean` alternate receptor wiring | Not in scope | Output receptor routing |
 | 27 | 696–705 | `efx.get(0).setReceptor(Receptor.to(main.get(0), ...))` — cell-level wiring | Not in scope | Java CellList wiring |
-| 28 | 707–714 | Per-channel master LP filter with **automation-driven cutoff** | PDSL-blocked-by-tier-4 | `testMixdownManagerAutomatedLowpass` (`@Disabled`) |
+| 28 | 707–714 | Per-channel master LP filter with **automation-driven cutoff** | PDSL-blocked-by-producer-args | `testMixdownManagerAutomatedLowpass` (`@Disabled`) |
 | 29 | — | Master LP filter with **fixed cutoff** (structural rendition of row 28) | PDSL-ready | `lowpass(...)` tail in `mixdown_master` |
 | 30 | 717–720 | Riser mixing: `cells(main, riser).sum()` | Not in scope | External input-channel merge; covered in future task |
 | 31 | 723–729 | Master output receptor (`master` + `measures[MAIN]`) wiring | Not in scope | Output receptor routing |
@@ -703,8 +703,8 @@ carries and what would be needed to express it in PDSL.
 | `setReverbChannels` / `getReverbChannels` | 321–333 | Java-side list |
 
 The `*AdjustmentScale` setters listed above mutate 1-element `PackedCollection`
-fields in place — exactly the tier-2 (render-time mutable scalar) pattern
-described in Section 11.
+fields in place — the render-time mutable slot pattern that Section 11 treats
+as a degenerate constant-in-time `producer([1])`.
 
 ### 10.4 PDSL files produced by this task
 
@@ -722,12 +722,14 @@ is the first PDSL file that renders the *top-level* shape of
 
 The `@Disabled` tests produced in this task are indexed in Section 12
 ("Current Limitations — Captured as Tests"). They cluster around
-five missing capabilities, four of which trace back to one root cause:
+four missing capabilities:
 
-1. **Tier 4 sample-rate automation** — `automation(producer)` primitive plus a
-   variable-delay-time variant. PDSL needs the ability to accept a
-   `Producer<PackedCollection>` as a scalar argument to filters, gain stages, and
-   delay-sample counts. Covers rows 1–3, 9, 17, 28. Section 11 unifies these.
+1. **Producer-valued arguments** — primitives that today take a `double`
+   scalar literal must learn to accept a `Producer<PackedCollection>` of
+   declared shape (`producer([shape])`). One capability that covers filters,
+   gain stages, and delay-sample counts; the variable-delay-time case is the
+   same plumbing applied to `delay`'s sample-count argument. Covers rows
+   1–3, 9, 17, 28. Section 11 spells the design.
 2. **Rectangular routing** — a `route(matrix)` primitive that accepts
    `[rows, cols]` matrices where rows ≠ cols. Covers rows 19, 20.
 3. **Heterogeneous fan-out** — a `fan_out_with(block_a, block_b, ...)`
@@ -743,255 +745,70 @@ changes to `layer`, `state`, or the existing multi-channel constructs.
 
 ---
 
-## 11. Time-Varying Parameters: Four Tiers of Variation
+## 11. Producer-Valued Parameters
 
 The PDSL files produced so far treat every numeric parameter as a build-time
-constant. The Java `MixdownManager`/`EfxManager` code does not. Different
-parameters change at very different rates, and conflating them under a single
-"automation" label obscures both the work needed and the order to do it in.
+constant. The Java `MixdownManager` / `EfxManager` code does not. This section
+proposes a single change: a primitive may accept any of its arguments as a
+`Producer<PackedCollection>` of a declared shape, instead of a literal. The
+producer is evaluated per kernel evaluation. Everything else — gene-driven
+parameters, automation envelopes, render-time mutable scalars — falls out as
+specific cases of supplying a particular kind of producer.
 
-This section distinguishes four tiers of variation, identifies which
-parameters in `MixdownManager`/`EfxManager` sit at each tier, and lays out
-what PDSL needs at each tier above tier 1.
+### 11.1 The Concept
 
-### 11.1 The Four Tiers
+Today every scalar argument to a PDSL primitive is inlined as a Java `double`
+literal at build time. The numeric value is folded into the compiled kernel;
+changing it requires rebuilding the layer. `weight` parameters already break
+this rule for collection-shaped arguments — they are caller-supplied
+`PackedCollection` references that the kernel reads through `cp(slot)`, and the
+caller can mutate the collection between renders without rebuilding.
 
-#### Tier 1: Build-time constant
+The proposal generalises that mechanism to scalar (and other) arguments. A
+primitive may accept any of its arguments as a `Producer<PackedCollection>` of
+an explicitly declared shape. The body of the layer does not change —
+`highpass(hp_cutoff, ...)` continues to look the same. Only the *binding* of
+`hp_cutoff` changes: instead of a Java `double` baked in at build time, the
+interpreter reads a `Producer<PackedCollection>` of shape `[1]` from the args
+map, and the compiled kernel emits a producer read instead of a literal.
 
-What PDSL handles today. Resolved at `loader.buildLayer(...)`. The numeric
-value is folded into the compiled kernel as a literal `double`.
+A constant-folded producer is the degenerate case. Supplying `cp(constant_slot)`
+over a 1-element `PackedCollection` mutated by the caller between renders
+recovers the render-time-mutable-scalar pattern that today has to be inlined as
+a `double` because PDSL's scalar binding does not accept a collection. Constant-
+in-time producers should compile down to the same kernel a literal scalar
+produces today, so fixed-parameter PDSL files do not regress.
 
-- **Runtime form:** `double` constant, baked into the compiled kernel.
-- **Mutability after build:** none; rebuilding the layer is required.
-- **Example in MixdownManager:** none of the live parameters are tier 1; the
-  fixed-scalar rendition in `mixdown_manager.pdsl` is a deliberate
-  simplification of the live paths.
+The shape of the producer is part of the type. PDSL does not need to
+distinguish "this argument is shape-1" from "this argument is shape-N" with
+different markers — the shape is just the shape. Today's `scalar` becomes
+`producer([1])` when promoted; a per-channel envelope is `producer([N])`; a
+time-varying transmission matrix is `producer([N, N])`; morphing FIR
+coefficients are `producer([K])`. The argument's *intent* (automation
+envelope, gene-derived render-time constant, fixed constant, etc.) belongs in
+the argument's name and a comment, not in the type.
 
-#### Tier 2: Render-time constant (genome-reassignment-time)
+### 11.2 Syntax
 
-The value is constant for the duration of one render but can be replaced
-between renders without rebuilding the graph. In Java, this is the granularity
-at which `assignGenome()` operates: gene values are written into existing
-`PackedCollection` slots, and the next render reads them.
+`producer([shape])` marks an argument bound to a `Producer<PackedCollection>`
+of the given shape. The shape is a comma-separated list of positive integer
+literals or previously-declared `int` parameters (the same expressions the
+existing `-> [1, signal_size]` output-shape annotation already accepts).
 
-- **Runtime form:** a 1-element `PackedCollection` (read with `cp(scale)` or
-  `p(scale)` to get a `Producer<PackedCollection>`).
-- **Mutability after build:** by mutating the underlying `PackedCollection`;
-  no recompile.
-- **PDSL today:** `weight` parameters already work this way (the caller
-  supplies a `PackedCollection` reference). `scalar` parameters do **not** —
-  they are inlined as Java `double`s at build time.
-- **Examples in MixdownManager:**
-  - `volumeAdjustmentScale`, `mainFilterUpAdjustmentScale`,
-    `mainFilterDownAdjustmentScale`, `reverbAdjustmentScale` — 1-element
-    `PackedCollection` fields mutated by setters
-    (`MixdownManager.java:301-330`). These are passed into
-    `automation.getAggregatedValue(..., p(scale), ...)` and used as multipliers
-    on the gene contribution. In Java they participate in tier-4 producers, but
-    the *scale value itself* changes only between renders.
-  - `transmission` chromosome resolved by `assignGenome()` — its
-    `[channels, channels]` `PackedCollection` is already wired into PDSL today
-    via the `weight` parameter `transmission` of `mixdown_efx_bus`. This is
-    tier 2 by construction: changing the genome rewrites the matrix in place.
-  - `wetFilter` FIR coefficients (`FixedFilterChromosome`) — likewise tier 2,
-    consumed via `wet_filter_coeffs: weight` in `mixdown_efx_bus`.
+Among alternatives — `producer<shape>`, `dyn(shape)`, `producer scalar`,
+`dynamic(shape)` — `producer([shape])` is preferred because the bracketed
+shape literal matches the existing shape annotations on layer outputs and
+`data` block derivations, the keyword `producer` directly names the runtime
+type the interpreter looks up in the args map, and the form scales unchanged
+from `[1]` to `[N, M]` without needing a separate spelling for the shape-1
+case.
 
-The `weight` parameter mechanism in PDSL already covers tier 2 *for collections*.
-The hole is for `scalar` parameters that today inline as `double`s.
-
-#### Tier 3: Beat-rate / structural-time variation
-
-Values that change at musical-time boundaries — every beat, every measure,
-every section — but not every audio sample. In the cell graph this maps to
-gene values sampled by musical position via `Gene.valueAt(position)` lookups
-and `factor()` adapters that re-evaluate at structural boundaries rather than
-per sample.
-
-- **Runtime form:** a `Producer<PackedCollection>` that depends on a
-  position/section index, evaluated when the index advances.
-- **Mutability after build:** continuous within a render (driven by an
-  external position input).
-- **PDSL today:** not directly representable. The caller can sample a
-  `Gene.valueAt(position)` per render in Java and pass the result as a tier-2
-  `weight` parameter, but PDSL does not know about the position dimension or
-  the gene structure.
-- **Examples in MixdownManager / EfxManager:**
-  - `delay.valueAt(i, 0)` (`MixdownManager.java:667`) — the delay-time gene
-    for delay layer `i`. The numeric delay time changes at structural
-    boundaries because the active gene allele and the beat duration change.
-    The Java code wraps this in `AdjustableDelayCell` and reads it as a
-    `Producer` per sample, but the underlying gene value is structural.
-  - `delayGene(...)` constructed from `wetInSimple.valueAt(channelIdx)`
-    (`MixdownManager.java:672`) — gene values per pattern channel, sampled
-    per render but selected by channel index.
-  - `EfxManager.delayLevels.valueAt(channel, k)`
-    (`EfxManager.java:223,226,311,313`) — wet, feedback, decision, cutoff
-    gene values per channel, indexed by channel, evaluated as needed.
-  - `wetFilter` HP/LP cutoffs computed from
-    `delayLevels.valueAt(channel, 3).getResultant(c(1.0))` — gene-driven
-    cutoff that the FIR coefficients are derived from at build time.
-
-A clean tier-3 design would let PDSL read a gene-indexed value per
-forward pass; an "OK enough" design lets the caller sample the gene per
-render and feed the result in as a tier-2 weight.
-
-#### Tier 4: Sample-rate automation
-
-Values that change every audio sample. In Java this is what
-`AutomationManager.getAggregatedValue(...)` and `clock`-driven
-`TemporalFactor` outputs return: `Producer<PackedCollection>` expressions that
-incorporate `clock.frame()` or `clock.time(sampleRate)` and so are recomputed
-every sample by the compiled kernel.
-
-- **Runtime form:** a `Producer<PackedCollection>` that depends on the audio
-  clock, evaluated per sample inside the compiled kernel.
-- **Mutability after build:** continuous; encoded in the producer graph.
-- **PDSL today:** not representable — there is no PDSL primitive that accepts a
-  `Producer` as a scalar argument.
-- **Examples in MixdownManager:**
-  - `automation.getAggregatedValue(mainFilterUpSimple.valueAt(...), p(mainFilterUpAdjustmentScale), -40.0)`
-    (`MixdownManager.java:519-522`) — HP cutoff, sample-rate.
-  - `automation.getAggregatedValue(reverbAutomation.valueAt(...), p(reverbAdjustmentScale), 0.0)`
-    (`MixdownManager.java:561-565`) — reverb amplitude, sample-rate.
-  - Tier-4 multiplier on master LP cutoff at
-    `MixdownManager.java:720-724`.
-  - `toAdjustmentGene(clock, sampleRate, p(scale), simple, channelIdx).valueAt(0).getResultant(c(1.0))`
-    (`MixdownManager.java:527-530`) — when `enableAutomationManager` is false,
-    the *gene* is tier 2/3 but the resulting `Factor` is sample-rate because
-    `clock` is a `TimeCell` advanced every sample. So the live cell-graph
-    behaviour is tier 4 even in the "no automation" branch.
-  - In `EfxManager.apply()`:
-    `automation.getAggregatedValue(delayAutomation.valueAt(channel), null, 0.0)`
-    (`EfxManager.java:237-238`) — sample-rate feedback modulation on the
-    delay wet path.
-
-### 11.2 Per-Parameter Tier Map
-
-The following table walks through the parameters that drive
-`MixdownManager.createCells()` / `createEfx()` and `EfxManager.apply()`
-and assigns each to the tier at which it actually varies in the live system.
-
-| Parameter | Java site | Tier | Notes |
-|-----------|-----------|------|-------|
-| Per-channel HP cutoff (main filter up), `enableAutomationManager=true` | `MixdownManager.java:519-523` | 4 | `automation.getAggregatedValue(...)` × 20 kHz |
-| Per-channel HP cutoff (main filter up), `enableAutomationManager=false` | `MixdownManager.java:527-530` | 4 (via clock-driven `TemporalFactor`); gene values are 2/3 | `toAdjustmentGene(clock, sampleRate, ...)` |
-| Per-channel volume | `MixdownManager.java:535-537,580-606` | 4 | Same `toAdjustmentGene(clock, ...)` pattern |
-| Reverb factor, automation on | `MixdownManager.java:561-567` | 4 | `automation.getAggregatedValue(reverbAutomation, ...)` × `reverbLevel` |
-| Reverb factor, automation off | `MixdownManager.java:568-572` | 2/3 | `reverb.valueAt(channelIdx, 0)` — gene-driven, no clock; rate depends on whether `valueAt` is wrapped in a clock-driven factor at the call site |
-| Wet filter coefficients (FIR) | `MixdownManager` constructor + `wetFilter` | 2 | `FixedFilterChromosome`-derived; rebuilt when genome changes, tier 2 across renders |
-| Wet send level (`v · wetFilter` chain) | `MixdownManager.java:585-586,605-606` | 4 | `v.apply(i)` is the tier-4 volume factor; chained with the fixed wet filter |
-| Per-delay-layer delay time | `MixdownManager.java:666-668` | 4 (driven by `clock` via `AdjustableDelayCell`); gene is 2/3 | `delay.valueAt(i, 0).getResultant(c(1.0))` |
-| Per-delay-layer dynamics | `MixdownManager.java:663-668` | 4 (clock-driven via `toPolycyclicGene`); gene is 2/3 | `df.apply(i).getResultant(c(1.0))` |
-| `delayGene` per-channel routing | `MixdownManager.java:670-672` | 2/3 | Re-derived from `wetInSimple.valueAt(channelIdx)`; rebuilt per render |
-| `transmission` matrix | `MixdownManager.java:258-260,677` | 2 | Gene-driven, mutable across renders; PDSL `weight` parameter |
-| `wetOut` (delay output gain) | `MixdownManager.java:262,677` | 2 | Same as `transmission` |
-| Master LP cutoff, `enableMasterFilterDown=true` | `MixdownManager.java:720-724` | 4 (clock-driven) | `toAdjustmentGene(clock, ...)` × 20 kHz |
-| `*AdjustmentScale` (volume, filter-up, filter-down, reverb) | `MixdownManager.java:301-330` | 2 | 1-element `PackedCollection`s mutated by setters |
-| EFX delay time | `EfxManager.java:226-231` | 4 (clock-driven via `AdjustableDelayCell`); gene is 2/3 | `delayTimes.valueAt(channelIdx, 0).getResultant(c(1.0))` × beatDuration |
-| EFX delay levels (filter cutoff for wet path) | `EfxManager.java:312-313` | 2/3 | `delayLevels.valueAt(channelIdx, 3)` — used at filter-build time, not in the audio path |
-| EFX wet feedback level | `EfxManager.java:222-223,245` | 2/3 | `delayLevels.valueAt(channelIdx, 0/1)` |
-| EFX delay automation modulation, `enableAutomation=true` | `EfxManager.java:236-241` | 4 | `automation.getAggregatedValue(...)` |
-
-Two patterns recur:
-
-1. **Tier 2/3 gene + tier-4 clock factor → tier 4 in practice.** Many "gene"
-   values reach the audio path through `toAdjustmentGene(clock, ...)` or
-   `AdjustableDelayCell`, which evaluate per sample. The gene contribution
-   itself is structural (tier 2/3), but the final factor seen by the audio
-   kernel is tier 4. Faithfully migrating these to PDSL therefore requires
-   tier-4 support, not tier-3.
-2. **Pure tier-2 mutables.** `transmission`, `wetOut`, the FIR coefficient
-   `weight` parameters, and the four `*AdjustmentScale` 1-element collections
-   are tier-2 only. PDSL's `weight` mechanism already handles the
-   collection-shaped ones. The `*AdjustmentScale` collections are the only
-   fields that today have to be inlined as `double` literals in PDSL because
-   they appear as scalar arguments (not `weight`s).
-
-### 11.3 What PDSL Needs at Each Tier Above Tier 1
-
-#### Tier 2: mutable scalars
-
-**Idea.** Treat a `scalar` parameter as a 1-element `PackedCollection` slot, the
-same way `weight` already works. Inside the compiled kernel, the value is read
-via `cp(slot)` rather than emitted as a `double` literal; mutating the slot in
-Java between renders is enough to change the value the kernel sees on the
-next render.
-
-**API surface.** Two plausible shapes:
-
-1. *Implicit*: leave the syntax (`name: scalar`) unchanged and change the
-   binding from "double literal" to "1-element `PackedCollection`-backed
-   producer." Caller's args map starts accepting either a `Number` (auto-wrap)
-   or a `PackedCollection`. Smallest possible change.
-2. *Explicit*: introduce `name: mutable_scalar` (or reuse `weight` for
-   scalars by relaxing the shape check). Preserves backwards compatibility for
-   anyone relying on a scalar literal being inlined as a constant by the
-   compiler.
-
-The framework's expression compiler already constant-folds 1-element
-`PackedCollection` reads when the slot is known to be constant during a single
-forward pass, so option 1 should not regress fixed-parameter kernels.
-
-**Edge cases.**
-- `int` parameters used in compile-time shape arithmetic (e.g.,
-  `signal_size`, `channels`, `filter_order`, `delay_samples`) genuinely need
-  to be build-time only; they index into shapes and loop bounds. Promoting
-  these to mutable would break the entire shape system. Tier 2 only applies to
-  `scalar` (continuous-valued) parameters.
-- Integer-shaped `delay_samples` is the awkward case: it is logically scalar
-  but used as an array offset. Live `MixdownManager` makes it a `Producer`
-  via `AdjustableDelayCell`, so this is more naturally tier 4.
-
-**Effort estimate.** Days, with one caveat: the change has to preserve
-constant-folding for the existing fixed-parameter PDSL files. The risk is in
-the compiler, not in the parser or interpreter.
-
-#### Tier 3: structural-time scalars
-
-**Idea.** Allow a scalar argument to be a `gene(chromosome, position)` lookup
-where `position` is supplied per forward pass. The lookup resolves the gene
-allele at the given musical position; the resulting 1-element
-`PackedCollection` is read by the kernel.
-
-**Two designs.**
-
-1. *PDSL-aware gene*: introduce `gene(chromosome, position_input)` as a
-   first-class scalar argument. PDSL knows about chromosomes and positions; the
-   caller supplies a `Chromosome<PackedCollection>` and a position
-   `Producer<PackedCollection>`.
-2. *Caller samples*: do nothing in PDSL beyond tier 2. The caller (Java)
-   samples the gene at each forward pass (or at each structural boundary) and
-   updates the tier-2 mutable scalar accordingly. PDSL is unaware that the
-   value has structural-time semantics.
-
-Design 2 is strictly less expressive but does not require PDSL to learn
-chromosome semantics. Design 1 is more invasive and probably overengineered
-unless several other domains end up needing the same indexed lookup.
-
-**Edge cases.** The live cell-graph behaviour is mostly tier 4 (because the
-genes feed into clock-driven factors), so a tier-3 design that ignores the
-sample-rate dimension would not fully reproduce the live audio. Tier 3 is
-useful only for parameters that genuinely *should* be evaluated structurally
-rather than per sample.
-
-**Effort estimate.** Design 1 is weeks: AST nodes, interpreter wiring, a
-position input convention. Design 2 is a few days *given that tier 2 is in
-place*. Recommendation: skip native tier 3 entirely (see Section 11.5).
-
-#### Tier 4: sample-rate automation
-
-**Idea.** Allow primitives to accept a `Producer<PackedCollection>` argument
-in place of a `scalar` literal. The producer is free to depend on `clock` or
-any other input and is recomputed per sample by the compiled kernel.
-
-**API surface.** The cleanest spelling is to mark the argument with an
-`automation(...)` tag at the layer header (so the interpreter knows to
-extract a `Producer` from the args map rather than a `Number`):
+**Signature 1 — single-channel mixdown with producer-valued cutoff and volume:**
 
 ```pdsl
 layer mixdown_main_automated(channels: int, signal_size: int,
-                             hp_cutoff: automation(scalar),
-                             volume:    automation(scalar),
+                             hp_cutoff: producer([1]),
+                             volume:    producer([1]),
                              sample_rate: scalar, filter_order: scalar)
                           -> [1, signal_size] {
     for each channel {
@@ -1002,109 +819,178 @@ layer mixdown_main_automated(channels: int, signal_size: int,
 }
 ```
 
-Internally the interpreter binds `hp_cutoff` and `volume` to
-`Producer<PackedCollection>` values from the args map; `callHighpass` /
-`callScale` accept a producer or a literal at the same call site. The same
-treatment applies to `delay`, where the `delay_samples` argument becomes a
-producer (subsuming Section 12.2).
+`hp_cutoff` and `volume` are read by the kernel as `Producer<PackedCollection>`
+values of shape `[1]`. The caller may supply a clock-driven automation
+producer, a `cp(slot)` over a render-time mutable slot, or a constant-folded
+literal — PDSL is indifferent.
 
-**Edge cases.**
-- Every primitive that takes a scalar today needs to learn to accept a
-  producer. That includes `highpass`, `lowpass`, `scale`, `biquad` (five
-  scalars), `delay`, `lfo` (two scalars), `fir` indirectly. The plumbing
-  cost is per-primitive, not one-time.
-- The compiler must be willing to embed a producer that reads from `clock`
-  inside the per-sample kernel. The expression compiler already does this
-  for `weight` reads inside ML layers, but the audio primitives' current
-  implementations may inline scalar arguments as `double`s at build time.
-- Backwards compatibility: existing fixed-parameter PDSL files call
-  primitives with literal arguments. The new acceptance must not regress
-  them.
+**Signature 2 — per-channel envelope** (same primitive, different shape):
 
-**Effort estimate.** Multi-week, not days. The Section 12.1 estimate of
-"small — days of work" is wrong: it underestimates the producer-vs-literal
-plumbing required across every primitive that takes a scalar. A realistic
-budget is 1–3 weeks, with most of it spent in `PdslInterpreter` and the
-audio primitive implementations rather than in the parser or AST.
+```pdsl
+layer mixdown_main_per_channel(channels: int, signal_size: int,
+                               hp_cutoffs: producer([channels]),
+                               volumes:    producer([channels]),
+                               sample_rate: scalar, filter_order: scalar)
+                            -> [1, signal_size] {
+    for each channel {
+        highpass(hp_cutoffs[channel], sample_rate, filter_order)
+        scale(volumes[channel])
+    }
+    sum_channels()
+}
+```
 
-### 11.4 Interaction Effects
+The implicit `channel` index inside `for each channel { }` slices the producer
+per channel, the same way it slices state collections today. The producer's
+shape determines whether the kernel reads a single value shared across all
+channels or a per-channel value; the rest of the layer body is unchanged.
 
-Several real `MixdownManager`/`EfxManager` situations combine tiers. The
-proposals above need to compose cleanly across them.
+**Signature 3 — time-varying transmission matrix:**
 
-1. **Tier 2 scale × tier 4 envelope.** `automation.getAggregatedValue(gene, p(scale), offset)`
-   passes a tier-2 `*AdjustmentScale` `PackedCollection` *into* a tier-4
-   automation producer. In PDSL this means the automation producer that the
-   caller supplies for a tier-4 argument may itself reference a tier-2
-   `weight`. Tier 4 cleanly composes with tier 2 because both reduce to
-   `Producer<PackedCollection>` from the kernel's point of view.
-2. **Tier 2/3 gene × tier 4 clock factor.** Already discussed: in
-   `toAdjustmentGene(clock, sampleRate, scale, gene, channel)`, the gene
-   contribution is structural and the clock contribution is per-sample. The
-   composed value reaching the audio kernel is tier 4, so PDSL needs tier 4
-   even to express the "no automation" branch faithfully.
-3. **Tier 2 transmission × tier 4 wet send.** `mself(fi(), transmission, fc(wetOut.valueAt(0)))`
-   uses a tier-2 routing matrix and a tier-2 wet-out gain. The current
-   `mixdown_efx_bus` already accepts both as `weight` parameters, so this
-   composition works today.
-4. **Tier 4 delay time × tier 2 buffer slot.** `AdjustableDelayCell` reads
-   a tier-4 delay-time producer and writes into a tier-2 (per-render) delay
-   buffer. The delay buffer is already a PDSL `state` (a `weight`-shaped
-   collection); the delay time becomes tier 4 once tier 4 is supported.
-5. **Tier 4 envelope multiplier on tier 2 baseline.** `c(20000).multiply(v)`
-   in the HP/LP cutoff computation uses a tier-2 baseline (the
-   `c(20000)` constant; would generalise to a tier-2 mutable max cutoff)
-   multiplied by a tier-4 envelope `v`. Trivially supported once both
-   tiers exist.
+```pdsl
+layer mixdown_efx_dynamic_route(channels: int, signal_size: int,
+                                transmission: producer([channels, channels]),
+                                delay_samples: scalar)
+                             -> [channels, signal_size] {
+    for each channel {
+        delay(delay_samples, buffers[channel], heads[channel])
+    }
+    route(transmission)
+}
+```
 
-The main load-bearing observation is that **tier 4 subsumes tier 2 from the
-kernel's point of view**: a tier-2 mutable scalar is a degenerate tier-4
-producer that does not depend on `clock`. Any compiler change that
-makes tier-4 producers work for scalar arguments also makes tier-2 mutable
-scalars work for the same arguments, for free.
+The current `mixdown_efx_bus` accepts `transmission: weight`, so the matrix is
+mutable across renders but constant within one. Promoting to
+`producer([channels, channels])` lets the matrix change *within* a render —
+driven by `clock`, by an LFO, or by any other producer — while keeping the
+body identical.
+
+The same pattern applies across the existing primitives: `highpass`,
+`lowpass`, `scale`, `delay`, `fir`, `route`, `biquad`, `lfo` accept producers
+of whatever shape they expect in place of literal arguments. Whether the
+producer reads `clock`, reads a gene-derived slot, or returns a constant is a
+property of the producer the caller supplies, not something PDSL needs to
+know.
+
+### 11.3 Where Producers Come From in the Live System
+
+The `Producer<PackedCollection>` values supplied to PDSL primitives come from
+several distinct places in the live `MixdownManager` / `EfxManager` code.
+PDSL receives a producer in each case and does not distinguish them; this list
+is descriptive, not a structural axis.
+
+- **Build-time constants.** `c(20000)` for the HP cutoff ceiling; `c(1.0)` for
+  resultant baselines. Folded into the producer graph at build time.
+- **Render-time mutable slots.** `cp(slot)` over a `PackedCollection` whose
+  contents are updated by `assignGenome()` or by a setter
+  (e.g., `setVolumeAdjustmentScale`) between renders. The producer reads the
+  slot every kernel evaluation, but the value only changes between renders.
+- **Gene lookups.** `Gene.valueAt(position)` or `Chromosome.valueAt(channel, k)`
+  calls (often wrapped in `factor()` adapters). Resolved per render against the
+  current genome.
+- **Clock-driven producers.** `AutomationManager.getAggregatedValue(...)`,
+  `toAdjustmentGene(clock, sampleRate, ...)`, `AdjustableDelayCell`-driven
+  delay times. These read `clock.frame()` or `clock.time(sampleRate)` and so
+  are recomputed every audio sample inside the compiled kernel.
+- **Compositions of the above.** The
+  `automation.getAggregatedValue(gene, p(scale), offset)` pattern combines a
+  gene lookup, a render-time scale slot, and a clock-driven envelope into a
+  single producer; the result is what the audio kernel sees.
+
+The work to migrate any `MixdownManager` parameter to PDSL is the same
+regardless of which kind it is on the Java side — the caller supplies a
+producer of the declared shape; the kernel evaluates it.
+
+### 11.4 Per-Parameter Map
+
+The parameters that drive `MixdownManager.createCells()` / `createEfx()` and
+`EfxManager.apply()`, the shape PDSL needs the producer to be, and where the
+value comes from in the live system. Line citations identify the Java source.
+
+| Parameter | Java site | Shape | Source |
+|-----------|-----------|-------|--------|
+| Per-channel HP cutoff (main filter up), automation on | `MixdownManager.java:519-523` | `[1]` (per channel via `for each channel`) | clock-driven envelope (`automation.getAggregatedValue(...)` × 20 kHz) |
+| Per-channel HP cutoff (main filter up), automation off | `MixdownManager.java:527-530` | `[1]` | clock-driven `toAdjustmentGene(clock, sampleRate, ...)` over a gene-derived contribution |
+| Per-channel volume | `MixdownManager.java:535-537,580-606` | `[1]` | clock-driven `toAdjustmentGene(...)` |
+| Reverb factor, automation on | `MixdownManager.java:561-567` | `[1]` | clock-driven envelope × `reverbLevel` (gene-derived slot) |
+| Reverb factor, automation off | `MixdownManager.java:568-572` | `[1]` | gene lookup (`reverb.valueAt(channelIdx, 0)`); structural |
+| Wet filter coefficients (FIR) | `MixdownManager` constructor + `wetFilter` | `[filter_order]` | gene-derived slot from `FixedFilterChromosome`, mutated per render (already covered by PDSL `weight`) |
+| Wet send level (`v · wetFilter` chain) | `MixdownManager.java:585-586,605-606` | `[1]` | composition of clock-driven volume × fixed wet filter |
+| Per-delay-layer delay time | `MixdownManager.java:666-668` | `[1]` | clock-driven via `AdjustableDelayCell` (gene base × beat duration) |
+| Per-delay-layer dynamics | `MixdownManager.java:663-668` | `[1]` | clock-driven via `toPolycyclicGene` |
+| `delayGene` per-channel routing | `MixdownManager.java:670-672` | `[N, M]` | gene-derived (`wetInSimple.valueAt(channelIdx)`), per render |
+| `transmission` matrix | `MixdownManager.java:258-260,677` | `[channels, channels]` | gene-derived render-time slot (already covered by PDSL `weight`) |
+| `wetOut` (delay output gain) | `MixdownManager.java:262,677` | `[1]` | gene-derived render-time slot |
+| Master LP cutoff (per channel) | `MixdownManager.java:720-724` | `[1]` | clock-driven `toAdjustmentGene(...)` × 20 kHz |
+| `*AdjustmentScale` (volume, filter-up, filter-down, reverb) | `MixdownManager.java:301-330` | `[1]` each | render-time mutable slot mutated by setters; consumed inside a clock-driven envelope |
+| EFX delay time | `EfxManager.java:226-231` | `[1]` | clock-driven via `AdjustableDelayCell` × beatDuration |
+| EFX delay levels (FIR cutoff) | `EfxManager.java:312-313` | `[1]` | gene lookup (`delayLevels.valueAt(channelIdx, 3)`); consumed at FIR build time, not in the audio path |
+| EFX wet feedback level | `EfxManager.java:222-223,245` | `[1]` | gene-derived render-time slot |
+| EFX delay automation modulation, automation on | `EfxManager.java:236-241` | `[1]` | clock-driven envelope (`automation.getAggregatedValue(...)`) |
+
+Most rows are shape `[1]`: scalar arguments to filters, gain stages, and
+delay-sample counts. A row's shape becomes `[N]` only when a single producer
+expression is used to feed all `N` channels at once; today the live code
+constructs a per-channel producer inside the channel loop, which is closer to
+"shape `[1]` evaluated `N` times" than to "shape `[N]` evaluated once." Both
+forms are expressible.
+
+The collection-shaped slots already handled by PDSL `weight`
+(`transmission`, `wetOut`, FIR coefficients) are listed for completeness — they
+do not need new plumbing, but would also be expressible as
+`producer([shape])` if their callers ever wanted to drive them with a clock.
 
 ### 11.5 Migration Order
 
-Naive reading: do tier 2, then tier 3, then tier 4. That is the wrong
-order.
+The migration collapses to a single capability: implement producer-valued
+arguments for the existing scalar-taking primitives. Once that lands, every
+`@Disabled` test in Section 12 that depends on time-varying scalars unlocks at
+the same time, and a constant 1-element `PackedCollection` over a render-time
+mutable slot becomes the degenerate constant-in-time case.
 
-Recommended order:
+The plumbing is per-primitive, not one-time: every primitive that today takes
+a `double` (`highpass`, `lowpass`, `scale`, `biquad`'s five coefficients,
+`delay`'s sample count, `lfo`'s freq and rate) needs to learn to accept a
+producer at the same call site. The compiler must also be willing to embed a
+producer that depends on `clock` (or any other input) inside the per-sample
+kernel; it already does this for `weight` reads in ML layers, but the audio
+primitives' current implementations may inline their scalar arguments at
+build time.
 
-1. **Tier 4 first** (`automation(producer)` plus the variable-delay
-   primitive). It is the largest single unlock — it covers every
-   `@Disabled` test in Section 12 that depends on time-varying scalars
-   (Capabilities A and B). It is also the tier that the live
-   `MixdownManager` actually uses end-to-end.
-2. **Tier 2 falls out of tier 4 for free** for `scalar` arguments: a
-   constant 1-element `PackedCollection` is the degenerate tier-4 case. The
-   only additional work after tier 4 lands is making the `scalar` parameter
-   binding accept a `PackedCollection` (or `Number`) on the args-map side and
-   wrap it in a `cp(slot)` producer when the kernel reads it.
-3. **Skip native tier 3.** Do not introduce `gene(chromosome, position)` as
-   a first-class PDSL construct. Two reasons: (a) the live audio path is
-   tier 4 anyway because of `clock`-driven factors, so a tier-3 PDSL
-   construct would not faithfully reproduce the live behaviour; (b) the
-   caller can sample the gene per render in Java and feed the result in
-   as a tier-2 weight, which is already supported. PDSL learning chromosome
-   semantics is a feature with one consumer and a strong workaround.
-4. **Tier 1 stays as-is** for `int` parameters used in shape and loop-bound
-   arithmetic (`signal_size`, `channels`, `filter_order`,
-   build-time `delay_samples` if any). These cannot be promoted because the
-   shape system needs them as Java `int`s.
+If anything is worth saying about ordering across the primitives, it is: do
+`scale` and `highpass` / `lowpass` first. They are the most heavily used
+parameters in the live `MixdownManager` audio path (volume, HP cutoff, master
+LP cutoff). The constant-folding optimisation that keeps fixed-parameter PDSL
+files from regressing is the single most important thing to get right;
+without it, every existing PDSL test slows down.
 
-This order ties directly to Section 12. The `@Disabled` tests labelled
-A (sample-rate automation) and B (variable delay time) both unlock at the
-same time when tier 4 lands; the existing "small — days" estimate should be
-revised upward (Section 11.3 / Section 12.1). C (rectangular routing), D
-(heterogeneous fan-out), and E (`delay_network`) are independent of the
-tier work and can be scheduled separately.
+A realistic budget across the affected primitives is 1–3 weeks. The framing
+is simple, but the per-primitive plumbing is not: parser, interpreter, and
+primitive implementations all need to accept a producer at the call site
+where they currently accept a literal.
 
-A new gap to acknowledge: there is no `@Disabled` test today that covers
-the **tier 2 mutable-scalar** case in isolation (e.g., a `mixdown_main_bus`
-where `volume` and `hp_cutoff` are 1-element `PackedCollection`s mutable
-across forward passes but constant within one). Tier 2 falls out of tier 4
-naturally, so the gap is acceptable, but a future test should be added once
-tier 4 is implemented to assert the constant-producer case.
+`int` parameters used in compile-time shape arithmetic (`signal_size`,
+`channels`, `filter_order`, build-time `delay_samples` if any) are out of
+scope for this change. They index into shapes and loop bounds and have to
+remain build-time constants. The producer-valued change applies to the
+continuous-valued (today `scalar`) parameters and to collection-shaped
+arguments where a caller wants per-sample variation rather than render-time
+mutability.
+
+### 11.6 Future Work: Audio-Specific Aliases
+
+Once `producer([shape])` is in place, audio-specific aliases may be useful for
+documentation and tooling. Two candidates:
+
+- `automation(scalar)` as a shorthand for `producer([1])` annotated with the
+  intent "this argument expects a clock-driven envelope," letting tooling
+  visually distinguish automation arguments from generic producer arguments.
+- `envelope` or `clock_signal` as named conveniences attached to
+  `producer([1])` for similar reasons.
+
+These aliases are deferred. The core design is the generic `producer([shape])`;
+aliases are surface conveniences that can be added later without changing how
+the interpreter or compiler treats the underlying argument.
 
 ---
 
@@ -1115,45 +1001,51 @@ This section is the index of the `@Disabled` tests produced alongside the
 `MixdownManager` row it targets (see Section 10), the capability that is
 currently missing, and a rough size estimate for implementing it.
 
-### 12.1 Tier 4 (sample-rate automation) — `automation(producer)` primitive
+### 12.1 Producer-valued arguments — `producer([shape])`
 
-**What's needed:** a PDSL primitive that accepts a
-`Producer<PackedCollection>` for a *time-varying* scalar parameter. Today,
-scalar parameters in PDSL are resolved to a fixed `double` at build time.
-`MixdownManager` uses `AutomationManager.getAggregatedValue(...)` and
-`toAdjustmentGene(...)` to produce scalar values that change on every
-sample; those are the only source of time variation inside its filters
-and scaling.
+**What's needed:** PDSL primitives that today take a `double` scalar literal
+must learn to accept a `Producer<PackedCollection>` of declared shape. The
+argument-binding form is `producer([shape])` (Section 11.2). `MixdownManager`
+uses `AutomationManager.getAggregatedValue(...)` and `toAdjustmentGene(...)`
+to produce scalar values that change on every sample; those are the only
+source of time variation inside its filters and scaling. Render-time mutable
+scalars (the `*AdjustmentScale` slots) unlock at the same time as the
+degenerate constant-in-time case.
 
-**Sketch of the needed primitive:**
+**Sketch:**
 
 ```pdsl
-layer mixdown_main_automated(...) {
+layer mixdown_main_automated(channels: int, signal_size: int,
+                             hp_cutoff: producer([1]),
+                             volume:    producer([1]),
+                             sample_rate: scalar, filter_order: scalar)
+                          -> [1, signal_size] {
     for each channel {
-        highpass(automation(hp_cutoff_producer), sample_rate, filter_order)
-        scale(automation(volume_producer))
+        highpass(hp_cutoff, sample_rate, filter_order)
+        scale(volume)
     }
     sum_channels()
 }
 ```
 
-The interpreter would treat `automation(id)` as a special argument form
-that looks up a `Producer<PackedCollection>` in the args map instead of a
-constant. `callHighpass` / `callScale` would need to accept either a
-literal or a `Producer`. Follows the same pattern as `fir(wet_filter_coeffs)`
-accepting a caller-supplied `PackedCollection`.
+The interpreter looks up a `Producer<PackedCollection>` of the declared shape
+in the args map. `callHighpass` / `callScale` (and the other scalar-taking
+primitives) accept either a literal or a producer at the same call site.
+Follows the same pattern as `fir(wet_filter_coeffs)` accepting a
+caller-supplied `PackedCollection`.
 
-**Size estimate:** 1–3 weeks (see Section 11.3, Tier 4). The earlier
-"small — days of work" reading underestimated the producer-vs-literal
-plumbing required across every primitive that takes a scalar (`highpass`,
-`lowpass`, `scale`, `biquad`, `delay`, `lfo`, etc.). The parser-level work is
-small; the interpreter and primitive-implementation work is not.
+**Size estimate:** 1–3 weeks (see Section 11.5). The earlier "small — days of
+work" reading underestimated the producer-vs-literal plumbing required
+across every primitive that takes a scalar (`highpass`, `lowpass`, `scale`,
+`biquad`, `delay`, `lfo`, etc.). The parser-level work is small; the
+interpreter and primitive-implementation work is not.
 
-**Tier 2 (mutable scalars) is a sub-capability of this:** once a primitive
-accepts a `Producer<PackedCollection>` argument, a 1-element constant
-`PackedCollection` can be supplied as the degenerate (constant-in-time)
-case. A separate `@Disabled` test for tier 2 in isolation is not yet in
-the suite; once tier 4 lands, one should be added covering a mutable-scalar
+**Render-time mutable scalars fall out as the degenerate case:** once a
+primitive accepts `producer([1])`, supplying `cp(slot)` over a 1-element
+`PackedCollection` mutated by the caller between renders reproduces the
+previously-separate render-time-mutable-scalar pattern. A separate `@Disabled`
+test for that case in isolation is not yet in the suite; once
+`producer([shape])` lands, one should be added covering a mutable-scalar
 `mixdown_main_bus`.
 
 | Test class.method | Targets (Section 10 row) | Notes |
@@ -1162,20 +1054,20 @@ the suite; once tier 4 lands, one should be added covering a mutable-scalar
 | `MixdownManagerPdslTest.testMixdownManagerAutomatedVolume` | 3, 5 | Per-channel volume with time-varying gain |
 | `MixdownManagerPdslTest.testMixdownManagerAutomatedLowpass` | 28 | Master LP with time-varying cutoff |
 
-### 12.2 Variable delay time — tier 4 specialization
+### 12.2 Variable delay time — `producer([1])` applied to `delay`
 
-**What's needed:** a `delay(...)` primitive that accepts a time-varying
-sample count (a `Producer<PackedCollection>`) rather than a compile-time
-integer. Equivalent to `AdjustableDelayCell`, which takes
+**What's needed:** the `delay(...)` primitive's `delay_samples` argument
+becomes a `producer([1])`. Equivalent to `AdjustableDelayCell`, which takes
 `Producer<PackedCollection>` for both delay time and dynamics.
 
-This is the same plumbing as Section 12.1 applied to the `delay`
-primitive's `delay_samples` argument. It lands together with tier 4,
-not separately.
+This is the same capability as Section 12.1 applied to `delay`. It is listed
+separately because the delay kernel's internals change: the read-pointer
+arithmetic that today uses an `int` becomes a `CollectionProducer` op, which
+is a different code path from the filter and gain primitives' simple
+producer-read substitution. It lands together with the rest of the
+producer-arg work, not separately.
 
-**Size estimate:** included in the tier-4 estimate. Touches the delay
-kernel: the read-pointer arithmetic that today uses an `int` becomes a
-`CollectionProducer` op.
+**Size estimate:** included in the Section 12.1 producer-arg estimate.
 
 | Test class.method | Targets | Notes |
 |-------------------|---------|-------|
@@ -1191,7 +1083,7 @@ the input.
 
 **Size estimate:** small — probably a day of work. The implementation is
 a straightforward generalization of the existing `routeBlock` loop
-nest. Independent of the tier work in Section 11.
+nest. Independent of the producer-arg work in Section 11.
 
 | Test class.method | Targets | Notes |
 |-------------------|---------|-------|
@@ -1207,7 +1099,7 @@ is `[sum_of_channels, signalSize]` rather than `[N, per-block-output]`.
 
 **Size estimate:** small — could reuse the `fanOutBlock` + `perChannelBlock`
 plumbing with a different set of sub-blocks per channel. Probably a day
-of work, possibly less. Independent of the tier work in Section 11.
+of work, possibly less. Independent of the producer-arg work in Section 11.
 
 | Test class.method | Targets | Notes |
 |-------------------|---------|-------|
@@ -1231,7 +1123,7 @@ primitive.
 
 | Test class.method | Targets | Notes |
 |-------------------|---------|-------|
-| `MixdownManagerPdslTest.testMixdownManagerReverbPath` | 24, 25, 9 | Reverb bus + wet factor; depends on both tier 4 (Section 12.1) and the `delay_network` primitive |
+| `MixdownManagerPdslTest.testMixdownManagerReverbPath` | 24, 25, 9 | Reverb bus + wet factor; depends on both producer-valued arguments (Section 12.1) and the `delay_network` primitive |
 
 ---
 
