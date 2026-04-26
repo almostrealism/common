@@ -113,12 +113,12 @@ In addition to the configuration fields exposed via getters, `ClaudeCodeJob` mai
 | `isError` | `boolean` | Whether Claude Code flagged the session as an error. |
 | `permissionDenials` | `int` | Number of tool permission denials encountered. |
 | `deniedToolNames` | `List<String>` | Names of tools that were denied during execution. |
-| `inactivityTimeoutMillis` | `long` | Stdout silence duration after which the Claude subprocess is killed. Default 20 minutes. |
-| `maxInactivityRestarts` | `int` | Maximum number of relaunches of the Claude subprocess after inactivity-triggered kills. Default 3. |
+| `inactivityTimeoutMillis` | `long` | Stdout silence duration after which the Claude subprocess is killed. Configuration default: 20 minutes. |
+| `maxInactivityRestarts` | `int` | Maximum number of relaunches of the Claude subprocess after inactivity-triggered kills. Configuration default: 3. |
 | `inactivityRestartAttempt` | `int` | Number of inactivity-triggered relaunches in the current run. Reset to 0 once the run completes. Forwarded to `InstructionPromptBuilder` to inject a restart warning into the relaunch prompt. |
-| `wasKilledForInactivity` | `volatile boolean` | Set by `ClaudeInactivityMonitor` when it kills the subprocess; consumed by the retry loop in `executeSingleRun()`. |
+| `wasKilledForInactivity` | `volatile boolean` | Indicates whether the most recent attempt ended because of inactivity; consumed by the retry loop in `executeSingleRun()`. The value is taken from `ClaudeAttemptRunner.Result`, which reflects inactivity handling performed during the attempt by `ClaudeInactivityMonitor`. |
 
-These fields are extracted from the NDJSON output by `extractOutputMetrics()` and then forwarded to `ClaudeCodeJobEvent` via `populateEventDetails()`.
+NDJSON-derived execution metrics are extracted by `extractOutputMetrics()`, and the subset needed for completion reporting is forwarded to `ClaudeCodeJobEvent` via `populateEventDetails()`. The inactivity configuration fields (`inactivityTimeoutMillis`, `maxInactivityRestarts`) are execution controls rather than extracted metrics, and the retry-state fields (`inactivityRestartAttempt`, `wasKilledForInactivity`) are maintained during attempt execution.
 
 ### Collaborating Objects
 

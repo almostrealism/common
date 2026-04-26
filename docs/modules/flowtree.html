@@ -245,10 +245,16 @@ relay Node activity thread
                     <tr><td><code>enforceChanges</code></td><td>false</td><td>When true, loops until the agent produces at least one code change.</td></tr>
                     <tr><td><code>protectTestFiles</code></td><td>false</td><td>When true, prevents staging of existing test/CI files.</td></tr>
                     <tr><td><code>deduplicationMode</code></td><td>null</td><td>Post-work duplicate-method scan. See below.</td></tr>
-                    <tr><td><code>inactivityTimeoutMillis</code></td><td>20 min</td><td>Stdout-silence duration after which the Claude subprocess is killed by <code>ClaudeInactivityMonitor</code>.</td></tr>
-                    <tr><td><code>maxInactivityRestarts</code></td><td>3</td><td>Maximum relaunches of the Claude subprocess after inactivity-triggered kills. Each relaunch prepends a warning explaining why the prior attempt was killed.</td></tr>
                 </tbody>
             </table>
+
+            <p>Two additional fields are internal execution controls (not currently
+            exposed via <code>ClaudeCodeJob.Factory</code> setters or the wire protocol):
+            <code>inactivityTimeoutMillis</code> (default 20 min) governs the
+            stdout-silence threshold after which <code>ClaudeInactivityMonitor</code>
+            kills the Claude subprocess, and <code>maxInactivityRestarts</code>
+            (default 3) caps how many times the run loop relaunches Claude after such
+            a kill.</p>
 
             <h3>Inactivity Monitor and Restart Loop</h3>
 

@@ -22,6 +22,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -62,18 +63,19 @@ final class ClaudeAttemptRunner {
                              String taskId,
                              ConsoleFeatures logger) {
         StringBuilder out = new StringBuilder();
-        boolean[] killed = {false};
-        int exitCode;
+        AtomicBoolean killed = new AtomicBoolean(false);
+        int exitCode = -1;
+        Thread monitor = null;
         try {
             Process process = pb.start();
             long pid = process.pid();
             logger.log("Process started (PID: " + pid + ")");
 
             AtomicLong lastOutputAt = new AtomicLong(System.currentTimeMillis());
-            Thread monitor = new ClaudeInactivityMonitor(
+            monitor = new ClaudeInactivityMonitor(
                     process, lastOutputAt, inactivityTimeoutMillis,
                     idleMillis -> {
-                        killed[0] = true;
+                        killed.set(true);
                         logger.warn("No Claude output for " + (idleMillis / 1000)
                                 + "s -- killing process tree (PID " + pid + ")");
                     },
@@ -91,16 +93,27 @@ final class ClaudeAttemptRunner {
 
             logger.log("Process output stream closed, waiting for exit...");
             exitCode = process.waitFor();
-            monitor.interrupt();
             logger.log("Completed with exit code: " + exitCode);
-        } catch (IOException | InterruptedException e) {
-            if (killed[0]) {
-                logger.log("Read loop ended after inactivity kill: " + e.getMessage());
-            } else {
-                logger.warn("Error: " + e.getMessage(), e);
+        } catch (IOException e) {
+            logIoOrKill(e, killed.get(), logger);
+        } catch (InterruptedException e) {
+            // Preserve interrupt status so upstream callers can react.
+            Thread.currentThread().interrupt();
+            logIoOrKill(e, killed.get(), logger);
+        } finally {
+            if (monitor != null) {
+                monitor.interrupt();
             }
-            exitCode = -1;
         }
-        return new Result(exitCode, out.toString(), killed[0]);
+        return new Result(exitCode, out.toString(), killed.get());
+    }
+
+    /** Logs the read-loop exception either as a benign post-kill notice or a real error, per {@code killed}. */
+    private static void logIoOrKill(Exception e, boolean killed, ConsoleFeatures logger) {
+        if (killed) {
+            logger.log("Read loop ended after inactivity kill: " + e.getMessage());
+        } else {
+            logger.warn("Error: " + e.getMessage(), e);
+        }
     }
 }

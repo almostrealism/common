@@ -342,7 +342,14 @@ public class InstructionPromptBuilder {
      * Builds the full instruction prompt by assembling all configured
      * sections into a single string.
      *
-     * <p>The sections are assembled in the following order:</p>
+     * <p>The sections are assembled in the following order. Sections marked
+     * "restart preamble" are prepended above all other content when their
+     * triggering condition is set:</p>
+     * <ol start="0">
+     *   <li>Git Tampering Violation Warning -- restart preamble (when {@link #setGitTamperingViolation} is non-empty)</li>
+     *   <li>Inactivity Timeout Warning -- restart preamble (when {@link #setInactivityRestartAttempt} is &gt; 0)</li>
+     *   <li>Enforcement Retry Warning -- restart preamble (when {@code enforcementAttempt} is &gt; 0)</li>
+     * </ol>
      * <ol>
      *   <li>Opening paragraph (autonomous agent context)</li>
      *   <li>Communication (when workstream URL is set)</li>
