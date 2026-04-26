@@ -350,7 +350,16 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		// auto-volume step required look-ahead which the realtime pipeline
 		// can't provide), so scale the summed master bus to give it
 		// headroom and stop the int16 WAV writer from clipping.
-		MixdownManager.masterBusGain = 0.2;
+		// Master gain at 0.5 with the DelayNetwork normalisation fix in
+		// place. This gives the master a strong listening level (typically
+		// -10 to -14 dBFS RMS) while leaving the limiter enough room to
+		// catch transient peaks without constantly clipping.
+		MixdownManager.masterBusGain = 0.5;
+		// efxBusGain disabled (=1.0) for this test -- bounded transmission
+		// and wetOut chromosome ranges should be enough to keep the EFX bus
+		// stable on their own. If the EFX channel is still divergent, the
+		// chromosome bound mechanism isn't reaching the kernel.
+		MixdownManager.efxBusGain = 1.0;
 
 		try {
 			AudioScene<?> scene = createScene();

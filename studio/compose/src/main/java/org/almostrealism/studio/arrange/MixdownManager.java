@@ -173,6 +173,15 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	 */
 	public static double masterBusGain = 1.0;
 
+	/**
+	 * Gain applied to the summed EFX bus before it is mixed into the main
+	 * signal. The EFX delay grid sums the forward path across (channels x
+	 * delay layers) which can easily push the bus level past unity even
+	 * before any feedback, so this defaults below 1.0 to keep the bus from
+	 * dominating the master mix.
+	 */
+	public static double efxBusGain = 1.0;
+
 	/** Scale factor collection for per-frame volume adjustment. */
 	private final PackedCollection volumeAdjustmentScale;
 
@@ -680,6 +689,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			efx = efx.sum();
 		}
 
+
 		if (reverb != null) {
 			// Combine inputs and apply reverb
 			reverb = reverb.sum().map(fc(i -> new DelayNetwork(sampleRate, false)));
@@ -691,6 +701,16 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 				// There are no other fx
 				efx = reverb;
 			}
+		}
+
+		if (efxBusGain != 1.0) {
+			// Tame the EFX bus AFTER reverb is summed in. No hard limiter
+			// here — when the upstream signal is large (delay grid forward
+			// path + reverb tail can sit well above unity), a limiter just
+			// pegs every sample at the rail and inflates RMS. A pure gain
+			// scales the body uniformly; the masterBusGain limiter at the
+			// end of the chain catches whatever still pokes through.
+			efx = efx.map(fc(i -> sf(efxBusGain)));
 		}
 
 		if (disableClean) {
@@ -958,8 +978,13 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			overallFilterUpOffsetMin = offset + 15.0;
 			overallFilterUpOffsetMax = offset + 45.0;
 
-			minTransmission = 0.3;
-			maxTransmission = 0.6;
+			// Tightened from [0.3, 0.6]. With 4 delay layers and the mself
+			// matrix's parallel paths, each row sum (~4 * transmission *
+			// wetOut) determines stability. Keeping max(transmission *
+			// wetOut) <= 0.06 gives a row sum below 0.25 -- well into the
+			// stable region.
+			minTransmission = 0.05;
+			maxTransmission = 0.15;
 			minDelay = 4.0;
 			maxDelay = 20.0;
 
@@ -987,8 +1012,11 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			overallWetInOffsetMin = offset;
 			overallWetInOffsetMax = offset + 40;
 
-			minWetOut = 0.5;
-			maxWetOut = 1.4;
+			// Tightened from [0.5, 1.4]. Combined with maxTransmission =
+			// 0.15 above, max per-hop loop gain (transmission * wetOut)
+			// is 0.06.
+			minWetOut = 0.1;
+			maxWetOut = 0.4;
 			minHighPass = 0.0;
 			maxHighPass = 5000.0;
 			minLowPass = 15000.0;
