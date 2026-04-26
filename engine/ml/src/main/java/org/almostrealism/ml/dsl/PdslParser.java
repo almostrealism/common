@@ -222,6 +222,13 @@ public class PdslParser {
 				consume(PdslToken.Type.SCALAR);
 				typeName = "scalar";
 				break;
+			case PRODUCER:
+				consume(PdslToken.Type.PRODUCER);
+				typeName = "producer";
+				consume(PdslToken.Type.LPAREN);
+				shape = parseShapeLiteral();
+				consume(PdslToken.Type.RPAREN);
+				break;
 			case INT_TYPE:
 				consume(PdslToken.Type.INT_TYPE);
 				typeName = "int";

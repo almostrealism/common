@@ -123,16 +123,37 @@ public interface AudioDspInterpreterFeatures
 	/**
 	 * Builds a scalar scaling block that multiplies each input element by the given factor.
 	 *
-	 * @param args one numeric argument: the scale factor
+	 * <p>The factor argument may be supplied as either a numeric literal (folded into the
+	 * compiled kernel as a constant) or a {@link Producer} of a shape-{@code [1]}
+	 * {@link PackedCollection}. The producer form supports render-time mutable scalars
+	 * (a {@code cp(slot)} over a 1-element collection mutated between renders) and
+	 * clock-driven envelopes (a producer that reads the audio clock and returns a
+	 * different value every sample).</p>
+	 *
+	 * @param args one argument: the scale factor as either a {@link Number} or a
+	 *             {@link Producer} of {@link PackedCollection} with shape {@code [1]}
 	 * @return a factory that creates a scale block for any input shape
 	 */
 	default Object callScale(List<Object> args) {
 		if (args.size() == 1) {
-			double factor = toDouble(args.get(0));
-			return scale(factor);
+			Object arg = args.get(0);
+			if (arg instanceof Number) {
+				double factor = toDouble(arg);
+				return scale(factor);
+			}
+			if (arg instanceof Producer) {
+				Producer<PackedCollection> factor = (Producer<PackedCollection>) arg;
+				return (Function<TraversalPolicy, Block>)
+						(shape -> layer("scale", shape, shape,
+								input -> multiply(c(input).each(),
+										subset(shape(1), factor, 0))));
+			}
+			throw new PdslParseException(
+					"scale() expects 1 numeric or Producer argument, got "
+							+ (arg == null ? "null" : arg.getClass().getSimpleName()));
 		}
 		throw new PdslParseException(
-				"scale() expects 1 numeric argument (factor), got " + args.size());
+				"scale() expects 1 argument (factor), got " + args.size());
 	}
 
 	/**

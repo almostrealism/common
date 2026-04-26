@@ -174,11 +174,69 @@ public class PdslInterpreter {
 				throw new PdslParseException(
 						"Missing argument '" + param.getName() + "' for layer '" + name + "'");
 			}
+			if ("producer".equals(param.getTypeName())) {
+				value = bindProducerParameter(param, value, env);
+			}
 			env.set(param.getName(), value);
 		}
 		SequentialBlock block = new SequentialBlock(inputShape);
 		interpretBody(def.getBody(), block, env);
 		return block;
+	}
+
+	/**
+	 * Binds a {@code producer([shape])} parameter to a {@link Producer} of
+	 * {@link PackedCollection}. Accepts any of:
+	 * <ul>
+	 *   <li>a {@link Number} — wrapped as a constant 1-element {@link PackedCollection}
+	 *       and exposed via {@code cp(...)} (only valid when the declared shape is {@code [1]});</li>
+	 *   <li>a {@link PackedCollection} of the declared shape — exposed via {@code cp(...)}
+	 *       so the caller may mutate it between renders;</li>
+	 *   <li>a {@link Producer} — used directly.</li>
+	 * </ul>
+	 * Throws a clear error if a {@code PackedCollection} is supplied whose shape does
+	 * not match the declared shape.
+	 *
+	 * @param param the parameter declaration (with declared shape)
+	 * @param value the caller-supplied value from the args map
+	 * @param env   current environment, used to evaluate the declared shape expression
+	 * @return a {@link Producer} of {@link PackedCollection}
+	 */
+	private Object bindProducerParameter(PdslNode.Parameter param, Object value, Environment env) {
+		if (param.getShape() == null) {
+			throw new PdslParseException(
+					"Parameter '" + param.getName()
+							+ "' declared as producer must have a shape, e.g. producer([1])");
+		}
+		TraversalPolicy declaredShape = evaluateShape((PdslNode.ShapeLiteral) param.getShape(), env);
+
+		if (value instanceof Number) {
+			if (declaredShape.getTotalSize() != 1) {
+				throw new PdslParseException(
+						"Parameter '" + param.getName() + "' has declared shape "
+								+ declaredShape + " but a Number literal can only be supplied for shape [1]");
+			}
+			PackedCollection wrapped = new PackedCollection(declaredShape);
+			wrapped.setMem(0, ((Number) value).doubleValue());
+			return FEATURES.cp(wrapped);
+		}
+		if (value instanceof PackedCollection) {
+			PackedCollection coll = (PackedCollection) value;
+			if (coll.getShape().getTotalSize() != declaredShape.getTotalSize()) {
+				throw new PdslParseException(
+						"Parameter '" + param.getName() + "' declared as producer("
+								+ declaredShape + ") but supplied PackedCollection has shape "
+								+ coll.getShape());
+			}
+			return FEATURES.cp(coll);
+		}
+		if (value instanceof Producer) {
+			return value;
+		}
+		throw new PdslParseException(
+				"Parameter '" + param.getName() + "' declared as producer("
+						+ declaredShape + ") expects a Number, PackedCollection, or Producer "
+						+ "but got " + (value == null ? "null" : value.getClass().getSimpleName()));
 	}
 
 	/**

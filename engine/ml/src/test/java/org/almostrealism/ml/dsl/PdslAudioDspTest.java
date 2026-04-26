@@ -17,6 +17,8 @@
 package org.almostrealism.ml.dsl;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -527,6 +529,179 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		Assert.assertNotNull("Second LFO output should not be null", output2);
 		Assert.assertEquals("Second LFO call output[0] must continue from first call's end phase",
 				Math.sin(expectedPhase), output2.toDouble(0), 1e-6);
+	}
+
+	// ---- producer([shape]) parameter tests --------------------------------------
+	//
+	// These tests exercise the producer-valued `scale` primitive: a parameter
+	// declared as `producer([1])` accepts a Number (constant-folded), a
+	// 1-element PackedCollection (mutable slot), or a Producer<PackedCollection>
+	// (general expression). See docs/plans/PDSL_AUDIO_DSP.md Section 11.
+
+	/**
+	 * Verifies that a {@code producer([1])} parameter supplied as a Number literal
+	 * constant-folds into the kernel and produces output equal to the literal
+	 * times each input element. Proves the producer pathway does not regress the
+	 * fixed-parameter case.
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testScaleProducerLiteralConstantFolding() {
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_scale.pdsl");
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("volume", 0.5);  // Number literal — should constant-fold
+
+		Block block = loader.buildLayer(program, "scale_producer_layer", inputShape, args);
+		Assert.assertNotNull("scale_producer_layer block must not be null", block);
+
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection signal = createSignal(SIGNAL_SIZE,
+				i -> Math.sin(2.0 * Math.PI * i / 32.0));
+		PackedCollection output = compiled.forward(signal);
+		Assert.assertNotNull("Output must not be null", output);
+
+		for (int i = 0; i < SIGNAL_SIZE; i++) {
+			Assert.assertEquals("Output[" + i + "] must equal 0.5 * input[" + i + "]",
+					0.5 * signal.toDouble(i), output.toDouble(i), 1e-9);
+		}
+	}
+
+	/**
+	 * Verifies that a {@code producer([1])} parameter supplied as a 1-element
+	 * {@link PackedCollection} reads the slot's current value on each forward
+	 * pass. Mutating the slot between {@code forward()} calls must be reflected
+	 * in the output without rebuilding the layer.
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testScaleProducerMutableSlot() {
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		PackedCollection volumeSlot = new PackedCollection(1);
+		volumeSlot.setMem(0, 0.25);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_scale.pdsl");
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("volume", volumeSlot);
+
+		Block block = loader.buildLayer(program, "scale_producer_layer", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection signal = createSignal(SIGNAL_SIZE,
+				i -> Math.sin(2.0 * Math.PI * i / 32.0));
+
+		PackedCollection output1 = compiled.forward(signal);
+		for (int i = 0; i < SIGNAL_SIZE; i++) {
+			Assert.assertEquals("Pass 1 output[" + i + "] must equal 0.25 * input[" + i + "]",
+					0.25 * signal.toDouble(i), output1.toDouble(i), 1e-9);
+		}
+
+		// Mutate the slot between forward calls — the second pass must reflect it.
+		volumeSlot.setMem(0, 0.75);
+
+		PackedCollection output2 = compiled.forward(signal);
+		for (int i = 0; i < SIGNAL_SIZE; i++) {
+			Assert.assertEquals("Pass 2 output[" + i + "] must equal 0.75 * input[" + i + "]",
+					0.75 * signal.toDouble(i), output2.toDouble(i), 1e-9);
+		}
+	}
+
+	/**
+	 * Verifies that a {@code producer([1])} parameter supplied as a composed
+	 * {@link Producer} expression (clock-style: a slot read multiplied by a
+	 * constant gain) is read correctly by the kernel. The slot acts as a
+	 * counter advanced between forward passes; the output reflects the current
+	 * counter value times the constant gain, demonstrating that the producer
+	 * pathway handles arbitrary producer expressions and not just direct slot
+	 * reads.
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testScaleProducerClockDriven() {
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		PackedCollection counter = new PackedCollection(1);
+		counter.setMem(0, 0.1);
+
+		// Composed producer: counter * 0.5. Demonstrates that a derived producer
+		// expression — not just a direct cp(slot) — is correctly embedded in the
+		// kernel and re-evaluated when the underlying slot changes.
+		Producer<PackedCollection> volumeProducer = cp(counter).multiply(c(0.5));
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_scale.pdsl");
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("volume", volumeProducer);
+
+		Block block = loader.buildLayer(program, "scale_producer_layer", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection signal = createSignal(SIGNAL_SIZE, i -> 1.0);
+
+		// "Clock" tick 1 — counter = 0.1, expected scale = 0.05
+		PackedCollection output1 = compiled.forward(signal);
+		double expected1 = 0.1 * 0.5;
+		for (int i = 0; i < SIGNAL_SIZE; i++) {
+			Assert.assertEquals("Tick 1 output[" + i + "] must equal counter * 0.5",
+					expected1, output1.toDouble(i), 1e-9);
+		}
+
+		// Advance the "clock" — counter = 0.4, expected scale = 0.2
+		counter.setMem(0, 0.4);
+		PackedCollection output2 = compiled.forward(signal);
+		double expected2 = 0.4 * 0.5;
+		for (int i = 0; i < SIGNAL_SIZE; i++) {
+			Assert.assertEquals("Tick 2 output[" + i + "] must equal counter * 0.5",
+					expected2, output2.toDouble(i), 1e-9);
+		}
+
+		Assert.assertNotEquals("Outputs across clock ticks must differ",
+				output1.toDouble(0), output2.toDouble(0), 1e-9);
+	}
+
+	/**
+	 * Verifies that the {@code producer([1])} parameter form rejects a
+	 * {@link PackedCollection} whose shape does not match the declared shape.
+	 */
+	@Test(timeout = 30000)
+	public void testScaleProducerShapeMismatchRejected() {
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_scale.pdsl");
+
+		// Wrong shape: 4 elements, but declared as producer([1]).
+		PackedCollection wrongShape = new PackedCollection(4);
+		wrongShape.setMem(new double[]{0.0, 0.0, 0.0, 0.0});
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("volume", wrongShape);
+
+		try {
+			loader.buildLayer(program, "scale_producer_layer", inputShape, args);
+			Assert.fail("Building with mismatched producer shape must throw");
+		} catch (PdslParseException expected) {
+			Assert.assertTrue("Error must reference the parameter name",
+					expected.getMessage().contains("volume"));
+		}
 	}
 
 }
