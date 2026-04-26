@@ -169,6 +169,39 @@ public abstract class PdslNode {
 		public Map<String, Expression> getDerivations() { return derivations; }
 	}
 
+	/**
+	 * A state block declaring persistent mutable DSP state.
+	 *
+	 * <p>Structurally identical to {@link DataDef} — the same parameter declarations and
+	 * derivations are supported. The different class type signals write-intent: state block
+	 * entries are read <em>and</em> written during execution by state-aware primitives
+	 * such as {@code biquad}, {@code delay}, and {@code lfo}.</p>
+	 *
+	 * <p>Example:
+	 * <pre>
+	 * state biquad_state {
+	 *     history: weight    // 4-element PackedCollection [x1, x2, y1, y2]
+	 * }
+	 * </pre>
+	 * </p>
+	 */
+	public static class StateDef extends DataDef {
+		/**
+		 * Constructs a state block definition.
+		 *
+		 * @param name        state block name
+		 * @param parameters  external input declarations
+		 * @param derivations derived bindings, in declaration order
+		 * @param line        source line number
+		 * @param column      source column number
+		 */
+		public StateDef(String name, List<Parameter> parameters,
+						Map<String, Expression> derivations,
+						int line, int column) {
+			super(name, parameters, derivations, line, column);
+		}
+	}
+
 	/** A layer definition: reusable block builder. */
 	public static class LayerDef extends Definition {
 		/** Formal parameters accepted by this layer. */
@@ -529,6 +562,70 @@ public abstract class PdslNode {
 
 		/** Returns the loop body statements. */
 		public List<Statement> getBody() { return body; }
+	}
+
+	/**
+	 * For-each-channel statement: {@code for each channel { body }}.
+	 *
+	 * <p>Iterates over all channels declared on the enclosing layer (via the {@code channels: int}
+	 * parameter). The body is interpreted once per channel with the variable {@code channel}
+	 * bound to the current channel index (0-based). The resulting per-channel blocks are
+	 * dispatched in parallel: each receives a single-channel slice of the multi-channel input
+	 * and the outputs are concatenated.</p>
+	 */
+	public static class ForEachChannelStatement extends Statement {
+		/** Statements forming the per-channel body. */
+		private final List<Statement> body;
+
+		/**
+		 * Constructs a for-each-channel statement.
+		 *
+		 * @param body   Statements forming the per-channel body
+		 * @param line   Source line number
+		 * @param column Source column number
+		 */
+		public ForEachChannelStatement(List<Statement> body, int line, int column) {
+			super(line, column);
+			this.body = body;
+		}
+
+		/** Returns the statements forming the per-channel body. */
+		public List<Statement> getBody() { return body; }
+	}
+
+	/**
+	 * Subscript expression: {@code expr[index]}.
+	 *
+	 * <p>Indexes into a {@link org.almostrealism.collect.PackedCollection} by channel,
+	 * returning a zero-copy sub-view. The stride is inferred as {@code total / channels}
+	 * where {@code channels} is the current loop variable from {@code for each channel}.</p>
+	 */
+	public static class Subscript extends Expression {
+		/** The collection expression being indexed. */
+		private final Expression object;
+
+		/** The index expression. */
+		private final Expression index;
+
+		/**
+		 * Constructs a subscript expression.
+		 *
+		 * @param object The collection expression being indexed
+		 * @param index  The index expression
+		 * @param line   Source line number
+		 * @param column Source column number
+		 */
+		public Subscript(Expression object, Expression index, int line, int column) {
+			super(line, column);
+			this.object = object;
+			this.index = index;
+		}
+
+		/** Returns the subscripted collection expression. */
+		public Expression getObject() { return object; }
+
+		/** Returns the index expression. */
+		public Expression getIndex() { return index; }
 	}
 
 	/** An expression used as a statement (typically a function call that adds a block). */

@@ -26,6 +26,7 @@ import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.time.TemporalFeatures;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -55,6 +56,18 @@ import java.util.function.Function;
  *   <li>{@code attention(...)}, {@code transformer(...)},
  *       {@code feed_forward(...)}</li>
  *   <li>{@code embedding(table)}</li>
+ *   <li>{@code fir(coefficients)} - FIR filter (convolution with a coefficient array)</li>
+ *   <li>{@code scale(factor)} - multiply each element by a scalar factor</li>
+ *   <li>{@code lowpass(cutoff, sampleRate, filterOrder)} - low-pass FIR filter</li>
+ *   <li>{@code highpass(cutoff, sampleRate, filterOrder)} - high-pass FIR filter</li>
+ *   <li>{@code biquad(b0,b1,b2,a1,a2,history)} - stateful biquad IIR filter;
+ *       {@code history} (4-element {@link PackedCollection}) is updated after each forward pass</li>
+ *   <li>{@code delay(delaySamples,buffer,head)} - stateful integer-sample delay line;
+ *       {@code buffer} and {@code head} are updated after each forward pass</li>
+ *   <li>{@code lfo(freqHz,sampleRate,phase)} - stateful sinusoidal LFO;
+ *       {@code phase} (1-element {@link PackedCollection}) is advanced after each forward pass</li>
+ *   <li>{@code identity()} - pass-through block; useful as the dry-path arm of
+ *       {@code accum_blocks({ identity() }, { wet_chain; scale(level) })}</li>
  * </ul>
  *
  * <p>Composition constructs:
@@ -73,6 +86,13 @@ public class PdslInterpreter {
 	 */
 	private static final Features FEATURES = new Features();
 
+	/**
+	 * Registry of primitive names to their argument-list dispatchers. Populated at
+	 * construction time from {@link AudioDspInterpreterFeatures#registerAudioPrimitives}
+	 * so that adding a new audio primitive does not require editing this class.
+	 */
+	private final Map<String, Function<List<Object>, Object>> primitiveDispatch;
+
 	/** Layer definitions keyed by name, built from the parsed program. */
 	private final Map<String, PdslNode.LayerDef> layerDefs;
 
@@ -85,6 +105,9 @@ public class PdslInterpreter {
 	/** Data block definitions keyed by name, built from the parsed program. */
 	private final Map<String, PdslNode.DataDef> dataDefs;
 
+	/** State block definitions keyed by name, built from the parsed program. */
+	private final Map<String, PdslNode.StateDef> stateDefs;
+
 	/**
 	 * Create an interpreter for the given parsed program.
 	 *
@@ -95,6 +118,9 @@ public class PdslInterpreter {
 		this.configDefs = new HashMap<>();
 		this.modelDefs = new HashMap<>();
 		this.dataDefs = new LinkedHashMap<>();
+		this.stateDefs = new LinkedHashMap<>();
+		this.primitiveDispatch = new HashMap<>();
+		FEATURES.registerAudioPrimitives(primitiveDispatch);
 		for (PdslNode.Definition def : program.getDefinitions()) {
 			if (def instanceof PdslNode.LayerDef) {
 				layerDefs.put(def.getName(), (PdslNode.LayerDef) def);
@@ -102,6 +128,9 @@ public class PdslInterpreter {
 				configDefs.put(def.getName(), (PdslNode.ConfigDef) def);
 			} else if (def instanceof PdslNode.ModelDef) {
 				modelDefs.put(def.getName(), (PdslNode.ModelDef) def);
+			} else if (def instanceof PdslNode.StateDef) {
+				// Check StateDef before DataDef since StateDef extends DataDef
+				stateDefs.put(def.getName(), (PdslNode.StateDef) def);
 			} else if (def instanceof PdslNode.DataDef) {
 				dataDefs.put(def.getName(), (PdslNode.DataDef) def);
 			}
@@ -119,6 +148,9 @@ public class PdslInterpreter {
 
 	/** Returns the names of all data block definitions. */
 	public Set<String> getDataDefNames() { return dataDefs.keySet(); }
+
+	/** Returns the names of all state block definitions. */
+	public Set<String> getStateDefNames() { return stateDefs.keySet(); }
 
 	/**
 	 * Build a {@link Block} from a named layer definition.
@@ -207,13 +239,42 @@ public class PdslInterpreter {
 		if (def == null) {
 			throw new PdslParseException("Data block '" + name + "' not found");
 		}
+		return evaluateDefEntries(def, args);
+	}
+
+	/**
+	 * Evaluate a named state block, binding external inputs from {@code args}
+	 * and computing all derived views in declaration order.
+	 *
+	 * @param name the state block name
+	 * @param args external input values (name → value)
+	 * @return all state block entries (parameters + derivations) as a map
+	 */
+	public Map<String, Object> evaluateStateDef(String name, Map<String, Object> args) {
+		PdslNode.StateDef def = stateDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("State block '" + name + "' not found");
+		}
+		return evaluateDefEntries(def, args);
+	}
+
+	/**
+	 * Evaluates the entries of a data or state block definition by binding external inputs
+	 * from {@code args} and computing derived views in declaration order.
+	 *
+	 * @param def  the data or state block definition
+	 * @param args external input values (name → value)
+	 * @return all block entries (parameters + derivations) as a linked map preserving order
+	 */
+	private Map<String, Object> evaluateDefEntries(PdslNode.DataDef def,
+													Map<String, Object> args) {
 		Environment env = new Environment(null);
 		Map<String, Object> result = new LinkedHashMap<>();
 		for (PdslNode.Parameter param : def.getParameters()) {
 			if (!args.containsKey(param.getName())) {
 				throw new PdslParseException(
 						"Missing argument '" + param.getName()
-								+ "' for data block '" + name + "'");
+								+ "' for block '" + def.getName() + "'");
 			}
 			Object value = args.get(param.getName());
 			env.set(param.getName(), value);
@@ -232,10 +293,6 @@ public class PdslInterpreter {
 	 * program. External inputs are resolved from {@code args}; derived views are
 	 * computed in declaration order so that earlier entries are visible to later ones.
 	 *
-	 * <p>Called at the start of {@link #buildLayer} and {@link #buildModel} so that
-	 * layer bodies can reference data block entries without explicitly declaring them
-	 * as layer parameters.</p>
-	 *
 	 * @param args external input values
 	 * @param env  target environment (mutated in-place)
 	 */
@@ -247,6 +304,27 @@ public class PdslInterpreter {
 							"Missing argument '" + param.getName()
 									+ "' required by data block '" + def.getName() + "'");
 				}
+				env.set(param.getName(), args.get(param.getName()));
+			}
+			for (Map.Entry<String, PdslNode.Expression> entry : def.getDerivations().entrySet()) {
+				Object value = evaluateExpression(entry.getValue(), env);
+				env.set(entry.getKey(), value);
+			}
+		}
+		for (PdslNode.StateDef def : stateDefs.values()) {
+			// Skip state blocks whose parameters are not in args; this state block
+			// is not used by the layer being built and its variables need not be
+			// populated into the environment.
+			boolean allPresent = true;
+			for (PdslNode.Parameter param : def.getParameters()) {
+				if (!args.containsKey(param.getName())) {
+					allPresent = false;
+					break;
+				}
+			}
+			if (!allPresent) continue;
+
+			for (PdslNode.Parameter param : def.getParameters()) {
 				env.set(param.getName(), args.get(param.getName()));
 			}
 			for (Map.Entry<String, PdslNode.Expression> entry : def.getDerivations().entrySet()) {
@@ -331,6 +409,8 @@ public class PdslInterpreter {
 			interpretAccumBlocks((PdslNode.AccumBlocksStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ConcatBlocksStatement) {
 			interpretConcatBlocks((PdslNode.ConcatBlocksStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.ForEachChannelStatement) {
+			interpretForEachChannel((PdslNode.ForEachChannelStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ForStatement) {
 			PdslNode.ForStatement forStmt = (PdslNode.ForStatement) stmt;
 			int start = toInt(evaluateExpression(forStmt.getStart(), env));
@@ -488,6 +568,18 @@ public class PdslInterpreter {
 			return evaluateFieldAccess((PdslNode.FieldAccess) expr, env);
 		} else if (expr instanceof PdslNode.WeightRef) {
 			return evaluateWeightRef((PdslNode.WeightRef) expr, env);
+		} else if (expr instanceof PdslNode.Subscript) {
+			PdslNode.Subscript subscript = (PdslNode.Subscript) expr;
+			Object obj = evaluateExpression(subscript.getObject(), env);
+			if (obj instanceof PackedCollection) {
+				PackedCollection coll = (PackedCollection) obj;
+				int index = toInt(evaluateExpression(subscript.getIndex(), env));
+				int channels = toInt(env.get("channels"));
+				int stride = coll.getShape().getSize() / channels;
+				return coll.range(FEATURES.shape(stride), index * stride);
+			}
+			throw new PdslParseException(
+					"Subscript not supported on " + (obj == null ? "null" : obj.getClass().getSimpleName()));
 		} else if (expr instanceof PdslNode.InlineBlock) {
 			return expr; // returned as-is for product args
 		} else {
@@ -547,6 +639,21 @@ public class PdslInterpreter {
 		List<Object> args = new ArrayList<>();
 		for (PdslNode.Expression argExpr : call.getArguments()) {
 			args.add(evaluateExpression(argExpr, env));
+		}
+
+		if ("route".equals(name)) {
+			return FEATURES.callRoute(args,
+					AudioDspInterpreterFeatures.toInt(env.get("channels")),
+					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
+		}
+		if ("sum_channels".equals(name)) {
+			return FEATURES.callSumChannels(args,
+					AudioDspInterpreterFeatures.toInt(env.get("channels")),
+					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
+		}
+		if ("fan_out".equals(name)) {
+			return FEATURES.callFanOut(args,
+					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
 		}
 
 		// Try built-in functions first
@@ -647,6 +754,8 @@ public class PdslInterpreter {
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
 	private Object tryCallBuiltin(String name, List<Object> args) {
+		Function<List<Object>, Object> dispatch = primitiveDispatch.get(name);
+		if (dispatch != null) return dispatch.apply(args);
 		switch (name) {
 			case "dense": return callDense(args);
 			case "rmsnorm": return callRmsnorm(args);
@@ -658,12 +767,12 @@ public class PdslInterpreter {
 			case "tanh_act": return callActivation("tanh_act");
 			case "slice": return callSlice(args);
 			case "lerp": return callLerp(args);
-				case "reshape": return callReshape(args);
+			case "reshape": return callReshape(args);
 			case "rope_rotation": return callRopeRotation(args);
 			case "attention": return callAttention(args);
 			case "transformer": return callTransformer(args);
 			case "feed_forward": return callFeedForward(args);
-				case "shape": return callShape(args);
+			case "shape": return callShape(args);
 			case "range": return callRange(args);
 			default: return null;
 		}
@@ -963,6 +1072,34 @@ public class PdslInterpreter {
 				"range() expects 3 arguments (source, shape, offset), got " + args.size());
 	}
 
+	// ---- Multi-channel statement-level dispatch ----
+	//
+	// `for each channel { ... }` is a language-level statement (a PdslNode.Statement)
+	// rather than a primitive call. It uses interpretBody to recurse into the
+	// per-channel sub-block, so it stays here next to interpretBranch / interpretAccum
+	// rather than in AudioDspInterpreterFeatures (which only owns Block-returning
+	// expression-level primitives).
+
+	/** Interprets {@code for each channel} by building per-channel sub-blocks and wrapping them. */
+	private void interpretForEachChannel(PdslNode.ForEachChannelStatement stmt,
+										  SequentialBlock block, Environment env) {
+		int channels = toInt(env.get("channels"));
+		TraversalPolicy currentShape = block.getOutputShape();
+		int signalSize = currentShape.getDimensions() >= 2
+				? currentShape.length(currentShape.getDimensions() - 1)
+				: currentShape.getSize() / channels;
+		TraversalPolicy singleChannelShape = FEATURES.shape(1, signalSize);
+		List<Block> channelBlocks = new ArrayList<>();
+		for (int i = 0; i < channels; i++) {
+			Environment channelEnv = new Environment(env);
+			channelEnv.set("channel", i);
+			SequentialBlock channelBlock = new SequentialBlock(singleChannelShape);
+			interpretBody(stmt.getBody(), channelBlock, channelEnv);
+			channelBlocks.add(channelBlock);
+		}
+		block.add(FEATURES.perChannelBlock(channelBlocks, channels, signalSize));
+	}
+
 	// ---- User-defined layer calls ----
 
 	/**
@@ -1173,47 +1310,25 @@ public class PdslInterpreter {
 
 	// ---- Environment ----
 
-	/** Scoped variable environment with parent chain. */
+	/** Scoped variable environment with parent chain for PDSL layer interpretation. */
 	private static class Environment {
 		/** Variable bindings in the current scope. */
 		private final Map<String, Object> bindings = new HashMap<>();
-
 		/** Enclosing scope, or {@code null} for the top-level scope. */
 		private final Environment parent;
-
-		/**
-		 * Creates a new scope with the given parent.
-		 *
-		 * @param parent Enclosing scope, or {@code null} for the top-level scope
-		 */
-		Environment(Environment parent) {
-			this.parent = parent;
-		}
-
-		/**
-		 * Looks up a variable by name, walking the parent chain if not found locally.
-		 *
-		 * @param name Variable name
-		 * @return The bound value, or {@code null} if not defined
-		 */
+		/** Creates a new scope with the given enclosing scope. */
+		Environment(Environment parent) { this.parent = parent; }
+		/** Returns the value bound to {@code name}, walking the parent chain. */
 		Object get(String name) {
 			if (bindings.containsKey(name)) return bindings.get(name);
-			if (parent != null) return parent.get(name);
-			return null;
+			return parent != null ? parent.get(name) : null;
 		}
-
-		/**
-		 * Binds a variable name to a value in the current scope.
-		 *
-		 * @param name  Variable name
-		 * @param value Value to bind
-		 */
-		void set(String name, Object value) {
-			bindings.put(name, value);
-		}
+		/** Binds a name to a value in the current scope. */
+		void set(String name, Object value) { bindings.put(name, value); }
 	}
 
 	/** Mixin type providing access to all framework feature default methods. */
-	private static class Features implements AttentionFeatures, RotationFeatures {
+	private static class Features implements AttentionFeatures, RotationFeatures,
+			TemporalFeatures, AudioDspInterpreterFeatures {
 	}
 }
