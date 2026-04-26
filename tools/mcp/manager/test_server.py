@@ -643,26 +643,83 @@ class TestProjectCommitPlan(unittest.TestCase):
 
 class TestProjectReadPlan(unittest.TestCase):
 
+    @patch.object(server, "github_read_file")
     @patch.object(server, "_find_workstream")
-    @patch.object(server, "_github_request")
-    def test_read_plan(self, mock_gh, mock_find):
+    def test_read_plan(self, mock_find, mock_read_file):
         _grant_all_scopes()
-        import base64
-        content_b64 = base64.b64encode(b"# My Plan").decode()
         mock_find.return_value = {
             "repoUrl": "https://github.com/org/repo",
             "defaultBranch": "feature/x",
             "planningDocument": "docs/plans/PLAN.md",
         }
-        mock_gh.return_value = {
-            "content": content_b64,
-            "encoding": "base64",
+        mock_read_file.return_value = {
+            "ok": True,
+            "path": "docs/plans/PLAN.md",
+            "content": "# My Plan",
             "sha": "abc123",
+            "ref": "feature/x",
+            "repo": "org/repo",
         }
         result = server.project_read_plan(workstream_id="ws-test")
         self.assertTrue(result["ok"])
         self.assertEqual(result["content"], "# My Plan")
         self.assertEqual(result["path"], "docs/plans/PLAN.md")
+
+    @patch.object(server, "github_read_file")
+    @patch.object(server, "_find_workstream")
+    def test_delegates_to_github_read_file(self, mock_find, mock_read_file):
+        """project_read_plan must resolve the planningDocument and delegate to github_read_file."""
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+            "planningDocument": "docs/plans/PLAN.md",
+        }
+        mock_read_file.return_value = {
+            "ok": True,
+            "path": "docs/plans/PLAN.md",
+            "content": "# My Plan",
+            "sha": "abc123",
+            "repo": "org/repo",
+        }
+        result = server.project_read_plan(workstream_id="ws-test")
+        mock_read_file.assert_called_once_with(
+            path="docs/plans/PLAN.md",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            workstream_id="ws-test",
+        )
+        self.assertTrue(result["ok"])
+        next_steps = result.get("next_steps", [])
+        self.assertTrue(
+            any("project_commit_plan" in s for s in next_steps),
+            "Expected project_commit_plan in next_steps",
+        )
+
+    @patch.object(server, "github_read_file")
+    @patch.object(server, "_find_workstream")
+    def test_delegate_uses_explicit_branch(self, mock_find, mock_read_file):
+        """An explicit branch parameter is forwarded to github_read_file."""
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "master",
+            "planningDocument": "docs/plans/PLAN.md",
+        }
+        mock_read_file.return_value = {
+            "ok": True,
+            "path": "docs/plans/PLAN.md",
+            "content": "# Plan",
+            "sha": "def456",
+            "repo": "org/repo",
+        }
+        server.project_read_plan(workstream_id="ws-test", branch="feature/x")
+        mock_read_file.assert_called_once_with(
+            path="docs/plans/PLAN.md",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            workstream_id="ws-test",
+        )
 
     @patch.object(server, "_find_workstream")
     def test_no_planning_document(self, mock_find):
