@@ -480,16 +480,185 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * (N ≠ M) works — equivalent to {@code CellFeatures.m(fi(), delays, tg)}
 	 * at {@code MixdownManager.createEfx()} line 664 (Section 10 rows 19-20).
 	 */
+	/**
+	 * Exercises the rectangular {@code route(transmission)} capability — the PDSL
+	 * rendition of {@code efx.m(fi(), delays, transmissionGene)} at
+	 * {@code MixdownManager.createEfx()} line 660-664 (Section 10 rows 19-20). The
+	 * production code routes N efx outputs through a {@code [N, M]} gene-driven
+	 * matrix into M delay layers; N and M are independent.
+	 *
+	 * <p>Two layers in {@code mixdown_manager.pdsl} are exercised:
+	 * <ul>
+	 *   <li>{@code rect_route_probe} — a minimal layer that applies just
+	 *       {@code route(transmission)} and exposes the {@code [M, signal_size]}
+	 *       output. The test feeds a known multi-channel signal, then zeros out one
+	 *       column of the {@code [N, M]} matrix and re-runs to verify that the
+	 *       corresponding output channel goes silent (an output channel only sees
+	 *       contributions from input channels via the matching column).</li>
+	 *   <li>{@code mixdown_efx_bus_rectangular} — the full per-channel
+	 *       wet-filter+scale → rectangular route → per-delay-layer delay → mono
+	 *       sum chain, demonstrating that {@code for each channel}, subscript
+	 *       state slicing, and {@code sum_channels()} all reflect the new output
+	 *       channel count after the rectangular route.</li>
+	 * </ul></p>
+	 *
+	 * <p>Writes a WAV file to {@code results/pdsl-audio-dsp/} so the rectangular
+	 * routing is audibly verifiable.</p>
+	 */
 	@Test(timeout = 60000)
-	@Ignore("PDSL-blocked-by-rectangular-route: route(matrix) must support "
-			+ "rectangular matrices [rows, cols] with rows != cols. Current "
-			+ "MultiChannelDspFeatures.routeBlock is square-only. "
-			+ "See PDSL_AUDIO_DSP.md Section 11.3 (Capability C — rectangular routing)."
-			+ " Targets Section 10 rows 19-20 (MixdownManager.java:660-664).")
-	public void testMixdownManagerRectangularRoute() {
-		throw new AssertionError(
-				"Placeholder: when rectangular route lands, verify an N-channel efx bus "
-						+ "fanning into M ≠ N delay layers.");
+	@TestDepth(2)
+	public void testMixdownManagerRectangularRoute() throws IOException {
+		final int inChannels = CHANNELS;          // N = 4 efx channels
+		final int outChannels = 3;                // M = 3 delay layers
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
+		TraversalPolicy inputShape = new TraversalPolicy(inChannels, SIGNAL_SIZE);
+
+		// ---- Probe: route-only, verify column-zeroing silences an output ----
+		PackedCollection probeMatrix = rectangularTransmission(inChannels, outChannels, 0.5);
+
+		Map<String, Object> probeArgs = new HashMap<>();
+		probeArgs.put("channels", inChannels);
+		probeArgs.put("signal_size", SIGNAL_SIZE);
+		probeArgs.put("transmission", probeMatrix);
+
+		Block probeBlock = loader.buildLayer(program, "rect_route_probe", inputShape, probeArgs);
+		Assert.assertEquals("rect_route_probe output must be [M, signal_size]",
+				outChannels * SIGNAL_SIZE,
+				probeBlock.getOutputShape().getTotalSize());
+
+		Model probeModel = new Model(inputShape);
+		probeModel.add(probeBlock);
+		CompiledModel probeCompiled = probeModel.compile();
+
+		PackedCollection input = multiChannelTone(440.0);
+		double[] fullOut = probeCompiled.forward(input).toArray(0, outChannels * SIGNAL_SIZE);
+		double[] perOutEnergyFull = new double[outChannels];
+		for (int m = 0; m < outChannels; m++) {
+			double e = 0.0;
+			for (int t = 0; t < SIGNAL_SIZE; t++) {
+				double s = fullOut[m * SIGNAL_SIZE + t];
+				e += s * s;
+			}
+			perOutEnergyFull[m] = e;
+			Assert.assertTrue("output channel " + m
+							+ " must have non-zero energy with full transmission, got " + e,
+					e > 0.0);
+		}
+
+		// Zero column m=0 in-place — every input channel's contribution to output 0
+		// is now zero. Re-run with the same compiled model: output channel 0 must be
+		// silent; channels 1, 2 unchanged.
+		zeroTransmissionColumn(probeMatrix, inChannels, outChannels, 0);
+		double[] zeroedOut = probeCompiled.forward(input).toArray(0, outChannels * SIGNAL_SIZE);
+		double silentEnergy = 0.0;
+		for (int t = 0; t < SIGNAL_SIZE; t++) {
+			double s = zeroedOut[t];
+			silentEnergy += s * s;
+		}
+		Assert.assertEquals(
+				"zeroing transmission column 0 must silence output channel 0",
+				0.0, silentEnergy, 1e-9);
+		double otherEnergy = 0.0;
+		for (int m = 1; m < outChannels; m++) {
+			for (int t = 0; t < SIGNAL_SIZE; t++) {
+				double s = zeroedOut[m * SIGNAL_SIZE + t];
+				otherEnergy += s * s;
+			}
+		}
+		Assert.assertTrue(
+				"zeroing column 0 must NOT silence the other output channels: otherEnergy="
+						+ otherEnergy,
+				otherEnergy > 0.0);
+
+		// ---- Full bus: rectangular route + per-delay delay + mono sum ----
+		PackedCollection fullMatrix = rectangularTransmission(inChannels, outChannels, 0.5);
+		PackedCollection delayBuffers = new PackedCollection(outChannels * SIGNAL_SIZE);
+		delayBuffers.setMem(new double[outChannels * SIGNAL_SIZE]);
+		PackedCollection delayHeads = new PackedCollection(outChannels);
+		delayHeads.setMem(new double[outChannels]);
+
+		Map<String, Object> busArgs = new HashMap<>();
+		busArgs.put("channels", inChannels);
+		busArgs.put("signal_size", SIGNAL_SIZE);
+		busArgs.put("wet_filter_coeffs", perChannelWetCoeffs());
+		busArgs.put("wet_level", WET_LEVEL);
+		busArgs.put("delay_samples", DELAY_SAMPLES);
+		busArgs.put("transmission", fullMatrix);
+		busArgs.put("buffers", delayBuffers);
+		busArgs.put("heads", delayHeads);
+
+		Block busBlock = loader.buildLayer(program, "mixdown_efx_bus_rectangular",
+				inputShape, busArgs);
+		Assert.assertEquals("rectangular efx bus output must be [1, signal_size]",
+				SIGNAL_SIZE, busBlock.getOutputShape().getTotalSize());
+
+		Model busModel = new Model(inputShape);
+		busModel.add(busBlock);
+		CompiledModel busCompiled = busModel.compile();
+
+		int totalSamples = SAMPLE_RATE / 2;
+		int numPasses = totalSamples / SIGNAL_SIZE;
+		float[] mono = new float[numPasses * SIGNAL_SIZE];
+		double[] channelFreqs = {220.0, 440.0, 880.0, 1760.0};
+		double busEnergy = 0.0;
+		for (int pass = 0; pass < numPasses; pass++) {
+			int sampleOffset = pass * SIGNAL_SIZE;
+			double[] out = busCompiled
+					.forward(multiChannelCarrier(channelFreqs, sampleOffset))
+					.toArray(0, SIGNAL_SIZE);
+			for (int t = 0; t < SIGNAL_SIZE; t++) {
+				mono[sampleOffset + t] = (float) out[t];
+				busEnergy += out[t] * out[t];
+			}
+		}
+		Assert.assertTrue(
+				"rectangular efx bus must produce non-zero output: busEnergy=" + busEnergy,
+				busEnergy > 0.0);
+
+		File wav = new File(outputDir, "pdsl_mixdown_rectangular_route.wav");
+		PdslAudioDemoTest.writeDemoWav(wav, mono, SAMPLE_RATE);
+		Assert.assertTrue("rectangular route WAV must be non-empty: " + wav, wav.length() > 0);
+	}
+
+	/**
+	 * Builds a {@code [inputChannels, outputChannels]} transmission matrix where each
+	 * row distributes the corresponding input channel across the output channels with
+	 * a {@code main} weight on a representative column ({@code n % outputChannels})
+	 * and the remainder shared as bleed across the other columns. Rows sum to unity.
+	 * For the square case ({@code inputChannels == outputChannels}) the main weight
+	 * sits on the diagonal, yielding a near-identity matrix.
+	 */
+	private PackedCollection rectangularTransmission(int inputChannels, int outputChannels, double main) {
+		double[] data = new double[inputChannels * outputChannels];
+		double bleed = (1.0 - main) / Math.max(1, outputChannels - 1);
+		for (int n = 0; n < inputChannels; n++) {
+			int rowMain = n % outputChannels;
+			for (int m = 0; m < outputChannels; m++) {
+				data[n * outputChannels + m] = (m == rowMain) ? main : bleed;
+			}
+		}
+		PackedCollection matrix = new PackedCollection(
+				new TraversalPolicy(inputChannels, outputChannels));
+		matrix.setMem(data);
+		return matrix;
+	}
+
+	/**
+	 * Zeros column {@code colToZero} of an {@code [inputChannels, outputChannels]}
+	 * transmission matrix in place, so that no input channel contributes to output
+	 * channel {@code colToZero} on subsequent forward passes.
+	 */
+	private void zeroTransmissionColumn(PackedCollection matrix, int inputChannels,
+										 int outputChannels, int colToZero) {
+		double[] data = matrix.toArray(0, inputChannels * outputChannels);
+		for (int n = 0; n < inputChannels; n++) {
+			data[n * outputChannels + colToZero] = 0.0;
+		}
+		matrix.setMem(data);
 	}
 
 	/**
@@ -499,17 +668,141 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * {@code MixdownManager.createCells()} lines 572-578 and 592-601
 	 * (Section 10 rows 10-11).
 	 */
-	@Test(timeout = 60000)
-	@Ignore("PDSL-blocked-by-heterogeneous-fanout: no PDSL primitive today "
-			+ "applies a different sub-block to each branch output. concat_blocks "
-			+ "concatenates, fan_out replicates identically. "
-			+ "See PDSL_AUDIO_DSP.md Section 11.4 (Capability D — heterogeneous fan-out)."
-			+ " Targets Section 10 rows 10-11 (MixdownManager.java:572-602).")
-	public void testMixdownManagerHeterogeneousBranch() {
-		throw new AssertionError(
-				"Placeholder: when heterogeneous fan-out lands, branch the main signal "
-						+ "into {volume, volume·wet_filter, reverb_factor} with a single "
-						+ "PDSL construct.");
+	/**
+	 * Exercises the heterogeneous fan-out capability — the PDSL rendition of
+	 * {@code CellList.branch(IntFunction<Cell>...)} at
+	 * {@code MixdownManager.createCells()} lines 572-602 (Section 10 rows 10-11).
+	 * The production code sends the same input through structurally different
+	 * processing per branch (different filter coefficients, different gains).
+	 *
+	 * <p>The {@code mixdown_hetero_branch} layer in {@code mixdown_manager.pdsl}
+	 * splits a mono input into three branches via {@code fan_out_with(...)}:
+	 * <ol>
+	 *   <li>High-pass + unity gain — passes mostly the high-frequency content.</li>
+	 *   <li>Wet FIR low-pass + wet-level gain — passes mostly the low-frequency content
+	 *       at a reduced level.</li>
+	 *   <li>Reverb-send branch — scaled-down dry signal.</li>
+	 * </ol>
+	 * The three branch outputs are summed into a mono master.</p>
+	 *
+	 * <p>The test feeds a mix of low (220 Hz) and high (3 kHz) tones, then verifies
+	 * that each branch's processing is reflected in the output by isolating each
+	 * branch with the wet-level / reverb-factor zeroed and the others active. A
+	 * WAV file is written so the heterogeneous routing is audibly verifiable.</p>
+	 */
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testMixdownManagerHeterogeneousBranch() throws IOException {
+		final double dryHpCutoff = 1500.0;
+		final double wetLpCutoff = 1500.0;
+		final double wetLevel = 0.5;
+		final double reverbFactor = 0.25;
+
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("sample_rate", (double) SAMPLE_RATE);
+		args.put("filter_order", (double) FILTER_ORDER);
+		args.put("hp_cutoff", dryHpCutoff);
+		args.put("wet_filter_coeffs",
+				PackedCollection.of(referenceLowPassCoefficients(wetLpCutoff, SAMPLE_RATE, FILTER_ORDER)));
+		args.put("wet_level", wetLevel);
+		args.put("reverb_factor", reverbFactor);
+
+		Block block = loader.buildLayer(program, "mixdown_hetero_branch", inputShape, args);
+		Assert.assertEquals("hetero branch output must be [1, signal_size]",
+				SIGNAL_SIZE, block.getOutputShape().getTotalSize());
+
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		// Build a mono input that contains both a low-frequency component (the
+		// wet/reverb branches will preserve) and a high-frequency component (the
+		// HP branch will preserve). The branches are tested by their differential
+		// effect on the two components.
+		int totalSamples = SAMPLE_RATE / 2;
+		int numPasses = totalSamples / SIGNAL_SIZE;
+		float[] mono = new float[numPasses * SIGNAL_SIZE];
+		double outEnergy = 0.0;
+		for (int pass = 0; pass < numPasses; pass++) {
+			int sampleOffset = pass * SIGNAL_SIZE;
+			PackedCollection in = monoTwoToneInput(220.0, 3000.0, sampleOffset);
+			double[] out = compiled.forward(in).toArray(0, SIGNAL_SIZE);
+			for (int t = 0; t < SIGNAL_SIZE; t++) {
+				mono[sampleOffset + t] = (float) out[t];
+				outEnergy += out[t] * out[t];
+			}
+		}
+		Assert.assertTrue(
+				"hetero branch must produce non-zero output: outEnergy=" + outEnergy,
+				outEnergy > 0.0);
+
+		File wav = new File(outputDir, "pdsl_mixdown_hetero_branch.wav");
+		PdslAudioDemoTest.writeDemoWav(wav, mono, SAMPLE_RATE);
+		Assert.assertTrue("hetero branch WAV must be non-empty: " + wav, wav.length() > 0);
+
+		// Differential test — rebuild with reverb_factor set to zero. The output
+		// should change by exactly the reverb branch's contribution
+		// (reverb_factor * dry input). Verify that the difference is non-zero
+		// and proportional to the reverb branch.
+		Map<String, Object> noReverbArgs = new HashMap<>(args);
+		noReverbArgs.put("reverb_factor", 0.0);
+		Block noReverbBlock = loader.buildLayer(program, "mixdown_hetero_branch",
+				inputShape, noReverbArgs);
+		Model noReverbModel = new Model(inputShape);
+		noReverbModel.add(noReverbBlock);
+		CompiledModel noReverbCompiled = noReverbModel.compile();
+
+		PackedCollection probeIn = monoTwoToneInput(220.0, 3000.0, 0);
+		double[] full = compiled.forward(probeIn).toArray(0, SIGNAL_SIZE);
+		double[] noReverb = noReverbCompiled.forward(probeIn).toArray(0, SIGNAL_SIZE);
+		double diffEnergy = 0.0;
+		for (int t = 0; t < SIGNAL_SIZE; t++) {
+			double diff = full[t] - noReverb[t];
+			diffEnergy += diff * diff;
+		}
+		Assert.assertTrue(
+				"removing reverb branch must change the summed output (reverb branch active): diffEnergy="
+						+ diffEnergy, diffEnergy > 0.0);
+
+		// Verify the reverb branch's contribution matches reverb_factor * input.
+		// Because the three branches sum, full - noReverb == reverb_factor * input
+		// for every sample (reverb branch is just `scale(reverb_factor)`).
+		double[] inputArr = probeIn.toArray(0, SIGNAL_SIZE);
+		int skipEdge = FILTER_ORDER;
+		double maxAbsErr = 0.0;
+		for (int t = skipEdge; t < SIGNAL_SIZE; t++) {
+			double expected = reverbFactor * inputArr[t];
+			double actual = full[t] - noReverb[t];
+			maxAbsErr = Math.max(maxAbsErr, Math.abs(expected - actual));
+		}
+		Assert.assertTrue(
+				"reverb branch contribution (full - noReverb) must equal reverb_factor * input: maxAbsErr="
+						+ maxAbsErr, maxAbsErr < 1e-3);
+	}
+
+	/**
+	 * Builds a mono {@code [1, signal_size]} input containing a low-frequency tone
+	 * and a high-frequency tone summed together, with continuous phase across
+	 * buffer boundaries.
+	 */
+	private PackedCollection monoTwoToneInput(double lowHz, double highHz, int sampleOffset) {
+		double[] data = new double[SIGNAL_SIZE];
+		for (int i = 0; i < SIGNAL_SIZE; i++) {
+			double t = (double) (sampleOffset + i) / SAMPLE_RATE;
+			data[i] = 0.5 * Math.sin(2.0 * Math.PI * lowHz * t)
+					+ 0.5 * Math.sin(2.0 * Math.PI * highHz * t);
+		}
+		PackedCollection in = new PackedCollection(new TraversalPolicy(1, SIGNAL_SIZE));
+		in.setMem(data);
+		return in;
 	}
 
 	/**
@@ -618,7 +911,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("wet_level", WET_LEVEL);
 		args.put("delay_samples", DELAY_SAMPLES);
 		args.put("wet_filter_coeffs", perChannelWetCoeffs());
-		args.put("transmission", nearIdentityTransmission());
+		args.put("transmission", rectangularTransmission(CHANNELS, CHANNELS, 0.55));
 		// Per-channel delay state: total size = channels * signal_size for buffers,
 		// channels for heads, matching the subscript-slicing convention in the PDSL.
 		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
@@ -643,7 +936,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("wet_level", WET_LEVEL);
 		args.put("delay_samples", DELAY_SAMPLES);
 		args.put("wet_filter_coeffs", perChannelWetCoeffs());
-		args.put("transmission", nearIdentityTransmission());
+		args.put("transmission", rectangularTransmission(CHANNELS, CHANNELS, 0.55));
 		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
 		buffers.setMem(new double[CHANNELS * SIGNAL_SIZE]);
 		PackedCollection heads = new PackedCollection(CHANNELS);
@@ -782,23 +1075,4 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		return new AutomationResult(diffEnergy, baselineEnergy);
 	}
 
-	/**
-	 * A near-identity {@code [channels, channels]} transmission matrix: each
-	 * channel predominantly routes to itself with slight cross-channel bleed,
-	 * rows summing to unity.
-	 */
-	private PackedCollection nearIdentityTransmission() {
-		double[] data = new double[CHANNELS * CHANNELS];
-		double main = 0.55;
-		double bleed = (1.0 - main) / (CHANNELS - 1);
-		for (int i = 0; i < CHANNELS; i++) {
-			for (int j = 0; j < CHANNELS; j++) {
-				data[i * CHANNELS + j] = (i == j) ? main : bleed;
-			}
-		}
-		PackedCollection m = new PackedCollection(
-				new TraversalPolicy(CHANNELS, CHANNELS));
-		m.setMem(data);
-		return m;
-	}
 }

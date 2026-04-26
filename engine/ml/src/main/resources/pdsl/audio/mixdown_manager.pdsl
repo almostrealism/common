@@ -146,6 +146,138 @@ layer mixdown_efx_bus(channels: int, signal_size: int,
 }
 
 // ---------------------------------------------------------------------------
+// Rectangular EFX bus — N efx channels routed via a rectangular [N, M]
+// transmission matrix into M delay layers, then summed to mono.
+//
+// This is the PDSL rendition of `efx.m(fi(), delays, transmissionGene)` at
+// MixdownManager.createEfx() line 660-664 (Section 10.2 rows 19-20). The
+// production gene generates a [N, M] matrix that fans each of the N efx
+// outputs into a weighted combination of the M delay-layer inputs; N and M
+// are independent in the live system (row 19 in Section 10).
+//
+// `route(transmission)` accepts both square and rectangular matrices: the
+// matrix's first axis must match the upstream channel count and its second
+// axis becomes the new channel count for everything downstream. After
+// `route(transmission)` here, the second `for each channel` and
+// `sum_channels()` operate on M (= transmission.shape[1]) channels rather
+// than the upstream N. This is what `mixdown_efx_bus` (above) cannot
+// express because its routing is square N×N feedback rather than fan-routing.
+//
+// Input shape:  [channels, signal_size]   (channels = N input efx layers)
+// Output shape: [1, signal_size]
+//
+// Parameters:
+//   channels             N — number of upstream efx channels (matches transmission.shape[0])
+//   signal_size          Samples per channel per forward pass
+//   wet_filter_coeffs    Per-efx-channel FIR coefficients, total size N * (filter_order+1)
+//   wet_level            Wet send level (fixed scalar)
+//   delay_samples        Delay length in samples (must be < signal_size)
+//   transmission         Routing matrix, shape [N, M] (rectangular allowed)
+//
+// Requires mixdown_efx_state populated with:
+//   buffers  PackedCollection of size M * signal_size (zero-initialised);
+//            sized to the *output* channel count, not the upstream N.
+//   heads    PackedCollection of size M (zero-initialised), likewise sized
+//            to the output channel count.
+// ---------------------------------------------------------------------------
+layer mixdown_efx_bus_rectangular(channels: int, signal_size: int,
+                                  wet_filter_coeffs: weight, wet_level: scalar,
+                                  delay_samples: scalar,
+                                  transmission: weight) -> [1, signal_size] {
+    for each channel {
+        fir(wet_filter_coeffs[channel])
+        scale(wet_level)
+    }
+    route(transmission)
+    for each channel {
+        delay(delay_samples, buffers[channel], heads[channel])
+    }
+    sum_channels()
+}
+
+// ---------------------------------------------------------------------------
+// Rectangular routing probe — exposes the [M, signal_size] output of a
+// rectangular `route(transmission)` directly without summing or further
+// processing. Used by `testMixdownManagerRectangularRoute` to verify that
+// individual output channels can be made silent by zeroing out the
+// corresponding column of the transmission matrix.
+//
+// Input shape:  [channels, signal_size]
+// Output shape: [output_channels, signal_size]   (= transmission.shape[1])
+// ---------------------------------------------------------------------------
+layer rect_route_probe(channels: int, signal_size: int,
+                       transmission: weight) {
+    route(transmission)
+}
+
+// ---------------------------------------------------------------------------
+// Heterogeneous wet/efx/reverb branch — three sibling sub-blocks all reading
+// the same mono input and producing one output channel each.
+//
+// Renders rows 10-11 of Section 10.1 (MixdownManager.createCells() lines
+// 567-602). The production code does:
+//
+//     wetSources.branch(v · wetFilter, reverbFactor)
+//     cells.branch(v, v · wetFilter, reverbFactor)
+//
+// Each branch has *structurally different* processing — different filters,
+// different gains, different downstream paths. PDSL renders this with the
+// `fan_out_with` construct: it accepts a comma-separated list of inline
+// block bodies, applies each to the [1, signal_size] input, and concatenates
+// the per-branch outputs into a [N, signal_size] tensor (where N is the
+// number of bodies, 3 here). After the construct, downstream `for each
+// channel`, `sum_channels()`, etc., operate on N channels.
+//
+// Syntax decision (from PDSL_AUDIO_DSP.md Section 12.4):
+//   * Option A — `fan_out_with({body1}, {body2}, ...)` with explicit per-branch
+//     bodies — picked. Bodies are visible inline, so a reader sees what each
+//     branch does without consulting a Java file. The branch count is fixed
+//     at parse time by the body count.
+//   * Option B — `for each branch in N { body }` rejected: this is already
+//     expressible today as `fan_out(N); for each channel { ... }` plus
+//     subscripted weight-table lookup; adding a new keyword for it would not
+//     unlock new expressiveness.
+//   * Option C — `fan_out(N) { body }` with one parameterised body rejected
+//     for the same reason as B; also subtly conflicts with the existing
+//     `fan_out(N)` primitive call form.
+//
+// Input shape:  [1, signal_size]
+// Output shape: [3, signal_size]   (one channel per branch body)
+//
+// Parameters:
+//   signal_size      Samples per channel per forward pass
+//   sample_rate      Audio sample rate in Hz
+//   filter_order     FIR filter order
+//   hp_cutoff        High-pass cutoff for the dry-with-HP branch (Hz)
+//   wet_filter_coeffs  FIR coefficients for the wet branch
+//                      (size = filter_order + 1)
+//   wet_level        Wet send level (scalar)
+//   reverb_factor    Reverb send level for the reverb branch (scalar)
+// ---------------------------------------------------------------------------
+layer mixdown_hetero_branch(signal_size: int,
+                            sample_rate: scalar, filter_order: scalar,
+                            hp_cutoff: scalar,
+                            wet_filter_coeffs: weight, wet_level: scalar,
+                            reverb_factor: scalar) -> [1, signal_size] {
+    fan_out_with(
+        {
+            // Dry-with-HP branch: high-pass + unity gain
+            highpass(hp_cutoff, sample_rate, filter_order)
+        },
+        {
+            // Wet branch: per-channel FIR + wet level
+            fir(wet_filter_coeffs)
+            scale(wet_level)
+        },
+        {
+            // Reverb-send branch: scaled-down dry signal
+            scale(reverb_factor)
+        }
+    )
+    sum_channels()
+}
+
+// ---------------------------------------------------------------------------
 // Master — full fixed-parameter rendition of MixdownManager
 //
 // Signal flow:

@@ -469,6 +469,8 @@ public class PdslInterpreter {
 			interpretConcatBlocks((PdslNode.ConcatBlocksStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ForEachChannelStatement) {
 			interpretForEachChannel((PdslNode.ForEachChannelStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.FanOutWithStatement) {
+			interpretFanOutWith((PdslNode.FanOutWithStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ForStatement) {
 			PdslNode.ForStatement forStmt = (PdslNode.ForStatement) stmt;
 			int start = toInt(evaluateExpression(forStmt.getStart(), env));
@@ -700,9 +702,18 @@ public class PdslInterpreter {
 		}
 
 		if ("route".equals(name)) {
-			return FEATURES.callRoute(args,
-					AudioDspInterpreterFeatures.toInt(env.get("channels")),
-					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
+			int inputChannels = AudioDspInterpreterFeatures.toInt(env.get("channels"));
+			int signalSize = AudioDspInterpreterFeatures.toInt(env.get("signal_size"));
+			Block routeBlock = FEATURES.callRoute(args, inputChannels, signalSize);
+			// route() may produce a different output channel count than its input
+			// (rectangular routing). Update the environment's "channels" binding so
+			// downstream `for each channel`, `sum_channels()`, subscript, etc. operate
+			// on the new channel count.
+			int outputChannels = routeBlock.getOutputShape().length(0);
+			if (outputChannels != inputChannels) {
+				env.set("channels", outputChannels);
+			}
+			return routeBlock;
 		}
 		if ("sum_channels".equals(name)) {
 			return FEATURES.callSumChannels(args,
@@ -1137,6 +1148,30 @@ public class PdslInterpreter {
 	// per-channel sub-block, so it stays here next to interpretBranch / interpretAccum
 	// rather than in AudioDspInterpreterFeatures (which only owns Block-returning
 	// expression-level primitives).
+
+	/**
+	 * Interprets a {@code fan_out_with({ body1 }, { body2 }, ...)} statement by building
+	 * one sub-block per branch (each receiving the full {@code [1, signal_size]} input)
+	 * and wrapping them with {@link MultiChannelDspFeatures#fanOutWithBlock}. Updates
+	 * the environment's {@code channels} binding to the branch count so subsequent
+	 * statements see the new multi-channel shape.
+	 */
+	private void interpretFanOutWith(PdslNode.FanOutWithStatement stmt,
+									 SequentialBlock block, Environment env) {
+		int signalSize = toInt(env.get("signal_size"));
+		TraversalPolicy branchInputShape = FEATURES.shape(1, signalSize);
+		List<Block> branchBlocks = new ArrayList<>();
+		for (PdslNode.Expression expr : stmt.getBranches()) {
+			branchBlocks.add(expressionToBlock(expr, branchInputShape, env));
+		}
+		int n = branchBlocks.size();
+		if (n < 1) {
+			throw new PdslParseException(
+					"fan_out_with requires at least one branch body");
+		}
+		block.add(FEATURES.fanOutWithBlock(branchBlocks, signalSize));
+		env.set("channels", n);
+	}
 
 	/** Interprets {@code for each channel} by building per-channel sub-blocks and wrapping them. */
 	private void interpretForEachChannel(PdslNode.ForEachChannelStatement stmt,

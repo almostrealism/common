@@ -56,6 +56,12 @@ public class PdslToken {
 		ACCUM_BLOCKS,
 		/** {@code concat_blocks} keyword for concatenating outputs of N blocks applied to the same input. */
 		CONCAT_BLOCKS,
+		/**
+		 * {@code fan_out_with} keyword for heterogeneous fan-out: applies a distinct sub-block
+		 * to a single-channel input per output channel and concatenates the per-branch outputs
+		 * along a new channel axis. Equivalent to {@code CellList.branch(IntFunction<Cell>...)}.
+		 */
+		FAN_OUT_WITH,
 		/** {@code weight} keyword marking a weight reference. */
 		WEIGHT,
 		/** {@code scalar} type annotation keyword. */

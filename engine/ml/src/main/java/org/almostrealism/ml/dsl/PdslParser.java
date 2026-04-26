@@ -353,6 +353,7 @@ public class PdslParser {
 			case PRODUCT: return parseProductStatement();
 			case ACCUM_BLOCKS: return parseAccumBlocksStatement();
 			case CONCAT_BLOCKS: return parseConcatBlocksStatement();
+			case FAN_OUT_WITH: return parseFanOutWithStatement();
 			case FOR: return parseForStatement();
 			default: return parseExpressionStatement();
 		}
@@ -470,6 +471,25 @@ public class PdslParser {
 		}
 		consume(PdslToken.Type.RPAREN);
 		return new PdslNode.ConcatBlocksStatement(blocks, kw.getLine(), kw.getColumn());
+	}
+
+	/**
+	 * Parses a {@code fan_out_with({ body1 }, { body2 }, ...)} statement with two or more
+	 * inline-block branch arguments.
+	 *
+	 * @return the parsed {@link PdslNode.FanOutWithStatement}
+	 */
+	private PdslNode.FanOutWithStatement parseFanOutWithStatement() {
+		PdslToken kw = consume(PdslToken.Type.FAN_OUT_WITH);
+		consume(PdslToken.Type.LPAREN);
+		List<PdslNode.Expression> branches = new ArrayList<>();
+		branches.add(parseBlockArg());
+		while (check(PdslToken.Type.COMMA)) {
+			consume(PdslToken.Type.COMMA);
+			branches.add(parseBlockArg());
+		}
+		consume(PdslToken.Type.RPAREN);
+		return new PdslNode.FanOutWithStatement(branches, kw.getLine(), kw.getColumn());
 	}
 
 	/**

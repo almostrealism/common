@@ -479,17 +479,45 @@ public interface AudioDspInterpreterFeatures
 	/**
 	 * Validates and delegates to {@link MultiChannelDspFeatures#routeBlock}.
 	 *
-	 * @param args       one weight argument: the transmission matrix
-	 * @param channels   number of channels (from PDSL environment)
-	 * @param signalSize samples per channel (from PDSL environment)
+	 * <p>The transmission matrix's first axis must match the upstream channel count
+	 * ({@code inputChannels}); its second axis determines the number of output channels
+	 * the routing block produces. A square matrix is the degenerate case
+	 * ({@code inputChannels == outputChannels}); a rectangular matrix routes
+	 * {@code N → M} channels.</p>
+	 *
+	 * @param args            one weight argument: the transmission matrix
+	 *                        (shape {@code [inputChannels, outputChannels]})
+	 * @param inputChannels   number of upstream channels (from PDSL environment)
+	 * @param signalSize      samples per channel (from PDSL environment)
 	 * @return the cross-channel routing {@link Block}
+	 * @throws PdslParseException if the matrix is not 2D, has a zero axis, or its first
+	 *                            axis does not match {@code inputChannels}
 	 */
-	default Block callRoute(List<Object> args, int channels, int signalSize) {
+	default Block callRoute(List<Object> args, int inputChannels, int signalSize) {
 		if (args.size() != 1 || !(args.get(0) instanceof PackedCollection)) {
 			throw new PdslParseException(
 					"route() expects 1 weight argument (transmission matrix), got " + args.size());
 		}
-		return routeBlock((PackedCollection) args.get(0), channels, signalSize);
+		PackedCollection matrix = (PackedCollection) args.get(0);
+		TraversalPolicy ms = matrix.getShape();
+		if (ms.getDimensions() != 2) {
+			throw new PdslParseException(
+					"route() matrix must be 2D, got shape with "
+							+ ms.getDimensions() + " dimensions");
+		}
+		int matIn = ms.length(0);
+		int matOut = ms.length(1);
+		if (matIn <= 0 || matOut <= 0) {
+			throw new PdslParseException(
+					"route() matrix must have positive dimensions, got ["
+							+ matIn + ", " + matOut + "]");
+		}
+		if (matIn != inputChannels) {
+			throw new PdslParseException(
+					"route() matrix's first axis (" + matIn
+							+ ") must match upstream channel count (" + inputChannels + ")");
+		}
+		return routeBlock(matrix, inputChannels, matOut, signalSize);
 	}
 
 	/**
