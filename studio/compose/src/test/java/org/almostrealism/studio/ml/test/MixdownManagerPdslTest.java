@@ -90,6 +90,14 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	private static final int DELAY_SAMPLES = 64;
 
 	/**
+	 * Number of forward passes used by the producer-args automation tests.
+	 * Each pass is one buffer of {@link #SIGNAL_SIZE} samples; with the
+	 * default value the tests render roughly half a second of audio per
+	 * compiled model.
+	 */
+	private static final int NUM_AUTOMATION_PASSES = 86;
+
+	/**
 	 * Parses {@code mixdown_manager.pdsl} and verifies that all three layers
 	 * ({@code mixdown_main_bus}, {@code mixdown_efx_bus}, {@code mixdown_master})
 	 * are present.
@@ -320,71 +328,150 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	// ====================================================================
 
 	/**
-	 * When Capability A ({@code automation(scalar)}) lands, this test should
-	 * exercise a PDSL {@code mixdown_main_bus} whose per-channel HP cutoff is a
-	 * time-varying scalar producer rather than a compile-time constant. Targets
-	 * {@code MixdownManager.createCells()} lines 504-521 (Section 10 rows 1-2).
+	 * Exercises a PDSL {@code mixdown_main_bus} whose per-channel HP cutoff is
+	 * a time-varying scalar {@link Producer} (a 1-element {@link PackedCollection}
+	 * slot mutated between forward passes) rather than a compile-time constant.
+	 * Mirrors {@code MixdownManager.createCells()} lines 504-521 (Section 10 rows 1-2):
+	 * the production path drives the cutoff via
+	 * {@code AutomationManager.getAggregatedValue(...)} which returns a
+	 * shape-{@code [1]} {@code Producer<PackedCollection>}; this test mocks that
+	 * shape with a synthetic mutable slot for substrate isolation.
+	 *
+	 * <p>The mutable slot sweeps the cutoff from 100 Hz upward, traversing the
+	 * carrier frequencies of the dry tones, so the frequency-by-frequency
+	 * roll-off changes pass-by-pass. The corresponding fixed-cutoff layer
+	 * (built with the slot's mean cutoff) is rendered through the same input
+	 * sequence; the producer-driven output must differ audibly from this
+	 * baseline — a regression where the producer is silently treated as a
+	 * constant would make {@code diffEnergy} collapse to floating-point noise.</p>
 	 */
-	@Test(timeout = 60000)
-	@Ignore("PDSL-blocked-by-automation: per-channel highpass() cutoff "
-			+ "must accept a time-varying scalar Producer. "
-			+ "See PDSL_AUDIO_DSP.md Section 11.1 (Capability A — automation(scalar))."
-			+ " Targets Section 10 rows 1-2 (MixdownManager.java:504-521).")
-	public void testMixdownManagerAutomatedHighpass() {
-		throw new AssertionError(
-				"Placeholder: when automation(scalar) lands, remove @Ignore and implement "
-						+ "per-channel HP with a time-varying cutoff producer.");
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testMixdownManagerAutomatedHighpass() throws IOException {
+		PackedCollection cutoffSlot = new PackedCollection(1);
+		double[] schedule = sweepSchedule(100.0, 4500.0, NUM_AUTOMATION_PASSES);
+
+		Map<String, Object> producerArgs = mainBusArgs();
+		producerArgs.put("hp_cutoff", cutoffSlot);
+
+		Map<String, Object> constArgs = mainBusArgs();
+		constArgs.put("hp_cutoff", scheduleMean(schedule));
+
+		AutomationResult result = renderAutomatedComparison(
+				"mixdown_main_bus", producerArgs, constArgs, cutoffSlot, schedule,
+				"mixdown_manager_automated_hp.wav");
+
+		Assert.assertTrue(
+				"automated HP cutoff must differ from constant-cutoff baseline: "
+						+ "diffEnergy=" + result.diffEnergy + ", baselineEnergy=" + result.baselineEnergy,
+				result.diffEnergy > 0.05 * Math.max(result.baselineEnergy, 1.0e-9));
 	}
 
 	/**
-	 * When Capability A lands, verify that per-channel volume scaling can be
-	 * driven by a time-varying scalar producer (mirror of
-	 * {@code MixdownManager.createCells()} line 524-526, Section 10 row 3).
+	 * Exercises a PDSL {@code mixdown_main_bus} whose per-channel volume is a
+	 * time-varying scalar {@link Producer}. Mirrors
+	 * {@code MixdownManager.createCells()} line 524-526 (Section 10 row 3):
+	 * the production path drives the volume via
+	 * {@code AutomationManager.getAggregatedValue(...)}; this test mocks that
+	 * shape with a mutable slot.
+	 *
+	 * <p>The schedule fades from {@code 0.0} to {@code 1.0} so the producer
+	 * version is a fade-in while the constant baseline holds at the mean
+	 * (~0.5). The two outputs must therefore differ measurably even before
+	 * filtering effects are considered.</p>
 	 */
-	@Test(timeout = 60000)
-	@Ignore("PDSL-blocked-by-automation: scale() must accept a time-varying "
-			+ "scalar Producer for per-channel gene-driven volume. "
-			+ "See PDSL_AUDIO_DSP.md Section 11.1 (Capability A — automation(scalar))."
-			+ " Targets Section 10 row 3 (MixdownManager.java:524-526).")
-	public void testMixdownManagerAutomatedVolume() {
-		throw new AssertionError(
-				"Placeholder: when automation(scalar) lands, implement per-channel volume "
-						+ "driven by a time-varying scalar producer.");
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testMixdownManagerAutomatedVolume() throws IOException {
+		PackedCollection volumeSlot = new PackedCollection(1);
+		double[] schedule = sweepSchedule(0.0, 1.0, NUM_AUTOMATION_PASSES);
+
+		Map<String, Object> producerArgs = mainBusArgs();
+		producerArgs.put("volume", volumeSlot);
+
+		Map<String, Object> constArgs = mainBusArgs();
+		constArgs.put("volume", scheduleMean(schedule));
+
+		AutomationResult result = renderAutomatedComparison(
+				"mixdown_main_bus", producerArgs, constArgs, volumeSlot, schedule,
+				"mixdown_manager_automated_volume.wav");
+
+		Assert.assertTrue(
+				"automated volume must differ from constant-volume baseline: "
+						+ "diffEnergy=" + result.diffEnergy + ", baselineEnergy=" + result.baselineEnergy,
+				result.diffEnergy > 0.05 * Math.max(result.baselineEnergy, 1.0e-9));
 	}
 
 	/**
-	 * When Capability A lands, verify that the master LP cutoff can be
-	 * automation-driven (mirror of {@code MixdownManager.createEfx()} line
-	 * 707-714, Section 10 row 28).
+	 * Exercises a PDSL {@code mixdown_master} whose master LP cutoff is a
+	 * time-varying scalar {@link Producer}. Mirrors
+	 * {@code MixdownManager.createEfx()} line 707-714 (Section 10 row 28): the
+	 * production path drives the master filter-down via
+	 * {@code AutomationManager.getAggregatedValue(...)}; this test mocks that
+	 * shape with a mutable slot.
+	 *
+	 * <p>The schedule sweeps the LP cutoff from 8 kHz down to 500 Hz —
+	 * progressively rolling off the higher dry-tone carriers — while the
+	 * constant baseline runs at the mean cutoff. State-bearing components in
+	 * the rest of the chain (per-channel delay buffers/heads) are allocated
+	 * separately for each compiled model so the only divergence between the
+	 * two outputs is the LP behaviour.</p>
 	 */
-	@Test(timeout = 60000)
-	@Ignore("PDSL-blocked-by-automation: lowpass() cutoff must accept a "
-			+ "time-varying scalar Producer for master filter-down automation. "
-			+ "See PDSL_AUDIO_DSP.md Section 11.1 (Capability A — automation(scalar))."
-			+ " Targets Section 10 row 28 (MixdownManager.java:707-714).")
-	public void testMixdownManagerAutomatedLowpass() {
-		throw new AssertionError(
-				"Placeholder: when automation(scalar) lands, implement master LP with "
-						+ "time-varying cutoff producer.");
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testMixdownManagerAutomatedLowpass() throws IOException {
+		PackedCollection lpSlot = new PackedCollection(1);
+		double[] schedule = sweepSchedule(8000.0, 500.0, NUM_AUTOMATION_PASSES);
+
+		Map<String, Object> producerArgs = masterArgs();
+		producerArgs.put("lp_cutoff", lpSlot);
+
+		Map<String, Object> constArgs = masterArgs();
+		constArgs.put("lp_cutoff", scheduleMean(schedule));
+
+		AutomationResult result = renderAutomatedComparison(
+				"mixdown_master", producerArgs, constArgs, lpSlot, schedule,
+				"mixdown_manager_automated_lp.wav");
+
+		Assert.assertTrue(
+				"automated master LP must differ from constant-cutoff baseline: "
+						+ "diffEnergy=" + result.diffEnergy + ", baselineEnergy=" + result.baselineEnergy,
+				result.diffEnergy > 0.05 * Math.max(result.baselineEnergy, 1.0e-9));
 	}
 
 	/**
-	 * When Capability B (variable delay time) lands, verify that
-	 * {@code delay(...)} accepts a time-varying sample count rather than a
-	 * compile-time int. Equivalent to {@code AdjustableDelayCell} at
-	 * {@code MixdownManager.createEfx()} line 654-658 (Section 10 row 17).
+	 * Exercises a PDSL {@code mixdown_efx_bus} whose per-channel delay length
+	 * is a time-varying scalar {@link Producer}. Mirrors
+	 * {@code MixdownManager.createEfx()} line 654-658 (Section 10 row 17): the
+	 * production path uses {@code AdjustableDelayCell} whose delay is driven
+	 * by a polycyclic gene scaled by the audio clock.
+	 *
+	 * <p>The schedule sweeps the delay length across {@code [16, 192]} samples
+	 * (well below {@code SIGNAL_SIZE} so the buffer-bound invariant holds).
+	 * The constant baseline runs at the mean delay. Because the per-channel
+	 * delay buffers are stateful, the two compiled models receive their own
+	 * buffer/head allocations via separate {@code efxBusArgs()} calls.</p>
 	 */
-	@Test(timeout = 60000)
-	@Ignore("PDSL-blocked-by-variable-delay: delay() must accept a time-varying "
-			+ "Producer<PackedCollection> for the delay-sample count rather than "
-			+ "a compile-time integer. "
-			+ "See PDSL_AUDIO_DSP.md Section 11.2 (Capability B — variable delay time)."
-			+ " Targets Section 10 row 17 (MixdownManager.java:654-658, AdjustableDelayCell).")
-	public void testMixdownManagerVariableDelayTime() {
-		throw new AssertionError(
-				"Placeholder: when variable-delay primitive lands, build an efx bus with "
-						+ "per-channel Producer-driven delay times and compare against the "
-						+ "AdjustableDelayCell reference.");
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testMixdownManagerVariableDelayTime() throws IOException {
+		PackedCollection delaySlot = new PackedCollection(1);
+		double[] schedule = sweepSchedule(16.0, 192.0, NUM_AUTOMATION_PASSES);
+
+		Map<String, Object> producerArgs = efxBusArgs();
+		producerArgs.put("delay_samples", delaySlot);
+
+		Map<String, Object> constArgs = efxBusArgs();
+		constArgs.put("delay_samples", scheduleMean(schedule));
+
+		AutomationResult result = renderAutomatedComparison(
+				"mixdown_efx_bus", producerArgs, constArgs, delaySlot, schedule,
+				"mixdown_manager_variable_delay.wav");
+
+		Assert.assertTrue(
+				"variable delay length must differ from constant-delay baseline: "
+						+ "diffEnergy=" + result.diffEnergy + ", baselineEnergy=" + result.baselineEnergy,
+				result.diffEnergy > 0.05 * Math.max(result.baselineEnergy, 1.0e-9));
 	}
 
 	/**
@@ -581,6 +668,118 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		PackedCollection all = new PackedCollection(CHANNELS * perChannel);
 		all.setMem(data);
 		return all;
+	}
+
+	/**
+	 * Result of a producer-args automation comparison: total
+	 * sum-of-squared-differences between the producer-driven output and the
+	 * constant-baseline output, plus the baseline output's own
+	 * sum-of-squares for normalisation.
+	 */
+	private static final class AutomationResult {
+		final double diffEnergy;
+		final double baselineEnergy;
+
+		AutomationResult(double diffEnergy, double baselineEnergy) {
+			this.diffEnergy = diffEnergy;
+			this.baselineEnergy = baselineEnergy;
+		}
+	}
+
+	/**
+	 * Builds a linear schedule that ramps from {@code start} to {@code end}
+	 * across {@code numPasses} entries. Used to drive the producer-valued
+	 * scalar slot from one forward pass to the next.
+	 */
+	private double[] sweepSchedule(double start, double end, int numPasses) {
+		double[] schedule = new double[numPasses];
+		if (numPasses == 1) {
+			schedule[0] = 0.5 * (start + end);
+			return schedule;
+		}
+		for (int i = 0; i < numPasses; i++) {
+			double t = (double) i / (numPasses - 1);
+			schedule[i] = start + t * (end - start);
+		}
+		return schedule;
+	}
+
+	/** Arithmetic mean of a schedule, used as the constant baseline. */
+	private double scheduleMean(double[] schedule) {
+		double sum = 0.0;
+		for (double v : schedule) sum += v;
+		return sum / schedule.length;
+	}
+
+	/**
+	 * Renders {@code numPasses} of audio through two compiled models — one
+	 * built with the producer-valued slot, one with the slot's mean as a
+	 * Number literal — feeding both with identical multi-channel carrier
+	 * input. Mutates the producer slot to {@code schedule[pass]} before each
+	 * pass so the kernel reads the current value. Writes the producer-driven
+	 * output as a WAV file and asserts the WAV is non-empty before returning
+	 * the energy comparison.
+	 */
+	private AutomationResult renderAutomatedComparison(String layerName,
+													   Map<String, Object> producerArgs,
+													   Map<String, Object> constArgs,
+													   PackedCollection slot,
+													   double[] schedule,
+													   String wavFileName) throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
+		TraversalPolicy inputShape = new TraversalPolicy(CHANNELS, SIGNAL_SIZE);
+
+		Block producerBlock = loader.buildLayer(program, layerName, inputShape, producerArgs);
+		Block constBlock = loader.buildLayer(program, layerName, inputShape, constArgs);
+
+		Model producerModel = new Model(inputShape);
+		producerModel.add(producerBlock);
+		CompiledModel producerCompiled = producerModel.compile();
+
+		Model constModel = new Model(inputShape);
+		constModel.add(constBlock);
+		CompiledModel constCompiled = constModel.compile();
+
+		int numPasses = schedule.length;
+		int totalSamples = numPasses * SIGNAL_SIZE;
+		float[] producerMono = new float[totalSamples];
+		float[] constMono = new float[totalSamples];
+
+		double[] channelFreqs = {220.0, 440.0, 880.0, 1760.0};
+
+		for (int pass = 0; pass < numPasses; pass++) {
+			int sampleOffset = pass * SIGNAL_SIZE;
+			slot.setMem(0, schedule[pass]);
+
+			double[] producerOut = producerCompiled
+					.forward(multiChannelCarrier(channelFreqs, sampleOffset))
+					.toArray(0, SIGNAL_SIZE);
+			double[] constOut = constCompiled
+					.forward(multiChannelCarrier(channelFreqs, sampleOffset))
+					.toArray(0, SIGNAL_SIZE);
+
+			for (int i = 0; i < SIGNAL_SIZE; i++) {
+				producerMono[sampleOffset + i] = (float) producerOut[i];
+				constMono[sampleOffset + i] = (float) constOut[i];
+			}
+		}
+
+		File wav = new File(outputDir, wavFileName);
+		PdslAudioDemoTest.writeDemoWav(wav, producerMono, SAMPLE_RATE);
+		Assert.assertTrue("Producer-driven WAV must be non-empty: " + wav, wav.length() > 0);
+
+		double diffEnergy = 0.0;
+		double baselineEnergy = 0.0;
+		for (int i = 0; i < totalSamples; i++) {
+			double diff = (double) producerMono[i] - (double) constMono[i];
+			diffEnergy += diff * diff;
+			baselineEnergy += (double) constMono[i] * (double) constMono[i];
+		}
+		return new AutomationResult(diffEnergy, baselineEnergy);
 	}
 
 	/**
