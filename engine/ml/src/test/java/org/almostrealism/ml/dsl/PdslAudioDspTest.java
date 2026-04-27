@@ -663,6 +663,9 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 					expected1, output1.toDouble(i), 1e-9);
 		}
 
+		// Snapshot the value before pass 2 overwrites the shared buffer.
+		double output1FirstSample = output1.toDouble(0);
+
 		// Advance the "clock" — counter = 0.4, expected scale = 0.2
 		counter.setMem(0, 0.4);
 		PackedCollection output2 = compiled.forward(signal);
@@ -673,7 +676,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		}
 
 		Assert.assertNotEquals("Outputs across clock ticks must differ",
-				output1.toDouble(0), output2.toDouble(0), 1e-9);
+				output1FirstSample, output2.toDouble(0), 1e-9);
 	}
 
 	/**
