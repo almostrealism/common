@@ -113,8 +113,12 @@ In addition to the configuration fields exposed via getters, `ClaudeCodeJob` mai
 | `isError` | `boolean` | Whether Claude Code flagged the session as an error. |
 | `permissionDenials` | `int` | Number of tool permission denials encountered. |
 | `deniedToolNames` | `List<String>` | Names of tools that were denied during execution. |
+| `inactivityTimeoutMillis` | `long` | Stdout silence duration after which the Claude subprocess is killed. Configuration default: 20 minutes. |
+| `maxInactivityRestarts` | `int` | Maximum number of relaunches of the Claude subprocess after inactivity-triggered kills. Configuration default: 3. |
+| `inactivityRestartAttempt` | `int` | Number of inactivity-triggered relaunches in the current run. Reset to 0 once the run completes. Forwarded to `InstructionPromptBuilder` to inject a restart warning into the relaunch prompt. |
+| `wasKilledForInactivity` | `volatile boolean` | Indicates whether the most recent attempt ended because of inactivity; consumed by the retry loop in `executeSingleRun()`. The value is taken from `ClaudeAttemptRunner.Result`, which reflects inactivity handling performed during the attempt by `ClaudeInactivityMonitor`. |
 
-These fields are extracted from the NDJSON output by `extractOutputMetrics()` and then forwarded to `ClaudeCodeJobEvent` via `populateEventDetails()`.
+NDJSON-derived execution metrics are extracted by `extractOutputMetrics()`, and the subset needed for completion reporting is forwarded to `ClaudeCodeJobEvent` via `populateEventDetails()`. The inactivity configuration fields (`inactivityTimeoutMillis`, `maxInactivityRestarts`) are execution controls rather than extracted metrics, and the retry-state fields (`inactivityRestartAttempt`, `wasKilledForInactivity`) are maintained during attempt execution.
 
 ### Collaborating Objects
 
@@ -123,6 +127,11 @@ These fields are extracted from the NDJSON output by `extractOutputMetrics()` an
 - `mcpConfigBuilder` (`McpConfigBuilder`): Constructs the `--mcp-config` JSON and `--allowedTools` string. Configured via `configureMcpBuilder()` before each execution.
 - `toolsDownloader` (`ManagedToolsDownloader`): Downloads pushed tool server files from the controller. Initialized with a reference to `mcpConfigBuilder` for config parsing.
 - `outputMapper` (`ObjectMapper`): A static Jackson mapper shared by all instances for NDJSON parsing and JSON serialization.
+
+Two stateless helpers are invoked per Claude attempt:
+
+- `ClaudeAttemptRunner` (static utility): Given a fully configured `ProcessBuilder`, starts the subprocess, attaches a `ClaudeInactivityMonitor`, reads stdout to completion, and returns a `Result(exitCode, output, killedForInactivity)`. Logs lines through the supplied `ConsoleFeatures` so messages stay attributed to the job.
+- `ClaudeInactivityMonitor` (daemon thread): Wakes every `min(60s, max(5s, inactivityTimeoutMillis / 4))` and destroys the subprocess plus its descendants when stdout has been silent for `inactivityTimeoutMillis`. Fires a `LongConsumer` callback before destroying so the caller can flag the kill (e.g., set `wasKilledForInactivity`). Exits naturally when the subprocess dies; can be stopped early by interrupting the thread.
 
 ### ClaudeCodeJobOutput
 
@@ -259,13 +268,15 @@ Each of these results in a `FAILED` status event being posted to the workstream 
 
 7. **Command construction** -- The full `claude` command is assembled. See [Command-Line Arguments](#command-line-arguments).
 
-8. **Process execution** -- A `ProcessBuilder` runs the command. The working directory is set from the job config. `AR_WORKSTREAM_URL` is set in the process environment from the resolved workstream URL (with `0.0.0.0` replaced by `FLOWTREE_ROOT_HOST`). Stdin is redirected from `/dev/null` and stderr is merged with stdout. The process output is read line by line and logged.
+8. **Process execution with inactivity monitoring** -- `executeSingleRun()` builds the `ProcessBuilder` (working directory from job config, `AR_WORKSTREAM_URL` set from the resolved workstream URL with `0.0.0.0` replaced by `FLOWTREE_ROOT_HOST`, stdin from `/dev/null`, stderr merged with stdout) and hands it to `ClaudeAttemptRunner.runAttempt()`. The runner starts the subprocess, attaches a `ClaudeInactivityMonitor` daemon thread, and reads stdout line-by-line, updating an `AtomicLong` clock on every line so the monitor can tell whether the subprocess is still producing output. The monitor wakes every `min(60s, max(5s, inactivityTimeoutMillis / 4))` and, if stdout has been silent for at least `inactivityTimeoutMillis` (default 20 minutes), destroys the subprocess and its descendants and sets `wasKilledForInactivity`. The runner returns a `Result(exitCode, output, killedForInactivity)`.
 
-9. **Output capture and saving** -- The full output is captured in a `StringBuilder` that accumulates every line read from the process. After the process exits, the complete output is written to `claude-output/<random-key>.json` where the random key is generated by `KeyUtils.generateKey()`. The `claude-output/` directory is created in step 3 and is included in `GitManagedJob`'s default excluded patterns, so output files are never accidentally committed to the repository.
+9. **Inactivity restart loop** -- `executeSingleRun()` wraps the call to `launchClaudeAttempt()` in a `for` loop that retries up to `maxInactivityRestarts` times (default 3) when the previous attempt was killed by the inactivity monitor. Each retry rebuilds the instruction prompt with `inactivityRestartAttempt` set to the retry count, which causes `InstructionPromptBuilder` to prepend a `## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!` warning explaining the most common cause (self-matching `pgrep -f` loops, `curl` polling against invented endpoints) and instructing the agent to use MCP `get_*_status` calls instead of bash polling. Once an attempt finishes without an inactivity kill -- or once the retry budget is exhausted -- the loop exits and the last attempt's output is used.
 
-10. **Metric extraction** -- `extractOutputMetrics(output)` parses the NDJSON output to extract session ID, timing, cost, stop reason, and permission denial information. This method locates the final `type:result` object using `JsonFieldExtractor.extractLastJsonObject()`, then parses it with Jackson `ObjectMapper` to extract individual fields. See [Output Metric Extraction](#output-metric-extraction) for the complete list of extracted fields and their JSON paths.
+10. **Output capture and saving** -- The output captured by the final attempt is assigned to the `output` field, written to `claude-output/<random-key>.json` where the random key is generated by `KeyUtils.generateKey()`. The `claude-output/` directory is created in step 3 and is included in `GitManagedJob`'s default excluded patterns, so output files are never accidentally committed to the repository.
 
-11. **Output consumer callback** -- If an `outputConsumer` functional interface is registered on the job, a `ClaudeCodeJobOutput` record is constructed and delivered via `outputConsumer.accept(output)`. The consumer receives the task ID, prompt text, full output, session ID, and exit code. This callback mechanism is used by the FlowTree job dispatch system to route results back to the controller for aggregation and logging. If no consumer is registered (which is common in standalone testing), this step is silently skipped.
+11. **Metric extraction** -- `extractOutputMetrics(output)` parses the NDJSON output to extract session ID, timing, cost, stop reason, and permission denial information. This method locates the final `type:result` object using `JsonFieldExtractor.extractLastJsonObject()`, then parses it with Jackson `ObjectMapper` to extract individual fields. See [Output Metric Extraction](#output-metric-extraction) for the complete list of extracted fields and their JSON paths.
+
+12. **Output consumer callback** -- If an `outputConsumer` functional interface is registered on the job, a `ClaudeCodeJobOutput` record is constructed and delivered via `outputConsumer.accept(output)`. The consumer receives the task ID, prompt text, full output, session ID, and exit code. This callback mechanism is used by the FlowTree job dispatch system to route results back to the controller for aggregation and logging. If no consumer is registered (which is common in standalone testing), this step is silently skipped.
 
 ### Error Handling in Phase 2
 
@@ -380,7 +391,13 @@ The `InstructionPromptBuilder` class extracts the prompt-assembly logic from `Cl
 
 ### Section Assembly Order
 
-All setters support chaining. The `build()` method assembles sections in this fixed order:
+All setters support chaining. The `build()` method assembles sections in this fixed order. The first three sections are restart warnings prepended above all other content when their triggering condition is set; they document for the agent why the prior attempt ended and (where applicable) what to avoid this time. They are mutually compatible -- if more than one applies, all three are emitted in order.
+
+0a. **Git Tampering Violation Warning** -- Present when `gitTamperingViolation` is set. Heading: `## !! SESSION RESTARTED -- GIT TAMPERING VIOLATION !!`. Explains that the previous session was terminated and its changes destroyed because the agent ran a forbidden git command (commit, checkout, switch, branch, merge, rebase, reset, stash). Lists the exact rules and warns that another violation will result in another forced reset.
+
+0b. **Inactivity Timeout Warning** -- Present when `inactivityRestartAttempt > 0`. Heading: `## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!`. Explains that the previous Claude subprocess was killed because it produced no output for too long, identifies the most common cause (`pgrep -f` matching its own command line, `curl` polling against invented endpoints), and instructs the agent to use the MCP `get_*_status` tools rather than bash `while`/`until`/`for` loops. Reminds the agent that prior progress is preserved in git and to consult `workstream_context` before duplicating work.
+
+0c. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0`. Heading: `## !! SESSION RESTARTED -- ATTEMPT N !!`. Used when the previous run produced no code changes and the enforcement loop is asking for another attempt. Tells the agent to investigate CI status with the test runner (using the exact CI command) and produce real production-code changes rather than re-running the prompt verbatim.
 
 1. **Opening paragraph** -- Always present. Establishes that the agent is autonomous with no TTY and no interactive session.
 
@@ -439,6 +456,8 @@ All setters support chaining. The `build()` method assembles sections in this fi
 | `setMaxTurns(int)` | `int` | `> 0` enables turn limit portion of section 13. |
 | `setTaskId(String)` | `String` | Non-null enables section 14. |
 | `setPlanningDocument(String)` | `String` | Non-null/non-empty enables section 15. |
+| `setGitTamperingViolation(String)` | `String` | Non-null/non-empty enables section 0a. |
+| `setInactivityRestartAttempt(int)` | `int` | `> 0` enables section 0b. The value is the count of prior inactivity-triggered restarts (1 = first relaunch, 2 = second, ...). |
 
 ### Relationship Between Builder and Inline Method
 
