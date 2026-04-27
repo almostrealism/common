@@ -1277,6 +1277,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			public void reset() {
 				currentFrame[0] = 0;
 				cells.reset();
+				// Rewind the global clock so time-driven envelopes (volume,
+				// filter, AutomationManager outputs) start fresh on the next
+				// genome. Without this, evaluating multiple genomes in
+				// sequence makes every genome after the first run with the
+				// clock parked in the post-decay region of the volume
+				// envelope (gene 4 has scale = -1, a fade-out), so pattern
+				// channels come out near-silent.
+				time.getClock().setFrame(0);
 			}
 		};
 	}
