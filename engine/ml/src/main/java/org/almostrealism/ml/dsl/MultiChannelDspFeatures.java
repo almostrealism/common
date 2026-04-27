@@ -125,9 +125,8 @@ public interface MultiChannelDspFeatures extends CollectionFeatures {
 					for (int m = 0; m < outputChannels; m++) {
 						CollectionProducer channelOut = null;
 						for (int n = 0; n < inputChannels; n++) {
-							CollectionProducer matElem = subset(elemShape, cp(matrix),
-									n * outputChannels + m);
-							CollectionProducer inCh = subset(sigShape, c(in), n * signalSize);
+							CollectionProducer matElem = subset(elemShape, cp(matrix), n, m);
+							CollectionProducer inCh = subset(sigShape, c(in), n, 0);
 							CollectionProducer contribution = matElem.multiply(inCh);
 							channelOut = channelOut == null ? contribution : channelOut.add(contribution);
 						}

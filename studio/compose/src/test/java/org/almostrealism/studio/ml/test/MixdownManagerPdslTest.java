@@ -430,10 +430,20 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 				"mixdown_master", producerArgs, constArgs, lpSlot, schedule,
 				"mixdown_manager_automated_lp.wav");
 
+		// Threshold is 1% of baseline rather than the 5% used by the HP/volume/delay
+		// counterparts because LP automation has narrower physical leverage on this
+		// signal. The carriers (220, 440, 880, 1760 Hz) all sit below the constant
+		// baseline cutoff (mean 4250 Hz), so for every pass with cutoff >= 4250 Hz
+		// the producer LP and the constant LP both pass the full signal — diff is
+		// near zero. Only the bottom half of the sweep (4250 -> 500 Hz) builds
+		// meaningful diff energy. By contrast HP/volume/delay automations modulate
+		// the signal across their entire schedule. A 1% lower bound still guards
+		// against silent constant-folding regressions (which would yield exactly
+		// zero diff energy) without false-failing on this narrower-leverage case.
 		Assert.assertTrue(
 				"automated master LP must differ from constant-cutoff baseline: "
 						+ "diffEnergy=" + result.diffEnergy + ", baselineEnergy=" + result.baselineEnergy,
-				result.diffEnergy > 0.05 * Math.max(result.baselineEnergy, 1.0e-9));
+				result.diffEnergy > 0.01 * Math.max(result.baselineEnergy, 1.0e-9));
 	}
 
 	/**

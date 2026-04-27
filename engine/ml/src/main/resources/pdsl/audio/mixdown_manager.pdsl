@@ -127,7 +127,12 @@ layer mixdown_main_bus(channels: int, signal_size: int,
 //                      Producer expression for time-varying delay (the
 //                      AdjustableDelayCell rendition at
 //                      MixdownManager.createEfx() line 654-658).
-//   transmission       Cross-channel routing matrix, shape [channels, channels]
+//   transmission       Cross-channel routing matrix, shape [channels, channels].
+//                      Indexed as transmission[input_channel, output_channel]:
+//                      output channel m gets sum over input channels n of
+//                      transmission[n, m] * input[n]. Zeroing column m silences
+//                      output channel m; zeroing row n silences input channel n's
+//                      contribution to all outputs.
 //
 // Requires mixdown_efx_state populated with:
 //   buffers  PackedCollection of size channels * signal_size (zero-initialised)
