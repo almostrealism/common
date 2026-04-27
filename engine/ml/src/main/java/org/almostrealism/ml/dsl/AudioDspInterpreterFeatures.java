@@ -16,7 +16,6 @@
 
 package org.almostrealism.ml.dsl;
 
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -86,8 +85,9 @@ public interface AudioDspInterpreterFeatures
 	 *       Only valid when {@code expectedShape} has total size 1.</li>
 	 *   <li>{@link PackedCollection} — wrapped via {@code cp(coll)} so the slot can be
 	 *       mutated between renders. Shape must match {@code expectedShape}.</li>
-	 *   <li>{@link Producer} — passed through unchanged. If the producer implements
-	 *       {@link Shape}, its shape is validated against {@code expectedShape}.</li>
+	 *   <li>{@link Producer} — converted via {@code c(producer)}. The producer's
+	 *       shape (resolved via {@code shape(producer)}) is validated against
+	 *       {@code expectedShape}.</li>
 	 * </ul>
 	 *
 	 * @param arg           the argument from the PDSL argument list
@@ -115,15 +115,10 @@ public interface AudioDspInterpreterFeatures
 		}
 		if (arg instanceof Producer) {
 			Producer<PackedCollection> producer = (Producer<PackedCollection>) arg;
-			if (producer instanceof Shape) {
-				TraversalPolicy actual = ((Shape<?>) producer).getShape();
-				if (actual.getTotalSize() != expectedShape.getTotalSize()) {
-					throw new PdslParseException(contextName + " expects shape "
-							+ expectedShape + " but Producer has shape " + actual);
-				}
-			}
-			if (producer instanceof CollectionProducer) {
-				return (CollectionProducer) producer;
+			TraversalPolicy actual = shape(producer);
+			if (actual.getTotalSize() != expectedShape.getTotalSize()) {
+				throw new PdslParseException(contextName + " expects shape "
+						+ expectedShape + " but Producer has shape " + actual);
 			}
 			return c(producer);
 		}
