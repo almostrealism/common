@@ -367,4 +367,137 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertTrue(n.getChannelOwnerUserIds().isEmpty());
         assertNull(n.getChannelOwnerUserId());
     }
+
+    // ── model/effort defaults on Workstream ───────────────────────────────────
+
+    @Test(timeout = 10000)
+    public void testWorkstreamModelEffortDefaultsAreNull() {
+        Workstream ws = new Workstream("C_M", "#m");
+        assertNull(ws.getModel());
+        assertNull(ws.getEffort());
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamSetModelAndEffort() {
+        Workstream ws = new Workstream("C_M", "#m");
+        ws.setModel("opus");
+        ws.setEffort("high");
+        assertEquals("opus", ws.getModel());
+        assertEquals("high", ws.getEffort());
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamSetModelEmptyClearsToNull() {
+        Workstream ws = new Workstream("C_M", "#m");
+        ws.setModel("opus");
+        ws.setModel("");
+        assertNull(ws.getModel());
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamSetEffortEmptyClearsToNull() {
+        Workstream ws = new Workstream("C_M", "#m");
+        ws.setEffort("max");
+        ws.setEffort("");
+        assertNull(ws.getEffort());
+    }
+
+    @Test(timeout = 10000, expected = IllegalArgumentException.class)
+    public void testWorkstreamSetEffortRejectsInvalidLevel() {
+        new Workstream("C_M", "#m").setEffort("nuclear");
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamSummaryJsonIncludesModelAndEffort() {
+        Workstream ws = new Workstream("C_M", "#m");
+        ws.setModel("sonnet");
+        ws.setEffort("medium");
+        String json = ws.toSummaryJson();
+        assertTrue("expected model in summary: " + json,
+            json.contains("\"model\":\"sonnet\""));
+        assertTrue("expected effort in summary: " + json,
+            json.contains("\"effort\":\"medium\""));
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamSummaryJsonOmitsModelAndEffortWhenUnset() {
+        Workstream ws = new Workstream("C_M", "#m");
+        String json = ws.toSummaryJson();
+        assertFalse("unexpected model: " + json, json.contains("\"model\""));
+        assertFalse("unexpected effort: " + json, json.contains("\"effort\""));
+    }
+
+    // ── model/effort persistence in WorkstreamConfig ──────────────────────────
+
+    @Test(timeout = 10000)
+    public void testYamlRoundTripsModelAndEffort() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C_ME\"\n"
+            + "    channelName: \"#me\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "    model: \"opus\"\n"
+            + "    effort: \"xhigh\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        assertEquals("opus", entry.getModel());
+        assertEquals("xhigh", entry.getEffort());
+
+        Workstream ws = entry.toWorkstream();
+        assertEquals("opus", ws.getModel());
+        assertEquals("xhigh", ws.getEffort());
+    }
+
+    @Test(timeout = 10000)
+    public void testAddWorkstreamCarriesModelAndEffort() {
+        WorkstreamConfig config = new WorkstreamConfig();
+        Workstream ws = new Workstream("C_ME", "#me");
+        ws.setModel("haiku");
+        ws.setEffort("low");
+        config.addWorkstream(ws);
+
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        assertEquals("haiku", entry.getModel());
+        assertEquals("low", entry.getEffort());
+    }
+
+    @Test(timeout = 10000)
+    public void testSyncFromWorkstreamsUpdatesModelAndEffort() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C_ME\"\n"
+            + "    channelName: \"#me\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        List<Workstream> wsList = config.toWorkstreams();
+        Workstream ws = wsList.get(0);
+        ws.setModel("sonnet");
+        ws.setEffort("max");
+        config.syncFromWorkstreams(wsList);
+
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        assertEquals("sonnet", entry.getModel());
+        assertEquals("max", entry.getEffort());
+    }
+
+    @Test(timeout = 10000)
+    public void testSaveAndReloadPreservesModelAndEffort() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C_ME\"\n"
+            + "    channelName: \"#me\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "    model: \"sonnet\"\n"
+            + "    effort: \"high\"\n";
+
+        WorkstreamConfig original = WorkstreamConfig.loadFromYamlString(yaml);
+
+        File tempFile = File.createTempFile("workstream-config-model-effort", ".yaml");
+        tempFile.deleteOnExit();
+        original.saveToYaml(tempFile);
+
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.WorkstreamEntry entry = reloaded.getWorkstreams().get(0);
+        assertEquals("sonnet", entry.getModel());
+        assertEquals("high", entry.getEffort());
+    }
 }

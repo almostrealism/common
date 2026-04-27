@@ -1,0 +1,47 @@
+// Delay Feedback Bank — multi-channel DSP using PDSL layer with per-channel delay lines
+// and cross-channel routing (feedback matrix).
+//
+// Signal flow:
+//   mono input [1, signal_size]
+//     └── fan_out(channels)                         // broadcast to [channels, signal_size]
+//     └── for each channel {                        // per-channel delay [channels, signal_size]
+//           delay(delay_samples, buffers[channel], heads[channel])
+//         }
+//     └── route(transmission)                       // cross-channel mix [channels, signal_size]
+//     └── sum_channels()                            // collapse to mono [1, signal_size]
+//
+// State:
+//   buffers  Per-channel circular delay buffers (channels * signal_size elements total)
+//   heads    Per-channel write-head counters (channels elements total)
+
+state delay_bank_state {
+    buffers: weight
+    heads: weight
+}
+
+// ---------------------------------------------------------------------------
+// Multi-channel delay feedback bank
+//
+// Takes a mono input, fans it out to N parallel delay lines (one per channel),
+// mixes them through a cross-channel routing matrix (enabling feedback), then
+// sums back to mono.
+//
+// Parameters:
+//   channels        Number of parallel delay channels (e.g., 3)
+//   signal_size     Audio frame length in samples
+//   delay_samples   Integer sample delay per channel (must be less than signal_size)
+//   transmission    Routing/feedback matrix, shape [channels x channels]
+//
+// Requires delay_bank_state populated with:
+//   buffers   PackedCollection of size channels * signal_size (zeroed at init)
+//   heads     PackedCollection of size channels (zeroed at init)
+// ---------------------------------------------------------------------------
+layer delay_feedback_bank(channels: int, signal_size: int, delay_samples: int,
+                          transmission: weight) -> [1, signal_size] {
+    fan_out(channels)
+    for each channel {
+        delay(delay_samples, buffers[channel], heads[channel])
+    }
+    route(transmission)
+    sum_channels()
+}

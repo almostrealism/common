@@ -313,7 +313,7 @@ public interface CodeFeatures extends LayerRoutingFeatures,
 			if (targetShape != null) target = traverseEach((Producer<PackedCollection>) target);
 			return new Assignment(1, target, source);
 		} else {
-			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);
+			return new MemoryDataCopy(name, source, target, length);
 		}
 	}
 

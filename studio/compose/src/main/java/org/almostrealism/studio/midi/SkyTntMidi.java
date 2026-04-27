@@ -476,12 +476,14 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 */
 	private PackedCollection embedAndSumNet(int[] tokenRow) {
 		CollectionProducer sum = cp(netEmbedTokens)
-				.subset(shape(config.hiddenSize), tokenRow[0] * config.hiddenSize);
+				.subset(shape(1, config.hiddenSize), tokenRow[0], 0)
+				.reshape(shape(config.hiddenSize));
 
 		for (int j = 1; j < config.maxTokenSeq; j++) {
 			if (tokenRow[j] != config.padId) {
 				sum = sum.add(cp(netEmbedTokens)
-						.subset(shape(config.hiddenSize), tokenRow[j] * config.hiddenSize));
+						.subset(shape(1, config.hiddenSize), tokenRow[j], 0)
+						.reshape(shape(config.hiddenSize)));
 			}
 		}
 

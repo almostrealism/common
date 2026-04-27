@@ -151,4 +151,26 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 		assertFalse("Expected no Dependent Repositories section when paths not set",
 			result.contains("## Dependent Repositories"));
 	}
+
+	@Test(timeout = 30000)
+	public void includesInactivityRestartPreambleWhenAttemptPositive() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setInactivityRestartAttempt(1)
+			.build();
+		assertTrue("Expected inactivity restart warning header when attempt > 0",
+			result.contains("SESSION RESTARTED -- INACTIVITY TIMEOUT"));
+		assertTrue("Expected pgrep -f cause guidance in inactivity preamble",
+			result.contains("pgrep -f"));
+	}
+
+	@Test(timeout = 30000)
+	public void excludesInactivityRestartPreambleWhenAttemptZero() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setInactivityRestartAttempt(0)
+			.build();
+		assertFalse("Expected no inactivity restart warning when attempt == 0",
+			result.contains("SESSION RESTARTED -- INACTIVITY TIMEOUT"));
+	}
 }

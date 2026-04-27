@@ -14,6 +14,17 @@
     "ask": []
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-tools.sh",
+            "description": "Emit paths and versions of common dev tools so the agent does not burn round-trips discovering them"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -32,6 +43,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
             "description": "Block shell writes into ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-git-log.sh",
+            "description": "Warn on `git log` — workstream narrative lives in memory_branch_context, not commit titles"
           }
         ]
       },
@@ -56,7 +72,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pom-write.sh",
-            "description": "Block pom.xml edits — dependency graph is externally controlled"
+            "description": "Block dependency/module/parent structural changes in pom.xml — dependency graph is externally controlled (non-structural edits pass through)"
           },
           {
             "type": "command",
@@ -75,8 +91,8 @@
           },
           {
             "type": "command",
-            "command": ".claude/hooks/warn-defensive-guard.sh",
-            "description": "Warn on added defensive-tolerance patterns (see .claude/rules/fail-loud.md)"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-defensive-guard.sh",
+            "description": "Warn on added defensive-tolerance patterns (see .claude/hooks/rules/fail-loud.md)"
           },
           {
             "type": "command",
@@ -111,7 +127,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pom-write.sh",
-            "description": "Block pom.xml writes — dependency graph is externally controlled"
+            "description": "Block dependency/module/parent structural changes in pom.xml — dependency graph is externally controlled (non-structural edits pass through)"
           },
           {
             "type": "command",
@@ -130,8 +146,8 @@
           },
           {
             "type": "command",
-            "command": ".claude/hooks/warn-defensive-guard.sh",
-            "description": "Warn on added defensive-tolerance patterns (see .claude/rules/fail-loud.md)"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-defensive-guard.sh",
+            "description": "Warn on added defensive-tolerance patterns (see .claude/hooks/rules/fail-loud.md)"
           },
           {
             "type": "command",
@@ -148,12 +164,12 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/scan-producer-violations.sh",
-            "description": "Scan written Java for Producer pattern violations (.evaluate, .toDouble, setMem loops)"
+            "description": "Scan written Java for Producer pattern violations (.evaluate/.toDouble/.toFloat in computation code, for+setMem loops, System.out/err, multiple new Model())"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/warn-assertion-free-test.sh",
-            "description": "Warn on @Test methods with no assertion (see .claude/rules/fail-loud.md)"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-assertion-free-test.sh",
+            "description": "Warn on @Test methods with no assertion (see .claude/hooks/rules/fail-loud.md)"
           }
         ]
       },
@@ -163,12 +179,12 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/scan-producer-violations.sh",
-            "description": "Scan edited Java for Producer pattern violations"
+            "description": "Scan edited Java for Producer pattern violations (.evaluate/.toDouble/.toFloat in computation code, for+setMem loops, System.out/err, multiple new Model())"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/warn-assertion-free-test.sh",
-            "description": "Warn on @Test methods with no assertion (see .claude/rules/fail-loud.md)"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-assertion-free-test.sh",
+            "description": "Warn on @Test methods with no assertion (see .claude/hooks/rules/fail-loud.md)"
           }
         ]
       },

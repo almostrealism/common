@@ -304,7 +304,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_pr_reply",
 			"github_list_open_prs",
 			"github_create_pr",
-			"github_request_copilot_review"
+			"github_request_copilot_review",
+			"github_read_file",
+			"github_pr_check_status"
 		));
 
 		List<String> discovered = McpToolDiscovery.discoverToolNames(serverFile);
@@ -361,6 +363,24 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("prompt"));
 		assertTrue("workstream_submit_task must declare workstream_id in signature",
 			submitParams.contains("workstream_id"));
+		assertTrue("workstream_submit_task must declare model in signature",
+			submitParams.contains("model"));
+		assertTrue("workstream_submit_task must declare effort in signature",
+			submitParams.contains("effort"));
+
+		List<String> registerParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+		assertTrue("workstream_register must declare model in signature",
+			registerParams.contains("model"));
+		assertTrue("workstream_register must declare effort in signature",
+			registerParams.contains("effort"));
+
+		List<String> updateConfigParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+		assertTrue("workstream_update_config must declare model in signature",
+			updateConfigParams.contains("model"));
+		assertTrue("workstream_update_config must declare effort in signature",
+			updateConfigParams.contains("effort"));
 
 		List<String> memoryRecallParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "memory_recall");
@@ -376,6 +396,35 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(serverFile, "send_message");
 		assertTrue("send_message must declare text in signature",
 			sendMessageParams.contains("text"));
+		assertTrue("send_message must declare activity in signature",
+			sendMessageParams.contains("activity"));
+
+		List<String> workstreamContextParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_context");
+		assertTrue("workstream_context must declare include_activities in signature",
+			workstreamContextParams.contains("include_activities"));
+
+		List<String> readFileParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "github_read_file");
+		assertTrue("github_read_file must declare path in signature",
+			readFileParams.contains("path"));
+		assertTrue("github_read_file must declare workstream_id in signature",
+			readFileParams.contains("workstream_id"));
+		assertTrue("github_read_file must declare repo_url in signature",
+			readFileParams.contains("repo_url"));
+		assertTrue("github_read_file must declare branch in signature",
+			readFileParams.contains("branch"));
+		assertTrue("github_read_file must declare ref in signature",
+			readFileParams.contains("ref"));
+
+		List<String> prCheckParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "github_pr_check_status");
+		assertTrue("github_pr_check_status must declare pr_number in signature",
+			prCheckParams.contains("pr_number"));
+		assertTrue("github_pr_check_status must declare workstream_id in signature",
+			prCheckParams.contains("workstream_id"));
+		assertTrue("github_pr_check_status must declare branch in signature",
+			prCheckParams.contains("branch"));
 	}
 
 	@Test(timeout = 30000)

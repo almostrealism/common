@@ -88,12 +88,13 @@ public class PdslParser {
 	private PdslNode.Definition parseDefinition() {
 		PdslToken token = peek();
 		switch (token.getType()) {
-			case CONFIG: return parseConfigDef();
-			case DATA:   return parseDataDef();
-			case LAYER:  return parseLayerDef();
-			case MODEL:  return parseModelDef();
+			case CONFIG:    return parseConfigDef();
+			case DATA:      return parseDataDef();
+			case STATE:     return parseStateDef();
+			case LAYER:     return parseLayerDef();
+			case MODEL:     return parseModelDef();
 			default:
-				throw error("Expected 'config', 'data', 'layer', or 'model' but found " + token);
+				throw error("Expected 'config', 'data', 'state', 'layer', or 'model' but found " + token);
 		}
 	}
 
@@ -263,25 +264,55 @@ public class PdslParser {
 	private PdslNode.DataDef parseDataDef() {
 		PdslToken kw = consume(PdslToken.Type.DATA);
 		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
+		parseDataDefBody();
+		return new PdslNode.DataDef(name, parsedParams, parsedDerivations, kw.getLine(), kw.getColumn());
+	}
+
+	/**
+	 * Parses a {@code state Name { entries }} block.
+	 *
+	 * <p>Identical grammar to the {@code data} block; the different AST node type
+	 * ({@link PdslNode.StateDef}) signals write-intent to the interpreter.
+	 * State block entries are mutable during execution and updated by state-aware
+	 * primitives such as {@code biquad}, {@code delay}, and {@code lfo}.</p>
+	 *
+	 * @return The parsed state definition node
+	 */
+	private PdslNode.StateDef parseStateDef() {
+		PdslToken kw = consume(PdslToken.Type.STATE);
+		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
+		parseDataDefBody();
+		return new PdslNode.StateDef(name, parsedParams, parsedDerivations, kw.getLine(), kw.getColumn());
+	}
+
+	/** Accumulated parameter declarations from the most recent {@link #parseDataDefBody()} call. */
+	private List<PdslNode.Parameter> parsedParams;
+
+	/** Accumulated derivations from the most recent {@link #parseDataDefBody()} call. */
+	private Map<String, PdslNode.Expression> parsedDerivations;
+
+	/**
+	 * Parses the body of a {@code data} or {@code state} block (everything after the name).
+	 * Results are stored in {@link #parsedParams} and {@link #parsedDerivations} for the caller
+	 * to consume. Shared by {@link #parseDataDef()} and {@link #parseStateDef()} to eliminate
+	 * duplicate parse logic.
+	 */
+	private void parseDataDefBody() {
 		consume(PdslToken.Type.LBRACE);
-
-		List<PdslNode.Parameter> parameters = new ArrayList<>();
-		Map<String, PdslNode.Expression> derivations = new LinkedHashMap<>();
-
+		parsedParams = new ArrayList<>();
+		parsedDerivations = new LinkedHashMap<>();
 		while (!check(PdslToken.Type.RBRACE) && !check(PdslToken.Type.EOF)) {
 			PdslToken entryNameTok = consume(PdslToken.Type.IDENTIFIER);
 			if (check(PdslToken.Type.COLON)) {
 				consume(PdslToken.Type.COLON);
-				parameters.add(parseParameterAfterColon(entryNameTok));
+				parsedParams.add(parseParameterAfterColon(entryNameTok));
 			} else {
 				consume(PdslToken.Type.EQUALS);
-				derivations.put(entryNameTok.getValue(), parseExpression());
+				parsedDerivations.put(entryNameTok.getValue(), parseExpression());
 			}
 			while (check(PdslToken.Type.SEMICOLON)) advance();
 		}
-
 		consume(PdslToken.Type.RBRACE);
-		return new PdslNode.DataDef(name, parameters, derivations, kw.getLine(), kw.getColumn());
 	}
 
 	// ---- Body (statements) ----
@@ -476,12 +507,26 @@ public class PdslParser {
 	}
 
 	/**
-	 * Parses a {@code for variable in start..end { body }} loop statement.
+	 * Parses a {@code for} statement, dispatching to either
+	 * {@code for each channel { body }} or the standard {@code for variable in start..end { body }}.
 	 *
-	 * @return The parsed for statement node
+	 * @return The parsed statement node
 	 */
-	private PdslNode.ForStatement parseForStatement() {
+	private PdslNode.Statement parseForStatement() {
 		PdslToken kw = consume(PdslToken.Type.FOR);
+		// Detect "for each channel { body }"
+		if (check(PdslToken.Type.IDENTIFIER) && "each".equals(peek().getValue())) {
+			advance(); // consume "each"
+			PdslToken channelTok = consume(PdslToken.Type.IDENTIFIER);
+			if (!"channel".equals(channelTok.getValue())) {
+				throw error("Expected 'channel' after 'each' but found " + channelTok);
+			}
+			consume(PdslToken.Type.LBRACE);
+			List<PdslNode.Statement> body = parseBody();
+			consume(PdslToken.Type.RBRACE);
+			return new PdslNode.ForEachChannelStatement(body, kw.getLine(), kw.getColumn());
+		}
+		// Standard range loop: for variable in start..end { body }
 		String variable = consume(PdslToken.Type.IDENTIFIER).getValue();
 		consume(PdslToken.Type.IN);
 		PdslNode.Expression start = parseExpression();
@@ -595,6 +640,12 @@ public class PdslParser {
 					expr = new PdslNode.FieldAccess(expr, field,
 							expr.getLine(), expr.getColumn());
 				}
+			} else if (check(PdslToken.Type.LBRACKET)) {
+				PdslToken bracket = consume(PdslToken.Type.LBRACKET);
+				PdslNode.Expression index = parseExpression();
+				consume(PdslToken.Type.RBRACKET);
+				expr = new PdslNode.Subscript(expr, index,
+						bracket.getLine(), bracket.getColumn());
 			} else {
 				break;
 			}

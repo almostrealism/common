@@ -23,6 +23,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.compute.CascadingOptimizationStrategy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.ExpansionWidthTargetOptimization;
 import io.almostrealism.compute.ParallelismDiversityOptimization;
 import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.compute.ProcessContextBase;
@@ -553,6 +554,11 @@ public final class Hardware implements ConsoleFeatures {
 			location = Location.DELEGATE;
 		}
 
+		// ExpansionWidthTargetOptimization intentionally left out of the cascade
+		// for now. The switch from MemoryDataCopy to Assignment in
+		// MemoryDataFeatures.copy(...) is being evaluated in isolation first;
+		// once its behaviour is validated in CI, the expansion-width strategy
+		// can be reinstated here without touching its implementation.
 		ProcessContextBase.setDefaultOptimizationStrategy(new CascadingOptimizationStrategy(
 				new ParallelismDiversityOptimization(),
 				new TraversableDepthTargetOptimization(),

@@ -315,6 +315,31 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         with self.assertRaises(PermissionError):
             server.workstream_submit_task(prompt="Task")
 
+    @patch.object(server, "_controller_post")
+    def test_submit_includes_model_and_effort(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-me"}
+        server.workstream_submit_task(
+            prompt="Task", model="opus", effort="high")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["model"], "opus")
+        self.assertEqual(payload["effort"], "high")
+
+    @patch.object(server, "_controller_post")
+    def test_submit_omits_model_and_effort_when_unset(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-me-2"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("model", payload)
+        self.assertNotIn("effort", payload)
+
+    def test_submit_rejects_invalid_effort(self):
+        _grant_all_scopes()
+        result = server.workstream_submit_task(prompt="Task", effort="nuclear")
+        self.assertFalse(result["ok"])
+        self.assertIn("Invalid effort", result["error"])
+
 
 class TestWorkstreamRegister(unittest.TestCase):
 
@@ -354,6 +379,23 @@ class TestWorkstreamRegister(unittest.TestCase):
         steps_text = " ".join(result["next_steps"])
         self.assertIn("repo_url", steps_text)
 
+    @patch.object(server, "_controller_post")
+    def test_register_includes_model_and_effort(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-me"}
+        server.workstream_register(
+            default_branch="feature/me", model="sonnet", effort="medium")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["model"], "sonnet")
+        self.assertEqual(payload["effort"], "medium")
+
+    def test_register_rejects_invalid_effort(self):
+        _grant_all_scopes()
+        result = server.workstream_register(
+            default_branch="feature/me", effort="extreme")
+        self.assertFalse(result["ok"])
+        self.assertIn("Invalid effort", result["error"])
+
 
 class TestWorkstreamUpdateConfig(unittest.TestCase):
 
@@ -390,6 +432,23 @@ class TestWorkstreamUpdateConfig(unittest.TestCase):
         )
         steps_text = " ".join(result["next_steps"])
         self.assertIn("pipeline", steps_text)
+
+    @patch.object(server, "_controller_post")
+    def test_update_includes_model_and_effort(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workstream_update_config(
+            workstream_id="ws-test", model="haiku", effort="low")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["model"], "haiku")
+        self.assertEqual(payload["effort"], "low")
+
+    def test_update_rejects_invalid_effort(self):
+        _grant_all_scopes()
+        result = server.workstream_update_config(
+            workstream_id="ws-test", effort="bogus")
+        self.assertFalse(result["ok"])
+        self.assertIn("Invalid effort", result["error"])
 
 
 # -----------------------------------------------------------------------
@@ -584,26 +643,83 @@ class TestProjectCommitPlan(unittest.TestCase):
 
 class TestProjectReadPlan(unittest.TestCase):
 
+    @patch.object(server, "github_read_file")
     @patch.object(server, "_find_workstream")
-    @patch.object(server, "_github_request")
-    def test_read_plan(self, mock_gh, mock_find):
+    def test_read_plan(self, mock_find, mock_read_file):
         _grant_all_scopes()
-        import base64
-        content_b64 = base64.b64encode(b"# My Plan").decode()
         mock_find.return_value = {
             "repoUrl": "https://github.com/org/repo",
             "defaultBranch": "feature/x",
             "planningDocument": "docs/plans/PLAN.md",
         }
-        mock_gh.return_value = {
-            "content": content_b64,
-            "encoding": "base64",
+        mock_read_file.return_value = {
+            "ok": True,
+            "path": "docs/plans/PLAN.md",
+            "content": "# My Plan",
             "sha": "abc123",
+            "ref": "feature/x",
+            "repo": "org/repo",
         }
         result = server.project_read_plan(workstream_id="ws-test")
         self.assertTrue(result["ok"])
         self.assertEqual(result["content"], "# My Plan")
         self.assertEqual(result["path"], "docs/plans/PLAN.md")
+
+    @patch.object(server, "github_read_file")
+    @patch.object(server, "_find_workstream")
+    def test_delegates_to_github_read_file(self, mock_find, mock_read_file):
+        """project_read_plan must resolve the planningDocument and delegate to github_read_file."""
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+            "planningDocument": "docs/plans/PLAN.md",
+        }
+        mock_read_file.return_value = {
+            "ok": True,
+            "path": "docs/plans/PLAN.md",
+            "content": "# My Plan",
+            "sha": "abc123",
+            "repo": "org/repo",
+        }
+        result = server.project_read_plan(workstream_id="ws-test")
+        mock_read_file.assert_called_once_with(
+            path="docs/plans/PLAN.md",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            workstream_id="ws-test",
+        )
+        self.assertTrue(result["ok"])
+        next_steps = result.get("next_steps", [])
+        self.assertTrue(
+            any("project_commit_plan" in s for s in next_steps),
+            "Expected project_commit_plan in next_steps",
+        )
+
+    @patch.object(server, "github_read_file")
+    @patch.object(server, "_find_workstream")
+    def test_delegate_uses_explicit_branch(self, mock_find, mock_read_file):
+        """An explicit branch parameter is forwarded to github_read_file."""
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "master",
+            "planningDocument": "docs/plans/PLAN.md",
+        }
+        mock_read_file.return_value = {
+            "ok": True,
+            "path": "docs/plans/PLAN.md",
+            "content": "# Plan",
+            "sha": "def456",
+            "repo": "org/repo",
+        }
+        server.project_read_plan(workstream_id="ws-test", branch="feature/x")
+        mock_read_file.assert_called_once_with(
+            path="docs/plans/PLAN.md",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            workstream_id="ws-test",
+        )
 
     @patch.object(server, "_find_workstream")
     def test_no_planning_document(self, mock_find):
@@ -1041,6 +1157,165 @@ class TestMemoryStore(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------
+# send_message activity tagging
+# -----------------------------------------------------------------------
+
+
+class TestSendMessageActivity(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+        server._set_token_context(workstream_id="ws-1", job_id="job-1")
+
+    def tearDown(self):
+        server._set_token_context(workstream_id=None, job_id=None)
+        # Clear any AR_AGENT_ACTIVITY env var set by tests
+        os.environ.pop("AR_AGENT_ACTIVITY", None)
+
+    @patch.object(server, "_controller_post")
+    def test_activity_passed_to_controller(self, mock_post):
+        """Explicit activity parameter is forwarded in the POST body."""
+        mock_post.return_value = {"ok": True}
+        server.send_message(text="Hello", activity="deduplication")
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        body = call_args[0][1]
+        self.assertEqual(body["text"], "Hello")
+        self.assertEqual(body["activity"], "deduplication")
+
+    @patch.object(server, "_controller_post")
+    def test_no_activity_omits_field(self, mock_post):
+        """When no activity is given and env var is unset, body has no activity field."""
+        mock_post.return_value = {"ok": True}
+        os.environ.pop("AR_AGENT_ACTIVITY", None)
+        server.send_message(text="Primary work")
+        body = mock_post.call_args[0][1]
+        self.assertNotIn("activity", body)
+
+    @patch.object(server, "_controller_post")
+    def test_env_var_fallback(self, mock_post):
+        """AR_AGENT_ACTIVITY env var is used when activity param is empty."""
+        mock_post.return_value = {"ok": True}
+        os.environ["AR_AGENT_ACTIVITY"] = "organizational_placement"
+        server.send_message(text="Audit msg")
+        body = mock_post.call_args[0][1]
+        self.assertEqual(body["activity"], "organizational_placement")
+
+    @patch.object(server, "_controller_post")
+    def test_explicit_activity_overrides_env_var(self, mock_post):
+        """Explicit activity takes precedence over AR_AGENT_ACTIVITY env var."""
+        mock_post.return_value = {"ok": True}
+        os.environ["AR_AGENT_ACTIVITY"] = "organizational_placement"
+        server.send_message(text="Override", activity="deduplication")
+        body = mock_post.call_args[0][1]
+        self.assertEqual(body["activity"], "deduplication")
+
+
+# -----------------------------------------------------------------------
+# workstream_context activity filtering
+# -----------------------------------------------------------------------
+
+
+class TestWorkstreamContextActivityFilter(unittest.TestCase):
+    """Tests for the include_activities filtering in workstream_context."""
+
+    def _make_memories(self):
+        """Return a mix of primary, deduplication, and organizational messages."""
+        return [
+            {"id": "m1", "content": "primary work", "created_at": "2026-04-01",
+             "tags": ["message"], "namespace": "messages"},
+            {"id": "m2", "content": "dedup audit", "created_at": "2026-04-02",
+             "tags": ["message", "activity:deduplication"], "namespace": "messages"},
+            {"id": "m3", "content": "org placement", "created_at": "2026-04-03",
+             "tags": ["message", "activity:organizational_placement"], "namespace": "messages"},
+            {"id": "m4", "content": "tagged primary", "created_at": "2026-04-04",
+             "tags": ["message", "activity:primary"], "namespace": "messages"},
+            {"id": "m5", "content": "no tags", "created_at": "2026-04-05",
+             "tags": [], "namespace": "default"},
+        ]
+
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_default_hides_audit_activities(self, mock_client_fn, _gh):
+        """Default include_activities=primary hides audit-phase messages."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = self._make_memories()
+        mock_client_fn.return_value = client
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+        )
+        self.assertTrue(result["ok"])
+        ids = [m["id"] for m in result["memories"]]
+        # Primary (m1, m4, m5) included; dedup (m2) and org (m3) excluded
+        self.assertIn("m1", ids)
+        self.assertIn("m4", ids)
+        self.assertIn("m5", ids)
+        self.assertNotIn("m2", ids)
+        self.assertNotIn("m3", ids)
+
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_include_all_returns_everything(self, mock_client_fn, _gh):
+        """include_activities='all' disables filtering."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = self._make_memories()
+        mock_client_fn.return_value = client
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+            include_activities="all",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 5)
+
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_specific_activity_filter(self, mock_client_fn, _gh):
+        """Requesting a specific activity returns that activity's messages plus primary/untagged messages."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = self._make_memories()
+        mock_client_fn.return_value = client
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+            include_activities="deduplication",
+        )
+        self.assertTrue(result["ok"])
+        ids = [m["id"] for m in result["memories"]]
+        # m2 (dedup) and untagged memories (m1, m5) included; org (m3) excluded
+        self.assertIn("m2", ids)
+        self.assertIn("m1", ids)
+        self.assertIn("m5", ids)
+        self.assertNotIn("m3", ids)
+
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_multiple_activities_comma_separated(self, mock_client_fn, _gh):
+        """Comma-separated list includes all named activities."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = self._make_memories()
+        mock_client_fn.return_value = client
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+            include_activities="deduplication,organizational_placement",
+        )
+        self.assertTrue(result["ok"])
+        ids = [m["id"] for m in result["memories"]]
+        self.assertIn("m2", ids)
+        self.assertIn("m3", ids)
+
+
+# -----------------------------------------------------------------------
 # Controller HTTP helpers
 # -----------------------------------------------------------------------
 
@@ -1228,6 +1503,312 @@ class TestExtractOwnerRepo(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------
+# github_read_file
+# -----------------------------------------------------------------------
+
+
+class TestGithubReadFile(unittest.TestCase):
+    """Tests for github_read_file."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _make_contents_response(self, path, content_text, size=None):
+        """Build a mock GitHub Contents API response for a text file."""
+        import base64 as _b64
+        encoded = _b64.b64encode(content_text.encode("utf-8")).decode("ascii")
+        return {
+            "path": path,
+            "sha": "abc123",
+            "size": size if size is not None else len(content_text.encode("utf-8")),
+            "content": encoded,
+            "encoding": "base64",
+        }
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_success(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._make_contents_response(
+            "docs/README.md", "# Hello World\n"
+        )
+        result = server.github_read_file(path="docs/README.md")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["content"], "# Hello World\n")
+        self.assertEqual(result["path"], "docs/README.md")
+        self.assertEqual(result["repo"], "owner/repo")
+        self.assertIn("sha", result)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_file_not_found(self, mock_gh, mock_repo):
+        mock_gh.return_value = {"ok": False, "error": "GitHub returned HTTP 404: Not Found"}
+        result = server.github_read_file(path="missing/file.py")
+        self.assertFalse(result["ok"])
+        self.assertIn("next_steps", result)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_binary_file_rejected(self, mock_gh, mock_repo):
+        # Craft a response whose base64 decodes to non-UTF-8 bytes.
+        import base64 as _b64
+        raw_binary = bytes([0x00, 0xFF, 0xFE, 0x80, 0x81])
+        encoded = _b64.b64encode(raw_binary).decode("ascii")
+        mock_gh.return_value = {
+            "path": "image.png",
+            "sha": "abc",
+            "size": len(raw_binary),
+            "content": encoded,
+            "encoding": "base64",
+        }
+        result = server.github_read_file(path="image.png")
+        self.assertFalse(result["ok"])
+        self.assertIn("binary", result["error"].lower())
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_oversized_file_rejected(self, mock_gh, mock_repo):
+        # Size field exceeds 1 MB limit — content should never be decoded.
+        import base64 as _b64
+        small_content = "x"
+        encoded = _b64.b64encode(small_content.encode()).decode("ascii")
+        mock_gh.return_value = {
+            "path": "big.bin",
+            "sha": "abc",
+            "size": 1_100_000,  # > 1 MB
+            "content": encoded,
+            "encoding": "base64",
+        }
+        result = server.github_read_file(path="big.bin")
+        self.assertFalse(result["ok"])
+        self.assertIn("1 MB", result["error"])
+        self.assertEqual(result["size"], 1_100_000)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_ref_used_in_request(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._make_contents_response(
+            "src/main.py", "print('hello')\n"
+        )
+        server.github_read_file(path="src/main.py", ref="v1.2.3")
+        call_args = mock_gh.call_args[0]
+        self.assertIn("v1.2.3", call_args[1])
+
+    @patch.object(server, "_github_request")
+    def test_explicit_repo_url(self, mock_gh):
+        mock_gh.return_value = self._make_contents_response(
+            "README.md", "content\n"
+        )
+        result = server.github_read_file(
+            path="README.md",
+            repo_url="https://github.com/myorg/myrepo",
+            branch="develop",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["repo"], "myorg/myrepo")
+        call_path = mock_gh.call_args[0][1]
+        self.assertIn("develop", call_path)
+
+    @patch.object(server, "_github_request")
+    def test_invalid_repo_url_returns_error(self, mock_gh):
+        result = server.github_read_file(
+            path="README.md",
+            repo_url="not-a-github-url",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("Cannot parse", result["error"])
+        mock_gh.assert_not_called()
+
+    def test_missing_path_returns_error(self):
+        result = server.github_read_file(path="")
+        self.assertFalse(result["ok"])
+        self.assertIn("path is required", result["error"])
+
+    def test_requires_read_scope(self):
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            server.github_read_file(path="README.md")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("", "", "", {"ok": False, "error": "not found"}))
+    def test_repo_resolution_error_propagates(self, mock_repo):
+        result = server.github_read_file(path="README.md", workstream_id="bad")
+        self.assertFalse(result["ok"])
+
+
+# -----------------------------------------------------------------------
+# github_pr_check_status
+# -----------------------------------------------------------------------
+
+
+class TestGithubPrCheckStatus(unittest.TestCase):
+    """Tests for github_pr_check_status."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _make_pr(self, number, sha="abc123", ref="feature/x"):
+        return {
+            "number": number,
+            "head": {"sha": sha, "ref": ref},
+            "html_url": f"https://github.com/owner/repo/pull/{number}",
+        }
+
+    def _make_runs(self, head_sha, runs_data):
+        """Build a mock workflow runs API response."""
+        return {"workflow_runs": [
+            {
+                "id": r.get("id", 1),
+                "name": r.get("name", "CI"),
+                "status": r.get("status", "completed"),
+                "conclusion": r.get("conclusion", "success"),
+                "head_sha": r.get("head_sha", head_sha),
+                "created_at": "2026-04-24T00:00:00Z",
+                "updated_at": "2026-04-24T00:01:00Z",
+                "html_url": "https://github.com/owner/repo/actions/runs/1",
+            }
+            for r in runs_data
+        ]}
+
+    def _make_checks(self, checks_data):
+        return {"check_runs": [
+            {
+                "id": c.get("id", 1),
+                "name": c.get("name", "test"),
+                "status": c.get("status", "completed"),
+                "conclusion": c.get("conclusion", "success"),
+                "html_url": "https://github.com/owner/repo/runs/1",
+                "started_at": "2026-04-24T00:00:00Z",
+                "completed_at": "2026-04-24T00:01:00Z",
+                "details_url": c.get("details_url", ""),
+            }
+            for c in checks_data
+        ]}
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_all_success(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            self._make_runs("abc123", [{"head_sha": "abc123", "conclusion": "success"}]),
+            self._make_checks([{"conclusion": "success"}, {"conclusion": "skipped"}]),
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overall_status"], "success")
+        self.assertTrue(result["pipeline_current"])
+        self.assertEqual(result["pr_number"], 42)
+        self.assertEqual(result["head_sha"], "abc123")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_partial_failure(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            self._make_runs("abc123", [{"head_sha": "abc123", "conclusion": "failure"}]),
+            self._make_checks([
+                {"name": "build", "conclusion": "success"},
+                {"name": "test", "conclusion": "failure", "details_url": "https://logs/123"},
+            ]),
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overall_status"], "failure")
+        failed_checks = [c for c in result["check_runs"] if c["conclusion"] == "failure"]
+        self.assertEqual(len(failed_checks), 1)
+        self.assertIn("details_url", failed_checks[0])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_no_workflow_runs(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            {"workflow_runs": []},
+            {"check_runs": []},
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overall_status"], "no_runs")
+        self.assertFalse(result["pipeline_current"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_stale_workflow_run(self, mock_gh, mock_repo):
+        # Workflow run exists but targets an older commit SHA
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="new_sha"),
+            self._make_runs("new_sha", [{"head_sha": "old_sha", "conclusion": "success"}]),
+            {"check_runs": []},
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overall_status"], "stale")
+        self.assertFalse(result["pipeline_current"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_lookup_pr_by_branch(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            [self._make_pr(7, sha="sha7")],  # PR list
+            self._make_runs("sha7", [{"head_sha": "sha7"}]),
+            {"check_runs": []},
+        ]
+        result = server.github_pr_check_status()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["pr_number"], 7)
+        self.assertEqual(result["head_sha"], "sha7")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request", return_value=[])
+    def test_no_open_pr_for_branch(self, mock_gh, mock_repo):
+        result = server.github_pr_check_status()
+        self.assertFalse(result["ok"])
+        self.assertIn("No open PR", result["error"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "", None))
+    def test_no_branch_and_no_pr_number(self, mock_repo):
+        result = server.github_pr_check_status()
+        self.assertFalse(result["ok"])
+        self.assertIn("pr_number or branch", result["error"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("", "", "", {"ok": False, "error": "bad repo"}))
+    def test_repo_resolution_error_propagates(self, mock_repo):
+        result = server.github_pr_check_status(pr_number=1)
+        self.assertFalse(result["ok"])
+
+    def test_requires_read_scope(self):
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            server.github_pr_check_status(pr_number=1)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_pending_checks(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            self._make_pr(42, sha="abc123"),
+            self._make_runs("abc123", [{"head_sha": "abc123", "conclusion": None,
+                                        "status": "in_progress"}]),
+            self._make_checks([{"status": "in_progress", "conclusion": None}]),
+        ]
+        result = server.github_pr_check_status(pr_number=42)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overall_status"], "pending")
+
+
+# -----------------------------------------------------------------------
 # Tool registration (no duplicate names)
 # -----------------------------------------------------------------------
 
@@ -1274,6 +1855,8 @@ class TestToolRegistration(unittest.TestCase):
             "github_list_open_prs",
             "github_create_pr",
             "github_request_copilot_review",
+            "github_read_file",
+            "github_pr_check_status",
         }
         registered = set(tools.keys())
         missing = expected - registered

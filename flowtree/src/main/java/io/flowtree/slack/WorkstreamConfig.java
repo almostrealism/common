@@ -238,6 +238,10 @@ public class WorkstreamConfig {
         private Map<String, String> requiredLabels;
         /** The Slack workspace ID (team ID) this workstream is bound to. */
         private String slackWorkspaceId;
+        /** Default Claude Code model alias or full name applied to jobs in this workstream. */
+        private String model;
+        /** Default Claude Code effort/thinking level applied to jobs in this workstream. */
+        private String effort;
 
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
@@ -351,6 +355,16 @@ public class WorkstreamConfig {
         /** Sets the Slack workspace ID for this workstream. */
         public void setSlackWorkspaceId(String slackWorkspaceId) { this.slackWorkspaceId = slackWorkspaceId; }
 
+        /** Returns the default Claude Code model for jobs in this workstream, or {@code null}. */
+        public String getModel() { return model; }
+        /** Sets the default Claude Code model for jobs in this workstream. */
+        public void setModel(String model) { this.model = model; }
+
+        /** Returns the default Claude Code effort/thinking level for jobs in this workstream, or {@code null}. */
+        public String getEffort() { return effort; }
+        /** Sets the default Claude Code effort/thinking level for jobs in this workstream. */
+        public void setEffort(String effort) { this.effort = effort; }
+
         /**
          * Converts this entry to a {@link Workstream} instance.
          *
@@ -383,6 +397,8 @@ public class WorkstreamConfig {
             ws.setDependentRepos(dependentRepos);
             ws.setRequiredLabels(requiredLabels);
             ws.setSlackWorkspaceId(slackWorkspaceId);
+            ws.setModel(model);
+            ws.setEffort(effort);
             return ws;
         }
     }
@@ -782,6 +798,8 @@ public class WorkstreamConfig {
         entry.setDependentRepos(ws.getDependentRepos());
         entry.setRequiredLabels(ws.getRequiredLabels());
         entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
+        entry.setModel(ws.getModel());
+        entry.setEffort(ws.getEffort());
         workstreams.add(entry);
     }
 
@@ -817,6 +835,8 @@ public class WorkstreamConfig {
                     entry.setDependentRepos(ws.getDependentRepos());
                     entry.setRequiredLabels(ws.getRequiredLabels());
                     entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
+                    entry.setModel(ws.getModel());
+                    entry.setEffort(ws.getEffort());
                     found = true;
                     break;
                 }

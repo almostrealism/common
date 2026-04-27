@@ -162,4 +162,19 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 				.map(p -> (Producer<?>) p).collect(Collectors.toList());
 		return (CollectionProducerParallelProcess) add(args);
 	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The emitted expression is {@code c_1 + c_2 + … + c_N}, concatenating each
+	 * operand's full emission into the output. Width is the operand count
+	 * ({@code getChildren().size() - 1} excludes the destination at index 0). For a
+	 * pairwise {@code add(a, b)} this returns {@code 2}; for a 6-way sum folded via
+	 * the variadic factory, it returns {@code 6}.</p>
+	 */
+	@Override
+	public long getExpansionWidth() {
+		int operands = getChildren().size() - 1;
+		return Math.max(1L, operands);
+	}
 }

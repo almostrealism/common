@@ -35,6 +35,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -133,8 +134,18 @@ public class ClaudeCodeJob extends GitManagedJob {
     private boolean enforceChanges;
     /** Number of times enforcement has been re-attempted after an empty commit. */
     private int enforcementAttempt;
+    /** Enforcement rule name for the current correction session; {@code null} during primary runs. */
+    private String currentActivity;
     /** Description of a git-tampering rule violation detected during this job. */
     private String gitTamperingViolation;
+    /** Stdout silence duration after which the Claude subprocess is killed (default 20 min). */
+    private long inactivityTimeoutMillis = TimeUnit.MINUTES.toMillis(20);
+    /** Maximum relaunches of Claude after inactivity-triggered kills (default 3). */
+    private int maxInactivityRestarts = 3;
+    /** Number of inactivity-triggered relaunches in the current run; resets to 0 after the run. */
+    private int inactivityRestartAttempt;
+    /** Set by the monitor when it kills the Claude subprocess; consumed by the retry loop. */
+    private volatile boolean wasKilledForInactivity;
     /**
      * Controls post-work deduplication behaviour.
      * {@code null} (the default) disables deduplication — the factory sets
@@ -637,6 +648,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 .setDependentRepoPaths(getDependentRepoPaths())
                 .setGitHubMcpEnabled(true)
                 .setGitTamperingViolation(gitTamperingViolation)
+                .setInactivityRestartAttempt(inactivityRestartAttempt)
                 .build();
     }
 
@@ -708,7 +720,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * <p>Exits early if the agent commits during a correction session — the
      * tampering-detection path in {@link GitManagedJob} handles that case.</p>
      */
-    private void runEnforcementRules() {
+    void runEnforcementRules() {
         List<EnforcementRule> rules = buildActiveRules();
         boolean anyRuleCorrectionRan;
         do {
@@ -730,7 +742,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                             + "': correction attempt " + attempts);
                     String correctionPrompt = rule.buildCorrectionPrompt(this);
                     if (correctionPrompt != null) {
-                        runCorrectionSession(correctionPrompt);
+                        runCorrectionSession(correctionPrompt, rule.getName());
                     } else {
                         // Re-run with the existing prompt; the job's built-in instruction
                         // context (e.g., enforceChanges) already provides correction guidance.
@@ -758,21 +770,17 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Runs a correction session inline with the specified prompt replacing the
-     * primary job's prompt for the duration of the session.
+     * Runs a correction session tagged with {@code activity} (the rule name)
+     * via {@code AR_AGENT_ACTIVITY} so {@code send_message} calls are labelled.
      *
-     * <p>The original prompt is always restored in a {@code finally} block.
-     * Any commit message written by the primary agent is also saved and
-     * restored, preventing correction sessions from overwriting it.</p>
-     *
-     * @param correctionPrompt the prompt to use for the correction session
+     * @param correctionPrompt prompt for this session
+     * @param activity         rule name used as the activity tag
      */
-    private void runCorrectionSession(String correctionPrompt) {
+    protected void runCorrectionSession(String correctionPrompt, String activity) {
         String originalPrompt = this.prompt;
-
-        // Preserve the primary agent's commit.txt so the correction session cannot
-        // overwrite it.  executeSingleRun() deletes any stale commit.txt at startup,
-        // so we read the content now and write it back in finally.
+        String previousActivity = this.currentActivity;
+        this.currentActivity = activity;
+        // Preserve commit.txt so the correction session cannot overwrite it.
         Path commitFile = resolveWorkingPath("commit.txt");
         String savedCommitMessage = null;
         if (commitFile != null && Files.exists(commitFile)) {
@@ -788,7 +796,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             executeSingleRun();
         } finally {
             this.prompt = originalPrompt;
-
+            this.currentActivity = previousActivity;
             if (commitFile != null) {
                 try {
                     if (savedCommitMessage != null) {
@@ -851,15 +859,12 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Executes a single Claude Code session.
-     *
-     * <p>This method encapsulates the full lifecycle of one agent invocation:
-     * tool download, command construction, process execution, and output
-     * parsing. It is called once in normal mode and potentially multiple
-     * times when enforcement mode is active.</p>
+     * Executes a single Claude Code session.  Internally retries the Claude
+     * subprocess up to {@link #maxInactivityRestarts} times when the inactivity
+     * monitor kills it.  Called once in normal mode and once per
+     * enforcement-rule correction when enforcement mode is active.
      */
     private void executeSingleRun() {
-        // Remove stale commit.txt from any previous run
         Path staleCommitFile = resolveWorkingPath("commit.txt");
         if (staleCommitFile != null && Files.exists(staleCommitFile)) {
             try {
@@ -872,9 +877,34 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         File outputDir = new File("claude-output");
         if (!outputDir.exists()) outputDir.mkdir();
-
         String outputFile = "claude-output/" + KeyUtils.generateKey() + ".json";
+        output = "";
+        for (int attempt = 0; attempt <= maxInactivityRestarts; attempt++) {
+            inactivityRestartAttempt = attempt;
+            wasKilledForInactivity = false;
+            output = launchClaudeAttempt();
+            if (!wasKilledForInactivity) break;
+            if (attempt == maxInactivityRestarts) {
+                warn("Inactivity-restart limit (" + maxInactivityRestarts + ") reached -- abandoning Claude session");
+            } else {
+                log("Relaunching Claude after inactivity timeout (attempt " + (attempt + 2) + " of " + (maxInactivityRestarts + 1) + ")");
+            }
+        }
+        inactivityRestartAttempt = 0;
 
+        try (FileWriter writer = new FileWriter(outputFile)) { writer.write(output); }
+        catch (IOException e) { warn("Failed to save Claude output to " + outputFile + ": " + e.getMessage()); }
+        extractOutputMetrics(output);
+        log("Output saved to: " + outputFile);
+
+        if (getOutputConsumer() != null) {
+            getOutputConsumer().accept(new ClaudeCodeJobOutput(
+                getTaskId(), prompt, output, sessionId, exitCode));
+        }
+    }
+
+    /** Launches one Claude subprocess via {@link ClaudeAttemptRunner} and returns its captured stdout. */
+    private String launchClaudeAttempt() {
         List<String> command = new ArrayList<>();
         command.add("claude");
         command.add("-p");
@@ -910,78 +940,48 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (enforcementAttempt > 0) {
             log("Enforcement attempt: " + (enforcementAttempt + 1));
         }
+        if (inactivityRestartAttempt > 0) {
+            log("Inactivity restart attempt: " + (inactivityRestartAttempt + 1)
+                    + " of " + (maxInactivityRestarts + 1));
+        }
 
-        // Verify MCP tool server files exist before launching Claude Code
         Path mcpWorkDir = getWorkingDirectory() != null
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         toolsDownloader.verifyMcpToolFiles(mcpWorkDir);
 
-        // MCP config (ar-github always; ar-messages when workstream URL is set)
         command.add("--mcp-config");
         command.add(mcpConfigBuilder.buildMcpConfig());
 
-        try {
-            ProcessBuilder pb = new ProcessBuilder(command);
-
-            String workDir = getWorkingDirectory();
-            if (workDir != null) {
-                pb.directory(new File(workDir));
-            }
-
-            // Set resolved workstream URL for MCP servers (ar-messages, ar-github).
-            String wsUrl = resolveWorkstreamUrl();
-            if (wsUrl != null && !wsUrl.isEmpty()) {
-                pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
-                log("AR_WORKSTREAM_URL: " + wsUrl);
-            }
-
-            GitOperations.augmentPath(pb);
-
-            log("Command: " + String.join(" ", command));
-            log("Working directory: " + (workDir != null ? workDir : System.getProperty("user.dir")));
-
-            pb.redirectErrorStream(true);
-            pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
-            Process process = pb.start();
-
-            long pid = process.pid();
-            log("Process started (PID: " + pid + ")");
-
-            StringBuilder outputBuilder = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    outputBuilder.append(line).append("\n");
-                    log(line);
-                }
-            }
-
-            log("Process output stream closed, waiting for exit...");
-            exitCode = process.waitFor();
-            output = outputBuilder.toString();
-
-            // Save output to file
-            try (FileWriter writer = new FileWriter(outputFile)) {
-                writer.write(output);
-            }
-
-            // Extract session ID and timing metrics from JSON output
-            extractOutputMetrics(output);
-
-            log("Completed with exit code: " + exitCode);
-            log("Output saved to: " + outputFile);
-
-            if (getOutputConsumer() != null) {
-                getOutputConsumer().accept(new ClaudeCodeJobOutput(
-                    getTaskId(), prompt, output, sessionId, exitCode
-                ));
-            }
-
-        } catch (IOException | InterruptedException e) {
-            warn("Error: " + e.getMessage(), e);
-            exitCode = -1;
+        ProcessBuilder pb = new ProcessBuilder(command);
+        String workDir = getWorkingDirectory();
+        if (workDir != null) {
+            pb.directory(new File(workDir));
         }
+
+        String wsUrl = resolveWorkstreamUrl();
+        if (wsUrl != null && !wsUrl.isEmpty()) {
+            pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
+            log("AR_WORKSTREAM_URL: " + wsUrl);
+        }
+
+        if (currentActivity != null && !currentActivity.isEmpty()) {
+            pb.environment().put("AR_AGENT_ACTIVITY", currentActivity);
+        } else {
+            pb.environment().remove("AR_AGENT_ACTIVITY");
+        }
+        GitOperations.augmentPath(pb);
+
+        log("Command: " + String.join(" ", command));
+        log("Working directory: " + (workDir != null ? workDir : System.getProperty("user.dir")));
+
+        pb.redirectErrorStream(true);
+        pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
+
+        ClaudeAttemptRunner.Result result = ClaudeAttemptRunner.runAttempt(
+                pb, inactivityTimeoutMillis, getTaskId(), this);
+        exitCode = result.exitCode();
+        wasKilledForInactivity = result.killedForInactivity();
+        return result.output();
     }
 
     /**

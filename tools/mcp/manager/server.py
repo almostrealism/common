@@ -33,6 +33,7 @@ forwarding the request.
 """
 
 import base64
+import binascii
 import contextvars
 import hmac
 import json
@@ -1151,6 +1152,28 @@ def workstream_get_job(job_id: str) -> dict:
     return result
 
 
+VALID_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+
+def _check_effort(effort: str) -> Optional[dict]:
+    """Return an error dict if ``effort`` is non-empty and not a recognised
+    Claude Code effort level, or ``None`` when valid (or empty).
+
+    Accepted values mirror
+    :class:`io.flowtree.jobs.ClaudeCodeJob#VALID_EFFORT_LEVELS`. This list is
+    kept in sync manually; the Java side is the source of truth and rejects
+    unknown values, but pre-validating here gives the caller a clearer error
+    and avoids issuing a doomed HTTP request.
+    """
+    if effort and effort not in VALID_EFFORT_LEVELS:
+        return {
+            "ok": False,
+            "error": f"Invalid effort '{effort}'. Must be one of: "
+                     f"{', '.join(VALID_EFFORT_LEVELS)}",
+        }
+    return None
+
+
 def _parse_required_labels(required_labels: str) -> dict:
     """Parse a comma-separated key:value string into a labels dict.
 
@@ -1185,6 +1208,30 @@ def _parse_dependent_repos(dependent_repos: str) -> list:
     return [r.strip() for r in stripped.split(",") if r.strip()]
 
 
+def _parse_activities_param(include_activities) -> str:
+    """Normalize include_activities to a comma-separated string.
+
+    Accepts a native Python list, a JSON-array string, or a plain comma-separated
+    string.  Returns a normalised comma-separated string (e.g. ``"primary"``).
+    """
+    if isinstance(include_activities, list):
+        joined = ",".join(str(v).strip() for v in include_activities if str(v).strip())
+        return joined or "primary"
+    if not include_activities:
+        return "primary"
+    stripped = include_activities.strip()
+    if stripped.startswith("["):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+            if isinstance(parsed, list):
+                joined = ",".join(str(v).strip() for v in parsed if str(v).strip())
+                return joined or "primary"
+        except ValueError:
+            pass
+    return stripped or "primary"
+
+
 @mcp.tool()
 def workstream_submit_task(
     prompt: str,
@@ -1198,6 +1245,8 @@ def workstream_submit_task(
     started_after: str = "",
     required_labels: str = "",
     deduplication_mode: str = "",
+    model: str = "",
+    effort: str = "",
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1235,6 +1284,14 @@ def workstream_submit_task(
             spawned). Use "spawn" to submit a separate follow-up job to the
             same workstream after committing (requires workstream URL). Pass
             "none" to disable deduplication entirely.
+        model: Claude Code model alias (e.g. ``"sonnet"``, ``"opus"``,
+            ``"haiku"``) or full identifier (e.g. ``"claude-sonnet-4-6"``)
+            for this job. Empty string falls back to the workstream default,
+            which in turn falls back to the CLI default.
+        effort: Claude Code effort/thinking level for this job. Must be one
+            of ``"low"``, ``"medium"``, ``"high"``, ``"xhigh"``, ``"max"``.
+            Empty string falls back to the workstream default, which in turn
+            falls back to the CLI default.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -1247,7 +1304,11 @@ def workstream_submit_task(
         workstream_id=workstream_id, target_branch=target_branch,
         description=description, started_after=started_after,
         deduplication_mode=deduplication_mode,
+        model=model, effort=effort,
     )
+    if err:
+        return err
+    err = _check_effort(effort)
     if err:
         return err
     _require_workstream_in_scope(workstream_id)
@@ -1277,6 +1338,10 @@ def workstream_submit_task(
             payload["requiredLabels"] = labels_dict
     if deduplication_mode:
         payload["deduplicationMode"] = deduplication_mode
+    if model:
+        payload["model"] = model
+    if effort:
+        payload["effort"] = effort
 
     result = _controller_post("/api/submit", payload)
 
@@ -1311,6 +1376,8 @@ def workstream_register(
     plan_instructions: str = "",
     plan_path: str = "",
     plan_commit_message: str = "",
+    model: str = "",
+    effort: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1360,6 +1427,15 @@ def workstream_register(
         plan_commit_message: Git commit message for the direct-commit path.
             Ignored when ``plan_instructions`` is used. Auto-generated if
             omitted.
+        model: Default Claude Code model alias (e.g. ``"sonnet"``,
+            ``"opus"``, ``"haiku"``) or full identifier applied to every
+            job submitted to this workstream that does not specify its own
+            model. Empty string leaves the workstream with no default,
+            falling back to the CLI default.
+        effort: Default Claude Code effort/thinking level for the
+            workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
+            ``"xhigh"``, ``"max"``. Empty string leaves the workstream with
+            no default.
 
     Returns:
         Dictionary with workstreamId and channel info on success. When
@@ -1377,7 +1453,11 @@ def workstream_register(
         repo_url=repo_url, planning_document=planning_document,
         channel_name=channel_name, slack_workspace_id=slack_workspace_id,
         plan_path=plan_path, plan_commit_message=plan_commit_message,
+        model=model, effort=effort,
     )
+    if err:
+        return err
+    err = _check_effort(effort)
     if err:
         return err
     # plan_content and plan_instructions describe two different follow-up
@@ -1429,6 +1509,10 @@ def workstream_register(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
+    if model:
+        payload["model"] = model
+    if effort:
+        payload["effort"] = effort
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -1602,6 +1686,8 @@ def workstream_update_config(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
+    model: str = "",
+    effort: str = "",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -1625,6 +1711,12 @@ def workstream_update_config(
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
             Also accepts a JSON array string. Dependent repos follow the same
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
+        model: New default Claude Code model alias (e.g. ``"sonnet"``,
+            ``"opus"``, ``"haiku"``) or full identifier for the workstream.
+            Applied to jobs that do not specify their own model.
+        effort: New default Claude Code effort/thinking level for the
+            workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
+            ``"xhigh"``, ``"max"``.
 
     Returns:
         Dictionary confirming the update.
@@ -1634,7 +1726,11 @@ def workstream_update_config(
         workstream_id=workstream_id, default_branch=default_branch,
         base_branch=base_branch, repo_url=repo_url,
         planning_document=planning_document, channel_name=channel_name,
+        model=model, effort=effort,
     )
+    if err:
+        return err
+    err = _check_effort(effort)
     if err:
         return err
     _require_workstream_in_scope(workstream_id)
@@ -1659,6 +1755,10 @@ def workstream_update_config(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
+    if model:
+        payload["model"] = model
+    if effort:
+        payload["effort"] = effort
 
     if not payload:
         return {
@@ -1667,7 +1767,7 @@ def workstream_update_config(
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
                 "repo_url, planning_document, channel_name, required_labels, "
-                "or dependent_repos",
+                "dependent_repos, model, or effort",
             ],
         }
 
@@ -2044,23 +2144,21 @@ def project_read_plan(
     path: str = "",
     branch: str = "",
 ) -> dict:
-    """Read the planning document for a workstream from GitHub.
+    """Read the planning document for a workstream (delegates to github_read_file).
 
-    Fetches the file content via the GitHub Contents API, routed through
-    the FlowTree controller's proxy for authentication. Only works for
-    repositories hosted on GitHub.
-
-    If no path is provided, uses the workstream's configured
-    ``planningDocument`` path.
+    Looks up the workstream's configured ``planningDocument`` path and
+    delegates to :func:`github_read_file` to fetch its content. The
+    planning document path must be set via ``workstream_update_config``.
 
     Args:
         workstream_id: Workstream to read from (from workstream_list).
-        path: File path in the repository. Defaults to the workstream's
-            configured planningDocument.
-        branch: Branch to read from (default: workstream's defaultBranch).
+        path: Override for the planning document path. When omitted, the
+            workstream's configured ``planningDocument`` path is used.
+        branch: Branch to read from. Defaults to the workstream's
+            ``defaultBranch``.
 
     Returns:
-        Dictionary with the file content, path, and branch.
+        Dictionary with file content, path, branch, sha, and repo.
     """
     _require_scope("read")
     err = _check_short_strings(
@@ -2079,29 +2177,6 @@ def project_read_plan(
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
 
-    _set_github_org(ws)
-
-    repo_url = ws.get("repoUrl")
-    if not repo_url:
-        return _pipeline_error(workstream_id, "repo_url is not configured")
-
-    owner_repo = _extract_owner_repo(repo_url)
-    if not owner_repo:
-        return {
-            "ok": False,
-            "error": f"Cannot parse owner/repo from: {repo_url}",
-            "next_steps": ["Use workstream_update_config to fix repo_url"],
-        }
-
-    owner, repo = owner_repo
-    effective_branch = branch or ws.get("defaultBranch", "")
-    if not effective_branch:
-        return {
-            "ok": False,
-            "error": "No branch specified and workstream has no defaultBranch",
-            "next_steps": ["Provide the branch parameter explicitly"],
-        }
-
     effective_path = path or ws.get("planningDocument", "")
     if not effective_path:
         return {
@@ -2109,45 +2184,51 @@ def project_read_plan(
             "error": "No planning document path configured for this workstream",
             "next_steps": [
                 "Provide the path parameter explicitly",
-                "Or use workstream_update_config to set planning_document",
+                "Use workstream_update_config to set planning_document",
             ],
         }
 
-    ref_param = quote(effective_branch, safe="")
-    result = _github_request(
-        "GET",
-        f"/repos/{owner}/{repo}/contents/{quote(effective_path, safe='/')}?ref={ref_param}",
+    repo_url = ws.get("repoUrl", "")
+    if not repo_url:
+        return {
+            "ok": False,
+            "error": "No repository URL configured for this workstream",
+            "next_steps": [
+                "Use workstream_update_config to set repo_url",
+            ],
+        }
+
+    effective_branch = branch or ws.get("defaultBranch", "")
+    if not effective_branch:
+        return {
+            "ok": False,
+            "error": "No branch configured for this workstream",
+            "next_steps": [
+                "Pass branch explicitly when calling project_read_plan",
+                "Use workstream_update_config to set default_branch",
+            ],
+        }
+
+    result = github_read_file(
+        path=effective_path,
+        repo_url=repo_url,
+        branch=effective_branch,
+        workstream_id=workstream_id,
     )
 
-    if result.get("ok") is False:
-        result.setdefault("next_steps", [
-            f"Verify the file exists at '{effective_path}' on branch '{effective_branch}'",
-            "Use project_commit_plan to create the planning document first",
-        ])
-        return result
-
-    content_b64 = result.get("content", "")
-    encoding = result.get("encoding", "")
-    if encoding == "base64" and content_b64:
-        try:
-            content = base64.b64decode(content_b64).decode("utf-8")
-        except Exception:
-            content = content_b64
-    else:
-        content = content_b64
-
-    return {
-        "ok": True,
-        "path": effective_path,
-        "branch": effective_branch,
-        "repo": f"{owner}/{repo}",
-        "content": content,
-        "sha": result.get("sha", ""),
-        "next_steps": [
+    if result.get("ok"):
+        # Expose branch alongside ref for backward compatibility
+        result.setdefault("branch", result.get("ref", effective_branch))
+        result["next_steps"] = [
             "Use project_commit_plan to update this document",
             "Use workstream_submit_task to send an agent to work on the plan",
-        ],
-    }
+        ]
+    else:
+        result.setdefault("next_steps", [
+            f"Verify the file exists at '{effective_path}'",
+            "Use project_commit_plan to create the planning document first",
+        ])
+    return result
 
 
 # -- Tier 3: Memory tools ---------------------------------------------------
@@ -2405,6 +2486,7 @@ def workstream_context(
     include_commits: bool = True,
     commit_limit: int = 30,
     job_limit: int = 20,
+    include_activities: "list[str] | str" = "primary",
 ) -> dict:
     """Reconstruct the narrative of a workstream — what agents have been
     thinking about and doing on a branch. This is the primary tool for
@@ -2451,6 +2533,15 @@ def workstream_context(
         commit_limit: Maximum number of commits to include (default 30).
         job_limit: Maximum number of jobs to include in the timeline
             (default 20). Pass 0 to omit jobs entirely.
+        include_activities: Activity filter — accepts a Python list of strings,
+            a JSON-array string (``["deduplication","primary"]``), or a plain
+            comma-separated string.  Defaults to ``"primary"``, which returns
+            only messages with no activity tag (primary work) or with the
+            explicit ``activity:primary`` tag — both are treated as primary.
+            Audit-phase messages (e.g. ``activity:deduplication``) are hidden
+            by default.  Pass ``"all"`` to see every message, or a specific
+            activity name (e.g. ``"deduplication"``) to see that phase plus
+            primary/untagged messages.
 
     Returns:
         Dictionary with branch memories, optionally commits, and optionally
@@ -2521,6 +2612,33 @@ def workstream_context(
                 memories = combined
         except ConnectionError:
             pass  # Non-critical: proceed without messages
+
+    # Filter memories by activity.  Each message may carry a tag of the
+    # form ``activity:<name>`` (e.g. ``activity:deduplication``).  Memories
+    # without any such tag are considered primary work.  The
+    # ``include_activities`` parameter controls which activities are shown.
+    #
+    # Special values:
+    #   "all"     — no filtering; return every memory regardless of activity
+    #   "primary" — (default) return only primary/untagged and activity:primary
+    #   any other — return memories whose activity tag matches that value,
+    #               plus primary/untagged memories
+    #
+    # Multiple values can be comma-separated, e.g. "primary,deduplication".
+    # Also accepts a Python list or a JSON-array string via _parse_activities_param.
+    effective_include = _parse_activities_param(include_activities)
+    if effective_include != "all":
+        allowed = {v.strip() for v in effective_include.split(",") if v.strip()}
+
+        def _activity_allowed(mem: dict) -> bool:
+            tags = mem.get("tags") or []
+            activity_tags = [t[len("activity:"):] for t in tags if t.startswith("activity:")]
+            if not activity_tags or "primary" in activity_tags:
+                # No activity tag or explicit activity:primary — primary work, always included
+                return True
+            return any(a in allowed for a in activity_tags)
+
+        memories = [m for m in memories if _activity_allowed(m)]
 
     # Fetch commit history from GitHub Compare API if requested
     commits = None
@@ -2731,6 +2849,7 @@ def send_message(
     text: str,
     workstream_id: str = "",
     job_id: str = "",
+    activity: str = "",
 ) -> dict:
     """Send a message for archival and optional notification.
 
@@ -2745,6 +2864,14 @@ def send_message(
             the workstream from the auth token when available.
         job_id: Job to thread the message under.  Defaults to the job
             from the auth token when available.
+        activity: Optional tag identifying the phase or activity this
+            message belongs to (e.g. ``"deduplication"``,
+            ``"organizational_placement"``,
+            ``"maven_dependency_protection"``).  Defaults to empty
+            (primary work).  When the environment variable
+            ``AR_AGENT_ACTIVITY`` is set and ``activity`` is not
+            supplied, the env var value is used automatically so that
+            correction-session agents do not need to pass it explicitly.
 
     Returns:
         Dictionary with ok=true on success or ok=false with error details.
@@ -2753,13 +2880,19 @@ def send_message(
 
     effective_ws = workstream_id or _get_token_workstream_id() or ""
     effective_job = job_id or _get_token_job_id() or ""
+    effective_activity = (activity or os.environ.get("AR_AGENT_ACTIVITY", "")).strip()
 
     if not effective_ws:
         return {"ok": False, "error": "workstream_id is required (pass explicitly or use a job token)"}
 
+    if effective_activity:
+        err = _check_length(effective_activity, "activity", MAX_SHORT_STRING_LEN)
+        if err:
+            return err
+
     _require_workstream_in_scope(effective_ws)
     _audit("send_message", workstream_id=effective_ws, job_id=effective_job,
-           text=text[:80])
+           activity=effective_activity, text=text[:80])
 
     err = _check_length(text, "text", MAX_CONTENT_LEN)
     if err:
@@ -2771,12 +2904,43 @@ def send_message(
         path += f"/jobs/{quote(effective_job, safe='')}"
     path += "/messages"
 
-    return _controller_post(path, {"text": text})
+    body: dict = {"text": text}
+    if effective_activity:
+        body["activity"] = effective_activity
+    return _controller_post(path, body)
 
 
 # ---------------------------------------------------------------------------
 # GitHub PR tools
 # ---------------------------------------------------------------------------
+
+
+def _find_open_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
+    """Look up the first open pull request for ``branch`` on ``owner/repo``.
+
+    Returns a dict with ``ok=True`` and ``pr`` (the raw GitHub PR object)
+    on success, ``ok=True`` with ``found=False`` when no open PR exists
+    for the branch, or an ``ok=False`` error dict when the GitHub call
+    fails or returns an unexpected payload. Centralising this lookup
+    avoids drift between tools that need to resolve a PR by branch
+    (e.g. ``github_pr_find``, ``github_request_copilot_review``,
+    ``github_pr_check_status``).
+    """
+    head = f"{owner}:{branch}"
+    pr_list = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open",
+    )
+    if isinstance(pr_list, dict) and pr_list.get("ok") is False:
+        return pr_list
+    if not isinstance(pr_list, list):
+        return {
+            "ok": False,
+            "error": "Unexpected response listing pull requests",
+        }
+    if not pr_list:
+        return {"ok": True, "found": False, "branch": branch}
+    return {"ok": True, "found": True, "pr": pr_list[0], "branch": branch}
 
 
 @mcp.tool()
@@ -2810,23 +2974,21 @@ def github_pr_find(
 
     _audit("github_pr_find", workstream_id=workstream_id, branch=effective_branch)
 
-    head = f"{owner}:{effective_branch}"
-    result = _github_request("GET", f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open")
-
-    if isinstance(result, list):
-        if not result:
-            return {"ok": True, "found": False, "branch": effective_branch}
-        pr = result[0]
-        return {
-            "ok": True,
-            "found": True,
-            "number": pr.get("number"),
-            "title": pr.get("title"),
-            "url": pr.get("html_url"),
-            "state": pr.get("state"),
-            "branch": effective_branch,
-        }
-    return result  # error dict from _github_request
+    lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+    if not lookup.get("ok"):
+        return lookup
+    if not lookup.get("found"):
+        return {"ok": True, "found": False, "branch": effective_branch}
+    pr = lookup["pr"]
+    return {
+        "ok": True,
+        "found": True,
+        "number": pr.get("number"),
+        "title": pr.get("title"),
+        "url": pr.get("html_url"),
+        "state": pr.get("state"),
+        "branch": effective_branch,
+    }
 
 
 @mcp.tool()
@@ -3366,15 +3528,389 @@ def github_request_copilot_review(
                 ],
             }
         # Look up the open PR for the branch.
-        head = f"{owner}:{effective_branch}"
-        pr_list = _github_request("GET", f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open")
-        if not isinstance(pr_list, list) or not pr_list:
+        lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+        if not lookup.get("ok"):
+            return lookup
+        if not lookup.get("found"):
             return {"ok": False, "error": f"No open PR found for branch '{effective_branch}'"}
-        effective_pr = pr_list[0]["number"]
+        effective_pr = lookup["pr"].get("number")
 
     _audit("github_request_copilot_review", pr_number=effective_pr)
 
     return _request_copilot_review(owner, repo, effective_pr)
+
+
+# ---------------------------------------------------------------------------
+# GitHub file and pipeline tools
+# ---------------------------------------------------------------------------
+
+# Size limit for github_read_file — reject files over this threshold.
+_GITHUB_READ_FILE_SIZE_LIMIT = 1_048_576  # 1 MB
+
+
+@mcp.tool()
+def github_read_file(
+    path: str,
+    workstream_id: str = "",
+    repo_url: str = "",
+    branch: str = "",
+    ref: str = "",
+) -> dict:
+    """Read any file from a GitHub repository.
+
+    Fetches file content via the GitHub Contents API, routed through the
+    FlowTree controller proxy for authentication. The repository is
+    resolved from the workstream or supplied explicitly via ``repo_url``.
+
+    Returns the file content as text. Binary files that cannot be decoded
+    as UTF-8 are rejected with a clear error. Files larger than 1 MB are
+    rejected to prevent accidental large pulls — use grep tools or read
+    specific line ranges for large files.
+
+    Args:
+        path: File path within the repository (e.g. ``docs/README.md``).
+        workstream_id: Workstream to resolve the repository from. When
+            both ``workstream_id`` and ``repo_url`` are empty, the
+            resolver falls back to local-git detection (useful when the
+            server runs against a developer checkout).
+        repo_url: Explicit GitHub repository URL (e.g.
+            ``https://github.com/owner/repo``). Overrides workstream
+            resolution when provided. Scoped tokens are checked against
+            the parsed owner via the workspace scope gate.
+        branch: Branch to read from. Defaults to the workstream's
+            ``defaultBranch`` when available, otherwise the repo's
+            default branch. Ignored when ``ref`` is provided.
+        ref: Git ref to read at (branch, tag, or commit SHA). Takes
+            precedence over ``branch`` when both are provided.
+
+    Returns:
+        Dictionary with file content, path, ref, sha, and repo.
+    """
+    _require_scope("read")
+    err = _check_short_strings(
+        path=path, workstream_id=workstream_id, branch=branch, ref=ref,
+    )
+    if err:
+        return err
+    if not path:
+        return {"ok": False, "error": "path is required"}
+
+    _audit("github_read_file", path=path, workstream_id=workstream_id,
+           branch=branch, ref=ref)
+
+    # Resolve owner/repo
+    if repo_url:
+        owner_repo = _extract_owner_repo(repo_url)
+        if not owner_repo:
+            return {"ok": False, "error": f"Cannot parse owner/repo from: {repo_url}"}
+        owner, repo = owner_repo
+        _require_org_in_scope(owner)
+        _current_github_org.set(owner)
+        effective_branch = branch
+    else:
+        owner, repo, effective_branch, err = _resolve_github_repo(
+            workstream_id=workstream_id, branch=branch,
+        )
+        if err:
+            return err
+
+    effective_ref = ref or effective_branch
+    ref_suffix = f"?ref={quote(effective_ref, safe='')}" if effective_ref else ""
+
+    result = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/contents/{quote(path, safe='/')}{ref_suffix}",
+    )
+
+    if isinstance(result, dict) and result.get("ok") is False:
+        result.setdefault("next_steps", [
+            f"Verify the file exists at '{path}' on the specified ref/branch",
+            "Check the repo_url or workstream_id is correct",
+        ])
+        return result
+
+    # The GitHub Contents API returns a JSON array (not a dict) when the
+    # supplied path refers to a directory. Surface this explicitly rather
+    # than reporting a misleading "Unexpected response".
+    if isinstance(result, list):
+        return {
+            "ok": False,
+            "error": (
+                f"Path '{path}' refers to a directory, not a file"
+            ),
+            "repo": f"{owner}/{repo}",
+            "next_steps": [
+                "Pass a specific file path within the directory",
+                "Use git/grep tools to enumerate directory contents",
+            ],
+        }
+
+    if not isinstance(result, dict):
+        return {
+            "ok": False,
+            "error": "Unexpected response from GitHub Contents API",
+        }
+
+    # Enforce size limit before decoding
+    file_size = result.get("size", 0)
+    if file_size > _GITHUB_READ_FILE_SIZE_LIMIT:
+        return {
+            "ok": False,
+            "error": (
+                f"File '{path}' is {file_size:,} bytes, which exceeds the 1 MB "
+                "limit. Use grep tools or read specific line ranges instead."
+            ),
+            "size": file_size,
+            "repo": f"{owner}/{repo}",
+        }
+
+    # Decode content
+    content_b64 = result.get("content", "")
+    encoding = result.get("encoding", "")
+    if encoding == "base64" and content_b64:
+        # GitHub wraps base64 output in newlines; strip them before decoding.
+        try:
+            raw_bytes = base64.b64decode(content_b64.replace("\n", ""))
+        except (binascii.Error, ValueError) as exc:
+            return {
+                "ok": False,
+                "error": (
+                    f"Failed to decode base64 content for '{path}': {exc}"
+                ),
+                "repo": f"{owner}/{repo}",
+            }
+        try:
+            content = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return {
+                "ok": False,
+                "error": (
+                    f"File '{path}' appears to be binary and cannot be returned "
+                    "as text. Fetch it directly from the repository instead."
+                ),
+                "size": file_size,
+                "repo": f"{owner}/{repo}",
+            }
+    else:
+        content = content_b64
+
+    return {
+        "ok": True,
+        "path": result.get("path", path),
+        "repo": f"{owner}/{repo}",
+        "ref": effective_ref or "(default branch)",
+        "sha": result.get("sha", ""),
+        "size": file_size,
+        "content": content,
+    }
+
+
+@mcp.tool()
+def github_pr_check_status(
+    pr_number: int = 0,
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Check CI pipeline status for a pull request.
+
+    Fetches the PR's current HEAD commit SHA, then retrieves workflow runs
+    and check runs for that exact commit. This answers whether the CI
+    pipeline has run for the latest commit and whether it passed.
+
+    The ``pipeline_current`` flag in the response indicates whether at
+    least one workflow run targets the PR's HEAD commit SHA — if False,
+    the run results shown are for an older commit.
+
+    Args:
+        pr_number: Pull request number. If omitted, the open PR for the
+            workstream/branch is looked up automatically.
+        workstream_id: Workstream to resolve repo from. Defaults to token
+            context.
+        branch: Branch hint used to find the PR when pr_number is not
+            given. Defaults to the workstream's defaultBranch.
+        org: GitHub org (owner) to address directly. Must be passed
+            together with ``repo``. Bypasses workstream resolution;
+            scoped tokens are checked against this org via the workspace
+            scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        Dictionary with pr_number, head_sha, pipeline_current flag,
+        overall_status, workflow_runs list, and check_runs list. Failed
+        check runs include html_url and details_url for log access.
+    """
+    _require_scope("read")
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, effective_branch, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo,
+    )
+    if err:
+        return err
+
+    _audit("github_pr_check_status", pr_number=pr_number,
+           workstream_id=workstream_id, branch=effective_branch)
+
+    # Resolve PR number and head SHA
+    effective_pr = pr_number
+    head_sha = ""
+    pr_branch = effective_branch
+
+    if effective_pr:
+        pr_data = _github_request("GET", f"/repos/{owner}/{repo}/pulls/{effective_pr}")
+        if isinstance(pr_data, dict) and pr_data.get("ok") is False:
+            return pr_data
+        if isinstance(pr_data, dict):
+            head_sha = pr_data.get("head", {}).get("sha", "")
+            pr_branch = pr_data.get("head", {}).get("ref", effective_branch)
+    else:
+        if not effective_branch:
+            return {
+                "ok": False,
+                "error": "pr_number or branch is required to look up the PR",
+                "next_steps": [
+                    "Pass pr_number explicitly",
+                    "Or supply workstream_id/branch so the open PR can be found",
+                ],
+            }
+        lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+        if not lookup.get("ok"):
+            return lookup
+        if not lookup.get("found"):
+            return {
+                "ok": False,
+                "error": f"No open PR found for branch '{effective_branch}'",
+                "next_steps": ["Pass pr_number explicitly if the PR is closed"],
+            }
+        pr = lookup["pr"]
+        effective_pr = pr.get("number")
+        head_sha = pr.get("head", {}).get("sha", "")
+        pr_branch = pr.get("head", {}).get("ref", effective_branch)
+
+    if not head_sha:
+        return {"ok": False, "error": "Could not determine PR head commit SHA"}
+
+    # Fetch workflow runs for the head SHA
+    runs_result = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/actions/runs?head_sha={quote(head_sha, safe='')}",
+    )
+
+    if isinstance(runs_result, dict) and runs_result.get("ok") is False:
+        return runs_result
+
+    workflow_runs = []
+    pipeline_current = False
+
+    if isinstance(runs_result, dict):
+        for run in runs_result.get("workflow_runs", []):
+            if run.get("head_sha") == head_sha:
+                pipeline_current = True
+            workflow_runs.append({
+                "run_id": run.get("id"),
+                "name": run.get("name", ""),
+                "status": run.get("status", ""),
+                "conclusion": run.get("conclusion"),
+                "head_sha": run.get("head_sha", ""),
+                "created_at": run.get("created_at", ""),
+                "updated_at": run.get("updated_at", ""),
+                "html_url": run.get("html_url", ""),
+            })
+
+    # Fetch check runs for the head SHA
+    check_result = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/commits/{head_sha}/check-runs",
+    )
+
+    if isinstance(check_result, dict) and check_result.get("ok") is False:
+        return {
+            "ok": False,
+            "error": "Failed to fetch check runs",
+            "check_runs_error": check_result,
+        }
+
+    check_runs = []
+    if isinstance(check_result, dict):
+        for check in check_result.get("check_runs", []):
+            # check_runs are scoped to head_sha by the URL, so any returned
+            # entry is also evidence that the pipeline targets the current
+            # commit. workflow_runs and check_runs come from independent
+            # GitHub endpoints — relying on workflow_runs alone misses cases
+            # where check_runs is populated but workflow_runs is empty.
+            pipeline_current = True
+            check_info = {
+                "id": check.get("id"),
+                "name": check.get("name", ""),
+                "status": check.get("status", ""),
+                "conclusion": check.get("conclusion"),
+                "html_url": check.get("html_url", ""),
+                "started_at": check.get("started_at"),
+                "completed_at": check.get("completed_at"),
+            }
+            if check.get("conclusion") == "failure":
+                check_info["details_url"] = check.get("details_url", "")
+            check_runs.append(check_info)
+
+    # Derive overall status
+    if not workflow_runs and not check_runs:
+        overall = "no_runs"
+    elif workflow_runs and not pipeline_current:
+        overall = "stale"
+    else:
+        # An in-progress check (status != "completed") means CI is still
+        # running even if other checks have already concluded — report
+        # "pending" rather than letting completed conclusions decide.
+        has_incomplete_checks = any(
+            r.get("status") != "completed" for r in check_runs
+        )
+        conclusions = [r["conclusion"] for r in check_runs if r.get("conclusion")]
+        if has_incomplete_checks:
+            overall = "pending"
+        elif not conclusions:
+            overall = "pending"
+        elif any(c == "failure" for c in conclusions):
+            overall = "failure"
+        elif all(c in ("success", "skipped", "neutral") for c in conclusions):
+            overall = "success"
+        else:
+            overall = "mixed"
+
+    next_steps: list = []
+    if overall == "no_runs":
+        next_steps = [
+            "No workflow runs found; the pipeline may not be configured or "
+            "hasn't triggered yet",
+        ]
+    elif overall == "stale":
+        next_steps = [
+            "The latest workflow run targets an older commit; push a new "
+            "commit or manually re-run CI to update the status",
+        ]
+    elif overall == "failure":
+        next_steps = [
+            "Review failed check runs above for error details",
+            "Use the html_url or details_url links to view full logs",
+        ]
+    elif overall == "success":
+        next_steps = ["All checks passed; the PR is ready to review or merge"]
+    elif overall == "pending":
+        next_steps = ["CI is still running; check back later"]
+
+    return {
+        "ok": True,
+        "pr_number": effective_pr,
+        "repo": f"{owner}/{repo}",
+        "head_sha": head_sha,
+        "branch": pr_branch,
+        "pipeline_current": pipeline_current,
+        "overall_status": overall,
+        "workflow_runs": workflow_runs,
+        "check_runs": check_runs,
+        "next_steps": next_steps,
+    }
 
 
 # ---------------------------------------------------------------------------

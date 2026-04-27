@@ -114,4 +114,34 @@ public interface FirFilterTestFeatures extends TestFeatures {
 
 		return output;
 	}
+
+	/**
+	 * Computes the sum-of-squares energy of a signal, skipping the first and last
+	 * {@code skip} samples to avoid FIR filter edge effects.
+	 *
+	 * @param signal the signal samples
+	 * @param skip   number of samples to skip at each end
+	 * @return the sum of squared sample values in the interior region
+	 */
+	default double energy(double[] signal, int skip) {
+		double sum = 0.0;
+		for (int i = skip; i < signal.length - skip; i++) {
+			sum += signal[i] * signal[i];
+		}
+		return sum;
+	}
+
+	/**
+	 * Converts a {@code float[]} array to a {@code double[]} array.
+	 *
+	 * @param input the float array to convert
+	 * @return a new double array with the same values
+	 */
+	default double[] floatToDouble(float[] input) {
+		double[] output = new double[input.length];
+		for (int i = 0; i < input.length; i++) {
+			output[i] = input[i];
+		}
+		return output;
+	}
 }
