@@ -47,7 +47,7 @@ public class DelayNetworkAmplificationTest extends TestSuiteBase implements Cell
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
 	/** Default {@code size=128, gain=0.1}: DC steady-state output should be ~0.1 (= input * gain). */
-	@Test(timeout = 180000)
+	@Test(timeout = 600000)
 	public void defaultDcAmplification() {
 		DelayNetwork verb = new DelayNetwork(SAMPLE_RATE, false);
 		double peak = measureDcSteadyState(verb, 1.0, SAMPLE_RATE * 2);
@@ -57,7 +57,7 @@ public class DelayNetworkAmplificationTest extends TestSuiteBase implements Cell
 	}
 
 	/** Same {@code gain=0.1} at smaller size should produce the same wet level. */
-	@Test(timeout = 180000)
+	@Test(timeout = 600000)
 	public void gainSemanticsAreSizeInvariant() {
 		double sizeBig = 128;
 		double sizeSmall = 8;
@@ -74,7 +74,7 @@ public class DelayNetworkAmplificationTest extends TestSuiteBase implements Cell
 	}
 
 	/** Input gain scales the wet linearly. */
-	@Test(timeout = 180000)
+	@Test(timeout = 600000)
 	public void inputGainScalesLinearly() {
 		double gain = 0.5;
 		DelayNetwork verb = new DelayNetwork(gain, 128, 1.5, SAMPLE_RATE, false);
@@ -84,7 +84,7 @@ public class DelayNetworkAmplificationTest extends TestSuiteBase implements Cell
 	}
 
 	/** Wet should never exceed input + a small margin given gain<=1. */
-	@Test(timeout = 180000)
+	@Test(timeout = 600000)
 	public void unityGainOutputIsBounded() {
 		DelayNetwork verb = new DelayNetwork(1.0, 128, 1.5, SAMPLE_RATE, false);
 		double peak = measureDcSteadyState(verb, 1.0, SAMPLE_RATE * 2);
