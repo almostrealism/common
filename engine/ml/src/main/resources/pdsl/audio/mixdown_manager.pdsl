@@ -212,7 +212,8 @@ layer rect_route_probe(channels: int, signal_size: int,
 
 // ---------------------------------------------------------------------------
 // Heterogeneous wet/efx/reverb branch — three sibling sub-blocks all reading
-// the same mono input and producing one output channel each.
+// the same mono input and producing one output channel each, summed into
+// a single mono output.
 //
 // Renders rows 10-11 of Section 10.1 (MixdownManager.createCells() lines
 // 567-602). The production code does:
@@ -221,28 +222,14 @@ layer rect_route_probe(channels: int, signal_size: int,
 //     cells.branch(v, v · wetFilter, reverbFactor)
 //
 // Each branch has *structurally different* processing — different filters,
-// different gains, different downstream paths. PDSL renders this with the
-// `fan_out_with` construct: it accepts a comma-separated list of inline
-// block bodies, applies each to the [1, signal_size] input, and concatenates
-// the per-branch outputs into a [N, signal_size] tensor (where N is the
-// number of bodies, 3 here). After the construct, downstream `for each
-// channel`, `sum_channels()`, etc., operate on N channels.
-//
-// Syntax decision (from PDSL_AUDIO_DSP.md Section 12.4):
-//   * Option A — `fan_out_with({body1}, {body2}, ...)` with explicit per-branch
-//     bodies — picked. Bodies are visible inline, so a reader sees what each
-//     branch does without consulting a Java file. The branch count is fixed
-//     at parse time by the body count.
-//   * Option B — `for each branch in N { body }` rejected: this is already
-//     expressible today as `fan_out(N); for each channel { ... }` plus
-//     subscripted weight-table lookup; adding a new keyword for it would not
-//     unlock new expressiveness.
-//   * Option C — `fan_out(N) { body }` with one parameterised body rejected
-//     for the same reason as B; also subtly conflicts with the existing
-//     `fan_out(N)` primitive call form.
+// different gains, different downstream paths. PDSL renders this with
+// `accum_blocks(...)`, which accepts a comma-separated list of inline
+// block bodies, applies each to the [1, signal_size] input, and sums the
+// per-branch outputs back to a [1, signal_size] mono signal. The
+// implicit sum is exactly what the production wet/reverb summation does.
 //
 // Input shape:  [1, signal_size]
-// Output shape: [3, signal_size]   (one channel per branch body)
+// Output shape: [1, signal_size]
 //
 // Parameters:
 //   signal_size      Samples per channel per forward pass
@@ -259,7 +246,7 @@ layer mixdown_hetero_branch(signal_size: int,
                             hp_cutoff: scalar,
                             wet_filter_coeffs: weight, wet_level: scalar,
                             reverb_factor: scalar) -> [1, signal_size] {
-    fan_out_with(
+    accum_blocks(
         {
             // Dry-with-HP branch: high-pass + unity gain
             highpass(hp_cutoff, sample_rate, filter_order)
@@ -274,7 +261,6 @@ layer mixdown_hetero_branch(signal_size: int,
             scale(reverb_factor)
         }
     )
-    sum_channels()
 }
 
 // ---------------------------------------------------------------------------

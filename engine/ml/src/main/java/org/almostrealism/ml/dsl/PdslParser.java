@@ -353,7 +353,6 @@ public class PdslParser {
 			case PRODUCT: return parseProductStatement();
 			case ACCUM_BLOCKS: return parseAccumBlocksStatement();
 			case CONCAT_BLOCKS: return parseConcatBlocksStatement();
-			case FAN_OUT_WITH: return parseFanOutWithStatement();
 			case FOR: return parseForStatement();
 			default: return parseExpressionStatement();
 		}
@@ -441,18 +440,23 @@ public class PdslParser {
 	}
 
 	/**
-	 * Parses an {@code accum_blocks(left, right)} statement.
+	 * Parses an {@code accum_blocks(block1, block2, ...)} statement with one or more
+	 * block arguments. Every block is applied to the same upstream signal and their
+	 * outputs are summed element-wise.
 	 *
 	 * @return the parsed {@link PdslNode.AccumBlocksStatement}
 	 */
 	private PdslNode.AccumBlocksStatement parseAccumBlocksStatement() {
 		PdslToken kw = consume(PdslToken.Type.ACCUM_BLOCKS);
 		consume(PdslToken.Type.LPAREN);
-		PdslNode.Expression left = parseBlockArg();
-		consume(PdslToken.Type.COMMA);
-		PdslNode.Expression right = parseBlockArg();
+		List<PdslNode.Expression> blocks = new ArrayList<>();
+		blocks.add(parseBlockArg());
+		while (check(PdslToken.Type.COMMA)) {
+			consume(PdslToken.Type.COMMA);
+			blocks.add(parseBlockArg());
+		}
 		consume(PdslToken.Type.RPAREN);
-		return new PdslNode.AccumBlocksStatement(left, right, kw.getLine(), kw.getColumn());
+		return new PdslNode.AccumBlocksStatement(blocks, kw.getLine(), kw.getColumn());
 	}
 
 	/**
@@ -471,25 +475,6 @@ public class PdslParser {
 		}
 		consume(PdslToken.Type.RPAREN);
 		return new PdslNode.ConcatBlocksStatement(blocks, kw.getLine(), kw.getColumn());
-	}
-
-	/**
-	 * Parses a {@code fan_out_with({ body1 }, { body2 }, ...)} statement with two or more
-	 * inline-block branch arguments.
-	 *
-	 * @return the parsed {@link PdslNode.FanOutWithStatement}
-	 */
-	private PdslNode.FanOutWithStatement parseFanOutWithStatement() {
-		PdslToken kw = consume(PdslToken.Type.FAN_OUT_WITH);
-		consume(PdslToken.Type.LPAREN);
-		List<PdslNode.Expression> branches = new ArrayList<>();
-		branches.add(parseBlockArg());
-		while (check(PdslToken.Type.COMMA)) {
-			consume(PdslToken.Type.COMMA);
-			branches.add(parseBlockArg());
-		}
-		consume(PdslToken.Type.RPAREN);
-		return new PdslNode.FanOutWithStatement(branches, kw.getLine(), kw.getColumn());
 	}
 
 	/**

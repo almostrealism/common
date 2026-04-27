@@ -197,6 +197,63 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	}
 
 	/**
+	 * Apply each of the given blocks to the same input and sum their outputs element-wise.
+	 * Every block must produce the same output shape; that shape is also the layer's
+	 * output shape. The N-block generalisation of {@link SequentialBlock#accum(Block, Block,
+	 * ComputeRequirement...)}.
+	 *
+	 * <p>Each block receives the layer's input independently, its output is captured via
+	 * {@link Cell.CaptureReceptor}, and all captured outputs are summed in order to form
+	 * the final output.</p>
+	 *
+	 * @param inputShape   the input tensor shape
+	 * @param blocks       the sub-blocks to apply in parallel and sum
+	 * @param requirements optional compute requirements
+	 * @return a CellularLayer whose output is the element-wise sum of all block outputs
+	 */
+	default CellularLayer accumBlocks(TraversalPolicy inputShape,
+									  List<Block> blocks,
+									  ComputeRequirement... requirements) {
+		if (blocks.isEmpty()) {
+			throw new IllegalArgumentException("accumBlocks requires at least one block");
+		}
+		TraversalPolicy outputShape = blocks.get(0).getOutputShape();
+		for (Block b : blocks) {
+			if (b.getOutputShape().getTotalSize() != outputShape.getTotalSize()) {
+				throw new IllegalArgumentException(
+						"accumBlocks requires all blocks to share an output shape; got "
+								+ outputShape + " and " + b.getOutputShape());
+			}
+		}
+
+		return layer("accum_blocks", inputShape, outputShape, Cell.of((input, next) -> {
+			List<Cell.CaptureReceptor<PackedCollection>> receptors = new ArrayList<>();
+			for (Block b : blocks) {
+				Cell.CaptureReceptor<PackedCollection> receptor = new Cell.CaptureReceptor<>();
+				b.getForward().setReceptor(receptor);
+				receptors.add(receptor);
+			}
+
+			OperationList ops = new OperationList("accum_blocks");
+			for (Block b : blocks) {
+				ops.add(b.getForward().push(input));
+			}
+
+			if (next != null) {
+				CollectionProducer sum = c(receptors.get(0).getReceipt())
+						.reshape(outputShape);
+				for (int i = 1; i < blocks.size(); i++) {
+					sum = sum.add(c(receptors.get(i).getReceipt())
+							.reshape(outputShape));
+				}
+				ops.add(next.push(sum));
+			}
+
+			return ops;
+		}), null, requirements);
+	}
+
+	/**
 	 * Apply each of the given blocks to the same input and concatenate their outputs.
 	 * The output shape is automatically computed as the sum of each block's output size.
 	 *

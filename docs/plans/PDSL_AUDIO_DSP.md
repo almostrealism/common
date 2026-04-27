@@ -545,14 +545,14 @@ cells.addRequirement(temporal);
   `for each channel` / `sum_channels` / `tap` operate on the new output channel
   count rather than re-using the input channel count. This unlocks the N-efx →
   M-delays fan in `MixdownManager.createEfx()` (Section 10 rows 19, 20).
-- **Heterogeneous fan-out** — `fan_out_with(...)` keyword and the
-  `FanOutWithStatement` AST node apply a *different* sub-block to each branch of
-  the fan-out and concatenate the results into `[N, signal_size]`, where each
-  branch's output is one channel of the result. The keyword form was chosen over
-  the alternative `branch { … }` and `for each branch in N { … }` spellings; see
-  the docstring on `mixdown_hetero_branch` in
-  `engine/ml/src/test/resources/pdsl/audio/...` (and the
-  `testMixdownManagerHeterogeneousBranch` Javadoc) for the rationale.
+- **Heterogeneous branching** — expressible as `accum_blocks(a, b, c, …)`
+  applied to a `[1, signal_size]` mono signal, since the existing
+  `accum_blocks(...)` construct already accepts N comma-separated inline brace-
+  delimited bodies and sums their per-arm outputs. No new keyword was needed:
+  the wet/efx/reverb branch from `MixdownManager.createCells()` is rendered by
+  `mixdown_hetero_branch` in `engine/ml/src/main/resources/pdsl/audio/mixdown_manager.pdsl`,
+  exercised by `testMixdownManagerHeterogeneousBranch` in
+  `MixdownManagerPdslTest`.
 - **Test coverage** — `PdslAudioDspTest` (13 tests), `MixdownChannelPdslTest` (8 tests),
   `PdslAudioDemoTest` (2 tests), `DelayFeedbackBankPdslTest` (1 test),
   `MixdownManagerPdslTest` (mix of structural tests, the six newly-enabled
@@ -763,10 +763,10 @@ them have landed; only the fourth is still open:
 2. **Rectangular routing** — *implemented* (Section 12.3). `route(matrix)`
    now accepts `[rows, cols]` matrices where rows ≠ cols. Covered rows
    19, 20.
-3. **Heterogeneous fan-out** — *implemented* (Section 12.4) as the
-   `fan_out_with(...)` keyword (chosen over alternative `branch { }` and
-   `for each branch in N { }` spellings). Applies a *different* sub-block
-   to each branch output. Covered rows 10, 11.
+3. **Heterogeneous branching** — *expressible without a new keyword*
+   (Section 12.4). `accum_blocks(a, b, c, …)` accepts N comma-separated
+   inline brace-delimited bodies and sums their per-arm outputs, which is
+   exactly what the wet/efx/reverb branch needs. Covered rows 10, 11.
 4. **`delay_network(...)` primitive** — *still open*. Multi-tap feedback
    reverb equivalent to `org.almostrealism.audio.filter.DelayNetwork`.
    Covers rows 24, 25.
@@ -1121,44 +1121,35 @@ from the supplied `weight` argument.
 |-------------------|---------|-------|
 | `MixdownManagerPdslTest.testMixdownManagerRectangularRoute` | 19, 20 | N efx channels fan-routed to M delay layers (M ≠ N) |
 
-### 12.4 Heterogeneous fan-out (landed)
+### 12.4 Heterogeneous branching — already covered by `accum_blocks`
 
-**What was implemented.** A new `fan_out_with(...)` keyword applies a
-*different* sub-block to each branch of the fan-out, producing one output
-channel per sub-block. The shape is `[N, signal_size]` where N is the number
-of sub-blocks. Backed by the `FanOutWithStatement` AST node (and the
-corresponding `PdslLexer`/`PdslParser`/`PdslInterpreter` plumbing) and a
-new factory in `MultiChannelDspFeatures` that composes per-branch
-`SequentialBlock`s with the same fan-out + concat plumbing the existing
-`fan_out` + `for each channel` constructs use.
+**Clarification.** The wet/efx/reverb branch from `MixdownManager.createCells()`
+(rows 10–11) does not require a new construct. PDSL's existing
+`accum_blocks(a, b, c, …)` construct already accepts N comma-separated
+inline brace-delimited bodies, applies each to the same input, and sums
+the per-arm outputs. That is exactly the operation the production code
+performs: each branch consumes the same mono input, applies its own
+per-branch processing, and the per-branch outputs are summed into a single
+mono output.
 
-**Design decisions — syntax choice.** Three spellings were considered:
+An earlier iteration introduced a `fan_out_with(...)` keyword whose only
+distinction from `accum_blocks` was that it returned the per-branch outputs
+as a `[N, signal_size]` tensor and required a follow-up `sum_channels()` to
+collapse them — i.e. exactly the implicit sum that `accum_blocks` already
+performs. The keyword and its supporting AST/parser/interpreter plumbing
+(`FanOutWithStatement`, `PdslLexer.FAN_OUT_WITH`, `parseFanOutWithStatement`,
+`interpretFanOutWith`) were therefore retired, and `mixdown_hetero_branch`
+in `mixdown_manager.pdsl` was rewritten in terms of `accum_blocks`. The
+parser was extended to accept N comma-separated bodies for `accum_blocks`
+(previously limited to 2), and a new `accumBlocks(inputShape, List<Block>)`
+factory in `LayerRoutingFeatures` provides the N-way primitive that the
+interpreter dispatches to.
 
-1. `fan_out_with(block_a, block_b, block_c)` — chosen.
-2. `branch { block_a; block_b; block_c }` — closer to `CellList.branch`,
-   but visually conflated with `concat_blocks` which already uses
-   `{ … }` sub-block syntax for tensor concatenation rather than channel
-   concatenation.
-3. `for each branch in N { … }` — index-driven, but required the body to
-   conditionally select different operations per branch index, which is
-   awkward to read for the common case of three structurally distinct
-   branches.
-
-The chosen `fan_out_with(...)` form parallels the existing `fan_out(N)`
-construct (one keyword for replicate, one for heterogeneous), names the
-intent at the keyword rather than burying it in the body, and reads
-naturally for the common 2- or 3-branch case in `MixdownManager`. The
-docstring on `mixdown_hetero_branch` in `mixdown_manager.pdsl` and on
-`testMixdownManagerHeterogeneousBranch` records the rationale alongside the
-test.
-
-**Implementing commit:** `8a035c4c38`.
-
-**Tests now enabled:**
+**Tests covering this capability:**
 
 | Test class.method | Targets | Notes |
 |-------------------|---------|-------|
-| `MixdownManagerPdslTest.testMixdownManagerHeterogeneousBranch` | 10, 11 | 3-way branch `{main, main·wet_filter, reverb_factor}` |
+| `MixdownManagerPdslTest.testMixdownManagerHeterogeneousBranch` | 10, 11 | 3-way branch `{main, main·wet_filter, reverb_factor}` summed via `accum_blocks` |
 
 ### 12.5 `delay_network(...)` primitive
 
@@ -1191,7 +1182,7 @@ motivate is intentionally deferred to a separate task. Recording the
 guidance here prevents the pattern from compounding across future
 audit-driven changes.
 
-### 13.1 The pattern: single-parameter divergence
+### 13.1 Two patterns to watch for
 
 Deduplication audits on this branch have correctly caught exact-clone
 duplication. Two recent examples:
@@ -1205,12 +1196,22 @@ Both are clean dedup wins — the duplicate code was either textually
 identical or differed only in cosmetic ways, so collapsing the two forms
 removed code without sacrificing readability.
 
-The audits have *not* consistently pushed for **generalisation** of helpers
-that share a skeleton and differ in one parameter or one strategic choice.
-Call this pattern **single-parameter divergence**: two helpers that perform
-the same operation modulo one decision point — typically a value, a flag,
-or a strategy object — without overlapping in any other aspect of their
-code.
+There are two related patterns the audits have *not* consistently caught:
+
+1. **Single-parameter divergence.** Two helpers that perform the same
+   operation modulo one decision point — typically a value, a flag, or a
+   strategy object — without overlapping in any other aspect of their
+   code. The call sites differ, the method names differ, often the
+   parameter lists differ in size, and the audit's "are these the same
+   operation?" filter accepts both as distinct.
+2. **New keyword for an existing operation.** A new PDSL keyword (or new
+   factory method, or new helper) is introduced for an operation already
+   expressible by an existing keyword, possibly with a one-line
+   composition (a follow-up `sum_channels()`, a wrapping reshape, an
+   identity-on-one-arg call). The audit sees a "new" feature with its
+   own AST node and dispatch entry and accepts it as new functionality,
+   when in fact it is a more verbose spelling of what the existing
+   construct already does.
 
 ### 13.2 Why this matters
 
@@ -1231,37 +1232,40 @@ remaining the same operation at their core.
 
 ### 13.3 Concrete examples from this workstream
 
-**`MultiChannelDspFeatures.fanOutWithBlock` vs
-`MultiChannelDspFeatures.perChannelBlock`.** These two factories share a
-common skeleton: build N sub-blocks, route inputs to each, concatenate
-outputs to `[N, signal_size]`. They differ in the input-routing step —
-`fanOutWithBlock` broadcasts the `[1, signal_size]` input to every branch,
-`perChannelBlock` slices the `[N, signal_size]` input one channel per
-branch. That is one decision point: a `BranchSourcing` strategy of
-"broadcast" versus "per-channel slice." A generalised
-`branchedBlock(BranchSourcing strategy, …)` factory could subsume both
-without sacrificing readability of either call site (the call site already
-encodes the strategy in the keyword: `fan_out_with` vs `for each channel`).
-
-The dedup audit on commit `8a035c4c38` examined the two factories and
-concluded "different operation, not a duplicate." That conclusion is
-correct under the audit's current framing (the two methods do different
-things) and wrong under a stricter framing (the two methods do the same
-thing modulo one parameter). The audit was not asked to consider the
-stricter form, so it didn't.
+**`fan_out_with(...)` keyword vs the existing `accum_blocks(...)` keyword
+(pattern 2 — new keyword for an existing operation).** An earlier iteration
+introduced a `fan_out_with(a, b, c)` keyword that built the same per-branch
+sub-blocks `accum_blocks(a, b, c)` already builds, except that it returned
+the per-branch outputs as a `[N, signal_size]` tensor and required a
+follow-up `sum_channels()` call to collapse them — i.e. the implicit sum
+that `accum_blocks` already performs. The only PDSL file that used the new
+keyword (`mixdown_hetero_branch` in `mixdown_manager.pdsl`) immediately
+followed it with `sum_channels()`, so the two-keyword spelling was
+strictly equivalent to a single `accum_blocks(...)` call. The keyword,
+its AST node, parser/interpreter plumbing, and the `fanOutWithBlock`
+factory in `MultiChannelDspFeatures` were retired in the cleanup pass that
+followed; the rewrite touched one PDSL layer and one test method. The
+dedup audit on commit `8a035c4c38` did flag a related single-parameter
+divergence between `fanOutWithBlock` and `perChannelBlock` (broadcast vs
+per-channel slice on the input-routing step), but the deeper observation —
+that `fan_out_with` itself was a more verbose spelling of `accum_blocks` —
+was missed because the audit treated `fan_out_with` as a "new operation."
 
 **`PdslInterpreter.bindProducerParameter` vs
 `AudioDspInterpreterFeatures.scalarProducer` /
-`AudioDspInterpreterFeatures.cutoffProducer`.** At first glance these look
-like helpers at different abstraction levels: `bindProducerParameter`
-operates at build time on the args-map binding (literal vs producer);
-`scalarProducer` and `cutoffProducer` operate at kernel-construction time
-on the producer-or-literal value already bound. But the underlying logic
-is the same shape: "if the value is already a `Producer<PackedCollection>`
-of the expected shape, pass it through; otherwise wrap a literal `double`
-into a constant producer of that shape." The two layers could be unified
-through a single producer-binding utility shared between the args-binding
-phase and the kernel-construction phase.
+`AudioDspInterpreterFeatures.cutoffProducer` (pattern 1 — single-parameter
+divergence).** At first glance these look like helpers at different
+abstraction levels: `bindProducerParameter` operates at build time on the
+args-map binding (literal vs producer); `scalarProducer` and
+`cutoffProducer` operated at kernel-construction time on the
+producer-or-literal value already bound. But the underlying logic was the
+same shape: "if the value is already a `Producer<PackedCollection>` of the
+expected shape, pass it through; otherwise wrap a literal `double` into a
+constant producer of that shape." The cleanup pass that retired
+`fan_out_with` also unified these helpers behind a single
+`bindProducerArg(value, expectedShape, contextName)` method on
+`AudioDspInterpreterFeatures`; `bindProducerParameter` and the per-primitive
+call sites both delegate to it.
 
 ### 13.4 Recommended audit prompt addition
 
@@ -1284,14 +1288,12 @@ it unconditionally. The current framing skips the proposal step entirely.
 ### 13.5 Scope of this guidance
 
 This section is guidance for *future audits* of code on this branch and
-elsewhere. It is **not** a request to refactor `fanOutWithBlock` /
-`perChannelBlock` or to merge the producer-binding helpers in this task —
-both unifications are deferred to a separate cleanup task that can weigh
-the readability trade-offs against the scope of the change. The point of
-recording the guidance now is to ensure the next agent that examines
-either pair *does* consider the unification, rather than re-running the
-same "different operation, not a duplicate" reasoning that has already
-twice let the divergence stand.
+elsewhere. The `fan_out_with` retirement and the `bindProducerArg`
+unification described above have already landed; the audit prompt
+addition exists to ensure the next agent that examines a similar pair
+*does* consider the unification, rather than re-running the same
+"different operation, not a duplicate" reasoning that previously let
+both divergences stand.
 
 ---
 

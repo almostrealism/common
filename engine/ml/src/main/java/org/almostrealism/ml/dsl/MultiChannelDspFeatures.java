@@ -26,7 +26,6 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
-import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -170,56 +169,6 @@ public interface MultiChannelDspFeatures extends CollectionFeatures {
 				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 						Supplier<Runnable>>) (in, next) -> new OperationList("sum_channels-backward"));
 		return new DefaultBlock(multiShape, singleShape, forward, backward);
-	}
-
-	/**
-	 * Builds a heterogeneous fan-out block that applies a different sub-block to each
-	 * branch of a {@code [1, signalSize]} input and concatenates the per-branch outputs
-	 * along a new channel axis.
-	 *
-	 * <p>This is the PDSL rendition of {@code CellList.branch(IntFunction<Cell>...)} from
-	 * {@code engine/audio/.../CellFeatures.java} — the production pattern at
-	 * {@code MixdownManager.createCells()} lines 572-602 where the same input is sent
-	 * through structurally different processing per branch (different filter coefficients,
-	 * different gains, different delay parameters). Each branch block must accept a
-	 * {@code [1, signalSize]} input and produce a {@code [1, signalSize]} output.</p>
-	 *
-	 * @param branchBlocks  per-branch sub-blocks, one per output channel
-	 * @param signalSize    samples per channel
-	 * @return a Block with shape {@code [1, signalSize] → [N, signalSize]} where
-	 *         {@code N = branchBlocks.size()}
-	 */
-	default Block fanOutWithBlock(List<Block> branchBlocks, int signalSize) {
-		int n = branchBlocks.size();
-		TraversalPolicy singleShape = shape(1, signalSize);
-		TraversalPolicy multiShape = shape(n, signalSize);
-		Cell<PackedCollection> forward = Cell.of(
-				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-						Supplier<Runnable>>) (in, next) -> {
-					OperationList allOps = new OperationList("fan_out_with");
-					List<CollectionProducer> branchOutputs = new ArrayList<>();
-					for (int i = 0; i < n; i++) {
-						AtomicReference<CollectionProducer> captured = new AtomicReference<>();
-						Receptor<PackedCollection> branchReceptor = protein -> {
-							captured.set(c(protein).reshape(singleShape));
-							return new OperationList();
-						};
-						Cell<PackedCollection> branchCell = branchBlocks.get(i).getForward();
-						branchCell.setReceptor(branchReceptor);
-						allOps.add(branchCell.push(c(in).reshape(singleShape)));
-						branchOutputs.add(captured.get());
-					}
-					CollectionProducer combined = branchOutputs.get(0);
-					for (int i = 1; i < n; i++) {
-						combined = (CollectionProducer) concat(combined, branchOutputs.get(i));
-					}
-					allOps.add(next.push(combined));
-					return allOps;
-				});
-		Cell<PackedCollection> backward = Cell.of(
-				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-						Supplier<Runnable>>) (in, next) -> new OperationList("fan_out_with-backward"));
-		return new DefaultBlock(singleShape, multiShape, forward, backward);
 	}
 
 	/**

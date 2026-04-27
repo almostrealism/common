@@ -49,7 +49,6 @@ public class PdslLexer {
 		KEYWORDS.put("product", PdslToken.Type.PRODUCT);
 		KEYWORDS.put("accum_blocks", PdslToken.Type.ACCUM_BLOCKS);
 		KEYWORDS.put("concat_blocks", PdslToken.Type.CONCAT_BLOCKS);
-		KEYWORDS.put("fan_out_with", PdslToken.Type.FAN_OUT_WITH);
 		KEYWORDS.put("weight", PdslToken.Type.WEIGHT);
 		KEYWORDS.put("scalar", PdslToken.Type.SCALAR);
 		KEYWORDS.put("producer", PdslToken.Type.PRODUCER);

@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml.dsl;
 
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -71,33 +72,63 @@ public interface AudioDspInterpreterFeatures
 	}
 
 	/**
-	 * Converts a scalar argument into a shape-{@code [1]} {@link CollectionProducer},
-	 * regardless of whether the argument arrived as a numeric literal (folded into
-	 * the compiled kernel as {@code c(value)}) or as a {@link Producer} of a
-	 * shape-{@code [1]} {@link PackedCollection} (read inside the kernel via
-	 * {@code subset(shape(1), producer, 0)}).
+	 * Resolves an argument into a {@link CollectionProducer} matching the requested
+	 * {@code expectedShape}. This is the canonical conversion used for every audio
+	 * primitive argument that may be supplied as a numeric literal, a
+	 * {@link PackedCollection}, or a {@link Producer}. The same logic backs
+	 * {@code PdslInterpreter#bindProducerParameter}, which delegates here so that
+	 * {@code producer([shape])} parameter binding and per-primitive scalar acceptance
+	 * share one definition rather than diverging.
 	 *
-	 * <p>This is the shared dispatch helper used by every audio primitive that
-	 * accepts producer-valued scalars (currently {@code scale}, {@code biquad},
-	 * {@code delay}, {@code lfo}, {@code lowpass}, {@code highpass}). It centralizes
-	 * the literal-vs-producer branch so each primitive only has to call it for
-	 * each of its scalar arguments.</p>
+	 * <p>Conversion rules:</p>
+	 * <ul>
+	 *   <li>{@link Number} — folded into the kernel as a constant via {@code c(value)}.
+	 *       Only valid when {@code expectedShape} has total size 1.</li>
+	 *   <li>{@link PackedCollection} — wrapped via {@code cp(coll)} so the slot can be
+	 *       mutated between renders. Shape must match {@code expectedShape}.</li>
+	 *   <li>{@link Producer} — passed through unchanged. If the producer implements
+	 *       {@link Shape}, its shape is validated against {@code expectedShape}.</li>
+	 * </ul>
 	 *
-	 * @param arg the scalar argument from the PDSL argument list
-	 * @return a shape-{@code [1]} {@link CollectionProducer} suitable for use in
-	 *         broadcast multiplication, addition, and subtraction inside a kernel
-	 * @throws PdslParseException if {@code arg} is neither a {@link Number} nor a {@link Producer}
+	 * @param arg           the argument from the PDSL argument list
+	 * @param expectedShape the required shape (typically {@code shape(1)})
+	 * @param contextName   prefix used in error messages identifying the call site
+	 * @return a {@link CollectionProducer} of the requested shape
+	 * @throws PdslParseException if the argument is unsupported or has the wrong shape
 	 */
-	default CollectionProducer scalarProducer(Object arg) {
+	default CollectionProducer bindProducerArg(Object arg, TraversalPolicy expectedShape,
+											   String contextName) {
 		if (arg instanceof Number) {
-			return c(toDouble(arg));
+			if (expectedShape.getTotalSize() != 1) {
+				throw new PdslParseException(contextName + " expects shape "
+						+ expectedShape + " but a Number literal can only be supplied for shape [1]");
+			}
+			return c(((Number) arg).doubleValue());
+		}
+		if (arg instanceof PackedCollection) {
+			PackedCollection coll = (PackedCollection) arg;
+			if (coll.getShape().getTotalSize() != expectedShape.getTotalSize()) {
+				throw new PdslParseException(contextName + " expects shape "
+						+ expectedShape + " but PackedCollection has shape " + coll.getShape());
+			}
+			return cp(coll);
 		}
 		if (arg instanceof Producer) {
-			return subset(shape(1), (Producer<PackedCollection>) arg, 0);
+			Producer<PackedCollection> producer = (Producer<PackedCollection>) arg;
+			if (producer instanceof Shape) {
+				TraversalPolicy actual = ((Shape<?>) producer).getShape();
+				if (actual.getTotalSize() != expectedShape.getTotalSize()) {
+					throw new PdslParseException(contextName + " expects shape "
+							+ expectedShape + " but Producer has shape " + actual);
+				}
+			}
+			if (producer instanceof CollectionProducer) {
+				return (CollectionProducer) producer;
+			}
+			return c(producer);
 		}
-		throw new PdslParseException(
-				"Expected numeric or Producer argument, got "
-						+ (arg == null ? "null" : arg.getClass().getSimpleName()));
+		throw new PdslParseException(contextName + " expects Number, PackedCollection, or Producer; got "
+				+ (arg == null ? "null" : arg.getClass().getSimpleName()));
 	}
 
 	/**
@@ -168,19 +199,12 @@ public interface AudioDspInterpreterFeatures
 		if (args.size() == 1) {
 			Object arg = args.get(0);
 			if (arg instanceof Number) {
-				double factor = toDouble(arg);
-				return scale(factor);
+				return scale(toDouble(arg));
 			}
-			if (arg instanceof Producer) {
-				Producer<PackedCollection> factor = (Producer<PackedCollection>) arg;
-				return (Function<TraversalPolicy, Block>)
-						(shape -> layer("scale", shape, shape,
-								input -> multiply(c(input).each(),
-										subset(shape(1), factor, 0))));
-			}
-			throw new PdslParseException(
-					"scale() expects 1 numeric or Producer argument, got "
-							+ (arg == null ? "null" : arg.getClass().getSimpleName()));
+			CollectionProducer factor = bindProducerArg(arg, shape(1), "scale() factor");
+			return (Function<TraversalPolicy, Block>)
+					(shape -> layer("scale", shape, shape,
+							input -> multiply(c(input).each(), factor)));
 		}
 		throw new PdslParseException(
 				"scale() expects 1 argument (factor), got " + args.size());
@@ -225,7 +249,7 @@ public interface AudioDspInterpreterFeatures
 	 */
 	default Object callLowpass(List<Object> args) {
 		if (args.size() == 3) {
-			Producer<PackedCollection> cutoff = cutoffProducer(args.get(0), "lowpass");
+			Producer<PackedCollection> cutoff = bindProducerArg(args.get(0), shape(1), "lowpass() cutoff");
 			int sampleRate = toInt(args.get(1));
 			int order = toInt(args.get(2));
 			return firFilterBlock("lowpass",
@@ -251,7 +275,7 @@ public interface AudioDspInterpreterFeatures
 	 */
 	default Object callHighpass(List<Object> args) {
 		if (args.size() == 3) {
-			Producer<PackedCollection> cutoff = cutoffProducer(args.get(0), "highpass");
+			Producer<PackedCollection> cutoff = bindProducerArg(args.get(0), shape(1), "highpass() cutoff");
 			int sampleRate = toInt(args.get(1));
 			int order = toInt(args.get(2));
 			return firFilterBlock("highpass",
@@ -259,30 +283,6 @@ public interface AudioDspInterpreterFeatures
 		}
 		throw new PdslParseException(
 				"highpass() expects 3 arguments (cutoff, sampleRate, filterOrder), got " + args.size());
-	}
-
-	/**
-	 * Resolves the {@code cutoff} argument shared by {@link #callLowpass(List)} and
-	 * {@link #callHighpass(List)} into a {@link Producer} suitable for the
-	 * {@code lowPassCoefficients} / {@code highPassCoefficients} helpers. Both
-	 * helpers already accept a {@link Producer}, so a literal is wrapped via
-	 * {@code c(value)} and a producer is forwarded directly without an extra
-	 * {@code subset} (the helpers handle their own shape arithmetic).
-	 *
-	 * @param arg       the cutoff argument from the PDSL argument list
-	 * @param primitive primitive name used in the error message
-	 * @return the cutoff as a {@link Producer} of {@link PackedCollection}
-	 */
-	default Producer<PackedCollection> cutoffProducer(Object arg, String primitive) {
-		if (arg instanceof Number) {
-			return c(toDouble(arg));
-		}
-		if (arg instanceof Producer) {
-			return (Producer<PackedCollection>) arg;
-		}
-		throw new PdslParseException(primitive
-				+ "() cutoff must be numeric or Producer, got "
-				+ (arg == null ? "null" : arg.getClass().getSimpleName()));
 	}
 
 	/**
@@ -305,11 +305,11 @@ public interface AudioDspInterpreterFeatures
 	 */
 	default Object callBiquad(List<Object> args) {
 		if (args.size() == 6) {
-			CollectionProducer b0p = scalarProducer(args.get(0));
-			CollectionProducer b1p = scalarProducer(args.get(1));
-			CollectionProducer b2p = scalarProducer(args.get(2));
-			CollectionProducer a1p = scalarProducer(args.get(3));
-			CollectionProducer a2p = scalarProducer(args.get(4));
+			CollectionProducer b0p = bindProducerArg(args.get(0), shape(1), "biquad() b0");
+			CollectionProducer b1p = bindProducerArg(args.get(1), shape(1), "biquad() b1");
+			CollectionProducer b2p = bindProducerArg(args.get(2), shape(1), "biquad() b2");
+			CollectionProducer a1p = bindProducerArg(args.get(3), shape(1), "biquad() a1");
+			CollectionProducer a2p = bindProducerArg(args.get(4), shape(1), "biquad() a2");
 			PackedCollection history = (PackedCollection) args.get(5);
 			return (Function<TraversalPolicy, Block>) (shape -> {
 				int n = shape.getSize();
@@ -375,7 +375,8 @@ public interface AudioDspInterpreterFeatures
 	 */
 	default Object callDelay(List<Object> args) {
 		if (args.size() == 3) {
-			CollectionProducer delaySamplesP = scalarProducer(args.get(0));
+			CollectionProducer delaySamplesP = bindProducerArg(args.get(0), shape(1),
+					"delay() delaySamples");
 			PackedCollection buffer = (PackedCollection) args.get(1);
 			PackedCollection head = (PackedCollection) args.get(2);
 			int bufSize = buffer.getShape().getSize();
@@ -435,20 +436,10 @@ public interface AudioDspInterpreterFeatures
 	 */
 	default Object callLfo(List<Object> args) {
 		if (args.size() == 3) {
-			Object freqArg = args.get(0);
 			double sampleRate = toDouble(args.get(1));
 			PackedCollection phase = (PackedCollection) args.get(2);
-			CollectionProducer phaseIncrement;
-			if (freqArg instanceof Number) {
-				phaseIncrement = c(2.0 * Math.PI * toDouble(freqArg) / sampleRate);
-			} else if (freqArg instanceof Producer) {
-				phaseIncrement = subset(shape(1), (Producer<PackedCollection>) freqArg, 0)
-						.multiply(c(2.0 * Math.PI / sampleRate));
-			} else {
-				throw new PdslParseException(
-						"lfo() freqHz must be numeric or Producer, got "
-								+ (freqArg == null ? "null" : freqArg.getClass().getSimpleName()));
-			}
+			CollectionProducer freq = bindProducerArg(args.get(0), shape(1), "lfo() freqHz");
+			CollectionProducer phaseIncrement = freq.multiply(c(2.0 * Math.PI / sampleRate));
 			return (Function<TraversalPolicy, Block>) (shape -> {
 				int n = shape.getSize();
 				Cell<PackedCollection> forward = Cell.of(

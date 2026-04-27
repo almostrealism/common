@@ -346,7 +346,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * constant would make {@code diffEnergy} collapse to floating-point noise.</p>
 	 */
 	@Test(timeout = 120000)
-	@TestDepth(2)
 	public void testMixdownManagerAutomatedHighpass() throws IOException {
 		PackedCollection cutoffSlot = new PackedCollection(1);
 		double[] schedule = sweepSchedule(100.0, 4500.0, NUM_AUTOMATION_PASSES);
@@ -381,7 +380,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * filtering effects are considered.</p>
 	 */
 	@Test(timeout = 120000)
-	@TestDepth(2)
 	public void testMixdownManagerAutomatedVolume() throws IOException {
 		PackedCollection volumeSlot = new PackedCollection(1);
 		double[] schedule = sweepSchedule(0.0, 1.0, NUM_AUTOMATION_PASSES);
@@ -418,7 +416,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * two outputs is the LP behaviour.</p>
 	 */
 	@Test(timeout = 120000)
-	@TestDepth(2)
 	public void testMixdownManagerAutomatedLowpass() throws IOException {
 		PackedCollection lpSlot = new PackedCollection(1);
 		double[] schedule = sweepSchedule(8000.0, 500.0, NUM_AUTOMATION_PASSES);
@@ -453,7 +450,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * buffer/head allocations via separate {@code efxBusArgs()} calls.</p>
 	 */
 	@Test(timeout = 120000)
-	@TestDepth(2)
 	public void testMixdownManagerVariableDelayTime() throws IOException {
 		PackedCollection delaySlot = new PackedCollection(1);
 		double[] schedule = sweepSchedule(16.0, 192.0, NUM_AUTOMATION_PASSES);
@@ -506,7 +502,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * routing is audibly verifiable.</p>
 	 */
 	@Test(timeout = 60000)
-	@TestDepth(2)
 	public void testMixdownManagerRectangularRoute() throws IOException {
 		final int inChannels = CHANNELS;          // N = 4 efx channels
 		final int outChannels = 3;                // M = 3 delay layers
@@ -676,14 +671,15 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * processing per branch (different filter coefficients, different gains).
 	 *
 	 * <p>The {@code mixdown_hetero_branch} layer in {@code mixdown_manager.pdsl}
-	 * splits a mono input into three branches via {@code fan_out_with(...)}:
+	 * splits a mono input into three branches via {@code accum_blocks(...)}:
 	 * <ol>
 	 *   <li>High-pass + unity gain — passes mostly the high-frequency content.</li>
 	 *   <li>Wet FIR low-pass + wet-level gain — passes mostly the low-frequency content
 	 *       at a reduced level.</li>
 	 *   <li>Reverb-send branch — scaled-down dry signal.</li>
 	 * </ol>
-	 * The three branch outputs are summed into a mono master.</p>
+	 * The three branch outputs are summed into a mono master by the implicit
+	 * accumulation built into {@code accum_blocks}.</p>
 	 *
 	 * <p>The test feeds a mix of low (220 Hz) and high (3 kHz) tones, then verifies
 	 * that each branch's processing is reflected in the output by isolating each
@@ -691,7 +687,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * WAV file is written so the heterogeneous routing is audibly verifiable.</p>
 	 */
 	@Test(timeout = 120000)
-	@TestDepth(2)
 	public void testMixdownManagerHeterogeneousBranch() throws IOException {
 		final double dryHpCutoff = 1500.0;
 		final double wetLpCutoff = 1500.0;

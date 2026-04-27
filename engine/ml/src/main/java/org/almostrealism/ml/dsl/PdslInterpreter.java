@@ -186,16 +186,11 @@ public class PdslInterpreter {
 
 	/**
 	 * Binds a {@code producer([shape])} parameter to a {@link Producer} of
-	 * {@link PackedCollection}. Accepts any of:
-	 * <ul>
-	 *   <li>a {@link Number} — wrapped as a constant 1-element {@link PackedCollection}
-	 *       and exposed via {@code cp(...)} (only valid when the declared shape is {@code [1]});</li>
-	 *   <li>a {@link PackedCollection} of the declared shape — exposed via {@code cp(...)}
-	 *       so the caller may mutate it between renders;</li>
-	 *   <li>a {@link Producer} — used directly.</li>
-	 * </ul>
-	 * Throws a clear error if a {@code PackedCollection} is supplied whose shape does
-	 * not match the declared shape.
+	 * {@link PackedCollection}. The actual conversion (Number, PackedCollection, or
+	 * Producer with shape validation) is delegated to
+	 * {@link AudioDspInterpreterFeatures#bindProducerArg(Object, TraversalPolicy, String)}
+	 * so that parameter binding and per-primitive scalar acceptance share one
+	 * definition.
 	 *
 	 * @param param the parameter declaration (with declared shape)
 	 * @param value the caller-supplied value from the args map
@@ -209,34 +204,8 @@ public class PdslInterpreter {
 							+ "' declared as producer must have a shape, e.g. producer([1])");
 		}
 		TraversalPolicy declaredShape = evaluateShape((PdslNode.ShapeLiteral) param.getShape(), env);
-
-		if (value instanceof Number) {
-			if (declaredShape.getTotalSize() != 1) {
-				throw new PdslParseException(
-						"Parameter '" + param.getName() + "' has declared shape "
-								+ declaredShape + " but a Number literal can only be supplied for shape [1]");
-			}
-			PackedCollection wrapped = new PackedCollection(declaredShape);
-			wrapped.setMem(0, ((Number) value).doubleValue());
-			return FEATURES.cp(wrapped);
-		}
-		if (value instanceof PackedCollection) {
-			PackedCollection coll = (PackedCollection) value;
-			if (coll.getShape().getTotalSize() != declaredShape.getTotalSize()) {
-				throw new PdslParseException(
-						"Parameter '" + param.getName() + "' declared as producer("
-								+ declaredShape + ") but supplied PackedCollection has shape "
-								+ coll.getShape());
-			}
-			return FEATURES.cp(coll);
-		}
-		if (value instanceof Producer) {
-			return value;
-		}
-		throw new PdslParseException(
-				"Parameter '" + param.getName() + "' declared as producer("
-						+ declaredShape + ") expects a Number, PackedCollection, or Producer "
-						+ "but got " + (value == null ? "null" : value.getClass().getSimpleName()));
+		return FEATURES.bindProducerArg(value, declaredShape,
+				"Parameter '" + param.getName() + "'");
 	}
 
 	/**
@@ -469,8 +438,6 @@ public class PdslInterpreter {
 			interpretConcatBlocks((PdslNode.ConcatBlocksStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ForEachChannelStatement) {
 			interpretForEachChannel((PdslNode.ForEachChannelStatement) stmt, block, env);
-		} else if (stmt instanceof PdslNode.FanOutWithStatement) {
-			interpretFanOutWith((PdslNode.FanOutWithStatement) stmt, block, env);
 		} else if (stmt instanceof PdslNode.ForStatement) {
 			PdslNode.ForStatement forStmt = (PdslNode.ForStatement) stmt;
 			int start = toInt(evaluateExpression(forStmt.getStart(), env));
@@ -571,15 +538,20 @@ public class PdslInterpreter {
 	}
 
 	/**
-	 * Interprets an {@code accum_blocks} statement by applying two sub-blocks to the same input
-	 * and accumulating their outputs element-wise.
+	 * Interprets an {@code accum_blocks} statement by applying N sub-blocks to the
+	 * same input and accumulating their outputs element-wise.
 	 */
 	private void interpretAccumBlocks(PdslNode.AccumBlocksStatement accumStmt,
 									  SequentialBlock block, Environment env) {
-		TraversalPolicy shape = block.getOutputShape();
-		Block left = expressionToBlock(accumStmt.getLeft(), shape, env);
-		Block right = expressionToBlock(accumStmt.getRight(), shape, env);
-		block.accum(left, right);
+		TraversalPolicy inputShape = block.getOutputShape();
+		List<Block> subBlocks = new ArrayList<>();
+		for (PdslNode.Expression expr : accumStmt.getBlocks()) {
+			subBlocks.add(expressionToBlock(expr, inputShape, env));
+		}
+		if (subBlocks.isEmpty()) {
+			throw new PdslParseException("accum_blocks requires at least one branch body");
+		}
+		block.add(FEATURES.accumBlocks(inputShape, subBlocks));
 	}
 
 	/**
@@ -1148,30 +1120,6 @@ public class PdslInterpreter {
 	// per-channel sub-block, so it stays here next to interpretBranch / interpretAccum
 	// rather than in AudioDspInterpreterFeatures (which only owns Block-returning
 	// expression-level primitives).
-
-	/**
-	 * Interprets a {@code fan_out_with({ body1 }, { body2 }, ...)} statement by building
-	 * one sub-block per branch (each receiving the full {@code [1, signal_size]} input)
-	 * and wrapping them with {@link MultiChannelDspFeatures#fanOutWithBlock}. Updates
-	 * the environment's {@code channels} binding to the branch count so subsequent
-	 * statements see the new multi-channel shape.
-	 */
-	private void interpretFanOutWith(PdslNode.FanOutWithStatement stmt,
-									 SequentialBlock block, Environment env) {
-		int signalSize = toInt(env.get("signal_size"));
-		TraversalPolicy branchInputShape = FEATURES.shape(1, signalSize);
-		List<Block> branchBlocks = new ArrayList<>();
-		for (PdslNode.Expression expr : stmt.getBranches()) {
-			branchBlocks.add(expressionToBlock(expr, branchInputShape, env));
-		}
-		int n = branchBlocks.size();
-		if (n < 1) {
-			throw new PdslParseException(
-					"fan_out_with requires at least one branch body");
-		}
-		block.add(FEATURES.fanOutWithBlock(branchBlocks, signalSize));
-		env.set("channels", n);
-	}
 
 	/** Interprets {@code for each channel} by building per-channel sub-blocks and wrapping them. */
 	private void interpretForEachChannel(PdslNode.ForEachChannelStatement stmt,

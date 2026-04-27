@@ -486,71 +486,28 @@ public abstract class PdslNode {
 	}
 
 	/**
-	 * AccumBlocks statement: element-wise accumulation (sum) of two sub-block outputs.
-	 * Both sub-blocks receive the same input; their outputs are summed.
-	 * {@code accum_blocks(blockA, blockB)}
+	 * AccumBlocks statement: element-wise accumulation (sum) of N sub-block outputs.
+	 * Every sub-block receives the same input; their outputs are summed element-wise.
+	 * {@code accum_blocks(blockA, blockB, ...)}
 	 */
 	public static class AccumBlocksStatement extends Statement {
-		/** The left sub-block expression. */
-		private final Expression left;
-		/** The right sub-block expression. */
-		private final Expression right;
+		/** The list of sub-block expressions to apply in parallel and sum. */
+		private final List<Expression> blocks;
 
 		/**
 		 * Constructs an AccumBlocksStatement.
 		 *
-		 * @param left   the left sub-block expression
-		 * @param right  the right sub-block expression
+		 * @param blocks the list of sub-block expressions (must contain at least one)
 		 * @param line   the source line number
 		 * @param column the source column number
 		 */
-		public AccumBlocksStatement(Expression left, Expression right,
-								  int line, int column) {
+		public AccumBlocksStatement(List<Expression> blocks, int line, int column) {
 			super(line, column);
-			this.left = left;
-			this.right = right;
+			this.blocks = blocks;
 		}
 
-		/** Returns the left sub-block expression. */
-		public Expression getLeft() { return left; }
-
-		/** Returns the right sub-block expression. */
-		public Expression getRight() { return right; }
-	}
-
-	/**
-	 * Heterogeneous fan-out statement: {@code fan_out_with({ body1 }, { body2 }, ...)}.
-	 *
-	 * <p>Takes the upstream {@code [1, signal_size]} signal and applies a distinct
-	 * sub-block (specified inline as a brace-delimited body) to each branch, producing
-	 * a {@code [N, signal_size]} output where {@code N} is the number of sub-blocks.
-	 * The PDSL rendition of {@code CellList.branch(IntFunction<Cell>...)} from
-	 * {@code MixdownManager.createCells()} lines 572-602.</p>
-	 *
-	 * <p>The number of branches is fixed at parse time. After the statement, the
-	 * environment's {@code channels} binding is updated to {@code N} so that
-	 * subsequent {@code for each channel}, {@code sum_channels()}, {@code route()},
-	 * etc., operate on the new channel count.</p>
-	 */
-	public static class FanOutWithStatement extends Statement {
-		/** One sub-block expression per branch (typically each is an
-		 * {@link InlineBlock}). */
-		private final List<Expression> branches;
-
-		/**
-		 * Constructs a heterogeneous fan-out statement.
-		 *
-		 * @param branches per-branch sub-block expressions (in branch order)
-		 * @param line     source line number
-		 * @param column   source column number
-		 */
-		public FanOutWithStatement(List<Expression> branches, int line, int column) {
-			super(line, column);
-			this.branches = branches;
-		}
-
-		/** Returns the per-branch sub-block expressions. */
-		public List<Expression> getBranches() { return branches; }
+		/** Returns the list of sub-block expressions to be summed. */
+		public List<Expression> getBlocks() { return blocks; }
 	}
 
 	/** For-loop: {@code for i in start..end { body }}. */

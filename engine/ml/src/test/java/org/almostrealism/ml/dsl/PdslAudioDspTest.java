@@ -699,8 +699,10 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 			loader.buildLayer(program, "scale_producer_layer", inputShape, args);
 			Assert.fail("Building with mismatched producer shape must throw");
 		} catch (PdslParseException expected) {
-			Assert.assertTrue("Error must reference the parameter name",
-					expected.getMessage().contains("volume"));
+			if (!expected.getMessage().contains("volume")) {
+				Assert.fail("Error must reference the parameter name 'volume', but got: "
+						+ expected.getMessage());
+			}
 		}
 	}
 
