@@ -43,7 +43,6 @@ public class BufferedAudioPlayerTest extends TestSuiteBase implements AudioTestF
 			public void write(PackedCollection sample) {
 				data = sample;
 				total = sample.doubleStream().map(Math::abs).sum();
-				log("total = " + total);
 				count++;
 			}
 		});
