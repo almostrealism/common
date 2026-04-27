@@ -346,21 +346,6 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 	 * @param profile the operation profile node for collecting timing data, or {@code null}
 	 */
 	public static void run(OperationProfileNode profile) {
-		// The realtime path no longer normalises mix levels (the offline
-		// auto-volume step required look-ahead which the realtime pipeline
-		// can't provide), so scale the summed master bus to give it
-		// headroom and stop the int16 WAV writer from clipping.
-		// Master gain at 0.5 with the DelayNetwork normalisation fix in
-		// place. This gives the master a strong listening level (typically
-		// -10 to -14 dBFS RMS) while leaving the limiter enough room to
-		// catch transient peaks without constantly clipping.
-		MixdownManager.masterBusGain = 0.5;
-		// efxBusGain disabled (=1.0) for this test -- bounded transmission
-		// and wetOut chromosome ranges should be enough to keep the EFX bus
-		// stable on their own. If the EFX channel is still divergent, the
-		// chromosome bound mechanism isn't reaching the kernel.
-		MixdownManager.efxBusGain = 1.0;
-
 		try {
 			AudioScene<?> scene = createScene();
 			AudioSceneOptimizer opt = build(scene, enableBreeding ? 5 : 1);

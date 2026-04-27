@@ -168,19 +168,10 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	 * look-ahead normalisation, so when the per-channel
 	 * {@link #adjustment} envelopes saturate (and they're bounded to
 	 * {@code [0, 1]}), summing across channels routinely exceeds 1.0 and
-	 * clips at the WAV writer. A value below 1.0 here gives the sum the
-	 * headroom that the offline auto-volume step used to provide.
+	 * clips at the WAV writer. The default sits below unity to give the
+	 * sum the headroom that the offline auto-volume step used to provide.
 	 */
-	public static double masterBusGain = 1.0;
-
-	/**
-	 * Gain applied to the summed EFX bus before it is mixed into the main
-	 * signal. The EFX delay grid sums the forward path across (channels x
-	 * delay layers) which can easily push the bus level past unity even
-	 * before any feedback, so this defaults below 1.0 to keep the bus from
-	 * dominating the master mix.
-	 */
-	public static double efxBusGain = 1.0;
+	public static double masterBusGain = 0.5;
 
 	/** Scale factor collection for per-frame volume adjustment. */
 	private final PackedCollection volumeAdjustmentScale;
@@ -701,16 +692,6 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 				// There are no other fx
 				efx = reverb;
 			}
-		}
-
-		if (efxBusGain != 1.0) {
-			// Tame the EFX bus AFTER reverb is summed in. No hard limiter
-			// here — when the upstream signal is large (delay grid forward
-			// path + reverb tail can sit well above unity), a limiter just
-			// pegs every sample at the rail and inflates RMS. A pure gain
-			// scales the body uniformly; the masterBusGain limiter at the
-			// end of the chain catches whatever still pokes through.
-			efx = efx.map(fc(i -> sf(efxBusGain)));
 		}
 
 		if (disableClean) {
