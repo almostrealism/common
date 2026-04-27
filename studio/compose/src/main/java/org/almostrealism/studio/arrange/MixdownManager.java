@@ -978,13 +978,8 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			overallFilterUpOffsetMin = offset + 15.0;
 			overallFilterUpOffsetMax = offset + 45.0;
 
-			// Tightened from [0.3, 0.6]. With 4 delay layers and the mself
-			// matrix's parallel paths, each row sum (~4 * transmission *
-			// wetOut) determines stability. Keeping max(transmission *
-			// wetOut) <= 0.06 gives a row sum below 0.25 -- well into the
-			// stable region.
-			minTransmission = 0.05;
-			maxTransmission = 0.15;
+			minTransmission = 0.3;
+			maxTransmission = 0.6;
 			minDelay = 4.0;
 			maxDelay = 20.0;
 
@@ -1012,11 +1007,8 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			overallWetInOffsetMin = offset;
 			overallWetInOffsetMax = offset + 40;
 
-			// Tightened from [0.5, 1.4]. Combined with maxTransmission =
-			// 0.15 above, max per-hop loop gain (transmission * wetOut)
-			// is 0.06.
-			minWetOut = 0.1;
-			maxWetOut = 0.4;
+			minWetOut = 0.5;
+			maxWetOut = 1.4;
 			minHighPass = 0.0;
 			maxHighPass = 5000.0;
 			minLowPass = 15000.0;

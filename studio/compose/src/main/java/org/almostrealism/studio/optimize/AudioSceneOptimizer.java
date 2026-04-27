@@ -313,7 +313,7 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		OperationProfileNode profile = setVerbosity(verbosity, enableProfile);
 
 		// Setup features
-		PopulationOptimizer.popSize = enableBreeding ? 10 : 6;
+		PopulationOptimizer.popSize = 10;
 		setFeatureLevel(7);
 
 		// Create computations before applying Heap
