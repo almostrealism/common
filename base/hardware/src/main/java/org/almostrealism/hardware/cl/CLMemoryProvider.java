@@ -418,9 +418,15 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 				return;
 			}
 
-			heapRemove(mem.getMem());
-			CL.clReleaseMemObject(mem.getMem());
-			memoryUsed = memoryUsed - (long) size * getNumberSize();
+			boolean released = false;
+			try {
+				heapRemove(mem.getMem());
+				CL.clReleaseMemObject(mem.getMem());
+				memoryUsed = memoryUsed - (long) size * getNumberSize();
+				released = true;
+			} finally {
+				if (!released) mem.unclaimReleased();
+			}
 
 			if (!allocated.remove(mem) && RAM.enableWarnings) {
 				warn("Deallocated untracked memory");

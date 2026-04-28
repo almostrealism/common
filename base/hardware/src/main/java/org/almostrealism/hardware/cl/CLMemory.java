@@ -82,12 +82,26 @@ public class CLMemory extends RAM {
 	 * (which is then responsible for calling {@code clReleaseMemObject}); subsequent
 	 * callers receive false and must skip the native release call.
 	 *
+	 * <p>If the native release fails, the caller should invoke {@link #unclaimReleased()}
+	 * so that a future deallocation attempt can retry. Otherwise the buffer stays
+	 * marked released but the underlying {@code cl_mem} handle and the provider's
+	 * tracking metadata leak permanently.</p>
+	 *
 	 * @return true if this caller is responsible for releasing the underlying handle
 	 */
 	public synchronized boolean tryClaimReleased() {
 		if (released) return false;
 		released = true;
 		return true;
+	}
+
+	/**
+	 * Reverses a previous successful claim of {@link #tryClaimReleased()} when the
+	 * native release call failed. Restores this buffer to an unreleased state so
+	 * that a subsequent deallocation attempt can retry.
+	 */
+	public synchronized void unclaimReleased() {
+		released = false;
 	}
 
 	@Override

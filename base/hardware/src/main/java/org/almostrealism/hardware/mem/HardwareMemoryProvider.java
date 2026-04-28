@@ -307,10 +307,18 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			return;
 		}
 
-		deallocate(ref);
-
-		if (!destroying) {
-			allocated.remove(ref.getAddress());
+		boolean released = false;
+		try {
+			deallocate(ref);
+			released = true;
+		} finally {
+			if (released) {
+				if (!destroying) {
+					allocated.remove(ref.getAddress());
+				}
+			} else {
+				ref.unclaimFreed();
+			}
 		}
 	}
 

@@ -254,9 +254,10 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		} if (memVersions == null || !memVersions.containsKey(provider)) {
 			MemoryData.super.reallocate(provider);
 		} else {
-			Memory mem = memVersions.remove(provider);
+			Memory mem = memVersions.get(provider);
 			mem.getProvider().setMem(mem, 0, this.mem, 0, getMemLength());
 			reassign(mem);
+			memVersions.remove(provider);
 		}
 	}
 
