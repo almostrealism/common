@@ -411,6 +411,13 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 				throw new IllegalArgumentException();
 			CLMemory mem = (CLMemory) ram;
 
+			if (!mem.tryClaimReleased()) {
+				if (RAM.enableWarnings) {
+					warn("Skipping double deallocate of " + mem);
+				}
+				return;
+			}
+
 			heapRemove(mem.getMem());
 			CL.clReleaseMemObject(mem.getMem());
 			memoryUsed = memoryUsed - (long) size * getNumberSize();

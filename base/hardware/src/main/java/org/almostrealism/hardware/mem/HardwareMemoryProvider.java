@@ -302,11 +302,43 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 				ref.getAddress(), ref.getAllocationStackTrace(),
 				getClass().getSimpleName());
 
+		if (!ref.tryClaimFreed()) {
+			warnDoubleFree(ref);
+			return;
+		}
+
 		deallocate(ref);
 
 		if (!destroying) {
 			allocated.remove(ref.getAddress());
 		}
+	}
+
+	/**
+	 * Logs a warning that a double-free of the given reference was prevented, including
+	 * the allocation stack trace and (when available) the stack trace of the first
+	 * successful release. Skips the warning during provider destruction, where extra
+	 * deallocation attempts are routine and not bug indicators.
+	 *
+	 * @param ref The native reference whose second free was suppressed
+	 */
+	private void warnDoubleFree(NativeRef<T> ref) {
+		if (destroying || !RAM.enableWarnings) return;
+
+		warn("Skipping double deallocate of " + ref + " (address " + ref.getAddress() + ")");
+		StackTraceElement[] alloc = ref.getAllocationStackTrace();
+		if (alloc != null) {
+			warn("\tOriginally allocated at:");
+			Stream.of(alloc).forEach(stack -> warn("\t\tat " + stack));
+		}
+		StackTraceElement[] firstFree = ref.getFirstFreeStackTrace();
+		if (firstFree != null) {
+			warn("\tFirst freed at:");
+			Stream.of(firstFree).forEach(stack -> warn("\t\tat " + stack));
+		}
+		warn("\tCurrent free attempt at:");
+		Stream.of(Thread.currentThread().getStackTrace())
+				.forEach(stack -> warn("\t\tat " + stack));
 	}
 
 	/**

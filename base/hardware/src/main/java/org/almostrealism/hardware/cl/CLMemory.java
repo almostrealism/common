@@ -54,6 +54,9 @@ public class CLMemory extends RAM {
 	/** The memory provider that allocated this buffer. */
 	private final CLMemoryProvider provider;
 
+	/** True once {@code clReleaseMemObject} has been invoked for the underlying handle. */
+	private volatile boolean released;
+
 	/**
 	 * Creates a new CLMemory wrapping an OpenCL memory buffer.
 	 *
@@ -66,6 +69,29 @@ public class CLMemory extends RAM {
 		this.mem = mem;
 		this.size = size;
 	}
+
+	/**
+	 * Returns whether the underlying OpenCL memory object has already been released.
+	 *
+	 * @return true once {@code clReleaseMemObject} has been called for this buffer
+	 */
+	public boolean isReleased() { return released; }
+
+	/**
+	 * Atomically claims this buffer for release. Returns true to the first caller
+	 * (which is then responsible for calling {@code clReleaseMemObject}); subsequent
+	 * callers receive false and must skip the native release call.
+	 *
+	 * @return true if this caller is responsible for releasing the underlying handle
+	 */
+	public synchronized boolean tryClaimReleased() {
+		if (released) return false;
+		released = true;
+		return true;
+	}
+
+	@Override
+	public boolean isActive() { return !released; }
 
 	/**
 	 * Returns the underlying OpenCL memory object handle.
