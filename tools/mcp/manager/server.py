@@ -1154,6 +1154,13 @@ def workstream_get_job(job_id: str) -> dict:
 
 VALID_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 
+VALID_MODELS = (
+    "sonnet", "opus", "haiku",
+    "claude-opus-4-7",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+)
+
 
 def _check_effort(effort: str) -> Optional[dict]:
     """Return an error dict if ``effort`` is non-empty and not a recognised
@@ -1170,6 +1177,27 @@ def _check_effort(effort: str) -> Optional[dict]:
             "ok": False,
             "error": f"Invalid effort '{effort}'. Must be one of: "
                      f"{', '.join(VALID_EFFORT_LEVELS)}",
+        }
+    return None
+
+
+def _check_model(model: str) -> Optional[dict]:
+    """Return an error dict if ``model`` is non-empty and not a recognised
+    Claude Code model identifier, or ``None`` when valid (or empty).
+
+    Accepted values mirror
+    :class:`io.flowtree.jobs.ClaudeCodeJob#VALID_MODELS`.  The Java side is
+    the source of truth and rejects unknown values with a 400 response;
+    pre-validating here gives the caller a clearer error and avoids issuing
+    an HTTP request that the controller would reject.  The controller's
+    error message also flows back through ``_controller_post`` if a value
+    slips through (e.g., the Java list is updated ahead of this one).
+    """
+    if model and model not in VALID_MODELS:
+        return {
+            "ok": False,
+            "error": f"Invalid model '{model}'. Must be one of: "
+                     f"{', '.join(VALID_MODELS)}",
         }
     return None
 
@@ -1309,6 +1337,9 @@ def workstream_submit_task(
     if err:
         return err
     err = _check_effort(effort)
+    if err:
+        return err
+    err = _check_model(model)
     if err:
         return err
     _require_workstream_in_scope(workstream_id)
@@ -1458,6 +1489,9 @@ def workstream_register(
     if err:
         return err
     err = _check_effort(effort)
+    if err:
+        return err
+    err = _check_model(model)
     if err:
         return err
     # plan_content and plan_instructions describe two different follow-up
@@ -1731,6 +1765,9 @@ def workstream_update_config(
     if err:
         return err
     err = _check_effort(effort)
+    if err:
+        return err
+    err = _check_model(model)
     if err:
         return err
     _require_workstream_in_scope(workstream_id)

@@ -340,6 +340,15 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Invalid effort", result["error"])
 
+    def test_submit_rejects_invalid_model(self):
+        # Reproduces the wire-up bug that drove an unbounded retry loop:
+        # "sonnet-4-6" looks plausible but is not a real CLI model id.
+        _grant_all_scopes()
+        result = server.workstream_submit_task(prompt="Task", model="sonnet-4-6")
+        self.assertFalse(result["ok"])
+        self.assertIn("Invalid model", result["error"])
+        self.assertIn("sonnet-4-6", result["error"])
+
 
 class TestWorkstreamRegister(unittest.TestCase):
 
@@ -396,6 +405,13 @@ class TestWorkstreamRegister(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Invalid effort", result["error"])
 
+    def test_register_rejects_invalid_model(self):
+        _grant_all_scopes()
+        result = server.workstream_register(
+            default_branch="feature/me", model="sonnet-4-6")
+        self.assertFalse(result["ok"])
+        self.assertIn("Invalid model", result["error"])
+
 
 class TestWorkstreamUpdateConfig(unittest.TestCase):
 
@@ -449,6 +465,13 @@ class TestWorkstreamUpdateConfig(unittest.TestCase):
             workstream_id="ws-test", effort="bogus")
         self.assertFalse(result["ok"])
         self.assertIn("Invalid effort", result["error"])
+
+    def test_update_rejects_invalid_model(self):
+        _grant_all_scopes()
+        result = server.workstream_update_config(
+            workstream_id="ws-test", model="sonnet-4-6")
+        self.assertFalse(result["ok"])
+        self.assertIn("Invalid model", result["error"])
 
 
 # -----------------------------------------------------------------------

@@ -407,6 +407,16 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         new Workstream("C_M", "#m").setEffort("nuclear");
     }
 
+    @Test(timeout = 10000, expected = IllegalArgumentException.class)
+    public void testWorkstreamSetModelRejectsInvalidIdentifier() {
+        // The wire-up bug that triggered the unbounded enforcement loop
+        // came in via this setter — workstream YAML / register-API stored
+        // "sonnet-4-6" (missing claude- prefix) and every subsequent job
+        // dispatched it unchallenged.  Validate here so the loud failure
+        // happens at registration time, not on every dispatched job.
+        new Workstream("C_M", "#m").setModel("sonnet-4-6");
+    }
+
     @Test(timeout = 10000)
     public void testWorkstreamSummaryJsonIncludesModelAndEffort() {
         Workstream ws = new Workstream("C_M", "#m");

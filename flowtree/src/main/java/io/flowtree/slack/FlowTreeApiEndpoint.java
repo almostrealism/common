@@ -44,6 +44,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.crypto.Mac;
@@ -705,16 +706,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (dependentRepos != null && !dependentRepos.isEmpty()) {
             workstream.setDependentRepos(dependentRepos);
         }
-        if (model != null && !model.isEmpty()) {
-            workstream.setModel(model);
-        }
-        if (effort != null && !effort.isEmpty()) {
-            try {
-                workstream.setEffort(effort);
-            } catch (IllegalArgumentException e) {
-                return errorResponse(e.getMessage());
-            }
-        }
+        Response err = applyValidated(model, workstream::setModel);
+        if (err != null) return err;
+        err = applyValidated(effort, workstream::setEffort);
+        if (err != null) return err;
 
         workstream.setPushToOrigin(true);
 
@@ -807,16 +802,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (planningDocument != null && !planningDocument.isEmpty()) {
             workstream.setPlanningDocument(planningDocument);
         }
-        if (model != null && !model.isEmpty()) {
-            workstream.setModel(model);
-        }
-        if (effort != null && !effort.isEmpty()) {
-            try {
-                workstream.setEffort(effort);
-            } catch (IllegalArgumentException e) {
-                return errorResponse(e.getMessage());
-            }
-        }
+        Response err = applyValidated(model, workstream::setModel);
+        if (err != null) return err;
+        err = applyValidated(effort, workstream::setEffort);
+        if (err != null) return err;
         if (!requiredLabels.isEmpty()) {
             workstream.setRequiredLabels(requiredLabels);
         }
@@ -1031,18 +1020,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // factory setter; surface the failure as a 400 instead of a 500.
         String effectiveModel = (requestModel != null && !requestModel.isEmpty())
                 ? requestModel : workstream.getModel();
-        if (effectiveModel != null && !effectiveModel.isEmpty()) {
-            factory.setModel(effectiveModel);
-        }
+        Response err = applyValidated(effectiveModel, factory::setModel);
+        if (err != null) return err;
         String effectiveEffort = (requestEffort != null && !requestEffort.isEmpty())
                 ? requestEffort : workstream.getEffort();
-        if (effectiveEffort != null && !effectiveEffort.isEmpty()) {
-            try {
-                factory.setEffort(effectiveEffort);
-            } catch (IllegalArgumentException e) {
-                return errorResponse(e.getMessage());
-            }
-        }
+        err = applyValidated(effectiveEffort, factory::setEffort);
+        if (err != null) return err;
 
         String effectiveBranch = targetBranch != null ? targetBranch : workstream.getDefaultBranch();
         if (effectiveBranch != null) {
@@ -1305,6 +1288,23 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         } catch (IOException | ResponseException e) {
             warn("Error reading body: " + e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Applies {@code value} to {@code setter} and converts any
+     * {@link IllegalArgumentException} thrown by the setter into a 400
+     * {@code errorResponse} so request handlers can short-circuit with a
+     * single {@code return}.  Returns {@code null} (no error) when the value
+     * is empty or successfully applied.
+     */
+    private Response applyValidated(String value, Consumer<String> setter) {
+        if (value == null || value.isEmpty()) return null;
+        try {
+            setter.accept(value);
+            return null;
+        } catch (IllegalArgumentException e) {
+            return errorResponse(e.getMessage());
         }
     }
 
