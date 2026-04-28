@@ -166,8 +166,18 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 					traverseEach(p(delayOut))));
 			// Step forward (TODO Should be parallel)
 			tick.add(a(p(bufferIndices), add(p(bufferIndices), c(1).repeat(size)).mod(p(bufferLengths))));
-			// Output = D
-			tick.add(a(p(output), sum(p(delayIn))));
+			// Output = sum(D) / size
+			//
+			// The feedback matrix is a Householder reflection scaled by 1/size,
+			// so the per-line feedback path is a contraction (decays). Each
+			// delay line independently accumulates `input * gain` per tick, so
+			// in steady state every line holds ~ input*gain and a pure
+			// sum() across all N lines would give an unintended N x
+			// amplification at the output. Dividing by size restores the
+			// `gain` parameter's intended semantics: the wet output sits
+			// at roughly `input * gain` regardless of how many delay lines
+			// are configured.
+			tick.add(a(p(output), sum(p(delayIn)).multiply(c(1.0 / size))));
 		} else {
 			// D = value from the buffer
 			tick.add(a(
@@ -185,8 +195,18 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 			tick.add(a(
 					p(bufferIndices),
 					add(p(bufferIndices), c(1).repeat(size)).mod(p(bufferLengths))));
-			// Output = D
-			tick.add(a(p(output), sum(p(delayIn))));
+			// Output = sum(D) / size
+			//
+			// The feedback matrix is a Householder reflection scaled by 1/size,
+			// so the per-line feedback path is a contraction (decays). Each
+			// delay line independently accumulates `input * gain` per tick, so
+			// in steady state every line holds ~ input*gain and a pure
+			// sum() across all N lines would give an unintended N x
+			// amplification at the output. Dividing by size restores the
+			// `gain` parameter's intended semantics: the wet output sits
+			// at roughly `input * gain` regardless of how many delay lines
+			// are configured.
+			tick.add(a(p(output), sum(p(delayIn)).multiply(c(1.0 / size))));
 		}
 
 		OperationList op = new OperationList("DelayNetwork");

@@ -168,10 +168,10 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	 * look-ahead normalisation, so when the per-channel
 	 * {@link #adjustment} envelopes saturate (and they're bounded to
 	 * {@code [0, 1]}), summing across channels routinely exceeds 1.0 and
-	 * clips at the WAV writer. A value below 1.0 here gives the sum the
-	 * headroom that the offline auto-volume step used to provide.
+	 * clips at the WAV writer. The default sits below unity to give the
+	 * sum the headroom that the offline auto-volume step used to provide.
 	 */
-	public static double masterBusGain = 1.0;
+	public static double masterBusGain = 0.5;
 
 	/** Scale factor collection for per-frame volume adjustment. */
 	private final PackedCollection volumeAdjustmentScale;
@@ -679,6 +679,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		} else {
 			efx = efx.sum();
 		}
+
 
 		if (reverb != null) {
 			// Combine inputs and apply reverb
