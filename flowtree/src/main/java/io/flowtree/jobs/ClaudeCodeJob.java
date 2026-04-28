@@ -779,8 +779,13 @@ public class ClaudeCodeJob extends GitManagedJob {
                 }
 
                 if (!hasAgentCommitted() && rule.isViolated(this)) {
-                    warn("Enforcement rule '" + rule.getName() + "': exhausted "
-                            + rule.getMaxRetries() + " retries without resolution");
+                    if (attempts >= rule.getMaxRetries()) {
+                        warn("Enforcement rule '" + rule.getName() + "': exhausted "
+                                + rule.getMaxRetries() + " retries without resolution");
+                    } else if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
+                        warn("Enforcement rule '" + rule.getName()
+                                + "': stopped because the total enforcement attempt cap was reached");
+                    }
                 }
                 if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) break;
             }
