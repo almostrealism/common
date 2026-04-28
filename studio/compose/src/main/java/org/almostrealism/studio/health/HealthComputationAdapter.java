@@ -126,7 +126,14 @@ public abstract class HealthComputationAdapter implements AudioHealthComputation
 						24, OutputLine.sampleRate,
 						HealthComputationAdapter.standardDurationFrames, stereo)).collect(Collectors.toList());
 
-		output = new MultiChannelAudioOutput(out, stems, (channelInfo) -> new AudioMeter());
+		// Delegate the measures factory to this adapter's own `measures`
+		// map so the AudioMeters wired into the audio chain (via Mixdown's
+		// output.getMeasure() calls) are the same instances that
+		// computeHealth() inspects via getClipCount(). Without this the
+		// audio flows through a parallel factory-created set of meters and
+		// clip detection silently reports zero forever.
+		output = new MultiChannelAudioOutput(out, stems,
+				channelInfo -> measures.computeIfAbsent(channelInfo, k -> new AudioMeter()));
 	}
 
 	/** Returns the current evaluation target. */
