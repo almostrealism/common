@@ -498,13 +498,27 @@ public class Workstream {
 
     /**
      * Sets the default Claude Code model for this workstream.  Empty or
-     * {@code null} clears the default so the CLI chooses.
+     * {@code null} clears the default so the CLI chooses.  Validated
+     * immediately against {@link ClaudeCodeJob#VALID_MODELS} so workstream
+     * registration with an unrecognised model fails fast — preventing the
+     * dispatched Claude subprocess from returning a 404 and looping the
+     * enforce-changes machinery indefinitely.
      *
-     * @param model a model alias (e.g. {@code "sonnet"}, {@code "opus"})
-     *              or full identifier, or {@code null}/empty to clear
+     * @param model a value from {@link ClaudeCodeJob#VALID_MODELS}, or
+     *              {@code null}/empty to clear
+     * @throws IllegalArgumentException if {@code model} is non-empty and
+     *                                  not a recognised identifier
      */
     public void setModel(String model) {
-        this.model = (model == null || model.isEmpty()) ? null : model;
+        if (model == null || model.isEmpty()) {
+            this.model = null;
+            return;
+        }
+        if (!ClaudeCodeJob.VALID_MODELS.contains(model)) {
+            throw new IllegalArgumentException("Invalid model '" + model
+                    + "'. Must be one of " + ClaudeCodeJob.VALID_MODELS);
+        }
+        this.model = model;
     }
 
     /**

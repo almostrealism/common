@@ -85,6 +85,11 @@ public class ClaudeCodeJob extends GitManagedJob {
     public static final List<String> VALID_EFFORT_LEVELS =
             List.of("low", "medium", "high", "xhigh", "max");
 
+    /** Accepted values for the Claude Code {@code --model} flag (CLI aliases + full IDs). */
+    public static final List<String> VALID_MODELS = List.of(
+            "sonnet", "opus", "haiku",
+            "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001");
+
     /**
      * Deduplication mode that runs an inline Claude Code session before the
      * commit is finalised.  The session receives an aggressive prompt listing
@@ -380,14 +385,20 @@ public class ClaudeCodeJob extends GitManagedJob {
     public String getModel() { return model; }
 
     /**
-     * Sets the Claude Code model (alias like {@code "sonnet"} or full name
-     * like {@code "claude-sonnet-4-6"}). {@code null} or empty leaves the
-     * {@code --model} flag off so the CLI chooses.
+     * Sets the Claude Code model.  Validated against {@link #VALID_MODELS} so
+     * an unknown value fails at the caller instead of silently 404-ing the
+     * dispatched subprocess.
      *
-     * @param model model alias, full identifier, or {@code null}
+     * @param model a value from {@link #VALID_MODELS}, or {@code null}/empty
+     * @throws IllegalArgumentException if not a recognised identifier
      */
     public void setModel(String model) {
-        this.model = (model == null || model.isEmpty()) ? null : model;
+        if (model == null || model.isEmpty()) { this.model = null; return; }
+        if (!VALID_MODELS.contains(model)) {
+            throw new IllegalArgumentException("Invalid model '" + model
+                    + "'. Must be one of " + VALID_MODELS);
+        }
+        this.model = model;
     }
 
     /** Returns the effort/thinking level, or {@code null} to use the CLI default. */
@@ -671,6 +682,13 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     public static final int DEFAULT_MAX_RULE_RETRIES = 5;
 
+    /**
+     * Hard cap on total correction attempts across all rules in
+     * {@link #runEnforcementRules()}; bounds the otherwise-unbounded outer
+     * loop so a chronically broken agent cannot spin forever.
+     */
+    public static final int DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS = 25;
+
     @Override
     protected void doWork() {
         executeSingleRun();
@@ -722,6 +740,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     void runEnforcementRules() {
         List<EnforcementRule> rules = buildActiveRules();
+        int totalAttempts = 0;
         boolean anyRuleCorrectionRan;
         do {
             anyRuleCorrectionRan = false;
@@ -735,8 +754,10 @@ public class ClaudeCodeJob extends GitManagedJob {
                 int attempts = 0;
                 while (attempts < rule.getMaxRetries()
                         && rule.isViolated(this)
-                        && !hasAgentCommitted()) {
+                        && !hasAgentCommitted()
+                        && totalAttempts < DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
                     attempts++;
+                    totalAttempts++;
                     anyRuleCorrectionRan = true;
                     log("Enforcement rule '" + rule.getName()
                             + "': correction attempt " + attempts);
@@ -744,11 +765,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                     if (correctionPrompt != null) {
                         runCorrectionSession(correctionPrompt, rule.getName());
                     } else {
-                        // Re-run with the existing prompt; the job's built-in instruction
-                        // context (e.g., enforceChanges) already provides correction guidance.
-                        // Only escalate enforcementAttempt for the enforce-changes rule so
-                        // that unrelated custom rules returning null do not inflate the counter
-                        // and trigger spurious enforcement escalation messaging.
+                        // enforce-changes is the only rule that re-runs with the existing
+                        // prompt; bumping enforcementAttempt for other rules would inflate
+                        // the user-facing escalation messaging.
                         if ("enforce-changes".equals(rule.getName())) {
                             enforcementAttempt++;
                             log("Enforcement attempt: " + (enforcementAttempt + 1));
@@ -756,17 +775,28 @@ public class ClaudeCodeJob extends GitManagedJob {
                         executeSingleRun();
                     }
                     rule.onCorrectionAttempted(this);
-                    if (hasAgentCommitted()) {
-                        break;
-                    }
+                    if (hasAgentCommitted()) break;
                 }
 
                 if (!hasAgentCommitted() && rule.isViolated(this)) {
-                    warn("Enforcement rule '" + rule.getName() + "': exhausted "
-                            + rule.getMaxRetries() + " retries without resolution");
+                    if (attempts >= rule.getMaxRetries()) {
+                        warn("Enforcement rule '" + rule.getName() + "': exhausted "
+                                + rule.getMaxRetries() + " retries without resolution");
+                    } else if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
+                        warn("Enforcement rule '" + rule.getName()
+                                + "': stopped because the total enforcement attempt cap was reached");
+                    }
                 }
+                if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) break;
             }
-        } while (anyRuleCorrectionRan && !hasAgentCommitted());
+        } while (totalAttempts < DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
+                && anyRuleCorrectionRan && !hasAgentCommitted());
+
+        if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
+            warn("Enforcement aborted after " + totalAttempts + " total attempts (cap: "
+                    + DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS + ") — giving up to"
+                    + " avoid an unbounded retry loop");
+        }
     }
 
     /**
@@ -809,32 +839,6 @@ public class ClaudeCodeJob extends GitManagedJob {
                     warn("Could not restore commit.txt after correction session: " + e.getMessage());
                 }
             }
-        }
-    }
-
-    /**
-     * Enforcement rule that verifies the agent produced at least one uncommitted
-     * file change. Used when {@link #isEnforceChanges()} is {@code true}.
-     *
-     * <p>Returns {@code null} from {@link #buildCorrectionPrompt} so the framework
-     * re-runs the agent with the existing prompt unchanged; the {@code enforceChanges}
-     * flag already injects a "code changes are required" message via
-     * {@link InstructionPromptBuilder}.</p>
-     */
-    private static class EnforceChangesRule implements EnforcementRule {
-        @Override
-        public String getName() { return "enforce-changes"; }
-
-        @Override
-        public boolean isViolated(ClaudeCodeJob job) {
-            return !job.hasUncommittedChanges() && !job.hasAgentCommitted();
-        }
-
-        @Override
-        public String buildCorrectionPrompt(ClaudeCodeJob job) {
-            // Return null: re-run with the existing prompt.  The enforceChanges
-            // flag causes InstructionPromptBuilder to emit the escalating warning.
-            return null;
         }
     }
 
@@ -993,7 +997,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      *
      * @return true if there are uncommitted changes to non-excluded files
      */
-    private boolean hasUncommittedChanges() {
+    boolean hasUncommittedChanges() {
         try {
             ProcessBuilder pb = new ProcessBuilder(GitOperations.resolveGitCommand(), "status", "--porcelain");
             String workDir = getWorkingDirectory();
