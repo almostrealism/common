@@ -38,7 +38,6 @@ import org.almostrealism.studio.arrange.GlobalTimeManager;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.time.Frequency;
-import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -110,12 +109,20 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
 	/**
+	 * Frames per outer-loop iteration. Matches the default that
+	 * {@link org.almostrealism.studio.health.StableDurationHealthComputation}
+	 * uses ({@code OutputLine.sampleRate / 2}) so the compiled inner loop has
+	 * the same shape as the production health-computation render path.
+	 */
+	private static final int BUFFER_SIZE = SAMPLE_RATE / 2;
+
+	/**
 	 * Renders a single 100&nbsp;Hz sine through MixdownManager with all
 	 * post-filter stages disabled and {@link MixdownManager#enableMainFilterUp}
 	 * off. This is the spectral baseline against which the other two cases
 	 * are compared.
 	 */
-	@Test(timeout = 300_000)
+	@Test(timeout = 60_000)
 	public void mainFilterUpDisabled() throws IOException {
 		double rms = runMixdown("mainFilterUpDisabled", false, /* zeroGenome */ true);
 		assertTrue("Output RMS for filter-off baseline should be > 0.01 (was " + rms + ")",
@@ -129,7 +136,7 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 	 * that the filter is wired correctly when its drive signal is constant
 	 * (a 100&nbsp;Hz tone with cutoff 0&nbsp;Hz must pass).
 	 */
-	@Test(timeout = 300_000)
+	@Test(timeout = 60_000)
 	public void mainFilterUpZeroChromosome() throws IOException {
 		double baselineRms = runMixdown("mainFilterUpDisabled-baseline",
 				false, /* zeroGenome */ true);
@@ -148,7 +155,7 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 	 * RMS and writes the spectrogram for inspection but does not pin behaviour
 	 * &mdash; this is the dynamic-cutoff case that the optimizer encounters.
 	 */
-	@Test(timeout = 300_000)
+	@Test(timeout = 60_000)
 	public void mainFilterUpRandomChromosome() throws IOException {
 		Options opts = new Options("mainFilterUpRandomChromosome");
 		opts.enableFilterUp = true;
@@ -167,7 +174,7 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 	 * the frozen value should differ between this run and the baseline (which
 	 * compiles with {@code clock.frame() == 0}).
 	 */
-	@Test(timeout = 300_000)
+	@Test(timeout = 60_000)
 	public void mainFilterUpRandomPreAdvancedClock() throws IOException {
 		Options opts = new Options("mainFilterUpRandomPreAdvancedClock");
 		opts.enableFilterUp = true;
@@ -182,49 +189,6 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 	}
 
 	/**
-	 * Experiment: same as {@link #mainFilterUpRandomChromosome()} but
-	 * {@link TemporalRunner} is constructed with {@code optimize=true}. CLAUDE.md
-	 * notes that skipping {@code Process.optimize()} "breaks expression
-	 * embedding" &mdash; i.e. the live PackedCollection references in producers
-	 * may collapse to compile-time constants without it. If that's the cause of
-	 * the gene-value-vs-output insensitivity, this run should differ.
-	 */
-	@Test(timeout = 300_000)
-	public void mainFilterUpRandomOptimized() throws IOException {
-		Options opts = new Options("mainFilterUpRandomOptimized");
-		opts.enableFilterUp = true;
-		opts.zeroGenome = false;
-		opts.optimizeRunner = true;
-		opts.saveProfile = true;
-		double rms = runMixdown(opts);
-		log("Optimized HP filter output RMS: " + rms);
-		assertTrue("Optimized output should not be silent (RMS=" + rms + ")",
-				rms > 1e-6);
-	}
-
-	/**
-	 * Experiment: drive the cell graph the way the realtime path does &mdash;
-	 * call {@code cells.setup()} once and then {@code cells.tick()} per buffer
-	 * &mdash; instead of wrapping in {@link TemporalRunner}. AudioScene's
-	 * {@code runnerRealTime} uses the same direct setup/tick pattern, and the
-	 * optimizer (which observably responds to genome changes) goes through that
-	 * path; if the bare-TemporalRunner path is what's freezing the cutoff, this
-	 * variant should differ.
-	 */
-	@Test(timeout = 300_000)
-	public void mainFilterUpRandomRealtimeDriver() throws IOException {
-		Options opts = new Options("mainFilterUpRandomRealtimeDriver");
-		opts.enableFilterUp = true;
-		opts.zeroGenome = false;
-		opts.useRealtimeDriver = true;
-		opts.saveProfile = true;
-		double rms = runMixdown(opts);
-		log("Realtime-driver HP filter output RMS: " + rms);
-		assertTrue("Realtime-driver output should not be silent (RMS=" + rms + ")",
-				rms > 1e-6);
-	}
-
-	/**
 	 * Configuration knobs for {@link #runMixdown(Options)}. Public so all
 	 * experiment toggles are visible at the call site.
 	 */
@@ -232,8 +196,6 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 		final String name;
 		boolean enableFilterUp = true;
 		boolean zeroGenome = true;
-		boolean optimizeRunner = false;
-		boolean useRealtimeDriver = false;
 		boolean saveProfile = false;
 		long preAdvanceClockFrames = 0;
 
@@ -335,16 +297,16 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 					ChannelInfo.StereoChannel.LEFT);
 			graph.addRequirement(time::tick);
 
+			// Mirror the production render path used by
+			// StableDurationHealthComputation + AudioScene.runnerRealTime:
+			// compile a single inner loop of BUFFER_SIZE frames, then drive
+			// it from a small Java outer loop that batches up to totalFrames.
 			int totalFrames = (int) (DURATION_SECONDS * SAMPLE_RATE);
-			if (opts.useRealtimeDriver) {
-				graph.setup().get().run();
-				Runnable tick = graph.tick().get();
-				for (int i = 0; i < totalFrames; i++) tick.run();
-			} else {
-				TemporalRunner runner = new TemporalRunner(graph.setup(),
-						graph.tick(), totalFrames, opts.optimizeRunner);
-				runner.get().run();
-			}
+			int batches = totalFrames / BUFFER_SIZE;
+
+			graph.setup().get().run();
+			Runnable batchTick = loop(graph.tick(), BUFFER_SIZE).get();
+			for (int b = 0; b < batches; b++) batchTick.run();
 			mixOut.write().get().run();
 
 			double rms = computeRms(outFile);

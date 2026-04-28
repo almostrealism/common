@@ -81,11 +81,12 @@ public class MixdownChromosomeRangesTest extends TestSuiteBase implements CellFe
 		params.randFill();
 		genome.assignTo(params);
 
-		// The Configuration constructor in MixdownManager pegs these to
-		// [0.05, 0.15] and [0.1, 0.4] on this branch. Cross-check the actual
-		// runtime values match.
-		double tMin = 0.05, tMax = 0.15;
-		double wMin = 0.10, wMax = 0.40;
+		// Read the configured bounds directly so the test tracks the
+		// Configuration constructor rather than pinning a branch-specific
+		// numeric region.
+		MixdownManager.Configuration config = new MixdownManager.Configuration(CHANNELS);
+		double tMin = config.minTransmission, tMax = config.maxTransmission;
+		double wMin = config.minWetOut, wMax = config.maxWetOut;
 
 		Chromosome<PackedCollection> transmission = readChromosomeField(mixdown, "transmission");
 		Chromosome<PackedCollection> wetOut = readChromosomeField(mixdown, "wetOut");
