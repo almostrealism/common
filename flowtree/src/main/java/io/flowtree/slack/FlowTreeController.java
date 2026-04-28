@@ -253,9 +253,19 @@ public class FlowTreeController implements ConsoleFeatures {
         WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
         this.loadedConfig = config;
 
-        if (config.ensureWorkstreamIds()) {
+        List<String> sanitizationWarnings = config.sanitize();
+        for (String warning : sanitizationWarnings) {
+            warn(warning);
+        }
+        boolean idsAdded = config.ensureWorkstreamIds();
+        if (idsAdded || !sanitizationWarnings.isEmpty()) {
             config.saveToYaml(configFile);
-            log("Generated workstream IDs and saved to " + configFile.getName());
+            if (idsAdded) {
+                log("Generated workstream IDs and saved to " + configFile.getName());
+            }
+            if (!sanitizationWarnings.isEmpty()) {
+                log("Saved sanitized configuration to " + configFile.getName());
+            }
         }
 
         // Pass global default workspace path to listener
@@ -383,9 +393,19 @@ public class FlowTreeController implements ConsoleFeatures {
 
         try {
             WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
-            if (config.ensureWorkstreamIds()) {
+            List<String> sanitizationWarnings = config.sanitize();
+            for (String warning : sanitizationWarnings) {
+                warn(warning);
+            }
+            boolean idsAdded = config.ensureWorkstreamIds();
+            if (idsAdded || !sanitizationWarnings.isEmpty()) {
                 config.saveToYaml(configFile);
-                log("Generated workstream IDs and saved to " + configFile.getName());
+                if (idsAdded) {
+                    log("Generated workstream IDs and saved to " + configFile.getName());
+                }
+                if (!sanitizationWarnings.isEmpty()) {
+                    log("Saved sanitized configuration to " + configFile.getName());
+                }
             }
 
             if (config.getDefaultWorkspacePath() != null) {
