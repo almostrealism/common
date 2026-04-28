@@ -618,4 +618,62 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		// Rule B should have been checked in both passes (2 times)
 		assertEquals(2, ruleBChecks.get());
 	}
+
+	// ── Total-attempt cap (regression for unbounded retry loop) ─────────────
+
+	/**
+	 * Reproduces the failure mode that produced 4000+ enforcement attempts on
+	 * a stuck job: an enforcement rule that always reports a violation, no
+	 * agent commit, no progress.  Prior to the cap the outer
+	 * {@code do-while} in {@link ClaudeCodeJob#runEnforcementRules()} reset
+	 * the per-rule {@code attempts} counter every pass and looped forever.
+	 *
+	 * <p>The test uses a spy {@code runCorrectionSession} so no real Claude
+	 * subprocess is launched.  It asserts the call count is bounded by
+	 * {@link ClaudeCodeJob#DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS}.</p>
+	 */
+	@Test(timeout = 30000)
+	public void runEnforcementRulesAbortsWhenTotalAttemptCapHit() {
+		AtomicInteger correctionCalls = new AtomicInteger();
+
+		EnforcementRule alwaysViolated = new EnforcementRule() {
+			@Override
+			public String getName() { return "test-always-violated"; }
+			@Override
+			public boolean isViolated(ClaudeCodeJob job) { return true; }
+			@Override
+			public String buildCorrectionPrompt(ClaudeCodeJob job) {
+				return "this will never resolve";
+			}
+		};
+
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test") {
+			@Override
+			protected void runCorrectionSession(String correctionPrompt, String activity) {
+				correctionCalls.incrementAndGet();
+			}
+		};
+
+		// Disable built-in rules so only the chronically-broken spy rule fires.
+		job.setEnforceOrganizationalPlacement(false);
+		job.addEnforcementRule(alwaysViolated);
+
+		job.runEnforcementRules();
+
+		int attempts = correctionCalls.get();
+		assertTrue("Expected attempts >= 1, got " + attempts, attempts >= 1);
+		assertTrue("Expected attempts <= " + ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
+				+ ", got " + attempts,
+				attempts <= ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS);
+		assertEquals(ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS, attempts);
+	}
+
+	@Test(timeout = 30000)
+	public void totalEnforcementAttemptCapDefaultValue() {
+		// Pin the constant so silent regressions (e.g., raising the cap by an
+		// order of magnitude) are caught.  25 is comfortably above the
+		// 5-retries-per-rule × 4 built-in rules a healthy job could reach
+		// once, and roughly 160× below the observed pathological case.
+		assertEquals(25, ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS);
+	}
 }
