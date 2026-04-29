@@ -913,6 +913,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", CHANNELS);
 		args.put("signal_size", SIGNAL_SIZE);
+		args.put("fir_taps", FILTER_ORDER + 1);
 		args.put("wet_level", WET_LEVEL);
 		args.put("delay_samples", DELAY_SAMPLES);
 		args.put("wet_filter_coeffs", perChannelWetCoeffs());
@@ -933,6 +934,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", CHANNELS);
 		args.put("signal_size", SIGNAL_SIZE);
+		args.put("fir_taps", FILTER_ORDER + 1);
 		args.put("hp_cutoff", HP_CUTOFF);
 		args.put("volume", VOLUME);
 		args.put("lp_cutoff", LP_CUTOFF);

@@ -114,6 +114,27 @@ public interface MultiChannelDspFeatures extends CollectionFeatures {
 	 */
 	default Block routeBlock(PackedCollection matrix, int inputChannels,
 							 int outputChannels, int signalSize) {
+		return routeBlock(cp(matrix), inputChannels, outputChannels, signalSize);
+	}
+
+	/**
+	 * Builds a cross-channel routing block where the transmission matrix is supplied
+	 * as a {@link CollectionProducer} of shape
+	 * {@code [inputChannels, outputChannels]}. Use this overload to drive the matrix
+	 * from a render-time mutable slot or a clock-driven envelope without rebuilding
+	 * the routing block. The kernel mathematics is identical to the
+	 * {@link #routeBlock(PackedCollection, int, int, int)} overload — only the
+	 * matrix-element source differs.
+	 *
+	 * @param matrix          routing matrix producer (shape
+	 *                        {@code [inputChannels, outputChannels]})
+	 * @param inputChannels   number of input channels
+	 * @param outputChannels  number of output channels
+	 * @param signalSize      samples per channel
+	 * @return a Block with shape {@code [inputChannels, signalSize] → [outputChannels, signalSize]}
+	 */
+	default Block routeBlock(CollectionProducer matrix, int inputChannels,
+							 int outputChannels, int signalSize) {
 		TraversalPolicy inShape = shape(inputChannels, signalSize);
 		TraversalPolicy outShape = shape(outputChannels, signalSize);
 		TraversalPolicy sigShape = shape(1, signalSize);
@@ -125,7 +146,7 @@ public interface MultiChannelDspFeatures extends CollectionFeatures {
 					for (int m = 0; m < outputChannels; m++) {
 						CollectionProducer channelOut = null;
 						for (int n = 0; n < inputChannels; n++) {
-							CollectionProducer matElem = subset(elemShape, cp(matrix), n, m);
+							CollectionProducer matElem = subset(elemShape, matrix, n, m);
 							CollectionProducer inCh = subset(sigShape, c(in), n, 0);
 							CollectionProducer contribution = matElem.multiply(inCh);
 							channelOut = channelOut == null ? contribution : channelOut.add(contribution);

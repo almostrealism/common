@@ -610,6 +610,16 @@ public class PdslInterpreter {
 				int stride = coll.getShape().getSize() / channels;
 				return coll.range(FEATURES.shape(stride), index * stride);
 			}
+			if (obj instanceof CollectionProducer) {
+				CollectionProducer producer = (CollectionProducer) obj;
+				int index = toInt(evaluateExpression(subscript.getIndex(), env));
+				int channels = toInt(env.get("channels"));
+				TraversalPolicy producerShape = FEATURES.shape(producer);
+				int totalSize = producerShape.getTotalSize();
+				int stride = totalSize / channels;
+				CollectionProducer flat = producer.reshape(FEATURES.shape(totalSize));
+				return FEATURES.subset(FEATURES.shape(stride), flat, index * stride);
+			}
 			throw new PdslParseException(
 					"Subscript not supported on " + (obj == null ? "null" : obj.getClass().getSimpleName()));
 		} else if (expr instanceof PdslNode.InlineBlock) {
