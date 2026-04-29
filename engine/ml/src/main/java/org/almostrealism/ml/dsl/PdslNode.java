@@ -486,36 +486,28 @@ public abstract class PdslNode {
 	}
 
 	/**
-	 * AccumBlocks statement: element-wise accumulation (sum) of two sub-block outputs.
-	 * Both sub-blocks receive the same input; their outputs are summed.
-	 * {@code accum_blocks(blockA, blockB)}
+	 * AccumBlocks statement: element-wise accumulation (sum) of N sub-block outputs.
+	 * Every sub-block receives the same input; their outputs are summed element-wise.
+	 * {@code accum_blocks(blockA, blockB, ...)}
 	 */
 	public static class AccumBlocksStatement extends Statement {
-		/** The left sub-block expression. */
-		private final Expression left;
-		/** The right sub-block expression. */
-		private final Expression right;
+		/** The list of sub-block expressions to apply in parallel and sum. */
+		private final List<Expression> blocks;
 
 		/**
 		 * Constructs an AccumBlocksStatement.
 		 *
-		 * @param left   the left sub-block expression
-		 * @param right  the right sub-block expression
+		 * @param blocks the list of sub-block expressions (must contain at least one)
 		 * @param line   the source line number
 		 * @param column the source column number
 		 */
-		public AccumBlocksStatement(Expression left, Expression right,
-								  int line, int column) {
+		public AccumBlocksStatement(List<Expression> blocks, int line, int column) {
 			super(line, column);
-			this.left = left;
-			this.right = right;
+			this.blocks = blocks;
 		}
 
-		/** Returns the left sub-block expression. */
-		public Expression getLeft() { return left; }
-
-		/** Returns the right sub-block expression. */
-		public Expression getRight() { return right; }
+		/** Returns the list of sub-block expressions to be summed. */
+		public List<Expression> getBlocks() { return blocks; }
 	}
 
 	/** For-loop: {@code for i in start..end { body }}. */

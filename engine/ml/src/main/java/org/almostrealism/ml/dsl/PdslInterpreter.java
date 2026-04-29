@@ -174,11 +174,38 @@ public class PdslInterpreter {
 				throw new PdslParseException(
 						"Missing argument '" + param.getName() + "' for layer '" + name + "'");
 			}
+			if ("producer".equals(param.getTypeName())) {
+				value = bindProducerParameter(param, value, env);
+			}
 			env.set(param.getName(), value);
 		}
 		SequentialBlock block = new SequentialBlock(inputShape);
 		interpretBody(def.getBody(), block, env);
 		return block;
+	}
+
+	/**
+	 * Binds a {@code producer([shape])} parameter to a {@link Producer} of
+	 * {@link PackedCollection}. The actual conversion (Number, PackedCollection, or
+	 * Producer with shape validation) is delegated to
+	 * {@link AudioDspInterpreterFeatures#bindProducerArg(Object, TraversalPolicy, String)}
+	 * so that parameter binding and per-primitive scalar acceptance share one
+	 * definition.
+	 *
+	 * @param param the parameter declaration (with declared shape)
+	 * @param value the caller-supplied value from the args map
+	 * @param env   current environment, used to evaluate the declared shape expression
+	 * @return a {@link Producer} of {@link PackedCollection}
+	 */
+	private Object bindProducerParameter(PdslNode.Parameter param, Object value, Environment env) {
+		if (param.getShape() == null) {
+			throw new PdslParseException(
+					"Parameter '" + param.getName()
+							+ "' declared as producer must have a shape, e.g. producer([1])");
+		}
+		TraversalPolicy declaredShape = evaluateShape((PdslNode.ShapeLiteral) param.getShape(), env);
+		return FEATURES.bindProducerArg(value, declaredShape,
+				"Parameter '" + param.getName() + "'");
 	}
 
 	/**
@@ -511,15 +538,20 @@ public class PdslInterpreter {
 	}
 
 	/**
-	 * Interprets an {@code accum_blocks} statement by applying two sub-blocks to the same input
-	 * and accumulating their outputs element-wise.
+	 * Interprets an {@code accum_blocks} statement by applying N sub-blocks to the
+	 * same input and accumulating their outputs element-wise.
 	 */
 	private void interpretAccumBlocks(PdslNode.AccumBlocksStatement accumStmt,
 									  SequentialBlock block, Environment env) {
-		TraversalPolicy shape = block.getOutputShape();
-		Block left = expressionToBlock(accumStmt.getLeft(), shape, env);
-		Block right = expressionToBlock(accumStmt.getRight(), shape, env);
-		block.accum(left, right);
+		TraversalPolicy inputShape = block.getOutputShape();
+		List<Block> subBlocks = new ArrayList<>();
+		for (PdslNode.Expression expr : accumStmt.getBlocks()) {
+			subBlocks.add(expressionToBlock(expr, inputShape, env));
+		}
+		if (subBlocks.isEmpty()) {
+			throw new PdslParseException("accum_blocks requires at least one branch body");
+		}
+		block.add(FEATURES.accumBlocks(inputShape, subBlocks));
 	}
 
 	/**
@@ -642,9 +674,18 @@ public class PdslInterpreter {
 		}
 
 		if ("route".equals(name)) {
-			return FEATURES.callRoute(args,
-					AudioDspInterpreterFeatures.toInt(env.get("channels")),
-					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
+			int inputChannels = AudioDspInterpreterFeatures.toInt(env.get("channels"));
+			int signalSize = AudioDspInterpreterFeatures.toInt(env.get("signal_size"));
+			Block routeBlock = FEATURES.callRoute(args, inputChannels, signalSize);
+			// route() may produce a different output channel count than its input
+			// (rectangular routing). Update the environment's "channels" binding so
+			// downstream `for each channel`, `sum_channels()`, subscript, etc. operate
+			// on the new channel count.
+			int outputChannels = routeBlock.getOutputShape().length(0);
+			if (outputChannels != inputChannels) {
+				env.set("channels", outputChannels);
+			}
+			return routeBlock;
 		}
 		if ("sum_channels".equals(name)) {
 			return FEATURES.callSumChannels(args,

@@ -222,6 +222,13 @@ public class PdslParser {
 				consume(PdslToken.Type.SCALAR);
 				typeName = "scalar";
 				break;
+			case PRODUCER:
+				consume(PdslToken.Type.PRODUCER);
+				typeName = "producer";
+				consume(PdslToken.Type.LPAREN);
+				shape = parseShapeLiteral();
+				consume(PdslToken.Type.RPAREN);
+				break;
 			case INT_TYPE:
 				consume(PdslToken.Type.INT_TYPE);
 				typeName = "int";
@@ -433,18 +440,23 @@ public class PdslParser {
 	}
 
 	/**
-	 * Parses an {@code accum_blocks(left, right)} statement.
+	 * Parses an {@code accum_blocks(block1, block2, ...)} statement with one or more
+	 * block arguments. Every block is applied to the same upstream signal and their
+	 * outputs are summed element-wise.
 	 *
 	 * @return the parsed {@link PdslNode.AccumBlocksStatement}
 	 */
 	private PdslNode.AccumBlocksStatement parseAccumBlocksStatement() {
 		PdslToken kw = consume(PdslToken.Type.ACCUM_BLOCKS);
 		consume(PdslToken.Type.LPAREN);
-		PdslNode.Expression left = parseBlockArg();
-		consume(PdslToken.Type.COMMA);
-		PdslNode.Expression right = parseBlockArg();
+		List<PdslNode.Expression> blocks = new ArrayList<>();
+		blocks.add(parseBlockArg());
+		while (check(PdslToken.Type.COMMA)) {
+			consume(PdslToken.Type.COMMA);
+			blocks.add(parseBlockArg());
+		}
 		consume(PdslToken.Type.RPAREN);
-		return new PdslNode.AccumBlocksStatement(left, right, kw.getLine(), kw.getColumn());
+		return new PdslNode.AccumBlocksStatement(blocks, kw.getLine(), kw.getColumn());
 	}
 
 	/**

@@ -2,12 +2,20 @@
 //
 // This file renders the structural shape of
 //   studio/compose/.../MixdownManager.createCells() + createEfx()
-// as a declarative multi-channel graph.  It is intentionally the
-// *fixed-parameter* rendition: every scalar parameter (volume, filter
-// cutoffs, delay time, wet level) is resolved to a constant at block-build
-// time.  The time-varying (automation- and gene-driven) parameter path is
-// PDSL-blocked and is documented in docs/plans/PDSL_AUDIO_DSP.md
-// Section 10 (MixdownManager Migration: Structural Plan).
+// as a declarative multi-channel graph.
+//
+// Scalar parameters that the production Java path drives via
+// AutomationManager (hp_cutoff, volume, lp_cutoff, delay_samples) are
+// declared as producer([1]) — the interpreter accepts a Number literal,
+// a 1-element PackedCollection (mutated between renders), or a Producer
+// expression. A numeric literal is folded into the kernel as a constant
+// (the legacy fixed-parameter behaviour). A PackedCollection or Producer
+// form lets the value vary across renders, mirroring what
+// MixdownManager.createCells() / createEfx() do via
+// AutomationManager.getAggregatedValue(...).
+//
+// See docs/plans/PDSL_AUDIO_DSP.md Section 10 for the per-parameter
+// decomposition and Section 11 for the producer-valued argument design.
 //
 // Signal flow:
 //
@@ -64,13 +72,18 @@ state mixdown_efx_state {
 // Parameters:
 //   channels       Number of input channels
 //   signal_size    Samples per channel per forward pass
-//   hp_cutoff      High-pass cutoff in Hz (fixed; automation is PDSL-blocked)
-//   volume         Per-channel linear gain (fixed; gene-driven is PDSL-blocked)
+//   hp_cutoff      High-pass cutoff in Hz. producer([1]) — accepts a Number
+//                  literal (folded as a constant), a 1-element PackedCollection
+//                  slot (mutated between renders), or a Producer expression
+//                  (e.g. AutomationManager.getAggregatedValue(...)).
+//   volume         Per-channel linear gain. producer([1]) — same forms as
+//                  hp_cutoff. Drives MixdownManager.createCells() line 524-526
+//                  in the time-varying case.
 //   sample_rate    Audio sample rate in Hz
 //   filter_order   FIR filter order (40 typically)
 // ---------------------------------------------------------------------------
 layer mixdown_main_bus(channels: int, signal_size: int,
-                       hp_cutoff: scalar, volume: scalar,
+                       hp_cutoff: producer([1]), volume: producer([1]),
                        sample_rate: scalar, filter_order: scalar) -> [1, signal_size] {
     for each channel {
         highpass(hp_cutoff, sample_rate, filter_order)
@@ -108,8 +121,18 @@ layer mixdown_main_bus(channels: int, signal_size: int,
 //                      Subscripted as `wet_filter_coeffs[channel]` inside the
 //                      per-channel body to get one channel's coefficients.
 //   wet_level          Wet send level (fixed scalar)
-//   delay_samples      Integer delay samples (must be < signal_size)
-//   transmission       Cross-channel routing matrix, shape [channels, channels]
+//   delay_samples      Delay length in samples (must be < signal_size).
+//                      producer([1]) — accepts a Number literal (folded as a
+//                      constant), a 1-element PackedCollection slot, or a
+//                      Producer expression for time-varying delay (the
+//                      AdjustableDelayCell rendition at
+//                      MixdownManager.createEfx() line 654-658).
+//   transmission       Cross-channel routing matrix, shape [channels, channels].
+//                      Indexed as transmission[input_channel, output_channel]:
+//                      output channel m gets sum over input channels n of
+//                      transmission[n, m] * input[n]. Zeroing column m silences
+//                      output channel m; zeroing row n silences input channel n's
+//                      contribution to all outputs.
 //
 // Requires mixdown_efx_state populated with:
 //   buffers  PackedCollection of size channels * signal_size (zero-initialised)
@@ -117,7 +140,7 @@ layer mixdown_main_bus(channels: int, signal_size: int,
 // ---------------------------------------------------------------------------
 layer mixdown_efx_bus(channels: int, signal_size: int,
                       wet_filter_coeffs: weight, wet_level: scalar,
-                      delay_samples: int, transmission: weight) -> [1, signal_size] {
+                      delay_samples: producer([1]), transmission: weight) -> [1, signal_size] {
     for each channel {
         fir(wet_filter_coeffs[channel])
         scale(wet_level)
@@ -125,6 +148,124 @@ layer mixdown_efx_bus(channels: int, signal_size: int,
     }
     route(transmission)
     sum_channels()
+}
+
+// ---------------------------------------------------------------------------
+// Rectangular EFX bus — N efx channels routed via a rectangular [N, M]
+// transmission matrix into M delay layers, then summed to mono.
+//
+// This is the PDSL rendition of `efx.m(fi(), delays, transmissionGene)` at
+// MixdownManager.createEfx() line 660-664 (Section 10.2 rows 19-20). The
+// production gene generates a [N, M] matrix that fans each of the N efx
+// outputs into a weighted combination of the M delay-layer inputs; N and M
+// are independent in the live system (row 19 in Section 10).
+//
+// `route(transmission)` accepts both square and rectangular matrices: the
+// matrix's first axis must match the upstream channel count and its second
+// axis becomes the new channel count for everything downstream. After
+// `route(transmission)` here, the second `for each channel` and
+// `sum_channels()` operate on M (= transmission.shape[1]) channels rather
+// than the upstream N. This is what `mixdown_efx_bus` (above) cannot
+// express because its routing is square N×N feedback rather than fan-routing.
+//
+// Input shape:  [channels, signal_size]   (channels = N input efx layers)
+// Output shape: [1, signal_size]
+//
+// Parameters:
+//   channels             N — number of upstream efx channels (matches transmission.shape[0])
+//   signal_size          Samples per channel per forward pass
+//   wet_filter_coeffs    Per-efx-channel FIR coefficients, total size N * (filter_order+1)
+//   wet_level            Wet send level (fixed scalar)
+//   delay_samples        Delay length in samples (must be < signal_size)
+//   transmission         Routing matrix, shape [N, M] (rectangular allowed)
+//
+// Requires mixdown_efx_state populated with:
+//   buffers  PackedCollection of size M * signal_size (zero-initialised);
+//            sized to the *output* channel count, not the upstream N.
+//   heads    PackedCollection of size M (zero-initialised), likewise sized
+//            to the output channel count.
+// ---------------------------------------------------------------------------
+layer mixdown_efx_bus_rectangular(channels: int, signal_size: int,
+                                  wet_filter_coeffs: weight, wet_level: scalar,
+                                  delay_samples: scalar,
+                                  transmission: weight) -> [1, signal_size] {
+    for each channel {
+        fir(wet_filter_coeffs[channel])
+        scale(wet_level)
+    }
+    route(transmission)
+    for each channel {
+        delay(delay_samples, buffers[channel], heads[channel])
+    }
+    sum_channels()
+}
+
+// ---------------------------------------------------------------------------
+// Rectangular routing probe — exposes the [M, signal_size] output of a
+// rectangular `route(transmission)` directly without summing or further
+// processing. Used by `testMixdownManagerRectangularRoute` to verify that
+// individual output channels can be made silent by zeroing out the
+// corresponding column of the transmission matrix.
+//
+// Input shape:  [channels, signal_size]
+// Output shape: [output_channels, signal_size]   (= transmission.shape[1])
+// ---------------------------------------------------------------------------
+layer rect_route_probe(channels: int, signal_size: int,
+                       transmission: weight) {
+    route(transmission)
+}
+
+// ---------------------------------------------------------------------------
+// Heterogeneous wet/efx/reverb branch — three sibling sub-blocks all reading
+// the same mono input and producing one output channel each, summed into
+// a single mono output.
+//
+// Renders rows 10-11 of Section 10.1 (MixdownManager.createCells() lines
+// 567-602). The production code does:
+//
+//     wetSources.branch(v · wetFilter, reverbFactor)
+//     cells.branch(v, v · wetFilter, reverbFactor)
+//
+// Each branch has *structurally different* processing — different filters,
+// different gains, different downstream paths. PDSL renders this with
+// `accum_blocks(...)`, which accepts a comma-separated list of inline
+// block bodies, applies each to the [1, signal_size] input, and sums the
+// per-branch outputs back to a [1, signal_size] mono signal. The
+// implicit sum is exactly what the production wet/reverb summation does.
+//
+// Input shape:  [1, signal_size]
+// Output shape: [1, signal_size]
+//
+// Parameters:
+//   signal_size      Samples per channel per forward pass
+//   sample_rate      Audio sample rate in Hz
+//   filter_order     FIR filter order
+//   hp_cutoff        High-pass cutoff for the dry-with-HP branch (Hz)
+//   wet_filter_coeffs  FIR coefficients for the wet branch
+//                      (size = filter_order + 1)
+//   wet_level        Wet send level (scalar)
+//   reverb_factor    Reverb send level for the reverb branch (scalar)
+// ---------------------------------------------------------------------------
+layer mixdown_hetero_branch(signal_size: int,
+                            sample_rate: scalar, filter_order: scalar,
+                            hp_cutoff: scalar,
+                            wet_filter_coeffs: weight, wet_level: scalar,
+                            reverb_factor: scalar) -> [1, signal_size] {
+    accum_blocks(
+        {
+            // Dry-with-HP branch: high-pass + unity gain
+            highpass(hp_cutoff, sample_rate, filter_order)
+        },
+        {
+            // Wet branch: per-channel FIR + wet level
+            fir(wet_filter_coeffs)
+            scale(wet_level)
+        },
+        {
+            // Reverb-send branch: scaled-down dry signal
+            scale(reverb_factor)
+        }
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -147,18 +288,19 @@ layer mixdown_efx_bus(channels: int, signal_size: int,
 // Output shape: [1, signal_size]
 //
 // Parameters: union of mixdown_main_bus and mixdown_efx_bus parameters, plus
-//   lp_cutoff      Master low-pass cutoff in Hz (fixed; automation is
-//                  PDSL-blocked — rendition of MixdownManager.createEfx()
-//                  line 707-714 enableMasterFilterDown).
+//   lp_cutoff      Master low-pass cutoff in Hz. producer([1]) — accepts the
+//                  same forms as hp_cutoff. The producer-driven form mirrors
+//                  the master filter-down automation at
+//                  MixdownManager.createEfx() line 707-714.
 //
 // Requires mixdown_efx_state populated as in mixdown_efx_bus.
 // ---------------------------------------------------------------------------
 layer mixdown_master(channels: int, signal_size: int,
-                     hp_cutoff: scalar, volume: scalar,
-                     lp_cutoff: scalar,
+                     hp_cutoff: producer([1]), volume: producer([1]),
+                     lp_cutoff: producer([1]),
                      sample_rate: scalar, filter_order: scalar,
                      wet_filter_coeffs: weight, wet_level: scalar,
-                     delay_samples: int, transmission: weight) -> [1, signal_size] {
+                     delay_samples: producer([1]), transmission: weight) -> [1, signal_size] {
     accum_blocks(
         {
             for each channel {
